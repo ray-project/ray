@@ -11,17 +11,17 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.metrics_utils import InMemoryMetricsStore
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @dataclass
-class HandleMetricReport:
+class HandleMetadata:
     """Report from a deployment handle on queued and ongoing requests.
 
     Args:
@@ -30,25 +30,10 @@ class HandleMetricReport:
         handle_source: Describes what kind of entity holds this
             deployment handle: a Serve proxy, a Serve replica, or
             unknown.
-        queued_requests: The current number of queued requests at the
-            handle, i.e. requests that haven't been assigned to any
-            replica yet.
-        running_requests: A map of replica ID to the average number of
-            requests, assigned through the handle, running at that
-            replica.
-        timestamp: The time at which this report was received.
     """
 
     actor_id: Optional[str]
     handle_source: DeploymentHandleSource
-    queued_requests: float
-    running_requests: Dict[ReplicaID, float]
-    timestamp: float
-
-    @property
-    def total_requests(self) -> float:
-        """Total number of queued and running requests."""
-        return self.queued_requests + sum(self.running_requests.values())
 
     @property
     def is_serve_component_source(self) -> bool:
@@ -85,10 +70,13 @@ class AutoscalingState:
     def __init__(self, deployment_id: DeploymentID):
         self._deployment_id = deployment_id
 
+        self._metrics_store = InMemoryMetricsStore()
+
         # Map from handle ID to handle request metric report. Metrics
         # are removed from this dict either when the actor on which the
         # handle lived dies, or after a period of no updates.
-        self._handle_requests: Dict[str, HandleMetricReport] = dict()
+        # self._handle_requests: Dict[str, HandleMetricReport] = dict()
+        self._handle_metadata: Dict[str, HandleMetadata] = dict()
         # Map from replica ID to replica request metric report. Metrics
         # are removed from this dict when a replica is stopped.
         self._replica_requests: Dict[ReplicaID, ReplicaMetricReport] = dict()
@@ -198,25 +186,20 @@ class AutoscalingState:
         handle_id: str,
         actor_id: Optional[str],
         handle_source: DeploymentHandleSource,
-        queued_requests: float,
-        running_requests: Dict[ReplicaID, float],
-        send_timestamp: float,
+        # queued_requests: float,
+        # running_requests: Dict[ReplicaID, float],
+        metrics: List,
+        # send_timestamp: float,
     ) -> None:
         """Records average number of queued and running requests at a handle for this
         deployment.
         """
 
-        if (
-            handle_id not in self._handle_requests
-            or send_timestamp > self._handle_requests[handle_id].timestamp
-        ):
-            self._handle_requests[handle_id] = HandleMetricReport(
-                actor_id=actor_id,
-                handle_source=handle_source,
-                queued_requests=queued_requests,
-                running_requests=running_requests,
-                timestamp=send_timestamp,
-            )
+        if handle_id not in self._handle_metadata:
+            self._handle_metadata[handle_id] = HandleMetadata(actor_id, handle_source)
+
+        for metric in metrics:
+            self._metrics_store.add_metrics_point({handle_id: metric[0]}, metric[1])
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         """Drops handle metrics that are no longer valid.
@@ -226,38 +209,12 @@ class AutoscalingState:
         received an update for too long.
         """
 
-        timeout_s = max(
-            2 * self._config.metrics_interval_s,
-            RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+        self._metrics_store.prune_keys_and_compact_data(
+            time.time() - self._config.look_back_period_s
         )
-        for handle_id, handle_metric in list(self._handle_requests.items()):
-            # Drop metrics for handles that are on Serve proxy/replica
-            # actors that have died
-            if (
-                handle_metric.is_serve_component_source
-                and handle_metric.actor_id is not None
-                and handle_metric.actor_id not in alive_serve_actor_ids
-            ):
-                del self._handle_requests[handle_id]
-                if handle_metric.total_requests > 0:
-                    logger.debug(
-                        f"Dropping metrics for handle '{handle_id}' because the Serve "
-                        f"actor it was on ({handle_metric.actor_id}) is no longer "
-                        f"alive. It had {handle_metric.total_requests} ongoing requests"
-                    )
-            # Drop metrics for handles that haven't sent an update in a while.
-            # This is expected behavior for handles that were on replicas or
-            # proxies that have been shut down.
-            elif time.time() - handle_metric.timestamp >= timeout_s:
-                del self._handle_requests[handle_id]
-                if handle_metric.total_requests > 0:
-                    actor_id = handle_metric.actor_id
-                    actor_info = f"on actor '{actor_id}' " if actor_id else ""
-                    logger.info(
-                        f"Dropping stale metrics for handle '{handle_id}' {actor_info}"
-                        f"because no update was received for {timeout_s:.1f}s. "
-                        f"Ongoing requests was: {handle_metric.total_requests}."
-                    )
+        for handle_id in list(self._handle_metadata):
+            if handle_id not in self._metrics_store.data:
+                del self._handle_metadata[handle_id]
 
     def get_decision_num_replicas(
         self, curr_target_num_replicas: int, _skip_bound_check: bool = False
@@ -305,11 +262,12 @@ class AutoscalingState:
             RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
             or len(self._running_replicas) == 0
         ):
-            for handle_metric in self._handle_requests.values():
-                total_requests += handle_metric.queued_requests
-                for id in self._running_replicas:
-                    if id in handle_metric.running_requests:
-                        total_requests += handle_metric.running_requests[id]
+            for handle_id in self._metrics_store.data:  # noqa: E502
+                handle_avg = self._metrics_store.window_average(
+                    handle_id, time.time() - self._config.look_back_period_s
+                )
+                if handle_avg:
+                    total_requests += handle_avg
         else:
             for id in self._running_replicas:
                 if id in self._replica_requests:
@@ -326,7 +284,7 @@ class AutoscalingStateManager:
     """
 
     def __init__(self):
-        self._autoscaling_states: Dict[DeploymentID, AutoscalingState] = {}
+        self._autoscaling_states: Dict[DeploymentID, AutoscalingState] = dict()
 
     def register_deployment(
         self,
@@ -397,13 +355,11 @@ class AutoscalingStateManager:
     def record_request_metrics_for_handle(
         self,
         *,
-        deployment_id: str,
+        deployment_id: DeploymentID,
         handle_id: str,
         actor_id: Optional[str],
         handle_source: DeploymentHandleSource,
-        queued_requests: float,
-        running_requests: Dict[ReplicaID, float],
-        send_timestamp: float,
+        metrics,
     ) -> None:
         """Update request metric for a specific handle."""
 
@@ -412,9 +368,7 @@ class AutoscalingStateManager:
                 handle_id=handle_id,
                 actor_id=actor_id,
                 handle_source=handle_source,
-                queued_requests=queued_requests,
-                running_requests=running_requests,
-                send_timestamp=send_timestamp,
+                metrics=metrics,
             )
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
