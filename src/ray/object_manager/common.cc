@@ -185,8 +185,7 @@ Status PlasmaObjectHeader::ReadAcquire(
 
   // TODO(jhumphri): Wouldn't a futex be better here than polling?
   // Wait for the requested version (or a more recent one) to be sealed.
-  // TODO(kevin85421): do something similar
-  while (version < version_to_read || !is_sealed) {
+  while (!ReadyToRead(version_to_read)) {
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
     sched_yield();
     // We need to get the desired version before timeout
