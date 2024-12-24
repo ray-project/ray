@@ -37,7 +37,7 @@ from ray.core.generated import (
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
 )
-from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
+from ray.runtime_env import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -301,10 +301,7 @@ class RuntimeEnvAgent:
             runtime_env: RuntimeEnv,
             serialized_runtime_env,
         ):
-            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
-            log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger for each job.
-            per_job_logger = self.get_or_create_logger(request.job_id, log_files)
             context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
 
             # Creates each runtime env URI by their priority. `working_dir` is special
@@ -320,7 +317,7 @@ class RuntimeEnvAgent:
                 working_dir_ctx.class_instance,
                 working_dir_ctx.uri_cache,
                 context,
-                per_job_logger,
+                self._logger,
             )
 
             # Then within the working dir, create the other plugins.
@@ -334,7 +331,7 @@ class RuntimeEnvAgent:
                     if plugin.name != WorkingDirPlugin.name:
                         uri_cache = plugin_setup_context.uri_cache
                         await create_for_plugin_if_needed(
-                            runtime_env, plugin, uri_cache, context, per_job_logger
+                            runtime_env, plugin, uri_cache, context, self._logger
                         )
             return context
 
@@ -438,14 +435,9 @@ class RuntimeEnvAgent:
                         error_message=error_message,
                     )
 
-            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
             # accroding to the document of `asyncio.wait_for`,
             # None means disable timeout logic
-            setup_timeout_seconds = (
-                None
-                if runtime_env_config["setup_timeout_seconds"] == -1
-                else runtime_env_config["setup_timeout_seconds"]
-            )
+            setup_timeout_seconds = None
 
             start = time.perf_counter()
             (
