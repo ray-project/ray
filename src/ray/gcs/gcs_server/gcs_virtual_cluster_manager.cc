@@ -20,7 +20,7 @@ namespace ray {
 namespace gcs {
 
 void GcsVirtualClusterManager::Initialize(const GcsInitData &gcs_init_data) {
-  // TODO(Shanly): To be implement.
+  primary_cluster_->Initialize(gcs_init_data);
 }
 
 void GcsVirtualClusterManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
@@ -219,6 +219,9 @@ Status GcsVirtualClusterManager::FlushAndPublish(
     if (data->mode() != rpc::AllocationMode::MIXED) {
       // Tasks can only be scheduled on the nodes in the mixed cluster, so we just need to
       // publish the mixed cluster data.
+      if (callback) {
+        callback(status, std::move(data));
+      }
       return;
     }
 

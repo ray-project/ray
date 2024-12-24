@@ -18,6 +18,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/status.h"
 #include "ray/common/virtual_cluster_id.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -98,6 +99,17 @@ ReplicaSets ReplicasDifference(const T1 &left, const T2 &right) {
   return result;
 }
 
+template <typename T>
+ReplicaInstances toReplicaInstances(const T &node_instances) {
+  ReplicaInstances result;
+  for (const auto &[id, node_instance] : node_instances) {
+    auto inst = std::make_shared<NodeInstance>();
+    inst->set_hostname(node_instance.hostname());
+    inst->set_template_id(node_instance.template_id());
+    result[node_instance.template_id()][kEmptyJobClusterId].emplace(id, std::move(inst));
+  }
+  return result;
+}
 class VirtualCluster {
  public:
   VirtualCluster(const std::string &id) : id_(id) {}
@@ -207,33 +219,45 @@ class ExclusiveCluster : public VirtualCluster {
   const std::string &GetID() const override { return id_; }
   rpc::AllocationMode GetMode() const override { return rpc::AllocationMode::EXCLUSIVE; }
 
+  /// Load a job cluster to the exclusive cluster.
+  ///
+  /// \param data The data of the job cluster.
+  void LoadJobCluster(const rpc::VirtualClusterTableData &data);
+
+  /// Build the job cluster id.
+  ///
+  /// \param job_name The name of the job.
+  /// \return The job cluster id.
+  std::string BuildJobClusterID(const std::string &job_name) {
+    return VirtualClusterID::FromBinary(GetID()).BuildJobClusterID(job_name).Binary();
+  }
+
   /// Create a job cluster.
   ///
-  /// \param job_name The name of job to create the job cluster.
+  /// \param job_cluster_id The id of the job cluster.
   /// \param replica_sets The replica sets of the job cluster.
   /// \return Status The status of the creation.
-  Status CreateJobCluster(const std::string &job_name,
+  Status CreateJobCluster(const std::string &job_cluster_id,
                           ReplicaSets replica_sets,
                           CreateOrUpdateVirtualClusterCallback callback);
 
   /// Remove a job cluster.
   ///
-  /// \param job_name The name of job to remove the job cluster.
+  /// \param job_cluster_id The id of the job cluster to be removed.
   /// \param callback The callback that will be called after the job cluster is removed.
   /// \return Status The status of the removal.
-  Status RemoveJobCluster(const std::string &job_name,
+  Status RemoveJobCluster(const std::string &job_cluster_id,
                           RemoveVirtualClusterCallback callback);
 
   /// Get the job cluster by the job cluster id.
   ///
-  /// \param job_name The name of job to get the job cluster.
+  /// \param job_cluster_id The id of the job cluster.
   /// \return The job cluster if it exists, otherwise return nullptr.
-  std::shared_ptr<JobCluster> GetJobCluster(const std::string &job_name) const;
+  std::shared_ptr<JobCluster> GetJobCluster(const std::string &job_cluster_id) const;
 
   /// Iterate all job clusters.
   void ForeachJobCluster(
-      const std::function<void(const std::string &, const std::shared_ptr<JobCluster> &)>
-          &fn) const;
+      const std::function<void(const std::shared_ptr<JobCluster> &)> &fn) const;
 
   /// Check if the virtual cluster is in use.
   ///
@@ -243,6 +267,14 @@ class ExclusiveCluster : public VirtualCluster {
  protected:
   bool IsIdleNodeInstance(const std::string &job_cluster_id,
                           const gcs::NodeInstance &node_instance) const override;
+
+  /// Create a job cluster to the exclusive cluster.
+  ///
+  /// \param job_cluster_id The id of the job cluster.
+  /// \param replica_instances_to_add The node instances to be added.
+  /// \return The created job cluster.
+  std::shared_ptr<JobCluster> DoCreateJobCluster(
+      const std::string &job_cluster_id, ReplicaInstances replica_instances_to_add);
 
   // The mapping from job cluster id to `JobCluster` instance.
   absl::flat_hash_map<std::string, std::shared_ptr<JobCluster>> job_clusters_;
@@ -279,6 +311,19 @@ class PrimaryCluster : public ExclusiveCluster {
       : ExclusiveCluster(kPrimaryClusterID, async_data_flusher) {}
   PrimaryCluster &operator=(const PrimaryCluster &) = delete;
 
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
+
+  /// Load a logical cluster to the primary cluster.
+  ///
+  /// \param data The data of the logical cluster.
+  /// \return The loaded logical cluster.
+  std::shared_ptr<VirtualCluster> LoadLogicalCluster(
+      const rpc::VirtualClusterTableData &data);
+
   const std::string &GetID() const override { return kPrimaryClusterID; }
   rpc::AllocationMode GetMode() const override { return rpc::AllocationMode::EXCLUSIVE; }
 
@@ -296,6 +341,12 @@ class PrimaryCluster : public ExclusiveCluster {
   /// \return The logical cluster if it exists, otherwise return nullptr.
   std::shared_ptr<VirtualCluster> GetLogicalCluster(
       const std::string &logical_cluster_id) const;
+
+  /// Iterate all virtual clusters.
+  ///
+  /// \param fn The function to be called for each logical cluster.
+  void ForeachVirtualCluster(
+      const std::function<void(const std::shared_ptr<VirtualCluster> &)> &fn) const;
 
   /// Get virtual cluster by virtual cluster id
   ///
@@ -330,6 +381,13 @@ class PrimaryCluster : public ExclusiveCluster {
  protected:
   bool IsIdleNodeInstance(const std::string &job_cluster_id,
                           const gcs::NodeInstance &node_instance) const override;
+
+  /// Handle the node dead event.
+  ///
+  /// \param node_instance_id The id of the node instance that is dead.
+  /// \param node_type_name The type name of the node instance that is dead.
+  void OnNodeInstanceDead(const std::string &node_instance_id,
+                          const std::string &node_type_name);
 
  private:
   /// Calculate the node instances that to be added and to be removed

@@ -729,12 +729,10 @@ message VirtualClusterTableData {
   string id = 1;
   // The allocation mode of the virtual cluster.
   AllocationMode mode = 2;
-  // The replica set list of the virtual cluster.
-  map<string, int32> replica_sets = 3;
   // Mapping from node id to it's instance.
-  map<string, NodeInstance> node_instances = 4;
+  map<string, NodeInstance> node_instances = 3;
   // Whether this virtual cluster is removed.
-  bool is_removed = 5;
+  bool is_removed = 4;
   // Version number of the last modification to the virtual cluster.
-  uint64 revision = 6;
+  uint64 revision = 5;
 }

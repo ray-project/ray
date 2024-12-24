@@ -18,7 +18,7 @@ namespace ray {
 namespace gcs {
 void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
   // There are 5 kinds of table data need to be loaded.
-  auto count_down = std::make_shared<int>(5);
+  auto count_down = std::make_shared<int>(6);
   auto on_load_finished = [count_down, on_done] {
     if (--(*count_down) == 0) {
       if (on_done) {
@@ -36,6 +36,8 @@ void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
   AsyncLoadActorTaskSpecTableData(on_load_finished);
 
   AsyncLoadPlacementGroupTableData(on_load_finished);
+
+  AsyncLoadVirtualClusterTableData(on_load_finished);
 }
 
 void GcsInitData::AsyncLoadJobTableData(const EmptyCallback &on_done) {
@@ -100,6 +102,20 @@ void GcsInitData::AsyncLoadActorTaskSpecTableData(const EmptyCallback &on_done) 
       };
   RAY_CHECK_OK(gcs_table_storage_.ActorTaskSpecTable().GetAll(
       load_actor_task_spec_table_data_callback));
+}
+
+void GcsInitData::AsyncLoadVirtualClusterTableData(const EmptyCallback &on_done) {
+  RAY_LOG(INFO) << "Loading virtual cluster table data.";
+  auto load_virtual_cluster_table_data_callback =
+      [this,
+       on_done](absl::flat_hash_map<VirtualClusterID, VirtualClusterTableData> &&result) {
+        virtual_cluster_table_data_ = std::move(result);
+        RAY_LOG(INFO) << "Finished loading virtual cluster table data, size = "
+                      << virtual_cluster_table_data_.size();
+        on_done();
+      };
+  RAY_CHECK_OK(gcs_table_storage_.VirtualClusterTable().GetAll(
+      load_virtual_cluster_table_data_callback));
 }
 
 }  // namespace gcs

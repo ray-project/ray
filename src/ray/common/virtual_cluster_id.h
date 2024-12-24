@@ -33,7 +33,7 @@ class VirtualClusterID : public SimpleID<VirtualClusterID> {
     return id_.find(kJobClusterIDSeperator) != std::string::npos;
   }
 
-  VirtualClusterID OwnerID() const {
+  VirtualClusterID ParentID() const {
     auto pos = id_.find(kJobClusterIDSeperator);
     return pos == std::string::npos ? Nil()
                                     : VirtualClusterID::FromBinary(id_.substr(0, pos));
