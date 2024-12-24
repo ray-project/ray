@@ -303,10 +303,18 @@ class RuntimeEnvAgent:
             f"{request.serialized_runtime_env}."
         )
 
+        # Parsed runtime env config; cache to avoid re-computation for multiple times.
+        runtime_env_config: RuntimeEnvConfig = None
+
         async def _setup_runtime_env(
             runtime_env: RuntimeEnv,
         ):
-            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
+            global runtime_env_config
+            if not runtime_env_config:
+                runtime_env_config = RuntimeEnvConfig.from_proto(
+                    request.runtime_env_config
+                )
+
             log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger for each job.
             per_job_logger = self.get_or_create_logger(request.job_id, log_files)
@@ -478,7 +486,11 @@ class RuntimeEnvAgent:
                 self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
-            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
+            if not runtime_env_config:
+                runtime_env_config = RuntimeEnvConfig.from_proto(
+                    request.runtime_env_config
+                )
+
             # accroding to the document of `asyncio.wait_for`,
             # None means disable timeout logic
             setup_timeout_seconds = (
