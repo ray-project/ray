@@ -20,13 +20,13 @@ of RLlib, demonstrating the different use cases and features of the library.
 .. note::
 
     If any (new API stack) example is broken, or if you'd like to add an example to this page,
-    feel free to raise an issue on `RLlib's github repository <https://github.com/ray-project/ray/issues/new/choose>`__.
+    create an issue in the `RLlib GitHub repository <https://github.com/ray-project/ray/issues/new/choose>`__.
 
 
 Folder structure
 ----------------
-The `examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__ is
-structured into several sub-directories, the contents of all of which are described in detail below.
+The `examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__ has
+several sub-directories, which are described in detail below.
 
 
 How to run an example script
@@ -122,7 +122,7 @@ Curiosity
 Curriculum learning
 +++++++++++++++++++
 
-- `Custom Env Rendering Method <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py>`__:
+- `Custom Env rendering method <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py>`__:
    Demonstrates curriculum learning, where the environment difficulty increases as the agent improves.
    This approach enables gradual learning, allowing agents to master simpler tasks before progressing to more challenging ones,
    ideal for environments with hierarchical or staged difficulties. Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
@@ -159,21 +159,21 @@ Evaluation
 
 - `Evaluation Parallel to Training <https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/evaluation_parallel_to_training.py>`__:
    Runs evaluation episodes in parallel with training, reducing training time by offloading evaluation to separate processes.
-   This is beneficial in scenarios where frequent evaluation is required without interrupting learning.
+   This method is beneficial when you require frequent evaluation without interrupting learning.
 
 
 Fault tolerance
 +++++++++++++++
 
-- `Crashing and Stalling Env <https://github.com/ray-project/ray/blob/master/rllib/examples/fault_tolerance/crashing_and_stalling_env.py>`__:
-   Simulates an environment that randomly crashes and/or stalls, allowing users to test RLlib's fault-tolerance mechanisms.
+- `Crashing and stalling Env <https://github.com/ray-project/ray/blob/master/rllib/examples/fault_tolerance/crashing_and_stalling_env.py>`__:
+   Simulates an environment that randomly crashes or stalls, allowing users to test RLlib's fault-tolerance mechanisms.
    This script is useful for evaluating how RLlib handles interruptions and recovers from unexpected failures during training.
 
 
 GPU (for training and sampling)
 +++++++++++++++++++++++++++++++
 
-- `Float16 Training and Inference <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/float16_training_and_inference.py>`__:
+- `Float16 training and inference <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/float16_training_and_inference.py>`__:
    Configures a setup for mixed-precision (float16) training and inference, optimizing performance by reducing memory usage and speeding up computation.
    This is especially useful for large-scale models on compatible GPUs.
 
@@ -193,17 +193,17 @@ GPU (for training and sampling)
 Hierarchical training
 +++++++++++++++++++++
 
-- `Hierarchical RL Training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__:
+- `Hierarchical RL training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__:
    Showcases a hierarchical RL setup inspired by automatic subgoal discovery and subpolicy specialization. A high-level policy selects subgoals and assigns one of three
    specialized low-level policies to achieve them within a time limit, encouraging specialization and efficient task-solving.
    The agent has to navigate a complex grid-world environment. The example highlights the advantages of hierarchical
    learning over flat approaches by demonstrating significantly improved learning performance in challenging, goal-oriented tasks.
 
 
-Inference (of models/policies)
+Inference of models or policies
 ++++++++++++++++++++++++++++++
 
-- `Policy Inference after Training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__:
+- `Policy inference after training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__:
    Demonstrates performing inference with a trained policy, showing how to load a trained model and use it to make decisions in a simulated environment.
 
 - `Policy Inference after Training (with ConnectorV2) <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_w_connector.py>`__:
@@ -237,7 +237,7 @@ Metrics
 Multi-agent RL
 ++++++++++++++
 
-- `Custom Heuristic Policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/custom_heuristic_policy.py>`__:
+- `Custom heuristic policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/custom_heuristic_policy.py>`__:
    Demonstrates running a hybrid policy setup within the `MultiAgentCartPole` environment, where one agent follows
    a hand-coded random policy while another agent trains with PPO. This example highlights integrating static and dynamic policies,
    suitable for environments with a mix of fixed-strategy and adaptive agents.
