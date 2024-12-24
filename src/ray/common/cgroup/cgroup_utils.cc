@@ -30,6 +30,11 @@ namespace {
 // Owner can read and write.
 constexpr int kCgroupV2FilePerm = 0600;
 
+// There're two types of memory cgroup constraints:
+// 1. For those with limit capped, they will be created a dedicated cgroup;
+// 2. For those without limit specified, they will be added to the default cgroup.
+static constexpr std::string_view kDefaultCgroupV2Uuid = "default_cgroup_uuid";
+
 // Open a cgroup path and append write [content] into the file.
 void OpenCgroupV2FileAndAppend(std::string_view path, std::string_view content) {
   std::ofstream out_file{path.data(), std::ios::out | std::ios::app};
@@ -132,7 +137,23 @@ bool RemoveCtxFromDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
 
 }  // namespace
 
-bool SetupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx) {
+/*static*/ std::unique_ptr<CgroupV2Setup> CgroupV2Setup::New(
+    PhysicalModeExecutionContext ctx) {
+  if (!CgroupV2Setup::SetupCgroupV2ForContext(ctx)) {
+    return nullptr;
+  }
+  return std::unique_ptr<CgroupV2Setup>(new CgroupV2Setup(std::move(ctx)));
+}
+
+CgroupV2Setup::~CgroupV2Setup() {
+  if (!CleanupCgroupV2ForContext(ctx_)) {
+    RAY_LOG(ERROR) << "Fails to cleanup cgroup for execution context with uuid "
+                   << ctx_.uuid;
+  }
+}
+
+/*static*/ bool CgroupV2Setup::SetupCgroupV2ForContext(
+    const PhysicalModeExecutionContext &ctx) {
 #ifndef __linux__
   return false;
 #else
@@ -146,7 +167,8 @@ bool SetupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx) {
 #endif  // __linux__
 }
 
-bool CleanupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx) {
+/*static*/ bool CgroupV2Setup::CleanupCgroupV2ForContext(
+    const PhysicalModeExecutionContext &ctx) {
 #ifndef __linux__
   return false;
 #else

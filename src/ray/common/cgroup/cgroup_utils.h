@@ -16,21 +16,37 @@
 
 #pragma once
 
+#include <memory>
 #include <string_view>
+#include <utility>
 
 #include "ray/common/cgroup/cgroup_context.h"
 
 namespace ray {
 
-// There're two types of memory cgroup constraints:
-// 1. For those with limit capped, they will be created a dedicated cgroup;
-// 2. For those without limit specified, they will be added to the default cgroup.
-inline constexpr std::string_view kDefaultCgroupV2Uuid = "default_cgroup_uuid";
+class CgroupV2Setup {
+ public:
+  // A failed construction returns nullptr.
+  static std::unique_ptr<CgroupV2Setup> New(PhysicalModeExecutionContext ctx);
 
-// Setup cgroup based on the given [ctx]. Return whether the setup succeeds or not.
-bool SetupCgroupForContext(const PhysicalModeExecutionContext &ctx);
+  ~CgroupV2Setup();
 
-// Cleanup cgroup based on the given [ctx]. Return whether the cleanup succeds or not.
-bool CleanupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx);
+  CgroupV2Setup(const CgroupV2Setup &) = delete;
+  CgroupV2Setup &operator=(const CgroupV2Setup &) = delete;
+  CgroupV2Setup(CgroupV2Setup &&) = delete;
+  CgroupV2Setup &operator=(CgroupV2Setup &&) = delete;
+
+ private:
+  CgroupV2Setup(PhysicalModeExecutionContext ctx) : ctx_(std::move(ctx)) {}
+
+  // Setup cgroup based on the given [ctx]. Return whether the setup succeeds or not.
+  static bool SetupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx);
+
+  // Cleanup cgroup based on the given [ctx]. Return whether the cleanup succeds or not.
+  static bool CleanupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx);
+
+  // Execution context for current cgroup v2 setup.
+  PhysicalModeExecutionContext ctx_;
+};
 
 }  // namespace ray
