@@ -383,7 +383,13 @@ def process_timestamp_data(row):
 def test_map_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
     ray_data = ray.data.from_pandas(df)
     result = ray_data.map(process_timestamp_data)
+    # Convert the result back to a Pandas DataFrame
     processed_df = result.to_pandas()
+    # Convert PyArrow Timestamps to Pandas Timestamps
+    processed_df["timestamp"] = processed_df["timestamp"].apply(
+        lambda x: pd.Timestamp(x.as_py()) if isinstance(x, pa.lib.TimestampScalar) else x
+    )
+    # Ensure the dtype is correct
     processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
     pd.testing.assert_frame_equal(processed_df, expected_df)
 
@@ -423,7 +429,13 @@ def test_map_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
 def test_map_numpy_datetime(df, expected_df, ray_start_regular_shared):
     ray_data = ray.data.from_pandas(df)
     result = ray_data.map(process_timestamp_data)
+    # Convert the result back to a Pandas DataFrame
     processed_df = result.to_pandas()
+    # Convert PyArrow Timestamps to Pandas Timestamps
+    processed_df["timestamp"] = processed_df["timestamp"].apply(
+        lambda x: pd.Timestamp(x.as_py()) if isinstance(x, pa.lib.TimestampScalar) else x
+    )
+    # Ensure the dtype is correct
     processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
     pd.testing.assert_frame_equal(processed_df, expected_df)
 
@@ -463,12 +475,14 @@ def test_map_numpy_datetime(df, expected_df, ray_start_regular_shared):
 def test_map_python_datetime(df, expected_df, ray_start_regular_shared):
     # Convert the input DataFrame to Ray dataset
     ray_data = ray.data.from_pandas(df)
-
-    # Apply the processing function to the Ray dataset
     result = ray_data.map(process_timestamp_data)
-
     # Convert the result back to a Pandas DataFrame
     processed_df = result.to_pandas()
+    # Convert PyArrow Timestamps to Pandas Timestamps
+    processed_df["timestamp"] = processed_df["timestamp"].apply(
+        lambda x: pd.Timestamp(x.as_py()) if isinstance(x, pa.lib.TimestampScalar) else x
+    )
+    # Ensure the dtype is correct
     processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
 
     # Normalize timestamps to microseconds for comparison
