@@ -86,7 +86,7 @@ class TaskCounter {
     job_id_ = job_id.Hex();
   }
 
-  bool IsActor() ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) { return actor_name_.size() > 0; }
+  bool IsActor() ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) { return !actor_name_.empty(); }
 
   void RecordMetrics();
 
@@ -129,21 +129,21 @@ class TaskCounter {
   CounterMap<std::pair<std::string, bool>> running_in_get_counter_ ABSL_GUARDED_BY(&mu_);
   CounterMap<std::pair<std::string, bool>> running_in_wait_counter_ ABSL_GUARDED_BY(&mu_);
 
-  std::string job_id_ ABSL_GUARDED_BY(&mu_) = "";
+  std::string job_id_ ABSL_GUARDED_BY(&mu_);
   // Used for actor state tracking.
-  std::string actor_name_ ABSL_GUARDED_BY(&mu_) = "";
+  std::string actor_name_ ABSL_GUARDED_BY(&mu_);
   int64_t num_tasks_running_ ABSL_GUARDED_BY(&mu_) = 0;
 };
 
 struct TaskToRetry {
   /// Time when the task should be retried.
-  int64_t execution_time_ms;
+  int64_t execution_time_ms{};
 
   /// The details of the task.
   TaskSpecification task_spec;
 
   /// Updates the actor seqno if true.
-  bool update_seqno;
+  bool update_seqno{};
 };
 
 /// Sorts TaskToRetry in descending order of the execution time.
@@ -181,7 +181,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// If the core worker is initiated at a driver, the driver is responsible for calling
   /// the shutdown API before terminating. If the core worker is initated at a worker,
   /// shutdown must be called before terminating the task execution loop.
-  ~CoreWorker();
+  ~CoreWorker() override;
 
   void operator=(CoreWorker const &other) = delete;
 
@@ -252,7 +252,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   JobID GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
-  const int64_t GetTaskDepth() const { return worker_context_.GetTaskDepth(); }
+  int64_t GetTaskDepth() const { return worker_context_.GetTaskDepth(); }
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
@@ -784,7 +784,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const rpc::Address &caller_address,
       int64_t item_index,
       uint64_t attempt_number,
-      std::shared_ptr<GeneratorBackpressureWaiter> waiter);
+      const std::shared_ptr<GeneratorBackpressureWaiter> &waiter);
 
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
@@ -854,6 +854,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// If Nil() is given, it will be automatically propagated from worker_context.
   /// This is used when worker_context cannot reliably obtain the curernt task_id
   /// i.e., Python async actors.
+  /// \param[in] call_site The stacktrace of the task invocation, or actor
+  /// creation. This is only used for observability.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function,
@@ -864,6 +866,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const rpc::SchedulingStrategy &scheduling_strategy,
       const std::string &debugger_breakpoint,
       const std::string &serialized_retry_exception_allowlist = "",
+      const std::string &call_site = "",
       const TaskID current_task_id = TaskID::Nil());
 
   /// Create an actor.
@@ -874,6 +877,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] actor_creation_options Options for this actor creation task.
   /// \param[in] extension_data Extension data of the actor handle,
   /// see `ActorHandle` in `core_worker.proto`.
+  /// \param[in] call_site The stacktrace of the actor creation. This is
+  /// only used for observability.
   /// \param[out] actor_id ID of the created actor. This can be used to submit
   /// tasks on the actor.
   /// \return Status error if actor creation fails, likely due to raylet failure.
@@ -881,6 +886,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::vector<std::unique_ptr<TaskArg>> &args,
                      const ActorCreationOptions &actor_creation_options,
                      const std::string &extension_data,
+                     const std::string &call_site,
                      ActorID *actor_id);
 
   /// Create a placement group.
@@ -924,6 +930,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] serialized_retry_exception_allowlist A serialized exception list
   /// that serves as an allowlist of frontend-language exceptions/errors that should be
   /// retried. Empty string means an allow-all in the language worker.
+  /// \param[in] call_site The stacktrace of the task invocation. This is
+  /// only used for observability.
   /// \param[out] task_returns The object returned by this task
   /// param[in] current_task_id The current task_id that submits the task.
   /// If Nil() is given, it will be automatically propagated from worker_context.
@@ -938,6 +946,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                          int max_retries,
                          bool retry_exceptions,
                          const std::string &serialized_retry_exception_allowlist,
+                         const std::string &call_site,
                          std::vector<rpc::ObjectReference> &task_returns,
                          const TaskID current_task_id = TaskID::Nil());
 
@@ -1008,7 +1017,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const ActorID &GetActorId() const { return actor_id_; }
 
-  const std::string GetActorName() const;
+  std::string GetActorName() const;
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
   ResourceMappingType GetResourceIDs() const;
@@ -1344,7 +1353,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
  private:
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
-                                           std::shared_ptr<nlohmann::json> parent);
+                                           const std::shared_ptr<nlohmann::json> &parent);
 
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
@@ -1354,6 +1363,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirOverride);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
+
+  /// Register core worker to worker pool.
+  Status RegisterWorkerToRaylet(raylet::RayletConnection &conn,
+                                const WorkerID &worker_id,
+                                rpc::WorkerType worker_type,
+                                const JobID &job_id,
+                                int runtime_env_hash,
+                                const Language &language,
+                                const std::string &ip_address,
+                                const std::string &serialized_job_config,
+                                const StartupToken &startup_token,
+                                NodeID *raylet_id,
+                                int *port);
 
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
@@ -1375,6 +1397,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &debugger_breakpoint,
       int64_t depth,
       const std::string &serialized_runtime_env_info,
+      const std::string &call_site,
       const TaskID &main_thread_current_task_id,
       const std::string &concurrency_group_name = "",
       bool include_job_config = false,
@@ -1420,7 +1443,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Helper method to fill in object status reply given an object.
   void PopulateObjectStatus(const ObjectID &object_id,
-                            std::shared_ptr<RayObject> obj,
+                            const std::shared_ptr<RayObject> &obj,
                             rpc::GetObjectStatusReply *reply);
 
   ///
@@ -1432,7 +1455,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
   /// \param[in] call_site The call site from the language frontend.
-  void AddLocalReference(const ObjectID &object_id, std::string call_site) {
+  void AddLocalReference(const ObjectID &object_id, const std::string &call_site) {
     reference_counter_->AddLocalReference(object_id, call_site);
   }
 
@@ -1577,7 +1600,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// and a new one takes its place with the same place. In this situation, we want
   /// the new worker to reject messages meant for the old one.
   bool HandleWrongRecipient(const WorkerID &intended_worker_id,
-                            rpc::SendReplyCallback send_reply_callback) {
+                            const rpc::SendReplyCallback &send_reply_callback) {
     if (intended_worker_id != worker_context_.GetWorkerID()) {
       std::ostringstream stream;
       stream << "Mismatched WorkerID: ignoring RPC for previous worker "
@@ -1665,8 +1688,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void ConnectToRayletInternal();
 
   // Fallback for when GetAsync cannot directly get the requested object.
-  void PlasmaCallback(SetResultCallback success,
-                      std::shared_ptr<RayObject> ray_object,
+  void PlasmaCallback(const SetResultCallback &success,
+                      const std::shared_ptr<RayObject> &ray_object,
                       ObjectID object_id,
                       void *py_future);
 
@@ -1800,7 +1823,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::string actor_title_ ABSL_GUARDED_BY(mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
-  std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_) = "";
+  std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;
