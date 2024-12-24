@@ -397,6 +397,9 @@ class RuntimeEnvAgent:
         try:
             serialized_env = request.serialized_runtime_env
             runtime_env = RuntimeEnv.deserialize(serialized_env)
+
+            raise TypeError(f"hjisng runtime env = {runtime_env}")
+
         except Exception as e:
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
