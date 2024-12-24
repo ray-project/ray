@@ -110,7 +110,7 @@ def custom_eval_function(
     # `worker_index` property to figure out the actual length.
     # Loop through all workers and all sub-envs (gym.Env) on each worker and call the
     # `set_corridor_length` method on these.
-    eval_workers.foreach_worker(
+    eval_workers.foreach_env_runner(
         func=lambda worker: (
             env.unwrapped.set_corridor_length(
                 args.corridor_length_eval_worker_1
@@ -133,7 +133,7 @@ def custom_eval_function(
         print(f"Training iteration {algorithm.iteration} -> evaluation round {i}")
         # Sample episodes from the EnvRunners AND have them return only the thus
         # collected metrics.
-        episodes_and_metrics_all_env_runners = eval_workers.foreach_worker(
+        episodes_and_metrics_all_env_runners = eval_workers.foreach_env_runner(
             # Return only the metrics, NOT the sampled episodes (we don't need them
             # anymore).
             func=lambda worker: (worker.sample(), worker.get_metrics()),

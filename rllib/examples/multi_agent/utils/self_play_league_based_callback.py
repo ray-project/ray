@@ -215,7 +215,7 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                         }
                     )
 
-                algorithm.env_runner_group.foreach_worker(
+                algorithm.env_runner_group.foreach_env_runner(
                     lambda env_runner: env_runner.config.multi_agent(
                         policy_mapping_fn=agent_to_module_mapping_fn,
                         # This setting doesn't really matter for EnvRunners (no

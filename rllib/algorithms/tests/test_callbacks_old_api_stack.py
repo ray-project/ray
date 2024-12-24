@@ -111,11 +111,11 @@ class TestCallbacks(unittest.TestCase):
 
             algo = config.build()
             # Fake the counter on the local worker (doesn't have an env) and
-            # set it to -1 so the below `foreach_worker()` won't fail.
+            # set it to -1 so the below `foreach_env_runner()` won't fail.
             algo.env_runner.sum_sub_env_vector_indices = -1
 
             # Get sub-env vector index sums from the 2 remote workers:
-            sum_sub_env_vector_indices = algo.env_runner_group.foreach_worker(
+            sum_sub_env_vector_indices = algo.env_runner_group.foreach_env_runner(
                 lambda w: w.sum_sub_env_vector_indices
             )
             # Local worker has no environments -> Expect the -1 special
@@ -154,11 +154,11 @@ class TestCallbacks(unittest.TestCase):
 
             algo = config.build()
             # Fake the counter on the local worker (doesn't have an env) and
-            # set it to -1 so the below `foreach_worker()` won't fail.
+            # set it to -1 so the below `foreach_env_runner()` won't fail.
             algo.env_runner.sum_sub_env_vector_indices = -1
 
             # Get sub-env vector index sums from the 2 remote workers:
-            sum_sub_env_vector_indices = algo.env_runner_group.foreach_worker(
+            sum_sub_env_vector_indices = algo.env_runner_group.foreach_env_runner(
                 lambda w: w.sum_sub_env_vector_indices
             )
             # Local worker has no environments -> Expect the -1 special
@@ -200,7 +200,7 @@ class TestCallbacks(unittest.TestCase):
         # -> 11 episodes created [per sub-env] = 22 episodes total
         self.assertEqual(
             22,
-            algo.env_runner_group.foreach_worker(
+            algo.env_runner_group.foreach_env_runner(
                 lambda w: w.callbacks._reset_counter,
                 local_env_runner=False,
             )[0],

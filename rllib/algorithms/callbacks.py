@@ -111,12 +111,12 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                         else:
                             w._custom_property_for_training = 1
 
-                    # Use the `foreach_workers` method of the worker set and
+                    # Use the `foreach_env_runner` method of the worker set and
                     # only loop through those worker IDs that have been restarted.
                     # Note that we set `local_worker=False` to NOT include it (local
                     # workers are never recreated; if they fail, the entire Algorithm
                     # fails).
-                    worker_set.foreach_worker(
+                    worker_set.foreach_env_runner(
                         func,
                         remote_worker_ids=worker_ids,
                         local_worker=False,
@@ -125,7 +125,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         Args:
             algorithm: Reference to the Algorithm instance.
             worker_set: The EnvRunnerGroup object in which the workers in question
-                reside. You can use a `worker_set.foreach_worker(remote_worker_ids=...,
+                reside. You can use a `worker_set.foreach_env_runner(remote_worker_ids=...,
                 local_worker=False)` method call to execute custom
                 code on the recreated (remote) workers. Note that the local worker is
                 never recreated as a failure of this would also crash the Algorithm.

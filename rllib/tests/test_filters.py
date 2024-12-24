@@ -88,7 +88,7 @@ class FilterManagerTest(unittest.TestCase):
 
         mock_worker_set = _MockWorkerSet(1)
         # running_stats.n should be 20 after this sample() step.
-        mock_worker_set.foreach_worker(
+        mock_worker_set.foreach_env_runner(
             func=lambda w: w.sample(),
             local_env_runner=False,
         )
@@ -98,7 +98,7 @@ class FilterManagerTest(unittest.TestCase):
             mock_worker_set,
         )
 
-        filters = mock_worker_set.foreach_worker(
+        filters = mock_worker_set.foreach_env_runner(
             lambda w: w.get_filters(),
             local_env_runner=False,
         )[0]
