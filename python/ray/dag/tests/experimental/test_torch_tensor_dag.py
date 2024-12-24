@@ -13,7 +13,7 @@ import torch
 import time
 from ray.air._internal import torch_utils
 from ray.dag import InputNode
-from ray.exceptions import RayChannelError
+from ray.exceptions import RayChannelError, RayTaskError
 from ray.dag.output_node import MultiOutputNode
 from ray.experimental.channel.communicator import (
     Communicator,
@@ -27,7 +27,10 @@ from ray._private.test_utils import (
 
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
-from ray.experimental.util.types import ReduceOp
+from ray.experimental.util.types import (
+    AllReduceReduceOp,
+    ReduceScatterReduceOp,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -432,7 +435,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceOp = ReduceOp.SUM,
+            op: AllReduceReduceOp = AllReduceReduceOp.SUM,
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
             recv_buf += 1
@@ -441,7 +444,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceOp = ReduceOp.SUM,
+            op: ReduceScatterReduceOp = ReduceScatterReduceOp.SUM,
         ) -> None:
             self._inner.reducescatter(send_buf, recv_buf, op)
             recv_buf += 1
@@ -551,7 +554,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceOp,
+            op: AllReduceReduceOp = AllReduceReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -559,7 +562,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceOp = ReduceOp.SUM,
+            op: ReduceScatterReduceOp = ReduceScatterReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -713,7 +716,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceOp,
+            op: AllReduceReduceOp = AllReduceReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -721,7 +724,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceOp = ReduceOp.SUM,
+            op: ReduceScatterReduceOp = ReduceScatterReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -987,7 +990,7 @@ def test_torch_tensor_nccl_all_reduce(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
+        collectives = collective.allreduce.bind(computes, AllReduceReduceOp.SUM)
         recvs = [
             worker.recv.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -1033,7 +1036,7 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
+        collectives = collective.allreduce.bind(computes, AllReduceReduceOp.SUM)
         recv = workers[0].recv.bind(collectives[0])
         tensor = workers[1].recv_tensor.bind(collectives[0])
         dag = MultiOutputNode([recv, tensor, collectives[1]])
@@ -1077,7 +1080,7 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
+        collectives = collective.allreduce.bind(computes, AllReduceReduceOp.SUM)
         recvs = [
             worker.recv.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -1185,7 +1188,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceOp = ReduceOp.SUM,
+            op: AllReduceReduceOp = AllReduceReduceOp.SUM,
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
             recv_buf += 1
@@ -1194,7 +1197,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceOp = ReduceOp.SUM,
+            op: ReduceScatterReduceOp = ReduceScatterReduceOp.SUM,
         ) -> None:
             self._inner.reducescatter(send_buf, recv_buf, op)
             recv_buf += 1
@@ -1317,7 +1320,7 @@ def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
     with InputNode() as inp:
         t1, t2 = workers[0].return_two_tensors.bind(inp[0], inp[1])
         t3, t4 = workers[1].return_two_tensors.bind(inp[2], inp[3])
-        tensors = collective.allreduce.bind([t1, t4], ReduceOp.SUM)
+        tensors = collective.allreduce.bind([t1, t4], AllReduceReduceOp.SUM)
         dag = MultiOutputNode(tensors + [t2, t3])
 
     compiled_dag = dag.experimental_compile()
@@ -1356,7 +1359,7 @@ def test_torch_tensor_nccl_reduce_scatter(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.reducescatter.bind(computes, ReduceOp.SUM)
+        collectives = collective.reducescatter.bind(computes, ReduceScatterReduceOp.SUM)
         recvs = [
             worker.recv_tensor.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -1402,7 +1405,7 @@ def test_torch_tensor_nccl_reduce_scatter_get_partial(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.reducescatter.bind(computes, ReduceOp.SUM)
+        collectives = collective.reducescatter.bind(computes, ReduceScatterReduceOp.SUM)
         tensor1 = workers[0].recv_tensor.bind(collectives[0])
         tensor2 = workers[1].recv_tensor.bind(collectives[0])
         dag = MultiOutputNode([tensor1, tensor2, collectives[1]])
@@ -1427,7 +1430,7 @@ def test_torch_tensor_nccl_reduce_scatter_get_partial(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_reduce_scatter_different_shapes_among_participants(
+def test_torch_tensor_nccl_reduce_scatter_wrong_shape(
     ray_start_regular,
 ):
     """
@@ -1453,7 +1456,7 @@ def test_torch_tensor_nccl_reduce_scatter_different_shapes_among_participants(
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.reducescatter.bind(computes, ReduceOp.SUM)
+        collectives = collective.reducescatter.bind(computes, ReduceScatterReduceOp.SUM)
         recvs = [
             worker.recv_tensor.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -1485,6 +1488,59 @@ def test_torch_tensor_nccl_reduce_scatter_different_shapes_among_participants(
     ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
     with pytest.raises(RayChannelError):
         ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_reduce_scatter_tensor_wrong_first_dimension(
+    ray_start_regular,
+):
+    """
+    Test an error is thrown when input tensors' shape's firt dimension
+    is not divisible by the number of participants.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    dtype = torch.float16
+
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.reducescatter.bind(computes, ReduceScatterReduceOp.SUM)
+        recvs = [
+            worker.recv_tensor.bind(collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = dag.experimental_compile()
+
+    ref = compiled_dag.execute(
+        [((20, 10), dtype, 1 + idx) for idx in range(num_workers)]
+    )
+    result = ray.get(ref)
+    reduced_val = sum(1 + idx for idx in range(num_workers))
+    for tensor in result:
+        tensor = tensor.to("cpu")
+        expected_tensor_val = torch.ones((10, 10), dtype=dtype) * reduced_val
+        assert torch.equal(tensor, expected_tensor_val)
+
+    ref = compiled_dag.execute(
+        [((3, 10), dtype, 1 + idx) for idx in range(num_workers)]
+    )
+    with pytest.raises(RayTaskError):
+        ray.get(ref)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -1567,7 +1623,7 @@ def test_torch_tensor_nccl_reduce_scatter_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceOp = ReduceOp.SUM,
+            op: AllReduceReduceOp = AllReduceReduceOp.SUM,
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
             recv_buf += 1
@@ -1576,7 +1632,7 @@ def test_torch_tensor_nccl_reduce_scatter_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceOp = ReduceOp.SUM,
+            op: ReduceScatterReduceOp = ReduceScatterReduceOp.SUM,
         ) -> None:
             self._inner.reducescatter(send_buf, recv_buf, op)
             recv_buf += 1
@@ -1703,7 +1759,7 @@ def test_nccl_reduce_scatter_with_class_method_output_node(ray_start_regular):
     with InputNode() as inp:
         t1, t2 = workers[0].return_two_tensors.bind(inp[0], inp[1])
         t3, t4 = workers[1].return_two_tensors.bind(inp[2], inp[3])
-        tensors = collective.reducescatter.bind([t1, t4], ReduceOp.SUM)
+        tensors = collective.reducescatter.bind([t1, t4], ReduceScatterReduceOp.SUM)
         dag = MultiOutputNode(tensors + [t2, t3])
 
     compiled_dag = dag.experimental_compile()

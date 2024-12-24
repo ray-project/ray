@@ -4,10 +4,12 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.experimental.channel.communicator import (
+    AllReduceReduceOp,
     Communicator,
-    ReduceOp,
+    ReduceScatterReduceOp,
     TorchTensorAllocator,
 )
+from ray.experimental.util.types import ReduceOp
 
 if TYPE_CHECKING:
     import torch
@@ -69,20 +71,26 @@ class CPUCommBarrier:
     def _apply_op(self, op: ReduceOp, tensors: List["torch.Tensor"]) -> "torch.Tensor":
         """Apply the specified reduction operation across a list of tensors."""
 
+        SUM = 0
+        PRODUCT = 1
+        MAX = 2
+        MIN = 3
+        AVG = 4
+
         result = tensors[0].clone()
-        if op == ReduceOp.SUM:
+        if op == SUM:
             for tensor in tensors[1:]:
                 result += tensor
-        elif op == ReduceOp.PRODUCT:
+        elif op == PRODUCT:
             for tensor in tensors[1:]:
                 result *= tensor
-        elif op == ReduceOp.MAX:
+        elif op == MAX:
             for tensor in tensors[1:]:
                 result = torch.max(result, tensor)
-        elif op == ReduceOp.MIN:
+        elif op == MIN:
             for tensor in tensors[1:]:
                 result = torch.min(result, tensor)
-        elif op == ReduceOp.AVG:
+        elif op == AVG:
             result = sum(tensors) / len(tensors)
         else:
             raise ValueError(f"Operation {op} not supported")
@@ -125,7 +133,7 @@ class CPUCommunicator(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: ReduceOp = ReduceOp.SUM,
+        op: AllReduceReduceOp = AllReduceReduceOp.SUM,
     ):
         all_ranks = [
             self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()
@@ -147,7 +155,7 @@ class CPUCommunicator(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: ReduceOp = ReduceOp.SUM,
+        op: ReduceScatterReduceOp = ReduceScatterReduceOp.SUM,
     ):
         all_ranks = [
             self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()

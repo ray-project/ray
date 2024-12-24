@@ -12,7 +12,12 @@ from ray.dag.constants import COLLECTIVE_OPERATION_KEY
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_nccl_channel import _init_communicator
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
-from ray.experimental.util.types import _CollectiveOp, ReduceOp
+from ray.experimental.util.types import (
+    _CollectiveOp,
+    ReduceOp,
+    AllReduceReduceOp,
+    ReduceScatterReduceOp,
+)
 from ray.util.annotations import DeveloperAPI
 
 
@@ -31,13 +36,9 @@ class _CollectiveOperation:
     3. Actor handles match the custom NCCL group if specified.
     """
 
-    ALLREDUCE = "ar"
-    REDUCESCATTER = "rs"
-
     def __init__(
         self,
         input_nodes: List[DAGNode],
-        comm_op: str,
         op: _CollectiveOp,
         transport: Optional[Union[str, Communicator]] = None,
     ):
@@ -62,12 +63,6 @@ class _CollectiveOperation:
                 "Expected unique actor handles for a collective operation, "
                 "but found duplicate actor handles from input nodes: "
                 f"{invalid_input_nodes}"
-            )
-
-        self.comm_op = comm_op
-        if self.comm_op not in [self.ALLREDUCE, self.REDUCESCATTER]:
-            raise NotImplementedError(
-                "Only all-reduce and reduce-scatter are implemented"
             )
 
         self._op = op
@@ -134,21 +129,24 @@ class _CollectiveOperation:
         if not isinstance(send_buf, torch.Tensor):
             raise ValueError("Expected a torch tensor")
         communicator = self.get_communicator()
-        if self.comm_op == self.ALLREDUCE:
+        if isinstance(self._op, AllReduceReduceOp):
             recv_buf = torch.empty_like(send_buf)
             communicator.allreduce(send_buf, recv_buf, self._op)
-        elif self.comm_op == self.REDUCESCATTER:
+        elif isinstance(self._op, ReduceScatterReduceOp):
             world_size = len(self._actor_handles)
-            assert (
-                send_buf.shape[0] % world_size == 0
-            ), "Input tensor's first dimension should be divisible by "
-            "the number of ators participated"
+            if not send_buf.shape[0] % world_size == 0:
+                raise ValueError(
+                    "Input tensor's first dimension should be divisible by "
+                    "the number of ators participated."
+                )
             recv_buf = torch.empty(
                 (send_buf.shape[0] // world_size, *send_buf.shape[1:]),
                 dtype=send_buf.dtype,
                 device=send_buf.device,
             )
             communicator.reducescatter(send_buf, recv_buf, self._op)
+        else:
+            raise ValueError("Unsupported ReduceOp type")
         return recv_buf
 
 
