@@ -9,8 +9,8 @@
 LearnerGroup API
 ================
 
-Configuring a LearnerGroup and Learner workers
-----------------------------------------------
+Configuring a LearnerGroup and Learner actors
+---------------------------------------------
 
 .. currentmodule:: ray.rllib.algorithms.algorithm_config
 
