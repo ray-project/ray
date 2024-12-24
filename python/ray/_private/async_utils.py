@@ -25,7 +25,7 @@ import asyncio.events
 
 
 def enable_monitor_loop_lag(
-    callback: Callable[[float], None],
+    callback: Callable[[float], bool],
     interval_s: float = 0.25,
     loop: Optional[asyncio.AbstractEventLoop] = None,
 ) -> None:
@@ -35,7 +35,7 @@ def enable_monitor_loop_lag(
 
     Note: this works for all event loops, including uvloop.
 
-    :param callback: Callback to call with the lag in seconds.
+    :param callback: Callback to call with the lag in seconds. If returns True, stops.
     """
     if loop is None:
         loop = asyncio.get_running_loop()
@@ -47,6 +47,8 @@ def enable_monitor_loop_lag(
             t0 = loop.time()
             await asyncio.sleep(interval_s)
             lag = loop.time() - t0 - interval_s  # Should be close to zero.
-            callback(lag)
+            stop = callback(lag)
+            if stop:
+                break
 
     loop.create_task(monitor(), name="async_utils.monitor_loop_lag")
