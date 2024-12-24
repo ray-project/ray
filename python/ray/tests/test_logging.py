@@ -205,8 +205,7 @@ def test_log_rotation(shutdown_only, monkeypatch):
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
         ray_constants.PROCESS_TYPE_RAYLET,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
-        # Below components are not log rotating now.
-        # ray_constants.PROCESS_TYPE_WORKER,
+        ray_constants.PROCESS_TYPE_WORKER,
     ]
 
     # Run the basic workload.
