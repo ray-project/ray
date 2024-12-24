@@ -69,7 +69,7 @@ Constructing a Learner
     Learner._make_module
 
 
-Implementing a custom RLModule that fits the Learner
+Implementing a custom RLModule to fit a Learner
 ----------------------------------------------------
 
 .. autosummary::

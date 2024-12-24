@@ -72,10 +72,10 @@ Construction and setup
 Forward methods
 +++++++++++++++
 
-Use the following three forward methods when you use your RLModule from inside other classes
+Use the following three forward methods when you use RLModule from inside other classes
 and components. However, do NOT override them and leave them as-is in your custom subclasses.
 For defining your own forward behavior, override the private methods ``_forward`` (generic forward behavior for
-all phases) or - for more granularity - ``_forward_exploration``, ``_forward_inference``, and ``_forward_train``.
+all phases) or, for more granularity, use ``_forward_exploration``, ``_forward_inference``, and ``_forward_train``.
 
 .. autosummary::
     :nosignatures:
@@ -86,9 +86,11 @@ all phases) or - for more granularity - ``_forward_exploration``, ``_forward_inf
     ~RLModule.forward_train
 
 
-Override these private methods here to define your custom model's forward behavior.
-``_forward`` (generic forward behavior for all phases), ``_forward_exploration`` (for training sample collection),
-``_forward_inference`` (for production deployments, greedy acting), and ``_forward_train`` (for computing loss function inputs).
+Override these private methods to define your custom model's forward behavior.
+- ``_forward``: generic forward behavior for all phases
+- ``_forward_exploration``: for training sample collection
+- ``_forward_inference``: for production deployments, greedy acting
+- `_forward_train``: for computing loss function inputs
 
 .. autosummary::
     :nosignatures:
@@ -140,7 +142,7 @@ Modifying the underlying RLModules
     ~MultiRLModule.add_module
     ~MultiRLModule.remove_module
 
-Saving and Restoring
+Saving and restoring
 ++++++++++++++++++++
 
 .. autosummary::

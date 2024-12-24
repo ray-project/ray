@@ -28,7 +28,7 @@ Check your AlgorithmConfig
 RLlib turns on the new API stack by default for all RLlib algorithms.
 
 .. note::
-    In order to **deactivate** again the new API stack (and switch back to the old one), use the
+    To **deactivate** the new API stack and switch back to the old one, use the
     `api_stack()` method in your `AlgorithmConfig` object like so:
 
     .. code-block:: python
@@ -380,8 +380,8 @@ ModelV2 to RLModule
 -------------------
 
 If you're using a custom :py:class:`~ray.rllib.models.modelv2.ModelV2` class and want to translate
-the entire NN architecture and possibly action distribution logic to the new API stack, first learn about
-:ref:`RL Modules <rlmodule-guide>` in addition to this section here.
+the entire NN architecture and possibly action distribution logic to the new API stack, see
+:ref:`RL Modules <rlmodule-guide>` in addition to this section.
 
 Also, see these example scripts on `how to write a custom CNN-containing RL Module <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__
 and `how to write a custom LSTM-containing RL Module <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__.
@@ -395,15 +395,15 @@ to the new API stack's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`:
 #. Use an existing :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
    object from an old API stack training run, with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py>`__.
 
-In more complex scenarios, you might have implemented custom policies, such that you could either modify the behavior of constructing models
+In more complex scenarios, you might've implemented custom policies, such that you could modify the behavior of constructing models
 and distributions.
 
 
 Translating Policy.compute_actions_from_input_dict
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This old API stack method (as well as :py:meth:`~ray.rllib.policy.policy.Policy.compute_actions` and
-:py:meth:`~ray.rllib.policy.policy.Policy.compute_single_action`) directly translate to
+This old API stack method, as well as :py:meth:`~ray.rllib.policy.policy.Policy.compute_actions` and
+:py:meth:`~ray.rllib.policy.policy.Policy.compute_single_action`, directly translate to
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`
 and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`.
 :ref:`The RLModule guide explains how to implement this method <rlmodule-guide>`.
@@ -412,7 +412,7 @@ and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`
 Translating Policy.action_distribution_fn
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In order to translate :py:meth:`~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.action_distribution_fn`, write the following custom RLModule code:
+To translate :py:meth:`~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.action_distribution_fn`, write the following custom RLModule code:
 
 .. tab-set::
 
@@ -455,7 +455,7 @@ In order to translate :py:meth:`~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.
 Translating Policy.action_sampler_fn
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In order to translate :py:meth:`~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.action_sampler_fn`, write the following custom RLModule code:
+To translate :py:meth:`~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.action_sampler_fn`, write the following custom RLModule code:
 
 .. testcode::
     :skipif: True
@@ -485,7 +485,7 @@ Policy.compute_log_likelihoods
 
 Implement your custom RLModule's :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_train` method and
 return the `Columns.ACTION_LOGP` key together with the corresponding action log probs in order to pass this information
-on to your loss function(s) (which are called right after `forward_train()`. The loss logic can then access
+to your loss functions, which your code calls after `forward_train()`. The loss logic can then access
 `Columns.ACTION_LOGP`.
 
 

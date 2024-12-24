@@ -8,7 +8,7 @@ RL Modules
 ==========
 
 The :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` class in RLlib's new API stack allows you to write custom
-models in RLlib, including highly complex multi-network setups, often found in multi-agent- or model-based algorithms.
+models in RLlib, including highly complex multi-network setups, often found in multi-agent or model-based algorithms.
 
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is the main neural network class and exposes
 three public methods, each corresponding to a distinct phase in the reinforcement learning cycle:
