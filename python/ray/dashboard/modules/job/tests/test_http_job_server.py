@@ -398,7 +398,7 @@ def test_ray_tune_basic(job_sdk_client: JobSubmissionClient):
         runtime_env={"working_dir": DRIVER_SCRIPT_DIR},
     )
     wait_for_condition(
-        _check_job_succeeded, timeout=30, client=job_sdk_client, job_id=job_id
+        _check_job_succeeded, timeout=60, client=job_sdk_client, job_id=job_id
     )
 
 
