@@ -80,11 +80,14 @@ cdef extern from * namespace "ray::gcs" nogil:
                          const std::string& config,
                          const std::string& key,
                          std::string* data) {
+      // Logging default value see class `RayLog`.
       InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                              ray::RayLog::ShutDownRayLog,
                                              "ray_init",
                                              ray::RayLogLevel::WARNING,
-                                             "" /* log_dir */);
+                                             /*log_filepath=*/"",
+                                             /*log_rotation_max_size=*/1ULL << 29,
+                                             /*log_rotation_file_num=*/10);
 
       RedisClientOptions options(host, port, username, password, use_ssl);
 
