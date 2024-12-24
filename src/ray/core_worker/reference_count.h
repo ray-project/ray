@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -71,12 +73,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   using LineageReleasedCallback =
       std::function<int64_t(const ObjectID &, std::vector<ObjectID> *)>;
 
-  ReferenceCounter(const rpc::Address &rpc_address,
+  ReferenceCounter(rpc::Address rpc_address,
                    pubsub::PublisherInterface *object_info_publisher,
                    pubsub::SubscriberInterface *object_info_subscriber,
                    std::function<bool(const NodeID &node_id)> check_node_alive,
                    bool lineage_pinning_enabled = false)
-      : rpc_address_(rpc_address),
+      : rpc_address_(std::move(rpc_address)),
         lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
@@ -123,7 +125,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[out] deleted Any objects that are newly out of scope after this
   /// function call.
   void UpdateSubmittedTaskReferences(
-      const std::vector<ObjectID> return_ids,
+      const std::vector<ObjectID> &return_ids,
       const std::vector<ObjectID> &argument_ids_to_add,
       const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
       std::vector<ObjectID> *deleted = nullptr) ABSL_LOCKS_EXCLUDED(mutex_);
@@ -150,7 +152,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void UpdateFinishedTaskReferences(const std::vector<ObjectID> return_ids,
+  void UpdateFinishedTaskReferences(const std::vector<ObjectID> &return_ids,
                                     const std::vector<ObjectID> &argument_ids,
                                     bool release_lineage,
                                     const rpc::Address &worker_addr,
@@ -294,7 +296,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_ids The IDs of the object to look up.
   /// \return The addresses of the objects' owners.
   std::vector<rpc::Address> GetOwnerAddresses(
-      const std::vector<ObjectID> object_ids) const;
+      const std::vector<ObjectID> &object_ids) const;
 
   /// Check whether an object value has been freed.
   ///
@@ -475,7 +477,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[out] stats The proto to write references to.
   void AddObjectRefStats(
-      const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
+      const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
+          &pinned_objects,
       rpc::CoreWorkerStats *stats,
       const int64_t limit) const ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -531,7 +534,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
   /// \return True if the reference exists and is in scope, false otherwise.
   bool HandleObjectSpilled(const ObjectID &object_id,
-                           const std::string spilled_url,
+                           const std::string &spilled_url,
                            const NodeID &spilled_node_id);
 
   /// Get locality data for object. This is used by the leasing policy to implement
@@ -643,7 +646,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
           pinned_at_raylet_id(std::move(pinned_at_raylet_id)),
           owned_by_us(true),
           is_reconstructable(is_reconstructable),
-          foreign_owner_already_monitoring(false),
           pending_creation(!pinned_at_raylet_id.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
@@ -672,9 +674,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - We gave the reference to at least one other process.
     bool OutOfScope(bool lineage_pinning_enabled) const {
       bool in_scope = RefCount() > 0;
-      bool is_nested = nested().contained_in_borrowed_ids.size();
-      bool has_borrowers = borrow().borrowers.size() > 0;
-      bool was_stored_in_objects = borrow().stored_in_objects.size() > 0;
+      bool is_nested = !nested().contained_in_borrowed_ids.empty();
+      bool has_borrowers = !borrow().borrowers.empty();
+      bool was_stored_in_objects = !borrow().stored_in_objects.empty();
 
       bool has_lineage_references = false;
       if (lineage_pinning_enabled && owned_by_us && !is_reconstructable) {
@@ -702,8 +704,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Returns the default value of the struct if it is not set.
     const BorrowInfo &borrow() const {
       if (borrow_info == nullptr) {
-        static auto *default_info = new BorrowInfo();
-        return *default_info;
+        static const BorrowInfo default_info;
+        return default_info;
       }
       return *borrow_info;
     }
@@ -721,8 +723,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Returns the default value of the struct if it is not set.
     const NestedReferenceCount &nested() const {
       if (nested_reference_count == nullptr) {
-        static auto *default_refs = new NestedReferenceCount();
-        return *default_refs;
+        static const NestedReferenceCount default_refs;
+        return default_refs;
       }
       return *nested_reference_count;
     }
@@ -800,7 +802,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
     /// For objects that have been spilled to external storage, the URL from which
     /// they can be retrieved.
-    std::string spilled_url = "";
+    std::string spilled_url;
     /// The ID of the node that spilled the object.
     /// This will be Nil if the object has not been spilled or if it is spilled
     /// distributed external storage.

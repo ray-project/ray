@@ -27,7 +27,7 @@ namespace ray {
 namespace core {
 
 struct LocalityData {
-  uint64_t object_size;
+  uint64_t object_size{};
   absl::flat_hash_set<NodeID> nodes_containing_object;
 };
 
@@ -81,14 +81,14 @@ class LocalityAwareLeasePolicy : public LeasePolicyInterface {
   NodeAddrFactory node_addr_factory_;
 
   /// RPC address of fallback node (usually the local node).
-  const rpc::Address fallback_rpc_address_;
+  rpc::Address fallback_rpc_address_;
 };
 
 /// Class used by the core worker to implement a local-only lease policy for picking
 /// a worker node for a lease request. This class is not thread-safe.
 class LocalLeasePolicy : public LeasePolicyInterface {
  public:
-  LocalLeasePolicy(rpc::Address local_node_rpc_address)
+  explicit LocalLeasePolicy(rpc::Address local_node_rpc_address)
       : local_node_rpc_address_(std::move(local_node_rpc_address)) {}
 
   ~LocalLeasePolicy() override = default;
@@ -99,7 +99,7 @@ class LocalLeasePolicy : public LeasePolicyInterface {
 
  private:
   /// RPC address of the local node.
-  const rpc::Address local_node_rpc_address_;
+  rpc::Address local_node_rpc_address_;
 };
 
 }  // namespace core

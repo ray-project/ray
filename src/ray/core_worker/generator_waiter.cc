@@ -20,7 +20,7 @@ namespace core {
 GeneratorBackpressureWaiter::GeneratorBackpressureWaiter(
     int64_t generator_backpressure_num_objects, std::function<Status()> check_signals)
     : backpressure_threshold_(generator_backpressure_num_objects),
-      check_signals_(check_signals) {
+      check_signals_(std::move(check_signals)) {
   // 0 makes no sense, and it is not supported.
   RAY_CHECK_NE(generator_backpressure_num_objects, 0);
   RAY_CHECK(check_signals_ != nullptr);

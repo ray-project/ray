@@ -47,10 +47,10 @@ class WorkerContext {
   /// WorkerContext::GetNextPutIndex.
   /// If std::nullopt is specified, it will deduce the put index from the
   /// current worker context.
-  const ObjectID GetGeneratorReturnId(const TaskID &task_id,
-                                      std::optional<ObjectIDIndexType> put_index);
+  ObjectID GetGeneratorReturnId(const TaskID &task_id,
+                                std::optional<ObjectIDIndexType> put_index);
 
-  const WorkerType GetWorkerType() const;
+  WorkerType GetWorkerType() const;
 
   const WorkerID &GetWorkerID() const;
 
@@ -59,13 +59,13 @@ class WorkerContext {
 
   const TaskID &GetCurrentTaskID() const;
 
-  const TaskID GetMainThreadOrActorCreationTaskID() const;
+  TaskID GetMainThreadOrActorCreationTaskID() const;
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool ShouldCaptureChildTasksInPlacementGroup() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  const std::shared_ptr<rpc::RuntimeEnvInfo> GetCurrentRuntimeEnvInfo() const
+  std::shared_ptr<rpc::RuntimeEnvInfo> GetCurrentRuntimeEnvInfo() const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   const std::string &GetCurrentSerializedRuntimeEnv() const ABSL_LOCKS_EXCLUDED(mutex_);
@@ -120,7 +120,7 @@ class WorkerContext {
 
   uint64_t GetNextTaskIndex();
 
-  uint64_t GetTaskIndex();
+  uint64_t GetTaskIndex() const;
 
   // Returns the next put object index; used to calculate ObjectIDs for puts.
   ObjectIDIndexType GetNextPutIndex();

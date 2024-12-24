@@ -60,7 +60,7 @@ using StdEvent = Event<std::mutex, std::condition_variable>;
 /// semaphore data structure.
 class FiberRateLimiter {
  public:
-  FiberRateLimiter(int num) : num_(num) {}
+  explicit FiberRateLimiter(int num) : num_(num) {}
 
   // Enter the semaphore. Wait for the value to be > 0 and decrement the value.
   void Acquire() {
@@ -97,7 +97,7 @@ class FiberState {
     return true;
   }
 
-  FiberState(int max_concurrency)
+  explicit FiberState(int max_concurrency)
       : allocator_(kStackSize),
         rate_limiter_(max_concurrency),
         fiber_stopped_event_(std::make_shared<StdEvent>()) {
@@ -145,7 +145,7 @@ class FiberState {
   }
 
   void EnqueueFiber(std::function<void()> &&callback) {
-    auto op_status = channel_.push([this, callback]() {
+    auto op_status = channel_.push([this, callback = std::move(callback)]() {
       rate_limiter_.Acquire();
       callback();
       rate_limiter_.Release();
@@ -155,9 +155,7 @@ class FiberState {
 
   void Stop() { channel_.close(); }
 
-  void Join() {
-    fiber_stopped_event_->Wait();
-  }
+  void Join() { fiber_stopped_event_->Wait(); }
 
  private:
   static constexpr size_t kStackSize = 1024 * 256;
