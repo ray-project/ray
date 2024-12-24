@@ -25,8 +25,8 @@ class VirtualClusterID : public SimpleID<VirtualClusterID> {
  public:
   using SimpleID::SimpleID;
 
-  VirtualClusterID BuildJobClusterID(const std::string &job_name) const {
-    return VirtualClusterID::FromBinary(id_ + kJobClusterIDSeperator + job_name);
+  VirtualClusterID BuildJobClusterID(const std::string &job_id) const {
+    return VirtualClusterID::FromBinary(id_ + kJobClusterIDSeperator + job_id);
   }
 
   bool IsJobClusterID() const {

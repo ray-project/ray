@@ -226,10 +226,10 @@ class ExclusiveCluster : public VirtualCluster {
 
   /// Build the job cluster id.
   ///
-  /// \param job_name The name of the job.
+  /// \param job_id The name of the job.
   /// \return The job cluster id.
-  std::string BuildJobClusterID(const std::string &job_name) {
-    return VirtualClusterID::FromBinary(GetID()).BuildJobClusterID(job_name).Binary();
+  std::string BuildJobClusterID(const std::string &job_id) {
+    return VirtualClusterID::FromBinary(GetID()).BuildJobClusterID(job_id).Binary();
   }
 
   /// Create a job cluster.

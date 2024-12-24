@@ -72,6 +72,10 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
                                 rpc::GetVirtualClustersReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleCreateJobCluster(rpc::CreateJobClusterRequest request,
+                              rpc::CreateJobClusterReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   Status VerifyRequest(const rpc::CreateOrUpdateVirtualClusterRequest &request);
 
   Status VerifyRequest(const rpc::RemoveVirtualClusterRequest &request);

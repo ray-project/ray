@@ -571,6 +571,12 @@ class GcsRpcClient {
                              virtual_cluster_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  // Create job cluster.
+  VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
+                             CreateJobCluster,
+                             virtual_cluster_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
   std::pair<std::string, int64_t> GetAddress() const {
     return std::make_pair(gcs_address_, gcs_port_);
   }

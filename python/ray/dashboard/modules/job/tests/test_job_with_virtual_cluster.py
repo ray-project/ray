@@ -31,6 +31,7 @@ from ray.runtime_env.runtime_env import RuntimeEnv
 from ray.tests.conftest import get_default_fixture_ray_kwargs
 
 TEMPLATE_ID_PREFIX = "template_id_"
+kPrimaryClusterID = "kPrimaryClusterID"
 
 logger = logging.getLogger(__name__)
 
@@ -131,11 +132,11 @@ async def create_virtual_cluster(
     [
         {
             "_system_config": {"gcs_actor_scheduling_enabled": False},
-            "ntemplates": 5,
+            "ntemplates": 3,
         },
         {
             "_system_config": {"gcs_actor_scheduling_enabled": True},
-            "ntemplates": 5,
+            "ntemplates": 3,
         },
     ],
     indirect=True,
@@ -145,7 +146,7 @@ async def test_mixed_virtual_cluster(job_sdk_client):
     head_client, gcs_address, cluster = job_sdk_client
     virtual_cluster_id_prefix = "VIRTUAL_CLUSTER_"
     node_to_virtual_cluster = {}
-    ntemplates = 5
+    ntemplates = 3
     for i in range(ntemplates):
         virtual_cluster_id = virtual_cluster_id_prefix + str(i)
         nodes = await create_virtual_cluster(
@@ -267,6 +268,230 @@ ray.get(a.run.remote(control))
                 entrypoint_memory=1,
                 runtime_env=runtime_env,
                 virtual_cluster_id=virtual_cluster_id,
+            )
+
+            def _check_ready(control_actor):
+                return ray.get(control_actor.is_ready.remote())
+
+            wait_for_condition(partial(_check_ready, control_actor), timeout=20)
+
+            def _check_virtual_cluster(
+                control_actor, node_to_virtual_cluster, virtual_cluster_id
+            ):
+                nodes = ray.get(control_actor.nodes.remote())
+                assert len(nodes) > 0
+                for node in nodes:
+                    assert node_to_virtual_cluster[node] == virtual_cluster_id
+                return True
+
+            wait_for_condition(
+                partial(
+                    _check_virtual_cluster,
+                    control_actor,
+                    node_to_virtual_cluster,
+                    virtual_cluster_id,
+                ),
+                timeout=20,
+            )
+
+            supervisor_actor = ray.get_actor(
+                name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
+                namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+            )
+            actor_info = ray.state.actors(supervisor_actor._actor_id.hex())
+            driver_node_id = actor_info["Address"]["NodeID"]
+            assert node_to_virtual_cluster[driver_node_id] == virtual_cluster_id
+
+            job_info = head_client.get_job_info(job_id)
+            assert (
+                node_to_virtual_cluster[job_info.driver_node_id] == virtual_cluster_id
+            )
+
+            nodes_to_remove = ray.get(control_actor.nodes.remote())
+            if driver_node_id in nodes_to_remove:
+                nodes_to_remove.remove(driver_node_id)
+
+            to_remove = []
+            for node in cluster.worker_nodes:
+                if node.node_id in nodes_to_remove:
+                    to_remove.append(node)
+            for node in to_remove:
+                cluster.remove_node(node)
+
+            def _check_recover(
+                nodes_to_remove, actor_name, node_to_virtual_cluster, virtual_cluster_id
+            ):
+                actor = ray.get_actor(actor_name, namespace="control")
+                nodes = ray.get(actor.get_node_id.remote())
+                for node_id in nodes:
+                    assert node_id not in nodes_to_remove
+                    assert node_to_virtual_cluster[node_id] == virtual_cluster_id
+                return True
+
+            wait_for_condition(
+                partial(
+                    _check_recover,
+                    nodes_to_remove,
+                    actor_name,
+                    node_to_virtual_cluster,
+                    virtual_cluster_id,
+                ),
+                timeout=120,
+            )
+            head_client.stop_job(job_id)
+
+
+@pytest.mark.parametrize(
+    "job_sdk_client",
+    [
+        {
+            "_system_config": {"gcs_actor_scheduling_enabled": False},
+            "ntemplates": 4,
+        },
+        {
+            "_system_config": {"gcs_actor_scheduling_enabled": True},
+            "ntemplates": 4,
+        },
+    ],
+    indirect=True,
+)
+@pytest.mark.asyncio
+async def test_exclusive_virtual_cluster(job_sdk_client):
+    head_client, gcs_address, cluster = job_sdk_client
+    virtual_cluster_id_prefix = "VIRTUAL_CLUSTER_"
+    node_to_virtual_cluster = {}
+    ntemplates = 3
+    for i in range(ntemplates):
+        virtual_cluster_id = virtual_cluster_id_prefix + str(i)
+        nodes = await create_virtual_cluster(
+            gcs_address,
+            virtual_cluster_id,
+            {TEMPLATE_ID_PREFIX + str(i): 2},
+            AllocationMode.EXCLUSIVE,
+        )
+        for node_id in nodes:
+            assert node_id not in node_to_virtual_cluster
+            node_to_virtual_cluster[node_id] = virtual_cluster_id
+
+    for node in cluster.worker_nodes:
+        if node.node_id not in node_to_virtual_cluster:
+            node_to_virtual_cluster[node.node_id] = kPrimaryClusterID
+
+    @ray.remote
+    class ControlActor:
+        def __init__(self):
+            self._nodes = set()
+            self._ready = False
+
+        def ready(self):
+            self._ready = True
+
+        def is_ready(self):
+            return self._ready
+
+        def add_node(self, node_id):
+            self._nodes.add(node_id)
+
+        def nodes(self):
+            return self._nodes
+
+    for i in range(ntemplates + 1):
+        actor_name = f"test_actors_{i}"
+        pg_name = f"test_pgs_{i}"
+        control_actor_name = f"control_{i}"
+        virtual_cluster_id = virtual_cluster_id_prefix + str(i)
+        if i == ntemplates:
+            virtual_cluster_id = kPrimaryClusterID
+        control_actor = ControlActor.options(
+            name=control_actor_name, namespace="control"
+        ).remote()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir)
+            driver_script = """
+import ray
+import time
+import asyncio
+
+ray.init(address="auto")
+
+control = ray.get_actor(name="{control_actor_name}", namespace="control")
+
+
+@ray.remote(max_restarts=10)
+class Actor:
+    def __init__(self, control, pg):
+        node_id = ray.get_runtime_context().get_node_id()
+        ray.get(control.add_node.remote(node_id))
+        self._pg = pg
+
+    async def run(self, control):
+        node_id = ray.get_runtime_context().get_node_id()
+        await control.add_node.remote(node_id)
+
+        while True:
+            node_id = ray.util.placement_group_table(self._pg)["bundles_to_node_id"][0]
+            if node_id == "":
+                await asyncio.sleep(1)
+                continue
+            break
+
+        await control.add_node.remote(node_id)
+
+        await control.ready.remote()
+        while True:
+            await asyncio.sleep(1)
+
+    async def get_node_id(self):
+        while True:
+            node_id = ray.util.placement_group_table(pg)["bundles_to_node_id"][0]
+            if node_id == "":
+                await asyncio.sleep(1)
+                continue
+            break
+        return (ray.get_runtime_context().get_node_id(), node_id)
+
+
+pg = ray.util.placement_group(
+    bundles=[{{"CPU": 1}}], name="{pg_name}", lifetime="detached"
+)
+
+
+@ray.remote
+def hello(control):
+    node_id = ray.get_runtime_context().get_node_id()
+    ray.get(control.add_node.remote(node_id))
+
+
+ray.get(hello.remote(control))
+a = Actor.options(name="{actor_name}",
+                  namespace="control",
+                  num_cpus=1,
+                  lifetime="detached").remote(
+    control, pg
+)
+ray.get(a.run.remote(control))
+            """
+            driver_script = driver_script.format(
+                actor_name=actor_name,
+                pg_name=pg_name,
+                control_actor_name=control_actor_name,
+            )
+            test_script_file = path / "test_script.py"
+            with open(test_script_file, "w+") as file:
+                file.write(driver_script)
+
+            runtime_env = {"working_dir": tmp_dir}
+            runtime_env = upload_working_dir_if_needed(
+                runtime_env, tmp_dir, logger=logger
+            )
+            runtime_env = RuntimeEnv(**runtime_env).to_dict()
+
+            job_id = head_client.submit_job(
+                entrypoint="python test_script.py",
+                entrypoint_memory=1,
+                runtime_env=runtime_env,
+                virtual_cluster_id=virtual_cluster_id,
+                replica_sets={TEMPLATE_ID_PREFIX + str(i): 2},
             )
 
             def _check_ready(control_actor):

@@ -861,6 +861,21 @@ message GetVirtualClustersReply {
   repeated VirtualClusterTableData virtual_cluster_data_list = 2;
 }
 
+message CreateJobClusterRequest {
+  // The job id.
+  string job_id = 1;
+  // ID of the virtual cluster that the job belongs to.
+  string virtual_cluster_id = 2;
+  // The replica set of the job cluster.
+  map<string, int32> replica_sets = 3;
+}
+
+message CreateJobClusterReply {
+  GcsStatus status = 1;
+  // The job cluster id.
+  string job_cluster_id = 2;
+}
+
 service VirtualClusterInfoGcsService {
   // Create or update a virtual cluster.
   rpc CreateOrUpdateVirtualCluster(CreateOrUpdateVirtualClusterRequest)
@@ -869,4 +884,6 @@ service VirtualClusterInfoGcsService {
   rpc RemoveVirtualCluster(RemoveVirtualClusterRequest) returns (RemoveVirtualClusterReply);
   // Get virtual clusters.
   rpc GetVirtualClusters(GetVirtualClustersRequest) returns (GetVirtualClustersReply);
+  // Create job cluster.
+  rpc CreateJobCluster(CreateJobClusterRequest) returns (CreateJobClusterReply);
 }

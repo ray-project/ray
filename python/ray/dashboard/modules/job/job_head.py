@@ -21,6 +21,8 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray._private.utils import get_or_create_event_loop
+from ray.core.generated import gcs_service_pb2_grpc
+from ray.core.generated.gcs_service_pb2 import CreateJobClusterRequest
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
@@ -31,6 +33,7 @@ from ray.dashboard.modules.job.common import (
     JobSubmitResponse,
     http_uri_components_to_uri,
 )
+from ray.dashboard.modules.job.job_manager import generate_job_id
 from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
 from ray.dashboard.modules.job.utils import (
     find_job_by_ids,
@@ -162,6 +165,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._job_info_client = None
+
+        self._gcs_virtual_cluster_info_stub = (
+            gcs_service_pb2_grpc.VirtualClusterInfoGcsServiceStub(
+                dashboard_head.aiogrpc_gcs_channel
+            )
+        )
 
         # It contains all `JobAgentSubmissionClient` that
         # `JobHead` has ever used, and will not be deleted
@@ -340,6 +349,30 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 self.get_target_agent(),
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
+
+            if (
+                submit_request.virtual_cluster_id is not None
+                and submit_request.replica_sets is not None
+                and len(submit_request.replica_sets) > 0
+            ):
+                # Use the submission ID or generate a new one
+                submission_id = submit_request.submission_id or submit_request.job_id
+                if submission_id is None:
+                    submit_request.submission_id = generate_job_id()
+                job_cluster_id = await self._create_job_cluster(
+                    submit_request.submission_id,
+                    submit_request.virtual_cluster_id,
+                    submit_request.replica_sets,
+                )
+                # If cluster creation fails
+                if job_cluster_id is None:
+                    return Response(
+                        text="Create Job Cluster Failed.",
+                        status=aiohttp.web.HTTPInternalServerError.status_code,
+                    )
+                # Overwrite the virtual cluster ID in submit request
+                submit_request.virtual_cluster_id = job_cluster_id
+
             resp = await job_agent_client.submit_job_internal(submit_request)
         except asyncio.TimeoutError:
             return Response(
@@ -579,6 +612,21 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
 
         return self._agents[driver_node_id]
+
+    async def _create_job_cluster(self, job_id, virtual_cluster_id, replica_sets):
+        request = CreateJobClusterRequest(
+            job_id=job_id,
+            virtual_cluster_id=virtual_cluster_id,
+            replica_sets=replica_sets,
+        )
+        reply = await (self._gcs_virtual_cluster_info_stub.CreateJobCluster(request))
+        if reply.status.code != 0:
+            logger.warning(
+                f"failed to create job cluster for {job_id} in"
+                f" {virtual_cluster_id}, message: {reply.status.message}"
+            )
+            return None
+        return reply.job_cluster_id
 
     async def run(self, server):
         if not self._job_info_client:

@@ -387,6 +387,9 @@ void GcsServer::InitClusterResourceScheduler() {
         auto node_instance_id = NodeID::FromBinary(node_id.Binary()).Hex();
         auto virtual_cluster =
             gcs_virtual_cluster_manager_->GetVirtualCluster(context->virtual_cluster_id);
+        if (virtual_cluster == nullptr) {
+          return true;
+        }
         RAY_CHECK(virtual_cluster->GetMode() == rpc::AllocationMode::MIXED);
         // Check if the node is contained within the specified virtual cluster.
         return virtual_cluster->ContainsNodeInstance(node_instance_id);
