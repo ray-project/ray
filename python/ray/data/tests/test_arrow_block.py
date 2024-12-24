@@ -331,5 +331,21 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
     assert df_from_block["data_none"].iloc[0] is None
 
 
+def test_arrow_nan_element():
+    ds = ray.data.from_items(
+        [
+            1.0,
+            1.0,
+            2.0,
+            np.nan,
+            np.nan,
+        ]
+    )
+    ds = ds.groupby("item").count()
+    ds = ds.filter(lambda v: np.isnan(v["item"]))
+    result = ds.take_all()
+    assert result[0]["count()"] == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
