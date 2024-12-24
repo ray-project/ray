@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import shutil
@@ -45,6 +46,8 @@ METRICS_RECORD_INTERVAL_S = env_integer("METRICS_RECORD_INTERVAL_S", 5)
 
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
+DEFAULT_PROMETHEUS_HEADERS = "{}"
+PROMETHEUS_HEADERS_ENV_VAR = "RAY_PROMETHEUS_HEADERS"
 DEFAULT_PROMETHEUS_NAME = "Prometheus"
 PROMETHEUS_NAME_ENV_VAR = "RAY_PROMETHEUS_NAME"
 PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
@@ -72,6 +75,10 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self.grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
+        )
+        self.prometheus_headers = os.environ.get(
+            PROMETHEUS_HEADERS_ENV_VAR,
+            DEFAULT_PROMETHEUS_HEADERS,
         )
         default_metrics_root = os.path.join(self._dashboard_head.session_dir, "metrics")
         session_latest_metrics_root = os.path.join(
@@ -166,7 +173,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         try:
             path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
 
-            async with self.http_session.get(path) as resp:
+            async with self.http_session.get(
+                path, headers=json.loads(self.prometheus_headers)
+            ) as resp:
                 if resp.status != 200:
                     return dashboard_optional_utils.rest_response(
                         success=False,
@@ -244,6 +253,26 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
+        prometheus_headers = json.loads(
+            os.environ.get(PROMETHEUS_HEADERS_ENV_VAR, DEFAULT_PROMETHEUS_HEADERS)
+        )
+        # prometheus_headers should be in one of the following formats:
+        # 1. {"H1": "V1", "H2": "V2"}
+        # 2. [["H1", "V1"], ["H2", "V2"], ["H2", "V3"]]
+        # Note that the format of {"H2": ["V2", "V3"]} is not supported.
+        prometheus_header_pairs = []
+        if isinstance(prometheus_headers, list):
+            prometheus_header_pairs = [
+                (str(pair[0]), str(pair[1]))
+                for pair in prometheus_headers
+                if isinstance(pair, list) and len(pair) > 1
+            ]
+        elif isinstance(prometheus_headers, dict):
+            prometheus_header_pairs = [
+                (str(header), str(value))
+                for header, value in prometheus_headers.items()
+            ]
+
         data_sources_path = os.path.join(grafana_provisioning_folder, "datasources")
         os.makedirs(
             data_sources_path,
@@ -261,9 +290,17 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             "w",
         ) as f:
             f.write(
-                GRAFANA_DATASOURCE_TEMPLATE.format(
+                GRAFANA_DATASOURCE_TEMPLATE(
                     prometheus_host=prometheus_host,
                     prometheus_name=self._prometheus_name,
+                    jsonData={
+                        f"httpHeaderName{i+1}": header
+                        for i, (header, _) in enumerate(prometheus_header_pairs)
+                    },
+                    secureJsonData={
+                        f"httpHeaderValue{i+1}": value
+                        for i, (_, value) in enumerate(prometheus_header_pairs)
+                    },
                 )
             )
         with open(
@@ -391,7 +428,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
     async def _query_prometheus(self, query):
         async with self.http_session.get(
-            f"{self.prometheus_host}/api/v1/query?query={quote(query)}"
+            f"{self.prometheus_host}/api/v1/query?query={quote(query)}",
+            headers=json.loads(self.prometheus_headers),
         ) as resp:
             if resp.status == 200:
                 prom_data = await resp.json()
