@@ -35,7 +35,6 @@ RLModule Configuration
     RLModuleConfig
     RLModuleConfig.to_dict
     RLModuleConfig.from_dict
-    RLModuleConfig.get_catalog
 
 Multi RLModule (multi-agent)
 ++++++++++++++++++++++++++++
