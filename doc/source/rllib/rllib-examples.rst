@@ -201,7 +201,7 @@ Hierarchical training
 
 
 Inference of models or policies
-++++++++++++++++++++++++++++++
++++++++++++++++++++++++++++++++
 
 - `Policy inference after training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__:
    Demonstrates performing inference with a trained policy, showing how to load a trained model and use it to make decisions in a simulated environment.
