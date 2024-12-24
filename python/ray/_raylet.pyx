@@ -2804,6 +2804,11 @@ cdef class _GcsSubscriber:
         """
         return self.inner.get().last_batch_size()
 
+    @property
+    def queue_size(self):
+        """Size of the message queue of the subscriber."""
+        return self.inner.get().queue_size()
+
     def close(self):
         """Closes the subscriber and its active subscription."""
         with nogil:
