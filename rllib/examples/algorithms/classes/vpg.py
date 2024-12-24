@@ -45,7 +45,7 @@ class VPGConfig(AlgorithmConfig):
         if self.framework_str == "torch":
             spec = RLModuleSpec(
                 module_class=VPGTorchRLModule,
-                model_config_dict={"hidden_dim": 64},
+                model_config={"hidden_dim": 64},
             )
         else:
             raise ValueError(f"Unsupported framework: {self.framework_str}")

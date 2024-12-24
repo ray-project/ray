@@ -550,7 +550,7 @@ class TorchLearner(Learner):
                             override=True,
                         )
 
-    def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
+    def rl_module_is_compatible(self, module: RLModule) -> bool:
         return isinstance(module, nn.Module)
 
     @override(Learner)
