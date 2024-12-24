@@ -72,6 +72,19 @@ def get_concat_and_sort_transform(context: DataContext) -> Callable:
         return transform_pyarrow.concat_and_sort
 
 
+def is_nan(value):
+    return isinstance(value, float) and np.isnan(value)
+
+
+def keys_equal(keys1, keys2):
+    if len(keys1) != len(keys2):
+        return False
+    for k1, k2 in zip(keys1, keys2):
+        if not ((is_nan(k1) and is_nan(k2)) or k1 == k2):
+            return False
+    return True
+
+
 class ArrowRow(TableRow):
     """
     Row of a tabular Dataset backed by a Arrow Table block.
@@ -472,7 +485,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     if next_row is None:
                         next_row = next(iter)
                     next_keys = next_row[keys]
-                    while next_row[keys] == next_keys:
+                    while keys_equal(next_row[keys], next_keys):
                         end += 1
                         try:
                             next_row = next(iter)
@@ -592,7 +605,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 def gen():
                     nonlocal iter
                     nonlocal next_row
-                    while key_fn(next_row) == next_keys:
+                    while keys_equal(key_fn(next_row), next_keys):
                         yield next_row
                         try:
                             next_row = next(iter)
