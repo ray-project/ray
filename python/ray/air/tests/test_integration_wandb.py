@@ -335,7 +335,7 @@ class TestWandbLogger:
             "framework": "torch",
             "num_gpus": 1,
             "num_workers": 20,
-            "num_envs_per_worker": 1,
+            "num_envs_per_env_runner": 1,
             "compress_observations": True,
             "lambda": 0.99,
             "train_batch_size": 512,
