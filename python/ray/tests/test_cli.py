@@ -1055,7 +1055,10 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
     assert "[🛑] open ports detected" in result.output
 
 
-def test_ray_drain_node():
+def test_ray_drain_node(monkeypatch):
+    monkeypatch.setenv("RAY_py_gcs_connect_timeout_s", "1")
+    ray._raylet.Config.initialize("")
+
     runner = CliRunner()
     result = runner.invoke(
         scripts.drain_node,
@@ -1105,7 +1108,9 @@ def test_ray_drain_node():
         ],
     )
     assert result.exit_code != 0
-    assert "Ray cluster is not found at 127.0.0.2:8888" in result.output
+    assert "Timed out while waiting for GCS to become available" in str(
+        result.exception
+    )
 
     result = runner.invoke(
         scripts.drain_node,
@@ -1121,10 +1126,32 @@ def test_ray_drain_node():
     assert result.exit_code != 0
     assert "Invalid hex ID of a Ray node, got invalid-node-id" in result.output
 
-    with patch("ray._raylet.check_health", return_value=True), patch(
-        "ray._raylet.GcsClient"
-    ) as MockGcsClient:
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
         mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            '{"ray_version": "ray_version_mismatch"}'.encode()
+        )
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.0.1:6543",
+                "--node-id",
+                "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+                "--reason",
+                "DRAIN_NODE_REASON_IDLE_TERMINATION",
+                "--reason-message",
+                "idle termination",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "Ray version mismatch" in str(result.exception)
+
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
         mock_gcs_client.drain_node.return_value = (True, "")
         result = runner.invoke(
             scripts.drain_node,
@@ -1140,17 +1167,18 @@ def test_ray_drain_node():
             ],
         )
         assert result.exit_code == 0
-        assert mock_gcs_client.mock_calls[0] == mock.call.drain_node(
+        assert mock_gcs_client.mock_calls[1] == mock.call.drain_node(
             "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
             1,
             "idle termination",
             0,
         )
 
-    with patch("ray._raylet.check_health", return_value=True), patch(
-        "ray._raylet.GcsClient"
-    ) as MockGcsClient:
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
         mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
         mock_gcs_client.drain_node.return_value = (False, "Node not idle")
         result = runner.invoke(
             scripts.drain_node,
@@ -1168,10 +1196,13 @@ def test_ray_drain_node():
         assert result.exit_code != 0
         assert "The drain request is not accepted: Node not idle" in result.output
 
-    with patch("ray._raylet.check_health", return_value=True), patch(
-        "time.time_ns", return_value=1000000000
-    ), patch("ray._raylet.GcsClient") as MockGcsClient:
+    with patch("time.time_ns", return_value=1000000000), patch(
+        "ray._raylet.GcsClient"
+    ) as MockGcsClient:
         mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
         mock_gcs_client.drain_node.return_value = (True, "")
         result = runner.invoke(
             scripts.drain_node,
@@ -1189,7 +1220,7 @@ def test_ray_drain_node():
             ],
         )
         assert result.exit_code == 0
-        assert mock_gcs_client.mock_calls[0] == mock.call.drain_node(
+        assert mock_gcs_client.mock_calls[1] == mock.call.drain_node(
             "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
             2,
             "spot preemption",

@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
+#include <utility>
+
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
@@ -180,16 +182,20 @@ rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
 /////////////////////////////////////////////////////////////////////////////////////////
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
+    instrumented_io_context &io_context, GcsResourceManager &gcs_resource_manager)
+    : io_context_(io_context), gcs_resource_manager_(gcs_resource_manager) {}
+
+GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
-    std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+    GcsPlacementGroupSchedulerInterface *scheduler,
+    gcs::GcsTableStorage *gcs_table_storage,
     GcsResourceManager &gcs_resource_manager,
     std::function<std::string(const JobID &)> get_ray_namespace)
     : io_context_(io_context),
-      gcs_placement_group_scheduler_(std::move(scheduler)),
-      gcs_table_storage_(std::move(gcs_table_storage)),
+      gcs_placement_group_scheduler_(scheduler),
+      gcs_table_storage_(gcs_table_storage),
       gcs_resource_manager_(gcs_resource_manager),
-      get_ray_namespace_(get_ray_namespace) {
+      get_ray_namespace_(std::move(get_ray_namespace)) {
   placement_group_state_counter_.reset(
       new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   placement_group_state_counter_->SetOnChangeCallback(
@@ -202,10 +208,6 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
       });
   Tick();
 }
-
-GcsPlacementGroupManager::GcsPlacementGroupManager(
-    instrumented_io_context &io_context, GcsResourceManager &gcs_resource_manager)
-    : io_context_(io_context), gcs_resource_manager_(gcs_resource_manager) {}
 
 void GcsPlacementGroupManager::RegisterPlacementGroup(
     const std::shared_ptr<GcsPlacementGroup> &placement_group, StatusCallback callback) {
@@ -591,7 +593,7 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
     }
     RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
                    << placement_group_id;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   auto it = registered_placement_groups_.find(placement_group_id);
@@ -713,6 +715,10 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
     auto on_done = [this, placement_group_id, callback](
                        const Status &status,
                        const std::optional<PlacementGroupTableData> &result) {
+      if (!status.ok()) {
+        callback(status);
+        return;
+      }
       if (result) {
         RAY_LOG(DEBUG) << "Placement group is removed, placement group id = "
                        << placement_group_id;
@@ -786,8 +792,8 @@ GcsPlacementGroupManager::GetBundlesOnNode(const NodeID &node_id) const {
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
-  RAY_LOG(INFO) << "Node " << node_id
-                << " failed, rescheduling the placement groups on the dead node.";
+  RAY_LOG(INFO).WithField(node_id)
+      << "Node failed, rescheduling the placement groups on the dead node.";
   auto bundles = gcs_placement_group_scheduler_->GetAndRemoveBundlesOnNode(node_id);
   for (const auto &bundle : bundles) {
     auto iter = registered_placement_groups_.find(bundle.first);
@@ -799,7 +805,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
                       << " bundle index:" << bundle_index;
       }
       // TODO(ffbin): If we have a placement group bundle that requires a unique resource
-      // (for example gpu resource when there’s only one gpu node), this can postpone
+      // (for example gpu resource when there's only one gpu node), this can postpone
       // creating until a node with the resources is added. we will solve it in next pr.
       if (iter->second->GetState() != rpc::PlacementGroupTableData::RESCHEDULING) {
         iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);

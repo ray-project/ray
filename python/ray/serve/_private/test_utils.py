@@ -3,11 +3,11 @@ import datetime
 import os
 import threading
 import time
+from contextlib import asynccontextmanager
 from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
-import pytest
 import requests
 from starlette.requests import Request
 
@@ -16,12 +16,7 @@ import ray.util.state as state_api
 from ray import serve
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import (
-    ApplicationStatus,
-    DeploymentID,
-    DeploymentStatus,
-    RequestProtocol,
-)
+from ray.serve._private.common import DeploymentID, DeploymentStatus, RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
@@ -29,6 +24,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
 from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.schema import ApplicationStatus
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
@@ -209,6 +205,16 @@ class MockDeploymentHandle:
         self._app_name = app_name
         self._protocol = RequestProtocol.UNDEFINED
         self._running_replicas_populated = False
+        self._initialized = False
+
+    def is_initialized(self):
+        return self._initialized
+
+    def _init(self):
+        if self._initialized:
+            raise RuntimeError("already initialized")
+
+        self._initialized = True
 
     def options(self, *args, **kwargs):
         return self
@@ -417,6 +423,8 @@ def check_telemetry(
 
 
 def ping_grpc_list_applications(channel, app_names, test_draining=False):
+    import pytest
+
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.ListApplicationsRequest()
     if test_draining:
@@ -433,6 +441,8 @@ def ping_grpc_list_applications(channel, app_names, test_draining=False):
 
 
 def ping_grpc_healthz(channel, test_draining=False):
+    import pytest
+
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.HealthzRequest()
     if test_draining:
@@ -448,6 +458,8 @@ def ping_grpc_healthz(channel, test_draining=False):
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
+    import pytest
+
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
     metadata = (("application", app_name),)
@@ -503,13 +515,22 @@ def ping_fruit_stand(channel, app_name):
     assert response.costs == 32
 
 
+@asynccontextmanager
 async def send_signal_on_cancellation(signal_actor: ActorHandle):
+    cancelled = False
     try:
-        await asyncio.sleep(100000)
+        yield
+        await asyncio.sleep(100)
     except asyncio.CancelledError:
+        cancelled = True
         # Clear the context var to avoid Ray recursively cancelling this method call.
         ray._raylet.async_task_id.set(None)
         await signal_actor.send.remote()
+
+    if not cancelled:
+        raise RuntimeError(
+            "CancelledError wasn't raised during `send_signal_on_cancellation` block"
+        )
 
 
 class FakeGrpcContext:

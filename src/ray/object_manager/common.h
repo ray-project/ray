@@ -152,6 +152,7 @@ struct PlasmaObjectHeader {
   /// Blocks until the given version is ready to read. Returns false if the
   /// maximum number of readers have already read the requested version.
   ///
+  /// \param[in] object_id ObjectID to acquire a lock from.
   /// \param[in] sem The semaphores for this channel.
   /// \param[in] read_version The version to read.
   /// \param[out] version_read For normal immutable objects, this will be set to
@@ -163,7 +164,8 @@ struct PlasmaObjectHeader {
   /// TimedOut immediately without blocking.
   /// \return Whether the correct version was read and there were still
   /// reads remaining.
-  Status ReadAcquire(Semaphores &sem,
+  Status ReadAcquire(const ObjectID &object_id,
+                     Semaphores &sem,
                      int64_t version_to_read,
                      int64_t &version_read,
                      const std::unique_ptr<std::chrono::steady_clock::time_point>

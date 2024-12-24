@@ -81,6 +81,14 @@ cdef extern from "ray/core_worker/fiber.h" nogil:
         void Wait()
         void Notify()
 
+cdef extern from "ray/core_worker/experimental_mutable_object_manager.h" nogil:
+    cdef cppclass CReaderRefInfo "ray::experimental::ReaderRefInfo":
+        CReaderRefInfo()
+        CObjectID reader_ref_id
+        CActorID owner_reader_actor_id
+        int64_t num_reader_actors
+
+
 cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::core::WorkerContext":
         c_bool CurrentActorIsAsync()
@@ -107,7 +115,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool EnableTaskEvents() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
-        void ConnectToRaylet()
         CWorkerType GetWorkerType()
         CLanguage GetLanguage()
 
@@ -120,12 +127,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CSchedulingStrategy &scheduling_strategy,
             c_string debugger_breakpoint,
             c_string serialized_retry_exception_allowlist,
+            c_string call_site,
             const CTaskID current_task_id)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CActorCreationOptions &options,
-            const c_string &extension_data, CActorID *actor_id)
+            const c_string &extension_data,
+            c_string call_site,
+            CActorID *actor_id)
         CRayStatus CreatePlacementGroup(
             const CPlacementGroupCreationOptions &options,
             CPlacementGroupID *placement_group_id)
@@ -140,6 +150,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int max_retries,
             c_bool retry_exceptions,
             c_string serialized_retry_exception_allowlist,
+            c_string call_site,
             c_vector[CObjectReference] &task_returns,
             const CTaskID current_task_id)
         CRayStatus KillActor(
@@ -183,6 +194,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
+        const c_string GetCurrentTaskName()
+        const c_string GetCurrentTaskFunctionName()
         void UpdateTaskIsDebuggerPaused(
             const CTaskID &task_id,
             const c_bool is_debugger_paused)
@@ -265,11 +278,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus ExperimentalChannelSetError(
                                   const CObjectID &object_id)
         CRayStatus ExperimentalRegisterMutableObjectWriter(
-                const CObjectID &object_id, const CNodeID *node_id)
+                const CObjectID &writer_object_id,
+                const c_vector[CNodeID] &remote_reader_node_ids)
         CRayStatus ExperimentalRegisterMutableObjectReader(const CObjectID &object_id)
         CRayStatus ExperimentalRegisterMutableObjectReaderRemote(
-                const CObjectID &object_id, const CActorID &reader_actor,
-                int64_t num_readers, const CObjectID &reader_ref)
+                const CObjectID &object_id,
+                const c_vector[CReaderRefInfo] &remote_reader_ref_info)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
@@ -421,7 +435,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void() nogil) terminate_asyncio_thread
         c_string serialized_job_config
         int metrics_agent_port
-        c_bool connect_on_start
         int runtime_env_hash
         int startup_token
         CClusterID cluster_id

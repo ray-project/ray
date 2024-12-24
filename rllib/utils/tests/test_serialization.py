@@ -141,7 +141,7 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(input_space == deserialized_space)
 
     def test_simplex_space(self):
-        space = Simplex(shape=(3, 4), concentration=np.array((1, 2, 1)))
+        space = Simplex(shape=(3, 4), concentration=np.array((1, 2, 1, 2)))
 
         d = gym_space_to_dict(space)
         sp = gym_space_from_dict(d)

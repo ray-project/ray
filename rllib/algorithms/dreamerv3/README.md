@@ -5,7 +5,7 @@
 ## Overview
 An RLlib-based implementation of the
 [DreamerV3 model-based reinforcement learning algorithm](https://arxiv.org/pdf/2301.04104v1.pdf)
-by D. Hafner et al. (Google DeepMind) 2023, in TensorFlow/Keras. 
+by D. Hafner et al. (Google DeepMind) 2023, in TensorFlow/Keras.
 
 This implementation allows scaling up training by using multi-GPU machines for
 neural network updates (see below for tips and tricks, example configs, and command lines).
@@ -49,13 +49,13 @@ in combination with the following scripts and command lines in order to run RLli
 ### [Atari100k](../../tuned_examples/dreamerv3/atari_100k.py)
 ```shell
 $ cd ray/rllib/tuned_examples/dreamerv3/
-$ python atari_100k.py --env ALE/Pong-v5 
+$ python atari_100k.py --env ale_py:ALE/Pong-v5
 ```
 
 ### [DeepMind Control Suite (vision)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py)
 ```shell
 $ cd ray/rllib/tuned_examples/dreamerv3/
-$ python dm_control_suite_vision.py --env DMC/cartpole/swingup 
+$ python dm_control_suite_vision.py --env DMC/cartpole/swingup
 ```
 Other `--env` options for the DM Control Suite would be `--env DMC/hopper/hop`, `--env DMC/walker/walk`, etc..
 Note that you can also switch on WandB logging with the above script via the options
@@ -73,7 +73,7 @@ space into a new ``Box(-1, 1, (64, 64, 3), f32)``.
 
 First we quickly install ``flappy_bird_gymnasium`` in our dev environment:
 ```shell
-$ pip install flappy_bird_gymnasium 
+$ pip install flappy_bird_gymnasium
 ```
 
 Now, let's create a new python file for this RLlib experiment and call it ``flappy_bird.py``:
@@ -105,7 +105,7 @@ config = (
     DreamerV3Config()
     # set the env to the pre-registered string
     .environment("flappy-bird")
-    # play around with the insanely high number of hyperparameters for DreamerV3 ;) 
+    # play around with the insanely high number of hyperparameters for DreamerV3 ;)
     .training(
         model_size="S",
         training_ratio=1024,
@@ -136,7 +136,7 @@ new catalog via your ``DreamerV3Config`` object as follows:
 
 ```python
 from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import DreamerV3TfRLModule
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec 
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
 config.rl_module(
     rl_module_spec=RLModuleSpec(

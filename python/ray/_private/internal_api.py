@@ -5,7 +5,6 @@ import ray._private.profiling as profiling
 import ray._private.services as services
 import ray._private.utils as utils
 import ray._private.worker
-from ray._private import ray_constants
 from ray._private.state import GlobalState
 from ray._raylet import GcsClientOptions
 from ray.core.generated import common_pb2
@@ -34,7 +33,6 @@ def get_state_from_address(address=None):
 
 def memory_summary(
     address=None,
-    redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
     group_by="NODE_ADDRESS",
     sort_by="OBJECT_SIZE",
     units="B",

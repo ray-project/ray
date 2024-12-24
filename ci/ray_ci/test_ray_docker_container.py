@@ -7,6 +7,7 @@ import pytest
 
 from ci.ray_ci.builder_container import DEFAULT_PYTHON_VERSION
 from ci.ray_ci.container import _DOCKER_ECR_REPO
+from ci.ray_ci.docker_container import GPU_PLATFORM
 from ci.ray_ci.ray_docker_container import RayDockerContainer
 from ci.ray_ci.test_base import RayCITestBase
 from ci.ray_ci.utils import RAY_VERSION
@@ -203,8 +204,8 @@ class TestRayDockerContainer(RayCITestBase):
         container = RayDockerContainer(v, "cpu", "ray", "aarch64")
         assert container._get_canonical_tag() == f"{sha}-{pv}-cpu-aarch64"
 
-        container = RayDockerContainer(v, "cu11.8.0-cudnn8", "ray-ml")
-        assert container._get_canonical_tag() == f"{sha}-{pv}-cu118"
+        container = RayDockerContainer(v, GPU_PLATFORM, "ray-ml")
+        assert container._get_canonical_tag() == f"{sha}-{pv}-cu121"
 
         with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "releases/1.0.0"}):
             container = RayDockerContainer(v, "cpu", "ray")

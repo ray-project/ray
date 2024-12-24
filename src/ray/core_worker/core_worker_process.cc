@@ -28,7 +28,7 @@ std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!core_worker_process)
       << "The process is already initialized for core worker.";
-  core_worker_process.reset(new CoreWorkerProcessImpl(options));
+  core_worker_process = std::make_unique<CoreWorkerProcessImpl>(options);
 
 #ifndef _WIN32
   // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
@@ -79,13 +79,20 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      ? ComputeDriverIdFromJob(options_.job_id)
                      : WorkerID::FromRandom()) {
   if (options_.enable_logging) {
-    std::stringstream app_name;
-    app_name << LanguageString(options_.language) << "-core-"
-             << WorkerTypeString(options_.worker_type);
+    std::stringstream app_name_ss;
+    app_name_ss << LanguageString(options_.language) << "-core-"
+                << WorkerTypeString(options_.worker_type);
     if (!worker_id_.IsNil()) {
-      app_name << "-" << worker_id_;
+      app_name_ss << "-" << worker_id_;
     }
-    RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, options_.log_dir);
+    const std::string app_name = app_name_ss.str();
+    const std::string log_filepath =
+        RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
+    RayLog::StartRayLog(app_name,
+                        RayLogLevel::INFO,
+                        log_filepath,
+                        ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+                        ray::RayLog::GetRayLogRotationBackupCountOrDefault());
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.
       // We are not sure if the default argv[0] would be suitable for loading symbols
@@ -137,7 +144,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
     const std::vector<SourceTypeVariant> source_types = {
-        ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER};
+        ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
+        ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
     RayEventInit(source_types,
                  absl::flat_hash_map<std::string, std::string>(),
                  options_.log_dir,
@@ -237,6 +245,7 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
 
   RayConfig::instance().initialize(promise.get_future().get());
   ray::asio::testing::init();
+  ray::rpc::testing::init();
 }
 
 void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {

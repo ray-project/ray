@@ -3,6 +3,13 @@
 Installing Ray
 ==============
 
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-install-ray" target="_blank" href="https://console.anyscale.com/register/ha?utm_source=ray_docs&utm_medium=docs&utm_campaign=installing_ray&redirectTo=/v2/template-preview/workspace-intro">
+      <img src="../_static/img/quickstart-with-ray.svg" alt="Run Quickstart on Anyscale" />
+      <br/><br/>
+    </a>
+
 Ray currently officially supports x86_64, aarch64 (ARM) for Linux, and Apple silicon (M1) hardware.
 Ray on Windows is currently in beta.
 
@@ -132,8 +139,6 @@ You can install the nightly Ray wheels via the following links. These daily rele
 .. note::
 
   :ref:`Usage stats <ref-usage-stats>` collection is enabled by default (can be :ref:`disabled <usage-disable>`) for nightly wheels including both local clusters started via ``ray.init()`` and remote clusters via cli.
-
-.. note::
 
   .. If you change the list of wheel links below, remember to update `get_wheel_filename()` in  `https://github.com/ray-project/ray/blob/master/python/ray/_private/utils.py`.
 
@@ -424,7 +429,7 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: nightly (`679989c <https://github.com/ray-project/ray/commit/679989c00774c7fa0b94db711ce8eedda2190765>`_)
+        Ray version: nightly (`37aa0c6 <https://github.com/ray-project/ray/commit/37aa0c66110fc235762c29612b90f1c73869e6cf>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
@@ -434,8 +439,8 @@ Install Ray Java with Maven
 ---------------------------
 
 .. note::
-   
-   All Ray Java APIs are experimental and only supported by the community. 
+
+   All Ray Java APIs are experimental and only supported by the community.
 
 Before installing Ray Java with Maven, you should install Ray Python with `pip install -U ray` . Note that the versions of Ray Java and Ray Python must match.
 Note that nightly Ray python wheels are also required if you want to install Ray Java snapshot version.
@@ -499,7 +504,7 @@ Install Ray C++
 
 .. note::
 
-  All Ray C++ APIs are experimental and only supported by the community. 
+  All Ray C++ APIs are experimental and only supported by the community.
 
 You can install and use Ray C++ API as follows.
 

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Union
 
 import ray._private.ray_constants as ray_constants
@@ -14,6 +15,14 @@ from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.utils import async_loop_forever, create_task
 
 logger = logging.getLogger(__name__)
+
+
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_EVENT_AGENT_TPE_MAX_WORKERS = ray_constants.env_integer(
+    "RAY_DASHBOARD_EVENT_AGENT_TPE_MAX_WORKERS", 1
+)
 
 
 class EventAgent(dashboard_utils.DashboardAgentModule):
@@ -30,6 +39,11 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         # Total number of event report request sent.
         self.total_request_sent = 0
         self.module_started = time.monotonic()
+
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_EVENT_AGENT_TPE_MAX_WORKERS,
+            thread_name_prefix="event_agent_executor",
+        )
 
         logger.info("Event agent cache buffer size: %s", self._cached_events.maxsize)
 
@@ -107,7 +121,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: create_task(self._cached_events.put(data)),
-            self._dashboard_agent.thread_pool_executor,
+            self._executor,
         )
 
         await asyncio.gather(

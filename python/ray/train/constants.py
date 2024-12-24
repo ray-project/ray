@@ -56,11 +56,19 @@ ENABLE_DETAILED_AUTOFILLED_METRICS_ENV = (
 # Backend.share_cuda_visible_devices. 1 for True, 0 for False.
 ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_CUDA_VISIBLE_DEVICES"
 
+# Integer value which if set will not share ROCR accelerator visible devices
+# across workers. 1 for True (default), 0 for False.
+ENABLE_SHARE_ROCR_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_ROCR_VISIBLE_DEVICES"
+
 # Integer value which if set will not share neuron-core accelerator visible cores
 # across workers. 1 for True (default), 0 for False.
 ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV = (
     "TRAIN_ENABLE_SHARE_NEURON_CORES_ACCELERATOR"
 )
+
+# Integer value which if set will not share npu visible devices
+# across workers. 1 for True (default), 0 for False.
+ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_ASCEND_RT_VISIBLE_DEVICES"
 
 # Integer value which indicates the number of seconds to wait when creating
 # the worker placement group before timing out.

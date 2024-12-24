@@ -10,6 +10,7 @@ import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
+from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._raylet import GcsClient
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
@@ -33,6 +34,13 @@ GRPC_CHANNEL_OPTIONS = (
     *ray_constants.GLOBAL_GRPC_OPTIONS,
     ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+)
+
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_DASHBOARD_HEAD_TPE_MAX_WORKERS = env_integer(
+    "RAY_DASHBOARD_DASHBOARD_HEAD_TPE_MAX_WORKERS", 1
 )
 
 
@@ -62,6 +70,7 @@ class DashboardHead:
         http_port: int,
         http_port_retries: int,
         gcs_address: str,
+        cluster_id_hex: str,
         node_ip_address: str,
         grpc_port: int,
         log_dir: str,
@@ -102,16 +111,15 @@ class DashboardHead:
         self._modules_to_load = modules_to_load
         self._modules_loaded = False
 
-        # A TPE holding background, compute-heavy, latency-tolerant jobs, typically
-        # state updates.
-        self._thread_pool_executor = ThreadPoolExecutor(
-            max_workers=dashboard_consts.RAY_DASHBOARD_THREAD_POOL_MAX_WORKERS,
-            thread_name_prefix="dashboard_head_tpe",
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_DASHBOARD_HEAD_TPE_MAX_WORKERS,
+            thread_name_prefix="dashboard_head_executor",
         )
 
         self.gcs_address = None
         assert gcs_address is not None
         self.gcs_address = gcs_address
+        self.cluster_id_hex = cluster_id_hex
         self.log_dir = log_dir
         self.temp_dir = temp_dir
         self.session_dir = session_dir
@@ -260,8 +268,12 @@ class DashboardHead:
         gcs_address = self.gcs_address
 
         # Dashboard will handle connection failure automatically
-        self.gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
-        self.gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
+        self.gcs_client = GcsClient(
+            address=gcs_address, nums_reconnect_retry=0, cluster_id=self.cluster_id_hex
+        )
+        self.gcs_aio_client = GcsAioClient(
+            address=gcs_address, nums_reconnect_retry=0, cluster_id=self.cluster_id_hex
+        )
         internal_kv._initialize_internal_kv(self.gcs_client)
 
         if self.minimal:
@@ -330,7 +342,7 @@ class DashboardHead:
             f"{dashboard_http_host}:{http_port}".encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        ),
+        )
         self.gcs_client.internal_kv_put(
             dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
             f"{self.ip}:{self.grpc_port}".encode(),
@@ -344,7 +356,7 @@ class DashboardHead:
             self._gcs_check_alive(),
             _async_notify(),
             DataOrganizer.purge(),
-            DataOrganizer.organize(self._thread_pool_executor),
+            DataOrganizer.organize(self._executor),
         ]
         for m in modules:
             if isinstance(m, ray.actor.ActorHandle):

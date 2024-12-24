@@ -14,7 +14,7 @@ import traceback
 from collections import namedtuple
 from typing import Any, Callable
 
-from aiohttp.web import Response
+from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.consts as dashboard_consts
@@ -196,7 +196,7 @@ DashboardAgentRouteTable = method_route_table_factory()
 
 
 def rest_response(
-    success, message, convert_google_style=True, reason=None, **kwargs
+    success, message, convert_google_style=True, **kwargs
 ) -> aiohttp.web.Response:
     # In the dev context we allow a dev server running on a
     # different port to consume the API, meaning we need to allow
@@ -214,7 +214,6 @@ def rest_response(
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
         headers=headers,
         status=200 if success else 500,
-        reason=reason,
     )
 
 
@@ -295,6 +294,35 @@ def aiohttp_cache(
         return _wrapper(target_func)
     else:
         return _wrapper
+
+
+def is_browser_request(req: Request) -> bool:
+    """Checks if a request is made by a browser like user agent.
+
+    This heuristic is very weak, but hard for a browser to bypass- eg,
+    fetch/xhr and friends cannot alter the user-agent, but requests made with
+    an http library can stumble into this if they choose to user a browser like
+    user agent.
+    """
+    return req.headers["User-Agent"].startswith("Mozilla")
+
+
+def deny_browser_requests() -> Callable:
+    """Reject any requests that appear to be made by a browser"""
+
+    def decorator_factory(f: Callable) -> Callable:
+        @functools.wraps(f)
+        async def decorator(self, req: Request):
+            if is_browser_request(req):
+                return Response(
+                    text="Browser requests not allowed",
+                    status=aiohttp.web.HTTPMethodNotAllowed.status_code,
+                )
+            return await f(self, req)
+
+        return decorator
+
+    return decorator_factory
 
 
 def init_ray_and_catch_exceptions() -> Callable:

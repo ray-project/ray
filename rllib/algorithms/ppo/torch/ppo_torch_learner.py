@@ -17,7 +17,6 @@ from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.typing import ModuleID, TensorType
 
@@ -41,10 +40,12 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
+        module = self.module[module_id].unwrapped()
+
         # Possibly apply masking to some sub loss terms and to the total loss term
         # at the end. Masking could be used for RNN-based model (zero padded `batch`)
         # and for PPO's batched value function (and bootstrap value) computations,
-        # for which we add an additional (artificial) timestep to each episode to
+        # for which we add an (artificial) timestep to each episode to
         # simplify the actual computation.
         if Columns.LOSS_MASK in batch:
             mask = batch[Columns.LOSS_MASK]
@@ -56,16 +57,16 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         else:
             possibly_masked_mean = torch.mean
 
-        action_dist_class_train = (
-            self.module[module_id].unwrapped().get_train_action_dist_cls()
-        )
-        action_dist_class_exploration = (
-            self.module[module_id].unwrapped().get_exploration_action_dist_cls()
-        )
+        action_dist_class_train = module.get_train_action_dist_cls()
+        action_dist_class_exploration = module.get_exploration_action_dist_cls()
 
         curr_action_dist = action_dist_class_train.from_logits(
             fwd_out[Columns.ACTION_DIST_INPUTS]
         )
+        # TODO (sven): We should ideally do this in the LearnerConnector (separation of
+        #  concerns: Only do things on the EnvRunners that are required for computing
+        #  actions, do NOT do anything on the EnvRunners that's only required for a
+        #   training update).
         prev_action_dist = action_dist_class_exploration.from_logits(
             batch[Columns.ACTION_DIST_INPUTS]
         )
@@ -92,12 +93,14 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         # Compute a value function loss.
         if config.use_critic:
-            value_fn_out = fwd_out[Columns.VF_PREDS]
+            value_fn_out = module.compute_values(
+                batch, embeddings=fwd_out.get(Columns.EMBEDDINGS)
+            )
             vf_loss = torch.pow(value_fn_out - batch[Postprocessing.VALUE_TARGETS], 2.0)
             vf_loss_clipped = torch.clamp(vf_loss, 0, config.vf_clip_param)
             mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
             mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
-        # Ignore the value function.
+        # Ignore the value function -> Set all to 0.0.
         else:
             z = torch.tensor(0.0, device=surrogate_loss.device)
             value_fn_out = mean_vf_unclipped_loss = vf_loss_clipped = mean_vf_loss = z
@@ -140,10 +143,9 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         *,
         module_id: ModuleID,
         config: PPOConfig,
+        kl_loss: float,
     ) -> None:
-        kl = convert_to_numpy(self.metrics.peek((module_id, LEARNER_RESULTS_KL_KEY)))
-
-        if np.isnan(kl):
+        if np.isnan(kl_loss):
             logger.warning(
                 f"KL divergence for Module {module_id} is non-finite, this "
                 "will likely destabilize your model and the training "
@@ -157,10 +159,10 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         # Update the KL coefficient.
         curr_var = self.curr_kl_coeffs_per_module[module_id]
-        if kl > 2.0 * config.kl_target:
+        if kl_loss > 2.0 * config.kl_target:
             # TODO (Kourosh) why not 2?
             curr_var.data *= 1.5
-        elif kl < 0.5 * config.kl_target:
+        elif kl_loss < 0.5 * config.kl_target:
             curr_var.data *= 0.5
 
         # Log the updated KL-coeff value.

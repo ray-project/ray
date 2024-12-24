@@ -62,6 +62,7 @@ void StoreClientInternalKV::Get(
       table_name_,
       MakeKey(ns, key),
       [callback = std::move(callback)](auto status, auto result) {
+        RAY_CHECK(status.ok()) << "Fails to get key from storage " << status;
         callback(result.has_value() ? std::optional<std::string>(result.value())
                                     : std::optional<std::string>());
       }));
@@ -150,6 +151,7 @@ void StoreClientInternalKV::Keys(const std::string &ns,
       MakeKey(ns, prefix),
       [callback = std::move(callback)](std::vector<std::string> keys) {
         std::vector<std::string> true_keys;
+        true_keys.reserve(keys.size());
         for (auto &key : keys) {
           true_keys.emplace_back(ExtractKey(key));
         }

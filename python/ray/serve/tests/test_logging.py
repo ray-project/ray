@@ -14,20 +14,24 @@ from unittest.mock import patch
 import pytest
 import requests
 import starlette
+from fastapi import FastAPI
+from starlette.responses import PlainTextResponse
 
 import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._private.ray_logging.formatters import JSONFormatter
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.common import ReplicaID, ServeComponentType
+from ray.serve._private.common import DeploymentID, ReplicaID, ServeComponentType
 from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import (
     ServeComponentFilter,
     ServeFormatter,
     StreamToLogger,
     configure_component_logger,
+    configure_default_serve_logger,
     get_serve_logs_dir,
+    redirected_print,
 )
 from ray.serve._private.utils import get_component_file_name
 from ray.serve.context import _get_global_client
@@ -95,6 +99,97 @@ def test_log_rotation_config(monkeypatch, ray_shutdown):
     assert rotation_config["backup_count"] == backup_count
 
 
+def test_http_access_log(serve_instance):
+    name = "deployment_name"
+
+    fastapi_app = FastAPI()
+
+    @serve.deployment(name=name)
+    @serve.ingress(fastapi_app)
+    class Handler:
+        def __init__(self):
+            self._replica_unique_id = serve.get_replica_context().replica_id.unique_id
+
+        @fastapi_app.get("/")
+        def get_root(self):
+            return PlainTextResponse(self._replica_unique_id)
+
+        @fastapi_app.post("/")
+        def post_root(self):
+            return PlainTextResponse(self._replica_unique_id)
+
+        @fastapi_app.get("/{status}")
+        def template(self, status: str):
+            return PlainTextResponse(self._replica_unique_id, status_code=int(status))
+
+        @fastapi_app.put("/fail")
+        def fail(self):
+            raise RuntimeError("OOPS!")
+
+    serve.run(Handler.bind())
+
+    f = io.StringIO()
+    with redirect_stderr(f):
+
+        def check_log(
+            replica_id: ReplicaID,
+            method: str,
+            route: str,
+            status_code: str,
+            fail: bool = False,
+        ):
+            s = f.getvalue()
+            return all(
+                [
+                    name in s,
+                    _get_expected_replica_log_content(replica_id) in s,
+                    f"-- {method} {route} {status_code}" in s,
+                    "ms" in s,
+                    ("OOPS!" in s and "RuntimeError" in s)
+                    if fail
+                    else True,  # Check for stacktrace.
+                ]
+            )
+
+        r = requests.get("http://localhost:8000/")
+        assert r.status_code == 200
+        replica_id = ReplicaID(unique_id=r.text, deployment_id=DeploymentID(name=name))
+        wait_for_condition(
+            check_log, replica_id=replica_id, method="GET", route="/", status_code="200"
+        )
+
+        r = requests.post("http://localhost:8000/")
+        assert r.status_code == 200
+        wait_for_condition(
+            check_log,
+            replica_id=replica_id,
+            method="POST",
+            route="/",
+            status_code="200",
+        )
+
+        r = requests.get("http://localhost:8000/350")
+        assert r.status_code == 350
+        wait_for_condition(
+            check_log,
+            replica_id=replica_id,
+            method="GET",
+            route="/{status}",
+            status_code="350",
+        )
+
+        r = requests.put("http://localhost:8000/fail")
+        assert r.status_code == 500
+        wait_for_condition(
+            check_log,
+            replica_id=replica_id,
+            method="PUT",
+            route="/fail",
+            status_code="500",
+            fail=True,
+        )
+
+
 def test_handle_access_log(serve_instance):
     name = "handler"
 
@@ -120,7 +215,7 @@ def test_handle_access_log(serve_instance):
                 [
                     name in s,
                     _get_expected_replica_log_content(replica_id) in s,
-                    method_name.upper() in s,
+                    method_name in s,
                     ("ERROR" if fail else "OK") in s,
                     "ms" in s,
                     ("blah blah blah" in s and "RuntimeError" in s)
@@ -256,6 +351,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             "actor_id": ray.get_runtime_context().get_actor_id(),
             "worker_id": ray.get_runtime_context().get_worker_id(),
             "node_id": ray.get_runtime_context().get_node_id(),
+            "task_name": ray.get_runtime_context().get_task_name(),
+            "task_func_name": ray.get_runtime_context().get_task_function_name(),
+            "actor_name": ray.get_runtime_context().get_actor_name(),
         }
 
     @serve.deployment(
@@ -274,6 +372,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 "actor_id": ray.get_runtime_context().get_actor_id(),
                 "worker_id": ray.get_runtime_context().get_worker_id(),
                 "node_id": ray.get_runtime_context().get_node_id(),
+                "task_name": ray.get_runtime_context().get_task_name(),
+                "task_func_name": ray.get_runtime_context().get_task_function_name(),
+                "actor_name": ray.get_runtime_context().get_actor_name(),
             }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
@@ -286,15 +387,14 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
         # Check the component log
         expected_log_infos = [
-            f"{resp['request_id']} {resp['route']} replica.py",
-            f"{resp2['request_id']} {resp2['route']} replica.py",
+            f"{resp['request_id']} -- ",
+            f"{resp2['request_id']} -- ",
         ]
 
         # Check User log
         user_log_regexes = [
-            f".*{resp['request_id']} {resp['route']}.* user func.*",
-            f".*{resp2['request_id']} {resp2['route']}.* user log "
-            "message from class method.*",
+            f".*{resp['request_id']} -- user func.*",
+            f".*{resp2['request_id']} -- user log.*" "message from class method.*",
         ]
 
         def check_log():
@@ -324,9 +424,13 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"worker_id": "{resp["worker_id"]}", '
                 f'"node_id": "{resp["node_id"]}", '
                 f'"actor_id": "{resp["actor_id"]}", '
+                f'"task_name": "{resp["task_name"]}", '
+                f'"task_func_name": "{resp["task_func_name"]}", '
+                f'"actor_name": "{resp["actor_name"]}", '
                 f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
-                f'"component_name": "replica".*'
+                f'"component_name": "replica", '
+                f'"timestamp_ns": \d+}}.*'
             )
             user_class_method_log_regex = (
                 '.*"message": "user log message from class method".*'
@@ -336,17 +440,18 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"worker_id": "{resp2["worker_id"]}", '
                 f'"node_id": "{resp2["node_id"]}", '
                 f'"actor_id": "{resp2["actor_id"]}", '
+                f'"task_name": "{resp2["task_name"]}", '
+                f'"task_func_name": "{resp2["task_func_name"]}", '
+                f'"actor_name": "{resp2["actor_name"]}", '
                 f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
-                f'"component_name": "replica".*'
+                f'"component_name": "replica", '
+                f'"timestamp_ns": \d+}}.*'
             )
         else:
-            user_method_log_regex = (
-                f".*{resp['request_id']} {resp['route']}.* user func.*"
-            )
+            user_method_log_regex = f".*{resp['request_id']} -- user func.*"
             user_class_method_log_regex = (
-                f".*{resp2['request_id']} {resp2['route']}.* "
-                "user log message from class method.*"
+                f".*{resp2['request_id']} -- .*" "user log message from class method.*"
             )
 
         def check_log_file(log_file: str, expected_regex: list):
@@ -604,6 +709,10 @@ def test_serve_component_filter(is_replica_type_component):
     if is_replica_type_component:
         expected_json["deployment"] = "component"
         expected_json["replica"] = "component_id"
+        expected_json["component_name"] = "replica"
+    else:
+        expected_json["component_name"] = "component"
+        expected_json["component_id"] = "component_id"
 
     # Ensure message exists in the output.
     # Note that there is no "message" key in the record dict until it has been
@@ -655,7 +764,6 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
     env_encoding, log_config_encoding, expected_encoding = log_encoding
 
     with patch("ray.serve.schema.RAY_SERVE_LOG_ENCODING", env_encoding):
-
         # Clean up logger handlers
         logger = logging.getLogger(SERVE_LOGGER_NAME)
         logger.handlers.clear()
@@ -732,20 +840,21 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
             with open(logs_dir / log_file) as f:
                 for line in f:
                     structured_log = json.loads(line)
-                    _message = structured_log["message"]
-                    if "from_serve_logger" in _message:
+                    message = structured_log["message"]
+                    exc_text = structured_log.get("exc_text", "")
+                    if "from_serve_logger" in message:
                         from_serve_logger_check = True
-                    elif "from_print" in _message:
+                    elif "from_print" in message:
                         from_print_check = True
 
                     # Error was logged from replica directly.
-                    elif "from_error" in _message:
+                    elif "from_error" in exc_text:
                         from_error_check = True
-                    elif "direct_from_stdout" in _message:
+                    elif "direct_from_stdout" in message:
                         direct_from_stdout = True
-                    elif "direct_from_stderr" in _message:
+                    elif "direct_from_stderr" in message:
                         direct_from_stderr = True
-                    elif "this\nis\nmultiline\nlog\n" in _message:
+                    elif "this\nis\nmultiline\nlog\n" in message:
                         multiline_log = True
     assert from_serve_logger_check
     assert from_print_check
@@ -869,6 +978,32 @@ def test_json_logging_with_unpickleable_exc_info(
         with open(logs_dir / log_file) as f:
             assert "Logging error" not in f.read()
             assert "cannot pickle" not in f.read()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {"RAY_SERVE_LOG_TO_STDERR": "0"},
+    ],
+    indirect=True,
+)
+def test_configure_default_serve_logger_with_stderr_redirect(
+    serve_and_ray_shutdown, ray_instance, tmp_dir
+):
+    """Test configuring default serve logger with stderr redirect.
+
+    Default serve logger should only be configured with one StreamToLogger handler, and
+    print, stdout, and stderr should NOT be overridden and redirected to the logger.
+    """
+
+    configure_default_serve_logger()
+    serve_logger = logging.getLogger("ray.serve")
+    assert len(serve_logger.handlers) == 1
+    assert isinstance(serve_logger.handlers[0], logging.StreamHandler)
+    assert print != redirected_print
+    assert not isinstance(sys.stdout, StreamToLogger)
+    assert not isinstance(sys.stderr, StreamToLogger)
 
 
 if __name__ == "__main__":

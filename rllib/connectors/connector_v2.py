@@ -21,7 +21,6 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import AgentID, EpisodeType, ModuleID, StateDict
 from ray.util.annotations import PublicAPI
@@ -101,6 +100,25 @@ class ConnectorV2(Checkpointable, abc.ABC):
         self.input_action_space = input_action_space
         self.input_observation_space = input_observation_space
 
+        # Store child's constructor args and kwargs for the default
+        # `get_ctor_args_and_kwargs` implementation (to be able to restore from a
+        # checkpoint).
+        if self.__class__.__dict__.get("__init__") is not None:
+            caller_frame = inspect.stack()[1].frame
+            arg_info = inspect.getargvalues(caller_frame)
+            # Separate positional arguments and keyword arguments.
+            caller_locals = (
+                arg_info.locals
+            )  # Dictionary of all local variables in the caller
+            self._ctor_kwargs = {
+                arg: caller_locals[arg] for arg in arg_info.args if arg != "self"
+            }
+        else:
+            self._ctor_kwargs = {
+                "input_observation_space": self.input_observation_space,
+                "input_action_space": self.input_action_space,
+            }
+
     @OverrideToImplementCustomLogic
     def recompute_output_observation_space(
         self,
@@ -165,25 +183,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
             The new observation space (after data has passed through this ConnectorV2
             piece).
         """
-        # Check, whether user is still overriding the old
-        # `recompute_observation_space_from_input_spaces()`.
-        parent_source = inspect.getsource(
-            ConnectorV2.recompute_observation_space_from_input_spaces
-        )
-        child_source = inspect.getsource(
-            self.recompute_observation_space_from_input_spaces
-        )
-        if parent_source == child_source:
-            return self.input_observation_space
-        else:
-            deprecation_warning(
-                old="ConnectorV2.recompute_observation_space_from_input_spaces()",
-                new="ConnectorV2.recompute_output_observation_space("
-                "input_observation_space: gym.Space, input_action_space: gym.Space) "
-                "-> gym.Space",
-                error=False,
-            )
-            return self.recompute_observation_space_from_input_spaces()
+        return self.input_observation_space
 
     @OverrideToImplementCustomLogic
     def recompute_output_action_space(
@@ -212,23 +212,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
             The new action space (after data has passed through this ConenctorV2
             piece).
         """
-        # Check, whether user is still overriding the old
-        # `recompute_action_space_from_input_spaces()`.
-        parent_source = inspect.getsource(
-            ConnectorV2.recompute_action_space_from_input_spaces
-        )
-        child_source = inspect.getsource(self.recompute_action_space_from_input_spaces)
-        if parent_source == child_source:
-            return self.input_action_space
-        else:
-            deprecation_warning(
-                old="ConnectorV2.recompute_action_space_from_input_spaces()",
-                new="ConnectorV2.recompute_output_action_space("
-                "input_observation_space: gym.Space, input_action_space: gym.Space) "
-                "-> gym.Space",
-                error=False,
-            )
-            return self.recompute_action_space_from_input_spaces()
+        return self.input_action_space
 
     @abc.abstractmethod
     def __call__(
@@ -320,7 +304,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
         list_indices = defaultdict(int)
 
         # Single-agent case.
-        if isinstance(episodes[0], SingleAgentEpisode):
+        if episodes and isinstance(episodes[0], SingleAgentEpisode):
             if zip_with_batch_column is not None:
                 if len(zip_with_batch_column) != len(episodes):
                     raise ValueError(
@@ -386,10 +370,21 @@ class ConnectorV2(Checkpointable, abc.ABC):
     ) -> None:
         """Adds a data item under `column` to the given `batch`.
 
-        If `single_agent_episode` is provided and contains `agent_id` and `module_id`
-        information, will store `item_to_add` in a list under a
-        `([eps id], [AgentID],[ModuleID])` key within `column`. In all other
-        cases, will store the item in a list directly under `column`.
+        The `item_to_add` is stored in the `batch` in the following manner:
+        1) If `single_agent_episode` is not provided (None), will store the item in a
+        list directly under `column`:
+        `column` -> [item, item, ...]
+        2) If `single_agent_episode`'s `agent_id` and `module_id` properties are None
+        (`single_agent_episode` is not part of a multi-agent episode), will append
+        `item_to_add` to a list under a `(<episodeID>,)` key under `column`:
+        `column` -> `(<episodeID>,)` -> [item, item, ...]
+        3) If `single_agent_episode`'s `agent_id` and `module_id` are NOT None
+        (`single_agent_episode` is part of a multi-agent episode), will append
+        `item_to_add` to a list under a `(<episodeID>,<AgentID>,<ModuleID>)` key
+        under `column`:
+        `column` -> `(<episodeID>,<AgentID>,<ModuleID>)` -> [item, item, ...]
+
+        See the these examples here for clarification of these three cases:
 
         .. testcode::
 
@@ -398,8 +393,8 @@ class ConnectorV2(Checkpointable, abc.ABC):
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
             from ray.rllib.utils.test_utils import check
 
-            # Simple case (no episodes provided) -> Store data in a list directly under
-            # `column`:
+            # 1) Simple case (no episodes provided) -> Store data in a list directly
+            # under `column`:
             batch = {}
             ConnectorV2.add_batch_item(batch, "test_col", item_to_add=5)
             ConnectorV2.add_batch_item(batch, "test_col", item_to_add=6)
@@ -410,8 +405,8 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 "test_col_2": [-10],
             })
 
-            # Single-agent case (SingleAgentEpisode provided) -> Store data in a list
-            # under the keys: `column` -> `(eps_id,)`:
+            # 2) Single-agent case (SingleAgentEpisode provided) -> Store data in a list
+            # under the keys: `column` -> `(<eps_id>,)` -> [...]:
             batch = {}
             episode = SingleAgentEpisode(
                 id_="SA-EPS0",
@@ -427,9 +422,9 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 "test_col_2": {("SA-EPS0",): [-10]},
             })
 
-            # Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
+            # 3) Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
             # `module_id` information) -> Store data in a list under the keys:
-            # `column` -> `([eps_id], [agent_id], [module_id])`:
+            # `column` -> `(<episodeID>,<AgentID>,<ModuleID>)` -> [...]:
             batch = {}
             ma_episode = MultiAgentEpisode(
                 id_="MA-EPS1",
@@ -472,19 +467,36 @@ class ConnectorV2(Checkpointable, abc.ABC):
             column: The column name (str) within the `batch` to store `item_to_add`
                 under.
             item_to_add: The data item to store in the batch.
-            single_agent_episode: An optional SingleAgentEpisode. If provided and its
-                `agent_id` and `module_id` properties are not None, will create a
-                further sub dictionary under `column`, mapping from
-                `([eps id], [agent_id], [module_id])` to a list of
-                data items (to which `item_to_add` will be appended in this call).
+            single_agent_episode: An optional SingleAgentEpisode.
+                If provided and its `agent_id` and `module_id` properties are None,
+                creates a further sub dictionary under `column`, mapping from
+                `(<episodeID>,)` to a list of data items (to which `item_to_add` will
+                be appended in this call).
+                If provided and its `agent_id` and `module_id` properties are NOT None,
+                creates a further sub dictionary under `column`, mapping from
+                `(<episodeID>,,<AgentID>,<ModuleID>)` to a list of data items (to which
+                `item_to_add` will be appended in this call).
                 If not provided, will append `item_to_add` to a list directly under
                 `column`.
         """
         sub_key = None
         # SAEpisode is provided ...
         if single_agent_episode is not None:
-            # ... and has `agent_id` -> Use agent ID and module ID from it.
-            if single_agent_episode.agent_id is not None:
+            module_id = single_agent_episode.module_id
+            # ... and has `module_id` AND that `module_id` is already a top-level key in
+            # `batch` (`batch` is already in module-major form, mapping ModuleID to
+            # columns mapping to data).
+            if module_id is not None and module_id in batch:
+                raise ValueError(
+                    "Can't call `add_batch_item` on a `batch` that is already "
+                    "module-major (meaning ModuleID is top-level with column names on "
+                    "the level thereunder)! Make sure to only call `add_batch_items` "
+                    "before the `AgentToModuleMapping` ConnectorV2 piece is applied."
+                )
+
+            # ... and has `agent_id` -> Use `single_agent_episode`'s agent ID and
+            # module ID.
+            elif single_agent_episode.agent_id is not None:
                 sub_key = (
                     single_agent_episode.multi_agent_episode_id,
                     single_agent_episode.agent_id,
@@ -513,14 +525,23 @@ class ConnectorV2(Checkpointable, abc.ABC):
     ) -> None:
         """Adds a list of items (or batched item) under `column` to the given `batch`.
 
-        If items_to_add is not a list, but an already batched struct (of np.ndarray
-        leafs), will unbatch first into a list of individual batch items and add
-        each individually.
+        If `items_to_add` is not a list, but an already batched struct (of np.ndarray
+        leafs), the `items_to_add` will be appended to possibly existing data under the
+        same `column` as-is. A subsequent `BatchIndividualItems` ConnectorV2 piece will
+        recognize this and batch the data properly into a single (batched) item.
+        This is much faster than first splitting up `items_to_add` and then adding each
+        item individually.
 
-        If `single_agent_episode` is provided and it contains agent ID and module ID
-        information, will store the individual items in a list under a
-        `([agent_id],[module_id])` key within `column`. In all other cases, will store
-        the individual items in a list directly under `column`.
+        If `single_agent_episode` is provided and its `agent_id` and `module_id`
+        properties are None, creates a further sub dictionary under `column`, mapping
+        from `(<episodeID>,)` to a list of data items (to which `items_to_add` will
+        be appended in this call).
+        If `single_agent_episode` is provided and its `agent_id` and `module_id`
+        properties are NOT None, creates a further sub dictionary under `column`,
+        mapping from `(<episodeID>,,<AgentID>,<ModuleID>)` to a list of data items (to
+        which `items_to_add` will be appended in this call).
+        If `single_agent_episode` is not provided, will append `items_to_add` to a list
+        directly under `column`.
 
         .. testcode::
 
@@ -574,7 +595,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
             )
 
             # Single-agent case (SingleAgentEpisode provided) -> Store data in a list
-            # under the keys: `column` -> `(eps_id,)`:
+            # under the keys: `column` -> `(<eps_id>,)`:
             batch = {}
             episode = SingleAgentEpisode(
                 id_="SA-EPS0",
@@ -595,7 +616,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
 
             # Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
             # `module_id` information) -> Store data in a list under the keys:
-            # `column` -> `([eps_id], [agent_id], [module_id])`:
+            # `column` -> `(<episodeID>,<AgentID>,<ModuleID>)`:
             batch = {}
             ma_episode = MultiAgentEpisode(
                 id_="MA-EPS1",
@@ -638,24 +659,33 @@ class ConnectorV2(Checkpointable, abc.ABC):
             column: The column name (str) within the `batch` to store `item_to_add`
                 under.
             items_to_add: The list of data items to store in the batch OR an already
-                batched (possibly nested) struct, which will first be split up into
-                a list of individual items, then these individual items will be added
-                to the given `column` in the batch.
+                batched (possibly nested) struct. In the latter case, the `items_to_add`
+                will be appended to possibly existing data under the same `column`
+                as-is. A subsequent `BatchIndividualItems` ConnectorV2 piece will
+                recognize this and batch the data properly into a single (batched) item.
+                This is much faster than first splitting up `items_to_add` and then
+                adding each item individually.
             num_items: The number of items in `items_to_add`. This arg is mostly for
                 asserting the correct usage of this method by checking, whether the
                 given data in `items_to_add` really has the right amount of individual
                 items.
-            single_agent_episode: An optional SingleAgentEpisode. If provided and its
-                agent_id and module_id properties are not None, will create a further
-                sub dictionary under `column`, mapping from `([agent_id],[module_id])`
-                (str) to a list of data items. Otherwise, will store `item_to_add`
-                in a list directly under `column`.
+            single_agent_episode: An optional SingleAgentEpisode.
+                If provided and its `agent_id` and `module_id` properties are None,
+                creates a further sub dictionary under `column`, mapping from
+                `(<episodeID>,)` to a list of data items (to which `items_to_add` will
+                be appended in this call).
+                If provided and its `agent_id` and `module_id` properties are NOT None,
+                creates a further sub dictionary under `column`, mapping from
+                `(<episodeID>,,<AgentID>,<ModuleID>)` to a list of data items (to which
+                `items_to_add` will be appended in this call).
+                If not provided, will append `items_to_add` to a list directly under
+                `column`.
         """
         # Process n list items by calling `add_batch_item` on each of them individually.
         if isinstance(items_to_add, list):
             if len(items_to_add) != num_items:
                 raise ValueError(
-                    f"Mismatch breteen `num_items` ({num_items}) and the length "
+                    f"Mismatch between `num_items` ({num_items}) and the length "
                     f"of the provided list ({len(items_to_add)}) in "
                     f"{ConnectorV2.__name__}.add_n_batch_items()!"
                 )
@@ -902,8 +932,8 @@ class ConnectorV2(Checkpointable, abc.ABC):
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
         return (
-            (self.input_observation_space, self.input_action_space),  # *args
-            {},  # **kwargs
+            (),  # *args
+            self._ctor_kwargs,  # **kwargs
         )
 
     def reset_state(self) -> None:
@@ -981,21 +1011,3 @@ class ConnectorV2(Checkpointable, abc.ABC):
 
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
-
-    @Deprecated(
-        new="ConnectorV2.recompute_output_observation_space("
-        "input_observation_space: gym.Space, input_action_space: gym.Space) "
-        "-> gym.Space",
-        error=True,
-    )
-    def recompute_observation_space_from_input_spaces(self):
-        pass
-
-    @Deprecated(
-        new="ConnectorV2.recompute_action_observation_space("
-        "input_observation_space: gym.Space, input_action_space: gym.Space) "
-        "-> gym.Space",
-        error=True,
-    )
-    def recompute_action_space_from_input_spaces(self):
-        pass

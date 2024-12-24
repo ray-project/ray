@@ -123,6 +123,65 @@ def test_unique(ray_start_regular_shared):
         assert mock_validate.call_args_list[0].args[0].names == ["b"]
 
 
+@pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
+def test_unique_with_nulls(ray_start_regular_shared, batch_format):
+    ds = ray.data.from_items([3, 2, 3, 1, 2, 3, None])
+    assert set(ds.unique("item")) == {1, 2, 3, None}
+    assert len(ds.unique("item")) == 4
+
+    ds = ray.data.from_items(
+        [
+            {"a": 1, "b": 1},
+            {"a": 1, "b": 2},
+            {"a": 1, "b": None},
+            {"a": None, "b": 3},
+            {"a": None, "b": 4},
+        ]
+    )
+    assert set(ds.unique("a")) == {1, None}
+    assert len(ds.unique("a")) == 2
+    assert set(ds.unique("b")) == {1, 2, 3, 4, None}
+    assert len(ds.unique("b")) == 5
+
+    # Check with 3 columns
+    df = pd.DataFrame(
+        {
+            "col1": [1, 2, None, 3, None, 3, 2],
+            "col2": [None, 2, 2, 3, None, 3, 2],
+            "col3": [1, None, 2, None, None, None, 2],
+        }
+    )
+    # df["col"].unique() works fine, as expected
+    ds2 = ray.data.from_pandas(df)
+    ds2 = ds2.map_batches(lambda x: x, batch_format=batch_format)
+    assert set(ds2.unique("col1")) == {1, 2, 3, None}
+    assert len(ds2.unique("col1")) == 4
+    assert set(ds2.unique("col2")) == {2, 3, None}
+    assert len(ds2.unique("col2")) == 3
+    assert set(ds2.unique("col3")) == {1, 2, None}
+    assert len(ds2.unique("col3")) == 3
+
+    # Check with 3 columns and different dtypes
+    df = pd.DataFrame(
+        {
+            "col1": [1, 2, None, 3, None, 3, 2],
+            "col2": [None, 2, 2, 3, None, 3, 2],
+            "col3": [1, None, 2, None, None, None, 2],
+        }
+    )
+    df["col1"] = df["col1"].astype("Int64")
+    df["col2"] = df["col2"].astype("Float64")
+    df["col3"] = df["col3"].astype("string")
+    ds3 = ray.data.from_pandas(df)
+    ds3 = ds3.map_batches(lambda x: x, batch_format=batch_format)
+    assert set(ds3.unique("col1")) == {1, 2, 3, None}
+    assert len(ds3.unique("col1")) == 4
+    assert set(ds3.unique("col2")) == {2, 3, None}
+    assert len(ds3.unique("col2")) == 3
+    assert set(ds3.unique("col3")) == {"1.0", "2.0", None}
+    assert len(ds3.unique("col3")) == 3
+
+
 def test_grouped_dataset_repr(ray_start_regular_shared):
     ds = ray.data.from_items([{"key": "spam"}, {"key": "ham"}, {"key": "spam"}])
     assert repr(ds.groupby("key")) == f"GroupedData(dataset={ds!r}, key='key')"
@@ -132,6 +191,12 @@ def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
     # Test empty dataset.
     agg_ds = ray.data.range(10).filter(lambda r: r["id"] > 10).groupby("value").count()
     assert agg_ds.count() == 0
+
+
+def test_groupby_none(ray_start_regular_shared):
+    ds = ray.data.range(10)
+    assert ds.groupby(None).min().take_all() == [{"min(id)": 0}]
+    assert ds.groupby(None).max().take_all() == [{"max(id)": 9}]
 
 
 def test_groupby_errors(ray_start_regular_shared):
@@ -206,6 +271,44 @@ def test_groupby_large_udf_returns(ray_start_regular_shared):
         .map_groups(create_large_data)
     )
     ds.take(1)
+
+
+@pytest.mark.parametrize("keys", ["A", ["A", "B"]])
+def test_agg_inputs(ray_start_regular_shared, keys):
+    xs = list(range(100))
+    ds = ray.data.from_items([{"A": (x % 3), "B": x, "C": (x % 2)} for x in xs])
+
+    def check_init(k):
+        if len(keys) == 2:
+            assert isinstance(k, tuple), k
+            assert len(k) == 2
+        elif len(keys) == 1:
+            assert isinstance(k, int)
+        return 1
+
+    def check_finalize(v):
+        assert v == 1
+
+    def check_accumulate_merge(a, r):
+        assert a == 1
+        if isinstance(r, int):
+            return 1
+        elif len(r) == 3:
+            assert all(x in r for x in ["A", "B", "C"])
+        else:
+            assert False, r
+        return 1
+
+    output = ds.groupby(keys).aggregate(
+        AggregateFn(
+            init=check_init,
+            accumulate_row=check_accumulate_merge,
+            merge=check_accumulate_merge,
+            finalize=check_finalize,
+            name="foo",
+        )
+    )
+    output.take_all()
 
 
 def test_agg_errors(ray_start_regular_shared):
@@ -1064,7 +1167,6 @@ def test_groupby_map_groups_multicolumn(
     ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
 ):
     # Test built-in count aggregation
-    print(f"Seeding RNG for test_groupby_arrow_count with: {RANDOM_SEED}")
     random.seed(RANDOM_SEED)
     xs = list(range(100))
     random.shuffle(xs)
@@ -1085,6 +1187,33 @@ def test_groupby_map_groups_multicolumn(
         {"count": 17},
         {"count": 16},
     ]
+
+
+def test_groupby_map_groups_with_partial():
+    """
+    The partial function name should show up as
+    +- Sort
+       +- MapBatches(func)
+    """
+    from functools import partial
+
+    def func(x, y):
+        return {f"x_add_{y}": [len(x["id"]) + y]}
+
+    df = pd.DataFrame({"id": list(range(100))})
+    df["key"] = df["id"] % 5
+
+    ds = ray.data.from_pandas(df).groupby("key").map_groups(partial(func, y=5))
+    result = ds.take_all()
+
+    assert result == [
+        {"x_add_5": 25},
+        {"x_add_5": 25},
+        {"x_add_5": 25},
+        {"x_add_5": 25},
+        {"x_add_5": 25},
+    ]
+    assert "MapBatches(func)" in ds.__repr__()
 
 
 def test_random_block_order_schema(ray_start_regular_shared):

@@ -24,6 +24,7 @@ GOOGLE_TPU_V3 = "TPU-V3"
 GOOGLE_TPU_V4 = "TPU-V4"
 GOOGLE_TPU_V5P = "TPU-V5P"
 GOOGLE_TPU_V5LITEPOD = "TPU-V5LITEPOD"
+GOOGLE_TPU_V6E = "TPU-V6E"
 
 # Use these instead of NVIDIA_A100 if you need a specific accelerator size. Note that
 # these labels are not auto-added to nodes, you'll have to add them manually in

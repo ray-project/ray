@@ -1,7 +1,7 @@
 import inspect
 import logging
 import weakref
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -135,6 +135,8 @@ class ActorMethod:
             a actor task stop pausing.
         enable_task_events: True if task events is enabled, i.e., task events from
             the actor should be reported. Defaults to True.
+        _signature: The signature of the actor method. It is None only when cross
+            language feature is used.
         _decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
             invoking the method. The decorator must return a function that
@@ -155,6 +157,7 @@ class ActorMethod:
         generator_backpressure_num_objects: int,
         enable_task_events: bool,
         decorator=None,
+        signature: Optional[List[inspect.Parameter]] = None,
         hardref=False,
     ):
         self._actor_ref = weakref.ref(actor)
@@ -173,6 +176,7 @@ class ActorMethod:
         self._is_generator = is_generator
         self._generator_backpressure_num_objects = generator_backpressure_num_objects
         self._enable_task_events = enable_task_events
+        self._signature = signature
         # This is a decorator that is used to wrap the function invocation (as
         # opposed to the function execution). The decorator must return a
         # function that takes in two arguments ("args" and "kwargs"). In most
@@ -235,9 +239,10 @@ class ActorMethod:
         num_returns=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
-    ):
+    ) -> Union["ray.dag.ClassMethodNode", Tuple["ray.dag.ClassMethodNode", ...]]:
         from ray.dag.class_node import (
             BIND_INDEX_KEY,
+            IS_CLASS_METHOD_OUTPUT_KEY,
             PARENT_CLASS_NODE_KEY,
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
@@ -264,6 +269,23 @@ class ActorMethod:
         }
         actor._ray_dag_bind_index += 1
 
+        assert (
+            self._signature is not None
+        ), "self._signature should be set for .bind API."
+        try:
+            signature.validate_args(self._signature, args, kwargs)
+        except TypeError as e:
+            signature_copy = self._signature.copy()
+            if len(signature_copy) > 0 and signature_copy[-1].name == "_ray_trace_ctx":
+                # Remove the trace context arg for readability.
+                signature_copy.pop(-1)
+            signature_copy = inspect.Signature(parameters=signature_copy)
+            raise TypeError(
+                f"{str(e)}. The function `{self._method_name}` has a signature "
+                f"`{signature_copy}`, but the given arguments to `bind` doesn't "
+                f"match. args: {args}. kwargs: {kwargs}."
+            ) from None
+
         node = ClassMethodNode(
             self._method_name,
             args,
@@ -271,7 +293,21 @@ class ActorMethod:
             options,
             other_args_to_resolve=other_args_to_resolve,
         )
-        return node
+
+        if node.num_returns > 1:
+            output_nodes: List[ClassMethodNode] = []
+            for i in range(node.num_returns):
+                output_node = ClassMethodNode(
+                    f"return_idx_{i}",
+                    (node, i),
+                    dict(),
+                    dict(),
+                    {IS_CLASS_METHOD_OUTPUT_KEY: True, PARENT_CLASS_NODE_KEY: actor},
+                )
+                output_nodes.append(output_node)
+            return tuple(output_nodes)
+        else:
+            return node
 
     @wrap_auto_init
     @_tracing_actor_method_invocation
@@ -909,6 +945,7 @@ class ActorClass:
             scheduling_strategy: Strategy about how to schedule this actor.
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
+            _labels: The key-value labels of the actor.
 
         Returns:
             A handle to the newly created actor.
@@ -950,7 +987,11 @@ class ActorClass:
         is_asyncio = has_async_methods(meta.modified_class)
 
         if actor_options.get("max_concurrency") is None:
-            actor_options["max_concurrency"] = 1000 if is_asyncio else 1
+            actor_options["max_concurrency"] = (
+                ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC
+                if is_asyncio
+                else ray_constants.DEFAULT_MAX_CONCURRENCY_THREADED
+            )
 
         if client_mode_should_convert():
             return client_mode_convert_actor(self, args, kwargs, **actor_options)
@@ -1178,6 +1219,7 @@ class ActorClass:
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
             enable_task_events=enable_task_events,
+            labels=actor_options.get("_labels"),
         )
 
         if _actor_launch_hook:
@@ -1350,6 +1392,7 @@ class ActorHandle:
                         self._ray_enable_task_events,  # Use actor's default value
                     ),
                     decorator=self._ray_method_decorators.get(method_name),
+                    signature=self._ray_method_signatures[method_name],
                 )
                 setattr(self, method_name, method)
 
@@ -1520,6 +1563,7 @@ class ActorHandle:
             self._ray_enable_task_events,  # enable_task_events
             # Currently, cross-lang actor method not support decorator
             decorator=None,
+            signature=None,
         )
 
     # Make tab completion work.

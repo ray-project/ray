@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
+from ray._private import ray_constants
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
 from ray.serve import metrics
@@ -242,6 +243,7 @@ class ActorReplicaWrapper:
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
         self._initialization_latency_s: Optional[float] = None
+        self._port: Optional[int] = None
 
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
@@ -473,6 +475,18 @@ class ActorReplicaWrapper:
         }
         actor_options.update(deployment_info.replica_config.ray_actor_options)
 
+        # A replica's default `max_concurrency` value can prevent it from
+        # respecting the configured `max_ongoing_requests`. To avoid this
+        # unintentional behavior, use `max_ongoing_requests` to override
+        # the Actor's `max_concurrency` if it is larger.
+        if (
+            deployment_info.deployment_config.max_ongoing_requests
+            > ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC
+        ):
+            actor_options[
+                "max_concurrency"
+            ] = deployment_info.deployment_config.max_ongoing_requests
+
         return ReplicaSchedulingRequest(
             replica_id=self.replica_id,
             actor_def=actor_def,
@@ -674,9 +688,12 @@ class ActorReplicaWrapper:
                     # This should only update version if the replica is being recovered.
                     # If this is checking on a replica that is newly started, this
                     # should return a version that is identical to what's already stored
-                    _, self._version, self._initialization_latency_s = ray.get(
-                        self._ready_obj_ref
-                    )
+                    (
+                        _,
+                        self._version,
+                        self._initialization_latency_s,
+                        self._port,
+                    ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
                     f"Exception in {self._replica_id}, the replica will be stopped."
@@ -904,11 +921,13 @@ class DeploymentReplica:
         return RunningReplicaInfo(
             replica_id=self._replica_id,
             node_id=self.actor_node_id,
+            node_ip=self._actor.node_ip,
             availability_zone=cluster_node_info_cache.get_node_az(self.actor_node_id),
             actor_handle=self._actor.actor_handle,
             max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
+            port=self._actor._port,
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
@@ -951,6 +970,11 @@ class DeploymentReplica:
     def actor_node_id(self) -> Optional[str]:
         """Returns the node id of the actor, None if not placed."""
         return self._actor.node_id
+
+    @property
+    def actor_pid(self) -> Optional[int]:
+        """Returns the node id of the actor, None if not placed."""
+        return self._actor.pid
 
     @property
     def initialization_latency_s(self) -> Optional[float]:
@@ -1365,6 +1389,13 @@ class DeploymentState:
     def app_name(self) -> str:
         return self._id.app_name
 
+    @property
+    def _failed_to_start_threshold(self) -> int:
+        return min(
+            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+            self._target_state.target_num_replicas * 3,
+        )
+
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {replica.actor_id for replica in self._replicas.get()}
 
@@ -1429,16 +1460,17 @@ class DeploymentState:
             return
 
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.RUNNING_REPLICAS, self._id),
-            running_replica_infos,
-        )
-        # NOTE(zcin): notify changed for Java routers. Since Java only
-        # supports 1.x API, there is no concept of applications in Java,
-        # so the key should remain a string describing the deployment
-        # name. If there are no Java routers, this is a no-op.
-        self._long_poll_host.notify_changed(
-            (LongPollNamespace.RUNNING_REPLICAS, self._id.name),
-            running_replica_infos,
+            {
+                (LongPollNamespace.RUNNING_REPLICAS, self._id): running_replica_infos,
+                # NOTE(zcin): notify changed for Java routers. Since Java only
+                # supports 1.x API, there is no concept of applications in Java,
+                # so the key should remain a string describing the deployment
+                # name. If there are no Java routers, this is a no-op.
+                (
+                    LongPollNamespace.RUNNING_REPLICAS,
+                    self._id.name,
+                ): running_replica_infos,
+            }
         )
         self._last_broadcasted_running_replica_infos = running_replica_infos
         self._multiplexed_model_ids_updated = False
@@ -1454,8 +1486,7 @@ class DeploymentState:
             return
 
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.DEPLOYMENT_CONFIG, self._id),
-            current_deployment_config,
+            {(LongPollNamespace.DEPLOYMENT_CONFIG, self._id): current_deployment_config}
         )
 
         self._last_broadcasted_deployment_config = current_deployment_config
@@ -1826,11 +1857,10 @@ class DeploymentState:
 
             if to_add > 0:
                 # Exponential backoff
-                failed_to_start_threshold = min(
-                    MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-                    self._target_state.target_num_replicas * 3,
-                )
-                if self._replica_constructor_retry_counter >= failed_to_start_threshold:
+                if (
+                    self._replica_constructor_retry_counter
+                    >= self._failed_to_start_threshold
+                ):
                     # Wait 1, 2, 4, ... seconds before consecutive retries, with random
                     # offset added to avoid synchronization
                     if (
@@ -1890,17 +1920,13 @@ class DeploymentState:
         )
 
         failed_to_start_count = self._replica_constructor_retry_counter
-        failed_to_start_threshold = min(
-            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-            self._target_state.target_num_replicas * 3,
-        )
 
         # Got to make a call to complete current deploy() goal after
         # start failure threshold reached, while we might still have
         # pending replicas in current goal.
         if (
-            failed_to_start_count >= failed_to_start_threshold
-            and failed_to_start_threshold != 0
+            failed_to_start_count >= self._failed_to_start_threshold
+            and self._failed_to_start_threshold != 0
         ):
             if running_at_target_version_replica_cnt > 0:
                 # At least one RUNNING replica at target state, partial
@@ -1979,7 +2005,7 @@ class DeploymentState:
                 replica_startup_message = (
                     f"{replica.replica_id} started successfully "
                     f"on node '{replica.actor_node_id}' after "
-                    f"{e2e_replica_start_latency:.1f}s."
+                    f"{e2e_replica_start_latency:.1f}s (PID: {replica.actor_pid})."
                 )
                 if replica.initialization_latency_s is not None:
                     # This condition should always be True. The initialization
@@ -2024,17 +2050,28 @@ class DeploymentState:
             self._replica_constructor_retry_counter += 1
             self._replica_constructor_error_msg = error_msg
 
+            retrying_msg = "Retrying"
+            if self._failed_to_start_threshold != 0:
+                remaining_retries = max(
+                    self._failed_to_start_threshold
+                    - self._replica_constructor_retry_counter,
+                    0,
+                )
+                retrying_msg += f" {remaining_retries} more time(s)"
+
+            message = (
+                f"A replica failed to start with exception. {retrying_msg}. Error:\n"
+                f"{error_msg}"
+            )
+            self._curr_status_info = self._curr_status_info.update_message(message)
+
     def update_replica_startup_backoff_time(self):
         """Updates the replica startup backoff time."""
 
         # If replicas have failed enough times, execute exponential backoff
         # Wait 1, 2, 4, ... seconds before consecutive retries (or use a custom
         # backoff factor by setting EXPONENTIAL_BACKOFF_FACTOR)
-        failed_to_start_threshold = min(
-            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-            self._target_state.target_num_replicas * 3,
-        )
-        if self._replica_constructor_retry_counter > failed_to_start_threshold:
+        if self._replica_constructor_retry_counter > self._failed_to_start_threshold:
             self._backoff_time_s = min(
                 EXPONENTIAL_BACKOFF_FACTOR * self._backoff_time_s, MAX_BACKOFF_TIME_S
             )
@@ -2153,7 +2190,10 @@ class DeploymentState:
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
-                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                if self._curr_status_info.status not in [
+                    DeploymentStatus.UNHEALTHY,
+                    DeploymentStatus.DEPLOY_FAILED,
+                ]:
                     self._curr_status_info = self._curr_status_info.update_message(
                         message
                     )
@@ -2170,7 +2210,10 @@ class DeploymentState:
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
-                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                if self._curr_status_info.status not in [
+                    DeploymentStatus.UNHEALTHY,
+                    DeploymentStatus.DEPLOY_FAILED,
+                ]:
                     self._curr_status_info = self._curr_status_info.update_message(
                         message
                     )
@@ -2743,6 +2786,16 @@ class DeploymentStateManager:
                 self._deployment_states[deployment_id].record_replica_startup_failure(
                     "Replica scheduling failed. Failed to create a placement "
                     f"group for replica {scheduling_request.replica_id}. "
+                    "See Serve controller logs for more details."
+                )
+            elif (
+                scheduling_request.status
+                == ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+            ):
+                failed_replicas.append(scheduling_request.replica_id)
+                self._deployment_states[deployment_id].record_replica_startup_failure(
+                    "Replica scheduling failed. Failed to create an actor "
+                    f"for replica {scheduling_request.replica_id}. "
                     "See Serve controller logs for more details."
                 )
         if failed_replicas:

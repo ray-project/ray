@@ -1,9 +1,7 @@
 from typing import Any, Dict
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
-    DQNRainbowTorchLearner,
-)
+from ray.rllib.algorithms.dqn.torch.dqn_torch_learner import DQNTorchLearner
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.sac.sac_learner import (
     LOGPS_KEY,
@@ -30,7 +28,7 @@ from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 torch, nn = try_import_torch()
 
 
-class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
+class SACTorchLearner(DQNTorchLearner, SACLearner):
     """Implements `torch`-specific SAC loss logic on top of `SACLearner`
 
     This ' Learner' class implements the loss in its
@@ -39,7 +37,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     """
 
     # TODO (simon): Set different learning rates for optimizers.
-    @override(DQNRainbowTorchLearner)
+    @override(DQNTorchLearner)
     def configure_optimizers_for_module(
         self, module_id: ModuleID, config: AlgorithmConfig = None
     ) -> None:
@@ -100,7 +98,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             lr_or_lr_schedule=config.alpha_lr,
         )
 
-    @override(DQNRainbowTorchLearner)
+    @override(DQNTorchLearner)
     def compute_loss_for_module(
         self,
         *,
@@ -169,6 +167,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # Hence, we can't do `fwd_out[q_curr].detach()`!
         # Note further, we minimize here, while the original equation in Haarnoja et
         # al. (2018) considers maximization.
+        # TODO (simon): Rename to `resampled` to `current`.
         actor_loss = torch.mean(
             alpha.detach() * fwd_out["logp_resampled"] - fwd_out["q_curr"]
         )
@@ -229,7 +228,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
 
         return total_loss
 
-    @override(DQNRainbowTorchLearner)
+    @override(DQNTorchLearner)
     def compute_gradients(
         self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:

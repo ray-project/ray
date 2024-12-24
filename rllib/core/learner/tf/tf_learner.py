@@ -237,17 +237,17 @@ class TfLearner(Learner):
             A strategy for the learner to use for distributed training.
 
         """
-        if self._distributed:
+        if self.config.num_learners > 1:
             strategy = tf.distribute.MultiWorkerMirroredStrategy()
-        elif self._use_gpu:
+        elif self.config.num_gpus_per_learner > 0:
             # mirrored strategy is typically used for multi-gpu training
             # on a single machine, however we can use it for single-gpu
             devices = tf.config.list_logical_devices("GPU")
-            assert self._local_gpu_idx < len(devices), (
-                f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
-                "not available."
+            assert self.config.local_gpu_idx < len(devices), (
+                f"local_gpu_idx {self.config.local_gpu_idx} is not a valid GPU id or "
+                "is not available."
             )
-            local_gpu = [devices[self._local_gpu_idx].name]
+            local_gpu = [devices[self.config.local_gpu_idx].name]
             strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
         else:
             # the default strategy is a no-op that can be used in the local mode
@@ -306,6 +306,8 @@ class TfLearner(Learner):
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
+            # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
+            # results.
             return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
 
         return self._strategy.run(helper, args=(batch,))
@@ -348,3 +350,8 @@ class TfLearner(Learner):
         from ray.rllib.utils.tf_utils import clip_gradients
 
         return clip_gradients
+
+    @staticmethod
+    @override(Learner)
+    def _get_global_norm_function() -> Callable:
+        return tf.linalg.global_norm

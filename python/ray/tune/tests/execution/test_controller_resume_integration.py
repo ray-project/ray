@@ -282,6 +282,8 @@ def test_controller_restore_trial_save_restore(
         runner.step()  # Start trial
     assert len(runner._get_trial_checkpoints()) == 3
 
+    runner.checkpoint(force=True, wait=True)
+
     runner2 = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         storage=STORAGE,
@@ -361,6 +363,8 @@ def test_controller_restore_trial_no_checkpoint_save(
         while not old_trials[2].has_reported_at_least_once:
             runner.step()
 
+        runner.checkpoint(force=True, wait=True)
+
         runner2 = TuneController(
             resource_manager_factory=lambda: resource_manager_cls(),
             storage=STORAGE,
@@ -416,7 +420,7 @@ def test_controller_restore_checkpoint_overwrite(
     while not trial.status == Trial.RUNNING:
         runner.step()
     # force checkpoint
-    runner.checkpoint()
+    runner.checkpoint(force=True, wait=True)
     # Only one experiment state file
     assert count_checkpoints(tmpdir) == 1
 

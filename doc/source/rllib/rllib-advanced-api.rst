@@ -362,7 +362,7 @@ of such environment behavior:
 
 Note that with or without parallel evaluation, all
 :ref:`fault tolerance settings <rllib-scaling-guide>`, such as
-``ignore_env_runner_failures`` or ``recreate_failed_env_runners`` are respected and applied
+``ignore_env_runner_failures`` or ``restart_failed_env_runners`` are respected and applied
 to the failed evaluation workers.
 
 Here's an example:

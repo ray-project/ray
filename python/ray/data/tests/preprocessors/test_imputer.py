@@ -61,6 +61,18 @@ def test_simple_imputer():
 
     assert pred_out_df.equals(pred_expected_df)
 
+    # with missing column
+    pred_in_df = pd.DataFrame.from_dict({"A": pred_col_a, "B": pred_col_b})
+    pred_out_df = imputer.transform_batch(pred_in_df)
+    pred_expected_df = pd.DataFrame.from_dict(
+        {
+            "A": pred_processed_col_a,
+            "B": pred_processed_col_b,
+            "C": pred_processed_col_c,
+        }
+    )
+    assert pred_out_df.equals(pred_expected_df)
+
     # Test "most_frequent" strategy.
     most_frequent_col_a = [1, 2, 2, None, None, None]
     most_frequent_col_b = [None, "c", "c", "b", "b", "a"]

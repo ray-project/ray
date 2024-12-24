@@ -1,25 +1,20 @@
 import json
+import pickle
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Awaitable, Callable, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+from starlette.types import Scope
 
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
-from ray.serve.generated.serve_pb2 import (
-    ApplicationStatusInfo as ApplicationStatusInfoProto,
-)
 from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.generated.serve_pb2 import (
-    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
-)
-from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.grpc_util import RayServegRPCContext
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
@@ -115,45 +110,11 @@ class ReplicaState(str, Enum):
     PENDING_MIGRATION = "PENDING_MIGRATION"
 
 
-class ApplicationStatus(str, Enum):
-    NOT_STARTED = "NOT_STARTED"
-    DEPLOYING = "DEPLOYING"
-    DEPLOY_FAILED = "DEPLOY_FAILED"
-    RUNNING = "RUNNING"
-    UNHEALTHY = "UNHEALTHY"
-    DELETING = "DELETING"
-
-
-@dataclass(eq=True)
-class ApplicationStatusInfo:
-    status: ApplicationStatus
-    message: str = ""
-    deployment_timestamp: float = 0
-
-    def debug_string(self):
-        return json.dumps(asdict(self), indent=4)
-
-    def to_proto(self):
-        return ApplicationStatusInfoProto(
-            status=f"APPLICATION_STATUS_{self.status.name}",
-            message=self.message,
-            deployment_timestamp=self.deployment_timestamp,
-        )
-
-    @classmethod
-    def from_proto(cls, proto: ApplicationStatusInfoProto):
-        status = ApplicationStatusProto.Name(proto.status)[len("APPLICATION_STATUS_") :]
-        return cls(
-            status=ApplicationStatus(status),
-            message=proto.message,
-            deployment_timestamp=proto.deployment_timestamp,
-        )
-
-
 class DeploymentStatus(str, Enum):
     UPDATING = "UPDATING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
+    DEPLOY_FAILED = "DEPLOY_FAILED"
     UPSCALING = "UPSCALING"
     DOWNSCALING = "DOWNSCALING"
 
@@ -194,19 +155,21 @@ class DeploymentStatusInternalTrigger(str, Enum):
 #     representing a state with that status and status trigger.
 DEPLOYMENT_STATUS_RANKING_ORDER = {
     # Status ranking order is defined in a following fashion:
-    #   1. (Highest) State signalling any failures in the system
-    (DeploymentStatus.UNHEALTHY,): 0,
+    #   0. (Highest) State signaling a deploy failure.
+    (DeploymentStatus.DEPLOY_FAILED,): 0,
+    #   1. State signaling any non-deploy failures in the system.
+    (DeploymentStatus.UNHEALTHY,): 1,
     #   2. States signaling the user updated the configuration.
-    (DeploymentStatus.UPDATING,): 1,
-    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.CONFIG_UPDATE_STARTED): 1,
+    (DeploymentStatus.UPDATING,): 2,
+    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.CONFIG_UPDATE_STARTED): 2,
     (
         DeploymentStatus.DOWNSCALING,
         DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-    ): 1,
+    ): 2,
     #   3. Steady state or autoscaling.
-    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.AUTOSCALING): 2,
-    (DeploymentStatus.DOWNSCALING, DeploymentStatusTrigger.AUTOSCALING): 2,
-    (DeploymentStatus.HEALTHY,): 2,
+    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.AUTOSCALING): 3,
+    (DeploymentStatus.DOWNSCALING, DeploymentStatusTrigger.AUTOSCALING): 3,
+    (DeploymentStatus.HEALTHY,): 3,
 }
 
 
@@ -326,16 +289,16 @@ class DeploymentStatusInfo:
             }:
                 return self
 
-            # Failures occurred
+            # Failures occurred while a deployment was being updated
             elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
                 return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
+                    status=DeploymentStatus.DEPLOY_FAILED,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                     message=message,
                 )
             elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
                 return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
+                    status=DeploymentStatus.DEPLOY_FAILED,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
@@ -385,17 +348,17 @@ class DeploymentStatusInfo:
                     status=DeploymentStatus.DOWNSCALING, message=message
                 )
 
-            # Failures occurred
-            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
-                return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
-                    message=message,
-                )
+            # Failures occurred while upscaling/downscaling
             elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
                 return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
 
@@ -483,6 +446,37 @@ class DeploymentStatusInfo:
                     message=message,
                 )
 
+        elif self.status == DeploymentStatus.DEPLOY_FAILED:
+            # The deployment recovered
+            if trigger == DeploymentStatusInternalTrigger.HEALTHY:
+                return self._updated_copy(
+                    status=DeploymentStatus.HEALTHY,
+                    status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
+                    message=message,
+                )
+
+            # A new configuration is being deployed.
+            elif trigger == DeploymentStatusInternalTrigger.CONFIG_UPDATE:
+                return self._updated_copy(
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message=message,
+                )
+
+            # Old failures keep getting triggered, or new failures occurred.
+            elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+
         # If it's any other transition, ignore it.
         return self
 
@@ -508,80 +502,17 @@ class DeploymentStatusInfo:
         )
 
 
-@dataclass(eq=True)
-class StatusOverview:
-    app_status: ApplicationStatusInfo
-    name: str = ""
-    deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
-
-    def debug_string(self):
-        return json.dumps(asdict(self), indent=4)
-
-    def get_deployment_status(self, name: str) -> Optional[DeploymentStatusInfo]:
-        """Get a deployment's status by name.
-
-        Args:
-            name: Deployment's name.
-
-        Return (Optional[DeploymentStatusInfo]): Status with a name matching
-            the argument, if one exists. Otherwise, returns None.
-        """
-
-        for deployment_status in self.deployment_statuses:
-            if name == deployment_status.name:
-                return deployment_status
-
-        return None
-
-    def to_proto(self):
-        # Create a protobuf for the Serve Application info
-        app_status_proto = self.app_status.to_proto()
-
-        # Create protobufs for all individual deployment statuses
-        deployment_status_protos = map(
-            lambda status: status.to_proto(), self.deployment_statuses
-        )
-
-        # Create a protobuf list containing all the deployment status protobufs
-        deployment_status_proto_list = DeploymentStatusInfoListProto()
-        deployment_status_proto_list.deployment_status_infos.extend(
-            deployment_status_protos
-        )
-
-        # Return protobuf encapsulating application and deployment protos
-        return StatusOverviewProto(
-            name=self.name,
-            app_status=app_status_proto,
-            deployment_statuses=deployment_status_proto_list,
-        )
-
-    @classmethod
-    def from_proto(cls, proto: StatusOverviewProto) -> "StatusOverview":
-        # Recreate Serve Application info
-        app_status = ApplicationStatusInfo.from_proto(proto.app_status)
-
-        # Recreate deployment statuses
-        deployment_statuses = []
-        for info_proto in proto.deployment_statuses.deployment_status_infos:
-            deployment_statuses.append(DeploymentStatusInfo.from_proto(info_proto))
-
-        # Recreate StatusInfo
-        return cls(
-            app_status=app_status,
-            deployment_statuses=deployment_statuses,
-            name=proto.name,
-        )
-
-
 @dataclass(frozen=True)
 class RunningReplicaInfo:
     replica_id: ReplicaID
     node_id: Optional[str]
+    node_ip: Optional[str]
     availability_zone: Optional[str]
     actor_handle: ActorHandle
     max_ongoing_requests: int
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
+    port: Optional[int] = None
 
     def __post_init__(self):
         # Set hash value when object is constructed.
@@ -623,19 +554,6 @@ class ServeDeployMode(str, Enum):
     MULTI_APP = "MULTI_APP"
 
 
-# Keep in sync with ServeSystemActorStatus in
-# python/ray/dashboard/client/src/type/serve.ts
-class ProxyStatus(str, Enum):
-    STARTING = "STARTING"
-    HEALTHY = "HEALTHY"
-    UNHEALTHY = "UNHEALTHY"
-    DRAINING = "DRAINING"
-    # The DRAINED status is a momentary state
-    # just before the proxy is removed
-    # so this status won't show up on the dashboard.
-    DRAINED = "DRAINED"
-
-
 class ServeComponentType(str, Enum):
     REPLICA = "replica"
 
@@ -674,7 +592,8 @@ class RequestMetadata:
     # internal_request_id is always generated by the proxy and is used for tracking
     # request objects. We can assume this is always unique between requests.
     internal_request_id: str
-    endpoint: str
+
+    # Method of the user callable to execute.
     call_method: str = "__call__"
 
     # HTTP route path of the request.
@@ -708,9 +627,29 @@ class RequestMetadata:
 class StreamingHTTPRequest:
     """Sent from the HTTP proxy to replicas on the streaming codepath."""
 
-    pickled_asgi_scope: bytes
+    asgi_scope: Scope
     # Takes request metadata, returns a pickled list of ASGI messages.
     receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]]
+
+    def __getstate__(self) -> Dict[str, Any]:
+        """Custom serializer to use vanilla `pickle` for the ASGI scope.
+
+        This is possible because we know the scope is a dictionary containing
+        only Python primitive types. Vanilla `pickle` is much faster than cloudpickle.
+        """
+        return {
+            "pickled_asgi_scope": pickle.dumps(self.asgi_scope),
+            "receive_asgi_messages": self.receive_asgi_messages,
+        }
+
+    def __setstate__(self, state: Dict[str, Any]):
+        """Custom deserializer to use vanilla `pickle` for the ASGI scope.
+
+        This is possible because we know the scope is a dictionary containing
+        only Python primitive types. Vanilla `pickle` is much faster than cloudpickle.
+        """
+        self.asgi_scope = pickle.loads(state["pickled_asgi_scope"])
+        self.receive_asgi_messages = state["receive_asgi_messages"]
 
 
 class TargetCapacityDirection(str, Enum):

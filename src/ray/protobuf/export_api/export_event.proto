@@ -13,13 +13,14 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
 import "src/ray/protobuf/export_api/export_task_event.proto";
 import "src/ray/protobuf/export_api/export_node_data.proto";
 import "src/ray/protobuf/export_api/export_actor_data.proto";
+import "src/ray/protobuf/export_api/export_driver_job_event.proto";
+import "src/ray/protobuf/export_api/export_submission_job_event.proto";
 
 // ExportEvent defines events stored by the export API. This
 // schema is public and any changes must be backward compatible.
@@ -28,6 +29,8 @@ message ExportEvent {
     EXPORT_TASK = 0;
     EXPORT_NODE = 1;
     EXPORT_ACTOR = 2;
+    EXPORT_DRIVER_JOB = 3;
+    EXPORT_SUBMISSION_JOB = 4;
   }
 
   // event_id is the unique ID of this event
@@ -42,5 +45,7 @@ message ExportEvent {
     ExportTaskEventData task_event_data = 4;
     ExportNodeData node_event_data = 5;
     ExportActorData actor_event_data = 6;
+    ExportDriverJobEventData driver_job_event_data = 7;
+    ExportSubmissionJobEventData submission_job_event_data = 8;
   }
 }

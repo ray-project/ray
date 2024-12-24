@@ -116,6 +116,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.grpc_util.RayServegRPCContext
    serve.exceptions.BackPressureError
    serve.exceptions.RayServeException
+   serve.exceptions.RequestCancelledError
 ```
 
 (serve-cli)=
@@ -373,9 +374,12 @@ Content-Type: application/json
    :toctree: doc/
 
    schema.ServeInstanceDetails
+   schema.APIType
+   schema.ApplicationStatus
    schema.ApplicationDetails
    schema.DeploymentDetails
    schema.ReplicaDetails
+   schema.ProxyStatus
 ```
 
 ## Observability

@@ -23,6 +23,8 @@ Plasma is used to efficiently transfer objects across different processes and di
 
 Each node has its own object store. When data is put into the object store, it does not get automatically broadcasted to other nodes. Data remains local to the writer until requested by another task or actor on another node.
 
+.. _serialize-object-ref:
+
 Serializing ObjectRefs
 ~~~~~~~~~~~~~~~~~~~~~~
 

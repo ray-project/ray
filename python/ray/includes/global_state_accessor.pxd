@@ -29,7 +29,8 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         CGlobalStateAccessor(const CGcsClientOptions&)
         c_bool Connect()
         void Disconnect()
-        c_vector[c_string] GetAllJobInfo()
+        c_vector[c_string] GetAllJobInfo(
+          c_bool skip_submission_job_info_field, c_bool skip_is_running_tasks_field)
         CJobID GetNextJobID()
         c_vector[c_string] GetAllNodeInfo()
         c_vector[c_string] GetAllAvailableResources()
@@ -73,18 +74,22 @@ cdef extern from * namespace "ray::gcs" nogil:
 
     bool RedisGetKeySync(const std::string& host,
                          int32_t port,
+                         const std::string& username,
                          const std::string& password,
                          bool use_ssl,
                          const std::string& config,
                          const std::string& key,
                          std::string* data) {
+      // Logging default value see class `RayLog`.
       InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                              ray::RayLog::ShutDownRayLog,
                                              "ray_init",
                                              ray::RayLogLevel::WARNING,
-                                             "" /* log_dir */);
+                                             /*log_filepath=*/"",
+                                             /*log_rotation_max_size=*/1ULL << 29,
+                                             /*log_rotation_file_num=*/10);
 
-      RedisClientOptions options(host, port, password, use_ssl);
+      RedisClientOptions options(host, port, username, password, use_ssl);
 
       std::string config_list;
       RAY_CHECK(absl::Base64Unescape(config, &config_list));
@@ -94,7 +99,7 @@ cdef extern from * namespace "ray::gcs" nogil:
 
       auto redis_client = std::make_shared<RedisClient>(options);
       auto status = redis_client->Connect(io_service);
-      RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
+      RAY_CHECK_OK(status) << "Failed to connect to redis.";
 
       auto cli = std::make_unique<StoreClientInternalKV>(
         std::make_unique<RedisStoreClient>(std::move(redis_client)));
@@ -120,6 +125,7 @@ cdef extern from * namespace "ray::gcs" nogil:
     """
     c_bool RedisGetKeySync(const c_string& host,
                            c_int32_t port,
+                           const c_string& username,
                            const c_string& password,
                            c_bool use_ssl,
                            const c_string& config,
@@ -128,60 +134,9 @@ cdef extern from * namespace "ray::gcs" nogil:
 
 
 cdef extern from * namespace "ray::gcs" nogil:
-    """
-    #include <thread>
-    #include "ray/gcs/redis_client.h"
-    namespace ray {
-    namespace gcs {
-
-    class Cleanup {
-      public:
-        Cleanup(std::function<void()> f): f_(f) {}
-        ~Cleanup() { f_(); }
-      private:
-        std::function<void()> f_;
-    };
-
-    bool RedisDelKeySync(const std::string& host,
-                         int32_t port,
-                         const std::string& password,
-                         bool use_ssl,
-                         const std::string& key) {
-      RedisClientOptions options(host, port, password, use_ssl);
-      auto cli = std::make_unique<RedisClient>(options);
-
-      instrumented_io_context io_service;
-
-      auto thread = std::make_unique<std::thread>([&]() {
-        boost::asio::io_service::work work(io_service);
-        io_service.run();
-      });
-
-      Cleanup _([&](){
-        io_service.stop();
-        thread->join();
-      });
-
-      auto status = cli->Connect(io_service);
-      RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
-
-      auto context = cli->GetPrimaryContext();
-      auto cmd = std::vector<std::string>{"DEL", key};
-      auto reply = context->RunArgvSync(cmd);
-      if(reply->ReadAsInteger() == 1) {
-        RAY_LOG(INFO) << "Successfully deleted " << key;
-        return true;
-      } else {
-        RAY_LOG(ERROR) << "Failed to delete " << key;
-        return false;
-      }
-    }
-
-    }
-    }
-    """
-    c_bool RedisDelKeySync(const c_string& host,
-                           c_int32_t port,
-                           const c_string& password,
-                           c_bool use_ssl,
-                           const c_string& key)
+    c_bool RedisDelKeyPrefixSync(const c_string& host,
+                                 c_int32_t port,
+                                 const c_string& username,
+                                 const c_string& password,
+                                 c_bool use_ssl,
+                                 const c_string& key_prefix)

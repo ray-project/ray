@@ -81,6 +81,9 @@ def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
         generation = "v5litepod"
         num_cores = num_chips
 
+    if generation == "v6e":
+        num_cores = num_chips
+
     return f"{generation}-{num_cores}"
 
 
@@ -134,6 +137,10 @@ def _get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
     if accelerator_type == "v5litepod-8":
         return 8
 
+    # All V6e configurations have 8 chips per host
+    if accelerator_type.startswith("v6e"):
+        return 8
+
     return DEFAULT_TPU_NUM_CHIPS_PER_HOST
 
 
@@ -143,6 +150,10 @@ def _get_tpu_cores_per_chip(accelerator_type: str) -> int:
 
     # V5Litepods have 1 core per chip
     if accelerator_type == "v5litepod":
+        return 1
+
+    # V6es have 1 core per chip
+    if accelerator_type == "v6e":
         return 1
 
     return DEFAULT_TPU_CORES_PER_CHIP

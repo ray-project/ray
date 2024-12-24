@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/node_hash_map.h"
@@ -34,6 +35,17 @@
 namespace ray {
 namespace experimental {
 
+struct ReaderRefInfo {
+  ReaderRefInfo() = default;
+
+  // The ObjectID of the reader reference.
+  ObjectID reader_ref_id;
+  // The actor id of the owner of the reference.
+  ActorID owner_reader_actor_id;
+  // The number of reader actors reading this buffer.
+  int64_t num_reader_actors{};
+};
+
 class MutableObjectManager : public std::enable_shared_from_this<MutableObjectManager> {
  public:
   /// Buffer for a mutable object. This buffer wraps a shared memory buffer of
@@ -43,13 +55,16 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   class MutableObjectBuffer : public SharedMemoryBuffer {
    public:
     MutableObjectBuffer(std::shared_ptr<MutableObjectManager> mutable_object_manager,
-                        std::shared_ptr<Buffer> buffer,
+                        const std::shared_ptr<Buffer> &buffer,
                         const ObjectID &object_id)
         : SharedMemoryBuffer(buffer, 0, buffer->Size()),
-          mutable_object_manager_(mutable_object_manager),
+          mutable_object_manager_(std::move(mutable_object_manager)),
           object_id_(object_id) {}
 
-    ~MutableObjectBuffer() {
+    MutableObjectBuffer(const MutableObjectBuffer &) = delete;
+    MutableObjectBuffer &operator=(const MutableObjectBuffer &) = delete;
+
+    ~MutableObjectBuffer() override {
       RAY_UNUSED(mutable_object_manager_->ReadRelease(object_id_));
     }
 
@@ -61,7 +76,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   };
 
   struct Channel {
-    Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
+    explicit Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
         : lock(std::make_unique<std::mutex>()),
           mutable_object(std::move(mutable_object_ptr)) {}
 
@@ -105,7 +120,9 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// \param[in] object_id The ID of the object.
   /// \return The return status. True if the channel is registered for object_id, false
   ///         otherwise.
-  bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
+  bool ChannelRegistered(const ObjectID &object_id) {
+    return GetChannel(object_id) != nullptr;
+  }
 
   /// Gets the backing store for an object. WriteAcquire() must have already been called
   /// before this method is called, and WriteRelease() must not yet have been called.

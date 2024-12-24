@@ -6,7 +6,11 @@ from typing import DefaultDict, Dict, List, Optional
 import grpc
 import pytest
 import requests
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
+from websockets.exceptions import ConnectionClosed
+from websockets.sync.client import connect
 
 import ray
 import ray.util.state as state_api
@@ -493,7 +497,7 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 
     num_requests = get_metric_dictionaries("serve_num_http_requests")
     assert len(num_requests) == 1
-    assert num_requests[0]["route"] == "/fake_route"
+    assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "GET"
     assert num_requests[0]["application"] == ""
     assert num_requests[0]["status_code"] == "404"
@@ -501,7 +505,7 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 
     num_requests = get_metric_dictionaries("serve_num_grpc_requests")
     assert len(num_requests) == 1
-    assert num_requests[0]["route"] == fake_app_name
+    assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert num_requests[0]["application"] == ""
     assert num_requests[0]["status_code"] == str(grpc.StatusCode.NOT_FOUND)
@@ -509,14 +513,14 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 
     num_errors = get_metric_dictionaries("serve_num_http_error_requests")
     assert len(num_errors) == 1
-    assert num_errors[0]["route"] == "/fake_route"
+    assert num_errors[0]["route"] == ""
     assert num_errors[0]["error_code"] == "404"
     assert num_errors[0]["method"] == "GET"
     print("serve_num_http_error_requests working as expected.")
 
     num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
     assert len(num_errors) == 1
-    assert num_errors[0]["route"] == fake_app_name
+    assert num_errors[0]["route"] == ""
     assert num_errors[0]["error_code"] == str(grpc.StatusCode.NOT_FOUND)
     assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     print("serve_num_grpc_error_requests working as expected.")
@@ -583,6 +587,161 @@ def test_proxy_metrics_fields_internal_error(serve_start_shutdown):
     print("serve_grpc_request_latency_ms_sum working as expected.")
 
 
+def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
+    """Verify that 2xx status codes aren't errors, others are."""
+
+    def check_request_count_metrics(
+        expected_error_count: int,
+        expected_success_count: int,
+    ):
+        resp = requests.get("http://127.0.0.1:9999").text
+        error_count = 0
+        success_count = 0
+        for line in resp.split("\n"):
+            if line.startswith("ray_serve_num_http_error_requests_total"):
+                error_count += int(float(line.split(" ")[-1]))
+            if line.startswith("ray_serve_num_http_requests_total"):
+                success_count += int(float(line.split(" ")[-1]))
+
+        assert error_count == expected_error_count
+        assert success_count == expected_success_count
+        return True
+
+    @serve.deployment
+    async def return_status_code(request: Request):
+        code = int((await request.body()).decode("utf-8"))
+        return PlainTextResponse("", status_code=code)
+
+    serve.run(return_status_code.bind())
+
+    # 200 is not an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"200")
+    assert r.status_code == 200
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=0,
+        expected_success_count=1,
+    )
+
+    # 2xx is not an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"250")
+    assert r.status_code == 250
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=0,
+        expected_success_count=2,
+    )
+
+    # 3xx is an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"300")
+    assert r.status_code == 300
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=1,
+        expected_success_count=3,
+    )
+
+    # 4xx is an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"400")
+    assert r.status_code == 400
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=2,
+        expected_success_count=4,
+    )
+
+    # 5xx is an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"500")
+    assert r.status_code == 500
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=3,
+        expected_success_count=5,
+    )
+
+
+def test_proxy_metrics_websocket_status_code_is_error(serve_start_shutdown):
+    """Verify that status codes aisde from 1000 or 1001 are errors."""
+
+    def check_request_count_metrics(
+        expected_error_count: int,
+        expected_success_count: int,
+    ):
+        resp = requests.get("http://127.0.0.1:9999").text
+        error_count = 0
+        success_count = 0
+        for line in resp.split("\n"):
+            if line.startswith("ray_serve_num_http_error_requests_total"):
+                error_count += int(float(line.split(" ")[-1]))
+            if line.startswith("ray_serve_num_http_requests_total"):
+                success_count += int(float(line.split(" ")[-1]))
+
+        assert error_count == expected_error_count
+        assert success_count == expected_success_count
+        return True
+
+    fastapi_app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(fastapi_app)
+    class WebSocketServer:
+        @fastapi_app.websocket("/")
+        async def accept_then_close(self, ws: WebSocket):
+            await ws.accept()
+            code = int(await ws.receive_text())
+            await ws.close(code=code)
+
+    serve.run(WebSocketServer.bind())
+
+    # Regular disconnect (1000) is not an error.
+    with connect("ws://localhost:8000/") as ws:
+        with pytest.raises(ConnectionClosed):
+            ws.send("1000")
+            ws.recv()
+
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=0,
+        expected_success_count=1,
+    )
+
+    # Goaway disconnect (1001) is not an error.
+    with connect("ws://localhost:8000/") as ws:
+        with pytest.raises(ConnectionClosed):
+            ws.send("1001")
+            ws.recv()
+
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=0,
+        expected_success_count=2,
+    )
+
+    # Other codes are errors.
+    with connect("ws://localhost:8000/") as ws:
+        with pytest.raises(ConnectionClosed):
+            ws.send("1011")
+            ws.recv()
+
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=1,
+        expected_success_count=3,
+    )
+
+    # Other codes are errors.
+    with connect("ws://localhost:8000/") as ws:
+        with pytest.raises(ConnectionClosed):
+            ws.send("3000")
+            ws.recv()
+
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=2,
+        expected_success_count=4,
+    )
+
+
 def test_replica_metrics_fields(serve_start_shutdown):
     """Test replica metrics fields"""
 
@@ -602,26 +761,34 @@ def test_replica_metrics_fields(serve_start_shutdown):
     assert "hello" == requests.get(url_f).text
     assert "world" == requests.get(url_g).text
 
-    def verify_metrics(metric, expected_output):
-        for key in expected_output:
-            assert metric[key] == expected_output[key]
-
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_deployment_request_counter")) == 2,
+        lambda: len(get_metric_dictionaries("serve_deployment_request_counter_total"))
+        == 2,
         timeout=40,
     )
 
-    num_requests = get_metric_dictionaries("serve_deployment_request_counter")
-    assert len(num_requests) == 2
-    expected_output = {"route": "/f", "deployment": "f", "application": "app1"}
-    verify_metrics(num_requests[0], expected_output)
+    metrics = get_metric_dictionaries("serve_deployment_request_counter_total")
+    assert len(metrics) == 2
+    expected_output = {
+        ("/f", "f", "app1"),
+        ("/g", "g", "app2"),
+    }
+    assert {
+        (
+            metric["route"],
+            metric["deployment"],
+            metric["application"],
+        )
+        for metric in metrics
+    } == expected_output
 
-    start_metrics = get_metric_dictionaries("serve_deployment_replica_starts")
+    start_metrics = get_metric_dictionaries("serve_deployment_replica_starts_total")
     assert len(start_metrics) == 2
-    expected_output = {"deployment": "f", "application": "app1"}
-    verify_metrics(start_metrics[0], expected_output)
-    expected_output = {"deployment": "g", "application": "app2"}
-    verify_metrics(start_metrics[1], expected_output)
+    expected_output = {("f", "app1"), ("g", "app2")}
+    assert {
+        (start_metric["deployment"], start_metric["application"])
+        for start_metric in start_metrics
+    } == expected_output
 
     # Latency metrics
     wait_for_condition(
@@ -638,19 +805,21 @@ def test_replica_metrics_fields(serve_start_shutdown):
         latency_metrics = get_metric_dictionaries(metric_name)
         print(f"checking metric {metric_name}, {latency_metrics}")
         assert len(latency_metrics) == 2
-        expected_output1 = {"deployment": "f", "application": "app1"}
-        expected_output2 = {"deployment": "g", "application": "app2"}
-        verify_metrics(latency_metrics[0], expected_output1)
-        verify_metrics(latency_metrics[1], expected_output2)
+        expected_output = {("f", "app1"), ("g", "app2")}
+        assert {
+            (latency_metric["deployment"], latency_metric["application"])
+            for latency_metric in latency_metrics
+        } == expected_output
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_replica_processing_queries")) == 2
     )
     processing_queries = get_metric_dictionaries("serve_replica_processing_queries")
-    expected_output1 = {"deployment": "f", "application": "app1"}
-    expected_output2 = {"deployment": "g", "application": "app2"}
-    verify_metrics(processing_queries[0], expected_output1)
-    verify_metrics(processing_queries[1], expected_output2)
+    expected_output = {("f", "app1"), ("g", "app2")}
+    assert {
+        (processing_query["deployment"], processing_query["application"])
+        for processing_query in processing_queries
+    } == expected_output
 
     @serve.deployment
     def h():
@@ -659,23 +828,30 @@ def test_replica_metrics_fields(serve_start_shutdown):
     serve.run(h.bind(), name="app3", route_prefix="/h")
     assert 500 == requests.get("http://127.0.0.1:8000/h").status_code
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_deployment_error_counter")) == 1,
+        lambda: len(get_metric_dictionaries("serve_deployment_error_counter_total"))
+        == 1,
         timeout=40,
     )
-    err_requests = get_metric_dictionaries("serve_deployment_error_counter")
+    err_requests = get_metric_dictionaries("serve_deployment_error_counter_total")
     assert len(err_requests) == 1
-    expected_output = {"route": "/h", "deployment": "h", "application": "app3"}
-    verify_metrics(err_requests[0], expected_output)
+    expected_output = ("/h", "h", "app3")
+    assert (
+        err_requests[0]["route"],
+        err_requests[0]["deployment"],
+        err_requests[0]["application"],
+    ) == expected_output
 
     health_metrics = get_metric_dictionaries("serve_deployment_replica_healthy")
     assert len(health_metrics) == 3, health_metrics
-    expected_outputs = [
-        {"deployment": "f", "application": "app1"},
-        {"deployment": "g", "application": "app2"},
-        {"deployment": "h", "application": "app3"},
-    ]
-    for i in range(len(health_metrics)):
-        verify_metrics(health_metrics[i], expected_outputs[i])
+    expected_output = {
+        ("f", "app1"),
+        ("g", "app2"),
+        ("h", "app3"),
+    }
+    assert {
+        (health_metric["deployment"], health_metric["application"])
+        for health_metric in health_metrics
+    } == expected_output
 
 
 class TestRequestContextMetrics:
@@ -952,6 +1128,48 @@ class TestRequestContextMetrics:
         assert requests_metrics_app_name["G"] == "app"
         assert requests_metrics_app_name["g1"] == "app"
         assert requests_metrics_app_name["g2"] == "app"
+
+    @pytest.mark.parametrize("route_prefix", ["", "/prefix"])
+    def test_fastapi_route_metrics(self, serve_start_shutdown, route_prefix: str):
+        app = FastAPI()
+
+        @serve.deployment
+        @serve.ingress(app)
+        class A:
+            @app.get("/api")
+            def route1(self):
+                return "ok1"
+
+            @app.get("/api2/{user_id}")
+            def route2(self):
+                return "ok2"
+
+        if route_prefix:
+            serve.run(A.bind(), route_prefix=route_prefix)
+        else:
+            serve.run(A.bind())
+
+        base_url = "http://127.0.0.1:8000" + route_prefix
+        resp = requests.get(base_url + "/api")
+        assert resp.text == '"ok1"'
+        resp = requests.get(base_url + "/api2/abc123")
+        assert resp.text == '"ok2"'
+
+        wait_for_condition(
+            lambda: len(get_metric_dictionaries("serve_deployment_request_counter"))
+            == 2,
+            timeout=40,
+        )
+        (
+            requests_metrics_route,
+            requests_metrics_app_name,
+        ) = self._generate_metrics_summary(
+            get_metric_dictionaries("serve_deployment_request_counter")
+        )
+        assert requests_metrics_route["A"] == {
+            route_prefix + "/api",
+            route_prefix + "/api2/{user_id}",
+        }
 
     def test_customer_metrics_with_context(self, serve_start_shutdown):
         @serve.deployment
@@ -1522,7 +1740,7 @@ def test_long_poll_host_sends_counted(serve_instance):
     )
 
     # Write a value.
-    ray.get(host.notify_changed.remote("key_1", 999))
+    ray.get(host.notify_changed.remote({"key_1": 999}))
     object_ref = host.listen_for_change.remote({"key_1": -1})
 
     # Check that the result's size is reported.
@@ -1536,8 +1754,8 @@ def test_long_poll_host_sends_counted(serve_instance):
     )
 
     # Write two new values.
-    ray.get(host.notify_changed.remote("key_1", 1000))
-    ray.get(host.notify_changed.remote("key_2", 1000))
+    ray.get(host.notify_changed.remote({"key_1": 1000}))
+    ray.get(host.notify_changed.remote({"key_2": 1000}))
     object_ref = host.listen_for_change.remote(
         {"key_1": result_1["key_1"].snapshot_id, "key_2": -1}
     )

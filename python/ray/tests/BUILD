@@ -291,6 +291,7 @@ py_test_module_list(
     "test_debug_tools.py",
     "test_distributed_sort.py",
     "test_environ.py",
+    "test_exceptiongroup.py",
     "test_get_or_create_actor.py",
     "test_ids.py",
     "test_list_actors.py",
@@ -447,12 +448,13 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
-    "test_actor_retry.py",
+    "test_actor_lineage_reconstruction.py",
+    "test_actor_retry1.py",
+    "test_actor_retry2.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
     "test_failure.py",
     "test_multi_node.py",
-    "test_threaded_actor.py",
     "test_generators.py",
     "test_stress_failure.py",
     "test_state_api.py",
@@ -529,6 +531,7 @@ py_test_module_list(
   files = [
     "test_plasma_unlimited.py",
     "test_implicit_resource.py",
+    "test_threaded_actor.py",
   ],
   size = "enormous",
   tags = ["exclusive", "large_size_python_tests_shard_1", "team:core"],
@@ -569,6 +572,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip_3.py",
     "test_runtime_env_conda_and_pip_4.py",
     "test_runtime_env_conda_and_pip_5.py",
+    "test_runtime_env_uv.py",
   ],
   size = "large",
   tags = ["exclusive", "post_wheel_build", "team:core"],
@@ -686,6 +690,14 @@ py_test(
     srcs = ["test_pydantic_serialization.py", "pydantic_module.py"],
     tags = ["exclusive", "small_size_python_tests", "team:serve"],
     deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+  name = "test_collections_utils",
+  size = "small",
+  srcs = ["test_collections_utils.py"],
+  tags = ["exclusive", "small_size_python_tests", "team:core"],
+  deps = ["//:ray_lib", ":conftest"]
 )
 
 py_test(
