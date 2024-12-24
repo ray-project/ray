@@ -39,7 +39,7 @@ def test_min_max_scaler():
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df)
 
     # Transform batch.
     pred_col_a = [1, 2, 3]
@@ -62,7 +62,31 @@ def test_min_max_scaler():
         }
     )
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+
+    # append mode
+    with pytest.raises(ValueError):
+        MinMaxScaler(columns=["B", "C"], inplace=False)
+
+    scaler = MinMaxScaler(columns=["B", "C"], inplace=False, suffix="mm_scaled")
+    scaler.fit(ds)
+
+    pred_in_df = pd.DataFrame.from_dict(
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
+    )
+    pred_out_df = scaler.transform_batch(pred_in_df)
+
+    pred_expected_df = pd.DataFrame.from_dict(
+        {
+            "A": pred_col_a,
+            "B": pred_col_b,
+            "C": pred_col_c,
+            "B_mm_scaled": pred_processed_col_b,
+            "C_mm_scaled": pred_processed_col_c,
+        }
+    )
+
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
 
 
 def test_max_abs_scaler():
@@ -93,7 +117,7 @@ def test_max_abs_scaler():
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df)
 
     # Transform batch.
     pred_col_a = [1, 2, 3]
@@ -116,7 +140,31 @@ def test_max_abs_scaler():
         }
     )
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+
+    # append mode
+    with pytest.raises(ValueError):
+        MaxAbsScaler(columns=["B", "C"], inplace=False)
+
+    scaler = MaxAbsScaler(columns=["B", "C"], inplace=False, suffix="ma_scaled")
+    scaler.fit(ds)
+
+    pred_in_df = pd.DataFrame.from_dict(
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
+    )
+    pred_out_df = scaler.transform_batch(pred_in_df)
+
+    pred_expected_df = pd.DataFrame.from_dict(
+        {
+            "A": pred_col_a,
+            "B": pred_col_b,
+            "C": pred_col_c,
+            "B_ma_scaled": pred_processed_col_b,
+            "C_ma_scaled": pred_processed_col_c,
+        }
+    )
+
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
 
 
 def test_robust_scaler():
@@ -154,7 +202,7 @@ def test_robust_scaler():
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df)
 
     # Transform batch.
     pred_col_a = [1, 2, 3]
@@ -177,7 +225,31 @@ def test_robust_scaler():
         }
     )
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+
+    # append mode
+    with pytest.raises(ValueError):
+        RobustScaler(columns=["B", "C"], inplace=False)
+
+    scaler = RobustScaler(columns=["B", "C"], inplace=False, suffix="r_scaled")
+    scaler.fit(ds)
+
+    pred_in_df = pd.DataFrame.from_dict(
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
+    )
+    pred_out_df = scaler.transform_batch(pred_in_df)
+
+    pred_expected_df = pd.DataFrame.from_dict(
+        {
+            "A": pred_col_a,
+            "B": pred_col_b,
+            "C": pred_col_c,
+            "B_r_scaled": pred_processed_col_b,
+            "C_r_scaled": pred_processed_col_c,
+        }
+    )
+
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
 
 
 def test_standard_scaler():
@@ -214,7 +286,7 @@ def test_standard_scaler():
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df)
 
     # Transform batch.
     pred_col_a = [1, 2, 3]
@@ -237,7 +309,31 @@ def test_standard_scaler():
         }
     )
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+
+    # append mode
+    with pytest.raises(ValueError):
+        StandardScaler(columns=["B", "C"], inplace=False)
+
+    scaler = StandardScaler(columns=["B", "C"], inplace=False, suffix="r_scaled")
+    scaler.fit(ds)
+
+    pred_in_df = pd.DataFrame.from_dict(
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
+    )
+    pred_out_df = scaler.transform_batch(pred_in_df)
+
+    pred_expected_df = pd.DataFrame.from_dict(
+        {
+            "A": pred_col_a,
+            "B": pred_col_b,
+            "C": pred_col_c,
+            "B_r_scaled": pred_processed_col_b,
+            "C_r_scaled": pred_processed_col_c,
+        }
+    )
+
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -60,12 +60,36 @@ class StandardScaler(Preprocessor):
         1   0  -3  0.0
         2   2   3  0.0
 
+        >>> preprocessor = StandardScaler(
+        ...     columns=["X1", "X2"],
+        ...     inplace=False,
+        ...     suffix="scaled"
+        ... )
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_scaled  X2_scaled
+        0  -2  -3   1  -1.224745  -0.707107
+        1   0  -3   1   0.000000  -0.707107
+        2   2   3   1   1.224745   1.414214
+
     Args:
         columns: The columns to separately scale.
+        inplace: Whether to modify the input dataset in place. If False, the
+            transformed columns will be appended with a suffix.
+        suffix: The suffix to append to the transformed columns. Required if
+            ``inplace`` is False.
     """
 
-    def __init__(self, columns: List[str]):
+    def __init__(
+        self, columns: List[str], *, inplace: bool = True, suffix: Optional[str] = None
+    ):
         self.columns = columns
+        self.output_columns = columns
+
+        if not inplace and suffix is None:
+            raise ValueError("If inplace is False, suffix must be provided.")
+
+        if not inplace:
+            self.output_columns = [f"{col}_{suffix}" for col in columns]
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         mean_aggregates = [Mean(col) for col in self.columns]
@@ -85,9 +109,7 @@ class StandardScaler(Preprocessor):
 
             return (s - s_mean) / s_std
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_standard_scaler
-        )
+        df[self.output_columns] = df[self.columns].transform(column_standard_scaler)
         return df
 
     def __repr__(self):
@@ -144,12 +166,34 @@ class MinMaxScaler(Preprocessor):
         1   0  -3  0.0
         2   2   3  0.0
 
+        >>> preprocessor = MinMaxScaler(columns=["X1", "X2"], inplace=False, suffix="scaled")
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_scaled  X2_scaled
+        0  -2  -3   1        0.0        0.0
+        1   0  -3   1        0.5        0.0
+        2   2   3   1        1.0        1.0
+
     Args:
         columns: The columns to separately scale.
+        inplace: Whether to modify the input dataset in place. If False, the
+            transformed columns will be appended with a suffix.
+        suffix: The suffix to append to the transformed columns. Required if
+            ``inplace`` is False.
     """
 
-    def __init__(self, columns: List[str]):
+    def __init__(
+        self, columns: List[str], *, inplace: bool = True, suffix: Optional[str] = None
+    ):
         self.columns = columns
+        self.suffix = suffix
+        self.inplace = inplace
+        self.output_columns = columns
+
+        if not inplace and suffix is None:
+            raise ValueError("If inplace is False, suffix must be provided.")
+
+        if not inplace:
+            self.output_columns = [f"{col}_{suffix}" for col in columns]
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         aggregates = [Agg(col) for Agg in [Min, Max] for col in self.columns]
@@ -169,9 +213,7 @@ class MinMaxScaler(Preprocessor):
 
             return (s - s_min) / diff
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_min_max_scaler
-        )
+        df[self.output_columns] = df[self.columns].transform(column_min_max_scaler)
         return df
 
     def __repr__(self):
@@ -224,12 +266,32 @@ class MaxAbsScaler(Preprocessor):
         0  -6   2  0.0
         1   3  -4  0.0
 
+        >>> preprocessor = MaxAbsScaler(columns=["X1", "X2"], inplace=False, suffix="scaled")
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_scaled  X2_scaled
+        0  -2  -3   1       -1.0       -1.0
+        1   0  -3   1        0.0       -1.0
+        2   2   3   1        1.0        1.0
+
     Args:
         columns: The columns to separately scale.
+        inplace: Whether to modify the input dataset in place. If False, the
+            transformed columns will be appended with a suffix.
+        suffix: The suffix to append to the transformed columns. Required if
+            ``inplace`` is False.
     """
 
-    def __init__(self, columns: List[str]):
+    def __init__(
+        self, columns: List[str], *, inplace: bool = True, suffix: Optional[str] = None
+    ):
         self.columns = columns
+        self.output_columns = columns
+
+        if not inplace and suffix is None:
+            raise ValueError("If inplace is False, suffix must be provided.")
+
+        if not inplace:
+            self.output_columns = [f"{col}_{suffix}" for col in columns]
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         aggregates = [AbsMax(col) for col in self.columns]
@@ -247,9 +309,7 @@ class MaxAbsScaler(Preprocessor):
 
             return s / s_abs_max
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_abs_max_scaler
-        )
+        df[self.output_columns] = df[self.columns].transform(column_abs_max_scaler)
         return df
 
     def __repr__(self):
@@ -303,18 +363,48 @@ class RobustScaler(Preprocessor):
         3  0.5 -0.750   2
         4  1.0  0.000   3
 
+        >>> preprocessor = RobustScaler(
+        ...    columns=["X1", "X2"],
+        ...    inplace=False,
+        ...    suffix="scaled"
+        ... )
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_scaled  X2_scaled
+        0   1  13   1       -1.0      0.625
+        1   2   5   2       -0.5     -0.375
+        2   3  14   2        0.0      0.750
+        3   4   2   2        0.5     -0.750
+        4   5   8   3        1.0      0.000
+
     Args:
         columns: The columns to separately scale.
         quantile_range: A tuple that defines the lower and upper quantiles. Values
             must be between 0 and 1. Defaults to the 1st and 3rd quartiles:
             ``(0.25, 0.75)``.
+        inplace: Whether to modify the input dataset in place. If False, the
+            transformed columns will be appended with a suffix.
+        suffix: The suffix to append to the transformed columns. Required if
+            ``inplace`` is False.
     """
 
     def __init__(
-        self, columns: List[str], quantile_range: Tuple[float, float] = (0.25, 0.75)
+        self,
+        columns: List[str],
+        quantile_range: Tuple[float, float] = (0.25, 0.75),
+        *,
+        inplace: bool = True,
+        suffix: Optional[str] = None,
     ):
         self.columns = columns
         self.quantile_range = quantile_range
+
+        self.output_columns = columns
+
+        if not inplace and suffix is None:
+            raise ValueError("If inplace is False, suffix must be provided.")
+
+        if not inplace:
+            self.output_columns = [f"{col}_{suffix}" for col in columns]
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         low = self.quantile_range[0]
@@ -364,9 +454,7 @@ class RobustScaler(Preprocessor):
 
             return (s - s_median) / diff
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_robust_scaler
-        )
+        df[self.output_columns] = df[self.columns].transform(column_robust_scaler)
         return df
 
     def __repr__(self):
