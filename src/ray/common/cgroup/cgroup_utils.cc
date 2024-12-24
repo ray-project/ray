@@ -28,61 +28,61 @@ namespace ray {
 namespace {
 
 // Owner can read and write.
-constexpr int kCgroupFilePerm = 0600;
+constexpr int kCgroupV2FilePerm = 0600;
 
 // Open a cgroup path and append write [content] into the file.
-void OpenCgroupFileAndAppend(std::string_view path, std::string_view content) {
+void OpenCgroupV2FileAndAppend(std::string_view path, std::string_view content) {
   std::ofstream out_file{path.data(), std::ios::out | std::ios::app};
   out_file << content;
 }
 
-bool CreateNewCgroup(const PhysicalModeExecutionContext &ctx) {
+bool CreateNewCgroupV2(const PhysicalModeExecutionContext &ctx) {
   // Sanity check.
   RAY_CHECK(!ctx.uuid.empty());
-  RAY_CHECK_NE(ctx.uuid, kDefaultCgroupUuid);
+  RAY_CHECK_NE(ctx.uuid, kDefaultCgroupV2Uuid);
   RAY_CHECK_GT(ctx.max_memory, 0);
 
   const std::string cgroup_folder =
       absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.uuid);
-  int ret_code = mkdir(cgroup_folder.data(), kCgroupFilePerm);
+  int ret_code = mkdir(cgroup_folder.data(), kCgroupV2FilePerm);
   if (ret_code != 0) {
     return false;
   }
 
   if (ctx.max_memory > 0) {
     const std::string procs_path = absl::StrFormat("%s/cgroup.procs", cgroup_folder);
-    OpenCgroupFileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid));
+    OpenCgroupV2FileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid));
 
     const std::string max_memory_path = absl::StrFormat("%s/memory.max", cgroup_folder);
-    OpenCgroupFileAndAppend(max_memory_path, absl::StrFormat("%d", ctx.max_memory));
+    OpenCgroupV2FileAndAppend(max_memory_path, absl::StrFormat("%d", ctx.max_memory));
   }
 
   return true;
 }
 
-bool UpdateDefaultCgroup(const PhysicalModeExecutionContext &ctx) {
+bool UpdateDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
   // Sanity check.
   RAY_CHECK(!ctx.uuid.empty());
-  RAY_CHECK_EQ(ctx.uuid, kDefaultCgroupUuid);
+  RAY_CHECK_EQ(ctx.uuid, kDefaultCgroupV2Uuid);
   RAY_CHECK_EQ(ctx.max_memory, 0);
 
   const std::string cgroup_folder =
       absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.uuid);
-  int ret_code = mkdir(cgroup_folder.data(), kCgroupFilePerm);
+  int ret_code = mkdir(cgroup_folder.data(), kCgroupV2FilePerm);
   if (ret_code != 0) {
     return false;
   }
 
   const std::string procs_path = absl::StrFormat("%s/cgroup.procs", cgroup_folder);
-  OpenCgroupFileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid));
+  OpenCgroupV2FileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid));
 
   return true;
 }
 
-bool DeleteCgroup(const PhysicalModeExecutionContext &ctx) {
+bool DeleteCgroupV2(const PhysicalModeExecutionContext &ctx) {
   // Sanity check.
   RAY_CHECK(!ctx.uuid.empty());
-  RAY_CHECK_NE(ctx.uuid, kDefaultCgroupUuid);
+  RAY_CHECK_NE(ctx.uuid, kDefaultCgroupV2Uuid);
   RAY_CHECK_GT(ctx.max_memory, 0);
 
   const std::string cgroup_folder =
@@ -90,15 +90,15 @@ bool DeleteCgroup(const PhysicalModeExecutionContext &ctx) {
   return rmdir(cgroup_folder.data()) == 0;
 }
 
-bool RemoveCtxFromDefaultCgroup(const PhysicalModeExecutionContext &ctx) {
+bool RemoveCtxFromDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
   // Sanity check.
   RAY_CHECK(!ctx.uuid.empty());
-  RAY_CHECK_EQ(ctx.uuid, kDefaultCgroupUuid);
+  RAY_CHECK_EQ(ctx.uuid, kDefaultCgroupV2Uuid);
   RAY_CHECK_EQ(ctx.max_memory, 0);
 
   const std::string cgroup_folder =
       absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.uuid);
-  int ret_code = mkdir(cgroup_folder.data(), kCgroupFilePerm);
+  int ret_code = mkdir(cgroup_folder.data(), kCgroupV2FilePerm);
   if (ret_code != 0) {
     return false;
   }
@@ -132,32 +132,32 @@ bool RemoveCtxFromDefaultCgroup(const PhysicalModeExecutionContext &ctx) {
 
 }  // namespace
 
-bool SetupCgroupForContext(const PhysicalModeExecutionContext &ctx) {
+bool SetupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx) {
 #ifndef __linux__
   return false;
 #endif
 
   // Create a new cgroup if max memory specified.
   if (ctx.max_memory > 0) {
-    return CreateNewCgroup(ctx);
+    return CreateNewCgroupV2(ctx);
   }
 
   // Update default cgroup if no max resource specified.
-  return UpdateDefaultCgroup(ctx);
+  return UpdateDefaultCgroupV2(ctx);
 }
 
-bool CleanupCgroupForContext(const PhysicalModeExecutionContext &ctx) {
+bool CleanupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx) {
 #ifndef __linux__
   return false;
 #endif
 
   // Delete the dedicated cgroup if max memory specified.
   if (ctx.max_memory > 0) {
-    return DeleteCgroup(ctx);
+    return DeleteCgroupV2(ctx);
   }
 
   // Update default cgroup if no max resource specified.
-  return RemoveCtxFromDefaultCgroup(ctx);
+  return RemoveCtxFromDefaultCgroupV2(ctx);
 }
 
 }  // namespace ray
