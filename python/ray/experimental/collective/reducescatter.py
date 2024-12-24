@@ -53,7 +53,7 @@ class ReduceScatterWrapper:
         """
         if transport is None:
             transport = TorchTensorType.NCCL
-        collective_op = _CollectiveOperation(input_nodes, "rs", op, transport)
+        collective_op = _CollectiveOperation(input_nodes, op, transport)
         collective_output_nodes: List[CollectiveOutputNode] = []
 
         for input_node in input_nodes:
