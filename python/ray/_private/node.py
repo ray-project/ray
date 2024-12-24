@@ -1230,6 +1230,7 @@ class Node:
         object_store_memory: int,
         use_valgrind: bool = False,
         use_profiler: bool = False,
+        enable_physical_mode: bool = False,
     ):
         """Start the raylet.
 
@@ -1290,6 +1291,7 @@ class Node:
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
             labels=self._get_node_labels(),
+            enable_physical_mode=enable_physical_mode,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]

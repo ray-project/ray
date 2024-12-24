@@ -1565,6 +1565,7 @@ def start_raylet(
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
     labels: Optional[dict] = None,
+    enable_physical_mode: bool = False,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1620,6 +1621,9 @@ def start_raylet(
             available externally to this node.
         env_updates: Environment variable overrides.
         labels: The key-value labels of the node.
+        enable_physical_mode: Whether physical mode is enabled, which applies
+            constraint to tasks' resource consumption. As of now only memory
+            resource is supported.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1712,6 +1716,7 @@ def start_raylet(
             f"--temp-dir={temp_dir}",
             f"--webui={webui}",
             f"--cluster-id={cluster_id}",
+            f"--enable_physical_mode={enable_physical_mode}",
         ]
     )
 
