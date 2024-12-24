@@ -28,7 +28,7 @@ std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!core_worker_process)
       << "The process is already initialized for core worker.";
-  core_worker_process.reset(new CoreWorkerProcessImpl(options));
+  core_worker_process = std::make_unique<CoreWorkerProcessImpl>(options);
 
 #ifndef _WIN32
   // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
