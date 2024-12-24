@@ -398,6 +398,8 @@ def read_datasource(
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+    if len(read_tasks) < parallelism:
+        parallelism = len(read_tasks)
     import uuid
 
     stats = DatasetStats(
@@ -2095,6 +2097,7 @@ def read_sql(
     sql: str,
     connection_factory: Callable[[], Connection],
     *,
+    shard_keys: Optional[list[str]] = None,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
@@ -2179,13 +2182,9 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
-    if parallelism != -1 and parallelism != 1:
-        raise ValueError(
-            "To ensure correctness, 'read_sql' always launches one task. The "
-            "'parallelism' argument you specified can't be used."
-        )
-
-    datasource = SQLDatasource(sql=sql, connection_factory=connection_factory)
+    datasource = SQLDatasource(
+        sql=sql, shard_keys=shard_keys, connection_factory=connection_factory
+    )
     return read_datasource(
         datasource,
         parallelism=parallelism,
