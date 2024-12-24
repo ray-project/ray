@@ -612,6 +612,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_ids The IDs of the objects.
   Status ExperimentalChannelReadRelease(const std::vector<ObjectID> &object_ids);
 
+  /// Experimental method for mutable objects. Mock the read acquire operation.
+  ///
+  /// \param[in] object_ids The IDs of the objects.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the read lock.
+  Status ExperimentalMutableObjectMockRead(const std::vector<ObjectID> &object_ids,
+                                           const int64_t timeout_ms);
+
   /// Experimental method for mutable objects. Registers a writer channel.
   ///
   /// The API is not idempotent.

@@ -221,6 +221,24 @@ Status PlasmaObjectHeader::ReadAcquire(
   return Status::OK();
 }
 
+Status PlasmaObjectHeader::MockReadAcquire(Semaphores &sem) {
+  RAY_CHECK(sem.header_sem);
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
+
+  bool success = false;
+  if (num_read_acquires_remaining > 0) {
+    num_read_acquires_remaining--;
+    success = true;
+  }
+
+  RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+  if (!success) {
+    return Status::Invalid(
+        "Reader missed a value. Are you sure there are num_readers many readers?");
+  }
+  return Status::OK();
+}
+
 bool PlasmaObjectHeader::ReadyToRead(int64_t version_to_read) {
   RAY_LOG(DEBUG) << "ReadyToRead version: " << version
                  << ", version_to_read: " << version_to_read

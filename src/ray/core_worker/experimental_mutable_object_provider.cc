@@ -213,6 +213,10 @@ Status MutableObjectProvider::Wait(const std::vector<ObjectID> &ids,
   return object_manager_->Wait(ids, num_objects, timeout_ms, results);
 }
 
+Status MutableObjectProvider::MockRead(const ObjectID &object_id, int64_t timeout_ms) {
+  return object_manager_->MockRead(object_id, timeout_ms);
+}
+
 Status MutableObjectProvider::SetError(const ObjectID &object_id) {
   return object_manager_->SetError(object_id);
 }

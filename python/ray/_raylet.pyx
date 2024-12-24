@@ -3423,6 +3423,14 @@ cdef class CoreWorker:
                          .ExperimentalChannelReadRelease(c_object_ids))
         check_status(op_status)
 
+    def experimental_channel_mock_read(self, object_refs, int64_t timeout_ms=-1):
+        cdef:
+            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
+        with nogil:
+            op_status = (CCoreWorkerProcess.GetCoreWorker()
+                         .ExperimentalMutableObjectMockRead(c_object_ids, timeout_ms))
+        check_status(op_status)
+
     def put_serialized_object_and_increment_local_ref(
             self, serialized_object,
             ObjectRef object_ref=None,

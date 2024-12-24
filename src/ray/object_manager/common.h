@@ -182,6 +182,9 @@ struct PlasmaObjectHeader {
   /// Returns true if the object is ready to read.
   bool ReadyToRead(int64_t version_to_read);
 
+  /// Mock the read acquire operation.
+  Status MockReadAcquire(Semaphores &sem);
+
   /// Set up synchronization primitives.
   void Init();
 

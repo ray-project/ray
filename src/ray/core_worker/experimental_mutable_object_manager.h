@@ -194,6 +194,14 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
               int64_t timeout_ms,
               std::vector<bool> *results);
 
+  /// Aborts the object, causing all future readers and writers to raise an error on
+  /// acquire.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] timeout_ms The timeout in milliseconds to wait for the object.
+  /// \return The return status.
+  Status MockRead(const ObjectID &object_id, int64_t timeout_ms);
+
   /// Releases the object, allowing it to be written again. If the caller did
   /// not previously ReadAcquire the object, then this first blocks until the
   /// latest value is available to read, then releases the value.

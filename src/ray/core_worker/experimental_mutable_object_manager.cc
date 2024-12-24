@@ -386,6 +386,60 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   return Status::OK();
 }
 
+Status MutableObjectManager::MockRead(const ObjectID &object_id,
+                                      int64_t timeout_ms) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  absl::ReaderMutexLock guard(&destructor_lock_);
+
+  Channel *channel = GetChannel(object_id);
+  if (!channel) {
+    return Status::ChannelError("Channel has not been registered");
+  }
+  PlasmaObjectHeader::Semaphores sem;
+  if (!GetSemaphores(object_id, sem)) {
+    return Status::ChannelError(
+        "Channel has not been registered (cannot get semaphores)");
+  }
+
+  std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
+  // Check whether the channel has an error set before checking that we are the only
+  // reader. If the channel is already closed, then it's OK to ReadAcquire and
+  // ReadRelease in any order.
+
+  auto timeout_point = ToTimeoutPoint(timeout_ms);
+  bool locked = false;
+  bool expired = false;
+  do {
+    RAY_RETURN_NOT_OK(object->header->CheckHasError());
+    // The channel is still open. This lock ensures that there is only one reader
+    // at a time. The lock is released in `ReadRelease()`.
+    locked = channel->lock->try_lock();
+    expired = timeout_point && std::chrono::steady_clock::now() >= *timeout_point;
+  } while (!locked && !expired);
+  if (!locked) {
+    // If timeout_ms == 0, we want to try once to get the lock,
+    // therefore we check locked rather than expired.
+    return Status::ChannelTimeoutError("Timed out acquiring the read lock.");
+  }
+
+  // channel->reading is only used by ReadAcquire and ReadRelease.
+  channel->reading = false;
+  Status s = object->header->MockReadAcquire(sem);
+  if (!s.ok()) {
+    channel->lock->unlock();
+    return s;
+  }
+
+  s = object->header->ReadRelease(sem, channel->next_version_to_read);
+  if (!s.ok()) {
+    channel->lock->unlock();
+    return s;
+  }
+  channel->next_version_to_read++;
+
+  channel->lock->unlock();
+  return Status::OK();
+}
+
 Status MutableObjectManager::Wait(const std::vector<ObjectID> &object_ids,
                                   int num_objects,
                                   int64_t timeout_ms,

@@ -385,13 +385,28 @@ class SynchronousReader(ReaderInterface):
                     channel_to_result[c] = c.read(timeout)
                     read_channels.append(c)
                     if isinstance(channel_to_result[c], RayTaskError):
+                        worker = ray._private.worker.global_worker
+                        for channel in channel_to_waitables:
+                            # Skip channels that have already been read
+                            if channel in read_channels:
+                                continue
+
+                            # Mock read the channel's waitables with timeout
+                            waitables = channel_to_waitables[channel]
+                            worker.core_worker.experimental_channel_mock_read(
+                                waitables,
+                                timeout_ms=int(timeout * 1000)
+                                if timeout is not None
+                                else -1,
+                            )
+
                         logger.error(
                             f"Found a RayTaskError from one of the input channels {c}. "
-                            f"Return immediately although there are still "
+                            f"Raise an exception immediately although there are still "
                             f"{len(non_read_channels) - len(read_channels)} "
                             f"input channels haven't been read."
                         )
-                        return [channel_to_result[c] for c in self._input_channels]
+                        raise channel_to_result[c].as_instanceof_cause()
                     if timeout is not None:
                         timeout -= time.monotonic() - start_time
                         timeout = max(timeout, 0)

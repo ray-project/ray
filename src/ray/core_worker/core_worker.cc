@@ -2018,6 +2018,14 @@ Status CoreWorker::WaitExperimentalMutableObjects(const std::vector<ObjectID> &i
       ids, num_objects, timeout_ms, results);
 }
 
+Status CoreWorker::ExperimentalMutableObjectMockRead(const std::vector<ObjectID> &ids,
+                                                     const int64_t timeout_ms) {
+  for (const auto &id : ids) {
+    RAY_RETURN_NOT_OK(experimental_mutable_object_provider_->MockRead(id, timeout_ms));
+  }
+  return Status::OK();
+}
+
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only) {
   absl::flat_hash_map<WorkerID, std::vector<ObjectID>> by_owner;
   absl::flat_hash_map<WorkerID, rpc::Address> addresses;
