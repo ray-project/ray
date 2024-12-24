@@ -384,8 +384,7 @@ def test_map_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
     ray_data = ray.data.from_pandas(df)
     result = ray_data.map(process_timestamp_data)
     processed_df = result.to_pandas()
-    # Ensure the 'timestamp' column is of the correct dtype
-    processed_df["timestamp"] = pd.to_datetime(processed_df["timestamp"])
+    processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
     pd.testing.assert_frame_equal(processed_df, expected_df)
 
 
@@ -425,8 +424,7 @@ def test_map_numpy_datetime(df, expected_df, ray_start_regular_shared):
     ray_data = ray.data.from_pandas(df)
     result = ray_data.map(process_timestamp_data)
     processed_df = result.to_pandas()
-    # Ensure the 'timestamp' column is of the correct dtype
-    processed_df["timestamp"] = pd.to_datetime(processed_df["timestamp"])
+    processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
     pd.testing.assert_frame_equal(processed_df, expected_df)
 
 
@@ -471,9 +469,7 @@ def test_map_python_datetime(df, expected_df, ray_start_regular_shared):
 
     # Convert the result back to a Pandas DataFrame
     processed_df = result.to_pandas()
-
-    # Ensure the 'timestamp' column is of the correct dtype
-    processed_df["timestamp"] = pd.to_datetime(processed_df["timestamp"])
+    processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
 
     # Normalize timestamps to microseconds for comparison
     # Applying ceil to round up the timestamps to ensure deterministic rounding behavior
