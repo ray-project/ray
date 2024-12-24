@@ -2976,6 +2976,7 @@ class Dataset:
         self,
         path: str,
         *,
+        partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -3009,6 +3010,8 @@ class Dataset:
         Args:
             path: The path to the destination root directory, where
                 parquet files are written to.
+            partition_cols: Column names by which to partition the dataset.
+                Files are writted in Hive partition style.
             filesystem: The pyarrow filesystem implementation to write to.
                 These filesystems are specified in the
                 `pyarrow docs <https://arrow.apache.org/docs\
@@ -3057,8 +3060,15 @@ class Dataset:
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
 
+        if partition_cols and num_rows_per_file:
+            raise ValueError(
+                "Cannot pass num_rows_per_file when partition_cols "
+                "argument is specified"
+            )
+
         datasink = ParquetDatasink(
             path,
+            partition_cols=partition_cols,
             arrow_parquet_args_fn=arrow_parquet_args_fn,
             arrow_parquet_args=arrow_parquet_args,
             num_rows_per_file=num_rows_per_file,
