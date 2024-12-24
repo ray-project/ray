@@ -31,7 +31,7 @@ namespace {
 constexpr int kCgroupFilePerm = 0600;
 
 // Open a cgroup path and append write [content] into the file.
-void OpenCgroupFileAndAppend(std::string_view path, std::string content) {
+void OpenCgroupFileAndAppend(std::string_view path, std::string_view content) {
   std::ofstream out_file{path.data(), std::ios::out | std::ios::app};
   out_file << content;
 }
