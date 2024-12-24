@@ -342,8 +342,8 @@ class RuntimeEnv(dict):
             runtime_env["_nsight"] = nsight
         if container is not None:
             runtime_env["container"] = container
-        if env_vars is not None:
-            runtime_env["env_vars"] = env_vars
+        # if env_vars is not None:
+        #     runtime_env["env_vars"] = env_vars
         if config is not None:
             runtime_env["config"] = config
         if worker_process_setup_hook is not None:
