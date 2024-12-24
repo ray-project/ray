@@ -1358,7 +1358,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
 
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
@@ -1564,7 +1564,7 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
   // Spill all objects.
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
@@ -1646,7 +1646,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete1) {
   // Spill all objects.
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
@@ -1719,7 +1719,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
   // Spill all objects.
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
