@@ -135,8 +135,7 @@ bool RemoveCtxFromDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
 bool SetupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx) {
 #ifndef __linux__
   return false;
-#endif
-
+#else
   // Create a new cgroup if max memory specified.
   if (ctx.max_memory > 0) {
     return CreateNewCgroupV2(ctx);
@@ -144,13 +143,13 @@ bool SetupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx) {
 
   // Update default cgroup if no max resource specified.
   return UpdateDefaultCgroupV2(ctx);
+#endif  // __linux__
 }
 
 bool CleanupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx) {
 #ifndef __linux__
   return false;
-#endif
-
+#else
   // Delete the dedicated cgroup if max memory specified.
   if (ctx.max_memory > 0) {
     return DeleteCgroupV2(ctx);
@@ -158,6 +157,7 @@ bool CleanupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx) {
 
   // Update default cgroup if no max resource specified.
   return RemoveCtxFromDefaultCgroupV2(ctx);
+#endif  // __linux__
 }
 
 }  // namespace ray
