@@ -13,10 +13,10 @@ import pyarrow.fs
 import ray
 from ray import logger
 from ray._private.storage import _load_class
-from ray.air import session
 from ray.air._internal import usage as air_usage
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.util.node import _force_on_current_node
+from ray.train._internal.session import get_session
 from ray.train._internal.syncer import DEFAULT_SYNC_TIMEOUT
 from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
@@ -121,8 +121,8 @@ def setup_wandb(
 
     try:
         # Do a try-catch here if we are not in a train session
-        _session = session._get_session(warn=False)
-        if _session and rank_zero_only and session.get_world_rank() != 0:
+        session = get_session()
+        if session and rank_zero_only and session.get_world_rank() != 0:
             return RunDisabled()
 
         default_trial_id = session.get_trial_id()
