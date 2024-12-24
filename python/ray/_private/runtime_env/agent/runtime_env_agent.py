@@ -37,7 +37,7 @@ from ray.core.generated import (
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
 )
-from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
+from ray.runtime_env import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -297,29 +297,11 @@ class RuntimeEnvAgent:
         return self._per_job_logger_cache[job_id]
 
     async def GetOrCreateRuntimeEnv(self, request):
-        self._logger.debug(
-            f"Got request from {request.source_process} to increase "
-            "reference for runtime env: "
-            f"{request.serialized_runtime_env}."
-        )
-
         async def _setup_runtime_env(
             runtime_env: RuntimeEnv,
         ):
-            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
-            log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger for each job.
-            per_job_logger = self.get_or_create_logger(request.job_id, log_files)
             context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
-
-            # Warn about unrecognized fields in the runtime env.
-            for name, _ in runtime_env.plugins():
-                if name not in self._plugin_manager.plugins:
-                    per_job_logger.warning(
-                        f"runtime_env field {name} is not recognized by "
-                        "Ray and will be ignored.  In the future, unrecognized "
-                        "fields in the runtime_env will raise an exception."
-                    )
 
             # Creates each runtime env URI by their priority. `working_dir` is special
             # because it needs to be created before other plugins. All other plugins are
@@ -334,7 +316,7 @@ class RuntimeEnvAgent:
                 working_dir_ctx.class_instance,
                 working_dir_ctx.uri_cache,
                 context,
-                per_job_logger,
+                self._logger,
             )
 
             # Then within the working dir, create the other plugins.
@@ -348,7 +330,7 @@ class RuntimeEnvAgent:
                     if plugin.name != WorkingDirPlugin.name:
                         uri_cache = plugin_setup_context.uri_cache
                         await create_for_plugin_if_needed(
-                            runtime_env, plugin, uri_cache, context, per_job_logger
+                            runtime_env, plugin, uri_cache, context, self._logger
                         )
             return context
 
@@ -369,10 +351,6 @@ class RuntimeEnvAgent:
                 message(str).
 
             """
-            self._logger.info(
-                f"Creating runtime env: {serialized_env} with timeout "
-                f"{setup_timeout_seconds} seconds."
-            )
             serialized_context = None
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
@@ -406,27 +384,17 @@ class RuntimeEnvAgent:
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )
             if error_message:
-                self._logger.error(
-                    "Runtime env creation failed for %d times, "
-                    "don't retry any more.",
-                    runtime_env_consts.RUNTIME_ENV_RETRY_TIMES,
-                )
                 return False, None, error_message
             else:
-                self._logger.info(
-                    "Successfully created runtime env: %s, the context: %s",
-                    serialized_env,
-                    serialized_context,
-                )
                 return True, serialized_context, None
 
         try:
             serialized_env = request.serialized_runtime_env
             runtime_env = RuntimeEnv.deserialize(serialized_env)
+
+            raise TypeError(f"hjisng runtime env = {runtime_env}")
+
         except Exception as e:
-            self._logger.exception(
-                "[Increase] Failed to parse runtime env: " f"{serialized_env}"
-            )
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
@@ -449,22 +417,12 @@ class RuntimeEnvAgent:
                 result = self._env_cache[serialized_env]
                 if result.success:
                     context = result.result
-                    self._logger.info(
-                        "Runtime env already created "
-                        f"successfully. Env: {serialized_env}, "
-                        f"context: {context}"
-                    )
                     return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                         serialized_runtime_env_context=context,
                     )
                 else:
                     error_message = result.result
-                    self._logger.info(
-                        "Runtime env already failed. "
-                        f"Env: {serialized_env}, "
-                        f"err: {error_message}"
-                    )
                     # Recover the reference.
                     self._reference_table.decrease_reference(
                         runtime_env, serialized_env, request.source_process
@@ -474,18 +432,9 @@ class RuntimeEnvAgent:
                         error_message=error_message,
                     )
 
-            if SLEEP_FOR_TESTING_S:
-                self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
-                time.sleep(int(SLEEP_FOR_TESTING_S))
-
-            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
             # accroding to the document of `asyncio.wait_for`,
             # None means disable timeout logic
-            setup_timeout_seconds = (
-                None
-                if runtime_env_config["setup_timeout_seconds"] == -1
-                else runtime_env_config["setup_timeout_seconds"]
-            )
+            setup_timeout_seconds = None
 
             start = time.perf_counter()
             (
