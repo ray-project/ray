@@ -9,7 +9,7 @@ from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
 )
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
-from ray.experimental.util.types import AllReduceReduceOp
+from ray.experimental.util.types import ReduceScatterReduceOp
 from ray.util.collective.types import ReduceOp as RayReduceOp
 
 # TODO(wxdeng): Unify `ReduceOp` and `RayReduceOp`. Directly importing `RayReduceOp`
@@ -18,13 +18,13 @@ from ray.util.collective.types import ReduceOp as RayReduceOp
 logger = logging.getLogger(__name__)
 
 
-class AllReduceWrapper:
-    """Wrapper for NCCL all-reduce."""
+class ReduceScatterWrapper:
+    """Wrapper for NCCL reduce-scatter."""
 
     def bind(
         self,
         input_nodes: List["ray.dag.DAGNode"],
-        op: AllReduceReduceOp = AllReduceReduceOp.SUM,
+        op: ReduceScatterReduceOp = ReduceScatterReduceOp.SUM,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
         """
@@ -63,7 +63,7 @@ class AllReduceWrapper:
             if actor_handle is None:
                 raise ValueError("Expected an actor handle from the input node")
             collective_output_node = CollectiveOutputNode(
-                method_name=f"allreduce.{op}",
+                method_name=f"reducescatter.{op}",
                 method_args=(input_node,),
                 method_kwargs=dict(),
                 method_options=dict(),
@@ -84,9 +84,9 @@ class AllReduceWrapper:
         group_name: str = "default",
         op: RayReduceOp = RayReduceOp.SUM,
     ):
-        from ray.util.collective.collective import allreduce
+        from ray.util.collective.collective import reducescatter
 
-        return allreduce(tensor, group_name, op)
+        return reducescatter(tensor, group_name, op)
 
 
-allreduce = AllReduceWrapper()
+reducescatter = ReduceScatterWrapper()

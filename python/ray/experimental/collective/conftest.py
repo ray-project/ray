@@ -7,8 +7,9 @@ import torch
 import ray
 from ray.experimental.channel.common import ChannelContext
 from ray.experimental.channel.communicator import (
+    AllReduceReduceOp,
     Communicator,
-    ReduceOp,
+    ReduceScatterReduceOp,
     TorchTensorAllocator,
 )
 
@@ -55,7 +56,15 @@ class AbstractNcclGroup(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: ReduceOp = ReduceOp.SUM,
+        op: AllReduceReduceOp = AllReduceReduceOp.SUM,
+    ) -> None:
+        raise NotImplementedError
+
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceScatterReduceOp = ReduceScatterReduceOp.SUM,
     ) -> None:
         raise NotImplementedError
 
