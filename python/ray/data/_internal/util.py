@@ -720,9 +720,29 @@ def unify_block_metadata_schema(
 
 def find_partition_index(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
-    desired: List[Any],
+    desired: Tuple[Union[int, float]],
     sort_key: "SortKey",
 ) -> int:
+    """For the given block, find the index where the desired value should be
+    added, to maintain sorted order.
+
+    We do this by iterating over each column, starting with the primary sort key,
+    and binary searching for the desired value in the column. Each binary search
+    shortens the "range" of indices (represented by ``left`` and ``right``, which
+    are indices of rows) where the desired value could be inserted.
+
+    Args:
+        table: The block to search in.
+        desired: A single tuple representing the boundary to partition at.
+            ``len(desired)`` must be less than or equal to the number of columns
+            being sorted.
+        sort_key: The sort key to use for sorting, providing the columns to be
+            sorted and their directions.
+
+    Returns:
+        The index where the desired value should be inserted to maintain sorted
+        order.
+    """
     columns = sort_key.get_columns()
     descending = sort_key.get_descending()
 
@@ -745,7 +765,13 @@ def find_partition_index(
             col_vals[null_mask] = NULL_SENTINEL
 
         prevleft = left
-        if descending is True:
+        if descending[i] is True:
+            # ``np.searchsorted`` expects the array to be sorted in ascending
+            # order, so we pass ``sorter``, which is an array of integer indices
+            # that sort ``col_vals`` into ascending order. The returned index
+            # is an index into the ascending order of ``col_vals``, so we need
+            # to subtract it from ``len(col_vals)`` to get the index in the
+            # original descending order of ``col_vals``.
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
@@ -767,10 +793,14 @@ def find_partition_index(
         else:
             left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
             right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
-    return right if descending is True else left
+    return right if descending[0] is True else left
 
 
-def find_partitions(table, boundaries, sort_key):
+def find_partitions(
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
+    boundaries: List[Tuple[Union[int, float]]],
+    sort_key: "SortKey",
+):
     partitions = []
 
     # For each boundary value, count the number of items that are less
