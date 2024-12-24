@@ -387,7 +387,9 @@ def test_map_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
     processed_df = result.to_pandas()
     # Convert PyArrow Timestamps to Pandas Timestamps
     processed_df["timestamp"] = processed_df["timestamp"].apply(
-        lambda x: pd.Timestamp(x.as_py()) if isinstance(x, pa.lib.TimestampScalar) else x
+        lambda x: pd.Timestamp(x.as_py())
+        if isinstance(x, pa.lib.TimestampScalar)
+        else x
     )
     # Ensure the dtype is correct
     processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
@@ -433,7 +435,9 @@ def test_map_numpy_datetime(df, expected_df, ray_start_regular_shared):
     processed_df = result.to_pandas()
     # Convert PyArrow Timestamps to Pandas Timestamps
     processed_df["timestamp"] = processed_df["timestamp"].apply(
-        lambda x: pd.Timestamp(x.as_py()) if isinstance(x, pa.lib.TimestampScalar) else x
+        lambda x: pd.Timestamp(x.as_py())
+        if isinstance(x, pa.lib.TimestampScalar)
+        else x
     )
     # Ensure the dtype is correct
     processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
@@ -480,7 +484,9 @@ def test_map_python_datetime(df, expected_df, ray_start_regular_shared):
     processed_df = result.to_pandas()
     # Convert PyArrow Timestamps to Pandas Timestamps
     processed_df["timestamp"] = processed_df["timestamp"].apply(
-        lambda x: pd.Timestamp(x.as_py()) if isinstance(x, pa.lib.TimestampScalar) else x
+        lambda x: pd.Timestamp(x.as_py())
+        if isinstance(x, pa.lib.TimestampScalar)
+        else x
     )
     # Ensure the dtype is correct
     processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
