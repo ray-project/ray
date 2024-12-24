@@ -103,6 +103,90 @@ class DashboardHeadModule(abc.ABC):
         return self._dashboard_head.gcs_address
 
 
+class RateLimitedModule(abc.ABC):
+    """Simple rate limiter
+
+    Inheriting from this class and decorate any class methods will
+    apply simple rate limit.
+    It will limit the maximal number of concurrent invocations of **all** the
+    methods decorated.
+
+    The below Example class will only allow 10 concurrent calls to A() and B()
+
+    E.g.:
+
+        class Example(RateLimitedModule):
+            def __init__(self):
+                super().__init__(max_num_call=10)
+
+            @RateLimitedModule.enforce_max_concurrent_calls
+            async def A():
+                ...
+
+            @RateLimitedModule.enforce_max_concurrent_calls
+            async def B():
+                ...
+
+            async def limit_handler_(self):
+                raise RuntimeError("rate limited reached!")
+
+    """
+
+    def __init__(self, max_num_call: int, logger: Optional[logging.Logger] = None):
+        """
+        Args:
+            max_num_call: Maximal number of concurrent invocations of all decorated
+                functions in the instance.
+                Setting to -1 will disable rate limiting.
+
+            logger: Logger
+        """
+        self.max_num_call_ = max_num_call
+        self.num_call_ = 0
+        self.logger_ = logger
+
+    @staticmethod
+    def enforce_max_concurrent_calls(func):
+        """Decorator to enforce max number of invocations of the decorated func
+
+        NOTE: This should be used as the innermost decorator if there are multiple
+        ones.
+
+        E.g., when decorating functions already with @routes.get(...), this must be
+        added below then the routes decorators:
+            ```
+            @routes.get('/')
+            @RateLimitedModule.enforce_max_concurrent_calls
+            async def fn(self):
+                ...
+
+            ```
+        """
+
+        @functools.wraps(func)
+        async def async_wrapper(self, *args, **kwargs):
+            if self.max_num_call_ >= 0 and self.num_call_ >= self.max_num_call_:
+                if self.logger_:
+                    self.logger_.warning(
+                        f"Max concurrent requests reached={self.max_num_call_}"
+                    )
+                return await self.limit_handler_()
+            self.num_call_ += 1
+            try:
+                ret = await func(self, *args, **kwargs)
+            finally:
+                self.num_call_ -= 1
+            return ret
+
+        # Returning closure here to avoid passing 'self' to the
+        # 'enforce_max_concurrent_calls' decorator.
+        return async_wrapper
+
+    @abstractmethod
+    async def limit_handler_(self):
+        """Handler that is invoked when max number of concurrent calls reached"""
+
+
 def dashboard_module(enable):
     """A decorator for dashboard module."""
 
