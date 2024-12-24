@@ -1,0 +1,185 @@
+// Copyright 2024 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "ray/common/cgroup/cgroup_utils.h"
+
+#include <sys/stat.h>
+
+#include <fstream>
+
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
+#include "ray/util/logging.h"
+
+namespace ray {
+
+namespace {
+
+// Owner can read and write.
+constexpr int kCgroupV2FilePerm = 0600;
+
+// There're two types of memory cgroup constraints:
+// 1. For those with limit capped, they will be created a dedicated cgroup;
+// 2. For those without limit specified, they will be added to the default cgroup.
+static constexpr std::string_view kDefaultCgroupV2Uuid = "default_cgroup_uuid";
+
+// Open a cgroup path and append write [content] into the file.
+void OpenCgroupV2FileAndAppend(std::string_view path, std::string_view content) {
+  std::ofstream out_file{path.data(), std::ios::out | std::ios::app};
+  out_file << content;
+}
+
+bool CreateNewCgroupV2(const PhysicalModeExecutionContext &ctx) {
+  // Sanity check.
+  RAY_CHECK(!ctx.uuid.empty());
+  RAY_CHECK_NE(ctx.uuid, kDefaultCgroupV2Uuid);
+  RAY_CHECK_GT(ctx.max_memory, 0);
+
+  const std::string cgroup_folder =
+      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.uuid);
+  int ret_code = mkdir(cgroup_folder.data(), kCgroupV2FilePerm);
+  if (ret_code != 0) {
+    return false;
+  }
+
+  if (ctx.max_memory > 0) {
+    const std::string procs_path = absl::StrFormat("%s/cgroup.procs", cgroup_folder);
+    OpenCgroupV2FileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid));
+
+    const std::string max_memory_path = absl::StrFormat("%s/memory.max", cgroup_folder);
+    OpenCgroupV2FileAndAppend(max_memory_path, absl::StrFormat("%d", ctx.max_memory));
+  }
+
+  return true;
+}
+
+bool UpdateDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
+  // Sanity check.
+  RAY_CHECK(!ctx.uuid.empty());
+  RAY_CHECK_EQ(ctx.uuid, kDefaultCgroupV2Uuid);
+  RAY_CHECK_EQ(ctx.max_memory, 0);
+
+  const std::string cgroup_folder =
+      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.uuid);
+  int ret_code = mkdir(cgroup_folder.data(), kCgroupV2FilePerm);
+  if (ret_code != 0) {
+    return false;
+  }
+
+  const std::string procs_path = absl::StrFormat("%s/cgroup.procs", cgroup_folder);
+  OpenCgroupV2FileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid));
+
+  return true;
+}
+
+bool DeleteCgroupV2(const PhysicalModeExecutionContext &ctx) {
+  // Sanity check.
+  RAY_CHECK(!ctx.uuid.empty());
+  RAY_CHECK_NE(ctx.uuid, kDefaultCgroupV2Uuid);
+  RAY_CHECK_GT(ctx.max_memory, 0);
+
+  const std::string cgroup_folder =
+      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.uuid);
+  return rmdir(cgroup_folder.data()) == 0;
+}
+
+bool RemoveCtxFromDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
+  // Sanity check.
+  RAY_CHECK(!ctx.uuid.empty());
+  RAY_CHECK_EQ(ctx.uuid, kDefaultCgroupV2Uuid);
+  RAY_CHECK_EQ(ctx.max_memory, 0);
+
+  const std::string cgroup_folder =
+      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.uuid);
+  int ret_code = mkdir(cgroup_folder.data(), kCgroupV2FilePerm);
+  if (ret_code != 0) {
+    return false;
+  }
+
+  const std::string procs_path = absl::StrFormat("%s/cgroup.procs", cgroup_folder);
+  std::ostringstream buffer;
+  {
+    std::ifstream file(procs_path.data(), std::ios::in);
+    buffer << file.rdbuf();
+  }
+  std::string content = buffer.str();  // contains all PIDs, separated by space
+
+  std::vector<std::string_view> old_pid_strings = absl::StrSplit(content, ' ');
+  std::vector<std::string_view> new_pid_strings;
+  new_pid_strings.reserve(old_pid_strings.size() - 1);
+  for (const auto &cur_pid : old_pid_strings) {
+    if (cur_pid == absl::StrFormat("%d", ctx.pid)) {
+      continue;
+    }
+    new_pid_strings.emplace_back(cur_pid);
+  }
+
+  const std::string new_pids = absl::StrJoin(new_pid_strings, " ");
+  {
+    std::ofstream out_file{procs_path.data(), std::ios::out};
+    out_file << new_pids;
+  }
+
+  return true;
+}
+
+}  // namespace
+
+/*static*/ std::unique_ptr<CgroupV2Setup> CgroupV2Setup::New(
+    PhysicalModeExecutionContext ctx) {
+  if (!CgroupV2Setup::SetupCgroupV2ForContext(ctx)) {
+    return nullptr;
+  }
+  return std::unique_ptr<CgroupV2Setup>(new CgroupV2Setup(std::move(ctx)));
+}
+
+CgroupV2Setup::~CgroupV2Setup() {
+  if (!CleanupCgroupV2ForContext(ctx_)) {
+    RAY_LOG(ERROR) << "Fails to cleanup cgroup for execution context with uuid "
+                   << ctx_.uuid;
+  }
+}
+
+/*static*/ bool CgroupV2Setup::SetupCgroupV2ForContext(
+    const PhysicalModeExecutionContext &ctx) {
+#ifndef __linux__
+  return false;
+#else
+  // Create a new cgroup if max memory specified.
+  if (ctx.max_memory > 0) {
+    return CreateNewCgroupV2(ctx);
+  }
+
+  // Update default cgroup if no max resource specified.
+  return UpdateDefaultCgroupV2(ctx);
+#endif  // __linux__
+}
+
+/*static*/ bool CgroupV2Setup::CleanupCgroupV2ForContext(
+    const PhysicalModeExecutionContext &ctx) {
+#ifndef __linux__
+  return false;
+#else
+  // Delete the dedicated cgroup if max memory specified.
+  if (ctx.max_memory > 0) {
+    return DeleteCgroupV2(ctx);
+  }
+
+  // Update default cgroup if no max resource specified.
+  return RemoveCtxFromDefaultCgroupV2(ctx);
+#endif  // __linux__
+}
+
+}  // namespace ray
