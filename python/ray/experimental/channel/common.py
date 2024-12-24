@@ -406,7 +406,13 @@ class SynchronousReader(ReaderInterface):
                             f"{len(non_read_channels) - len(read_channels)} "
                             f"input channels haven't been read."
                         )
-                        raise channel_to_result[c].as_instanceof_cause()
+                        # If we raise an exception immediately, it will be considered
+                        # as a RayChannelError which will cause the execution loop to
+                        # exit.
+                        return [
+                            channel_to_result[c]
+                            for _ in range(len(self._input_channels))
+                        ]
                     if timeout is not None:
                         timeout -= time.monotonic() - start_time
                         timeout = max(timeout, 0)
