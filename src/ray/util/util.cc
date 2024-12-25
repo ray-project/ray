@@ -440,4 +440,3 @@ std::string GenerateUUIDV4() {
   return ss.str();
 }
 }  // namespace ray
-
