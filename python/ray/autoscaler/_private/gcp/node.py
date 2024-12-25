@@ -37,6 +37,7 @@ from uuid import uuid4
 from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import Resource
 from googleapiclient.errors import HttpError
+import httplib2
 
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
@@ -335,7 +336,7 @@ class GCPCompute(GCPResource):
 
     def get_new_authorized_http(self, http: AuthorizedHttp) -> AuthorizedHttp:
         """Generate a new AuthorizedHttp object with the given credentials."""
-        new_http = AuthorizedHttp(http.credentials)
+        new_http = AuthorizedHttp(http.credentials, http=httplib2.Http())
         return new_http
 
     def wait_for_operation(
@@ -637,7 +638,7 @@ class GCPTPU(GCPResource):
 
     def get_new_authorized_http(self, http: AuthorizedHttp) -> AuthorizedHttp:
         """Generate a new AuthorizedHttp object with the given credentials."""
-        new_http = AuthorizedHttp(http.credentials)
+        new_http = AuthorizedHttp(http.credentials, http=httplib2.Http())
         return new_http
 
     def wait_for_operation(

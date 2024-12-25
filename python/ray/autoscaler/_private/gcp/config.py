@@ -11,7 +11,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
+import googleapiclient
 from googleapiclient import discovery, errors
+import google_auth_httplib2
+import httplib2
 
 from ray._private.accelerators import TPUAcceleratorManager
 from ray.autoscaler._private.gcp.node import MAX_POLLS, POLL_INTERVAL, GCPNodeType
@@ -317,22 +320,37 @@ def _is_head_node_a_tpu(config: dict) -> bool:
     }
     return get_node_type(node_configs[config["head_node_type"]]) == GCPNodeType.TPU
 
+def build_request(http, *args, **kwargs):
+  new_http = google_auth_httplib2.AuthorizedHttp(http.credentials, http=httplib2.Http())
+  return googleapiclient.http.HttpRequest(new_http, *args, **kwargs)
 
 def _create_crm(gcp_credentials=None):
     return discovery.build(
-        "cloudresourcemanager", "v1", credentials=gcp_credentials, cache_discovery=False
+        "cloudresourcemanager",
+        "v1",
+        credentials=gcp_credentials,
+        requestBuilder=build_request,
+        cache_discovery=False
     )
 
 
 def _create_iam(gcp_credentials=None):
     return discovery.build(
-        "iam", "v1", credentials=gcp_credentials, cache_discovery=False
+        "iam",
+        "v1",
+        credentials=gcp_credentials,
+        requestBuilder=build_request,
+        cache_discovery=False,
     )
 
 
 def _create_compute(gcp_credentials=None):
     return discovery.build(
-        "compute", "v1", credentials=gcp_credentials, cache_discovery=False
+        "compute",
+        "v1",
+        credentials=gcp_credentials,
+        requestBuilder=build_request,
+        cache_discovery=False,
     )
 
 
@@ -341,6 +359,7 @@ def _create_tpu(gcp_credentials=None):
         "tpu",
         TPU_VERSION,
         credentials=gcp_credentials,
+        requestBuilder=build_request,
         cache_discovery=False,
         discoveryServiceUrl="https://tpu.googleapis.com/$discovery/rest",
     )
