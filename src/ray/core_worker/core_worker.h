@@ -684,8 +684,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] IDs of the objects to wait for.
   /// \param[in] num_objects Number of objects that should appear.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
-  /// \param[out] results A vector of booleans that indicates each object has appeared or not.
-  /// \return Status.
+  /// \param[out] results A vector of booleans that indicates each object has appeared or
+  /// not. \return Status.
   Status Wait(const std::vector<ObjectID> &object_ids,
               const int num_objects,
               const int64_t timeout_ms,
