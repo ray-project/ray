@@ -303,21 +303,26 @@ def test_actor_method_metadata_cache(ray_start_regular):
     assert [id(x) for x in list(cache.items())[0]] == cached_data_id
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_class_name(ray_start_regular):
+    g = ray._private.worker.global_worker.gcs_client
+    existing_actor_keys = set(
+        g.internal_kv_keys(b"ActorClass", ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+    )
+
     @ray.remote
     class Foo:
         def __init__(self):
             pass
 
     Foo.remote()
-    g = ray._private.worker.global_worker.gcs_client
+
     actor_keys = g.internal_kv_keys(
         b"ActorClass", ray_constants.KV_NAMESPACE_FUNCTION_TABLE
     )
-    assert len(actor_keys) == 1
+    assert len(actor_keys) == len(existing_actor_keys) + 1
+    new_actor_key = next(iter(set(actor_keys) - existing_actor_keys))
     actor_class_info = pickle.loads(
-        g.internal_kv_get(actor_keys[0], ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+        g.internal_kv_get(new_actor_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
     )
     assert actor_class_info["class_name"] == "Foo"
     assert "test_actor" in actor_class_info["module"]

@@ -202,8 +202,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Note: must provide gcs_address, because the Ray cluster is not started yet.
-    ray.init(address=args.gcs_address)
+    ray.init(
+        address=args.gcs_address,
+        log_to_driver=False,
+        configure_logging=False,
+        namespace=ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE,
+        _skip_env_hook=True,
+    )
 
     try:
         setup_component_logger(

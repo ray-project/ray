@@ -78,14 +78,13 @@ class DashboardHeadActorModule(abc.ABC):
     NOTE: DashboardHeadActorRouteTable is not DashboardHeadRouteTable. The latter is
     not recognized for this module type.
 
-    It
-    creates a Ray Actor from this class with these options:
+    It creates a Ray Actor from this class with these options:
     - lifetime: fate-share with the dashboard.py process, i.e. NON detached.
     - resources: 0 CPU.
     - infinite restarts,
     - infinite task retries,
     - strategy: on the same node as the dashboard.py process (should be the head node).
-    TODO(ryw): puts it in the internal Ray namespace to hide from UI.
+    - namespace: RAY_INTERNAL_DASHBOARD_NAMESPACE to hide from the UI.
 
     When a request is received, the router makes a Ray actor method call to the actor.
     The method signature is (for now) only (self, req: bytes) -> Response.
