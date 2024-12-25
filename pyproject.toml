@@ -37,6 +37,19 @@ ignore = [
     "C417",
     "C418",
     "C419",
+    # Autofixable rules
+    "I001",
+    "E401",
+    "E703",
+    "E714",
+    "B004",
+    "B009",
+    "B010",
+    "C413",
+    "F541",
+    "Q000",
+    "Q001",
+    "Q002",
 ]
 exclude = [
     "python/ray/serve/tests/test_config_files/syntax_error.py",
