@@ -706,7 +706,7 @@ async def download_and_unpack_package(
             shutil.rmtree(local_dir)
 
         if download_package:
-            protocol, pkg_name = parse_uri(pkg_uri)
+            protocol, _ = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
                 if gcs_aio_client is None:
                     raise ValueError(
@@ -747,55 +747,7 @@ async def download_and_unpack_package(
                 else:
                     return str(pkg_file)
             elif protocol in Protocol.remote_protocols():
-                # Download package from remote URI
-                tp = None
-                install_warning = (
-                    "Note that these must be preinstalled "
-                    "on all nodes in the Ray cluster; it is not "
-                    "sufficient to install them in the runtime_env."
-                )
-
-                if protocol == Protocol.S3:
-                    try:
-                        import boto3
-                        from smart_open import open as open_file
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` and "
-                            "`pip install boto3` to fetch URIs in s3 "
-                            "bucket. " + install_warning
-                        )
-                    tp = {"client": boto3.client("s3")}
-                elif protocol == Protocol.GS:
-                    try:
-                        from google.cloud import storage  # noqa: F401
-                        from smart_open import open as open_file
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` and "
-                            "`pip install google-cloud-storage` "
-                            "to fetch URIs in Google Cloud Storage bucket."
-                            + install_warning
-                        )
-                elif protocol == Protocol.FILE:
-                    pkg_uri = pkg_uri[len("file://") :]
-
-                    def open_file(uri, mode, *, transport_params=None):
-                        return open(uri, mode)
-
-                else:
-                    try:
-                        from smart_open import open as open_file
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` "
-                            f"to fetch {protocol.value.upper()} URIs. "
-                            + install_warning
-                        )
-
-                with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
-                    with open_file(pkg_file, "wb") as fin:
-                        fin.write(package_zip.read())
+                protocol.download_remote_uri(source_uri=pkg_uri, dest_file=pkg_file)
 
                 if pkg_file.suffix in [".zip", ".jar"]:
                     unzip_package(
