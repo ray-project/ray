@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.experimental.channel.communicator import (
-    AllReduceReduceOp,
+    AllReduceOp,
     Communicator,
-    ReduceScatterReduceOp,
+    ReduceScatterOp,
     TorchTensorAllocator,
 )
 from ray.experimental.util.types import ReduceOp
@@ -133,7 +133,7 @@ class CPUCommunicator(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: AllReduceReduceOp = AllReduceReduceOp.SUM,
+        op: AllReduceOp = AllReduceOp.SUM,
     ):
         all_ranks = [
             self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()
@@ -155,7 +155,7 @@ class CPUCommunicator(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: ReduceScatterReduceOp = ReduceScatterReduceOp.SUM,
+        op: ReduceScatterOp = ReduceScatterOp.SUM,
     ):
         all_ranks = [
             self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()

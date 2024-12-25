@@ -9,7 +9,7 @@ from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
 )
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
-from ray.experimental.util.types import ReduceScatterReduceOp
+from ray.experimental.util.types import ReduceScatterOp
 from ray.util.collective.types import ReduceOp as RayReduceOp
 
 # TODO(wxdeng): Unify `ReduceOp` and `RayReduceOp`. Directly importing `RayReduceOp`
@@ -24,7 +24,7 @@ class ReduceScatterWrapper:
     def bind(
         self,
         input_nodes: List["ray.dag.DAGNode"],
-        op: ReduceScatterReduceOp = ReduceScatterReduceOp.SUM,
+        op: ReduceScatterOp = ReduceScatterOp.SUM,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
         """

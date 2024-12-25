@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 import ray
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.communicator import Communicator, TorchTensorAllocator
-from ray.experimental.util.types import AllReduceReduceOp, ReduceScatterReduceOp
+from ray.experimental.util.types import AllReduceOp, ReduceScatterOp
 
 if TYPE_CHECKING:
     import cupy as cp
@@ -254,7 +254,7 @@ class _NcclGroup(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: AllReduceReduceOp = AllReduceReduceOp.SUM,
+        op: AllReduceOp = AllReduceOp.SUM,
     ):
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
@@ -290,7 +290,7 @@ class _NcclGroup(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: ReduceScatterReduceOp = ReduceScatterReduceOp.SUM,
+        op: ReduceScatterOp = ReduceScatterOp.SUM,
     ):
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")

@@ -15,8 +15,8 @@ from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensor
 from ray.experimental.util.types import (
     _CollectiveOp,
     ReduceOp,
-    AllReduceReduceOp,
-    ReduceScatterReduceOp,
+    AllReduceOp,
+    ReduceScatterOp,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -129,10 +129,10 @@ class _CollectiveOperation:
         if not isinstance(send_buf, torch.Tensor):
             raise ValueError("Expected a torch tensor")
         communicator = self.get_communicator()
-        if isinstance(self._op, AllReduceReduceOp):
+        if isinstance(self._op, AllReduceOp):
             recv_buf = torch.empty_like(send_buf)
             communicator.allreduce(send_buf, recv_buf, self._op)
-        elif isinstance(self._op, ReduceScatterReduceOp):
+        elif isinstance(self._op, ReduceScatterOp):
             world_size = len(self._actor_handles)
             if not send_buf.shape[0] % world_size == 0:
                 raise ValueError(
