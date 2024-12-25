@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __rllib-adv_api_counter_begin__
 import ray

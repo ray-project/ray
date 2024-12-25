@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 # fmt: off
 
 # __example_deployment_start__
@@ -38,7 +38,7 @@ serve.run(SlowDeployment.bind())
 first_refs = [r.do_request.remote() for _ in range(2)]
 _, pending = ray.wait(first_refs, timeout=1)
 assert len(pending) == 2
-# 2 will be queued in the proxy. 
+# 2 will be queued in the proxy.
 queued_refs = [r.do_request.remote() for _ in range(2)]
 _, pending = ray.wait(queued_refs, timeout=0.1)
 assert len(pending) == 2

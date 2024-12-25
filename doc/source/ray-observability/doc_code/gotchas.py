@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 # __env_var_start__
 import ray
 import os

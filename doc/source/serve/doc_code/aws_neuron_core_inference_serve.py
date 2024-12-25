@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 # __compile_neuron_code_start__
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import torch, torch_neuronx

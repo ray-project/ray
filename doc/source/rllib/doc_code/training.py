@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __preprocessing_observations_start__
 try:

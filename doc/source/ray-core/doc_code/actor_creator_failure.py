@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # fmt: off
 # __actor_creator_failure_begin__
