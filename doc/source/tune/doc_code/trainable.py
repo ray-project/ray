@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # fmt: off
 # __example_objective_start__

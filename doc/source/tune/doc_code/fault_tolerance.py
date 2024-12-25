@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __ft_initial_run_start__
 import json

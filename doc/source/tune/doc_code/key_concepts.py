@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __function_api_start__
 from ray import train

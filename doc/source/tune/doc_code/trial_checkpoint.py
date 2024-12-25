@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __class_api_checkpointing_start__
 import os

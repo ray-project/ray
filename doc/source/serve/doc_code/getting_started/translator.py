@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __start_graph__
 # File name: serve_quickstart_composed.py

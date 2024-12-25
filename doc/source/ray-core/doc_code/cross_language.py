@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # fmt: off
 # __crosslang_init_start__
