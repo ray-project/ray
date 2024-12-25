@@ -411,14 +411,12 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       auto object_request_iter = object_get_requests_.find(object_id);
       if (object_request_iter != object_get_requests_.end()) {
         auto &get_requests = object_request_iter->second;
-        // Erase get_request from the vector.
-        auto it = std::find(get_requests.begin(), get_requests.end(), get_request);
-        if (it != get_requests.end()) {
-          get_requests.erase(it);
-          // If the vector is empty, remove the object ID from the map.
-          if (get_requests.empty()) {
-            object_get_requests_.erase(object_request_iter);
-          }
+        get_requests.erase(
+            std::remove(get_requests.begin(), get_requests.end(), get_request),
+            get_requests.end());
+
+        if (get_requests.empty()) {
+          object_get_requests_.erase(object_request_iter);
         }
       }
     }
