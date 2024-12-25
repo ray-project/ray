@@ -115,6 +115,13 @@ class MutableObjectProvider {
                      std::shared_ptr<RayObject> &result,
                      int64_t timeout_ms = -1);
 
+  /// Releases the object, allowing it to be written again. If the caller did
+  /// not previously ReadAcquire the object, then this first blocks until the
+  /// latest value is available to read, then releases the value.
+  ///
+  /// \param[in] object_id The ID of the object.
+  Status ReadRelease(const ObjectID &object_id);
+
   /// Sets the error bit, causing all future readers and writers to raise an
   /// error on acquire.
   ///

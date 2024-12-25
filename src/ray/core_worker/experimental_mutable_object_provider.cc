@@ -198,6 +198,10 @@ Status MutableObjectProvider::ReadAcquire(const ObjectID &object_id,
   return object_manager_->ReadAcquire(object_id, result, timeout_ms);
 }
 
+Status MutableObjectProvider::ReadRelease(const ObjectID &object_id) {
+  return object_manager_->ReadRelease(object_id);
+}
+
 Status MutableObjectProvider::SetError(const ObjectID &object_id) {
   return object_manager_->SetError(object_id);
 }
