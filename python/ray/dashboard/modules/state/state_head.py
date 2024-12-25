@@ -188,7 +188,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS, "1")
-        return await self._handle_list_api(self._state_api.list_runtime_envs, req)
+        return await handle_list_api(self._state_api.list_runtime_envs, req)
 
     @routes.get("/api/v0/cluster_events")
     @RateLimitedModule.enforce_max_concurrent_calls

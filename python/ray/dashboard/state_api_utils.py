@@ -92,7 +92,6 @@ def summary_options_from_req(req: aiohttp.web.Request) -> SummaryApiOptions:
 
 
 async def handle_summary_api(
-    self,
     summary_fn: Callable[[SummaryApiOptions], SummaryApiResponse],
     req: aiohttp.web.Request,
 ):
