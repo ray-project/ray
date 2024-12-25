@@ -98,8 +98,9 @@ class SetupSpec:
         elif build_type == BuildType.TSAN:
             self.version: str = f"{version}+tsan"
         elif build_type == BuildType.NIGHTLY:
-            version_postfix = datetime.today().strftime("b%Y%m%d")
-            self.version: str = f"{version}{version_postfix}"
+            version_postfix = datetime.today().strftime("%Y%m%d")
+            version = re.sub(r'dev\d*', f'dev{version_postfix}', version)
+            self.version: str = version
             self.name = f"{self.name}-nightly"
         else:
             self.version = version
@@ -132,7 +133,7 @@ if os.getenv("RAY_INSTALL_CPP") == "1":
     # "ray-cpp" wheel package.
     setup_spec = SetupSpec(
         SetupType.RAY_CPP,
-        "ray-cpp",
+        "ant-ray-cpp",
         "A subpackage of Ray which provides the Ray C++ API.",
         BUILD_TYPE,
     )
@@ -140,7 +141,7 @@ else:
     # "ray" primary wheel package.
     setup_spec = SetupSpec(
         SetupType.RAY,
-        "ray",
+        "ant-ray",
         "Ray provides a simple, "
         "universal API for building distributed applications.",
         BUILD_TYPE,

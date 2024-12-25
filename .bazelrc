@@ -210,6 +210,3 @@ try-import %workspace%/.llvm-local.bazelrc
 build:macos --sandbox_block_path=/usr/local/
 # This option controls whether javac checks for missing direct dependencies.
 build --experimental_strict_java_deps=off
-
-# Enable the experimental downloader config to allow for customizing the download.
-build --experimental_downloader_config=.bazel_downloader.cfg

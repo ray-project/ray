@@ -1,57 +1,7 @@
-# name: Ant Ray PyPi Nightly
-
-# on: 
-#   schedule:
-#     - cron: '0 0 * * *'
-#   # can manually trigger the workflow
-#   workflow_dispatch:
-
-# jobs:
-#   build-and-publish:
-#     # do not run in forks
-#     if: ${{ github.repository_owner == 'antgroup' }}
-#     name: build wheel and upload
-#     runs-on: ubuntu-latest
-#     steps:
-#     - uses: actions/checkout@v2
-
-#     - name: Set up Python 3.9
-#       uses: actions/setup-python@v1
-#       with:
-#         python-version: 3.9
-
-#     - name: days since the commit date
-#       run: |
-#           :
-#           timestamp=$(git log --no-walk --date=unix --format=%cd $GITHUB_SHA)
-#           days=$(( ( $(date --utc +%s) - $timestamp ) / 86400 ))
-#           if [ $days -eq 0 ]; then
-#               echo COMMIT_TODAY=true >> $GITHUB_ENV
-#           fi
-#     - name: Build wheel
-#       if: env.COMMIT_TODAY == 'true'
-#       env:
-#         RAY_DEBUG_BUILD: nightly
-#       run: |
-#           cd python
-#           python setup.py sdist
-#     - name: Upload
-#       if: env.COMMIT_TODAY == 'true'
-#       uses: pypa/gh-action-pypi-publish@release/v1
-#       with:
-#         packages-dir: python/dist
-#         password: ${{ secrets.PYPI_API_TOKEN }}
-
-name: Ant Ray PyPi Nightly
+name: Ant Ray PyPi Release
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
   workflow_dispatch:
-  # pull_request:
-  # push:
-  #   branches:
-  #     - main
   release:
     types:
       - published
@@ -80,7 +30,6 @@ jobs:
             cp310-manylinux_aarch64
             cp311-manylinux_x86_64
             cp311-manylinux_aarch64
-          CIBW_ENVIRONMENT: RAY_DEBUG_BUILD=nightly
         with:
           package-dir: ./python
           output-dir: ./python/dist
