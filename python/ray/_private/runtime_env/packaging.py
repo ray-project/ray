@@ -656,6 +656,7 @@ async def download_and_unpack_package(
     base_directory: str,
     gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
     logger: Optional[logging.Logger] = default_logger,
+    overwrite: bool = False,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
 
@@ -668,6 +669,7 @@ async def download_and_unpack_package(
             directory for the unpacked files.
         gcs_aio_client: Client to use for downloading from the GCS.
         logger: The logger to use.
+        overwrite: If True, overwrite the existing package.
 
     Returns:
         Path to the local directory containing the unpacked package files.
@@ -695,114 +697,123 @@ async def download_and_unpack_package(
 
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
         assert local_dir != pkg_file, "Invalid pkg_file!"
-        if local_dir.exists():
+
+        download_package: bool = True
+        if local_dir.exists() and not overwrite:
+            download_package = False
+            assert local_dir.is_dir(), f"{local_dir} is not a directory"
+        elif local_dir.exists():
             shutil.rmtree(local_dir)
 
-        protocol, pkg_name = parse_uri(pkg_uri)
-        if protocol == Protocol.GCS:
-            if gcs_aio_client is None:
-                raise ValueError("GCS client must be provided to download from GCS.")
-
-            # Download package from the GCS.
-            code = await gcs_aio_client.internal_kv_get(
-                pkg_uri.encode(), namespace=None, timeout=None
-            )
-            if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
-                code = None
-            if code is None:
-                raise IOError(
-                    f"Failed to download runtime_env file package {pkg_uri} "
-                    "from the GCS to the Ray worker node. The package may "
-                    "have prematurely been deleted from the GCS due to a "
-                    "long upload time or a problem with Ray. Try setting the "
-                    "environment variable "
-                    f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR} "
-                    " to a value larger than the upload time in seconds "
-                    "(the default is "
-                    f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT}). "
-                    "If this fails, try re-running "
-                    "after making any change to a file in the file package."
-                )
-            code = code or b""
-            pkg_file.write_bytes(code)
-
-            if is_zip_uri(pkg_uri):
-                unzip_package(
-                    package_path=pkg_file,
-                    target_dir=local_dir,
-                    remove_top_level_directory=False,
-                    unlink_zip=True,
-                    logger=logger,
-                )
-            else:
-                return str(pkg_file)
-        elif protocol in Protocol.remote_protocols():
-            # Download package from remote URI
-            tp = None
-            install_warning = (
-                "Note that these must be preinstalled "
-                "on all nodes in the Ray cluster; it is not "
-                "sufficient to install them in the runtime_env."
-            )
-
-            if protocol == Protocol.S3:
-                try:
-                    import boto3
-                    from smart_open import open as open_file
-                except ImportError:
-                    raise ImportError(
-                        "You must `pip install smart_open` and "
-                        "`pip install boto3` to fetch URIs in s3 "
-                        "bucket. " + install_warning
-                    )
-                tp = {"client": boto3.client("s3")}
-            elif protocol == Protocol.GS:
-                try:
-                    from google.cloud import storage  # noqa: F401
-                    from smart_open import open as open_file
-                except ImportError:
-                    raise ImportError(
-                        "You must `pip install smart_open` and "
-                        "`pip install google-cloud-storage` "
-                        "to fetch URIs in Google Cloud Storage bucket."
-                        + install_warning
-                    )
-            elif protocol == Protocol.FILE:
-                pkg_uri = pkg_uri[len("file://") :]
-
-                def open_file(uri, mode, *, transport_params=None):
-                    return open(uri, mode)
-
-            else:
-                try:
-                    from smart_open import open as open_file
-                except ImportError:
-                    raise ImportError(
-                        "You must `pip install smart_open` "
-                        f"to fetch {protocol.value.upper()} URIs. " + install_warning
+        if download_package:
+            protocol, pkg_name = parse_uri(pkg_uri)
+            if protocol == Protocol.GCS:
+                if gcs_aio_client is None:
+                    raise ValueError(
+                        "GCS client must be provided to download from GCS."
                     )
 
-            with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
-                with open_file(pkg_file, "wb") as fin:
-                    fin.write(package_zip.read())
+                # Download package from the GCS.
+                code = await gcs_aio_client.internal_kv_get(
+                    pkg_uri.encode(), namespace=None, timeout=None
+                )
+                if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
+                    code = None
+                if code is None:
+                    raise IOError(
+                        f"Failed to download runtime_env file package {pkg_uri} "
+                        "from the GCS to the Ray worker node. The package may "
+                        "have prematurely been deleted from the GCS due to a "
+                        "long upload time or a problem with Ray. Try setting the "
+                        "environment variable "
+                        f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR} "
+                        " to a value larger than the upload time in seconds "
+                        "(the default is "
+                        f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT}). "
+                        "If this fails, try re-running "
+                        "after making any change to a file in the file package."
+                    )
+                code = code or b""
+                pkg_file.write_bytes(code)
 
-            if pkg_file.suffix in [".zip", ".jar"]:
-                unzip_package(
-                    package_path=pkg_file,
-                    target_dir=local_dir,
-                    remove_top_level_directory=True,
-                    unlink_zip=True,
-                    logger=logger,
+                if is_zip_uri(pkg_uri):
+                    unzip_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=False,
+                        unlink_zip=True,
+                        logger=logger,
+                    )
+                else:
+                    return str(pkg_file)
+            elif protocol in Protocol.remote_protocols():
+                # Download package from remote URI
+                tp = None
+                install_warning = (
+                    "Note that these must be preinstalled "
+                    "on all nodes in the Ray cluster; it is not "
+                    "sufficient to install them in the runtime_env."
                 )
-            elif pkg_file.suffix == ".whl":
-                return str(pkg_file)
+
+                if protocol == Protocol.S3:
+                    try:
+                        import boto3
+                        from smart_open import open as open_file
+                    except ImportError:
+                        raise ImportError(
+                            "You must `pip install smart_open` and "
+                            "`pip install boto3` to fetch URIs in s3 "
+                            "bucket. " + install_warning
+                        )
+                    tp = {"client": boto3.client("s3")}
+                elif protocol == Protocol.GS:
+                    try:
+                        from google.cloud import storage  # noqa: F401
+                        from smart_open import open as open_file
+                    except ImportError:
+                        raise ImportError(
+                            "You must `pip install smart_open` and "
+                            "`pip install google-cloud-storage` "
+                            "to fetch URIs in Google Cloud Storage bucket."
+                            + install_warning
+                        )
+                elif protocol == Protocol.FILE:
+                    pkg_uri = pkg_uri[len("file://") :]
+
+                    def open_file(uri, mode, *, transport_params=None):
+                        return open(uri, mode)
+
+                else:
+                    try:
+                        from smart_open import open as open_file
+                    except ImportError:
+                        raise ImportError(
+                            "You must `pip install smart_open` "
+                            f"to fetch {protocol.value.upper()} URIs. "
+                            + install_warning
+                        )
+
+                with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
+                    with open_file(pkg_file, "wb") as fin:
+                        fin.write(package_zip.read())
+
+                if pkg_file.suffix in [".zip", ".jar"]:
+                    unzip_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=True,
+                        unlink_zip=True,
+                        logger=logger,
+                    )
+                elif pkg_file.suffix == ".whl":
+                    return str(pkg_file)
+                else:
+                    raise NotImplementedError(
+                        f"Package format {pkg_file.suffix} is ",
+                        "not supported for remote protocols",
+                    )
             else:
-                raise NotImplementedError(
-                    f"Package format {pkg_file.suffix} is ",
-                    "not supported for remote protocols",
-                )
-        else:
-            raise NotImplementedError(f"Protocol {protocol} is not supported")
+                raise NotImplementedError(f"Protocol {protocol} is not supported")
 
         return str(local_dir)
 
