@@ -15,18 +15,18 @@ class CachedChannel(ChannelInterface):
     Args:
         num_reads: The number of reads from this channel that must happen before
             writing again. Readers must be methods of the same actor.
-        inner_channel: The inner channel to cache data from. If None, the data is
-            read from the serialization context.
+        inner_channel: The inner channel to cache data from.
         _channel_id: The unique ID for the channel. If None, a new ID is generated.
     """
 
     def __init__(
         self,
         num_reads: int,
-        inner_channel: Optional[ChannelInterface] = None,
+        inner_channel: ChannelInterface,
         _channel_id: Optional[str] = None,
     ):
         assert num_reads > 0, "num_reads must be greater than 0."
+        assert inner_channel is not None, "inner_channel must be provided."
         self._num_reads = num_reads
         self._inner_channel = inner_channel
         # Generate a unique ID for the channel. The writer and reader will use
@@ -36,12 +36,10 @@ class CachedChannel(ChannelInterface):
             self._channel_id = str(uuid.uuid4())
 
     def ensure_registered_as_writer(self) -> None:
-        if self._inner_channel is not None:
-            self._inner_channel.ensure_registered_as_writer()
+        self._inner_channel.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self) -> None:
-        if self._inner_channel is not None:
-            self._inner_channel.ensure_registered_as_reader()
+        self._inner_channel.ensure_registered_as_reader()
 
     def __reduce__(self):
         return CachedChannel, (
@@ -58,20 +56,7 @@ class CachedChannel(ChannelInterface):
         )
 
     def write(self, value: Any, timeout: Optional[float] = None):
-        # TODO: better organize the imports
-        from ray.experimental.channel import ChannelContext
-
-        if self._inner_channel is not None:
-            self._inner_channel.write(value, timeout)
-            return
-
-        # Otherwise no need to check timeout as the operation is non-blocking.
-
-        # Because both the reader and writer are in the same worker process,
-        # we can directly store the data in the context instead of storing
-        # it in the channel object. This removes the serialization overhead of `value`.
-        ctx = ChannelContext.get_current().serialization_context
-        ctx.set_data(self._channel_id, value, self._num_reads)
+        self._inner_channel.write(value, timeout)
 
     def read(self, timeout: Optional[float] = None) -> Any:
         # TODO: better organize the imports
@@ -102,8 +87,6 @@ class CachedChannel(ChannelInterface):
 
     def close(self) -> None:
         from ray.experimental.channel import ChannelContext
-
-        if self._inner_channel is not None:
-            self._inner_channel.close()
+        self._inner_channel.close()
         ctx = ChannelContext.get_current().serialization_context
         ctx.reset_data(self._channel_id)
