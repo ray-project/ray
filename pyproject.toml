@@ -38,3 +38,6 @@ ignore = [
     "C418",
     "C419",
 ]
+exclude = [
+    "python/ray/serve/tests/test_config_files/syntax_error.py",
+]
