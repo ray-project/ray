@@ -188,7 +188,6 @@ class DashboardHead:
 
         Returns ([DashboardHeadModule], [(DashboardHeadActorModule, ActorHandle)]).
         """
-        logger.error(f"{modules_to_load=}")
         modules = []
         actors = []
         head_cls_list = dashboard_utils.get_all_modules(DashboardHeadModule)
@@ -207,11 +206,32 @@ class DashboardHead:
                 c = cls(self)
                 modules.append(c)
 
+        this_node_id = ray.get_runtime_context().get_node_id()
+        node_affinity_strategy = (
+            ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                node_id=this_node_id,
+                soft=False,
+            )
+        )
         for cls in head_actor_cls_list:
             logger.info("Loading %s: %s", DashboardHeadActorModule.__name__, cls)
             logger.info(f"{cls.__name__=}")
             if cls.__name__ in modules_to_load:
-                c = ray.remote(cls).remote(gcs_address=self.gcs_address)
+                # Creates an actor with options:
+                # - 0 CPUs,
+                # - infinite restarts,
+                # - infinite task retries,
+                # - co-locate with this process (ie head node).
+                c = (
+                    ray.remote(cls)
+                    .options(
+                        num_cpus=0,
+                        max_restarts=-1,
+                        max_task_retries=-1,
+                        scheduling_strategy=node_affinity_strategy,
+                    )
+                    .remote(gcs_address=self.gcs_address)
+                )
                 actors.append((cls, c))
 
         # Verify modules are loaded as expected.
@@ -230,7 +250,6 @@ class DashboardHead:
         return modules, actors
 
     async def _setup_metrics(self, gcs_aio_client):
-        return
         metrics = DashboardPrometheusMetrics()
 
         # Setup prometheus metrics export server

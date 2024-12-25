@@ -6,7 +6,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.modules.healthz.utils import HealthChecker
 
-routes = optional_utils.DashboardHeadRouteTable
+routes = optional_utils.DashboardHeadActorRouteTable
 
 
 class HealthzHead(dashboard_utils.DashboardHeadActorModule):
@@ -20,12 +20,9 @@ class HealthzHead(dashboard_utils.DashboardHeadActorModule):
         super().__init__(gcs_address=gcs_address)
         HealthzHead._gcs_aio_client = GcsAioClient(gcs_address)
         HealthzHead._health_checker = HealthChecker(self._gcs_aio_client)
-        print(f"init {self} ")
-        print(f" {self._health_checker}, {self._gcs_aio_client}")
 
     @routes.get("/api/gcs_healthz")
     async def health_check(self, req: bytes) -> Response:
-        # TODO: self is None rn.
         alive = False
         try:
             alive = await HealthzHead._health_checker.check_gcs_liveness()
@@ -36,12 +33,19 @@ class HealthzHead(dashboard_utils.DashboardHeadActorModule):
                 )
         except Exception as e:
             # TODO: aiohttp HTTPException is not serializable (pickle fails)
-            raise HTTPServiceUnavailable(reason=f"Health check failed: {e}")
-
-        return HTTPServiceUnavailable(reason="Health check failed")
+            return Response(
+                text=f"Health check failed: {e}",
+                status=HTTPServiceUnavailable.status_code,
+                content_type="application/text",
+            )
+        return Response(
+            text="Health check failed",
+            status=HTTPServiceUnavailable.status_code,
+            content_type="application/text",
+        )
 
     async def run(self):
-        print(f"running! {self._gcs_address}, {self._health_checker}")
+        print(f"HealthzHead running! {self._gcs_address}, {self._health_checker}")
 
     @staticmethod
     def is_minimal_module():

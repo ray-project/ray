@@ -236,7 +236,7 @@ class HttpServerDashboardHead:
             dashboard_optional_utils.DashboardHeadRouteTable.bind(c)
 
         for cls, actor in actors:
-            dashboard_optional_utils.DashboardHeadRouteTable.bind_actor(cls, actor)
+            dashboard_optional_utils.DashboardHeadActorRouteTable.bind_actor(cls, actor)
 
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
@@ -250,6 +250,9 @@ class HttpServerDashboardHead:
             ],
         )
         app.add_routes(routes=routes.bound_routes())
+        app.add_routes(
+            routes=dashboard_optional_utils.DashboardHeadActorRouteTable.bound_routes()
+        )
 
         self.runner = aiohttp.web.AppRunner(
             app,

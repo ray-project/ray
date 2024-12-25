@@ -12,7 +12,7 @@ import os
 import time
 import traceback
 from collections import namedtuple
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from aiohttp.web import Request, Response
 
@@ -91,15 +91,7 @@ def method_route_table_factory():
                         #   * (Request, )
                         #   * (self, Request)
                         req = args[-1]
-                        # If the instance is an ActorHandle, make the remote call. Else
-                        # call the method directly.
-                        # HACK(ryw): find if we need it more explicit.
-                        if isinstance(bind_info.instance, ray.actor.ActorHandle):
-                            method_name = handler.__name__
-                            remote_method = getattr(bind_info.instance, method_name)
-                            return await remote_method.remote(await req.read())
-                        else:
-                            return await handler(bind_info.instance, req)
+                        return await handler(bind_info.instance, req)
                     except Exception:
                         logger.exception("Handle %s %s failed.", method, path)
                         return rest_response(
@@ -109,7 +101,6 @@ def method_route_table_factory():
                 cls._bind_map[method][path] = bind_info
                 _handler_route.__route_method__ = method
                 _handler_route.__route_path__ = path
-                logger.error(_handler_route)
                 return cls._routes.route(method, path, **kwargs)(_handler_route)
 
             return _wrapper
@@ -149,7 +140,6 @@ def method_route_table_factory():
         @classmethod
         def bind(cls, instance):
             def predicate(o):
-                logger.error(f"predicate: {o}")
                 if inspect.ismethod(o):
                     return hasattr(o, "__route_method__") and hasattr(
                         o, "__route_path__"
@@ -158,22 +148,143 @@ def method_route_table_factory():
 
             handler_routes = inspect.getmembers(instance, predicate)
             for _, h in handler_routes:
-                logger.error(f"{h=}, {h.__func__}")
                 cls._bind_map[h.__func__.__route_method__][
                     h.__func__.__route_path__
                 ].instance = instance
 
-        @classmethod
-        def bind_actor(cls, actor_cls, actor):
-            logger.error(f"bind_actor: {actor_cls}, {actor}")
+    return MethodRouteTable
 
-            def predicate(o):
-                logger.error(
-                    f"predicate: {o}, ismethod {inspect.ismethod(o)},"
-                    f" isfunction {inspect.isfunction(o)}"
-                    f" hasattr {hasattr(o, '__route_method__')},"
-                    f" hasattr {hasattr(o, '__route_path__')}"
+
+def actor_route_table_factory():
+    class ActorRouteTable:
+        """A helper class to bind http route to ray actor."""
+
+        _bind_map = collections.defaultdict(dict)
+        _routes = aiohttp.web.RouteTableDef()
+
+        class _BindInfo:
+            def __init__(self, filename, lineno, ray_method_name, actor_handle):
+                self.filename = filename
+                self.lineno = lineno
+                self.ray_method_name = ray_method_name
+                self.actor_handle = actor_handle
+
+        @classmethod
+        def routes(cls):
+            return cls._routes
+
+        @classmethod
+        def bound_routes(cls):
+            bound_items = []
+            for r in cls._routes._items:
+                if isinstance(r, RouteDef):
+                    route_method = getattr(r.handler, "__route_method__")
+                    route_path = getattr(r.handler, "__route_path__")
+                    actor_handle = cls._bind_map[route_method][route_path].actor_handle
+                    if actor_handle is not None:
+                        bound_items.append(r)
+                else:
+                    bound_items.append(r)
+            routes = aiohttp.web.RouteTableDef()
+            routes._items = bound_items
+            logger.error(f"routes: {cls._routes}, bound_items: {bound_items}")
+            return routes
+
+        @classmethod
+        def invoke_route(cls, method, path) -> Callable[[Request], Awaitable[Response]]:
+            # This is called from aiohttp router side.
+            async def _invoke_route(req: Request):
+                try:
+                    bind_info = cls._bind_map[method][path]
+                    actor_handle = bind_info.actor_handle
+                    remote_method = getattr(actor_handle, bind_info.ray_method_name)
+
+                    body = await req.read()
+                    ray_obj = remote_method.remote(body)
+                    return await ray_obj
+                except Exception:
+                    logger.exception("Handle %s %s failed.", method, path)
+                    return rest_response(success=False, message=traceback.format_exc())
+
+            _invoke_route.__route_method__ = method
+            _invoke_route.__route_path__ = path
+            return _invoke_route
+
+        @classmethod
+        def _register_route(cls, method, path, **kwargs):
+            """
+            Register a route to an actor method.
+            1. add to self._bind_map[method][path]
+            2. add to invoke_route to self._routes
+            3. the method is not changed except for __route_method__ and __route_path__
+            and waits for bind_actor to provide BindInfo.actor_handle.
+
+            On invocation time:
+            1. aiohttp router calls self.invoke_route(method, path)(req)
+            2. gets actor_handle from self._bind_map[method][path]
+            3. await actor_handle.method(req)
+            """
+
+            def _wrapper(handler):
+                if path in cls._bind_map[method]:
+                    bind_info = cls._bind_map[method][path]
+                    raise Exception(
+                        f"Duplicated route path: {path}, "
+                        f"previous one registered at "
+                        f"{bind_info.filename}:{bind_info.lineno}"
+                    )
+
+                bind_info = cls._BindInfo(
+                    handler.__code__.co_filename,
+                    handler.__code__.co_firstlineno,
+                    handler.__name__,
+                    None,
                 )
+
+                cls._bind_map[method][path] = bind_info
+                handler.__route_method__ = method
+                handler.__route_path__ = path
+                invoke_route = cls.invoke_route(method, path)
+                cls._routes.route(method, path, **kwargs)(invoke_route)
+                return handler
+
+            return _wrapper
+
+        @classmethod
+        def head(cls, path, **kwargs):
+            return cls._register_route(hdrs.METH_HEAD, path, **kwargs)
+
+        @classmethod
+        def get(cls, path, **kwargs):
+            return cls._register_route(hdrs.METH_GET, path, **kwargs)
+
+        @classmethod
+        def post(cls, path, **kwargs):
+            return cls._register_route(hdrs.METH_POST, path, **kwargs)
+
+        @classmethod
+        def put(cls, path, **kwargs):
+            return cls._register_route(hdrs.METH_PUT, path, **kwargs)
+
+        @classmethod
+        def patch(cls, path, **kwargs):
+            return cls._register_route(hdrs.METH_PATCH, path, **kwargs)
+
+        @classmethod
+        def delete(cls, path, **kwargs):
+            return cls._register_route(hdrs.METH_DELETE, path, **kwargs)
+
+        @classmethod
+        def view(cls, path, **kwargs):
+            return cls._register_route(hdrs.METH_ANY, path, **kwargs)
+
+        @classmethod
+        def static(cls, prefix: str, path: PathLike, **kwargs: Any) -> None:
+            cls._routes.static(prefix, path, **kwargs)
+
+        @classmethod
+        def bind_actor(cls, actor_cls, actor_handle):
+            def predicate(o):
                 if inspect.isfunction(o):
                     return hasattr(o, "__route_method__") and hasattr(
                         o, "__route_path__"
@@ -181,17 +292,20 @@ def method_route_table_factory():
                 return False
 
             handler_routes = inspect.getmembers(actor_cls, predicate)
+            for _, h in handler_routes:
+                cls._bind_map[h.__route_method__][
+                    h.__route_path__
+                ].actor_handle = actor_handle
             logger.error(
-                f"handler_routes: {handler_routes} for {actor_cls}, {actor}, "
+                f"handler_routes: {handler_routes} for {actor_cls}, {actor_handle}, "
                 f"all = {inspect.getmembers(actor_cls)}"
             )
-            for _, h in handler_routes:
-                cls._bind_map[h.__route_method__][h.__route_path__].instance = actor
 
-    return MethodRouteTable
+    return ActorRouteTable
 
 
 DashboardHeadRouteTable = method_route_table_factory()
+DashboardHeadActorRouteTable = actor_route_table_factory()
 DashboardAgentRouteTable = method_route_table_factory()
 
 
