@@ -9,6 +9,7 @@ steps:
     matrix:
       - clang_format
       - code_format
+      - pre_commit
       - untested_code_snippet
       - banned_words
       - doc_readme
