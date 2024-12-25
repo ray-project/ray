@@ -147,7 +147,6 @@ inline int64_t current_sys_time_us() {
   return mu_since_epoch.count();
 }
 
-// Change from inline definition to declaration
 std::string GenerateUUIDV4();
 
 /// A helper function to parse command-line arguments in a platform-compatible manner.
