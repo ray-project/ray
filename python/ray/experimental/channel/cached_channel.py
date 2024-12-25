@@ -87,6 +87,7 @@ class CachedChannel(ChannelInterface):
 
     def close(self) -> None:
         from ray.experimental.channel import ChannelContext
+
         self._inner_channel.close()
         ctx = ChannelContext.get_current().serialization_context
         ctx.reset_data(self._channel_id)
