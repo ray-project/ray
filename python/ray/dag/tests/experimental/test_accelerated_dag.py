@@ -1251,7 +1251,7 @@ def test_dag_errors(ray_start_regular):
     with pytest.raises(
         ValueError,
         match=(
-            "ray.get\(\) can only be called once "
+            r"ray.get\(\) can only be called once "
             "on a CompiledDAGRef, and it was already called."
         ),
     ):
@@ -1352,7 +1352,7 @@ def test_exceed_max_buffered_results(ray_start_regular):
         ValueError,
         match=(
             "Too many buffered results: the allowed max count for buffered "
-            "results is 1; call ray.get\(\) on previous CompiledDAGRefs to "
+            r"results is 1; call ray.get\(\) on previous CompiledDAGRefs to "
             "free them up from buffer"
         ),
     ):
@@ -1387,7 +1387,7 @@ def test_exceed_max_buffered_results_multi_output(ray_start_regular, single_fetc
         ValueError,
         match=(
             "Too many buffered results: the allowed max count for buffered "
-            "results is 1; call ray.get\(\) on previous CompiledDAGRefs to "
+            r"results is 1; call ray.get\(\) on previous CompiledDAGRefs to "
             "free them up from buffer"
         ),
     ):

@@ -359,8 +359,8 @@ class GroupedData:
             >>> ray.data.le(100).groupby("value").min() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)]) \\ # doctest: +SKIP
+            ...     .groupby("A") \\ # doctest: +SKIP
             ...     .min(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -398,8 +398,8 @@ class GroupedData:
             >>> ray.data.le(100).groupby("value").max() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)]) \\ # doctest: +SKIP
+            ...     .groupby("A") \\ # doctest: +SKIP
             ...     .max(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -437,8 +437,8 @@ class GroupedData:
             >>> ray.data.le(100).groupby("value").mean() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)]) \\ # doctest: +SKIP
+            ...     .groupby("A") \\ # doctest: +SKIP
             ...     .mean(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -479,8 +479,8 @@ class GroupedData:
             >>> ray.data.range(100).groupby("id").std(ddof=0) # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)]) \\ # doctest: +SKIP
+            ...     .groupby("A") \\ # doctest: +SKIP
             ...     .std(["B", "C"]) # doctest: +SKIP
 
         NOTE: This uses Welford's online method for an accumulator-style

@@ -31,9 +31,9 @@ Multiply semantics of each steps:
    [s_2_1, s_2_2]]
 
       /-> s_1_1 ->  s_2_1 - \
-entry           \-> s_2_2 ---\
-      \-> s_1_2 ->  s_2_1 ----> end
-                \-> s_2_2 --/
+entry           \\-> s_2_2 ---\
+      \\-> s_1_2 ->  s_2_1 ----> end
+                \\-> s_2_2 --/
 
 Each step will only be executed one time.
 
