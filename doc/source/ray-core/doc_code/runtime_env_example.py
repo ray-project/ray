@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 """
 This file holds code for the runtime envs documentation.
 

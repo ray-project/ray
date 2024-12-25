@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __deployment_start__
 import ray

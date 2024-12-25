@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# flake8: noqa
+# ruff: noqa
 """
 Hyperparameter tuning with Ray Tune
 ===================================

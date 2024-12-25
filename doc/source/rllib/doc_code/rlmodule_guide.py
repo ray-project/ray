@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 from ray.rllib.utils.annotations import override
 
 

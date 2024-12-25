@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 # __streaming_example_start__
 # File name: stream.py
 from typing import AsyncGenerator, Generator

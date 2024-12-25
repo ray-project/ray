@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __rllib-in-60s-begin__
 from ray.rllib.algorithms.ppo import PPOConfig

@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __start_my_first_deployment__
 from ray import serve

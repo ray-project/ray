@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __rllib-convert-pickle-to-msgpack-checkpoint-begin__
 import tempfile

@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # fmt: off
 # __task_exceptions_begin__
