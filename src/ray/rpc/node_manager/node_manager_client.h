@@ -73,8 +73,8 @@ class NodeManagerWorkerClient
       const std::string &address,
       const int port,
       ClientCallManager &client_call_manager) {
-    // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot invoke
-    // private constructors.
+    // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
+    // invoke private constructors.
     auto instance = new NodeManagerWorkerClient(address, port, client_call_manager);
     return std::shared_ptr<NodeManagerWorkerClient>(instance);
   }

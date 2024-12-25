@@ -25,14 +25,16 @@ class DefaultCoreWorkerMemoryStoreWithThread : public CoreWorkerMemoryStore {
     std::unique_ptr<InstrumentedIOContextWithThread> io_context =
         std::make_unique<InstrumentedIOContextWithThread>(
             "DefaultCoreWorkerMemoryStoreWithThread");
-    return std::make_unique<DefaultCoreWorkerMemoryStoreWithThread>(std::move(io_context));
+    return std::make_unique<DefaultCoreWorkerMemoryStoreWithThread>(
+        std::move(io_context));
   }
 
   static std::shared_ptr<DefaultCoreWorkerMemoryStoreWithThread> CreateShared() {
     std::unique_ptr<InstrumentedIOContextWithThread> io_context =
         std::make_unique<InstrumentedIOContextWithThread>(
             "DefaultCoreWorkerMemoryStoreWithThread");
-    return std::make_shared<DefaultCoreWorkerMemoryStoreWithThread>(std::move(io_context));
+    return std::make_shared<DefaultCoreWorkerMemoryStoreWithThread>(
+        std::move(io_context));
   }
 
   ~DefaultCoreWorkerMemoryStoreWithThread() { io_context_->Stop(); }
