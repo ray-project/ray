@@ -147,6 +147,17 @@ bool RemoveCtxFromDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
   return true;
 }
 
+void PlaceProcessIntoDefaultCgroup(const PhysicalModeExecutionContext &ctx) {
+  const std::string procs_path =
+      absl::StrFormat("%s/%s/cgroup.procs", ctx.cgroup_directory, kDefaultCgroupV2Id);
+  {
+    std::ofstream out_file{procs_path.data(), std::ios::out};
+    out_file << ctx.pid;
+  }
+
+  return;
+}
+
 }  // namespace
 
 /*static*/ std::unique_ptr<CgroupV2Setup> CgroupV2Setup::New(
@@ -178,6 +189,7 @@ CgroupV2Setup::~CgroupV2Setup() {
     const PhysicalModeExecutionContext &ctx) {
   // Delete the dedicated cgroup if max memory specified.
   if (ctx.max_memory > 0) {
+    PlaceProcessIntoDefaultCgroup(ctx);
     return DeleteCgroupV2(ctx);
   }
 
