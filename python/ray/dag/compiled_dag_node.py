@@ -759,7 +759,7 @@ class CompiledDAG:
             max_inflight_executions: The maximum number of in-flight executions that
                 are allowed to be sent to this DAG. Before submitting more requests,
                 the caller is responsible for calling ray.get to get the result,
-                otherwise, RayAdagCapacityExceeded is raised.
+                otherwise, RayCgraphCapacityExceeded is raised.
             overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution. If True, the communication
                 and computation can be overlapped, which can improve the
@@ -968,7 +968,7 @@ class CompiledDAG:
                 continue
             if (
                 len(task.downstream_task_idxs) == 0
-                and task.dag_node.is_adag_output_node
+                and task.dag_node.is_cgraph_output_node
             ):
                 assert self.output_task_idx is None, "More than one output node found"
                 self.output_task_idx = idx
@@ -1143,7 +1143,7 @@ class CompiledDAG:
                 continue
             if (
                 len(task.downstream_task_idxs) == 0
-                and not task.dag_node.is_adag_output_node
+                and not task.dag_node.is_cgraph_output_node
             ):
                 leaf_nodes.append(task.dag_node)
         # Leaf nodes are not allowed because the exception thrown by the leaf
@@ -1931,13 +1931,13 @@ class CompiledDAG:
             self._execution_index - self._max_finished_execution_index
         )
         if num_in_flight_requests > self._max_inflight_executions:
-            raise ray.exceptions.RayAdagCapacityExceeded(
+            raise ray.exceptions.RayCgraphCapacityExceeded(
                 f"There are {num_in_flight_requests} in-flight requests which "
                 "is more than specified _max_inflight_executions of the dag: "
                 f"{self._max_inflight_executions}. Retrieve the output using "
                 "ray.get before submitting more requests or increase "
                 "`max_inflight_executions`. "
-                "`adag.experimental_compile(_max_inflight_executions=...)`"
+                "`dag.experimental_compile(_max_inflight_executions=...)`"
             )
 
     def _has_execution_results(

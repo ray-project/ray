@@ -895,7 +895,7 @@ class RayChannelTimeoutError(RayChannelError, TimeoutError):
 
 
 @PublicAPI(stability="alpha")
-class RayAdagCapacityExceeded(RaySystemError):
+class RayCgraphCapacityExceeded(RaySystemError):
     """Raised when the accelerated DAG channel's buffer is at max capacity"""
 
     pass
@@ -929,5 +929,5 @@ RAY_EXCEPTION_TYPES = [
     RayChannelError,
     RayChannelTimeoutError,
     OufOfBandObjectRefSerializationException,
-    RayAdagCapacityExceeded,
+    RayCgraphCapacityExceeded,
 ]
