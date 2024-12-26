@@ -3176,11 +3176,9 @@ cdef class CoreWorker:
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
 
-    def get_objects(self, object_refs, TaskID current_task_id,
-                    int64_t timeout_ms=-1):
+    def get_objects(self, object_refs, int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
-            CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Get(
@@ -3489,12 +3487,14 @@ cdef class CoreWorker:
 
         return c_object_id.Binary()
 
-    def wait(self, object_refs_or_generators, int num_returns, int64_t timeout_ms,
-             TaskID current_task_id, c_bool fetch_local):
+    def wait(self,
+             object_refs_or_generators,
+             int num_returns,
+             int64_t timeout_ms,
+             c_bool fetch_local):
         cdef:
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
-            CTaskID c_task_id = current_task_id.native()
 
         object_refs = []
         for ref_or_generator in object_refs_or_generators:
