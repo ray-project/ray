@@ -135,13 +135,11 @@ class BroadcastCollectiveTimeoutError(CollectiveTimeoutError):
         hanging_ranks = [i for i, t in time_elapsed.items() if t is None]
 
         message = (
-            f"The checkpoint broadcast timed out after {max_time_elapsed} seconds. "
-            "It may be caused by slow workers or not all workers calling "
-            "`ray.train.report`. Please make sure all workers called `ray.train.report`"
-            f"\nThe following ranks are not reaching the collective operation: "
-            f"{hanging_ranks}\n"
-            f"The current collective timeout is set to {timeout_s} seconds. "
-            f"You can set the {REPORT_BARRIER_TIMEOUT_S_ENV_VAR} environment variable."
+            f"The broadcast operation timed out after {max_time_elapsed:.2f} seconds. "
+            "Please make sure all worker ranks call `ray.train.report`. \n"
+            f"The following ranks have not called it: {hanging_ranks}\n"
+            f"You can set this timeout with the {REPORT_BARRIER_TIMEOUT_S_ENV_VAR} "
+            f"environment variable (current value: {timeout_s:.2f} s)."
         )
         super().__init__(message)
 

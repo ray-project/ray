@@ -139,7 +139,7 @@ py_test(
 
 py_test(
     name = "test_tensorflow_trainer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_tensorflow_trainer.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
     deps = ["//:ray_lib", ":conftest"],
@@ -166,7 +166,7 @@ py_test(
 
 py_test(
     name = "test_torch_transformers_train",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_torch_transformers_train.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
     deps = ["//:ray_lib", ":conftest"],
@@ -193,7 +193,7 @@ py_test(
 
 py_test(
     name = "test_worker_group",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_worker_group.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
     deps = ["//:ray_lib", ":conftest"],

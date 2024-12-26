@@ -21,6 +21,7 @@ Please ensure that all workers call `ray.train.report` regardless of whether
 they participate in checkpointing or not. Here are the ranks that have reported
 so far and how long they have been waiting in seconds:
 {time_elapsed_dict}
+
 You can set the {warn_interval_env_var} environment variable to change the frequency
 of this warning from its current value: {warn_interval_s} seconds.
 """
@@ -84,7 +85,7 @@ class SynchronizationActor:
             self._sync_start_times = [None] * world_size
         elif world_size != self._world_size:
             raise ValueError(
-                f"Expects all callers to provide the same world size. \
+                f"Expected all callers to provide the same world size. \
                 Got {world_size} and expected {self._world_size}."
             )
 
