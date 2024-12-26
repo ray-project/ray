@@ -66,6 +66,15 @@ py_test(
 )
 
 py_test(
+    name = "test_lightgbm_trainer",
+    size = "small",
+    srcs = ["tests/test_lightgbm_trainer.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
     name = "test_lightning_integration",
     size = "medium",
     srcs = ["tests/test_lightning_integration.py"],
@@ -195,15 +204,6 @@ py_test(
     name = "test_worker_group",
     size = "medium",
     srcs = ["tests/test_worker_group.py"],
-    tags = ["exclusive", "team:ml", "train_v2"],
-    deps = ["//:ray_lib", ":conftest"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
-)
-
-py_test(
-    name = "test_lightgbm_trainer",
-    size = "small",
-    srcs = ["tests/test_lightgbm_trainer.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
     deps = ["//:ray_lib", ":conftest"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
