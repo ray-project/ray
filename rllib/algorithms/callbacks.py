@@ -125,10 +125,11 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         Args:
             algorithm: Reference to the Algorithm instance.
             worker_set: The EnvRunnerGroup object in which the workers in question
-                reside. You can use a `worker_set.foreach_env_runner(remote_worker_ids=...,
-                local_worker=False)` method call to execute custom
-                code on the recreated (remote) workers. Note that the local worker is
-                never recreated as a failure of this would also crash the Algorithm.
+                reside. You can use a
+                `worker_set.foreach_env_runner(remote_worker_ids=...,
+                local_worker=False)` method call to execute custom code on the recreated
+                (remote) workers. Note that the local worker is never recreated as a
+                failure of this would also crash the Algorithm.
             worker_ids: The list of (remote) worker IDs that have been recreated.
             is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup
                 (located in `Algorithm.eval_env_runner_group`) or not.

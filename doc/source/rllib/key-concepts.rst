@@ -55,7 +55,7 @@ its :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`
 (containing ``m`` :py:class:`~ray.rllib.core.learner.learner.Learner` `actors <actors.html>`__)
 scaling sample collection and training, respectively, from a single core to many thousands of cores in a cluster.
 
-.. TODO: Separate out our scaling guide into its own page in new PR
+.. todo: Separate out our scaling guide into its own page in new PR
 
 See this `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
 
@@ -166,9 +166,7 @@ They are used by RLlib's :ref:`EnvRunners <rllib-key-concepts-env-runners>` for 
 :ref:`RL environment <rllib-key-concepts-environments>` and by RLlib's :ref:`Learners <rllib-key-concepts-learners>` for
 computing losses and gradients.
 
-.. TODO: update with new RLModule figure in other PR
-
-.. figure:: images/rllib-blabla.png
+.. figure:: images/rl_modules/rl_module_overview.svg
 
     **RLModule overview**: *(left)* A minimal :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` contains a neural network
     and defines its exploration-, inference- and training logic to map observations to actions.
@@ -308,8 +306,8 @@ configuration, in particular the `config.environment()` and `config.multi_agent(
 settings. To check, whether your config is multi-agent, call the
 :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.is_multi_agent` method.
 
-You can use an :py:class`~ray.rllib.env.env_runner.EnvRunner` standalone to
-produce lists of Episodes by calling its
+RLlib always bundles several EnvRunner actors through the :py:class`~ray.rllib.env.env_runner_group.EnvRunnerGroup` API, but
+you can also use an :py:class`~ray.rllib.env.env_runner.EnvRunner` standalone to produce lists of Episodes by calling its
 :py:meth:`~ray.rllib.env.env_runner.EnvRunner.sample` method (or ``EnvRunner.sample.remote()`` in the distributed Ray actor setup).
 
 Here is an example of creating a set of remote :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors
@@ -360,4 +358,51 @@ Learner: Combining RLModule, loss function and optimizer
     See :ref:`here for a detailed description of how to use the Learner class <learner-guide>`.
 
 
+Given the :ref:`RLModule <rllib-key-concepts-rl-modules>` and one or more optimizers and loss functions,
+a :py:class`~ray.rllib.core.learner.learner.Learner` computes losses and gradients, then updates the RLModule.
 
+The input data for such an update step comes in as a list of :ref:`episodes <rllib-key-concepts-episodes>`,
+which are converted either by the Learner's own "learner connector" pipeline or by an external one into the
+final train batch.
+
+:py:class`~ray.rllib.core.learner.learner.Learner` instances are algorithm-specific, mostly due to the various
+loss functions used by different RL algorithms.
+
+RLlib always bundles several :py:class`~ray.rllib.core.learner.learner.Learner` actors through
+the :py:class`~ray.rllib.core.learner.learner_group.LearnerGroup` API applying automatic distributed-data parallelism
+on the training data in case of more than one Learner actor.
+But you can also use a :py:class`~ray.rllib.core.learner.learner.Learner` standalone to update your RLModule
+with a lists of Episodes.
+
+Here is an example of creating a single (remote) :py:class:`~ray.rllib.core.learner.learner.Learner`
+and calling its :py:meth:`~ray.rllib.core.learner.learner.Learner.update_from_episodes` method.
+
+.. testcode::
+
+    import gymnasium as gym
+    import ray
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+
+    # Configure the Learner.
+    config = (
+        PPOConfig()
+        .environment("Acrobot-v1")
+        .training(lr=0.0001)
+        .rl_module(model_config=DefaultModelConfig(fcnet_hiddens=[64, 32]))
+    )
+    ppo_learner_class = config.get_default_learner_class()
+    # Create the Learner actor.
+    learner_actor = ray.remote(ppo_learner_class).remote(
+        config=config,
+        module_spec=config.get_multi_rl_module_spec(env=gym.make("Acrobot-v1")),
+    )
+
+    # Build the Learner.
+    ray.get(learner_actor.build.remote())
+
+    # Perform an update from the list of episodes we got from the `EnvRunners` above.
+    learner_results = ray.get(learner_actor.update_from_episodes.remote(
+        episodes=tree.flatten(episodes)
+    ))
+    print(learner_results["default_policy"]["policy_loss"])
