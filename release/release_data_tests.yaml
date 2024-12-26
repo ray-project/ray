@@ -19,8 +19,8 @@
   run:
     timeout: 3600
     script: >
-      python read_and_consume_benchmark.py 
-      s3://ray-benchmark-data-internal/imagenet/parquet --format parquet 
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal/imagenet/parquet --format parquet
       --iter-bundles
 
 - name: read_images
@@ -35,9 +35,9 @@
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://ray-benchmark-data-internal/imagenet/tfrecords --format tfrecords 
+      s3://ray-benchmark-data-internal/imagenet/tfrecords --format tfrecords
       --iter-bundles
-  
+
 - name: read_from_uris
   run:
     timeout: 5400
@@ -62,8 +62,8 @@
 - name: write_parquet
   run:
     timeout: 3600
-    script: > 
-      python read_and_consume_benchmark.py 
+    script: >
+      python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write
 
 ###################
@@ -74,7 +74,7 @@
   run:
     timeout: 600
     script: >
-      python read_and_consume_benchmark.py 
+      python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf10000/lineitem --format parquet --count
 
 ###############
@@ -268,20 +268,20 @@
     - __suffix__: numpy
       run:
         script: >
-          python read_and_consume_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet 
+          python read_and_consume_benchmark.py
+          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet
           --iter-batches numpy
     - __suffix__: pandas
       run:
         script: >
-          python read_and_consume_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet 
+          python read_and_consume_benchmark.py
+          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet
           --iter-batches pandas
     - __suffix__: pyarrow
       run:
         script: >
-          python read_and_consume_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet 
+          python read_and_consume_benchmark.py
+          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet
           --iter-batches pyarrow
 
 - name: to_tf
@@ -289,8 +289,8 @@
   run:
     timeout: 2400
     script: >
-      python read_and_consume_benchmark.py 
-      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image 
+      python read_and_consume_benchmark.py
+      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image
       --to-tf image image
 
 - name: iter_torch_batches
@@ -298,8 +298,8 @@
   run:
     timeout: 2400
     script: >
-      python read_and_consume_benchmark.py 
-      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image 
+      python read_and_consume_benchmark.py
+      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image
       --iter-torch-batches
 
 ###########
@@ -339,17 +339,17 @@
   run:
     timeout: 10800
     script: >
-      python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9 
+      python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
       --shuffle
 
   variations:
     - __suffix__: regular
     - __suffix__: chaos
       run:
-        prepare: > 
-          python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 600 
-          --max-to-kill 2 
-          
+        prepare: >
+          python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 600
+          --max-to-kill 2
+
 - name: sort
   working_dir: nightly_tests
   stable: False
@@ -370,8 +370,8 @@
     - __suffix__: regular
     - __suffix__: chaos
       run:
-        prepare: > 
-          python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 900 
+        prepare: >
+          python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 900
           --max-to-kill 3
 
 
@@ -431,7 +431,7 @@
     cluster_compute: autoscaling_hetero_compute.yaml
 
   run:
-    timeout: 3600
+    timeout: 7200
     script: >
       python gpu_batch_inference.py
       --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
