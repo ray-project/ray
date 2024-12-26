@@ -14,8 +14,7 @@
 
 #include "ray/object_manager/plasma/create_request_queue.h"
 
-#include <stdlib.h>
-
+#include <cstdlib>
 #include <memory>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -117,31 +116,31 @@ Status CreateRequestQueue::ProcessRequests() {
         RAY_LOG(DEBUG) << "Reset grace period " << status << " " << spill_pending;
         oom_start_time_ns_ = -1;
         return Status::TransientObjectStoreFull("Waiting for objects to spill.");
-      } else if (now - oom_start_time_ns_ < grace_period_ns) {
+      }
+      if (now - oom_start_time_ns_ < grace_period_ns) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.
         RAY_LOG(DEBUG) << "In grace period before fallback allocation / oom.";
         return Status::ObjectStoreFull("Waiting for grace period.");
-      } else {
-        // Trigger the fallback allocator.
-        status = ProcessRequest(/*fallback_allocator=*/true, *request_it);
-        if (!status.ok()) {
-          // This only happens when an allocation is bigger than available disk space.
-          // We should throw OutOfDisk Error here.
-          (*request_it)->error = PlasmaError::OutOfDisk;
-          std::string dump = "";
-          if (dump_debug_info_callback_ && !logged_oom) {
-            dump = dump_debug_info_callback_();
-            logged_oom = true;
-          }
-          RAY_LOG(INFO) << "Out-of-disk: Failed to create object "
-                        << (*request_it)->object_id << " of size "
-                        << (*request_it)->object_size / 1024 / 1024 << "MB\n"
-                        << dump;
-        }
-        FinishRequest(request_it);
       }
+      // Trigger the fallback allocator.
+      status = ProcessRequest(/*fallback_allocator=*/true, *request_it);
+      if (!status.ok()) {
+        // This only happens when an allocation is bigger than available disk space.
+        // We should throw OutOfDisk Error here.
+        (*request_it)->error = PlasmaError::OutOfDisk;
+        std::string dump = "";
+        if (dump_debug_info_callback_ && !logged_oom) {
+          dump = dump_debug_info_callback_();
+          logged_oom = true;
+        }
+        RAY_LOG(INFO) << "Out-of-disk: Failed to create object "
+                      << (*request_it)->object_id << " of size "
+                      << (*request_it)->object_size / 1024 / 1024 << "MB\n"
+                      << dump;
+      }
+      FinishRequest(request_it);
     }
   }
 
