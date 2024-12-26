@@ -1819,11 +1819,10 @@ class CompiledDAG:
         class Monitor(threading.Thread):
             def __init__(self):
                 super().__init__(daemon=True)
-                self.in_teardown = False
-                # CV to make sure that we only perform teardown for this DAG
-                # once.
-                self.in_teardown_cond = threading.Condition(threading.Lock())
                 self.name = "CompiledGraphMonitorThread"
+                # Lock to make sure that we only perform teardown for this DAG
+                # once.
+                self._in_teardown_lock = threading.Lock()
                 self._teardown_done = False
 
             def wait_teardown(self, kill_actors: bool = False):
@@ -1863,53 +1862,39 @@ class CompiledDAG:
                         pass
 
             def teardown(self, kill_actors: bool = False):
-                do_teardown = False
-                with self.in_teardown_cond:
+                with self._in_teardown_lock:
                     if self._teardown_done:
                         return
 
-                    if not self.in_teardown:
-                        do_teardown = True
-                        self.in_teardown = True
+                    logger.info("Tearing down compiled DAG")
+                    outer._dag_submitter.close()
+                    outer._dag_output_fetcher.close()
 
-                if not do_teardown:
-                    # Teardown is already being performed.
-                    with self.in_teardown_cond:
-                        self.in_teardown_cond.wait_for(lambda: self._teardown_done)
-                        return
+                    for actor in outer.actor_refs:
+                        logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    # Cancel all actor loops in parallel.
+                    cancel_refs = [
+                        actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
+                        for actor, tasks in outer.actor_to_executable_tasks.items()
+                    ]
+                    for cancel_ref in cancel_refs:
+                        try:
+                            ray.get(cancel_ref, timeout=30)
+                        except ray.exceptions.RayChannelError:
+                            # Channel error happens when a channel is closed
+                            # or timed out. In this case, do not log.
+                            pass
+                        except Exception:
+                            logger.exception("Error cancelling worker task")
+                            pass
 
-                logger.info("Tearing down compiled DAG")
-                outer._dag_submitter.close()
-                outer._dag_output_fetcher.close()
+                    for nccl_group_id in outer._nccl_group_ids:
+                        _destroy_nccl_group(nccl_group_id)
 
-                for actor in outer.actor_refs:
-                    logger.info(f"Cancelling compiled worker on actor: {actor}")
-                # Cancel all actor loops in parallel.
-                cancel_refs = [
-                    actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
-                    for actor, tasks in outer.actor_to_executable_tasks.items()
-                ]
-                for cancel_ref in cancel_refs:
-                    try:
-                        ray.get(cancel_ref, timeout=30)
-                    except ray.exceptions.RayChannelError:
-                        # Channel error happens when a channel is closed
-                        # or timed out. In this case, do not log.
-                        pass
-                    except Exception:
-                        logger.exception("Error cancelling worker task")
-                        pass
-
-                for nccl_group_id in outer._nccl_group_ids:
-                    _destroy_nccl_group(nccl_group_id)
-
-                logger.info("Waiting for worker tasks to exit")
-                self.wait_teardown()
-                logger.info("Teardown complete")
-
-                with self.in_teardown_cond:
+                    logger.info("Waiting for worker tasks to exit")
+                    self.wait_teardown()
+                    logger.info("Teardown complete")
                     self._teardown_done = True
-                    self.in_teardown_cond.notify_all()
 
             def run(self):
                 try:
