@@ -358,12 +358,22 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
           ? RayConfig::instance().get_timeout_milliseconds()
           : std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
 
-  // Repeatedly call Wait() on a shorter timeout so we can check for signals between
-  // calls. If timeout_ms == -1, this should run forever until all objects are
-  // ready or a signal is received. Else it should run repeatedly until that timeout
-  // is reached.
-  std::signal(SIGINT, SignalHandler);
-  std::signal(SIGTERM, SignalHandler);
+// Repeatedly call Wait() on a shorter timeout so we can check for signals between
+// calls. If timeout_ms == -1, this should run forever until all objects are
+// ready or a signal is received. Else it should run repeatedly until that timeout
+// is reached.
+#ifdef _WIN32
+  (void)std::signal(SIGBREAK, SignalHandler);
+#else
+  struct sigaction new_action {};
+  struct sigaction old_sigint {};
+  struct sigaction old_sigterm {};
+  new_action.sa_handler = SignalHandler;
+  sigemptyset(&new_action.sa_mask);
+  new_action.sa_flags = 0;
+  sigaction(SIGINT, &new_action, &old_sigint);
+  sigaction(SIGTERM, &new_action, &old_sigterm);
+#endif
   while (!timed_out && signal_received == -1 &&
          !(done = get_request->Wait(iteration_timeout))) {
     if (remaining_timeout >= 0) {
@@ -372,8 +382,12 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       timed_out = remaining_timeout <= 0;
     }
   }
-  std::signal(SIGINT, SIG_DFL);
-  std::signal(SIGTERM, SIG_DFL);
+#ifdef _WIN32
+  (void)std::signal(SIGBREAK, SIG_DFL);
+#else
+  sigaction(SIGINT, &old_sigint, nullptr);
+  sigaction(SIGTERM, &old_sigterm, nullptr);
+#endif
 
   if (should_notify_raylet) {
     RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
