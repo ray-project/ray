@@ -104,8 +104,8 @@ def test_raylet_tempfiles(shutdown_only):
     }
 
     def check_all_log_file_exists():
-        log_files = set(os.listdir(node.get_logs_dir_path()))
         for expected in log_files_expected:
+            log_files = set(os.listdir(node.get_logs_dir_path()))
             if expected not in log_files:
                 raise RuntimeError(f"File {expected} not found!")
         return True

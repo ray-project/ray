@@ -203,9 +203,9 @@ def test_log_rotation(shutdown_only, monkeypatch):
         ray_constants.PROCESS_TYPE_MONITOR,
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
-        ray_constants.PROCESS_TYPE_RAYLET,
-        ray_constants.PROCESS_TYPE_GCS_SERVER,
         # Below components are not log rotating now.
+        # ray_constants.PROCESS_TYPE_RAYLET,
+        # ray_constants.PROCESS_TYPE_GCS_SERVER,
         # ray_constants.PROCESS_TYPE_WORKER,
     ]
 
@@ -218,21 +218,14 @@ def test_log_rotation(shutdown_only, monkeypatch):
     # Create a runtime env to make sure dashboard agent is alive.
     ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
 
-    # Filter out only paths that end in .log, .log.1, (which is produced by python
-    # rotating log handler) and 1.out and so on (which is produced by C++ spdlog
-    # rotation handler) . etc. These paths are handled by the logger; the others (.err)
-    # are not.
+    # Filter out only paths that end in .log, .log.1, etc.
+    # These paths are handled by the logger; the others (.out, .err) are not.
     paths = []
     for path in log_dir_path.iterdir():
-        # Match all rotated files, which suffixes with `log.x` or `log.x.out`.
         if re.search(r".*\.log(\.\d+)?", str(path)):
-            paths.append(path)
-        elif re.search(r".*(\.\d+)?\.out", str(path)):
             paths.append(path)
 
     def component_exist(component, paths):
-        """Return whether there's at least one log file path is for the given
-        [component]."""
         for path in paths:
             filename = path.stem
             if component in filename:
@@ -329,7 +322,7 @@ def test_worker_id_names(shutdown_only):
     ray.get(f.remote())
 
     paths = list(log_dir_path.iterdir())
-    worker_log_files = list()
+
     ids = []
     for path in paths:
         if "python-core-worker" in str(path):
@@ -339,13 +332,12 @@ def test_worker_id_names(shutdown_only):
         else:
             continue
         worker_id = re.match(pattern, str(path)).group(1)
-        worker_log_files.append(str(paths))
         ids.append(worker_id)
     counts = Counter(ids).values()
     for count in counts:
-        # For each worker, there should be a "python-core-.*.log", "worker-.*.out",
-        # and "worker-.*.err".
-        assert count == 3, worker_log_files
+        # There should be a "python-core-.*.log", "worker-.*.out",
+        # and "worker-.*.err"
+        assert count == 3
 
 
 def test_log_pid_with_hex_job_id(ray_start_cluster):

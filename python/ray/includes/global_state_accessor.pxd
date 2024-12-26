@@ -84,9 +84,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                                              ray::RayLog::ShutDownRayLog,
                                              "ray_init",
                                              ray::RayLogLevel::WARNING,
-                                             /*log_dir=*/"" ,
-                                             /*log_filepath=*/"",
-                                             1 << 29);
+                                             "" /* log_dir */);
 
       RedisClientOptions options(host, port, username, password, use_ssl);
 

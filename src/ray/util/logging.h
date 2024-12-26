@@ -254,24 +254,14 @@ class RayLog {
   /// This function to judge whether current log is fatal or not.
   bool IsFatal() const;
 
-  /// TODO(hjiang): Having both log directory and filename for `StartRayLog` is confusing,
-  /// at the end of the day should have only filename. Fix all usage in the next PR.
-  ///
   /// The init function of ray log for a program which should be called only once.
   ///
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
-  /// \param log_dir Logging output directory name.
-  /// \param log_filepath Logging output filepath.
-  ///
-  /// Both [log_dir] and [log_filepath] are used to determine log output filename; if
-  /// both empty, the log won't output to file, but to stdout. It's illegal to set
-  /// [log_filepath] and [log_dir] at the same time.
+  /// \param logDir Logging output file name. If empty, the log won't output to file.
   static void StartRayLog(const std::string &appName,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
-                          const std::string &log_dir = "",
-                          const std::string &log_filepath = "",
-                          long default_log_rotation_max_size = 1 << 29);
+                          const std::string &logDir = "");
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   /// If `StartRayLog` wasn't called before, it will be no-op.
@@ -314,11 +304,6 @@ class RayLog {
   /// Add callback functions that will be triggered to expose fatal log.
   static void AddFatalLogCallbacks(
       const std::vector<FatalLogCallback> &expose_log_callbacks);
-
-  /// Get log outout filename.
-  static std::string GetLogOutputFilename(const std::string &log_dir,
-                                          const std::string &log_file,
-                                          const std::string &app_name);
 
   template <typename T>
   RayLog &operator<<(const T &t) {
@@ -391,6 +376,9 @@ class RayLog {
   /// to indicate which component generates the log.
   /// This is empty if we log to file.
   static std::string component_name_;
+  /// The directory where the log files are stored.
+  /// If this is empty, logs are printed to stdout.
+  static std::string log_dir_;
   /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
   /// InstallFailureSignalHandler was not called.
   static bool is_failure_signal_handler_installed_;

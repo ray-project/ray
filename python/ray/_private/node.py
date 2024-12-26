@@ -576,11 +576,9 @@ class Node:
                 self._ray_params.num_cpus if num_cpus is None else num_cpus,
                 self._ray_params.num_gpus if num_gpus is None else num_gpus,
                 self._ray_params.memory if memory is None else memory,
-                (
-                    self._ray_params.object_store_memory
-                    if object_store_memory is None
-                    else object_store_memory
-                ),
+                self._ray_params.object_store_memory
+                if object_store_memory is None
+                else object_store_memory,
                 resources,
                 self._ray_params.redis_max_memory,
             ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
@@ -815,7 +813,7 @@ class Node:
         Returns:
             A string of file name. If there existing a file having
                 the same name, the returned name will look like
-                "{directory_name}/{prefix}-{unique_index}{suffix}"
+                "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         if directory_name is None:
             directory_name = ray._private.utils.get_ray_temp_dir()
@@ -850,40 +848,6 @@ class Node:
             )
         return redirect_output
 
-    def get_log_file_names(
-        self,
-        name: str,
-        unique: bool = False,
-        create_out: bool = True,
-        create_err: bool = True,
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Get filename to dump logs for stdout and stderr, with no files opened.
-        If output redirection has been disabled, no files will
-        be opened and `(None, None)` will be returned.
-
-        Args:
-            name: descriptive string for this log file.
-            unique: if true, a counter will be attached to `name` to
-                ensure the returned filename is not already used.
-            create_out: if True, create a .out file.
-            create_err: if True, create a .err file.
-
-        Returns:
-            A tuple of two file handles for redirecting optional (stdout, stderr),
-            or `(None, None)` if output redirection is disabled.
-        """
-        if not self.should_redirect_logs():
-            return None, None
-
-        log_stdout = None
-        log_stderr = None
-
-        if create_out:
-            log_stdout = self._get_log_file_name(name, "out", unique=unique)
-        if create_err:
-            log_stderr = self._get_log_file_name(name, "err", unique=unique)
-        return log_stdout, log_stderr
-
     def get_log_file_handles(
         self,
         name: str,
@@ -906,11 +870,16 @@ class Node:
             A tuple of two file handles for redirecting optional (stdout, stderr),
             or `(None, None)` if output redirection is disabled.
         """
-        log_stdout_fname, log_stderr_fname = self.get_log_file_names(
-            name, unique=unique, create_out=create_out, create_err=create_err
-        )
-        log_stdout = None if log_stdout_fname is None else open_log(log_stdout_fname)
-        log_stderr = None if log_stderr_fname is None else open_log(log_stderr_fname)
+        if not self.should_redirect_logs():
+            return None, None
+
+        log_stdout = None
+        log_stderr = None
+
+        if create_out:
+            log_stdout = open_log(self._get_log_file_name(name, "out", unique=unique))
+        if create_err:
+            log_stderr = open_log(self._get_log_file_name(name, "err", unique=unique))
         return log_stdout, log_stderr
 
     def _get_log_file_name(
@@ -1191,21 +1160,14 @@ class Node:
         assert gcs_server_port > 0
         assert self._gcs_address is None, "GCS server is already running."
         assert self._gcs_client is None, "GCS client is already connected."
-
-        # TODO(hjiang): Update stderr to pass filename and get spdlog to handle
-        # logging as well.
-        stdout_log_fname, _ = self.get_log_file_names(
-            "gcs_server", unique=True, create_out=True, create_err=False
-        )
-        _, stderr_file = self.get_log_file_handles(
-            "gcs_server", unique=True, create_out=False, create_err=True
-        )
+        # TODO(mwtian): append date time so restarted GCS uses different files.
+        stdout_file, stderr_file = self.get_log_file_handles("gcs_server", unique=True)
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
-            log_dir=self._logs_dir,
-            ray_log_filepath=stdout_log_fname,
+            self._logs_dir,
+            self.session_name,
+            stdout_file=stdout_file,
             stderr_file=stderr_file,
-            session_name=self.session_name,
             redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
             config=self._config,
@@ -1239,12 +1201,7 @@ class Node:
             use_profiler: True if we should start the process in the
                 valgrind profiler.
         """
-        stdout_log_fname, _ = self.get_log_file_names(
-            "raylet", unique=True, create_out=True, create_err=False
-        )
-        _, stderr_file = self.get_log_file_handles(
-            "raylet", unique=True, create_out=False, create_err=True
-        )
+        stdout_file, stderr_file = self.get_log_file_handles("raylet", unique=True)
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1278,7 +1235,7 @@ class Node:
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
-            ray_log_filepath=stdout_log_fname,
+            stdout_file=stdout_file,
             stderr_file=stderr_file,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
