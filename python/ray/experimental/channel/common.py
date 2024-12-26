@@ -421,7 +421,7 @@ class AwaitableBackgroundReader(ReaderInterface):
                 values = worker.experimental_wait_and_get_mutable_objects(
                     all_waitables,
                     len(all_waitables),
-                    timeout_ms=1000,
+                    timeout_ms=1000 * len(self._input_channels),
                     return_exceptions=True,
                 )
 
