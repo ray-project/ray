@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from contextlib import contextmanager
-from typing import Dict, List, Optional, TypeVar
+from typing import List, Optional, TypeVar
 
 import ray
 from ray.train.v2._internal.constants import (
