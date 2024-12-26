@@ -25,7 +25,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.integrations.wandb import WandbLoggerCallback, WANDB_ENV_VAR
 from ray.rllib.core import DEFAULT_MODULE_ID, Columns
@@ -981,6 +981,7 @@ def run_rllib_example_script_experiment(
     trainable: Optional[Type] = None,
     tune_callbacks: Optional[List] = None,
     keep_config: bool = False,
+    keep_ray_up: bool = False,
     scheduler=None,
     progress_reporter=None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
@@ -1036,7 +1037,7 @@ def run_rllib_example_script_experiment(
         keep_config: Set this to True, if you don't want this utility to change the
             given `base_config` in any way and leave it as-is. This is helpful
             for those example scripts which demonstrate how to set config settings
-            that are taken care of automatically in this function otherwise (e.g.
+            that are otherwise taken care of automatically in this function (e.g.
             `num_env_runners`).
 
     Returns:
@@ -1079,11 +1080,11 @@ def run_rllib_example_script_experiment(
         if args.env is not None and config.env is None:
             config.environment(args.env)
 
-        # Enable the new API stack?
-        if args.enable_new_api_stack:
+        # Disable the new API stack?
+        if not args.enable_new_api_stack:
             config.api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
             )
 
         # Define EnvRunner/RolloutWorker scaling and behavior.
@@ -1194,10 +1195,12 @@ def run_rllib_example_script_experiment(
                         break
                 if val is not None and not np.isnan(val) and val >= threshold:
                     print(f"Stop criterium ({key}={threshold}) fulfilled!")
-                    ray.shutdown()
+                    if not keep_ray_up:
+                        ray.shutdown()
                     return results
 
-        ray.shutdown()
+        if not keep_ray_up:
+            ray.shutdown()
         return results
 
     # Run the experiment using Ray Tune.
@@ -1249,11 +1252,11 @@ def run_rllib_example_script_experiment(
     results = tune.Tuner(
         trainable or config.algo_class,
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop=stop,
             verbose=args.verbose,
             callbacks=tune_callbacks,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
@@ -1267,7 +1270,17 @@ def run_rllib_example_script_experiment(
     ).fit()
     time_taken = time.time() - start_time
 
-    ray.shutdown()
+    if not keep_ray_up:
+        ray.shutdown()
+
+    # Error out, if Tuner.fit() failed to run. Otherwise, erroneous examples might pass
+    # the CI tests w/o us knowing that they are broken (b/c some examples do not have
+    # a --as-test flag and/or any passing criteris).
+    if results.errors:
+        raise RuntimeError(
+            "Running the example script resulted in one or more errors! "
+            f"{[e.args[0].args[2] for e in results.errors]}"
+        )
 
     # If run as a test, check whether we reached the specified success criteria.
     test_passed = False
@@ -1471,14 +1484,14 @@ def check_reproducibilty(
         results1 = tune.Tuner(
             algo_class,
             param_space=algo_config.to_dict(),
-            run_config=air.RunConfig(stop=stop_dict, verbose=1),
+            run_config=train.RunConfig(stop=stop_dict, verbose=1),
         ).fit()
         results1 = results1.get_best_result().metrics
 
         results2 = tune.Tuner(
             algo_class,
             param_space=algo_config.to_dict(),
-            run_config=air.RunConfig(stop=stop_dict, verbose=1),
+            run_config=train.RunConfig(stop=stop_dict, verbose=1),
         ).fit()
         results2 = results2.get_best_result().metrics
 

@@ -8,6 +8,7 @@ The KubeRay Operator plays a vital role in managing Ray clusters on Kubernetes. 
 
 [Grafana Loki][GrafanaLoki] is a log aggregation system optimized for Kubernetes, providing efficient log storage and querying. The following steps set up [Fluent Bit][FluentBit] as a DaemonSet to collect logs from Kubernetes containers and send them to Loki for centralized storage and analysis.
 
+(deploy-loki-monolithic-mode)=
 ### Deploy Loki monolithic mode
 
 Loki’s Helm chart supports three deployment methods to fit different scalability and performance needs: Monolithic, Simple Scalable, and Microservices. This guide demonstrates the monolithic method. For details on each deployment mode, see the [Loki deployment](https://grafana.com/docs/loki/latest/get-started/deployment-modes/) modes documentation.
@@ -60,7 +61,7 @@ Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the KubeR
 
 Follow [Deploy a RayCluster custom resource](raycluster-deploy) to deploy a RayCluster.
 
-
+(deploy-grafana)=
 ### Deploy Grafana
 
 Create a `datasource-config.yaml` file with the following configuration to set up Grafana's Loki datasource:
