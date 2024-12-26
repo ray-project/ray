@@ -382,32 +382,6 @@ std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::str
   return result;
 }
 
-namespace ray {
-
-bool IsRayletFailed(const std::string &raylet_pid) {
-  auto should_shutdown = false;
-  if (!raylet_pid.empty()) {
-    auto pid = static_cast<pid_t>(std::stoi(raylet_pid));
-    if (!IsProcessAlive(pid)) {
-      should_shutdown = true;
-    }
-  } else if (!IsParentProcessAlive()) {
-    should_shutdown = true;
-  }
-  return should_shutdown;
-}
-
-void QuickExit() {
-  ray::RayLog::ShutDownRayLog();
-  _Exit(1);
-}
-
-std::string FormatFloat(float value, int32_t precision) {
-  std::stringstream ss;
-  ss << std::fixed << std::setprecision(precision) << value;
-  return ss.str();
-}
-
 std::string GenerateUUIDV4() {
   thread_local std::random_device rd;
   thread_local std::mt19937 gen(rd());
@@ -439,4 +413,31 @@ std::string GenerateUUIDV4() {
   };
   return ss.str();
 }
+
+namespace ray {
+
+bool IsRayletFailed(const std::string &raylet_pid) {
+  auto should_shutdown = false;
+  if (!raylet_pid.empty()) {
+    auto pid = static_cast<pid_t>(std::stoi(raylet_pid));
+    if (!IsProcessAlive(pid)) {
+      should_shutdown = true;
+    }
+  } else if (!IsParentProcessAlive()) {
+    should_shutdown = true;
+  }
+  return should_shutdown;
+}
+
+void QuickExit() {
+  ray::RayLog::ShutDownRayLog();
+  _Exit(1);
+}
+
+std::string FormatFloat(float value, int32_t precision) {
+  std::stringstream ss;
+  ss << std::fixed << std::setprecision(precision) << value;
+  return ss.str();
+}
+
 }  // namespace ray
