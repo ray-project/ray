@@ -923,6 +923,42 @@ class Worker:
 
         return values, debugger_breakpoint
 
+    def experimental_wait_and_get_mutable_objects(
+        self,
+        object_refs,
+        num_returns,
+        timeout_ms: int = -1,
+        return_exceptions: bool = False,
+        skip_deserialization: bool = False,
+    ):
+        for object_ref in object_refs:
+            if not isinstance(object_ref, ObjectRef):
+                raise TypeError(
+                    "Attempting to call `experimental_wait_and_get_mutable_objects` "
+                    f"on the value {object_ref}, which is not an ray.ObjectRef."
+                )
+        data_metadata_pairs: List[
+            Tuple[ray._raylet.Buffer, bytes]
+        ] = self.core_worker.experimental_wait_and_get_mutable_objects(
+            object_refs, num_returns, timeout_ms
+        )
+
+        if skip_deserialization:
+            return None
+
+        values = self.deserialize_objects(data_metadata_pairs, object_refs)
+        if not return_exceptions:
+            # Raise exceptions instead of returning them to the user.
+            for value in values:
+                if isinstance(value, RayError):
+                    if isinstance(value, ray.exceptions.ObjectLostError):
+                        global_worker.core_worker.dump_object_store_memory_usage()
+                    if isinstance(value, RayTaskError):
+                        raise value.as_instanceof_cause()
+                    else:
+                        raise value
+        return values
+
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
 

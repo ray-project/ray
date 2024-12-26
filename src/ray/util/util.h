@@ -408,4 +408,8 @@ void QuickExit();
 /// \return the foramtted value
 std::string FormatFloat(float value, int32_t precision);
 
+/// Convert a timeout in milliseconds to a steady_clock::time_point.
+/// Returns nullptr if timeout_ms is -1 (indicating no timeout).
+std::unique_ptr<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms);
+
 }  // namespace ray

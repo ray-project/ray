@@ -1792,6 +1792,85 @@ Status CoreWorker::GetExperimentalMutableObjects(
   return Status::OK();
 }
 
+Status CoreWorker::WaitAndGetExperimentalMutableObjects(
+    const std::vector<ObjectID> &ids,
+    int64_t timeout_ms,
+    int num_objects,
+    std::vector<std::shared_ptr<RayObject>> &results) {
+  RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects ids.size() " << ids.size()
+                 << " num_objects " << num_objects;
+  if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
+    return Status::Invalid(
+        "Number of objects to wait-and-get for must be between 1 and the number of ids.");
+  }
+
+  results.resize(ids.size(), nullptr);
+
+  bool done = false;
+  bool timed_out = false;
+  int64_t remaining_timeout = timeout_ms;
+  int64_t iteration_timeout =
+      timeout_ms == -1
+          ? RayConfig::instance().get_timeout_milliseconds()
+          : std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
+  int num_acquired = 0;
+
+  while (!timed_out && !done) {
+    for (size_t i = 0; i < ids.size(); i++) {
+      Status status = experimental_mutable_object_provider_->GetChannelStatus(
+          ids[i], /*is_reader*/ true);
+      if (status.IsChannelError()) {
+        return status;
+      }
+      RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects remaining_timeout: "
+                     << remaining_timeout << " iteration_timeout: " << iteration_timeout
+                     << " status: " << status.ToString();
+      // Skip if the result is already acquired.
+      if (results[i] != nullptr) {
+        RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects skipping object "
+                       << ids[i] << " num_acquired: " << num_acquired + 1
+                       << " num_objects: " << num_objects;
+        continue;
+      }
+
+      // Try to acquire the object.
+      Status s = experimental_mutable_object_provider_->ReadAcquire(
+          ids[i], results[i], iteration_timeout);
+      RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects status: " << s.ToString()
+                     << " iteration_timeout: " << iteration_timeout;
+      if (s.ok()) {
+        RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects acquired object "
+                       << ids[i] << " num_acquired: " << num_acquired + 1
+                       << " num_objects: " << num_objects;
+        if (++num_acquired == num_objects) {
+          done = true;
+          break;
+        }
+      }
+      // TODO: RAY_RETURN_NOT_OK(s);
+      if (s.IsChannelError()) {
+        return s;
+      }
+
+      if (remaining_timeout >= 0) {
+        remaining_timeout -= iteration_timeout;
+        iteration_timeout = std::min(remaining_timeout, iteration_timeout);
+        timed_out = remaining_timeout <= 0;
+      }
+    }
+  }
+  RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects done: " << done
+                 << " timed_out: " << timed_out;
+
+  if (timed_out) {
+    return Status::ChannelTimeoutError(absl::StrFormat(
+        "Timed out: try to acquire %d objects, but only %d objects are acquired.",
+        num_objects,
+        num_acquired));
+  }
+  return Status::OK();
+}
+
 Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
                               const int64_t timeout_ms,
                               std::vector<std::shared_ptr<RayObject>> &results) {

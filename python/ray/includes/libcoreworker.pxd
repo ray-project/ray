@@ -291,6 +291,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                 const unique_ptr[CAddress] &owner_address)
         CRayStatus ExperimentalChannelReadRelease(
                     const c_vector[CObjectID] &object_ids)
+        CRayStatus WaitAndGetExperimentalMutableObjects(
+                    const c_vector[CObjectID] &ids,
+                    int64_t timeout_ms,
+                    int num_returns,
+                    c_vector[shared_ptr[CRayObject]] results)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] results)
         CRayStatus GetIfLocal(

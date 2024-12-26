@@ -475,10 +475,12 @@ class Channel(ChannelInterface):
         self.ensure_registered_as_reader()
 
         start_time = time.monotonic()
-        ret = self._worker.get_objects(
-            [self._local_reader_ref], timeout=timeout, return_exceptions=True
-        )[0][0]
-
+        ret = self._worker.experimental_wait_and_get_mutable_objects(
+            [self._local_reader_ref],
+            timeout_ms=timeout * 1000 if timeout is not None else -1,
+            num_returns=1,
+            return_exceptions=True,
+        )[0]
         if isinstance(ret, _ResizeChannel):
             self._node_id_to_reader_ref_info = ret._node_id_to_reader_ref_info
             self._local_reader_ref = self._get_local_reader_ref(
@@ -490,10 +492,12 @@ class Channel(ChannelInterface):
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
-            ret = self._worker.get_objects(
-                [self._local_reader_ref], timeout=timeout, return_exceptions=True
-            )[0][0]
-
+            ret = self._worker.experimental_wait_and_get_mutable_objects(
+                [self._local_reader_ref],
+                timeout_ms=timeout * 1000 if timeout is not None else -1,
+                num_returns=1,
+                return_exceptions=True,
+            )[0]
         return ret
 
     def release_buffer(self, timeout: Optional[float] = None) -> None:
@@ -501,9 +505,10 @@ class Channel(ChannelInterface):
             timeout is None or timeout >= 0 or timeout == -1
         ), "Timeout must be non-negative or -1."
         self.ensure_registered_as_reader()
-        self._worker.get_objects(
+        self._worker.experimental_wait_and_get_mutable_objects(
             [self._local_reader_ref],
-            timeout=timeout,
+            timeout_ms=timeout * 1000 if timeout is not None else -1,
+            num_returns=1,
             return_exceptions=True,
             skip_deserialization=True,
         )
