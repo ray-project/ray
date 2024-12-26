@@ -55,7 +55,6 @@ def test_hang():
     # after 1 second
     with pytest.raises(BroadcastCollectiveTimeoutError) as excinfo:
         ray.get(remote_tasks)
-    # Ensure that "rank 9 workers not reaching barrier" included in the error message
     assert "The following ranks have not called it: [9]" in str(excinfo.value)
 
 
@@ -64,24 +63,24 @@ def test_world_size_mismatch():
     when the world size is different. The workers should block and raise
     an ValueError.
     """
-    sync_actor = SynchronizationActor.remote(timeout_s=1, warn_interval_s=0.2)
+    sync_actor = SynchronizationActor.remote()
     remote_tasks = []
 
     # All workers pass use a world size of 10, except for one.
-    # This should raise an assertion error on the offending caller.
     for rank in range(9):
         remote_tasks.append(
             sync_actor.broadcast_from_rank_zero.remote(
                 world_rank=rank, world_size=10, data=f"data-{rank}"
             )
         )
-    # The last worker calls broadcast with a different world size
+
+    # The last worker calls broadcast with a different world size.
+    # This task should raise an error immediately.
     mismatch_task = sync_actor.broadcast_from_rank_zero.remote(
         world_rank=9, world_size=11, data="data-9"
     )
-
     with pytest.raises(ValueError, match="same world size"):
-        ray.get(mismatch_task, timeout=1)
+        ray.get(mismatch_task)
 
 
 if __name__ == "__main__":

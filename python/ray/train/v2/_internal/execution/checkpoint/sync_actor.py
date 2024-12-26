@@ -17,13 +17,17 @@ logger = logging.getLogger(__name__)
 
 BROADCAST_PERIODIC_WARNING = """
 `ray.train.report` has not been called by all {world_size} workers in the group.
+
+The workers have been waiting for {max_time_elapsed_s:.2f} s for the following ranks
+to join the `report` call: {missing_ranks}.
+
 Please ensure that all workers call `ray.train.report` regardless of whether
-they participate in checkpointing or not. Here are the ranks that have reported
-so far and how long they have been waiting in seconds:
-{time_elapsed_dict}
+they participate in checkpointing or not (e.g., pass `checkpoint=None` for ranks
+that do not save a checkpoint). Also ensure that workers are not hanging on
+other operations, causing them to miss this synchronization barrier.
 
 You can set the {warn_interval_env_var} environment variable to change the frequency
-of this warning from its current value: {warn_interval_s} seconds.
+of this warning (current value: {warn_interval_s} s).
 """
 
 
@@ -106,24 +110,19 @@ class SynchronizationActor:
         finally:
             self._clear_states()
 
-    def _get_time_elapsed_dict(self) -> Dict[int, Optional[float]]:
+    def _get_time_elapsed(self) -> Optional[float]:
+        """Return the time elapsed since the first worker entered the barrier.
+        If no workers have entered the barrier, returns None.
         """
-        Returns a dictionary of the time elapsed for each worker since
-        it synchronization barrier. If it has not entered the barrier,
-        the value is None.
-        """
-        current_time = asyncio.get_event_loop().time()
-        return {
-            idx: current_time - start_time if start_time else None
-            for idx, start_time in enumerate(self._sync_start_times)
-        }
+        start_times = [t for t in self._sync_start_times if t is not None]
+        if not start_times:
+            return None
 
-    def _get_broadcast_collective_timeout_error(
-        self,
-    ) -> BroadcastCollectiveTimeoutError:
-        """Creates a BroadcastCollectiveTimeoutError with the current time"""
-        time_elapsed = self._get_time_elapsed_dict()
-        return BroadcastCollectiveTimeoutError(time_elapsed, self._timeout_s)
+        return asyncio.get_event_loop().time() - min(start_times)
+
+    def _get_missing_ranks(self) -> List[int]:
+        """Returns the ranks that have not entered the synchronization barrier."""
+        return [i for i, t in enumerate(self._sync_start_times) if t is None]
 
     async def _wait_with_logging(self, condition, world_rank: int):
         """Waits for the condition to be notified, logging an warning every
@@ -140,15 +139,11 @@ class SynchronizationActor:
             # https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for
             # TODO: (hpguo) Make only one worker log the warning message.
             except (asyncio.TimeoutError, TimeoutError):
-                reported_time_elapsed_dict = {
-                    k: v
-                    for k, v in self._get_time_elapsed_dict().items()
-                    if v is not None
-                }
                 logger.warning(
                     BROADCAST_PERIODIC_WARNING.format(
-                        time_elapsed_dict=reported_time_elapsed_dict,
                         world_size=self._world_size,
+                        max_time_elapsed_s=self._get_time_elapsed(),
+                        missing_ranks=self._get_missing_ranks(),
                         warn_interval_env_var=REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
                         warn_interval_s=self._warn_interval_s,
                     )
@@ -185,7 +180,11 @@ class SynchronizationActor:
                     )
                     return self._reduced_data
                 except (asyncio.TimeoutError, TimeoutError) as e:
-                    raise self._get_broadcast_collective_timeout_error() from e
+                    raise BroadcastCollectiveTimeoutError(
+                        time_elapsed=self._get_time_elapsed(),
+                        missing_ranks=self._get_missing_ranks(),
+                        timeout_s=self._timeout_s,
+                    ) from e
 
     # TODO: Implement a general consensus_from_votes method that takes a callable
     # reduce_fn and a list of votes from each worker. The method returns the consensus
