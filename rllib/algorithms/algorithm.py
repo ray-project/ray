@@ -714,7 +714,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 validate_env=None,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.evaluation_config,
-                #num_env_runners=self.config.evaluation_num_env_runners,
+                # num_env_runners=self.config.evaluation_num_env_runners,
                 logdir=self.logdir,
                 tune_trial_id=self.trial_id,
             )
@@ -1867,9 +1867,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Add to eval EnvRunners and sync weights.
         if add_to_eval_env_runners is True and self.eval_env_runner_group is not None:
             if multi_rl_module_spec is None:
-                multi_rl_module_spec = self.eval_env_runner_group.foreach_env_runner(_add)[
-                    0
-                ]
+                multi_rl_module_spec = self.eval_env_runner_group.foreach_env_runner(
+                    _add
+                )[0]
             else:
                 self.eval_env_runner_group.foreach_env_runner(_add)
             self.eval_env_runner_group.sync_weights(
@@ -1953,7 +1953,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Remove from (training) EnvRunners and sync weights.
         if remove_from_env_runners:
             if multi_rl_module_spec is None:
-                multi_rl_module_spec = self.env_runner_group.foreach_env_runner(_remove)[0]
+                multi_rl_module_spec = self.env_runner_group.foreach_env_runner(
+                    _remove
+                )[0]
             else:
                 self.env_runner_group.foreach_env_runner(_remove)
             self.env_runner_group.sync_weights(
