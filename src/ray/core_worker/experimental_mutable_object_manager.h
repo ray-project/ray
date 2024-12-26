@@ -217,7 +217,6 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// \return Current status of the channel.
   Status GetChannelStatus(const ObjectID &object_id, bool is_reader);
 
- private:
   /// Returns the channel for object_id. If no channel exists for object_id, returns
   /// nullptr.
   ///
@@ -225,6 +224,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// \return The channel or nullptr.
   Channel *GetChannel(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(channel_lock_);
 
+ private:
   /// Converts a timeout in milliseconds to a timeout point.
   /// \param[in] timeout_ms The timeout in milliseconds.
   /// \return The timeout point, or nullptr if the timeout_ms is -1.
