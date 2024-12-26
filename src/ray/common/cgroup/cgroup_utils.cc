@@ -14,6 +14,18 @@
 
 #include "ray/common/cgroup/cgroup_utils.h"
 
+#ifndef __linux__
+namespace ray {
+bool CgroupV2Setup::SetupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx) {
+  return false;
+}
+/*static*/ bool CgroupV2Setup::CleanupCgroupV2ForContext(
+    const PhysicalModeExecutionContext &ctx) {
+  return false;
+}
+}  // namespace ray
+#else  // __linux__
+
 #include <sys/stat.h>
 
 #include <fstream>
@@ -154,9 +166,6 @@ CgroupV2Setup::~CgroupV2Setup() {
 
 /*static*/ bool CgroupV2Setup::SetupCgroupV2ForContext(
     const PhysicalModeExecutionContext &ctx) {
-#ifndef __linux__
-  return false;
-#else
   // Create a new cgroup if max memory specified.
   if (ctx.max_memory > 0) {
     return CreateNewCgroupV2(ctx);
@@ -164,14 +173,10 @@ CgroupV2Setup::~CgroupV2Setup() {
 
   // Update default cgroup if no max resource specified.
   return UpdateDefaultCgroupV2(ctx);
-#endif  // __linux__
 }
 
 /*static*/ bool CgroupV2Setup::CleanupCgroupV2ForContext(
     const PhysicalModeExecutionContext &ctx) {
-#ifndef __linux__
-  return false;
-#else
   // Delete the dedicated cgroup if max memory specified.
   if (ctx.max_memory > 0) {
     return DeleteCgroupV2(ctx);
@@ -179,7 +184,8 @@ CgroupV2Setup::~CgroupV2Setup() {
 
   // Update default cgroup if no max resource specified.
   return RemoveCtxFromDefaultCgroupV2(ctx);
-#endif  // __linux__
 }
 
 }  // namespace ray
+
+#endif  // __linux__
