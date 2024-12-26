@@ -56,7 +56,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   if (!already_pending_recovery) {
     RAY_LOG(DEBUG).WithField(object_id) << "Starting recovery for object";
     in_memory_store_.GetAsync(
-        object_id, [this, object_id](std::shared_ptr<RayObject> obj) {
+        object_id, [this, object_id](const std::shared_ptr<RayObject> &obj) {
           {
             absl::MutexLock lock(&mu_);
             RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;

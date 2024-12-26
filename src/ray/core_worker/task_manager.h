@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -101,11 +103,9 @@ using ExecutionSignalCallback = std::function<void(Status, int64_t)>;
 /// The API is not thread-safe.
 class ObjectRefStream {
  public:
-  ObjectRefStream(const ObjectID &generator_id)
-      : generator_id_(generator_id),
-        generator_task_id_(generator_id.TaskId()),
-        total_num_object_written_(0),
-        total_num_object_consumed_(0) {}
+  explicit ObjectRefStream(ObjectID generator_id)
+      : generator_task_id_(generator_id.TaskId()),
+        generator_id_(std::move(generator_id)) {}
 
   /// Asynchronously read object reference of the next index.
   ///
@@ -120,7 +120,7 @@ class ObjectRefStream {
   std::pair<ObjectID, bool> PeekNextItem();
 
   /// Return True if the item_index is already consumed.
-  bool IsObjectConsumed(int64_t item_index);
+  bool IsObjectConsumed(int64_t item_index) const;
 
   /// Insert the object id to the stream of an index item_index.
   ///
@@ -183,8 +183,8 @@ class ObjectRefStream {
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
 
-  const ObjectID generator_id_;
-  const TaskID generator_task_id_;
+  TaskID generator_task_id_;
+  ObjectID generator_id_;
 
   /// Refs that are temporarily owned. It means a ref is
   /// written to a stream, but index is not known yet.
@@ -204,9 +204,9 @@ class ObjectRefStream {
   /// the stream.
   int64_t max_index_seen_ = -1;
   /// The total number of the objects that are written to stream.
-  int64_t total_num_object_written_;
+  int64_t total_num_object_written_{};
   /// The total number of the objects that are consumed from stream.
-  int64_t total_num_object_consumed_;
+  int64_t total_num_object_consumed_{};
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -220,9 +220,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               worker::TaskEventBuffer &task_event_buffer)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
-        put_in_local_plasma_callback_(put_in_local_plasma_callback),
-        retry_task_callback_(retry_task_callback),
-        push_error_callback_(push_error_callback),
+        put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
+        retry_task_callback_(std::move(retry_task_callback)),
+        push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
         task_event_buffer_(task_event_buffer) {
     task_counter_.SetOnChangeCallback(
@@ -359,7 +359,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
       const rpc::ReportGeneratorItemReturnsRequest &request,
-      ExecutionSignalCallback execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
+      const ExecutionSignalCallback &execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Temporarily register a given generator return reference.
   ///
@@ -617,14 +617,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
  private:
   struct TaskEntry {
-    TaskEntry(const TaskSpecification &spec_arg,
+    TaskEntry(TaskSpecification spec_arg,
               int num_retries_left_arg,
               size_t num_returns,
               TaskStatusCounter &counter,
               int64_t num_oom_retries_left)
-        : spec(spec_arg),
+        : spec(std::move(spec_arg)),
           num_retries_left(num_retries_left_arg),
-          counter(counter),
+          counter(&counter),
           num_oom_retries_left(num_oom_retries_left) {
       reconstructable_return_ids.reserve(num_returns);
       for (size_t i = 0; i < num_returns; i++) {
@@ -638,12 +638,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     void SetStatus(rpc::TaskStatus new_status) {
       auto new_tuple = std::make_tuple(spec.GetName(), new_status, is_retry_);
       if (IsPending()) {
-        counter.Swap(status, new_tuple);
+        counter->Swap(status, new_tuple);
       } else {
         // FINISHED and FAILED are monotonically increasing.
         // TODO(jjyao): We should use Counter instead of Gauge
         // for FINISHED and FAILED tasks.
-        counter.Increment(new_tuple);
+        counter->Increment(new_tuple);
       }
       status = std::move(new_tuple);
     }
@@ -677,12 +677,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     /// the worker fails. We could avoid this by either not caching the full
     /// TaskSpec for tasks that cannot be retried (e.g., actor tasks), or by
     /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
-    const TaskSpecification spec;
+    TaskSpecification spec;
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
     int32_t num_retries_left;
     // Reference to the task stats tracker.
-    TaskStatusCounter &counter;
+    TaskStatusCounter *counter;
     // Number of times this task may be resubmitted if the task failed
     // due to out of memory failure.
     int32_t num_oom_retries_left;
