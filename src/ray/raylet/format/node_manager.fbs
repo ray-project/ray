@@ -149,6 +149,8 @@ table AnnounceWorkerPort {
   port: int;
   // The entrypoint of the job. Only populated if the worker is a driver.
   entrypoint: string;
+  // The virtual cluster this job belongs to.
+  virtual_cluster_id: string;
 }
 
 table AnnounceWorkerPortReply {

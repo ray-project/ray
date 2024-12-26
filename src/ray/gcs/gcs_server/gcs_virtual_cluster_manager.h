@@ -51,6 +51,11 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
   /// \param node The node that is dead.
   void OnNodeDead(const rpc::GcsNodeInfo &node);
 
+  /// Handle the job finished event.
+  ///
+  /// \param job_data The job that is finished.
+  void OnJobFinished(const rpc::JobTableData &job_data);
+
   /// Get virtual cluster by virtual cluster id
   ///
   /// \param virtual_cluster_id The id of virtual cluster
