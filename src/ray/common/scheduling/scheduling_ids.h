@@ -26,9 +26,6 @@
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
-/// Limit the ID range to test for collisions.
-inline constexpr int kMaxIdForTest = 8;
-
 namespace ray {
 
 /// List of predefined resources.

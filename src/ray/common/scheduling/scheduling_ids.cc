@@ -43,7 +43,7 @@ int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
   if (sit == string_to_int_.end()) {
     int64_t id = hasher_(string_id);
     if (max_id != 0) {
-      id = id % kMaxIdForTest;
+      id = id % max_id;
     }
     for (size_t i = 0; true; i++) {
       auto it = int_to_string_.find(id);
