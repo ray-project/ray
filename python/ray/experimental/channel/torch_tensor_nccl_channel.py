@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 import ray
 import ray.util.serialization
+from ray import ObjectRef
 from ray.experimental.channel import ChannelContext, utils
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.communicator import Communicator
@@ -324,6 +325,14 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         return data
 
+    def get_ray_waitables(self) -> List[ObjectRef]:
+        self.ensure_registered_as_reader()
+        waitables = []
+        waitables.extend(self._gpu_data_channel.get_ray_waitables())
+        if self._cpu_data_channel is not None:
+            waitables.extend(self._cpu_data_channel.get_ray_waitables())
+        return waitables
+
     def close(self) -> None:
         self._gpu_data_channel.close()
         if self._cpu_data_channel is not None:
@@ -605,6 +614,12 @@ class _TorchTensorNcclChannel(ChannelInterface):
         # TODO: Sync CUDA stream after receiving all tensors, instead of after
         # each tensor.
         return bufs
+
+    def get_ray_waitables(self) -> List[ObjectRef]:
+        self.ensure_registered_as_reader()
+        if self._static_tensor_metadata is not None:
+            return []
+        return self._meta_channel.get_ray_waitables()
 
     def close(self) -> None:
         self._meta_channel.close()

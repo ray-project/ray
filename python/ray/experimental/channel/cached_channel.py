@@ -1,6 +1,7 @@
 import uuid
-from typing import Any, Optional
+from typing import Any, List, Optional
 
+from ray import ObjectRef
 from ray.experimental.channel.common import ChannelInterface
 
 
@@ -99,6 +100,17 @@ class CachedChannel(ChannelInterface):
         # improvements.
         # https://github.com/ray-project/ray/issues/47409
         return ctx.get_data(self._channel_id)
+
+    def get_ray_waitables(self) -> List[ObjectRef]:
+        self.ensure_registered_as_reader()
+        from ray.experimental.channel import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+        if ctx.has_data(self._channel_id):
+            return []
+        if self._inner_channel is not None:
+            return self._inner_channel.get_ray_waitables()
+        return []
 
     def close(self) -> None:
         from ray.experimental.channel import ChannelContext

@@ -18,6 +18,7 @@ from typing import (
 
 import ray
 import ray.exceptions
+from ray import ObjectRef
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -255,6 +256,12 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
+    def get_ray_waitables(self) -> List[ObjectRef]:
+        """
+        Get the ObjectRefs that will be read in the next read() call.
+        """
+        raise NotImplementedError
+
     def close(self) -> None:
         """
         Close this channel. This method must not block and it must be made
@@ -333,6 +340,25 @@ class SynchronousReader(ReaderInterface):
         pass
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+        waitable_to_num_consumers = {}
+        for c in self._input_channels:
+            waitables = c.get_ray_waitables()
+            for w in waitables:
+                waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
+
+        if len(waitable_to_num_consumers) > 0:
+            all_waitables = list(waitable_to_num_consumers.keys())
+            worker = ray._private.worker.global_worker
+            timeout_ms = timeout * 1000 if timeout is not None else -1
+            values = worker.experimental_wait_and_get_mutable_objects(
+                all_waitables, len(all_waitables), timeout_ms, return_exceptions=True
+            )
+            ctx = ChannelContext.get_current().serialization_context
+            for i, value in enumerate(values):
+                ctx.set_data(
+                    all_waitables[i], value, waitable_to_num_consumers[all_waitables[i]]
+                )
+
         results = []
         for c in self._input_channels:
             start_time = time.monotonic()
@@ -378,6 +404,37 @@ class AwaitableBackgroundReader(ReaderInterface):
 
     def _run(self):
         results = []
+        waitable_to_num_consumers = {}
+        for c in self._input_channels:
+            waitables = c.get_ray_waitables()
+            for w in waitables:
+                waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
+
+        if len(waitable_to_num_consumers) > 0:
+            all_waitables = list(waitable_to_num_consumers.keys())
+            worker = ray._private.worker.global_worker
+
+            values = None
+
+            def wait_and_get():
+                nonlocal values
+                values = worker.experimental_wait_and_get_mutable_objects(
+                    all_waitables,
+                    len(all_waitables),
+                    timeout_ms=1000,
+                    return_exceptions=True,
+                )
+
+            exiting = retry_and_check_interpreter_exit(wait_and_get)
+            if exiting:
+                return results
+
+            ctx = ChannelContext.get_current().serialization_context
+            for i, value in enumerate(values):
+                ctx.set_data(
+                    all_waitables[i], value, waitable_to_num_consumers[all_waitables[i]]
+                )
+
         for c in self._input_channels:
             exiting = retry_and_check_interpreter_exit(
                 lambda: results.append(c.read(timeout=1))

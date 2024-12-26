@@ -1807,11 +1807,10 @@ Status CoreWorker::WaitAndGetExperimentalMutableObjects(
   results.resize(ids.size(), nullptr);
 
   bool timed_out = false;
-  int64_t remaining_timeout = timeout_ms;
+  int64_t remaining_timeout = timeout_ms == -1 ? 1e9 : timeout_ms;
+  auto timeout_point = ToTimeoutPoint(remaining_timeout);
   int64_t iteration_timeout =
-      timeout_ms == -1
-          ? RayConfig::instance().get_timeout_milliseconds()
-          : std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
+      std::min(remaining_timeout, RayConfig::instance().get_timeout_milliseconds());
   int num_acquired = 0;
 
   while (!timed_out) {
@@ -1847,8 +1846,11 @@ Status CoreWorker::WaitAndGetExperimentalMutableObjects(
         return s;
       }
 
-      if (remaining_timeout >= 0) {
-        remaining_timeout -= iteration_timeout;
+      auto now = std::chrono::steady_clock::now();
+      if (now >= *timeout_point) {
+        remaining_timeout =
+            std::chrono::duration_cast<std::chrono::milliseconds>(*timeout_point - now)
+                .count();
         iteration_timeout = std::min(remaining_timeout, iteration_timeout);
         timed_out = remaining_timeout <= 0;
       }

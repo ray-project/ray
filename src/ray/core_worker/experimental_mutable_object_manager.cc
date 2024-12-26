@@ -333,6 +333,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   int64_t version_read = 0;
   Status s = object->header->ReadAcquire(
       object_id, sem, channel->next_version_to_read, version_read, timeout_point);
+  RAY_LOG(DEBUG) << "ReadAcquire status " << s << " version_read " << version_read;
   if (!s.ok()) {
     RAY_LOG(DEBUG) << "ReadAcquire error was set, returning " << object_id;
     // Failed because the error bit was set on the mutable object.

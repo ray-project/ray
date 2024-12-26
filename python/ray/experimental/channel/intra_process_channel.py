@@ -1,6 +1,7 @@
 import uuid
-from typing import Any, Optional
+from typing import Any, List, Optional
 
+from ray import ObjectRef
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
 from ray.util.annotations import PublicAPI
@@ -62,6 +63,10 @@ class IntraProcessChannel(ChannelInterface):
         # No need to check timeout as the operation is non-blocking.
         ctx = ChannelContext.get_current().serialization_context
         return ctx.get_data(self._channel_id)
+
+    def get_ray_waitables(self) -> List[ObjectRef]:
+        self.ensure_registered_as_reader()
+        return []
 
     def close(self) -> None:
         ctx = ChannelContext.get_current().serialization_context
