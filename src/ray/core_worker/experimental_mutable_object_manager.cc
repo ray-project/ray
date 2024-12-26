@@ -137,7 +137,7 @@ void MutableObjectManager::OpenSemaphores(const ObjectID &object_id,
         std::memory_order_relaxed);
   }
 
-  PlasmaObjectHeader::Semaphores semaphores;
+  PlasmaObjectHeader::Semaphores semaphores{};
   std::string name = GetSemaphoreName(header);
   if (create) {
     // This channel is being initialized.
@@ -173,7 +173,7 @@ void MutableObjectManager::OpenSemaphores(const ObjectID &object_id,
 
 void MutableObjectManager::DestroySemaphores(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Destroy " << object_id;
-  PlasmaObjectHeader::Semaphores sem;
+  PlasmaObjectHeader::Semaphores sem{};
   if (!GetSemaphores(object_id, sem)) {
     return;
   }
@@ -188,6 +188,7 @@ void MutableObjectManager::DestroySemaphores(const ObjectID &object_id) {
   // semaphores below. As the two semaphores have already been unlinked by the first
   // instance, the sem_unlink() calls below will both fail with ENOENT.
   int ret = sem_unlink(GetSemaphoreHeaderName(name).c_str());
+  // TODO (dayshah): use macro with [[likely]] here vs. just RAY_CHECK(false) below
   if (ret != 0) {
     RAY_CHECK_EQ(errno, ENOENT);
   }
@@ -225,7 +226,7 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
                         object->allocated_size));
   }
 
-  PlasmaObjectHeader::Semaphores sem;
+  PlasmaObjectHeader::Semaphores sem{};
   if (!GetSemaphores(object_id, sem)) {
     return Status::ChannelError(
         "Channel has not been registered (cannot get semaphores)");
@@ -275,7 +276,7 @@ Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
   if (channel == nullptr) {
     return Status::ChannelError("Channel has not been registered");
   }
-  PlasmaObjectHeader::Semaphores sem;
+  PlasmaObjectHeader::Semaphores sem{};
   if (!GetSemaphores(object_id, sem)) {
     return Status::ChannelError(
         "Channel has not been registered (cannot get semaphores)");
@@ -303,7 +304,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   if (channel == nullptr) {
     return Status::ChannelError("Channel has not been registered");
   }
-  PlasmaObjectHeader::Semaphores sem;
+  PlasmaObjectHeader::Semaphores sem{};
   if (!GetSemaphores(object_id, sem)) {
     return Status::ChannelError(
         "Channel has not been registered (cannot get semaphores)");
@@ -394,7 +395,7 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
     return Status::ChannelError("Channel has not been registered");
   }
 
-  PlasmaObjectHeader::Semaphores sem;
+  PlasmaObjectHeader::Semaphores sem{};
   RAY_CHECK(GetSemaphores(object_id, sem));
 
   // Check whether the channel has an error set before checking that we called
@@ -438,7 +439,7 @@ Status MutableObjectManager::SetError(const ObjectID &object_id) {
 
 Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id,
                                               Channel &channel) {
-  PlasmaObjectHeader::Semaphores sem;
+  PlasmaObjectHeader::Semaphores sem{};
   if (!GetSemaphores(object_id, sem)) {
     return Status::ChannelError(
         "Channel has not been registered (cannot get semaphores)");

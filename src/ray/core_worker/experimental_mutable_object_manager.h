@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/node_hash_map.h"
@@ -42,7 +43,7 @@ struct ReaderRefInfo {
   // The actor id of the owner of the reference.
   ActorID owner_reader_actor_id;
   // The number of reader actors reading this buffer.
-  int64_t num_reader_actors;
+  int64_t num_reader_actors{};
 };
 
 class MutableObjectManager : public std::enable_shared_from_this<MutableObjectManager> {
@@ -60,7 +61,10 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
           mutable_object_manager_(std::move(mutable_object_manager)),
           object_id_(object_id) {}
 
-    ~MutableObjectBuffer() {
+    MutableObjectBuffer(const MutableObjectBuffer &) = delete;
+    MutableObjectBuffer &operator=(const MutableObjectBuffer &) = delete;
+
+    ~MutableObjectBuffer() override {
       RAY_UNUSED(mutable_object_manager_->ReadRelease(object_id_));
     }
 
