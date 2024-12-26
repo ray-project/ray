@@ -3,6 +3,12 @@ from ray._private.runtime_env.default_impl import get_protocols_provider
 
 
 class ProtocolsProvider:
+    _MISSING_DEPENDENCIES_WARNING = (
+        "Note that these must be preinstalled "
+        "on all nodes in the Ray cluster; it is not "
+        "sufficient to install them in the runtime_env."
+    )
+
     @classmethod
     def get_protocols(cls):
         return {
@@ -34,11 +40,6 @@ class ProtocolsProvider:
         assert protocol in cls.get_remote_protocols()
 
         tp = None
-        install_warning = (
-            "Note that these must be preinstalled "
-            "on all nodes in the Ray cluster; it is not "
-            "sufficient to install them in the runtime_env."
-        )
 
         if protocol == "file":
             source_uri = source_uri[len("file://") :]
@@ -52,9 +53,8 @@ class ProtocolsProvider:
                 from smart_open import open as open_file
             except ImportError:
                 raise ImportError(
-                    "You must `pip install smart_open` and "
-                    "`pip install boto3` to fetch URIs in s3 "
-                    "bucket. " + install_warning
+                    "You must `pip install smart_open[s3]` "
+                    "to fetch URIs in s3 bucket. " + cls._MISSING_DEPENDENCIES_WARNING
                 )
             tp = {"client": boto3.client("s3")}
         elif protocol == "gs":
@@ -63,9 +63,9 @@ class ProtocolsProvider:
                 from smart_open import open as open_file
             except ImportError:
                 raise ImportError(
-                    "You must `pip install smart_open` and "
-                    "`pip install google-cloud-storage` "
-                    "to fetch URIs in Google Cloud Storage bucket." + install_warning
+                    "You must `pip install smart_open[gcs]` "
+                    "to fetch URIs in Google Cloud Storage bucket."
+                    + cls._MISSING_DEPENDENCIES_WARNING
                 )
         else:
             try:
@@ -73,7 +73,8 @@ class ProtocolsProvider:
             except ImportError:
                 raise ImportError(
                     "You must `pip install smart_open` "
-                    f"to fetch {protocol.upper()} URIs. " + install_warning
+                    f"to fetch {protocol.upper()} URIs. "
+                    + cls._MISSING_DEPENDENCIES_WARNING
                 )
 
         with open_file(source_uri, "rb", transport_params=tp) as fin:
