@@ -362,18 +362,18 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   // calls. If timeout_ms == -1, this should run forever until all objects are
   // ready or a signal is received. Else it should run repeatedly until that timeout
   // is reached.
-  {
-    std::signal(SIGINT, SignalHandler);
-    std::signal(SIGTERM, SignalHandler);
-    while (!timed_out && signal_received == -1 &&
-           !(done = get_request->Wait(iteration_timeout))) {
-      if (remaining_timeout >= 0) {
-        remaining_timeout -= iteration_timeout;
-        iteration_timeout = std::min(remaining_timeout, iteration_timeout);
-        timed_out = remaining_timeout <= 0;
-      }
+  std::signal(SIGINT, SignalHandler);
+  std::signal(SIGTERM, SignalHandler);
+  while (!timed_out && signal_received == -1 &&
+         !(done = get_request->Wait(iteration_timeout))) {
+    if (remaining_timeout >= 0) {
+      remaining_timeout -= iteration_timeout;
+      iteration_timeout = std::min(remaining_timeout, iteration_timeout);
+      timed_out = remaining_timeout <= 0;
     }
   }
+  std::signal(SIGINT, SIG_DFL);
+  std::signal(SIGTERM, SIG_DFL);
 
   if (should_notify_raylet) {
     RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
