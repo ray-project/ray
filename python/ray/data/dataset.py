@@ -1468,18 +1468,19 @@ class Dataset:
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.random_sample(0.1).count()  # doctest: +SKIP
+            >>> ds.random_sample(0.1, seed=42).count()  # doctest: +SKIP
             10
 
         Args:
             fraction: The fraction of elements to sample.
-            seed: Seeds the python random pRNG generator.
+            seed: Seeds the random number generator for reproducibility.
 
         Returns:
             Returns a :class:`Dataset` containing the sampled rows.
         """
         import random
 
+        import numpy as np
         import pandas as pd
         import pyarrow as pa
 
@@ -1489,22 +1490,23 @@ class Dataset:
         if fraction < 0 or fraction > 1:
             raise ValueError("Fraction must be between 0 and 1.")
 
-        if seed is not None:
-            random.seed(seed)
+        # Create a dedicated random number generator
+        rng = random.Random(seed)
 
         def random_sample(batch):
+
             if isinstance(batch, list):
-                return [row for row in batch if random.random() <= fraction]
+                return [row for row in batch if rng.random() <= fraction]
             if isinstance(batch, pa.Table):
-                # Lets the item pass if weight generated for that item <= fraction
-                return batch.filter(
-                    pa.array(random.random() <= fraction for _ in range(len(batch)))
-                )
+                # Generate a boolean mask for filtering
+                mask = [rng.random() <= fraction for _ in range(len(batch))]
+                return batch.filter(pa.array(mask))
             if isinstance(batch, pd.DataFrame):
-                return batch.sample(frac=fraction)
+                # Use the same random state for reproducibility
+                return batch.sample(frac=fraction, random_state=seed)
             if isinstance(batch, np.ndarray):
                 return _create_possibly_ragged_ndarray(
-                    [row for row in batch if random.random() <= fraction]
+                    [row for row in batch if rng.random() <= fraction]
                 )
             raise ValueError(f"Unsupported batch type: {type(batch)}")
 

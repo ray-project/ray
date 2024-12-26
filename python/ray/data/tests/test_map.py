@@ -1362,6 +1362,18 @@ def test_random_sample_checks(ray_start_regular_shared):
         ray.data.range(1).random_sample(10)
 
 
+def test_random_sample_fixed_seed(ray_start_regular_shared):
+    ds_1 = ray.data.range(1219)
+    ds = ds_1.random_sample(0.5, seed=10)
+    check1 = ds.count()
+    print(f"=== Check 1: {check1}")
+    ds = ds_1.random_sample(0.5, seed=10)
+    check2 = ds.count()
+    print(f"=== Check 2 {check2}")
+
+    assert check1 == check2, f"{check1=} vs. {check2=}"
+
+
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
 def test_actor_pool_strategy_default_num_actors(shutdown_only):
