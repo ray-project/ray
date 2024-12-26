@@ -429,7 +429,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"actor_name": "{resp["actor_name"]}", '
                 f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
-                f'"component_name": "replica".*'
+                f'"component_name": "replica", '
+                f'"timestamp_ns": \d+}}.*'
             )
             user_class_method_log_regex = (
                 '.*"message": "user log message from class method".*'
@@ -444,7 +445,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"actor_name": "{resp2["actor_name"]}", '
                 f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
-                f'"component_name": "replica".*'
+                f'"component_name": "replica", '
+                f'"timestamp_ns": \d+}}.*'
             )
         else:
             user_method_log_regex = f".*{resp['request_id']} -- user func.*"
@@ -762,7 +764,6 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
     env_encoding, log_config_encoding, expected_encoding = log_encoding
 
     with patch("ray.serve.schema.RAY_SERVE_LOG_ENCODING", env_encoding):
-
         # Clean up logger handlers
         logger = logging.getLogger(SERVE_LOGGER_NAME)
         logger.handlers.clear()

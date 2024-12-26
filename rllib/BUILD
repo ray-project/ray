@@ -1355,25 +1355,7 @@ py_test(
 
 # LearnerGroup
 py_test(
-    name = "TestLearnerGroupSyncUpdate",
-    main = "core/learner/tests/test_learner_group.py",
-    tags = ["team:rllib", "multi_gpu", "exclusive"],
-    size = "large",
-    srcs = ["core/learner/tests/test_learner_group.py"],
-    args = ["TestLearnerGroupSyncUpdate"]
-)
-
-py_test(
-    name = "TestLearnerGroupCheckpointRestore",
-    main = "core/learner/tests/test_learner_group.py",
-    tags = ["team:rllib", "multi_gpu", "exclusive"],
-    size = "large",
-    srcs = ["core/learner/tests/test_learner_group.py"],
-    args = ["TestLearnerGroupCheckpointRestore"]
-)
-
-py_test(
-    name = "TestLearnerGroupAsyncUpdate",
+    name = "test_learner_group_async_update",
     main = "core/learner/tests/test_learner_group.py",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
@@ -1382,12 +1364,30 @@ py_test(
 )
 
 py_test(
-    name = "TestLearnerGroupSaveLoadState",
+    name = "test_learner_group_sync_update",
     main = "core/learner/tests/test_learner_group.py",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
     srcs = ["core/learner/tests/test_learner_group.py"],
-    args = ["TestLearnerGroupSaveLoadState"]
+    args = ["TestLearnerGroupSyncUpdate"]
+)
+
+py_test(
+    name = "test_learner_group_checkpoint_restore",
+    main = "core/learner/tests/test_learner_group.py",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupCheckpointRestore"]
+)
+
+py_test(
+    name = "test_learner_group_save_and_restore_state",
+    main = "core/learner/tests/test_learner_group.py",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupSaveAndRestoreState"]
 )
 
 # Learner
@@ -1411,13 +1411,6 @@ py_test(
 #
 # Tag: models
 # --------------------------------------------------------------------
-
-py_test(
-    name = "test_attention_nets",
-    tags = ["team:rllib", "models"],
-    size = "large",
-    srcs = ["models/tests/test_attention_nets.py"]
-)
 
 py_test(
     name = "test_conv2d_default_stacks",
@@ -1992,7 +1985,7 @@ py_test(
 # ----------------------
 # New API stack
 # Note: This includes to-be-translated-to-new-API-stack examples
-# tagged by @OldAPIStack and/or @HybridAPIStack
+# tagged by @OldAPIStack
 # ----------------------
 
 # subdirectory: actions/
@@ -2520,6 +2513,14 @@ py_test(
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=150.0"]
 )
 py_test(
+    name = "examples/gpus/gpus_on_env_runners",
+    main = "examples/gpus/gpus_on_env_runners.py",
+    tags = ["team:rllib", "exclusive", "examples", "gpu"],
+    size = "medium",
+    srcs = ["examples/gpus/gpus_on_env_runners.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=0.9", "--num-gpus-per-env-runner=0.5", "--num-gpus-per-learner=0"]
+)
+py_test(
     name = "examples/gpus/mixed_precision_training_float16_inference",
     main = "examples/gpus/mixed_precision_training_float16_inference.py",
     tags = ["team:rllib", "exclusive", "examples", "gpu"],
@@ -2934,7 +2935,7 @@ py_test(
     tags = ["team:rllib", "examples"],
     size = "medium",
     srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters-pretraining=5", "--stop-iters=20", "--stop-reward=150.0"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--stop-reward-pretraining=250.0", "--stop-reward=250.0", "--stop-iters=3"],
 )
 
 #@OldAPIStack

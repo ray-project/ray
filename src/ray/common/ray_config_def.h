@@ -112,6 +112,10 @@ RAY_CONFIG(bool, report_actor_placement_resources, true)
 /// TODO: maybe group this under RAY_DEBUG.
 RAY_CONFIG(bool, record_ref_creation_sites, false)
 
+/// Collects the stacktrace of the task invocation, or actor creation. The stacktrace is
+/// serialized into the TaskSpec and is viewable from the Dashboard. Default is disabled.
+RAY_CONFIG(bool, record_task_actor_creation_sites, false)
+
 /// Objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
 /// will be eagerly evicted in a batch by freeing all plasma copies in the

@@ -139,16 +139,17 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
                                   OptionalItemCallback<std::string> callback) {
   RAY_CHECK(callback != nullptr);
 
-  auto redis_callback =
-      [callback = std::move(callback)](const std::shared_ptr<CallbackReply> &reply) {
-        std::optional<std::string> result;
-        if (!reply->IsNil()) {
-          result = reply->ReadAsString();
-        }
-        RAY_CHECK(!reply->IsError())
-            << "Failed to get from Redis with status: " << reply->ReadAsStatus();
-        callback(Status::OK(), std::move(result));
-      };
+  auto redis_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
+    std::optional<std::string> result;
+    if (!reply->IsNil()) {
+      result = reply->ReadAsString();
+    }
+    Status status = Status::OK();
+    if (reply->IsError()) {
+      status = reply->ReadAsStatus();
+    }
+    callback(status, std::move(result));
+  };
 
   RedisCommand command{/*command=*/"HGET",
                        RedisKey{external_storage_namespace_, table_name},
@@ -503,7 +504,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   });
 
   auto status = cli->Connect(io_service);
-  RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
+  RAY_CHECK_OK(status) << "Failed to connect to redis";
 
   auto context = cli->GetPrimaryContext();
   // Delete all such keys by using empty table name.
