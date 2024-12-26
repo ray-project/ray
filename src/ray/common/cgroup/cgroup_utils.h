@@ -24,6 +24,7 @@
 
 namespace ray {
 
+// A util class which sets up cgroup at construction, and cleans up at destruction.
 class CgroupV2Setup {
  public:
   // A failed construction returns nullptr.
