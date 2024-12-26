@@ -3424,7 +3424,7 @@ def remote(
             def method(self):
                 return 1
 
-    Remote task and actor objects returned by @ray.remote can also be
+    Remote task and actor objects returned by ``@ray.remote`` can also be
     dynamically modified with the same arguments as above using
     ``.options()`` as follows:
 
