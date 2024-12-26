@@ -1,6 +1,6 @@
 clang-format==12.0.1
 docutils
-ruff==0.8.4
+pre-commit==3.5.0
 mypy==1.7.0
 mypy-extensions==1.0.0
 types-PyYAML==6.0.12.2
