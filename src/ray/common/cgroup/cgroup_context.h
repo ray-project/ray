@@ -26,8 +26,8 @@ namespace ray {
 struct PhysicalModeExecutionContext {
   // Directory for cgroup, which is applied to application process.
   std::string_view cgroup_directory;
-  // A UUID to uniquely identity a certain task / actor attempt.
-  std::string uuid;
+  // A unique id to uniquely identity a certain task / actor attempt.
+  std::string id;
   // PID for the process.
   pid_t pid;
 

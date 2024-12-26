@@ -45,7 +45,7 @@ constexpr int kCgroupV2FilePerm = 0600;
 // There're two types of memory cgroup constraints:
 // 1. For those with limit capped, they will be created a dedicated cgroup;
 // 2. For those without limit specified, they will be added to the default cgroup.
-static constexpr std::string_view kDefaultCgroupV2Uuid = "default_cgroup_uuid";
+static constexpr std::string_view kDefaultCgroupV2Id = "default_cgroup_id";
 
 // Open a cgroup path and append write [content] into the file.
 void OpenCgroupV2FileAndAppend(std::string_view path, std::string_view content) {
@@ -55,12 +55,12 @@ void OpenCgroupV2FileAndAppend(std::string_view path, std::string_view content) 
 
 bool CreateNewCgroupV2(const PhysicalModeExecutionContext &ctx) {
   // Sanity check.
-  RAY_CHECK(!ctx.uuid.empty());
-  RAY_CHECK_NE(ctx.uuid, kDefaultCgroupV2Uuid);
+  RAY_CHECK(!ctx.id.empty());
+  RAY_CHECK_NE(ctx.id, kDefaultCgroupV2Id);
   RAY_CHECK_GT(ctx.max_memory, 0);
 
   const std::string cgroup_folder =
-      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.uuid);
+      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.id);
   int ret_code = mkdir(cgroup_folder.data(), kCgroupV2FilePerm);
   if (ret_code != 0) {
     return false;
@@ -79,12 +79,12 @@ bool CreateNewCgroupV2(const PhysicalModeExecutionContext &ctx) {
 
 bool UpdateDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
   // Sanity check.
-  RAY_CHECK(!ctx.uuid.empty());
-  RAY_CHECK_EQ(ctx.uuid, kDefaultCgroupV2Uuid);
+  RAY_CHECK(!ctx.id.empty());
+  RAY_CHECK_EQ(ctx.id, kDefaultCgroupV2Id);
   RAY_CHECK_EQ(ctx.max_memory, 0);
 
   const std::string cgroup_folder =
-      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.uuid);
+      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.id);
   int ret_code = mkdir(cgroup_folder.data(), kCgroupV2FilePerm);
   if (ret_code != 0) {
     return false;
@@ -98,23 +98,23 @@ bool UpdateDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
 
 bool DeleteCgroupV2(const PhysicalModeExecutionContext &ctx) {
   // Sanity check.
-  RAY_CHECK(!ctx.uuid.empty());
-  RAY_CHECK_NE(ctx.uuid, kDefaultCgroupV2Uuid);
+  RAY_CHECK(!ctx.id.empty());
+  RAY_CHECK_NE(ctx.id, kDefaultCgroupV2Id);
   RAY_CHECK_GT(ctx.max_memory, 0);
 
   const std::string cgroup_folder =
-      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.uuid);
+      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.id);
   return rmdir(cgroup_folder.data()) == 0;
 }
 
 bool RemoveCtxFromDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
   // Sanity check.
-  RAY_CHECK(!ctx.uuid.empty());
-  RAY_CHECK_EQ(ctx.uuid, kDefaultCgroupV2Uuid);
+  RAY_CHECK(!ctx.id.empty());
+  RAY_CHECK_EQ(ctx.id, kDefaultCgroupV2Id);
   RAY_CHECK_EQ(ctx.max_memory, 0);
 
   const std::string cgroup_folder =
-      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.uuid);
+      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.id);
   int ret_code = mkdir(cgroup_folder.data(), kCgroupV2FilePerm);
   if (ret_code != 0) {
     return false;
@@ -159,8 +159,7 @@ bool RemoveCtxFromDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
 
 CgroupV2Setup::~CgroupV2Setup() {
   if (!CleanupCgroupV2ForContext(ctx_)) {
-    RAY_LOG(ERROR) << "Fails to cleanup cgroup for execution context with uuid "
-                   << ctx_.uuid;
+    RAY_LOG(ERROR) << "Fails to cleanup cgroup for execution context with id " << ctx_.id;
   }
 }
 
