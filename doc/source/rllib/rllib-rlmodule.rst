@@ -483,7 +483,7 @@ If you return the ``actions`` key from your forward method:
 - In case you also return the ``action_dist_inputs`` key, RLlib creates a :py:class:`~ray.rllib.models.distributions.Distribution`
   instance from the parameters under that key. In the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`, RLlib also creates
   compute action probabilities and log probabilities for the given actions automatically.
-  See :ref:`Custom action distributions <rllib-rl-module-w-custom-action-dists>`for more information on custom action distribution classes.
+  See :ref:`Custom action distributions <rllib-rl-module-w-custom-action-dists>` for more information on custom action distribution classes.
 
 If you don't return the ``actions`` key from your forward method:
 
