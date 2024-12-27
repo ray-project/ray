@@ -345,11 +345,6 @@ class RuntimeEnvAgent:
         serialized_env = request.serialized_runtime_env
         runtime_env = RuntimeEnv.deserialize(serialized_env)
 
-        # Increase reference
-        self._reference_table.increase_reference(
-            runtime_env, serialized_env, request.source_process
-        )
-
         if serialized_env not in self._env_locks:
             # async lock to prevent the same env being concurrently installed
             self._env_locks[serialized_env] = asyncio.Lock()
@@ -388,9 +383,7 @@ class RuntimeEnvAgent:
             )
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_OK
-                if successful
-                else agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                 serialized_runtime_env_context=serialized_context,
                 error_message=error_message,
             )

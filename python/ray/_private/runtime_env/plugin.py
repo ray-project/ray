@@ -237,8 +237,6 @@ async def create_for_plugin_if_needed(
     if plugin.name not in runtime_env or runtime_env[plugin.name] is None:
         return
 
-    plugin.validate(runtime_env)
-
     uris = plugin.get_uris(runtime_env)
 
     if not uris:
