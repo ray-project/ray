@@ -244,7 +244,7 @@
   run:
     timeout: 3600
     script: >
-      python dataset/multi_node_train_benchmark.py --num-workers 16 --file-type parquet
+      RAY_TRAIN_V2_ENABLED=1 python dataset/multi_node_train_benchmark.py --num-workers 16 --file-type parquet
       --target-worker-gb 50 --use-gpu
 
   variations:
@@ -252,8 +252,10 @@
     - __suffix__: chaos
       run:
         prepare: >
-          python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
-          "_RayTrainWorker__execute.get_next"
+          python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 90 --max-to-kill 3
+        # prepare: >
+        #   python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
+        #   "_RayTrainWorker__execute.get_next"
 
 #################
 # Iteration tests

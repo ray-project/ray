@@ -1,0 +1,1 @@
+../../train_tests/torch/multi_node_train_benchmark.py
