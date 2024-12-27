@@ -99,7 +99,10 @@ class FailureConfig(FailureConfigV1):
     def __post_init__(self):
         # TODO(justinvyu): Add link to migration guide.
         if self.fail_fast != _DEPRECATED:
-            raise NotImplementedError("`FailureConfig(fail_fast)` is deprecated.")
+            raise DeprecationWarning(
+                "`ray.train.FailureConfig(fail_fast)` is deprecated since it is "
+                "only relevant in the context of Ray Tune."
+            )
 
 
 @dataclass
@@ -158,7 +161,7 @@ class RunConfig(RunConfigV1):
         ]
         for param in unsupported_params:
             if getattr(self, param) != _DEPRECATED:
-                raise NotImplementedError(run_config_deprecation_message.format(param))
+                raise DeprecationWarning(run_config_deprecation_message.format(param))
 
         if not self.name:
             self.name = f"ray_train_run-{date_str()}"

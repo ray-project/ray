@@ -4,10 +4,10 @@ from typing import Any, Callable, Dict, Optional, Union
 import ray.train
 from ray.train import Checkpoint
 from ray.train.trainer import GenDataset
-from ray.train.v2._internal.constants import _UNSUPPORTED
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.xgboost import XGBoostConfig
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -140,15 +140,10 @@ class XGBoostTrainer(DataParallelTrainer):
             metadata=metadata,
         )
 
+    @Deprecated
     @classmethod
-    def get_model(
-        cls,
-        checkpoint: Checkpoint,
-    ):
-        """Retrieve the XGBoost model stored in this checkpoint.
-
-        This API is deprecated. Use `RayTrainReportCallback.get_model` instead.
-        """
+    def get_model(cls, checkpoint: Checkpoint):
+        """Retrieve the XGBoost model stored in this checkpoint."""
         raise DeprecationWarning(
             "`XGBoostTrainer.get_model` is deprecated. "
             "Use `RayTrainReportCallback.get_model` instead."

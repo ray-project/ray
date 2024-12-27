@@ -8,6 +8,7 @@ import pyarrow
 
 from ray.air.result import Result as ResultV1
 from ray.train.v2._internal.exceptions import TrainingFailedError
+from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
@@ -29,11 +30,12 @@ class Result(ResultV1):
     ) -> "Result":
         raise NotImplementedError("`Result.from_path` is not implemented yet.")
 
+    @Deprecated
     @property
     def config(self) -> Optional[Dict[str, Any]]:
         raise DeprecationWarning(
-            "The `config` property is deprecated, since it is only "
-            "relevant in the context of Ray Tune."
+            "The `config` property for a `ray.train.Result` is deprecated, "
+            "since it is only relevant in the context of Ray Tune."
         )
 
 
