@@ -5,8 +5,6 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
 from ray._private.auto_init_hook import wrap_auto_init
-from ray.train import Checkpoint
-from ray.train.v2.api.result import _build_result
 from ray.train.v2._internal.constants import (
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
@@ -43,7 +41,7 @@ from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
 from ray.train.v2._internal.logging.logging import configure_controller_logger
 from ray.train.v2._internal.util import time_monotonic
-from ray.train.v2.api.result import Result
+from ray.train.v2.api.result import Result, _build_result
 
 logger = logging.getLogger(__name__)
 

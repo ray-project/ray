@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Callable, Dict, Literal, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_bool
@@ -18,7 +18,6 @@ from ray.train.v2._internal.callbacks.metrics import (
     WorkerMetricsCallback,
 )
 from ray.train.v2._internal.constants import (
-    _DEPRECATED,
     METRICS_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
 )
@@ -29,8 +28,8 @@ from ray.train.v2._internal.execution.scaling_policy import create_scaling_polic
 from ray.train.v2._internal.util import construct_train_func
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.result import Result
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.util.annotations import Deprecated, DeveloperAPI
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 

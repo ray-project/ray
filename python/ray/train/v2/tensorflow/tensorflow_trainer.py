@@ -3,7 +3,6 @@ from typing import Any, Callable, Dict, Optional, Union
 from ray.train import Checkpoint, DataConfig
 from ray.train.tensorflow.config import TensorflowConfig
 from ray.train.trainer import GenDataset
-from ray.train.v2._internal.constants import _DEPRECATED
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util import PublicAPI
