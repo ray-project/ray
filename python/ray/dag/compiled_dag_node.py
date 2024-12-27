@@ -1889,8 +1889,8 @@ class CompiledDAG:
                             logger.exception("Error cancelling worker task")
                             pass
 
-                for communicator_id in outer._communicator_ids:
-                    _destroy_communicator(communicator_id)
+                    for communicator_id in outer._communicator_ids:
+                        _destroy_communicator(communicator_id)
 
                     logger.info("Waiting for worker tasks to exit")
                     self.wait_teardown()
