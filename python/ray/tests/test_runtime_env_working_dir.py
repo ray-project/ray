@@ -56,8 +56,8 @@ async def test_working_dir_cleanup(tmpdir, ray_start_regular):
 
     print(f"tmpdir {tmpdir}")
     files = os.listdir(f"{tmpdir}/working_dir_files")
-    # Iterate over the files and store the metadata.
 
+    # Iterate over the files and storing creation metadata.
     creation_metadata = {}
     for file in files:
         file_metadata = os.stat(f"{tmpdir}/working_dir_files/{file}")

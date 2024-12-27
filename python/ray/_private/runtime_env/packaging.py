@@ -697,7 +697,6 @@ async def download_and_unpack_package(
         logger.debug(f"Fetching package for URI: {pkg_uri}")
 
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
-        logger.info("local_dir: %s", local_dir)
         assert local_dir != pkg_file, "Invalid pkg_file!"
 
         download_package: bool = True
@@ -720,7 +719,6 @@ async def download_and_unpack_package(
                         "GCS client must be provided to download from GCS."
                     )
 
-                # logger.info(f"Downloading package from {pkg_uri} to {pkg_file}")
                 # Download package from the GCS.
                 code = await gcs_aio_client.internal_kv_get(
                     pkg_uri.encode(), namespace=None, timeout=None

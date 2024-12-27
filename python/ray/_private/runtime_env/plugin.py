@@ -252,12 +252,14 @@ async def create_for_plugin_if_needed(
     for uri in uris:
         if uri not in uri_cache:
             logger.debug(f"Cache miss for URI {uri}.")
-            await plugin.create(uri, runtime_env, context, logger=logger)
+            size_bytes = await plugin.create(uri, runtime_env, context, logger=logger)
+            uri_cache.add(uri, size_bytes, logger=logger)
         else:
             logger.info(
                 f"Runtime env {plugin.name} {uri} is already installed "
                 "and will be reused. Search "
                 "all runtime_env_setup-*.log to find the corresponding setup log."
             )
+            uri_cache.mark_used(uri, logger=logger)
 
     plugin.modify_context(uris, runtime_env, context, logger)
