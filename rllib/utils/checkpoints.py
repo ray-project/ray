@@ -293,7 +293,8 @@ class Checkpointable(abc.ABC):
                 # here.
                 comp.save_to_path(comp_path, filesystem=filesystem, state=comp_state)
 
-        # Write all the remaining state to disk.
+        # Write all the remaining state to disk. Thereby, make sure the `state` dict
+        # only contains msgpack-serializable data.
         with filesystem.open_output_stream(
             (path / self.STATE_FILE_NAME).as_posix()
         ) as f:

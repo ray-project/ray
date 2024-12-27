@@ -1,4 +1,3 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. include:: /_includes/rllib/new_api_stack.rst
@@ -22,13 +21,12 @@ or to deploy your model into production.
     :align: left
 
     **Saving to and restoring from disk**: Use the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path` method
-    to write the current state of any :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable` component (or your entire Algorithm) to disk.
-    If you would like to load a saved state back into a running component (or into your entire Algorithm), use
+    to write the current state of any :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable` component or your entire Algorithm to disk.
+    If you would like to load a saved state back into a running component or into your Algorithm, use
     the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.restore_from_path` method.
 
 A checkpoint is a directory. It contains meta data, such as the class and the constructor arguments for creating a new instance,
-a pickle state file, and a human readable ``.json`` file with information about with which Ray version and commit the checkpoint
-was created.
+a pickle state file, and a human readable ``.json`` file with information about the Ray version and git commit of the checkpoint.
 
 You can also generate a new :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or other component instance from an
 existing checkpoint using the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` method,
@@ -41,7 +39,7 @@ any of the other RLlib components - into production.
 
     **Creating a new instance directly from a checkpoint**: Use the classmethod
     :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` to instantiate objects directly
-    from a checkpoint. The saved meta data is used first to create a bare-bones instance of the originally
+    from a checkpoint. RLlib first uses the saved meta data to create a bare-bones instance of the originally
     checkpointed object, and then restores its state from the state information in the checkpoint dir.
 
 Another possibility is to load only a certain subcomponent's state into the containing
@@ -179,7 +177,7 @@ is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class:
 .. note::
     The ``env_runner/`` subcomponent currently doesn't hold a copy of the RLModule's
     checkpoint b/c it's already saved under ``learner/``. The Ray team is working on resolving
-    this issue (probably through softlinking to avoid duplicate files and unnecessary disk usage).
+    this issue, probably through softlinking to avoid duplicate files and unnecessary disk usage.
 
 
 
@@ -249,6 +247,9 @@ algorithm checkpoint version.
 ^^^^^^^^^^^ end TODO
 
 
+Creating a new object from a checkpoint with `from_checkpoint`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 
 
 Restoring from a checkpoint with `restore_from_path`
@@ -262,28 +263,25 @@ Restoring from a checkpoint with `restore_from_path`
     from ray.rllib.algorithms.algorithm import Algorithm
 
     # Use any Checkpointable's (e.g. Algorithm's) `from_checkpoint()` method to create
-    # a new instance that has the exact same state as the old one, from which the checkpoint was
-    # created in the first place:
-    ppo = Algorithm.from_checkpoint(path_to_checkpoint)
+    # a new instance that has the exact same state as the one, which created the checkpoint
+    # in the first place:
+    my_new_ppo = Algorithm.from_checkpoint(checkpoint_dir)
 
     # Continue training.
     my_new_ppo.train()
 
-    # __restore-from-algo-checkpoint-end__
-
     my_new_ppo.stop()
 
-    # __restore-from-algo-checkpoint-2-begin__
+
+
     # Re-build a fresh algorithm.
     my_new_ppo = my_ppo_config.build()
 
     # Restore the old (checkpointed) state.
-    my_new_ppo.restore(save_result)
+    my_new_ppo.restore_from_path(save_result)
 
     # Continue training.
     my_new_ppo.train()
-
-    # __restore-from-algo-checkpoint-2-end__
 
     my_new_ppo.stop()
 
@@ -292,13 +290,12 @@ Restoring from a checkpoint with `restore_from_path`
 Checkpoints are py-version specific, but can be converted to be version independent
 -----------------------------------------------------------------------------------
 
-Algorithm checkpoints created via the ``save()`` method are always cloudpickle-based and
-thus dependent on the python version used. This means there is no guarantee that you
-will to be able to use a checkpoint created with python 3.8 to restore an Algorithm
-in a new environment that runs python 3.9.
+Checkpoints created with the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path()` method
+are based on `cloudpickle <https://github.com/cloudpipe/cloudpickle>`__ and thus depend on the python version used.
+This means there is no guarantee that you are able to use a checkpoint created with ``python 3.x`` to restore
+an Algorithm in another environment that runs ``python 3.x+1``.
 
-However, we now provide a utility for converting a checkpoint (generated with
-`Algorithm.save()`) into a python version independent checkpoint (based on msgpack).
+However, we now provide a utility for converting a checkpoint into a python version independent checkpoint based on `msgpack <https://msgpack.org/>`__.
 You can then use the newly converted msgpack checkpoint to restore another
 Algorithm instance from it. Look at this this short example here on how to do this:
 
@@ -314,6 +311,8 @@ a higher (or lower) python version, use the ``convert_to_msgpack_checkpoint()`` 
 create a msgpack-based checkpoint and hand that to either ``Algorithm.from_checkpoint()``
 or provide this to your Tune config. RLlib is able to recreate Algorithms from both these
 formats now.
+
+
 
 
 How do I restore an Algorithm from a checkpoint?
