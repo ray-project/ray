@@ -10,7 +10,7 @@ import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.ray_constants import env_integer
+from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._raylet import GcsClient
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
@@ -229,6 +229,7 @@ class DashboardHead:
                         max_restarts=-1,
                         max_task_retries=-1,
                         scheduling_strategy=node_affinity_strategy,
+                        name=f"{RAY_INTERNAL_DASHBOARD_NAMESPACE}_{cls.__name__}",
                     )
                     .remote(gcs_address=self.gcs_address)
                 )
