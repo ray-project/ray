@@ -10,10 +10,14 @@ A few benefits:
 
 TODO(hjiang): reserve minimum resource will be supported in the future.
 
-#### Disclaimer and presumption
+#### Prerequisites
 
 - The feature is built upon cgroup, which only supports linux;
 - Only cgroup v2 is supported, meanwhile ray also requires application to have write permission and cgroup v2 be mounted in rw mode;
+- If any of the prerequisites unsatisfied, when physical mode enabled, ray logs error with program keep working.
+
+#### Disclaimer
+
 - At the initial version, ray caps max resource usage via heuristric estimation (TODO: support user passed-in value).
 
 #### Implementation details
