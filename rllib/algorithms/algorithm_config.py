@@ -3819,7 +3819,7 @@ class AlgorithmConfig(_Config):
 
         Returns:
             The Learner class to use for this algorithm either as a class type or as
-            a string (e.g. ray.rllib.core.learner.testing.torch.BC).
+            a string (e.g. "ray.rllib.algorithms.ppo.ppo_learner.PPOLearner").
         """
         raise NotImplementedError
 
