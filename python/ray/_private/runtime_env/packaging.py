@@ -743,7 +743,6 @@ async def download_and_unpack_package(
                 pkg_file.write_bytes(code)
 
                 if is_zip_uri(pkg_uri):
-                    logger.info(f"Unpacking {pkg_file} to {local_dir}")
                     unzip_package(
                         package_path=pkg_file,
                         target_dir=local_dir,

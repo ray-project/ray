@@ -241,7 +241,6 @@ async def create_for_plugin_if_needed(
 
     uris = plugin.get_uris(runtime_env)
 
-    logger.info(f"Setting up runtime env {plugin.name} with URIs {uris}.")
     if not uris:
         logger.debug(
             f"No URIs for runtime env plugin {plugin.name}; "
