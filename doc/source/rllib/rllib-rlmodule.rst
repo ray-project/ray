@@ -585,13 +585,13 @@ To find out, what APIs your Algorithms require, do the following:
 .. testcode::
 
     # Import the config of the algorithm of your choice.
-    from ray.rllib.algorithms.sac import PPOConfig
+    from ray.rllib.algorithms.sac import SACConfig
 
     # Print out the abstract APIs, you need to subclass from and whose
     # abstract methods you need to implement, besides the `setup()` and `_forward_..()`
     # methods.
     print(
-        PPOConfig()
+        SACConfig()
         .get_default_learner_class()
         .rl_module_required_apis()
     )
@@ -732,15 +732,12 @@ Creating an RLModule checkpoint
 
 .. testcode::
 
-    import shutil
     import tempfile
 
     import gymnasium as gym
 
-    from ray.rllib.algorithms.ppo import PPOConfig
     from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import DefaultPPOTorchRLModule
     from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-    from ray.rllib.core.rl_module.rl_module import RLModule
 
     env = gym.make("CartPole-v1")
 
@@ -753,7 +750,7 @@ Creating an RLModule checkpoint
 
     # Finally, write the RLModule checkpoint.
     module_ckpt_path = tempfile.mkdtemp()
-    module.save_to_path(module_ckpt_path)
+    rl_module.save_to_path(module_ckpt_path)
 
 
 Creating an RLModule from an (RLModule) checkpoint
@@ -765,6 +762,8 @@ use the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.from_checkpoint` 
 
 .. testcode::
 
+    from ray.rllib.core.rl_module.rl_module import RLModule
+
     # Create a new RLModule from the checkpoint.
     new_module = RLModule.from_checkpoint(module_ckpt_path)
 
@@ -773,6 +772,8 @@ Loading an RLModule checkpoint into a running Algorithm
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. testcode::
+
+    from ray.rllib.algorithms.ppo import PPOConfig
 
     # Create a new Algorithm (with the changed module config: 32 units instead of the
     # default 256; otherwise loading the state of `module` will fail due to a shape
@@ -801,6 +802,8 @@ in the Learner workers and the ones in the EnvRunners.
 
 .. testcode::
     :hide:
+
+    import shutil
 
     ppo.stop()
     shutil.rmtree(module_ckpt_path)
