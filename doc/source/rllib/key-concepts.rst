@@ -159,7 +159,7 @@ RLModules
 
 .. tip::
     The following is a quick overview of what an **RLlib RLModule** is.
-    See :ref:`here for a detailed description of how to use RLModules <rllib-rlmodule-guide>`.
+    See :ref:`here for a detailed description of how to use RLModules <rlmodule-guide>`.
 
 `RLModules <rllib-rlmodule.html>`__ are deep-learning framework-specific neural network containers.
 They are used by RLlib's :ref:`EnvRunners <rllib-key-concepts-env-runners>` for computing actions in the
@@ -290,7 +290,7 @@ In `multi-agent mode <rllib-concepts.html#policies-in-multi-agent>`__,
 EnvRunner: Combining RL environment and RLModule
 ------------------------------------------------
 
-Given the :ref:`RL environment <rllib-key-concepts-environments>` and an :ref:`RLModule <rllib-key-concepts-rlmodules>`,
+Given the :ref:`RL environment <rllib-key-concepts-environments>` and an :ref:`RLModule <rllib-key-concepts-rl-modules>`,
 an :py:class`~ray.rllib.env.env_runner.EnvRunner` produces lists of :ref:`Episodes <rllib-key-concepts-episodes>`.
 
 Thereby, the ``EnvRunner`` executes a classic "environment interaction loop".
