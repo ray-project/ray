@@ -91,9 +91,6 @@ def _internal_kv_put(
         and isinstance(value, bytes)
         and isinstance(overwrite, bool)
     )
-    # Remove the key if it already exists.
-    if overwrite:
-        global_gcs_client.internal_kv_del(key, False, namespace)
     return global_gcs_client.internal_kv_put(key, value, overwrite, namespace) == 0
 
 

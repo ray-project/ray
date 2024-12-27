@@ -54,19 +54,25 @@ async def test_working_dir_cleanup(tmpdir, ray_start_regular):
     plugin = WorkingDirPlugin(tmpdir, gcs_aio_client)
     await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
 
+    print(f"tmpdir {tmpdir}")
     files = os.listdir(f"{tmpdir}/working_dir_files")
-    file_metadata = os.stat(f"{tmpdir}/working_dir_files/{files[0]}")
-    creation_time = file_metadata.st_ctime
+    # Iterate over the files and store the metadata.
+
+    creation_metadata = {}
+    for file in files:
+        file_metadata = os.stat(f"{tmpdir}/working_dir_files/{file}")
+        creation_time = file_metadata.st_ctime
+        creation_metadata[file] = creation_time
 
     time.sleep(1)
 
     await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
     files = os.listdir(f"{tmpdir}/working_dir_files")
 
-    file_metadata = os.stat(f"{tmpdir}/working_dir_files/{files[0]}")
-    creation_time_after = file_metadata.st_ctime
-
-    assert creation_time != creation_time_after
+    for file in files:
+        file_metadata = os.stat(f"{tmpdir}/working_dir_files/{file}")
+        creation_time_after = file_metadata.st_ctime
+        assert creation_metadata[file] != creation_time_after
 
 
 @pytest.mark.asyncio

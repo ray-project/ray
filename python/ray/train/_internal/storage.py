@@ -250,7 +250,7 @@ def _list_at_fs_path(
 
     selector = pyarrow.fs.FileSelector(fs_path, allow_not_found=True, recursive=False)
     return [
-        os.path.relpath(file_info.path.lstrip("/"), start=fs_path.lstrip("/"))
+        os.path.relpath(os.path.abspath(file_info.path), start=os.path.abspath(fs_path))
         for file_info in fs.get_file_info(selector)
         if file_filter(file_info)
     ]

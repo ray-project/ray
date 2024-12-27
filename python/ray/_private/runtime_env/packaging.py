@@ -705,17 +705,14 @@ async def download_and_unpack_package(
             download_package = False
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
         elif local_dir.exists():
-            logger.info(f"local_dir.exists() removing dir {local_dir}")
-            # Remove existing file and directory
-            # os.remove(pkg_file)
             logger.info(f"Removing {local_dir} with pkg_file {pkg_file}")
-            # shutil.rmtree(local_dir)
-            # time.sleep(0.5)
+            shutil.rmtree(local_dir)
 
         if download_package:
             protocol, _ = parse_uri(pkg_uri)
             logger.info(
-                f"Downloading package from {pkg_uri} to {pkg_file} with protocol {protocol}"
+                f"Downloading package from {pkg_uri} to {pkg_file} "
+                f"with protocol {protocol}"
             )
             if protocol == Protocol.GCS:
                 if gcs_aio_client is None:
