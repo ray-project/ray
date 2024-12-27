@@ -889,14 +889,14 @@ class RayChannelError(RaySystemError):
 
 @PublicAPI(stability="alpha")
 class RayChannelTimeoutError(RayChannelError, TimeoutError):
-    """Raised when the accelerated DAG channel operation times out."""
+    """Raised when the Compiled Graph channel operation times out."""
 
     pass
 
 
 @PublicAPI(stability="alpha")
 class RayCgraphCapacityExceeded(RaySystemError):
-    """Raised when the accelerated DAG channel's buffer is at max capacity"""
+    """Raised when the Compiled Graph channel's buffer is at max capacity"""
 
     pass
 
