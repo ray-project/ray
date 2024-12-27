@@ -346,17 +346,37 @@ class SynchronousReader(ReaderInterface):
             for w in waitables:
                 waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
 
-        if len(waitable_to_num_consumers) > 0:
-            all_waitables = list(waitable_to_num_consumers.keys())
-            worker = ray._private.worker.global_worker
-            timeout_ms = timeout * 1000 if timeout is not None else -1
-            values, _ = worker.experimental_wait_and_get_mutable_objects(
-                all_waitables, len(all_waitables), timeout_ms, return_exceptions=True
+        worker = ray._private.worker.global_worker
+        timeout = 1e6 if timeout is None or timeout == -1 else timeout
+        timeout_point = time.monotonic() + timeout
+        all_waitables = list(waitable_to_num_consumers.keys())
+        while len(all_waitables) > 0:
+            # Retrieve at most one object each time.
+            (
+                values,
+                non_complete_object_refs_set,
+            ) = worker.experimental_wait_and_get_mutable_objects(
+                all_waitables,
+                num_returns=1,
+                timeout_ms=max(0, (timeout_point - time.monotonic()) * 1000),
+                return_exceptions=True,
+                suppress_timeout_errors=True,
             )
             ctx = ChannelContext.get_current().serialization_context
             for i, value in enumerate(values):
+                if all_waitables[i] in non_complete_object_refs_set:
+                    continue
                 ctx.set_data(
-                    all_waitables[i], value, waitable_to_num_consumers[all_waitables[i]]
+                    all_waitables[i],
+                    value,
+                    waitable_to_num_consumers[all_waitables[i]],
+                )
+            all_waitables = list(non_complete_object_refs_set)
+            if time.monotonic() > timeout_point and len(all_waitables) != 0:
+                # This ensures that the reader attempts to retrieve
+                # data once even when the `timeout` is 0.
+                raise ray.exceptions.RayChannelTimeoutError(
+                    "Timed out waiting for channel data."
                 )
 
         results = []
