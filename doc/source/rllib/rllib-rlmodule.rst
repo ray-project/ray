@@ -264,7 +264,7 @@ and analogous to the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` co
 
             # First construct the MultiRLModuleSpec.
             spec = MultiRLModuleSpec(
-                module_specs={
+                rl_module_specs={
                     "module_1": RLModuleSpec(
                         module_class=DefaultBCTorchRLModule,
 
