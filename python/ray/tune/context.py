@@ -20,7 +20,7 @@ _TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE = (
 )
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="beta")
 class TuneContext(TrainV1Context):
     """Context to access metadata within Ray Tune functions."""
 
@@ -95,7 +95,7 @@ class TuneContext(TrainV1Context):
         return session.get_node_rank()
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="beta")
 def get_context() -> TuneContext:
     """Get or create a singleton Ray Tune context.
 
