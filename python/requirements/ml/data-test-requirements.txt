@@ -14,6 +14,7 @@ google-api-core==1.34.0
 webdataset
 raydp==1.7.0b20231020.dev0
 pylance
+torch==2.3.0
 delta-sharing
 pytest-mock
 decord

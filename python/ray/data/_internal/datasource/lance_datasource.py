@@ -2,6 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 import numpy as np
+from torch.utils.data import Dataset
 
 from ray.data._internal.util import _check_import, call_with_retry
 from ray.data.block import BlockMetadata
@@ -96,6 +97,34 @@ class LanceDatasource(Datasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         # TODO(chengsu): Add memory size estimation to improve auto-tune of parallelism.
         return None
+
+    class LanceDataset(Dataset):
+        """Custom Dataset to load images and their corresponding captions"""
+
+        def __init__(self, ds: "LanceDatasource"):
+            self.ds = ds
+            self.lance_ds = ds.lance_ds
+
+        def __len__(self):
+            return self.lance_ds.count_rows()
+
+        def __getitem__(self, idx):
+            # Load the image and caption
+            return self.lance_ds.take(
+                [idx],
+                columns=self.ds.scanner_options["columns"],
+                filter=self.ds.scanner_options["filter"],
+            ).to_pydict()
+
+    def to_torch_dataset(
+        self,
+    ) -> Dataset:
+        return self.LanceDataset(ds=self)
+
+    def count(
+        self,
+    ) -> int:
+        return self.lance_ds.count_rows(filter=self.scanner_options["filter"])
 
 
 def _read_fragments_with_retry(

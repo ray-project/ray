@@ -13,4 +13,5 @@ pandas==1.5.3; python_version < '3.12'
 modin==0.31.0; python_version >= '3.12'
 pandas==2.2.2; python_version >= '3.12'
 responses==0.13.4
+torch==2.3.0
 pymars>=0.8.3; python_version < "3.12"

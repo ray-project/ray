@@ -1598,6 +1598,8 @@ pyjwt==2.8.0
     #   snowflake-connector-python
 pylance==0.10.18
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
+torch==2.3.0
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 pymars==0.10.0 ; python_version < "3.12"
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
 pymongo==4.3.2

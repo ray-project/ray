@@ -5,11 +5,13 @@ import pyarrow as pa
 import pytest
 from pkg_resources import parse_version
 from pytest_lazyfixture import lazy_fixture
+from torch.utils.data import DataLoader
 
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray._private.utils import _get_pyarrow_version
 from ray.data import Schema
+from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data.datasource.path_util import _unwrap_protocol
 
 
@@ -112,6 +114,37 @@ def test_lance_read_many_files(data_path):
         return ds.count() == num_rows
 
     wait_for_condition(test_lance, timeout=10)
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_torch_dataset(data_path):
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.lance")
+    num_rows = 1024
+    data = pa.table(
+        {
+            "id": pa.array(range(num_rows)),
+            "name": pa.array([f"test_{i}" for i in range(num_rows)]),
+        }
+    )
+    lance.write_dataset(data, path, max_rows_per_file=1)
+
+    ds = LanceDatasource(path, columns=["name"], filter="id < 50 and id > 10")
+    assert ds.count() == 39
+    train_ds = ds.to_torch_dataset()
+
+    def custom_collate_fn(batch):
+        if isinstance(batch[0], dict):
+            return [item["name"] for item in batch]
+        else:
+            return [item[0] for item in batch]
+
+    dataloader = DataLoader(
+        train_ds, batch_size=10, shuffle=False, collate_fn=custom_collate_fn
+    )
+    for batch in dataloader:
+        assert len(batch) == 10
+        break
 
 
 if __name__ == "__main__":
