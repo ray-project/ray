@@ -90,8 +90,6 @@ class TrainController:
         scaling_policy: ScalingPolicy,
         failure_policy: FailurePolicy,
         callbacks: Optional[List[Callback]] = None,
-        # TODO: [Deprecation]
-        resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         self._train_run_context = train_run_context
         configure_controller_logger(self._train_run_context)
@@ -100,7 +98,6 @@ class TrainController:
         self._failure_policy = failure_policy
         self._run_config = self._train_run_context.run_config
         self._callbacks = callbacks or []
-        self._resume_from_checkpoint = resume_from_checkpoint
         self._storage_context = StorageContext(
             storage_path=self._run_config.storage_path,
             experiment_dir_name=self._run_config.name,
@@ -233,7 +230,7 @@ class TrainController:
                 num_workers=num_workers,
                 resources_per_worker=resources_per_worker,
                 placement_strategy=placement_strategy,
-                checkpoint=latest_checkpoint or self._resume_from_checkpoint,
+                checkpoint=latest_checkpoint,
             )
         except (WorkerGroupStartupTimeoutError, WorkerGroupStartupFailedError):
             logger.exception(

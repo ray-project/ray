@@ -140,6 +140,10 @@ trainer = TorchTrainer(
 )
 """
 
+_METADATA_DEPRECATION_WARNING = """
+`metadata` is deprecated and will be removed in an upcoming release.
+"""
+
 
 @DeveloperAPI
 class DataParallelTrainer:
@@ -154,10 +158,8 @@ class DataParallelTrainer:
         datasets: Optional[Dict[str, GenDataset]] = None,
         dataset_config: Optional[DataConfig] = None,
         # TODO: [Deprecated] Remove in future release
-        resume_from_checkpoint: Union[
-            Optional[Checkpoint], Literal["DEPRECATED"]
-        ] = _DEPRECATED,
-        metadata: Union[Optional[Dict[str, Any]], Literal["DEPRECATED"]] = _DEPRECATED,
+        resume_from_checkpoint: Optional[Checkpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         self.run_config = run_config or RunConfig()
         self.train_run_context = TrainRunContext(self.run_config)
@@ -168,10 +170,10 @@ class DataParallelTrainer:
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
 
-        if resume_from_checkpoint != _DEPRECATED:
+        if resume_from_checkpoint is not None:
             raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
 
-        if metadata != _DEPRECATED:
+        if metadata is not None:
             raise DeprecationWarning()
 
     def fit(self) -> Result:

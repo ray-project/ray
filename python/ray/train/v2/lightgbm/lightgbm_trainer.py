@@ -124,7 +124,8 @@ class LightGBMTrainer(DataParallelTrainer):
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         dataset_config: Optional[ray.train.DataConfig] = None,
-        metadata: Optional[Dict[str, Any]] = _UNSUPPORTED,
+        # TODO: [Deprecated]
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         super(LightGBMTrainer, self).__init__(
