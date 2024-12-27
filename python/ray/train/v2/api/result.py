@@ -1,7 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import pandas as pd
 import pyarrow
@@ -27,11 +27,14 @@ class Result(ResultV1):
         path: Union[str, os.PathLike],
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
     ) -> "Result":
-        raise NotImplementedError
+        raise NotImplementedError("`Result.from_path` is not implemented yet.")
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:
-        raise NotImplementedError
+        raise DeprecationWarning(
+            "The `config` property is deprecated, since it is only "
+            "relevant in the context of Ray Tune."
+        )
 
 
 def _build_result(

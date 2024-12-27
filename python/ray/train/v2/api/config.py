@@ -62,11 +62,11 @@ class ScalingConfig(ScalingConfigV1):
 
     """
 
-    trainer_resources: Union[Optional[dict], str] = _DEPRECATED
+    trainer_resources: Optional[dict] = None
 
     def __post_init__(self):
-        if self.trainer_resources != _DEPRECATED:
-            raise NotImplementedError(
+        if self.trainer_resources is not None:
+            raise DeprecationWarning(
                 "`ScalingConfig(trainer_resources)` is deprecated. "
                 "This parameter was an advanced configuration that specified "
                 "resources for the Ray Train driver actor, which doesn't "
