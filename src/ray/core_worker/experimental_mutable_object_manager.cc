@@ -297,6 +297,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
                                          std::shared_ptr<RayObject> &result,
                                          int64_t timeout_ms)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  RAY_LOG(DEBUG) << "ReadAcquire " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
 
   Channel *channel = GetChannel(object_id);
@@ -342,6 +343,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
                                          check_signals_,
                                          timeout_point);
   if (!s.ok()) {
+    RAY_LOG(DEBUG) << "ReadAcquire error was set, returning " << object_id;
     // Failed because the error bit was set on the mutable object.
     channel->reading = false;
     channel->lock->unlock();

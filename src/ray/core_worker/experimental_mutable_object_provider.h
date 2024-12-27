@@ -34,7 +34,7 @@ class MutableObjectProvider {
 
   MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
                         RayletFactory factory,
-                        std::function<Status(void)> check_signals);
+                        std::function<Status(void)> check_signals = nullptr);
 
   ~MutableObjectProvider();
 

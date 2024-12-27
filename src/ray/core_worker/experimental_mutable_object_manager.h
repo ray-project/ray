@@ -99,7 +99,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
     std::unique_ptr<plasma::MutableObject> mutable_object;
   } ABSL_CACHELINE_ALIGNED;
 
-  explicit MutableObjectManager(std::function<Status()> check_signals_)
+  explicit MutableObjectManager(std::function<Status()> check_signals_ = nullptr)
       : check_signals_(std::move(check_signals_)) {}
 
   ~MutableObjectManager();
