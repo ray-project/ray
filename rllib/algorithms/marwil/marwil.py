@@ -2,7 +2,6 @@ from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
 from ray.rllib.connectors.learner import (
     AddObservationsFromEpisodesToBatch,
     AddOneTsToEpisodesAndTruncate,
@@ -265,10 +264,7 @@ class MARWILConfig(AlgorithmConfig):
                 PPOTorchRLModule,
             )
 
-            return RLModuleSpec(
-                module_class=PPOTorchRLModule,
-                catalog_class=MARWILCatalog,
-            )
+            return RLModuleSpec(module_class=PPOTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "

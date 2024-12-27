@@ -469,18 +469,12 @@ class IMPALAConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-
-        if self.framework_str == "tf2":
-            from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
-
-            return RLModuleSpec(module_class=PPOTfRLModule, catalog_class=PPOCatalog)
-        elif self.framework_str == "torch":
+        if self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=PPOTorchRLModule, catalog_class=PPOCatalog)
+            return RLModuleSpec(module_class=PPOTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "

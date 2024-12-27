@@ -20,7 +20,9 @@ torch, nn = try_import_torch()
 
 class DefaultCQLTorchRLModule(DefaultSACTorchRLModule):
     def __init__(self, *args, **kwargs):
-        catalog_class = kwargs.pop("catalog_class", SACCatalog)
+        catalog_class = kwargs.pop("catalog_class", None)
+        if catalog_class is None:
+            catalog_class = SACCatalog
         super().__init__(*args, **kwargs, catalog_class=catalog_class)
 
     @override(DefaultSACTorchRLModule)

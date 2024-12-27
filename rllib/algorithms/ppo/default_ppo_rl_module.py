@@ -1,7 +1,6 @@
 import abc
 from typing import List
 
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.models.configs import RecurrentEncoderConfig
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -20,10 +19,6 @@ class DefaultPPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
     (or TorchRLModule) subclass as long as the custom class also implements the
     `ValueFunctionAPI` (see ray.rllib.core.rl_module.apis.value_function_api.py)
     """
-
-    def __init__(self, *args, **kwargs):
-        catalog_class = kwargs.pop("catalog_class", PPOCatalog)
-        super().__init__(*args, **kwargs, catalog_class=catalog_class)
 
     @override(RLModule)
     def setup(self):

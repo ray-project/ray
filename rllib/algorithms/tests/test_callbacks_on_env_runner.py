@@ -81,7 +81,7 @@ class OnEpisodeCreatedCallback(DefaultCallbacks):
         print("Some code here to test the expected error on new API stack!")
 
 
-class TestCallbacks(unittest.TestCase):
+class TestCallbacksOnEnvRunners(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         tune.register_env("multi_cart", lambda _: MultiAgentCartPole({"num_agents": 2}))

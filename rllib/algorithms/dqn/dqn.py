@@ -502,8 +502,6 @@ class DQNConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
-        from ray.rllib.algorithms.dqn.dqn_catalog import DQNCatalog
-
         if self.framework_str == "torch":
             from ray.rllib.algorithms.dqn.torch.default_dqn_torch_rl_module import (
                 DefaultDQNTorchRLModule,
@@ -511,7 +509,6 @@ class DQNConfig(AlgorithmConfig):
 
             return RLModuleSpec(
                 module_class=DefaultDQNTorchRLModule,
-                catalog_class=DQNCatalog,
                 model_config=self.model_config,
             )
         else:
