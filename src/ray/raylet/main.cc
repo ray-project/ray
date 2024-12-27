@@ -200,6 +200,8 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
+  // TODO(hjiang): Before we do any actual work, setup cgroup.
+
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
   absl::flat_hash_map<std::string, double> static_resource_conf;
