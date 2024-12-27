@@ -16,8 +16,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sf", choices=["1", "10", "100", "1000", "10000"], default="1"
     )
-    parser.add_argument("--batch-format", choices=["numpy", "pandas", "pyarrow"])
-    parser.add_argument("--compute", choices=["tasks", "actors"])
+    parser.add_argument(
+        "--batch-format",
+        choices=["numpy", "pandas", "pyarrow"],
+        help=(
+            "Batch format to use with 'map_batches'. This argument is ignored for "
+            "'map' and 'flat_map'.",
+        ),
+    )
+    parser.add_argument(
+        "--compute",
+        choices=["tasks", "actors"],
+        help=(
+            "Compute strategy to use with 'map_batches'. This argument is ignored for "
+            "'map' and 'flat_map'.",
+        ),
+    )
     return parser.parse_args()
 
 
@@ -64,8 +78,8 @@ def flat_increment_row(row):
 
 def increment_batch(batch):
     if isinstance(batch, (dict, pd.DataFrame)):
-        # Avoid modifying the column in-place (i.e., +=) because it might be read-only.
-        # See https://github.com/ray-project/ray/issues/369.
+        # Avoid modifying the column in-place (i.e., +=) because NumPy arrays are
+        # read-only. See https://github.com/ray-project/ray/issues/369.
         batch["column00"] = batch["column00"] + 1
     elif isinstance(batch, pa.Table):
         column00_incremented = pc.add(batch["column00"], 1)

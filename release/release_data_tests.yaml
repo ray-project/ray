@@ -336,15 +336,15 @@
     - __suffix__: pandas
       run:
         script: >
-            python map_benchmark.py --api map_batches --batch-format pandas --sf 1000
+          python map_benchmark.py --api map_batches --batch-format pandas --sf 1000
     - __suffix__: pyarrow
       run:
         script: >
-            python map_benchmark.py --api map_batches --batch-format pyarrow --sf 1000
+          python map_benchmark.py --api map_batches --batch-format pyarrow --sf 1000
     - __suffix__: actors
       run:
         script: >
-            python map_benchmark.py --api map_batches --compute actors --sf 1000
+          python map_benchmark.py --api map_batches --compute actors --sf 1000
 
 ########################
 # Sort and shuffle tests
