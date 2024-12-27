@@ -413,8 +413,7 @@ std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
       rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
                                          node_info->node_manager_port(),
                                          client_call_manager);
-  return std::shared_ptr<raylet::RayletClient>(
-      new raylet::RayletClient(std::move(grpc_client)));
+  return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
 };
 
 bool NodeManager::IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const {
