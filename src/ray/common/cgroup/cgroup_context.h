@@ -18,14 +18,15 @@
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 
 namespace ray {
 
 // Context used to setup cgroupv2 for a task / actor.
 struct PhysicalModeExecutionContext {
   // Directory for cgroup, which is applied to application process.
-  std::string_view cgroup_directory;
+  //
+  // TODO(hjiang): Revisit if we could save some CPU/mem with string view.
+  std::string cgroup_directory;
   // A unique id to uniquely identity a certain task / actor attempt.
   std::string id;
   // PID for the process.
