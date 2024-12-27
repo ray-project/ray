@@ -109,46 +109,6 @@ bool DeleteCgroupV2(const PhysicalModeExecutionContext &ctx) {
   return rmdir(cgroup_folder.data()) == 0;
 }
 
-bool RemoveCtxFromDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
-  // Sanity check.
-  RAY_CHECK(!ctx.id.empty());
-  RAY_CHECK_EQ(ctx.id, kDefaultCgroupV2Id);
-  RAY_CHECK_EQ(ctx.max_memory, 0);
-
-  const std::string cgroup_folder =
-      absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.id);
-  int ret_code = mkdir(cgroup_folder.data(), kCgroupV2FilePerm);
-  if (ret_code != 0) {
-    return false;
-  }
-
-  const std::string procs_path = absl::StrFormat("%s/cgroup.procs", cgroup_folder);
-  std::ostringstream buffer;
-  {
-    std::ifstream file(procs_path.data(), std::ios::in);
-    buffer << file.rdbuf();
-  }
-  std::string content = buffer.str();  // contains all PIDs, separated by space
-
-  std::vector<std::string_view> old_pid_strings = absl::StrSplit(content, ' ');
-  std::vector<std::string_view> new_pid_strings;
-  new_pid_strings.reserve(old_pid_strings.size() - 1);
-  for (const auto &cur_pid : old_pid_strings) {
-    if (cur_pid == absl::StrFormat("%d", ctx.pid)) {
-      continue;
-    }
-    new_pid_strings.emplace_back(cur_pid);
-  }
-
-  const std::string new_pids = absl::StrJoin(new_pid_strings, " ");
-  {
-    std::ofstream out_file{procs_path.data(), std::ios::out};
-    out_file << new_pids;
-  }
-
-  return true;
-}
-
 void PlaceProcessIntoDefaultCgroup(const PhysicalModeExecutionContext &ctx) {
   const std::string procs_path =
       absl::StrFormat("%s/%s/cgroup.procs", ctx.cgroup_directory, kDefaultCgroupV2Id);
