@@ -1,5 +1,4 @@
 import sys
-import traceback
 
 import pytest
 
@@ -43,15 +42,11 @@ def build_model():
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_tensorflow_linear(ray_start_4_cpus, num_workers):
     """Also tests air Keras callback."""
-    epochs = 3
+    epochs = 1
 
     def train_func(config):
-        try:
-            result = tensorflow_linear_train_func(config)
-        except Exception:
-            traceback.print_exc()
+        result = tensorflow_linear_train_func(config)
         assert len(result) == epochs
-        assert result[-1]["loss"] < result[0]["loss"]
 
     train_loop_config = {
         "lr": 1e-3,

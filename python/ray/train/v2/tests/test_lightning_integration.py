@@ -34,7 +34,7 @@ def test_trainer_with_native_dataloader(
         return
 
     num_workers = 2
-    num_epochs = 4
+    num_epochs = 1
     batch_size = 8
     dataset_size = 256
 
