@@ -342,7 +342,7 @@ NodeManager::NodeManager(
            "return values are greater than the remaining capacity.";
     max_task_args_memory = 0;
   }
-  local_task_manager_ = std::make_shared<LocalTaskManager>(
+  local_task_manager_ = std::make_unique<LocalTaskManager>(
       self_node_id_,
       *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       dependency_manager_,
