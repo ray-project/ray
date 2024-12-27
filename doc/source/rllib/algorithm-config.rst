@@ -7,15 +7,15 @@
 AlgorithmConfig API
 ===================
 
-You can configure your RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-in a type-safe fashion by working with the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` API.
+RLlib's :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` API is
+the auto-validated and type-safe gateway into configuring and building an RLlib
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
 
 In essence, you first create an instance of :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
-and then call some of its methods to set various configuration options.
+and then call some of its methods to set various configuration options. RLlib uses the following, `black <https://github.com/psf/black>`__ compliant format
+in all parts of the code.
 
-RLlib uses the following, `black <https://github.com/psf/black>`__ compliant notation
-in all parts of the code. Note that you can chain together more than one method call, including
-the constructor:
+Note that you can chain together more than one method call, including the constructor:
 
 .. testcode::
 
@@ -29,7 +29,6 @@ the constructor:
         # Change the number of Learner actors.
         .learners(num_learners=2)
     )
-
 
 .. hint::
 
@@ -49,10 +48,15 @@ the constructor:
 Algorithm specific config classes
 ---------------------------------
 
+You don't use ``AlgorithmConfig`` directly in practice, but rather use its algorithm-specific
+subclasses such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig`. Each subclass comes
+with its own set of additional arguments to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training`
+method.
+
 Normally, you should pick the specific :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
 subclass that matches the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 you would like to run your learning experiments with. For example, if you would like to
-use ``IMPALA`` as your algorithm, you should import its specific config class:
+use :ref:`IMPALA <impala>` as your algorithm, you should import its specific config class:
 
 .. testcode::
 
@@ -65,25 +69,34 @@ use ``IMPALA`` as your algorithm, you should import its specific config class:
         .training(lr=0.0004)
     )
 
-You can build the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` directly from the
+To change algorithm-specific settings, here for ``IMPALA``, also use the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training`
+method:
+
+.. testcode::
+
+    # Change an IMPALA-specific setting (the entropy coefficient).
+    config.training(entropy_coeff=0.01)
+
+
+You can build the :py:class:`~ray.rllib.algorithms.impala.IMPALA` instance directly from the
 config object through calling the
 :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_algo` method:
 
 .. testcode::
 
+    # Build the algorithm instance.
     impala = config.build_algo()
 
 
 The config object stored inside any built :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance
-is a copy of your original config. Hence, you can further alter your original config object and
-build another instance of the algo without affecting the previously built one:
-
+is a copy of your original config. This allows you to further alter your original config object and
+build another algorithm instance without affecting the previously built one:
 
 .. testcode::
 
-    # Further alter the config without affecting the previously built IMPALA ...
+    # Further alter the config without affecting the previously built IMPALA object ...
     config.env_runners(num_env_runners=4)
-    # ... and build another algo from it.
+    # ... and build a new IMPALA from it.
     another_impala = config.build_algo()
 
 
@@ -108,106 +121,123 @@ instance into the constructor of the :py:class:`~ray.tune.tuner.Tuner`:
 Generic config settings
 -----------------------
 
-Most config settings are generic and apply to all of RLlib's
-:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` classes.
-
+Most config settings are generic and apply to all of RLlib's :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` classes.
+The following sections walk you through the most important config settings users should pay close attention to for before
+diving further into other config settings and before starting with hyperparameter fine tuning.
 
 RL Environment
 ~~~~~~~~~~~~~~
 
+To configure, which RL environment your algorithm trains against, use the ``env`` argument to the
+:py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment` method:
 
+.. testcode::
+
+    config.environment()
+
+See this :ref:`RL environment guide <rllib-environments-doc>` for more details.
 
 Learning rate `lr`
 ~~~~~~~~~~~~~~~~~~
 
-Set the learning rate for updating your models through the ``lr`` arg to the
+Set the learning rate for updating your models through the ``lr`` argument to the
 :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training` method:
 
 .. testcode::
 
     config.training(lr=0.0001)
 
-
 Train batch size
 ~~~~~~~~~~~~~~~~
 
 Set the train batch size, per Learner actor,
-through the ``train_batch_size_per_learner`` arg to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training`
+through the ``train_batch_size_per_learner`` argument to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training`
 method:
 
 .. testcode::
 
     config.training(train_batch_size_per_learner=256)
 
-
 Discount factor `gamma`
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 Set the `RL discount factor <https://www.envisioning.io/vocab/discount-factor?utm_source=chatgpt.com>`__
-through the ``gamma`` arg to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training`
+through the ``gamma`` argument to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training`
 method:
 
 .. testcode::
 
     config.training(gamma=0.995)
 
+Scaling with `num_env_runners` and `num_learners`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Set the number of :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors used to collect training samples
+through the ``num_env_runners`` argument to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners`
+method:
 
-num_learners
-num_env_runners
-num_envs_per_env_runner
+.. testcode::
 
-explore
+    config.env_runners(num_env_runners=4)
 
-rollout_fragment_length
+    # Also use `num_envs_per_env_runner` to vectorize your environment on each EnvRunner actor.
+    # Note that this option is only available in single-agent setups.
+    #  The Ray Team is working on a solution for this restriction.
+    config.env_runners(num_envs_per_env_runner=10)
 
+Set the number of :py:class:`~ray.rllib.core.learner.learner.Learner` actors used to update your models
+through the ``num_learners`` argument to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.learners`
+method. This should correspond to the number of GPUs you have available for training.
 
-env
-env_config
+.. testcode::
 
+    config.learners(num_learners=2)
 
-policies
-policy_mapping_fn
+Disable `explore` behavior
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Switch off/on exploratory behavior
+through the ``explore`` argument to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners`
+method. To compute actions, the :py:class:`~ray.rllib.env.env_runner.EnvRunner` calls `forward_exploration()` on the RLModule when ``explore=True``
+and `forward_inference()` when ``explore=False``. The default value is ``explore=True``.
 
+.. testcode::
 
-Algorithm specific settings
----------------------------
+    # Disable exploration behavior.
+    # When False, the EnvRunner calls `forward_inference()` on the RLModule to compute
+    # actions instead of `forward_exploration()`.
+    config.env_runners(explore=False)
 
-Each RLlib algorithm has its own config class that inherits from `AlgorithmConfig`.
-For instance, to create a `PPO` algorithm, you start with a `PPOConfig` object, to work
-with a `DQN` algorithm, you start with a `DQNConfig` object, etc.
+Rollout length
+~~~~~~~~~~~~~~
 
-.. note::
+Set the number of timesteps each :py:class:`~ray.rllib.env.env_runner.EnvRunner` steps through each of its env copies
+through the ``rollout_fragment_length`` argument to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners`
+method:
 
-    Each algorithm has its specific settings, but most configuration options are shared.
-    We discuss the common options below, and refer to
-    :ref:`the RLlib algorithms guide <rllib-algorithms-doc>` for algorithm-specific
-    properties.
-    Algorithms differ mostly in their `training` settings.
+.. testcode::
 
-Below you find the basic signature of the `AlgorithmConfig` class, as well as some
-advanced usage examples:
+    config.env_runners(rollout_fragment_length=50)
 
-.. autoclass:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig
-    :noindex:
+All available methods and their settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-As RLlib algorithms are fairly complex, they come with many configuration options.
-To make things easier, the common properties of algorithms are naturally grouped into
-the following categories:
+Besides the previously described most common settings, the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
+class and its algo-specific subclasses come with many more configuration options.
 
-- :ref:`training options <rllib-config-train>`,
-- :ref:`environment options <rllib-config-env>`,
-- :ref:`deep learning framework options <rllib-config-framework>`,
-- :ref:`env runner options <rllib-config-env-runners>`,
-- :ref:`evaluation options <rllib-config-evaluation>`,
-- :ref:`options for training with offline data <rllib-config-offline_data>`,
-- :ref:`options for training multiple agents <rllib-config-multi_agent>`,
-- :ref:`reporting options <rllib-config-reporting>`,
-- :ref:`options for saving and restoring checkpoints <rllib-config-checkpointing>`,
-- :ref:`debugging options <rllib-config-debugging>`,
-- :ref:`options for adding callbacks to algorithms <rllib-config-callbacks>`,
-- :ref:`Resource options <rllib-config-resources>`
-- :ref:`and options for experimental features <rllib-config-experimental>`
+To structure things more semantically, :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` groups
+its various config settings into the following categories, each represented by its own method:
 
-Let's discuss each category one by one, starting with training options.
+- :ref:`Config settings for the RL environment <rllib-config-env>`,
+- :ref:`Config settings for training behavior (including algo-specific settings) <rllib-config-training>`,
+- :ref:`Config settings for EnvRunners <rllib-config-env-runners>`,
+- :ref:`Config settings for Learners <rllib-config-learners>`,
+- :ref:`Config settings for adding callbacks <rllib-config-callbacks>`,
+- :ref:`Config settings for multi-agent setups <rllib-config-multi_agent>`,
+- :ref:`Config settings for offline RL <rllib-config-offline_data>`,
+- :ref:`Config settings for evaluating policies <rllib-config-evaluation>`,
+- :ref:`Config settings for the DL framework <rllib-config-framework>`,
+- :ref:`Config settings for reporting and logging behavior <rllib-config-reporting>`,
+- :ref:`Config settings for checkpointing <rllib-config-checkpointing>`,
+- :ref:`Config settings for debugging <rllib-config-debugging>`,
+- :ref:`Experimental config settings <rllib-config-experimental>`

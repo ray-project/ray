@@ -5,19 +5,12 @@
 .. _algorithm-config-reference-docs:
 
 Algorithm Configuration API
-----------------------------
-
-The :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` class represents
-the user's gateway into configuring and building an RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
-
-You don't use ``AlgorithmConfig`` directly in practice, but rather use its algorithm-specific
-implementations such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig`, which each come
-with their own set of arguments to their respective ``.training()`` method.
+===========================
 
 .. currentmodule:: ray.rllib.algorithms.algorithm_config
 
 Constructor
-~~~~~~~~~~~
+-----------
 
 .. autosummary::
     :nosignatures:
@@ -27,7 +20,7 @@ Constructor
 
 
 Builder methods
-~~~~~~~~~~~~~~~
+---------------
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -38,7 +31,7 @@ Builder methods
 
 
 Properties
-~~~~~~~~~~
+----------
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -51,7 +44,7 @@ Properties
     ~AlgorithmConfig.total_train_batch_size
 
 Getter methods
-~~~~~~~~~~~~~~
+--------------
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -65,7 +58,7 @@ Getter methods
 
 
 Public methods
-~~~~~~~~~~~~~~
+--------------
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -74,6 +67,11 @@ Public methods
     ~AlgorithmConfig.validate
     ~AlgorithmConfig.freeze
 
+
+.. _rllib-algorithm-config-methods:
+
+Configuration methods
+---------------------
 
 .. _rllib-config-env:
 
@@ -84,19 +82,10 @@ Configuring the RL Environment
     :noindex:
 
 
-.. _rllib-config-train:
+.. _rllib-config-training:
 
 Configuring training behavior
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. note::
-
-    For instance, a `DQNConfig` takes a `double_q` `training` argument to specify whether
-    to use a double-Q DQN, whereas in a `PPOConfig` this does not make sense.
-
-For individual algorithms, this is probably the most relevant configuration group,
-as this is where all the algorithm-specific options go.
-But the base configuration for `training` of an `AlgorithmConfig` is actually quite small:
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training
     :noindex:
@@ -104,16 +93,16 @@ But the base configuration for `training` of an `AlgorithmConfig` is actually qu
 
 .. _rllib-config-env-runners:
 
-Configuring EnvRunnerGroup and EnvRunner actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Configuring `EnvRunnerGroup` and `EnvRunner` actors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners
     :noindex:
 
 .. _rllib-config-learners:
 
-Configuring LearnerGroup and Learner actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Configuring `LearnerGroup` and `Learner` actors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.learners
     :noindex:
