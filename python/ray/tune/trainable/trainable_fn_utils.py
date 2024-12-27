@@ -50,3 +50,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
     """Access the latest reported checkpoint to resume from if one exists."""
 
     return get_session().loaded_checkpoint
+
+
+def _in_tune_session() -> bool:
+    return get_session() and get_session().world_rank is None

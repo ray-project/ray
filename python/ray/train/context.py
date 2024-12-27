@@ -117,10 +117,10 @@ def get_context() -> TrainContext:
 
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
-    from ray.train._internal.session import get_session
+    from ray.tune.trainable.trainable_fn_utils import _in_tune_session
 
     # If we are running in a Tune function, switch to Tune context.
-    if get_session() and get_session().world_rank is None:
+    if _in_tune_session():
         from ray.tune import get_context as get_tune_context
 
         if _v2_migration_warnings_enabled():

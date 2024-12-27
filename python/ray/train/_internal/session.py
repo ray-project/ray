@@ -747,7 +747,9 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         checkpoint: The optional checkpoint you want to report.
     """
     # If we are running in a Tune function, switch to `ray.tune.report`.
-    if get_session() and get_session().world_rank is None:
+    from ray.tune.trainable.trainable_fn_utils import _in_tune_session
+
+    if _in_tune_session():
         import ray.tune
 
         if _v2_migration_warnings_enabled():
@@ -805,7 +807,9 @@ def get_checkpoint() -> Optional[Checkpoint]:
             Otherwise, return None.
     """
     # If we are running in a Tune function, switch to `ray.tune.get_checkpoint`.
-    if get_session() and get_session().world_rank is None:
+    from ray.tune.trainable.trainable_fn_utils import _in_tune_session
+
+    if _in_tune_session():
         import ray.tune
 
         if _v2_migration_warnings_enabled():
