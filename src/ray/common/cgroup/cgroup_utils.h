@@ -26,8 +26,13 @@ namespace ray {
 
 // A util class which sets up cgroup at construction, and cleans up at destruction.
 // On ctor, creates a cgroup v2 if necessary based on the context. Then puts `ctx.pid`
-// into this cgroup. On dtor, puts `ctx.pid` into the default cgroup, and remove this
-// cgroup v2 if any.
+// into this cgroup.
+// On dtor, puts `ctx.pid` into the default cgroup, and remove this cgroup v2 if any.
+//
+// Precondition:
+// 1. rw permission for cgroup has been validated.
+// 2. Cgroup folder (i.e. default application cgroup folder) has been properly setup.
+// See README under this folder for more details.
 class CgroupV2Setup {
  public:
   // A failed construction returns nullptr.

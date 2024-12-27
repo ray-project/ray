@@ -195,8 +195,8 @@ CgroupV2Setup::~CgroupV2Setup() {
     return DeleteCgroupV2(ctx);
   }
 
-  // Update default cgroup if no max resource specified.
-  return RemoveCtxFromDefaultCgroupV2(ctx);
+  // If pid already in default cgroup, no action needed.
+  return true;
 }
 
 }  // namespace ray
