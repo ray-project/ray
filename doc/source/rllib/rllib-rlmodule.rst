@@ -14,22 +14,22 @@ models, including highly complex multi-network setups often found in multi-agent
 three public methods, each corresponding to a distinct phase in the reinforcement learning cycle:
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` handles the computation of actions during data collection
 if RLlib uses the data for a succeeding training step, balancing exploration and exploitation.
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` should be used to compute actions during evaluation, for example in production,
-often requiring greedy or less stochastic action selection.
+- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` computes actions for evaluation and production, which often need to be greedy or less stochastic.
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` manages the training phase, performing calculations required to
 compute losses, such as Q-values in a DQN model, value function predictions in a PG-style setup,
 or world-model predictions in model-based algorithms.
 
 
 .. figure:: images/rl_modules/rl_module_overview.svg
-    :width: 600
+    :width: 700
+    :align: left
 
     **RLModule overview**: (*left*) A plain :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` contains the
     neural network RLlib uses for computations,
-    for example, a policy network written in `PyTorch <pytorch.org>`__), and exposes the three forward methods:
-    :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` (sample collection),
-    :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` (production/deployment), and
-    :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` (preparing loss computations when training).
+    for example, a policy network written in `PyTorch <pytorch.org>`__, and exposes the three forward methods:
+    :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` for sample collection,
+    :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` for production/deployment, and
+    :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` for computing loss function inputs when training.
     (*right*) A :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` may contain one
     or more sub-RLModules, each identified by a `ModuleID`, allowing you to implement
     arbitrarily complex multi-network or multi-agent architectures and algorithms.
@@ -277,7 +277,7 @@ and analogous to the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` co
                         model_config={"fcnet_hiddens": [32]},
                     ),
                     "module_2": RLModuleSpec(
-                        module_class=DiscreteBCTorchModule,
+                        module_class=DefaultBCTorchRLModule,
 
                         # Define the spaces for only this sub-module.
                         observation_space=gym.spaces.Box(low=-1, high=1, shape=(5,)),
@@ -551,7 +551,7 @@ If you don't return the ``actions`` key from your forward method:
                     return {
                         # RLlib:
                         # - Generates distribution from ACTION_DIST_INPUTS parameters.
-                        # - Samples from the (stochastic) distribution.
+                        # - Samples from the stochastic distribution.
                         # - Computes action probs and logs automatically using the sampled
                         #   actions and the distribution.
                         Columns.ACTION_DIST_INPUTS: ...
@@ -632,11 +632,12 @@ override the following methods in the :py:class:`~ray.rllib.core.rl_module.rl_mo
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_exploration_action_dist_cls`
 - and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_train_action_dist_cls`
 
-See `torch_distributions.py <https://github.com/ray-project/ray/blob/master/rllib/models/torch/torch_distributions.py>`__ for common distribution implementations.
+.. note::
+    If you only return ``ACTION_DIST_INPUTS`` from your forward methods, RLlib automatically
+    uses the :py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` method of the
+    distribution returned by your :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_inference_action_dist_cls`.
 
-Implement a deterministic counterpart of the distribution class through the
-:py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` method.
-You can choose to compute deterministic actions by creating the deterministic counterpart.
+See `torch_distributions.py <https://github.com/ray-project/ray/blob/master/rllib/models/torch/torch_distributions.py>`__ for common distribution implementations.
 
 
 Implementing custom MultiRLModules
@@ -706,10 +707,10 @@ model hyper-parameters:
 
 
 .. note::
-    In order to learn with the preceding setup properly, a specific, multi-agent
+    In order to properly learn with the preceding setup, a specific multi-agent
     :py:class:`~ray.rllib.core.learner.learner.Learner`, capable of handling the shared encoder
     must be written and used. This Learner should only have a single optimizer, used to train all
-    three submodules (encoder and the two policy nets) to stabilize learning.
+    three submodules, which are the encoder and the two policy nets, to stabilize learning.
     If the standard "one-optimizer-per-module" Learners are used, the two optimizers for policy 1 and 2
     take turns updating the same shared encoder, which potentially leads to learning instabilities.
 
@@ -719,8 +720,9 @@ model hyper-parameters:
 Checkpointing RLModules
 -----------------------
 
-RL Modules can be checkpointed with their :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.save_to_path` method.
-If you already have an instantiated RLModule and would like to load a new state (weights) into it from an existing
+You can checkpoint :py:class:`~ray.rllib.core.rl_module.rl_module.RLModules` instances with their
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.save_to_path` method.
+If you already have an instantiated RLModule and would like to load new model weights into it from an existing
 checkpoint, use the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.restore_from_path` method.
 
 The following examples show how these methods can be used outside of, or in conjunction with, an RLlib Algorithm.
