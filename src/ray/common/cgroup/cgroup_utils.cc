@@ -66,15 +66,12 @@ bool CreateNewCgroupV2(const PhysicalModeExecutionContext &ctx) {
     return false;
   }
 
-  if (ctx.max_memory > 0) {
-    // It works if (1) the process is already under default application cgroup, (2) it's a
-    // newly created process.
-    const std::string procs_path = absl::StrFormat("%s/cgroup.procs", cgroup_folder);
-    OpenCgroupV2FileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid));
+  const std::string procs_path = absl::StrFormat("%s/cgroup.procs", cgroup_folder);
+  OpenCgroupV2FileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid));
 
-    const std::string max_memory_path = absl::StrFormat("%s/memory.max", cgroup_folder);
-    OpenCgroupV2FileAndAppend(max_memory_path, absl::StrFormat("%d", ctx.max_memory));
-  }
+  // Add max memory into cgroup.
+  const std::string max_memory_path = absl::StrFormat("%s/memory.max", cgroup_folder);
+  OpenCgroupV2FileAndAppend(max_memory_path, absl::StrFormat("%d", ctx.max_memory));
 
   return true;
 }
