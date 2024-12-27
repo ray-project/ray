@@ -32,7 +32,7 @@ Builder methods
     :nosignatures:
     :toctree: doc/
 
-    ~AlgorithmConfig.build
+    ~AlgorithmConfig.build_algo
     ~AlgorithmConfig.build_learner_group
     ~AlgorithmConfig.build_learner
 

@@ -909,7 +909,7 @@ class AlgorithmConfig(_Config):
         # Check to-be-deprecated settings (however that are still in use).
         self._validate_to_be_deprecated_settings()
 
-    def build(
+    def build_algo(
         self,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
@@ -5216,6 +5216,10 @@ class AlgorithmConfig(_Config):
             is_policy_to_train = self.policies_to_train
 
         return policies, is_policy_to_train
+
+    @Deprecated(new="AlgorithmConfig.build_algo", error=False)
+    def build(self, *args, **kwargs):
+        return self.build_algo(*args, **kwargs)
 
     @Deprecated(new="AlgorithmConfig.get_multi_rl_module_spec()", error=True)
     def get_marl_module_spec(self, *args, **kwargs):
