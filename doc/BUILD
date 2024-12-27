@@ -282,21 +282,6 @@ py_test_run_all_subdirectory(
 )
 
 # --------------------------------------------------------------------
-# Test all doc/source/ray-overview/doc_test snippets, used on ray.io
-# --------------------------------------------------------------------
-
-py_test_run_all_subdirectory(
-    size = "small",
-    include = ["source/ray-overview/doc_test/*.py"],
-    exclude = ["source/ray-overview/doc_test/ray_data.py"],
-    extra_srcs = [],
-    tags = [
-        "exclusive",
-        "team:ml",
-    ],
-)
-
-# --------------------------------------------------------------------
 # Test all doc/source/data/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
