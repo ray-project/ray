@@ -8,12 +8,16 @@ advanced_configurations_json:
 
 head_node_type:
     name: head-node
+    # Use a GPU head node so we can test `iter_torch_batches` with `device='cuda'`.
+    # We use the same number of vCPUs and memory as the default m5.2xlarge head node.
     instance_type: g4dn.2xlarge
     resources:
       cpu: 0
 
 worker_node_types:
     - name: worker-node
+      # Anyscale workspaces use m5.2xlarge worker nodes by default. For consistency, we 
+      # use GPU nodes with the same number of vCPUs and memory.
       instance_type: g4dn.2xlarge
       min_workers: 0
       max_workers: 10

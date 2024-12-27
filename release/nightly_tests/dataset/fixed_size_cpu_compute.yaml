@@ -6,13 +6,15 @@ advanced_configurations_json:
 
 head_node_type:
     name: head-node
-    instance_type: g4dn.2xlarge
+    # Default head node type on Anyscale workspaces.
+    instance_type: m5.2xlarge
     resources:
       cpu: 0
 
 worker_node_types:
     - name: worker-node
-      instance_type: g4dn.2xlarge
+      # Default worker node type on Anyscale workspaces.
+      instance_type: m5.2xlarge
       min_workers: 10
       max_workers: 10
       use_spot: false

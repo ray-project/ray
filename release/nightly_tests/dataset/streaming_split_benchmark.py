@@ -17,6 +17,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
+    """Benchmark for `Dataset.streaming_split`.
+
+    This benchmark splits ImageNet into equally-sized shards and consumes them on
+    `num_workers` actors in parallel.
+
+    Ray Train uses the same functionality to load data across training workers.
+    """
     benchmark = Benchmark("streaming-split")
 
     ds = ray.data.read_parquet("s3://ray-benchmark-data-internal/imagenet/parquet")
