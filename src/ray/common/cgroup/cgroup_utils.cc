@@ -67,6 +67,8 @@ bool CreateNewCgroupV2(const PhysicalModeExecutionContext &ctx) {
   }
 
   if (ctx.max_memory > 0) {
+    // It works if (1) the process is already under default application cgroup, (2) it's a
+    // newly created process.
     const std::string procs_path = absl::StrFormat("%s/cgroup.procs", cgroup_folder);
     OpenCgroupV2FileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid));
 
