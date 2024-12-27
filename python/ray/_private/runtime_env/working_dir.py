@@ -165,7 +165,7 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
             self._resources_dir,
             self._gcs_aio_client,
             logger=logger,
-            overwrite=True,
+            overwrite=False,
         )
         return get_directory_size_bytes(local_dir)
 

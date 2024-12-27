@@ -628,6 +628,7 @@ def upload_package_if_needed(
     package_file = package_file.with_name(
         f"{time.time_ns()}_{os.getpid()}_{package_file.name}"
     )
+
     create_package(
         module_path,
         package_file,
@@ -696,6 +697,7 @@ async def download_and_unpack_package(
         logger.debug(f"Fetching package for URI: {pkg_uri}")
 
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
+        logger.info("local_dir: %s", local_dir)
         assert local_dir != pkg_file, "Invalid pkg_file!"
 
         download_package: bool = True
@@ -703,16 +705,25 @@ async def download_and_unpack_package(
             download_package = False
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
         elif local_dir.exists():
-            shutil.rmtree(local_dir)
+            logger.info(f"local_dir.exists() removing dir {local_dir}")
+            # Remove existing file and directory
+            # os.remove(pkg_file)
+            logger.info(f"Removing {local_dir} with pkg_file {pkg_file}")
+            # shutil.rmtree(local_dir)
+            # time.sleep(0.5)
 
         if download_package:
             protocol, _ = parse_uri(pkg_uri)
+            logger.info(
+                f"Downloading package from {pkg_uri} to {pkg_file} with protocol {protocol}"
+            )
             if protocol == Protocol.GCS:
                 if gcs_aio_client is None:
                     raise ValueError(
                         "GCS client must be provided to download from GCS."
                     )
 
+                # logger.info(f"Downloading package from {pkg_uri} to {pkg_file}")
                 # Download package from the GCS.
                 code = await gcs_aio_client.internal_kv_get(
                     pkg_uri.encode(), namespace=None, timeout=None
@@ -737,6 +748,7 @@ async def download_and_unpack_package(
                 pkg_file.write_bytes(code)
 
                 if is_zip_uri(pkg_uri):
+                    logger.info(f"Unpacking {pkg_file} to {local_dir}")
                     unzip_package(
                         package_path=pkg_file,
                         target_dir=local_dir,
