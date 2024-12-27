@@ -32,7 +32,6 @@ class TuneContext(TrainV1Context):
     def get_trial_name(self) -> str:
         return session.get_trial_name()
 
-    @Deprecated(warning=_v2_migration_warnings_enabled())
     @_copy_doc(session.get_trial_id)
     def get_trial_id(self) -> str:
         return session.get_trial_id()

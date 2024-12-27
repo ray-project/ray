@@ -15,6 +15,13 @@ if TYPE_CHECKING:
 _default_context: "Optional[TrainContext]" = None
 _context_lock = threading.Lock()
 
+
+_GET_METADATA_DEPRECATION_MESSAGE = (
+    "`get_metadata` was an experimental API that accessed the metadata passed "
+    "to `<Framework>Trainer(metadata=...)`. This API can be replaced by passing "
+    "the metadata directly to the training function (e.g., via `train_loop_config`)."
+)
+
 _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE = (
     "`{}` is deprecated because the concept of a `Trial` will "
     "soon be removed in Ray Train (see here: "
@@ -59,7 +66,10 @@ class TrainContext:
 
     # Deprecated APIs
 
-    @Deprecated(warning=_v2_migration_warnings_enabled())
+    @Deprecated(
+        message=_GET_METADATA_DEPRECATION_MESSAGE,
+        warning=_v2_migration_warnings_enabled(),
+    )
     @_copy_doc(session.get_metadata)
     def get_metadata(self) -> Dict[str, Any]:
         return session.get_metadata()
