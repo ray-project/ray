@@ -14,6 +14,12 @@
 
 #include "ray/common/cgroup/cgroup_setup.h"
 
+#ifndef __linux__
+namespace ray {
+bool SetupCgroupsPreparation() { return false; }
+}  // namespace ray
+#else  // __linux__
+
 #include <sys/stat.h>
 
 #include <cerrno>
@@ -108,3 +114,5 @@ bool SetupCgroupsPreparation() {
 }
 
 }  // namespace ray
+
+#endif  // __linux__
