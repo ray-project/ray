@@ -1966,14 +1966,15 @@ def update_envs(env_vars: Dict[str, str]):
     When updating the environment variable, if there is ${X},
     it will be replaced with the current environment variable.
     """
-    if not env_vars:
-        return
+    return
+    # if not env_vars:
+    #     return
 
-    for key, value in env_vars.items():
-        expanded = os.path.expandvars(value)
-        # Replace non-existant env vars with an empty string.
-        result = re.sub(r"\$\{[A-Z0-9_]+\}", "", expanded)
-        os.environ[key] = result
+    # for key, value in env_vars.items():
+    #     expanded = os.path.expandvars(value)
+    #     # Replace non-existant env vars with an empty string.
+    #     result = re.sub(r"\$\{[A-Z0-9_]+\}", "", expanded)
+    #     os.environ[key] = result
 
 
 def parse_node_labels_json(
