@@ -1,6 +1,7 @@
 from typing import Iterator
 from unittest import mock
 
+import pandas as pd
 import pyarrow as pa
 import pytest
 from google.api_core import exceptions, operation
@@ -14,7 +15,6 @@ from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.planner.plan_write_op import generate_collect_write_stats_fn
 from ray.data.block import Block
-from ray.data.datasource.datasink import WriteResult
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -24,7 +24,6 @@ _TEST_BQ_DATASET_ID = "mockdataset"
 _TEST_BQ_TABLE_ID = "mocktable"
 _TEST_BQ_DATASET = _TEST_BQ_DATASET_ID + "." + _TEST_BQ_TABLE_ID
 _TEST_BQ_TEMP_DESTINATION = _TEST_GCP_PROJECT_ID + ".tempdataset.temptable"
-_TEST_DISPLAY_NAME = "display_name"
 
 
 @pytest.fixture(autouse=True)
