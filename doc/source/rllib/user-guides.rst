@@ -18,7 +18,6 @@ User Guides
     single-agent-episode
     rllib-replay-buffers
     rllib-offline
-    rllib-catalogs
     rllib-rlmodule
     rllib-learner
     rllib-torch2x
@@ -98,11 +97,3 @@ RLlib Feature Guides
         .. button-ref:: rllib-dev
 
             How To Contribute To RLlib?
-
-    .. grid-item-card::
-        :img-top: /rllib/images/rllib-logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: rllib-catalogs
-
-            How To Use the RLlib Catalogs
