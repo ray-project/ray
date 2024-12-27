@@ -2652,6 +2652,7 @@ def test_signature_mismatch(shutdown_only):
             _ = worker.g.bind(inp)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Sigint not supported on Windows")
 def test_sigint_get_dagref(ray_start_cluster):
     driver_script = """
 import ray
