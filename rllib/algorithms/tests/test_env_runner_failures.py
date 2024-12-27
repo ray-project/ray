@@ -269,7 +269,7 @@ class TestWorkerFailures(unittest.TestCase):
     def _do_test_failing_fatal(self, config, fail_eval=False):
         """Test raises real error when out of workers."""
         config.num_env_runners = 2
-        config.env = "multi_agent_fault_env" if config.is_multi_agent() else "fault_env"
+        config.env = "multi_agent_fault_env" if config.is_multi_agent else "fault_env"
         # Make both worker idx=1 and 2 fail.
         config.env_config = {"bad_indices": [1, 2]}
         config.restart_failed_env_runners = False

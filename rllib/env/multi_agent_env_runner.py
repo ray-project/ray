@@ -68,7 +68,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         super().__init__(config=config)
 
         # Raise an Error, if the provided config is not a multi-agent one.
-        if not self.config.is_multi_agent():
+        if not self.config.is_multi_agent:
             raise ValueError(
                 f"Cannot use this EnvRunner class ({type(self).__name__}), if your "
                 "setup is not multi-agent! Try adding multi-agent information to your "

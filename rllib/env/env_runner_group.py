@@ -147,7 +147,7 @@ class EnvRunnerGroup:
                 # OfflineSingleAgentEnvRunner`.
                 if config.output:
                     # No multi-agent support.
-                    if config.is_multi_agent():
+                    if config.is_multi_agent:
                         raise ValueError("Multi-agent recording is not supported, yet.")
                     # Otherwise, load the single-agent env runner for
                     # recording.
@@ -158,7 +158,7 @@ class EnvRunnerGroup:
 
                         self.env_runner_cls = OfflineSingleAgentEnvRunner
                 else:
-                    if config.is_multi_agent():
+                    if config.is_multi_agent:
                         from ray.rllib.env.multi_agent_env_runner import (
                             MultiAgentEnvRunner,
                         )

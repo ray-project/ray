@@ -1804,7 +1804,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # The to-be-returned new MultiAgentRLModuleSpec.
         multi_rl_module_spec = None
 
-        if not self.config.is_multi_agent():
+        if not self.config.is_multi_agent:
             raise RuntimeError(
                 "Can't add a new RLModule to a single-agent setup! Make sure that your "
                 "setup is already initially multi-agent by either defining >1 "
@@ -3582,7 +3582,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 f"{type(self).__name__}("
                 f"env={self.config.env}; env-runners={self.config.num_env_runners}; "
                 f"learners={self.config.num_learners}; "
-                f"multi-agent={self.config.is_multi_agent()}"
+                f"multi-agent={self.config.is_multi_agent}"
                 f")"
             )
         else:
