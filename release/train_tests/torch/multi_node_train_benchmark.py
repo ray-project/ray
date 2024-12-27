@@ -1,5 +1,5 @@
 import ray
-from ray import train
+import ray.train
 from ray.train import DataConfig, ScalingConfig, RunConfig, Checkpoint
 from ray.train.torch import TorchTrainer
 from ray.data.datasource.partitioning import Partitioning
@@ -243,9 +243,9 @@ DEFAULT_IMAGE_SIZE = 224
 
 def _get_ray_data_batch_iterator(args, worker_rank):
     if args.split_input:
-        it = train.get_dataset_shard(f"train_{worker_rank}")
+        it = ray.train.get_dataset_shard(f"train_{worker_rank}")
     else:
-        it = train.get_dataset_shard("train")
+        it = ray.train.get_dataset_shard("train")
     return it, it.iter_torch_batches(
         batch_size=args.batch_size,
         prefetch_batches=args.prefetch_batches,
@@ -260,8 +260,8 @@ def _get_batch_num_rows(batch):
 
 
 def train_loop_per_worker():
-    worker_rank = train.get_context().get_world_rank()
-    device = train.torch.get_device()
+    worker_rank = ray.train.get_context().get_world_rank()
+    device = ray.train.torch.get_device()
     world_size = ray.train.get_context().get_world_size()
     local_world_size = ray.train.get_context().get_local_world_size()
     torch_num_workers = args.torch_num_workers or os.cpu_count()
@@ -270,7 +270,7 @@ def train_loop_per_worker():
 
     # Setup the model
     raw_model = resnet50(weights=None)
-    model = train.torch.prepare_model(raw_model)
+    model = ray.train.torch.prepare_model(raw_model)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
 
@@ -316,7 +316,7 @@ def train_loop_per_worker():
         if args.use_ray_data:
             ds_shard, batch_iter = _get_ray_data_batch_iterator(args, worker_rank)
             if run_validation_set:
-                val_ds = train.get_dataset_shard("val")
+                val_ds = ray.train.get_dataset_shard("val")
                 batch_iter_val = val_ds.iter_torch_batches(
                     batch_size=args.batch_size,
                     prefetch_batches=args.prefetch_batches,
@@ -402,7 +402,7 @@ def train_loop_per_worker():
         with tempfile.TemporaryDirectory() as tmpdir:
             torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
             checkpoint = Checkpoint.from_directory(tmpdir)
-            train.report(
+            ray.train.report(
                 dict(
                     epoch_accuracy=epoch_accuracy_val,
                     loss_avg=(total_loss / num_batches) if num_batches > 0 else 0,
@@ -481,7 +481,13 @@ def train_loop_per_worker():
             }
         )
 
-    train.report(final_train_report_metrics)
+    # HACK: report a dummy final checkpoint so that we can access
+    # the final metrics in V2
+    with tempfile.TemporaryDirectory() as dummy_final_checkpoint_dir:
+        ray.train.report(
+            final_train_report_metrics,
+            checkpoint=Checkpoint.from_directory(dummy_final_checkpoint_dir),
+        )
 
 
 # The input files URLs per training worker.
@@ -708,7 +714,7 @@ def benchmark_code(
         ),
         run_config=RunConfig(
             storage_path="/mnt/cluster_storage",
-            failure_config=train.FailureConfig(args.num_retries),
+            failure_config=ray.train.FailureConfig(max_failures=args.num_retries),
         ),
     )
 
