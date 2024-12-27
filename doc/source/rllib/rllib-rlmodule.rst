@@ -328,7 +328,6 @@ There are two possible ways to extend existing RL Modules:
 
         An advanced way to customize your module is by extending its :py:class:`~ray.rllib.core.models.catalog.Catalog`.
         The Catalog is a component that defines the default models and other sub-components for RL Modules based on factors such as ``observation_space``, ``action_space``, etc.
-        For more information on the :py:class:`~ray.rllib.core.models.catalog.Catalog` class, refer to the `Catalog user guide <rllib-catalogs.html>`__.
         By modifying the Catalog, you can alter what sub-components are being built for existing RL Modules.
         This approach is useful mostly if you want your custom component to integrate with the decision trees that the Catalogs represent.
         The following use cases are examples of what may require you to extend the Catalogs:
