@@ -2,11 +2,11 @@ import logging
 import os
 import time
 from enum import Enum
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.train import Checkpoint
+from ray.train.v2.api.result import _build_result
 from ray.train.v2._internal.constants import (
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
@@ -39,7 +39,7 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingDecision,
     ScalingPolicy,
 )
-from ray.train.v2._internal.execution.storage import StorageContext, get_fs_and_path
+from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
 from ray.train.v2._internal.logging.logging import configure_controller_logger
 from ray.train.v2._internal.util import time_monotonic
@@ -346,27 +346,7 @@ class TrainController:
                 f"Cannot get result when controller is in state {controller_state}"
             )
 
-        latest_checkpoint_result = self._checkpoint_manager.latest_checkpoint_result
-        latest_metrics = (
-            latest_checkpoint_result.metrics if latest_checkpoint_result else None
-        )
-        latest_checkpoint = (
-            latest_checkpoint_result.checkpoint if latest_checkpoint_result else None
-        )
-        best_checkpoints = [
-            (r.checkpoint, r.metrics)
-            for r in self._checkpoint_manager.best_checkpoint_results
-        ]
-        storage_filesystem, storage_fs_path = get_fs_and_path(
-            self._run_config.storage_path, self._run_config.storage_filesystem
-        )
-        experiment_fs_path = Path(storage_fs_path, self._run_config.name).as_posix()
-
-        return Result(
-            metrics=latest_metrics,
-            checkpoint=latest_checkpoint,
+        return _build_result(
+            checkpoint_manager=self._checkpoint_manager,
             error=self._training_failed_error,
-            path=experiment_fs_path,
-            best_checkpoints=best_checkpoints,
-            _storage_filesystem=storage_filesystem,
         )
