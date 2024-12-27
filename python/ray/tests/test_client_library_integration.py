@@ -24,7 +24,7 @@ def test_rllib_integration(ray_start_regular):
                 dqn.DQNConfig().environment("CartPole-v1")
                 # Run locally.
                 # Test with compression.
-                .rollouts(num_rollout_workers=0, compress_observations=True)
+                .env_runners(num_env_runners=0, compress_observations=True)
             )
             num_iterations = 2
             trainer = config.build()
