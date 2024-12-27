@@ -26,7 +26,9 @@ from subprocess import list2cmdline
 from typing import (
     TYPE_CHECKING,
     Any,
+    AsyncIterator,
     Dict,
+    Iterator,
     Optional,
     Sequence,
     Tuple,
@@ -2098,3 +2100,85 @@ def get_current_node_cpu_model_name() -> Optional[str]:
     except Exception:
         logger.debug("Failed to get CPU model name", exc_info=True)
         return None
+
+
+MAX_CHUNK_LINE_LENGTH = 10
+MAX_CHUNK_CHAR_LENGTH = 20000
+
+
+async def async_file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
+    """Yield lines from a file as it's written as an async function"""
+    for result in file_tail_iterator(path):
+        if result[0] and result[1] is None:  # file exists but reach EOF
+            await asyncio.sleep(1)
+        yield result[1]  # yield the lines or None if file doesn't exist
+
+
+def sync_file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
+    """Yield lines from a file as it's written as a sync function"""
+    for result in file_tail_iterator(path):
+        if result[0] and result[1] is None:  # file exists but reach EOF
+            time.sleep(1)
+        yield result[1]  # yield the lines or None if file doesn't exist
+
+
+def file_tail_iterator(path: str) -> Iterator[Tuple[bool, Optional[List[str]]]]:
+    """Yield lines from a file as it's written.
+
+    The return value is a tuple of a boolean and an iterator. The boolean indicates
+    whether the file exists or not. The iterator yields lines from the file. The
+    iterator will be None until the file exists or if no new line has been written.
+
+    Returns lines in batches of up to 10 lines or 20000 characters,
+    whichever comes first. If it's a chunk of 20000 characters, then
+    the last line that is yielded could be an incomplete line.
+    New line characters are kept in the line string.
+    """
+    if not isinstance(path, str):
+        raise TypeError(f"path must be a string, got {type(path)}.")
+
+    while not os.path.exists(path):
+        logger.debug(f"Path {path} doesn't exist yet.")
+        yield False, None
+
+    EOF = ""
+
+    with open(path, "r") as f:
+        lines = []
+
+        chunk_char_count = 0
+        curr_line = None
+
+        while True:
+            # We want to flush current chunk in following cases:
+            #   - We accumulated 10 lines
+            #   - We accumulated at least MAX_CHUNK_CHAR_LENGTH total chars
+            #   - We reached EOF
+            if (
+                len(lines) >= 10
+                or chunk_char_count > MAX_CHUNK_CHAR_LENGTH
+                or curr_line == EOF
+            ):
+                # Too many lines, return 10 lines in this chunk, and then
+                # continue reading the file.
+                if lines:
+                    yield True, lines
+                else:
+                    if os.path.exists(path):
+                        yield True, None
+                    else:
+                        yield False, None
+
+                lines = []
+                chunk_char_count = 0
+
+            # Read next line
+            curr_line = f.readline()
+
+            # `readline` will return
+            #   - '' for EOF
+            #   - '\n' for an empty line in the file
+            if curr_line != EOF:
+                # Add line to current chunk
+                lines.append(curr_line)
+                chunk_char_count += len(curr_line)

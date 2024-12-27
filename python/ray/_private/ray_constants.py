@@ -140,6 +140,11 @@ RAY_JOB_SUBMIT_HOOK = "RAY_JOB_SUBMIT_HOOK"
 # Headers to pass when using the Job CLI. It will be given to
 # instantiate a Job SubmissionClient.
 RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
+# The env var to indicate whether to persist the driver's console output to a file as
+# well. This env var will only be applied if running a Ray job as a Python script
+# or interactively in a shell. Set the env var to 1 means to persist the driver's
+# console output.
+RAY_DRIVER_CONSOLE_LOG_TO_FILE = "RAY_DRIVER_CONSOLE_LOG_TO_FILE"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -265,6 +270,7 @@ PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
 # Log file names
 MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_MONITOR}.log"
 LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
+DRIVER_CONSOLE_LOG_FILE_NAME = "console.log"
 
 # Enable log deduplication.
 RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
