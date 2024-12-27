@@ -37,31 +37,6 @@ Builder methods
     ~AlgorithmConfig.build_learner
 
 
-Configuration methods
-~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~AlgorithmConfig.callbacks
-    ~AlgorithmConfig.debugging
-    ~AlgorithmConfig.env_runners
-    ~AlgorithmConfig.environment
-    ~AlgorithmConfig.evaluation
-    ~AlgorithmConfig.experimental
-    ~AlgorithmConfig.fault_tolerance
-    ~AlgorithmConfig.framework
-    ~AlgorithmConfig.learners
-    ~AlgorithmConfig.multi_agent
-    ~AlgorithmConfig.offline_data
-    ~AlgorithmConfig.python_environment
-    ~AlgorithmConfig.reporting
-    ~AlgorithmConfig.resources
-    ~AlgorithmConfig.rl_module
-    ~AlgorithmConfig.training
-
-
 Properties
 ~~~~~~~~~~
 .. autosummary::
@@ -98,3 +73,119 @@ Public methods
     ~AlgorithmConfig.copy
     ~AlgorithmConfig.validate
     ~AlgorithmConfig.freeze
+
+
+.. _rllib-config-env:
+
+Configuring the RL Environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment
+    :noindex:
+
+
+.. _rllib-config-train:
+
+Configuring training behavior
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note::
+
+    For instance, a `DQNConfig` takes a `double_q` `training` argument to specify whether
+    to use a double-Q DQN, whereas in a `PPOConfig` this does not make sense.
+
+For individual algorithms, this is probably the most relevant configuration group,
+as this is where all the algorithm-specific options go.
+But the base configuration for `training` of an `AlgorithmConfig` is actually quite small:
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training
+    :noindex:
+
+
+.. _rllib-config-env-runners:
+
+Configuring EnvRunnerGroup and EnvRunner actors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners
+    :noindex:
+
+.. _rllib-config-learners:
+
+Configuring LearnerGroup and Learner actors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.learners
+    :noindex:
+
+.. _rllib-config-callbacks:
+
+Configuring custom callbacks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks
+    :noindex:
+
+.. _rllib-config-multi_agent:
+
+Configuring multi-agent specific settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.multi_agent
+    :noindex:
+
+.. _rllib-config-offline_data:
+
+Configuring offline RL specific settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.offline_rl
+    :noindex:
+
+.. _rllib-config-evaluation:
+
+Configuring evaluation settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.evaluation
+    :noindex:
+
+.. _rllib-config-framework:
+
+Configuring deep learning framework settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.framework
+    :noindex:
+
+.. _rllib-config-reporting:
+
+Configuring reporting settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.reporting
+    :noindex:
+
+.. _rllib-config-checkpointing:
+
+Configuring checkpointing settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.checkpointing
+    :noindex:
+
+.. _rllib-config-debugging:
+
+Configuring debugging settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.debugging
+    :noindex:
+
+.. _rllib-config-experimental:
+
+Configuring experimental settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.experimental
+    :noindex:
