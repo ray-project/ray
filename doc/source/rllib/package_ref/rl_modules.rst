@@ -9,11 +9,11 @@ RLModule APIs
 =============
 
 
-RL Module specifications and configurations
+RLModule specifications and configurations
 -------------------------------------------
 
-Single RLModule
-+++++++++++++++
+Single RLModuleSpec
++++++++++++++++++++
 
 .. currentmodule:: ray.rllib.core.rl_module.rl_module
 
@@ -24,8 +24,8 @@ Single RLModule
     RLModuleSpec
     RLModuleSpec.build
 
-MultiRLModule
-+++++++++++++
+MultiRLModuleSpec
++++++++++++++++++
 
 .. currentmodule:: ray.rllib.core.rl_module.multi_rl_module
 
