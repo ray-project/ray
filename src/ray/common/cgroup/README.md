@@ -36,18 +36,18 @@ TODO(hjiang): reserve minimum resource will be supported in the future.
 cgroup v2 folders are created in tree structure as follows
 
 ```
-        /sys/fs/cgroup/ray_node_<node_id>
-        /                          \
-.../system_cgroup           .../application_cgroup
-                            /                   \
-                .../default_cgroup/  .../<task_id>_<attempt_id>_cgroup (*N)
+     /sys/fs/cgroup/ray_node_<node_id>
+        /                       \
+.../internal           .../application
+                        /            \
+                .../default/  .../<task_id>_<attempt_id> (*N)
 ```
 
 - Raylet is responsible to create and cleanup its own cgroup folder
 - Each ray node having their own cgroup folder, which contains the node id to differentiate with other raylet(s)
-- `/sys/fs/cgroup/ray_node_<node_id>/application_cgroup` is where ray sets overall max resource for all application processes
+- `/sys/fs/cgroup/ray_node_<node_id>/application` is where ray sets overall max resource for all application processes
 - If a task / actor execute with their max resource specified, they will be placed in a dedicated cgroup, identified by the task id and attempt id
-- Otherwise they will be placed under default application cgroup, having their max consumption bound by `/sys/fs/cgroup/ray_node_<node_id>/application_cgroup`
+- Otherwise they will be placed under default application cgroup, having their max consumption bound by `/sys/fs/cgroup/ray_node_<node_id>/application`
 
 #### Cgroup lifecycle
 
