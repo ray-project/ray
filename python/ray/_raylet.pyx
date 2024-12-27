@@ -3405,22 +3405,6 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker()
                 .ExperimentalRegisterMutableObjectReader(c_object_id))
 
-    def experimental_channel_read_release(self, object_refs):
-        """
-        For experimental.channel.Channel.
-
-        Signal to the writer that the channel is ready to write again. The read
-        began when the caller calls ray.get and a written value is available. If
-        ray.get is not called first, then this call will block until a value is
-        written, then drop the value.
-        """
-        cdef:
-            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
-        with nogil:
-            op_status = (CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalChannelReadRelease(c_object_ids))
-        check_status(op_status)
-
     def put_serialized_object_and_increment_local_ref(
             self, serialized_object,
             ObjectRef object_ref=None,
