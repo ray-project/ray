@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/node_hash_map.h"
@@ -42,7 +43,7 @@ struct ReaderRefInfo {
   // The actor id of the owner of the reference.
   ActorID owner_reader_actor_id;
   // The number of reader actors reading this buffer.
-  int64_t num_reader_actors;
+  int64_t num_reader_actors{};
 };
 
 class MutableObjectManager : public std::enable_shared_from_this<MutableObjectManager> {
@@ -54,13 +55,16 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   class MutableObjectBuffer : public SharedMemoryBuffer {
    public:
     MutableObjectBuffer(std::shared_ptr<MutableObjectManager> mutable_object_manager,
-                        std::shared_ptr<Buffer> buffer,
+                        const std::shared_ptr<Buffer> &buffer,
                         const ObjectID &object_id)
         : SharedMemoryBuffer(buffer, 0, buffer->Size()),
-          mutable_object_manager_(mutable_object_manager),
+          mutable_object_manager_(std::move(mutable_object_manager)),
           object_id_(object_id) {}
 
-    ~MutableObjectBuffer() {
+    MutableObjectBuffer(const MutableObjectBuffer &) = delete;
+    MutableObjectBuffer &operator=(const MutableObjectBuffer &) = delete;
+
+    ~MutableObjectBuffer() override {
       RAY_UNUSED(mutable_object_manager_->ReadRelease(object_id_));
     }
 
@@ -72,7 +76,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   };
 
   struct Channel {
-    Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
+    explicit Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
         : lock(std::make_unique<std::mutex>()),
           mutable_object(std::move(mutable_object_ptr)) {}
 
@@ -118,7 +122,9 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// \param[in] object_id The ID of the object.
   /// \return The return status. True if the channel is registered for object_id, false
   ///         otherwise.
-  bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
+  bool ChannelRegistered(const ObjectID &object_id) {
+    return GetChannel(object_id) != nullptr;
+  }
 
   /// Gets the backing store for an object. WriteAcquire() must have already been called
   /// before this method is called, and WriteRelease() must not yet have been called.
@@ -200,13 +206,6 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// an error on acquire.
   Status SetErrorAll();
 
-  /// Returns the channel for object_id. If no channel exists for object_id, returns
-  /// nullptr.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// \return The channel or nullptr.
-  Channel *GetChannel(const ObjectID &object_id);
-
   /// Returns the current status of the channel for the object. Possible statuses are:
   /// 1. Status::OK()
   //     - The channel is registered and open.
@@ -219,6 +218,13 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// \param[in] is_reader Whether the channel is a reader channel.
   /// \return Current status of the channel.
   Status GetChannelStatus(const ObjectID &object_id, bool is_reader);
+
+  /// Returns the channel for object_id. If no channel exists for object_id, returns
+  /// nullptr.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return The channel or nullptr.
+  Channel *GetChannel(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(channel_lock_);
 
  private:
   /// Converts a timeout in milliseconds to a timeout point.
@@ -247,7 +253,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
 
   // Internal method used to set the error bit on `object_id`. The destructor lock must be
   // held before calling this method.
-  Status SetErrorInternal(const ObjectID &object_id)
+  Status SetErrorInternal(const ObjectID &object_id, Channel &channel)
       ABSL_SHARED_LOCKS_REQUIRED(destructor_lock_);
 
   FRIEND_TEST(MutableObjectTest, TestBasic);
@@ -262,11 +268,11 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   // TODO(jhumphri): If we do need to synchronize accesses to this map, we may want to
   // consider using RCU to avoid synchronization overhead in the common case.
   // This map holds the channels for readers and writers of mutable objects.
-  absl::Mutex channel_lock_;
+  mutable absl::Mutex channel_lock_;
   // `channels_` requires pointer stability as one thread may hold a Channel pointer while
   // another thread mutates `channels_`. Thus, we use absl::node_hash_map instead of
   // absl::flat_hash_map.
-  absl::node_hash_map<ObjectID, Channel> channels_;
+  absl::node_hash_map<ObjectID, Channel> channels_ ABSL_GUARDED_BY(channel_lock_);
 
   // This maps holds the semaphores for each mutable object. The semaphores are used to
   // (1) synchronize accesses to the object header and (2) synchronize readers and writers
