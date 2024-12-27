@@ -9,6 +9,9 @@
 Checkpointing RLlib components
 ==============================
 
+Overview
+--------
+
 RLlib offers a powerful checkpointing system for all its major classes, allowing you to save the
 states of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` and its subcomponents
 to disk and loading previously run experiment states back from disk, for example to continue training
@@ -94,12 +97,18 @@ how to create a checkpoint:
 
 
 .. note::
-    When running your experiments with Ray Tune, the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path`
-    method is called automatically by Tune on your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance, whenever the training
-    iteration matches the configured Tune config. The default location where Tune creates these checkpoints is ``~/ray_results/[your experiment name]``.
+    When running your experiments with `Ray Tune <https://docs.ray.io/en/latest/tune/index.html>`__,
+    Tune calls the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path`
+    method automatically on your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance, whenever the training
+    iteration matches the checkpoint frequency configured through Tune. The default location where Tune creates these checkpoints
+    is ``~/ray_results/[your experiment name]``.
 
-Your PPO's state has now been saved in the ``checkpoint_dir`` directory (or somewhere in ``~/ray_results/`` if you use Ray Tune).
-Let's take a quick look at what such a directory looks like:
+
+Structure of a checkpoint directory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You now saved your PPO's state in the ``checkpoint_dir`` directory, or somewhere in ``~/ray_results/`` if you use Ray Tune.
+Take a look at what the directory now looks like:
 
 .. code-block:: shell
 
@@ -113,25 +122,26 @@ Let's take a quick look at what such a directory looks like:
         class_and_ctor_args.pkl
         rllib_checkpoint.json
 
-Subdirectories  inside a checkpoint dir (here ``env_runner/`` and ``learner_group/``) hint at a subcomponent's own checkpoint data.
+Subdirectories inside a checkpoint dir, like ``env_runner/``, hint at a subcomponent's own checkpoint data.
 For example, an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` always also saves its
-:py:class:`~ray.rllib.env.env_runner.EnvRunner` and :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` subcomponents.
+:py:class:`~ray.rllib.env.env_runner.EnvRunner` state and :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` state.
 See :ref:`here for the complete RLlib component tree <rllib-components-tree>`.
 
-The ``rllib_checkpoint.json`` file is for your convenience only and not used by RLlib.
+The ``rllib_checkpoint.json`` file is for your convenience only and RLlib doesn't used this file.
 
-The ``class_and_ctor_args.pkl`` file stores meta information needed to construct a "fresh" object (without any specific state).
-This information - as the file name suggests - contains the class of the saved object and its constructor args and kwargs.
-RLlib uses it to create the initial new object when calling :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint`.
+The ``class_and_ctor_args.pkl`` file stores meta information needed to construct a "fresh" object, without any particular state.
+This information, as the file name suggests, contains the class of the saved object and its constructor arguments and keyword arguments.
+RLlib uses this file to create the initial new object when calling :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint`.
 
-Finally, the ``.._state.pkl`` file contains the actual pickled state dict of the originally saved object. This state dict is obtained
-by RLlib - when saving a checkpoint - through calling the object's :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.get_state`
+Finally, the ``.._state.pkl`` file contains the pickled state dict of the saved object. RLlib obtains this state dict
+when saving a checkpoint through calling the object's :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.get_state`
 method.
 
 .. note::
-    Each of the subcomponents directories itself contains a ``rllib_checkpoint.json`` file, a ``class_and_ctor_args.pkl`` file
-    and a ``.._state.pkl`` file serving the same purpose than their algorithm counterparts. For example, inside the ``learner_group/``
-    subdirectory, you find:
+    Each of the subcomponent's directories themselves contain a ``rllib_checkpoint.json`` file, a ``class_and_ctor_args.pkl`` file
+    and a ``.._state.pkl`` file, all serving the same purpose than their counterparts in the main algorithm checkpoint directory.
+    For example, inside the ``learner_group/`` subdirectory, you would find the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`'s own
+    state, construction, and meta information:
 
     .. code-block:: shell
 
@@ -175,6 +185,8 @@ is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class:
 
 
 
+
+vvvvvvvvvvvvvv TODO
 
 
 
@@ -233,6 +245,10 @@ details on the contents of this file when talking about :py:class:`~ray.rllib.po
 Note that :py:class:`~ray.rllib.policy.policy.Policy` checkpoint also have a
 info file (``rllib_checkpoint.json``), which is always identical to the enclosing
 algorithm checkpoint version.
+
+^^^^^^^^^^^ end TODO
+
+
 
 
 Restoring from a checkpoint with `restore_from_path`
