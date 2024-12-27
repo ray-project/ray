@@ -350,7 +350,7 @@ class SynchronousReader(ReaderInterface):
             all_waitables = list(waitable_to_num_consumers.keys())
             worker = ray._private.worker.global_worker
             timeout_ms = timeout * 1000 if timeout is not None else -1
-            values = worker.experimental_wait_and_get_mutable_objects(
+            values, _ = worker.experimental_wait_and_get_mutable_objects(
                 all_waitables, len(all_waitables), timeout_ms, return_exceptions=True
             )
             ctx = ChannelContext.get_current().serialization_context
@@ -405,35 +405,37 @@ class AwaitableBackgroundReader(ReaderInterface):
     def _run(self):
         results = []
         waitable_to_num_consumers = {}
+        all_waitables = []
+
         for c in self._input_channels:
             waitables = c.get_ray_waitables()
             for w in waitables:
                 waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
-
-        if len(waitable_to_num_consumers) > 0:
-            all_waitables = list(waitable_to_num_consumers.keys())
-            worker = ray._private.worker.global_worker
-
-            values = None
-
-            def wait_and_get():
-                nonlocal values
-                values = worker.experimental_wait_and_get_mutable_objects(
-                    all_waitables,
-                    len(all_waitables),
-                    timeout_ms=1000 * len(self._input_channels),
-                    return_exceptions=True,
-                )
-
-            exiting = retry_and_check_interpreter_exit(wait_and_get)
-            if exiting:
-                return results
-
+        worker = ray._private.worker.global_worker
+        all_waitables = list(waitable_to_num_consumers.keys())
+        while len(all_waitables) > 0:
+            (
+                values,
+                non_complete_object_refs_set,
+            ) = worker.experimental_wait_and_get_mutable_objects(
+                all_waitables,
+                len(all_waitables),
+                timeout_ms=1000,
+                return_exceptions=True,
+                suppress_timeout_errors=True,
+            )
             ctx = ChannelContext.get_current().serialization_context
             for i, value in enumerate(values):
+                if all_waitables[i] in non_complete_object_refs_set:
+                    continue
                 ctx.set_data(
-                    all_waitables[i], value, waitable_to_num_consumers[all_waitables[i]]
+                    all_waitables[i],
+                    value,
+                    waitable_to_num_consumers[all_waitables[i]],
                 )
+            all_waitables = list(non_complete_object_refs_set)
+            if sys.is_finalizing():
+                return results
 
         for c in self._input_channels:
             exiting = retry_and_check_interpreter_exit(

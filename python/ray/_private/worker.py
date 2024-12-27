@@ -31,6 +31,7 @@ from typing import (
     TypeVar,
     Union,
     overload,
+    Set,
 )
 from urllib.parse import urlparse
 
@@ -930,7 +931,8 @@ class Worker:
         timeout_ms: int = -1,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
-    ):
+        suppress_timeout_errors: bool = False,
+    ) -> Tuple[List[Any], Set[ObjectRef]]:
         for object_ref in object_refs:
             if not isinstance(object_ref, ObjectRef):
                 raise TypeError(
@@ -940,11 +942,16 @@ class Worker:
         data_metadata_pairs: List[
             Tuple[ray._raylet.Buffer, bytes]
         ] = self.core_worker.experimental_wait_and_get_mutable_objects(
-            object_refs, num_returns, timeout_ms
+            object_refs, num_returns, timeout_ms, suppress_timeout_errors
         )
 
         if skip_deserialization:
-            return None
+            return None, set()
+
+        non_complete_object_refs_set = set()
+        for i, (data, _) in enumerate(data_metadata_pairs):
+            if data is None:
+                non_complete_object_refs_set.add(object_refs[i])
 
         values = self.deserialize_objects(data_metadata_pairs, object_refs)
         if not return_exceptions:
@@ -957,7 +964,7 @@ class Worker:
                         raise value.as_instanceof_cause()
                     else:
                         raise value
-        return values
+        return values, non_complete_object_refs_set
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""

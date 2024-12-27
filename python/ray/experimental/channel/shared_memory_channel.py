@@ -493,12 +493,13 @@ class Channel(ChannelInterface):
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
-            ret = self._worker.experimental_wait_and_get_mutable_objects(
+            rets, _ = self._worker.experimental_wait_and_get_mutable_objects(
                 [self._local_reader_ref],
                 timeout_ms=timeout * 1000 if timeout is not None else -1,
                 num_returns=1,
                 return_exceptions=True,
-            )[0]
+            )
+            ret = rets[0]
         return ret
 
     def get_ray_waitables(self) -> List[ObjectRef]:

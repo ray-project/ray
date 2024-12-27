@@ -1797,7 +1797,7 @@ Status CoreWorker::WaitAndGetExperimentalMutableObjects(
     int64_t timeout_ms,
     int num_objects,
     std::vector<std::shared_ptr<RayObject>> &results) {
-  RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects ids.size() " << ids.size()
+  RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects start ids.size() " << ids.size()
                  << " num_objects " << num_objects;
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
     return Status::Invalid(
@@ -1847,12 +1847,17 @@ Status CoreWorker::WaitAndGetExperimentalMutableObjects(
       }
 
       auto now = std::chrono::steady_clock::now();
-      if (now >= *timeout_point) {
+      timed_out = now >= *timeout_point;
+      RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects now: "
+                     << now.time_since_epoch().count()
+                     << " timeout_point: " << timeout_point->time_since_epoch().count()
+                     << " timed_out: " << timed_out << " num_acquired: " << num_acquired
+                     << " num_objects: " << num_objects;
+      if (!timed_out) {
         remaining_timeout =
             std::chrono::duration_cast<std::chrono::milliseconds>(*timeout_point - now)
                 .count();
         iteration_timeout = std::min(remaining_timeout, iteration_timeout);
-        timed_out = remaining_timeout <= 0;
       }
     }
   }

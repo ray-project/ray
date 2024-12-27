@@ -3427,7 +3427,8 @@ cdef class CoreWorker:
             self,
             object_refs,
             int num_returns,
-            int64_t timeout_ms=-1):
+            int64_t timeout_ms=-1,
+            c_bool suppress_timeout_errors=False):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
@@ -3435,8 +3436,17 @@ cdef class CoreWorker:
             op_status = (CCoreWorkerProcess.GetCoreWorker()
                          .WaitAndGetExperimentalMutableObjects(
                             c_object_ids, timeout_ms, num_returns, results))
-        check_status(op_status)
 
+        # Users can determine whether `timeout` was raised by checking the value
+        # of `results`. At the same time, users still want to get the values of some
+        # objects even if some objects are not ready. Hence, we don't raise
+        # the exception if `suppress_timeout_errors` is set to True and instead return
+        # `results`.
+        try:
+            check_status(op_status)
+        except RayChannelTimeoutError:
+            if not suppress_timeout_errors:
+                raise
         return RayObjectsToDataMetadataPairs(results)
 
     def put_serialized_object_and_increment_local_ref(
