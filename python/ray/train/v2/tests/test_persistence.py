@@ -339,7 +339,6 @@ def test_trainer(
         print("\nStarting initial run.\n")
         result = trainer.fit()
 
-        # TODO: Re-enable restoration / resume_from_checkpoint coverage
         print("\nStarting manually restored run.\n")
         restored_trainer = DataParallelTrainer(
             train_fn,

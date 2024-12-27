@@ -140,10 +140,6 @@ trainer = TorchTrainer(
 )
 """
 
-_METADATA_DEPRECATION_WARNING = """
-`metadata` is deprecated and will be removed in an upcoming release.
-"""
-
 
 @DeveloperAPI
 class DataParallelTrainer:
