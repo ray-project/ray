@@ -168,7 +168,7 @@ Status InMemoryStoreClient::AsyncGetKeys(
     absl::ReaderMutexLock lock(&(table->mutex_));
     for (const auto &[key, value] : table->records_) {
       if (absl::StartsWith(key, prefix)) {
-        result.push_back(value);
+        result.push_back(key);
       }
     }
   }
