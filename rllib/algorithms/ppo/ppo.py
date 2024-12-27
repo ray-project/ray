@@ -154,18 +154,12 @@ class PPOConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule,
+            from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+                DefaultPPOTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=PPOTorchRLModule, catalog_class=PPOCatalog)
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
-
-            return RLModuleSpec(module_class=PPOTfRLModule, catalog_class=PPOCatalog)
+            return RLModuleSpec(module_class=DefaultPPOTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -290,17 +284,6 @@ class PPOConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
-        # Warn about new API stack on by default.
-        if self.enable_rl_module_and_learner:
-            logger.warning(
-                f"You are running {self.algo_class.__name__} on the new API stack! "
-                "This is the new default behavior for this algorithm. If you don't "
-                "want to use the new API stack, set `config.api_stack("
-                "enable_rl_module_and_learner=False,"
-                "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
-                "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
-            )
-
         # Synchronous sampling, on-policy/PPO algos -> Check mismatches between
         # `rollout_fragment_length` and `train_batch_size_per_learner` to avoid user
         # confusion.
@@ -350,8 +333,14 @@ class PPOConfig(AlgorithmConfig):
                 "batch_mode=complete_episodes."
             )
 
-        # Entropy coeff schedule checking.
+        # New API stack checks.
         if self.enable_rl_module_and_learner:
+            # `lr_schedule` checking.
+            if self.lr_schedule is not None:
+                raise ValueError(
+                    "`lr_schedule` is deprecated and must be None! Use the "
+                    "`lr` setting to setup a schedule."
+                )
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "

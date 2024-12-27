@@ -79,6 +79,9 @@ class _FileDatasink(Datasink[None]):
         return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
     def on_write_start(self) -> None:
+        self.has_created_dir = self._create_dir(self.path)
+
+    def _create_dir(self, dest) -> bool:
         """Create a directory to write files to.
 
         If ``try_create_dir`` is ``False``, this method is a no-op.
@@ -96,19 +99,21 @@ class _FileDatasink(Datasink[None]):
         # a policy only allows users to write blobs prefixed with s3://bucket/foo
         # a call to create_dir for s3://bucket/foo/bar will fail even though it
         # should not.
-        parsed_uri = urlparse(self.path)
+        parsed_uri = urlparse(dest)
         is_s3_uri = parsed_uri.scheme == "s3"
         skip_create_dir_for_s3 = (
             is_s3_uri and not DataContext.get_current().s3_try_create_dir
         )
 
         if self.try_create_dir and not skip_create_dir_for_s3:
-            if self.filesystem.get_file_info(self.path).type is FileType.NotFound:
+            if self.filesystem.get_file_info(dest).type is FileType.NotFound:
                 # Arrow's S3FileSystem doesn't allow creating buckets by default, so we
                 # add a query arg enabling bucket creation if an S3 URI is provided.
-                tmp = _add_creatable_buckets_param_if_s3_uri(self.path)
+                tmp = _add_creatable_buckets_param_if_s3_uri(dest)
                 self.filesystem.create_dir(tmp, recursive=True)
-                self.has_created_dir = True
+                return True
+
+        return False
 
     def write(
         self,

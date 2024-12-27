@@ -43,10 +43,10 @@ pytestmark = [
 @pytest.fixture
 def temporary_change_timeout(request):
     ctx = DAGContext.get_current()
-    original = ctx.execution_timeout
-    ctx.execution_timeout = request.param
-    yield ctx.execution_timeout
-    ctx.execution_timeout = original
+    original = ctx.submit_timeout
+    ctx.submit_timeout = request.param
+    yield ctx.submit_timeout
+    ctx.submit_timeout = original
 
 
 @ray.remote
@@ -122,7 +122,7 @@ class Actor:
         return 1, 2
 
     def get_events(self):
-        return getattr(self, "__ray_cg_events", [])
+        return getattr(self, "__ray_cgraph_events", [])
 
 
 @ray.remote
@@ -168,6 +168,37 @@ def test_basic(ray_start_regular):
         assert (result == val).all()
         # Delete the buffer so that the next DAG output can be written.
         del result
+
+
+def test_basic_destruction(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.echo.bind(i)
+
+    compiled_dag = dag.experimental_compile()
+
+    try:
+        for i in range(3):
+            val = np.ones(100) * i
+            ref = compiled_dag.execute(val)
+            # Since ref.get() is not called, the destructor releases its native
+            # buffer without deserializing the value. If the destructor fails to
+            # release the buffer, the subsequent DAG execution will fail due to
+            # memory leak.
+            del ref
+    except RayChannelTimeoutError:
+        pytest.fail(
+            "The native buffer associated with the CompiledDAGRef was not "
+            "released upon destruction."
+        )
+
+    # Ensure that subsequent DAG executions do not fail due to memory leak
+    # and the results can be retrieved by ray.get().
+    val = np.ones(100)
+    ref = compiled_dag.execute(val)
+    result = ray.get(ref)
+    assert (result == val).all()
+    del ref
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -2214,7 +2245,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
-    monkeypatch.setattr(ray.dag.constants, "RAY_CG_ENABLE_PROFILING", True)
+    monkeypatch.setattr(ray.dag.constants, "RAY_CGRAPH_ENABLE_PROFILING", True)
 
     a = Actor.options(name="a").remote(0)
     b = Actor.options(name="b").remote(0)

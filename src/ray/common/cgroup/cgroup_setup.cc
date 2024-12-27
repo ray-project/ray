@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/ray/common/cgroup/cgroup_setup.h"
+#include "ray/common/cgroup/cgroup_setup.h"
 
 #include <sys/stat.h>
 
@@ -23,9 +23,9 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "src/ray/util/filesystem.h"
-#include "src/ray/util/logging.h"
-#include "src/ray/util/util.h"
+#include "ray/util/filesystem.h"
+#include "ray/util/logging.h"
+#include "ray/util/util.h"
 
 namespace ray {
 

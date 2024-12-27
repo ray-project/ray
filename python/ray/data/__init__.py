@@ -18,6 +18,7 @@ from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
     Datasource,
+    FileShuffleConfig,
     ReadTask,
     RowBasedFileDatasink,
 )
@@ -115,6 +116,7 @@ __all__ = [
     "Datasource",
     "ExecutionOptions",
     "ExecutionResources",
+    "FileShuffleConfig",
     "NodeIdStr",
     "ReadTask",
     "RowBasedFileDatasink",

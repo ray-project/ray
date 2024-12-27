@@ -15,7 +15,6 @@
 syntax = "proto3";
 
 package ray.rpc;
-option cc_enable_arenas = true;
 
 import "src/ray/protobuf/agent_manager.proto";
 
