@@ -517,14 +517,14 @@ If you don't return the ``actions`` key from your forward method:
                 def _forward_inference(self, batch):
                     ...
                     return {
-                        Columns.ACTIONS: ...  # actions here are used as-is
+                        Columns.ACTIONS: ...  # RLlib uses these actions as-is
                     }
 
                 def _forward_exploration(self, batch):
                     ...
                     return {
-                        Columns.ACTIONS: ...  # actions here are used as-is (no sampling step!)
-                        Columns.ACTION_DIST_INPUTS: ...  # optional: If provided, used to compute action probs and logp.
+                        Columns.ACTIONS: ...  # RLlib uses these actions as-is (no sampling step!)
+                        Columns.ACTION_DIST_INPUTS: ...  # If provided, RLlib uses these dist inputs to compute probs and logp.
                     }
 
     .. tab-item:: Not returning "actions" key
@@ -707,12 +707,12 @@ model hyper-parameters:
 
 
 .. note::
-    In order to properly learn with the preceding setup, a specific multi-agent
-    :py:class:`~ray.rllib.core.learner.learner.Learner`, capable of handling the shared encoder
-    must be written and used. This Learner should only have a single optimizer, used to train all
-    three submodules, which are the encoder and the two policy nets, to stabilize learning.
-    If the standard "one-optimizer-per-module" Learners are used, the two optimizers for policy 1 and 2
-    take turns updating the same shared encoder, which potentially leads to learning instabilities.
+    In order to properly learn with the preceding setup, you should write and use a specific multi-agent
+    :py:class:`~ray.rllib.core.learner.learner.Learner`, capable of handling the shared encoder.
+    This Learner should only have a single optimizer updating all three submodules, which are the encoder and the two policy nets,
+    to stabilize learning.
+    When using the standard "one-optimizer-per-module" Learners, however, the two optimizers for policy 1 and 2
+    would take turns updating the same shared encoder, which would lead to learning instabilities.
 
 
 .. _rllib-checkpointing-rl-modules-docs:
@@ -725,7 +725,7 @@ You can checkpoint :py:class:`~ray.rllib.core.rl_module.rl_module.RLModules` ins
 If you already have an instantiated RLModule and would like to load new model weights into it from an existing
 checkpoint, use the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.restore_from_path` method.
 
-The following examples show how these methods can be used outside of, or in conjunction with, an RLlib Algorithm.
+The following examples show how you can use these methods outside of, or in conjunction with, an RLlib Algorithm.
 
 Creating an RLModule checkpoint
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

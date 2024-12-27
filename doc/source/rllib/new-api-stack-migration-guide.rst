@@ -6,6 +6,13 @@
 .. _rllib-new-api-stack-migration-guide:
 
 
+.. testcode::
+    :hide:
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+    config = PPOConfig()
+
+
 New API stack migration guide
 =============================
 
@@ -31,7 +38,7 @@ RLlib turns on the new API stack by default for all RLlib algorithms.
     To **deactivate** the new API stack and switch back to the old one, use the
     `api_stack()` method in your `AlgorithmConfig` object like so:
 
-    .. code-block:: python
+    .. testcode::
 
         config.api_stack(
             enable_rl_module_and_learner=False,
