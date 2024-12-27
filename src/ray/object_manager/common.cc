@@ -20,14 +20,6 @@
 
 namespace ray {
 
-namespace {
-
-std::atomic<int> signal_received = -1;
-
-void SignalHandler(int signal) { signal_received = signal; }
-
-}  // namespace
-
 void PlasmaObjectHeader::Init() {
 #if defined(__APPLE__) || defined(__linux__)
   memset(unique_name, 0, sizeof(unique_name));
@@ -85,7 +77,8 @@ Status PlasmaObjectHeader::CheckHasError() const {
 
 Status PlasmaObjectHeader::TryToAcquireSemaphore(
     sem_t *sem,
-    const std::optional<std::chrono::steady_clock::time_point> &timeout_point) const {
+    const std::optional<std::chrono::steady_clock::time_point> &timeout_point,
+    const std::function<Status()> &check_signals) const {
   // Check `has_error` first to avoid blocking forever on the semaphore.
   RAY_RETURN_NOT_OK(CheckHasError());
 
@@ -94,22 +87,17 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(
   } else {
     bool got_sem = false;
     // try to acquire the semaphore at least once even if the timeout_point is passed
-    {
-      std::signal(SIGINT, SignalHandler);
-      do {
-        // macOS does not support sem_timedwait, so we implement a unified,
-        // spinning-based solution here
-        if (sem_trywait(sem) == 0) {
-          got_sem = true;
-          break;
-        }
-      } while (std::chrono::steady_clock::now() < *timeout_point &&
-               signal_received == -1);
-    }
-    if (signal_received != -1) {
-      return Status::Interrupted("Interrupted by signal: " +
-                                 std::to_string(signal_received));
-    }
+    do {
+      // macOS does not support sem_timedwait, so we implement a unified,
+      // spinning-based solution here
+      if (sem_trywait(sem) == 0) {
+        got_sem = true;
+        break;
+      }
+      if (check_signals) {
+        RAY_RETURN_NOT_OK(check_signals());
+      }
+    } while (std::chrono::steady_clock::now() < *timeout_point);
     if (!got_sem) {
       return Status::ChannelTimeoutError("Timed out waiting for semaphore.");
     }
@@ -187,6 +175,7 @@ Status PlasmaObjectHeader::ReadAcquire(
     Semaphores &sem,
     int64_t version_to_read,
     int64_t &version_read,
+    const std::function<Status()> &check_signals,
     const std::optional<std::chrono::steady_clock::time_point> &timeout_point) {
   RAY_CHECK(sem.header_sem);
 
@@ -196,25 +185,21 @@ Status PlasmaObjectHeader::ReadAcquire(
 
   // TODO(jhumphri): Wouldn't a futex be better here than polling?
   // Wait for the requested version (or a more recent one) to be sealed.
-  {
-    std::signal(SIGINT, SignalHandler);
-    while ((version < version_to_read || !is_sealed) && signal_received == -1) {
-      RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
-      sched_yield();
-      // We need to get the desired version before timeout
-      if (timeout_point && std::chrono::steady_clock::now() >= *timeout_point) {
-        return Status::ChannelTimeoutError(
-            absl::StrCat("Timed out waiting for object available to read. ObjectID: ",
-                         object_id.Hex()));
-      }
-      // Unlike other header, this is used for busy waiting, so we need to apply
-      // timeout_point.
-      RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
+  while (version < version_to_read || !is_sealed) {
+    if (check_signals) {
+      RAY_RETURN_NOT_OK(check_signals());
     }
-  }
-  if (signal_received != -1) {
-    return Status::Interrupted("Interrupted by signal: " +
-                               std::to_string(signal_received));
+    RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+    sched_yield();
+    // We need to get the desired version before timeout
+    if (timeout_point && std::chrono::steady_clock::now() >= *timeout_point) {
+      return Status::ChannelTimeoutError(absl::StrCat(
+          "Timed out waiting for object available to read. ObjectID: ", object_id.Hex()));
+    }
+    // Unlike other header, this is used for busy waiting, so we need to apply
+    // timeout_point and check signals.
+    RAY_RETURN_NOT_OK(
+        TryToAcquireSemaphore(sem.header_sem, timeout_point, check_signals));
   }
 
   bool success = false;
@@ -269,7 +254,8 @@ Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
 
 Status PlasmaObjectHeader::TryToAcquireSemaphore(
     sem_t *sem,
-    const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) const {
+    const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point,
+    const std::function<Status()> &check_signals) const {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
@@ -293,6 +279,7 @@ Status PlasmaObjectHeader::ReadAcquire(
     Semaphores &sem,
     int64_t version_to_read,
     int64_t &version_read,
+    const std::function<Status()> &check_signals,
     const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) {
   return Status::NotImplemented("Not supported on Windows.");
 }

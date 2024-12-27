@@ -168,6 +168,7 @@ struct PlasmaObjectHeader {
                      Semaphores &sem,
                      int64_t version_to_read,
                      int64_t &version_read,
+                     const std::function<Status()> &check_signals,
                      const std::optional<std::chrono::steady_clock::time_point>
                          &timeout_point = std::nullopt);
 
@@ -192,9 +193,11 @@ struct PlasmaObjectHeader {
   /// then the method will try once to acquire the semaphore, and return either OK or
   /// TimedOut immediately without blocking.
   /// \return OK if the mutex was acquired successfully, TimedOut if timed out.
-  Status TryToAcquireSemaphore(sem_t *sem,
-                               const std::optional<std::chrono::steady_clock::time_point>
-                                   &timeout_point = std::nullopt) const;
+  Status TryToAcquireSemaphore(
+      sem_t *sem,
+      const std::optional<std::chrono::steady_clock::time_point> &timeout_point =
+          std::nullopt,
+      const std::function<Status()> &check_signals = nullptr) const;
 
   /// Set the error bit. This is a non-blocking method.
   ///

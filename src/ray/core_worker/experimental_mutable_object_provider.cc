@@ -21,10 +21,12 @@ namespace core {
 namespace experimental {
 
 MutableObjectProvider::MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
-                                             RayletFactory factory)
+                                             RayletFactory factory,
+                                             std::function<Status(void)> check_signals)
     : plasma_(plasma),
-      object_manager_(std::make_shared<ray::experimental::MutableObjectManager>()),
-      raylet_client_factory_(factory) {}
+      object_manager_(std::make_shared<ray::experimental::MutableObjectManager>(
+          std::move(check_signals))),
+      raylet_client_factory_(std::move(factory)) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
   for (std::unique_ptr<boost::asio::executor_work_guard<

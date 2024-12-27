@@ -14,8 +14,6 @@
 
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 
-#include <csignal>
-
 #include "absl/strings/str_format.h"
 #include "ray/object_manager/common.h"
 
@@ -37,10 +35,6 @@ std::string GetSemaphoreHeaderName(const std::string &name) {
   RAY_CHECK_LE(name.size(), PSEMNAMLEN);
   return ret;
 }
-
-std::atomic<int> signal_received = -1;
-
-void SignalHandler(int signal) { signal_received = signal; }
 
 }  // namespace
 
@@ -320,21 +314,16 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   auto timeout_point = ToTimeoutPoint(timeout_ms);
   bool locked = false;
   bool expired = false;
-  {
-    std::signal(SIGINT, SignalHandler);
-    do {
-      RAY_RETURN_NOT_OK(object->header->CheckHasError());
-      // The channel is still open. This lock ensures that there is only one reader
-      // at a time. The lock is released in `ReadRelease()`.
-      locked = channel->lock->try_lock();
-      expired = timeout_point && std::chrono::steady_clock::now() >= *timeout_point;
-    } while (!locked && !expired && signal_received != -1);
-  }
-  if (signal_received != -1) {
-    RAY_LOG(ERROR) << "Interrupted by signal";
-    return Status::Interrupted("Interrupted by signal: " +
-                               std::to_string(signal_received));
-  }
+  do {
+    RAY_RETURN_NOT_OK(object->header->CheckHasError());
+    if (check_signals_) {
+      RAY_RETURN_NOT_OK(check_signals_());
+    }
+    // The channel is still open. This lock ensures that there is only one reader
+    // at a time. The lock is released in `ReadRelease()`.
+    locked = channel->lock->try_lock();
+    expired = timeout_point && std::chrono::steady_clock::now() >= *timeout_point;
+  } while (!locked && !expired);
   if (!locked) {
     // If timeout_ms == 0, we want to try once to get the lock,
     // therefore we check locked rather than expired.
@@ -343,8 +332,12 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
 
   channel->reading = true;
   int64_t version_read = 0;
-  Status s = object->header->ReadAcquire(
-      object_id, sem, channel->next_version_to_read, version_read, timeout_point);
+  Status s = object->header->ReadAcquire(object_id,
+                                         sem,
+                                         channel->next_version_to_read,
+                                         version_read,
+                                         check_signals_,
+                                         timeout_point);
   if (!s.ok()) {
     // Failed because the error bit was set on the mutable object.
     channel->reading = false;

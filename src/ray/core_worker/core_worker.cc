@@ -569,7 +569,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       };
   experimental_mutable_object_provider_ =
       std::make_shared<experimental::MutableObjectProvider>(
-          *plasma_store_provider_->store_client(), raylet_channel_client_factory);
+          *plasma_store_provider_->store_client(),
+          raylet_channel_client_factory,
+          options.check_signals);
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,
