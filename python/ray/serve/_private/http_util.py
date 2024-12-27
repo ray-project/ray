@@ -429,33 +429,22 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     fastapi_app.routes[:] = [r for r in fastapi_app.routes if r not in routes_to_remove]
 
 
-def set_socket_reuse_port(sock: socket.socket) -> bool:
-    """Mutate a socket object to allow multiple process listening on the same port.
-
-    Returns:
-        success: whether the setting was successful.
-    """
-    try:
-        # These two socket options will allow multiple process to bind the the
-        # same port. Kernel will evenly load balance among the port listeners.
-        # Note: this will only work on Linux.
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, "SO_REUSEPORT"):
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        # In some Python binary distribution (e.g., conda py3.6), this flag
-        # was not present at build time but available in runtime. But
-        # Python relies on compiler flag to include this in binary.
-        # Therefore, in the absence of socket.SO_REUSEPORT, we try
-        # to use `15` which is value in linux kernel.
-        # https://github.com/torvalds/linux/blob/master/tools/include/uapi/asm-generic/socket.h#L27
-        else:
-            sock.setsockopt(socket.SOL_SOCKET, 15, 1)
-        return True
-    except Exception as e:
-        logger.debug(
-            f"Setting SO_REUSEPORT failed because of {e}. SO_REUSEPORT is disabled."
-        )
-        return False
+def set_so_reuseport(sock: socket.socket):
+    """Mutate a socket object to allow multiple process listening on the same port."""
+    # These two socket options will allow multiple process to bind the the
+    # same port. Kernel will evenly load balance among the port listeners.
+    # Note: this will only work on Linux.
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if hasattr(socket, "SO_REUSEPORT"):
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    # In some Python binary distribution (e.g., conda py3.6), this flag
+    # was not present at build time but available in runtime. But
+    # Python relies on compiler flag to include this in binary.
+    # Therefore, in the absence of socket.SO_REUSEPORT, we try
+    # to use `15` which is value in linux kernel.
+    # https://github.com/torvalds/linux/blob/master/tools/include/uapi/asm-generic/socket.h#L27
+    else:
+        sock.setsockopt(socket.SOL_SOCKET, 15, 1)
 
 
 class ASGIAppReplicaWrapper:

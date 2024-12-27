@@ -34,6 +34,7 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_NUM_PROXIES_PER_NODE,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
@@ -45,7 +46,7 @@ from ray.serve._private.http_util import (
     MessageQueue,
     convert_object_to_asgi_messages,
     receive_http_body,
-    set_socket_reuse_port,
+    set_so_reuseport,
     validate_http_proxy_callback_return,
 )
 from ray.serve._private.logging_utils import (
@@ -92,9 +93,6 @@ assert HTTP_REQUEST_MAX_RETRIES >= 0, (
 
 TIMEOUT_ERROR_CODE = "timeout"
 DISCONNECT_ERROR_CODE = "disconnection"
-SOCKET_REUSE_PORT_ENABLED = (
-    os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
-)
 
 RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = int(
     os.environ.get("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0)
@@ -1170,9 +1168,10 @@ class ProxyActor:
             call_in_event_loop=get_or_create_event_loop(),
         )
 
+        component_id = f"{node_ip_address}_{os.getpid()}"
         configure_component_logger(
             component_name="proxy",
-            component_id=node_ip_address,
+            component_id=component_id,
             logging_config=logging_config,
         )
 
@@ -1188,10 +1187,10 @@ class ProxyActor:
         )
 
         configure_component_memory_profiler(
-            component_name="proxy", component_id=node_ip_address
+            component_name="proxy", component_id=component_id
         )
         self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-            component_name="proxy", component_id=node_ip_address
+            component_name="proxy", component_id=component_id
         )
 
         if http_middlewares is None:
@@ -1271,7 +1270,7 @@ class ProxyActor:
     def _update_logging_config(self, logging_config: LoggingConfig):
         configure_component_logger(
             component_name="proxy",
-            component_id=self.node_ip_address,
+            component_id=f"{self.node_ip_address}_{os.getpid()}",
             logging_config=logging_config,
         )
 
@@ -1358,15 +1357,17 @@ class ProxyActor:
 
     async def run_http_server(self):
         sock = socket.socket()
-        if SOCKET_REUSE_PORT_ENABLED:
-            set_socket_reuse_port(sock)
+        if RAY_SERVE_NUM_PROXIES_PER_NODE > 1:
+            logger.debug("Configuring HTTP socket to use SO_REUSEPORT.")
+            set_so_reuseport(sock)
+
         try:
             sock.bind((self.host, self.port))
         except OSError:
             # The OS failed to bind a socket to the given host and port.
             raise ValueError(
-                f"Failed to bind Ray Serve HTTP proxy to '{self.host}:{self.port}'. "
-                "Please make sure your http-host and http-port are specified correctly."
+                f"HTTP proxy failed to bind to '{self.host}:{self.port}'. "
+                "Please make sure the host and port are specified correctly."
             )
 
         # NOTE: We have to use lower level uvicorn Config and Server
@@ -1402,8 +1403,14 @@ class ProxyActor:
         if not self.should_start_grpc_service():
             return self.grpc_setup_complete.set()
 
+        extra_options = []
+        if RAY_SERVE_NUM_PROXIES_PER_NODE > 1:
+            extra_options.append(("grpc.so_reuseport", "1"))
+            logger.debug("Setting grpc.so_reuseport=1.")
+
         grpc_server = create_serve_grpc_server(
             service_handler_factory=self.grpc_proxy.service_handler_factory,
+            extra_options=extra_options,
         )
 
         add_grpc_address(grpc_server, f"[::]:{self.grpc_port}")

@@ -325,8 +325,8 @@ RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = int(
     os.environ.get("RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1)
 )
 
-# Serve's gRPC server options.
-SERVE_GRPC_OPTIONS = [
+# Default options passed to the gRPC server in the proxy.
+DEFAULT_PROXY_GRPC_OPTIONS = [
     ("grpc.max_send_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
 ]
@@ -368,4 +368,10 @@ RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
     "or keep the existing behavior by making them `async def`. Opt "
     "into the new behavior by setting "
     "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
+)
+
+# Feature flag to enable multiple proxies per node.
+# The proxies will share the same port using the Linux SO_REUSEPORT option.
+RAY_SERVE_NUM_PROXIES_PER_NODE = int(
+    os.environ.get("RAY_SERVE_NUM_PROXIES_PER_NODE", "1")
 )

@@ -867,6 +867,7 @@ class ServeStatus:
             cluster.
     """
 
+    # XXX: update this.
     proxies: Dict[str, ProxyStatus] = field(default_factory=dict)
     applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
@@ -1063,6 +1064,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
     grpc_options: Optional[gRPCOptionsSchema] = Field(description="gRPC Proxy options.")
+    # XXX: update this.
     proxies: Dict[str, ProxyDetails] = Field(
         description=(
             "Mapping from node_id to details about the Proxy running on that node."

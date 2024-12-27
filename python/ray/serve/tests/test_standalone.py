@@ -29,7 +29,7 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
-from ray.serve._private.http_util import set_socket_reuse_port
+from ray.serve._private.http_util import set_so_reuseport
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve.context import _get_global_client
@@ -260,33 +260,36 @@ def test_connect(ray_shutdown):
     assert "deployment-ception" in serve.status().applications["app2"].deployments
 
 
-def test_set_socket_reuse_port():
+def test_set_so_reuseport():
     sock = socket.socket()
     if hasattr(socket, "SO_REUSEPORT"):
         # If the flag exists, we should be able to to use it
-        assert set_socket_reuse_port(sock)
+        set_so_reuseport(sock)
     elif sys.platform == "linux":
         # If the flag doesn't exist, but we are only mordern version
         # of linux, we should be able to force set this flag.
-        assert set_socket_reuse_port(sock)
+        set_so_reuseport(sock)
     else:
-        # Otherwise, it should graceful fail without exception.
-        assert not set_socket_reuse_port(sock)
+        # Otherwise, it should raise an exception.
+        with pytest.raises(Exception):
+            set_so_reuseport(sock)
 
 
-def _reuse_port_is_available():
+def _so_reuseport_is_available() -> bool:
     sock = socket.socket()
-    return set_socket_reuse_port(sock)
+    try:
+        set_so_reuseport(sock)
+        return True
+    except Exception:
+        return False
 
 
 @pytest.mark.skipif(
-    not _reuse_port_is_available(),
-    reason=(
-        "Port sharing only works on newer verion of Linux. "
-        "This test can only be ran when port sharing is supported."
-    ),
+    not _so_reuseport_is_available(),
+    reason="SO_REUSEPORT only works on newer verions of Linux.",
 )
 def test_multiple_routers(ray_cluster):
+    # XXX: update this.
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
@@ -467,7 +470,7 @@ def test_no_http(ray_shutdown):
         ]
         assert len(live_actors) == 1
         controller = serve.context._global_client._controller
-        assert len(ray.get(controller.get_proxies.remote())) == 0
+        assert len(ray.get(controller.get_proxy_states.remote())) == 0
 
         # Test that the handle still works.
         @serve.deployment
