@@ -594,7 +594,7 @@ class BackendExecutor:
         """
 
         def get_next():
-            session = _get_session_with_caller_info("get_next_results")
+            session = _get_session("get_next_results")
             try:
                 result = session.get_next()
             except RuntimeError:
@@ -636,7 +636,7 @@ class BackendExecutor:
         """
 
         def pause_session_reporting():
-            session = _get_session_with_caller_info("pause_reporting")
+            session = _get_session("pause_reporting")
             return session.pause_reporting()
 
         futures = self.worker_group.execute_async(pause_session_reporting)
@@ -655,7 +655,7 @@ class BackendExecutor:
         """
 
         def end_training():
-            session = _get_session_with_caller_info("finish_training")
+            session = _get_session("finish_training")
             try:
                 # session.finish raises any Exceptions from training.
                 output = session.finish()
@@ -816,7 +816,7 @@ class InactiveWorkerGroup:
         raise InactiveWorkerGroupError()
 
 
-def _get_session_with_caller_info(method_name: str):
+def _get_session(method_name: str):
     # Get the session for this worker.
     session = get_session()
     if not session:
