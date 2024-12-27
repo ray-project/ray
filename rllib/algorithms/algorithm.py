@@ -714,7 +714,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 validate_env=None,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.evaluation_config,
-                # num_env_runners=self.config.evaluation_num_env_runners,
                 logdir=self.logdir,
                 tune_trial_id=self.trial_id,
             )
