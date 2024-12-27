@@ -297,7 +297,7 @@ class RuntimeEnvAgent:
         async def _setup_runtime_env(
             runtime_env: RuntimeEnv,
             serialized_runtime_env,
-        ):
+        ) -> RuntimeEnvContext:
             # Use a separate logger for each job.
             context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
 
@@ -332,7 +332,7 @@ class RuntimeEnvAgent:
             setup_timeout_seconds,
         ) -> Tuple[bool, str, str]:
             serialized_context = None
-            runtime_env_setup_task = _setup_runtime_env(
+            runtime_env_setup_task: RuntimeEnvContext = _setup_runtime_env(
                 runtime_env,
                 serialized_env,
             )
