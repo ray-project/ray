@@ -248,7 +248,7 @@ class RedisStoreClient : public StoreClient {
   // RAY_maximum_gcs_storage_operation_batch_size.
   void MGetValues(const std::string &table_name,
                   const std::vector<std::string> &keys,
-                  MapCallback<std::string, std::string> callback);
+                  const MapCallback<std::string, std::string> &callback);
 
   std::string external_storage_namespace_;
   std::shared_ptr<RedisClient> redis_client_;

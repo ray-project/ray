@@ -73,7 +73,7 @@ RedisMatchPattern RedisMatchPattern::Prefix(const std::string &prefix) {
 
 void RedisStoreClient::MGetValues(const std::string &table_name,
                                   const std::vector<std::string> &keys,
-                                  MapCallback<std::string, std::string> callback) {
+                                  const MapCallback<std::string, std::string> &callback) {
   // The `HMGET` command for each shard.
   auto batched_commands = GenCommandsBatched(
       "HMGET", RedisKey{external_storage_namespace_, table_name}, keys);
@@ -86,7 +86,7 @@ void RedisStoreClient::MGetValues(const std::string &table_name,
                           total_count,
                           // Copies!
                           args = command.args,
-                          callback = std::move(callback),
+                          callback,
                           key_value_map](const std::shared_ptr<CallbackReply> &reply) {
       if (!reply->IsNil()) {
         auto value = reply->ReadAsStringArray();
@@ -198,7 +198,7 @@ Status RedisStoreClient::AsyncMultiGet(const std::string &table_name,
     callback({});
     return Status::OK();
   }
-  MGetValues(table_name, keys, std::move(callback));
+  MGetValues(table_name, keys, callback);
   return Status::OK();
 }
 
@@ -221,7 +221,7 @@ size_t RedisStoreClient::PushToSendingQueue(const std::vector<RedisConcurrencyKe
       // this queue.
       op_iter->second.push(nullptr);
     } else {
-      op_iter->second.push(std::move(send_request));
+      op_iter->second.push(send_request);
     }
   }
   return queue_added;
