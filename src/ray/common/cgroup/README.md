@@ -54,3 +54,5 @@ cgroup v2 folders are created in tree structure as follows
 A cgroup's lifecycle is bound by a task / actor attempt.
 Before execution, the worker PID is placed into the cgroup;
 after its completion, the idle worker is put back to worker pool and reused later, with its PID moved back to the default cgroup, and cgroup destructed if any.
+
+TODO(hjiang): Add discussion on how to deal with situations when task finishes, while some of the processes don't finish.
