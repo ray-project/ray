@@ -40,7 +40,7 @@ cgroup v2 folders are created in tree structure as follows
         /                       \
 .../internal           .../application
                         /            \
-                .../default/  .../<task_id>_<attempt_id> (*N)
+                .../default  .../<task_id>_<attempt_id> (*N)
 ```
 
 - Raylet is responsible to create cgroup folder `/sys/fs/cgroup/ray_node_<node_id>`, `/sys/fs/cgroup/ray_node_<node_id>/internal` and `/sys/fs/cgroup/ray_node_<node_id>/application` at startup, and cleans up the folder upon process exit
