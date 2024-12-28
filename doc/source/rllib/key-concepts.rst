@@ -20,7 +20,7 @@ key concepts and general architecture of RLlib.
     class, acting as a runtime for executing your RL experiments.
     Your gateway into using an :ref:`Algorithm <rllib-key-concepts-algorithms>` is the
     :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` (<span style="color: #cfe0e1;">cyan</span>) class, allowing
-    you to manage all available config settings, for example the learning rate.
+    you to manage all available config settings, for example the learning rate or the model's architecture.
     Most :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` objects have
     :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors (<span style="color: #d0e2f3;">blue</span>) to collect training samples
     from the :ref:`RL environment <rllib-key-concepts-environments>`,
@@ -31,24 +31,27 @@ key concepts and general architecture of RLlib.
 
 .. _rllib-key-concepts-algorithms:
 
-Algorithms
-----------
+AlgorithmConfig and Algorithm
+-----------------------------
 
-.. todo (sven): Change the following link to the actual algorithm page, once done. Right now, it's pointing to the algos-overview page, instead!
+.. todo (sven): Change the following link to the actual algorithm and algorithm-config page, once done. Right now, it's pointing to the algos-overview page, instead!
 
 .. tip::
-    The following is a quick overview of what an **RLlib Algorithm** is.
+    The following is a quick overview of **RLlib AlgorithmConfigs and Algorithms**.
     See :ref:`here for a detailed description of the Algorithm class <rllib-algorithms-doc>`.
 
-The RLlib `Algorithm` class serves as a runtime for your RL experiments, bringing together all components required
-for learning a solution to your RL environment. It exposes a powerful Python API for controlling your experiment runs.
+The RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class serves as a runtime for your RL experiments,
+bringing together all components required for learning a solution to your :ref:`RL environment <rllib-key-concepts-environments>`.
+It exposes a powerful Python API for controlling your experiment runs.
 
-Each :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` class manages
-its respective :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class.
+Your gateway into using a particular RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` is its respeective
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` class allowing you to configure all
+available settings in a checked and type-safe manner.
 For example, to configure a :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO` ("Proximal Policy Optimization") instance,
 you use the :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig` class.
 
-An algorithm sets up its :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`, containing ``n``
+When constructed, the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` first sets up its
+:py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`, containing ``n``
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` `actors <actors.html>`__, and
 its :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`, containing
 ``m`` :py:class:`~ray.rllib.core.learner.learner.Learner` `actors <actors.html>`__,
@@ -61,16 +64,17 @@ See this `scaling guide <rllib-training.html#scaling-guide>`__ for more details 
 :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` also subclasses from the :ref:`Tune Trainable API <tune-60-seconds>`
 for easy experiment management and hyperparameter tuning.
 
-You have two ways to interact with and run an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
+You have two ways to interact with and run an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`:
 
 - You can create and manage an instance of it directly through the Python API.
-- You can use Ray Tune to more easily tune the hyperparameters for a particular problem.
+- You can use `Ray Tune <https://docs.ray.io/en/latest/tune/index.html>`__ to more easily
+  tune the hyperparameters for a particular problem.
 
-The following example shows these equivalent ways of interacting with the ``PPO`` ("Proximal Policy Optimization") algorithm of RLlib:
+The following examples demonstrate this on the ``PPO`` ("Proximal Policy Optimization") algorithm of RLlib:
 
 .. tab-set::
 
-    .. tab-item:: Manage ``Algorithm`` instance directly
+    .. tab-item:: Manage Algorithm instance directly
 
         .. testcode::
 
@@ -92,8 +96,13 @@ The following example shows these equivalent ways of interacting with the ``PPO`
             # Train for one iteration, which is 2000 timesteps (1 train batch).
             print(algo.train())
 
+        ,, testcode::
+            :hide:
 
-    .. tab-item:: Run ``Algorithm`` through Ray Tune
+            algo.stop()
+
+
+    .. tab-item:: Run Algorithm through Ray Tune
 
         .. testcode::
 
@@ -125,11 +134,12 @@ RL environments
 ---------------
 
 .. tip::
-    The following is a quick overview of what an **RL environment** is.
+    The following is a quick overview of **RL environments**.
     See :ref:`here for a detailed description of how to use RL environments in RLlib <rllib-environments-doc>`.
 
-A reinforcement learning (RL) environment is a structured space where one or more agents interact and learn to achieve specific goals.
-It defines an observation space (the structure and shape of observable tensors at each timestep),
+A reinforcement learning (RL) environment is a structured space, such as a simulator or a controlled
+section of the real world, in which one or more agents interact and learn to achieve specific goals.
+The environment defines an observation space (the structure and shape of observable tensors at each timestep),
 an action space (the available actions for the agents at each time step), a reward function,
 and the rules that govern the environment transitions.
 
@@ -145,9 +155,10 @@ driving simulators, robotic control environments, or multi-agent games.
     to the environmant's ``step()`` method, which returns a reward. Here, the reward values are +5 for reaching the goal
     and 0 otherwise. The environment also returns a boolean flag indicating whether the episode is complete.
 
-RLlib plays through many such episodes during a training iteration to collect data such as
-observations, taken actions, received rewards, and the ``done`` flags. It then converts this episode
-data into a train batch for model updating.
+RLlib interacts with the environment by playing through many :ref:`episodes <rllib-key-concepts-episodes>` during a
+training iteration to collect data such as observations, taken actions, received rewards, and the ``done`` flags
+(see preceding figure). It then converts this episode data into a train batch for model updating. The goal of these
+model updates is to change the agents' behaviors such that the sum of received rewards is maximized.
 
 
 .. _rllib-key-concepts-rl-modules:
@@ -156,15 +167,17 @@ RLModules
 ---------
 
 .. tip::
-    The following is a quick overview of what an **RLlib RLModule** is.
+    The following is a quick overview of **RLlib RLModules**.
     See :ref:`here for a detailed description of the RLModule class <rlmodule-guide>`.
 
 `RLModules <rllib-rlmodule.html>`__ are deep-learning framework-specific neural network containers.
-RLlib's :ref:`EnvRunners <rllib-key-concepts-env-runners>` use them for computing actions in the
+RLlib's :ref:`EnvRunners <rllib-key-concepts-env-runners>` use them for computing actions when stepping through the
 :ref:`RL environment <rllib-key-concepts-environments>` and RLlib's :ref:`Learners <rllib-key-concepts-learners>` use
-:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` for computing losses and gradients.
+:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` for computing losses and gradients before an update step.
 
 .. figure:: images/rl_modules/rl_module_overview.svg
+    :width: 750
+    :align: left
 
     **RLModule overview**: *(left)* A minimal :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` contains a neural network
     and defines its exploration-, inference- and training forward logic to map observations to actions.
@@ -185,7 +198,8 @@ for example for changing the number of layers, the activation functions, etc.., 
 allowing you to implement any architecture and computation logic.
 
 .. figure:: images/rl_modules/rl_module_in_env_runner.svg
-    :width: 400
+    :width: 450
+    :align: left
 
     **An RLModule inside an EnvRunner actor**: The :py:class:`~ray.rllib.env.env_runner.EnvRunner` operates on its own copy of an
     inference-only version of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, using it only to compute actions.
@@ -200,10 +214,12 @@ not required for bare action computation, for example a value function estimate,
 
 .. figure:: images/rl_modules/rl_module_in_learner.svg
     :width: 400
+    :align: left
 
-    **An RLModule inside a Learner actor**: The :py:class:`~ray.rllib.core.learner.learner.:Learner` operates on its own copy of
+    **An RLModule inside a Learner actor**: The :py:class:`~ray.rllib.core.learner.learner.Learner` operates on its own copy of
     an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, computing the loss function inputs, the loss itself,
-    and the model's gradients, then updating the ``RLModule`` through the ``Learner``'s optimizers.
+    and the model's gradients, then updating the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
+    through the :py:class:`~ray.rllib.core.learner.learner.Learner`'s optimizers.
 
 
 .. _rllib-key-concepts-episodes:
@@ -212,14 +228,13 @@ Episodes
 --------
 
 .. tip::
-    The following is a quick overview of what an **Episode** is.
+    The following is a quick overview of **Episode**.
     See :ref:`here for a detailed description of the Episode classes <single-agent-episode-docs>`.
 
 RLlib sends around all training data the form of :ref:`Episodes <single-agent-episode-docs>`.
 
 The :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class describes
-single-agent trajectories, whereas the
-:py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` class contains several
+single-agent trajectories. The :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` class contains several
 such single-agent episodes and stores all information about stepping times- and patterns of the individual agents.
 
 Both ``Episode`` classes store the entire (trajectory) data generated while stepping through an :ref:`RL environment <rllib-key-concepts-environments>`.
@@ -246,7 +261,7 @@ A typical :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` obj
     # Note that after these 20 steps, you have 20 actions and rewards, but 21 observations and info dicts
     # due to the initial "reset" observation/infos.
     episode = {
-        'obs': np.ndarray((21, 4), dtype=float32),  # 21 due to reset obs
+        'obs': np.ndarray((21, 4), dtype=float32),  # 21 due to additional reset obs
         'infos': [{}, {}, {}, {}, .., {}, {}],  # infos are always lists of dicts
         'actions': np.ndarray((20,), dtype=int64),  # Discrete(4) action space
         'rewards': np.ndarray((20,), dtype=float32),
@@ -346,6 +361,12 @@ and using them to gather experiences in parallel:
     for episode in tree.flatten(episodes):
         print("R=", episode.get_return())
 
+.. testcode::
+    :hidden:
+
+    for er in env_runners:
+        er.stop()
+
 
 .. _rllib-key-concepts-learners:
 
@@ -353,7 +374,7 @@ Learner: Combining RLModule, loss function and optimizer
 --------------------------------------------------------
 
 .. tip::
-    The following is a quick overview of what an RLlib **Learner** is.
+    The following is a quick overview of **RLlib Learners**.
     See :ref:`here for a detailed description of the Learner class <learner-guide>`.
 
 
