@@ -54,7 +54,7 @@ def main(args):
     benchmark.write_result()
 
 
-@ray.remote(num_gpus=1)
+@ray.remote
 class ConsumingActor:
     def consume(self, split, max_rows_to_read: Optional[int] = None):
         rows_read = 0
