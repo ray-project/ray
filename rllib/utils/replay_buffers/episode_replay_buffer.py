@@ -6,6 +6,7 @@ import numpy as np
 import scipy
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
@@ -219,7 +220,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         include_extra_model_outputs: bool = False,
         sample_episodes: Optional[bool] = False,
         finalize: bool = False,
-        states: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
+        # TODO (simon): Check, if we need here 1 as default.
+        lookback: Optional[int] = 0,
         **kwargs,
     ) -> Union[SampleBatchType, SingleAgentEpisode]:
         """Samples from a buffer in a randomized way.
@@ -265,8 +267,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 the extra model outputs at the `"obs"` in the batch is included (the
                 timestep at which the action is computed).
             finalize: If episodes should be finalized.
-            states: States of stateful `RLModule` that can be added to the
-                `extra_model_outputs`, in case `state_out` is not available in episodes.
+            lookback: A desired lookback. Any non-negative integer is valid.
 
         Returns:
             Either a batch with transitions in each row or (if `return_episodes=True`)
@@ -285,7 +286,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 include_infos=include_infos,
                 include_extra_model_outputs=include_extra_model_outputs,
                 finalize=finalize,
-                states=states,
+                lookback=lookback,
             )
         else:
             return self._sample_batch(
@@ -597,13 +598,14 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             del episode
 
             # Add the actually chosen n-step in this episode.
-            sampled_episode.set_extra_model_outputs(
-                key="n_step", new_data=np.full((len(sampled_episode),), actual_n_step)
+            sampled_episode.extra_model_outputs["n_step"] = InfiniteLookbackBuffer(
+                np.full((len(sampled_episode) + lookback,), actual_n_step),
+                lookback=lookback,
             )
             # Some loss functions need `weights` - which are only relevant when
             # prioritizing.
-            sampled_episode.set_extra_model_outputs(
-                key="weights", new_data=np.ones((len(sampled_episode),))
+            sampled_episode.extra_model_outputs["weights"] = InfiniteLookbackBuffer(
+                np.ones((len(sampled_episode) + lookback,)), lookback=lookback
             )
 
             # Append the sampled episode.

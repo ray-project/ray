@@ -82,7 +82,7 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
                 .long(),
             ),
             neginf=0.0,
-        ).squeeze()
+        ).squeeze(dim=-1)
 
         # Use double Q learning.
         if config.double_q:

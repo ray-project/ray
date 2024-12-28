@@ -36,7 +36,7 @@ config = (
     )
 )
 
-
+args.no_tune = True
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 

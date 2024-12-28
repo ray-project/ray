@@ -45,6 +45,7 @@ class Columns:
     STATE_IN = "state_in"
     NEXT_STATE_IN = "new_state_in"
     STATE_OUT = "state_out"
+    NEXT_STATE_OUT = "next_state_out"
     EMBEDDINGS = "embeddings"
     ACTION_DIST_INPUTS = "action_dist_inputs"
     ACTION_PROB = "action_prob"
