@@ -5,8 +5,7 @@
 Ray core supports a physical execution mode, which allows users to cap resource consumption for their applications.
 
 A few benefits:
-- It prevents application from eating up unlimited resource to starve other applications running on the same node;
-- If physical execution mode is enabled, Ray uses cgroup to restrict resource usage. Now we only support using `memory` as cgroup `memory.max` to cap a task process (and all its subprocesses recursively)'s max memory usage. For example,
+- If physical execution mode is enabled, Ray uses cgroup to restrict resource usage, so other processes running on the same machine (i.e. system processes like raylet and GCS) won't get starved or even killed. Now we only support using `memory` as cgroup `memory.max` to cap a task process (and all its subprocesses recursively)'s max memory usage. For example,
 ```python
 @ray.remote(memory=500 * 1024 * 1024)
 def some_function(x):
@@ -22,7 +21,7 @@ TODO(hjiang): reserve minimum resource will be supported in the future.
 ### Prerequisites
 
 - The feature is built upon cgroup, which only supports linux;
-- Only cgroup v2 is supported, meanwhile ray also requires application to have write permission and cgroup v2 be mounted in rw mode;
+- Only cgroup v2 is supported, meanwhile ray also requires raylet process to have write permission and cgroup v2 be mounted in rw mode;
 - If any of the prerequisites unsatisfied, when physical mode enabled, ray logs error with program keep working.
 
 ### Disclaimer
