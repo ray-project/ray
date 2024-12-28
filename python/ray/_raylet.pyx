@@ -3176,11 +3176,9 @@ cdef class CoreWorker:
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
 
-    def get_objects(self, object_refs, TaskID current_task_id,
-                    int64_t timeout_ms=-1):
+    def get_objects(self, object_refs, int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
-            CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Get(
@@ -3407,22 +3405,6 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker()
                 .ExperimentalRegisterMutableObjectReader(c_object_id))
 
-    def experimental_channel_read_release(self, object_refs):
-        """
-        For experimental.channel.Channel.
-
-        Signal to the writer that the channel is ready to write again. The read
-        began when the caller calls ray.get and a written value is available. If
-        ray.get is not called first, then this call will block until a value is
-        written, then drop the value.
-        """
-        cdef:
-            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
-        with nogil:
-            op_status = (CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalChannelReadRelease(c_object_ids))
-        check_status(op_status)
-
     def put_serialized_object_and_increment_local_ref(
             self, serialized_object,
             ObjectRef object_ref=None,
@@ -3489,12 +3471,14 @@ cdef class CoreWorker:
 
         return c_object_id.Binary()
 
-    def wait(self, object_refs_or_generators, int num_returns, int64_t timeout_ms,
-             TaskID current_task_id, c_bool fetch_local):
+    def wait(self,
+             object_refs_or_generators,
+             int num_returns,
+             int64_t timeout_ms,
+             c_bool fetch_local):
         cdef:
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
-            CTaskID c_task_id = current_task_id.native()
 
         object_refs = []
         for ref_or_generator in object_refs_or_generators:

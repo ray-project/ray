@@ -8,7 +8,7 @@ from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_b
 )
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.utils import update_target_network
-from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import QNetAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import (
@@ -111,3 +111,10 @@ class DQNLearner(Learner):
                 self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
                 # Update the (single-value -> window=1) last updated timestep metric.
                 self.metrics.log_value(last_update_ts_key, timestep, window=1)
+
+    @classmethod
+    @override(Learner)
+    def rl_module_required_apis(cls) -> list[type]:
+        # In order for a PPOLearner to update an RLModule, it must implement the
+        # following APIs:
+        return [QNetAPI, TargetNetworkAPI]
