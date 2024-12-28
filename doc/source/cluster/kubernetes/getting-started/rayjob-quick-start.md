@@ -78,9 +78,22 @@ Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the lates
 
 ## Step 3: Install a RayJob
 
+::::{tab-set}
+
+:::{tab-item} Arm64 (Apple Silicon)
+```sh
+ curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml | sed 's/2.9.0/2.9.0-aarch64/g' | kubectl apply -f -
+```
+:::
+
+:::{tab-item} X86-64 (Intel/Linux)
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml
 ```
+:::
+
+::::
+
 
 ## Step 4: Verify the Kubernetes cluster status
 
@@ -158,9 +171,22 @@ The Python script `sample_code.py` used by `entrypoint` is a simple Ray script t
 
 ## Step 6: Delete the RayJob
 
+::::{tab-set}
+
+:::{tab-item} Arm64 (Apple Silicon)
+```sh
+curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml | sed 's/2.9.0/2.9.0-aarch64/g' | k delete -f -
+```
+:::
+
+:::{tab-item} X86-64 (Intel/Linux)
 ```sh
 kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml
 ```
+:::
+
+::::
+
 
 ## Step 7: Create a RayJob with `shutdownAfterJobFinishes` set to true
 
@@ -191,6 +217,24 @@ kubectl get raycluster
 
 ## Step 10: Clean up
 
+::::{tab-set}
+
+:::{tab-item} Arm64 (Apple Silicon)
+
+```sh
+# Step 10.1: Delete the RayJob
+curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.shutdown.yaml | sed 's/2.9.0/2.9.0-aarch64/g' | kubectl delete -f -
+
+# Step 10.2: Delete the KubeRay operator
+helm uninstall kuberay-operator
+
+# Step 10.3: Delete the Kubernetes cluster
+kind delete cluster
+```
+:::
+
+:::{tab-item} X86-64 (Intel/Linux)
+
 ```sh
 # Step 10.1: Delete the RayJob
 kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.shutdown.yaml
@@ -201,6 +245,10 @@ helm uninstall kuberay-operator
 # Step 10.3: Delete the Kubernetes cluster
 kind delete cluster
 ```
+:::
+
+::::
+
 
 ## Next steps
 
