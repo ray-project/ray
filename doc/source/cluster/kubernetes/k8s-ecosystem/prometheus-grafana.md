@@ -33,7 +33,7 @@ kubectl get all -n prometheus-system
 # deployment.apps/prometheus-kube-state-metrics         1/1     1            1           46s
 ```
 
-* KubeRay provides an [install.sh script](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **ServiceMonitor**, **PodMonitor** and **PrometheusRule**, in the namespace `prometheus-system` automatically.
+* KubeRay provides an [install.sh script](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **PodMonitor** and **PrometheusRule**, in the namespace `prometheus-system` automatically.
 
 * We made some modifications to the original `values.yaml` in kube-prometheus-stack chart to allow embedding Grafana panels in Ray Dashboard. See [overrides.yaml](https://github.com/ray-project/kuberay/tree/master/install/prometheus/overrides.yaml) for more details.
   ```yaml
@@ -103,37 +103,55 @@ kubectl get service
     Because we forward the port of Grafana to `127.0.0.1:3000` in this example, we set `RAY_GRAFANA_IFRAME_HOST` to `http://127.0.0.1:3000`.
   * `http://` is required.
 
-## Step 5: Collect Head Node metrics with a ServiceMonitor
+## Step 5: Collect Head Node metrics with PodMonitors
+
+Since RayService creates two services, one managed by RayCluster and the other by RayService.
+We need to use **PodMonitor** for monitoring. Otherwise, some metrics in the Grafana Dashboard may be doubled.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
+  labels:
+    # `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label.
+    release: prometheus
   name: ray-head-monitor
   namespace: prometheus-system
-  labels:
-    # `release: $HELM_RELEASE`: Prometheus can only detect ServiceMonitor with this label.
-    release: prometheus
 spec:
   jobLabel: ray-head
-  # Only select Kubernetes Services in the "default" namespace.
+  # Only select Kubernetes Pods in the "default" namespace.
   namespaceSelector:
     matchNames:
       - default
-  # Only select Kubernetes Services with "matchLabels".
+  # Only select Kubernetes Pods with "matchLabels".
   selector:
     matchLabels:
       ray.io/node-type: head
-  # A list of endpoints allowed as part of this ServiceMonitor.
-  endpoints:
+  # A list of endpoints allowed as part of this PodMonitor.
+  podMetricsEndpoints:
     - port: metrics
-  targetLabels:
-  - ray.io/cluster
+      relabelings:
+        - action: replace
+          sourceLabels:
+            - __meta_kubernetes_pod_label_ray_io_cluster
+          targetLabel: ray_io_cluster
+    - port: as-metrics # autoscaler metrics
+      relabelings:
+        - action: replace
+          sourceLabels:
+            - __meta_kubernetes_pod_label_ray_io_cluster
+          targetLabel: ray_io_cluster
+    - port: dash-metrics # dashboard metrics
+      relabelings:
+        - action: replace
+          sourceLabels:
+            - __meta_kubernetes_pod_label_ray_io_cluster
+          targetLabel: ray_io_cluster
 ```
 
-* The YAML example above is [serviceMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/serviceMonitor.yaml), and it is created by **install.sh**. Hence, no need to create anything here.
-* See [ServiceMonitor official document](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#servicemonitor) for more details about the configurations.
-* `release: $HELM_RELEASE`: Prometheus can only detect ServiceMonitor with this label.
+* The YAML example above is [podMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/podMonitor.yaml#L26-L63), and it is created by **install.sh**. Hence, no need to create anything here.
+* See [PodMonitor official document](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#podmonitor) for more details about the configurations.
+* `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label. See [here](#prometheus-can-only-detect-this-label) for more details.
 
 (prometheus-can-only-detect-this-label)=
   ```sh
@@ -143,9 +161,6 @@ spec:
   # prometheus      prometheus-system       1               2023-02-06 06:27:05.530950815 +0000 UTC deployed        kube-prometheus-stack-44.3.1    v0.62.0
 
   kubectl get prometheuses.monitoring.coreos.com -n prometheus-system -oyaml
-  # serviceMonitorSelector:
-  #   matchLabels:
-  #     release: prometheus
   # podMonitorSelector:
   #   matchLabels:
   #     release: prometheus
@@ -154,18 +169,18 @@ spec:
   #     release: prometheus
   ```
 
-* `namespaceSelector` and `seletor` are used to select exporter's Kubernetes service. Because Ray uses a built-in exporter, the **ServiceMonitor** selects Ray's head service which exposes the metrics endpoint (i.e. port 8080 here).
+* **PodMonitor** in `namespaceSelector` and `selector` are used to select Kubernetes Pods.
   ```sh
-  kubectl get service -n default -l ray.io/node-type=head
-  # NAME                          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                         AGE
-  # raycluster-kuberay-head-svc   ClusterIP   10.96.201.142   <none>        6379/TCP,8265/TCP,8080/TCP,8000/TCP,10001/TCP   153m
+  kubectl get pod -n default -l ray.io/node-type=head
+  # NAME                            READY   STATUS    RESTARTS   AGE
+  # raycluster-kuberay-head-fj78s   0/1     Running   0          36s
   ```
 
-* `targetLabels`: We added `spec.targetLabels[0].ray.io/cluster` because we want to include the name of the RayCluster in the metrics that will be generated by this ServiceMonitor. The `ray.io/cluster` label is part of the Ray head node service and it will be transformed into a `ray_io_cluster` metric label. That is, any metric that will be imported, will also contain the following label `ray_io_cluster=<ray-cluster-name>`. This may seem optional but it becomes mandatory if you deploy multiple RayClusters.
+* `relabelings` replaces the label `__meta_kubernetes_pod_label_ray_io_cluster` with the new label name `ray_io_cluster` in the scraped metrics.
 
 ## Step 6: Collect Worker Node metrics with PodMonitors
 
-KubeRay operator does not create a Kubernetes service for the Ray worker Pods, therefore we cannot use a Prometheus ServiceMonitor to scrape the metrics from the worker Pods. To collect worker metrics, we can use `Prometheus PodMonitors CRD` instead.
+To collect worker metrics, we can use `Prometheus PodMonitors CRD` instead.
 
 **Note**: We could create a Kubernetes service with selectors a common label subset from our worker pods, however, this is not ideal because our workers are independent from each other, that is, they are not a collection of replicas spawned by replicaset controller. Due to that, we should avoid using a Kubernetes service for grouping them together.
 
@@ -178,7 +193,6 @@ metadata:
   labels:
     # `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label.
     release: prometheus
-    ray.io/cluster: raycluster-kuberay # $RAY_CLUSTER_NAME: "kubectl get rayclusters.ray.io"
 spec:
   jobLabel: ray-workers
   # Only select Kubernetes Pods in the "default" namespace.
@@ -192,9 +206,10 @@ spec:
   # A list of endpoints allowed as part of this PodMonitor.
   podMetricsEndpoints:
   - port: metrics
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_label_ray_io_cluster]
+      targetLabel: ray_io_cluster
 ```
-
-* `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label. See [here](#prometheus-can-only-detect-this-label) for more details.
 
 * **PodMonitor** in `namespaceSelector` and `selector` are used to select Kubernetes Pods.
   ```sh
@@ -202,8 +217,6 @@ spec:
   # NAME                                          READY   STATUS    RESTARTS   AGE
   # raycluster-kuberay-worker-workergroup-5stpm   1/1     Running   0          3h16m
   ```
-
-* `ray.io/cluster: $RAY_CLUSTER_NAME`: We also define `metadata.labels` by manually adding `ray.io/cluster: <ray-cluster-name>` and then instructing the PodMonitors resource to add that label in the scraped metrics via `spec.podTargetLabels[0].ray.io/cluster`.
 
 ## Step 7: Collect custom metrics with Recording Rules
 
