@@ -124,29 +124,39 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
     return;
   }
 
-  // Reset the context/request/response for the next request.
-  context_.~ClientContext();
-  new (&context_) grpc::ClientContext();
-  response_.Clear();
+  // grpc context and health check response are dedicated to one single async request.
+  auto context = std::make_shared<grpc::ClientContext>();
+  auto response = std::make_shared<::grpc::health::v1::HealthCheckResponse>();
+
+  // Get the context and response pointer before async call, since the order of function
+  // arguments resolution is non-deterministic.
+  auto *context_ptr = context.get();
+  auto *response_ptr = response.get();
 
   const auto deadline = now + absl::Milliseconds(manager_->timeout_ms_);
-  context_.set_deadline(absl::ToChronoTime(deadline));
+  context->set_deadline(absl::ToChronoTime(deadline));
+
+  // Callback is invoked whether async health check succeeds or fails.
   stub_->async()->Check(
-      &context_, &request_, &response_, [this, start = now](::grpc::Status status) {
+      context_ptr,
+      &request_,
+      response_ptr,
+      [this, start = now, context = std::move(context), response = std::move(response)](
+          ::grpc::Status status) {
         // This callback is done in gRPC's thread pool.
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - start));
         manager_->io_service_.post(
-            [this, status]() {
+            [this, status, response = std::move(response)]() {
               if (stopped_) {
                 delete this;
                 return;
               }
               RAY_LOG(DEBUG) << "Health check status: "
                              << HealthCheckResponse_ServingStatus_Name(
-                                    response_.status());
+                                    response->status());
 
-              if (status.ok() && response_.status() == HealthCheckResponse::SERVING) {
+              if (status.ok() && response->status() == HealthCheckResponse::SERVING) {
                 // Health check passed.
                 health_check_remaining_ = manager_->failure_threshold_;
               } else {
@@ -154,7 +164,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
                 RAY_LOG(WARNING)
                     << "Health check failed for node " << node_id_
                     << ", remaining checks " << health_check_remaining_ << ", status "
-                    << status.error_code() << ", response status " << response_.status()
+                    << status.error_code() << ", response status " << response->status()
                     << ", status message " << status.error_message()
                     << ", status details " << status.error_details();
               }

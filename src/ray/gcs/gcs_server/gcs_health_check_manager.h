@@ -137,9 +137,7 @@ class GcsHealthCheckManager {
     /// gRPC related fields
     std::unique_ptr<::grpc::health::v1::Health::Stub> stub_;
 
-    grpc::ClientContext context_;
     ::grpc::health::v1::HealthCheckRequest request_;
-    ::grpc::health::v1::HealthCheckResponse response_;
 
     /// The timer is used to do async wait before the next try.
     Timer timer_;
