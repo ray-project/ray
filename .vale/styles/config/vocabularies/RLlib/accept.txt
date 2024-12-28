@@ -2,6 +2,8 @@
 # Add new terms alphabetically.
 (APPO|appo)
 boolean
+[Cc]heckpoints?(ing)?
+[Cc]heckpointable
 coeff
 config
 (DQN|dqn)
@@ -20,5 +22,6 @@ RLModule
 rollout
 (SAC|sac)
 SGD
+[Ss]ubcomponents?
 [Tt]ensor[Ff]low
 timestep

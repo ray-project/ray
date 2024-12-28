@@ -1,3 +1,4 @@
+
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. include:: /_includes/rllib/new_api_stack.rst
@@ -5,16 +6,16 @@
 
 .. _rllib-checkpointing-docs:
 
-Checkpointing RLlib components
-==============================
+Checkpointing
+=============
 
 Overview
 --------
 
 RLlib offers a powerful checkpointing system for all its major classes, allowing you to save the
 states of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` and its subcomponents
-to disk and loading previously run experiment states back from disk, for example to continue training
-or to deploy your model into production.
+to disk and loading previously run experiment states back from disk, for example if you would like to continue
+training your models or deploy them into production.
 
 .. figure:: images/checkpointing/save_and_restore.svg
     :width: 500
@@ -78,7 +79,7 @@ how to create a checkpoint:
 
     from ray.rllib.algorithms.ppo import PPOConfig
 
-    # Configure and build an initial algo.
+    # Configure and build an initial algorithm.
     config = (
         PPOConfig()
         .environment("Pendulum-v1")
@@ -90,7 +91,7 @@ how to create a checkpoint:
     checkpoint_dir = ppo.save_to_path()
     print(f"saved algo to {checkpoint_dir}")
 
-    # Shut down the algo.
+    # Shut down the algorithm.
     ppo.stop()
 
 
@@ -128,7 +129,7 @@ See :ref:`here for the complete RLlib component tree <rllib-components-tree>`.
 The ``rllib_checkpoint.json`` file is for your convenience only and RLlib doesn't used this file.
 
 The ``class_and_ctor_args.pkl`` file stores meta information needed to construct a "fresh" object, without any particular state.
-This information, as the file name suggests, contains the class of the saved object and its constructor arguments and keyword arguments.
+This information, as the filename suggests, contains the class of the saved object and its constructor arguments and keyword arguments.
 RLlib uses this file to create the initial new object when calling :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint`.
 
 Finally, the ``.._state.pkl`` file contains the pickled state dict of the saved object. RLlib obtains this state dict
