@@ -2380,7 +2380,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   int64_t depth = worker_context_.GetTaskDepth() + 1;
   // TODO(ekl) offload task building onto a thread pool for performance
 
-  RAY_LOG(ERROR) << "hjiang " << task_options.serialized_runtime_env_info;
+  RAY_CHECK(false) << "hjiang " << task_options.serialized_runtime_env_info;
 
   BuildCommonTaskSpec(builder,
                       worker_context_.GetCurrentJobID(),

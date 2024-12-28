@@ -1704,8 +1704,6 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
                                        const rpc::RuntimeEnvConfig &runtime_env_config,
                                        const JobID &job_id,
                                        const GetOrCreateRuntimeEnvCallback &callback) {
-  RAY_CHECK(false) << StackTrace{};
-
   bool directly_call_callback = false;
   std::string serialized_result = "";
   {
