@@ -20,13 +20,13 @@ key concepts and general architecture of RLlib.
     class, acting as a runtime for executing your RL experiments.
     Your gateway into using an :ref:`Algorithm <rllib-key-concepts-algorithms>` is the
     :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` (<span style="color: #cfe0e1;">cyan</span>) class, allowing
-    you to manage all available config settings, for example the learning rate or the model's architecture.
+    you to manage available configuration settings, for example learning rate or model architecture.
     Most :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` objects have
     :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors (<span style="color: #d0e2f3;">blue</span>) to collect training samples
-    from the :ref:`RL environment <rllib-key-concepts-environments>`,
+    from the :ref:`RL environment <rllib-key-concepts-environments>` and
     :py:class:`~ray.rllib.core.learner.learner.Learner` actors (<span style="color: #fff2cc;">yellow</span>)
-    to compute gradients and to update your :ref:`models <rllib-key-concepts-rl-modules>`.
-    The algorithm  synchronizes the model's weights after an update.
+    to compute gradients and update your :ref:`models <rllib-key-concepts-rl-modules>`.
+    The algorithm synchronizes model weights after an update.
 
 
 .. _rllib-key-concepts-algorithms:
@@ -41,36 +41,33 @@ AlgorithmConfig and Algorithm
     See :ref:`here for a detailed description of the Algorithm class <rllib-algorithms-doc>`.
 
 The RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class serves as a runtime for your RL experiments,
-bringing together all components required for learning a solution to your :ref:`RL environment <rllib-key-concepts-environments>`.
-It exposes a powerful Python API for controlling your experiment runs.
+bringing together all components required for learning an optimal solution to your :ref:`RL environment <rllib-key-concepts-environments>`.
+It exposes powerful Python APIs for controlling your experiment runs.
 
-Your gateway into using a particular RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` is its respeective
-:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` class allowing you to configure all
+The gateways into using the various RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` types are the respective
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` classes, allowing you to configure
 available settings in a checked and type-safe manner.
-For example, to configure a :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO` ("Proximal Policy Optimization") instance,
+For example, to configure a :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO` ("Proximal Policy Optimization") algorithm instance,
 you use the :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig` class.
 
-When constructed, the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` first sets up its
+During its construction, the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` first sets up its
 :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`, containing ``n``
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` `actors <actors.html>`__, and
 its :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`, containing
-``m`` :py:class:`~ray.rllib.core.learner.learner.Learner` `actors <actors.html>`__,
-scaling sample collection and training, respectively, from a single core to many thousands of cores in a cluster.
+``m`` :py:class:`~ray.rllib.core.learner.learner.Learner` `actors <actors.html>`__.
+This way, you can scale up sample collection and training, respectively, from a single core to many thousands of cores in a cluster.
 
 .. todo: Separate out our scaling guide into its own page in new PR
 
 See this `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
 
-:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` also subclasses from the :ref:`Tune Trainable API <tune-60-seconds>`
-for easy experiment management and hyperparameter tuning.
-
 You have two ways to interact with and run an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`:
 
 - You can create and manage an instance of it directly through the Python API.
-- You can use `Ray Tune <https://docs.ray.io/en/latest/tune/index.html>`__ to more easily
-  tune the hyperparameters for a particular problem.
+- Because the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class is a subclass of the :ref:`Tune Trainable API <tune-60-seconds>`,
+  you can use `Ray Tune <https://docs.ray.io/en/latest/tune/index.html>`__ to more easily manage your experiment and tune hyperparameters.
 
-The following examples demonstrate this on the ``PPO`` ("Proximal Policy Optimization") algorithm of RLlib:
+The following examples demonstrate this on RLlib's :py:class:`~ray.rllib.algorithms.ppo.PPO` ("Proximal Policy Optimization") algorithm:
 
 .. tab-set::
 
@@ -137,28 +134,29 @@ RL environments
     The following is a quick overview of **RL environments**.
     See :ref:`here for a detailed description of how to use RL environments in RLlib <rllib-environments-doc>`.
 
-A reinforcement learning (RL) environment is a structured space, such as a simulator or a controlled
+A reinforcement learning (RL) environment is a structured space, like a simulator or a controlled
 section of the real world, in which one or more agents interact and learn to achieve specific goals.
-The environment defines an observation space (the structure and shape of observable tensors at each timestep),
-an action space (the available actions for the agents at each time step), a reward function,
-and the rules that govern the environment transitions.
-
-Environments may vary in complexity, from simple tasks like navigating a grid world to highly intricate systems like autonomous
-driving simulators, robotic control environments, or multi-agent games.
+The environment defines an observation space, which is the structure and shape of observable tensors at each timestep,
+an action space, which defines the available actions for the agents at each time step, a reward function,
+and the rules that govern environment transitions when applying actions.
 
 .. figure:: images/envs/env_loop_concept.svg
     :width: 900
     :align: left
 
     A simple **RL environment** where an agent starts with an initial observation returned by the ``reset()`` method.
-    The agent, possibly controlled by a neural network policy, sends actions, like "right" or "jump",
+    The agent, possibly controlled by a neural network policy, sends actions, like ``right`` or ``jump``,
     to the environmant's ``step()`` method, which returns a reward. Here, the reward values are +5 for reaching the goal
     and 0 otherwise. The environment also returns a boolean flag indicating whether the episode is complete.
 
+Environments may vary in complexity, from simple tasks, like navigating a grid world, to highly intricate systems, like autonomous
+driving simulators, robotic control environments, or multi-agent games.
+
 RLlib interacts with the environment by playing through many :ref:`episodes <rllib-key-concepts-episodes>` during a
-training iteration to collect data such as observations, taken actions, received rewards, and the ``done`` flags
+training iteration to collect data, such as made observations, taken actions, received rewards and ``done`` flags
 (see preceding figure). It then converts this episode data into a train batch for model updating. The goal of these
-model updates is to change the agents' behaviors such that the sum of received rewards is maximized.
+model updates is to change the agents' behaviors such that it leads to a maximum sum of received rewards over the agents'
+lifetimes.
 
 
 .. _rllib-key-concepts-rl-modules:
@@ -173,27 +171,25 @@ RLModules
 `RLModules <rllib-rlmodule.html>`__ are deep-learning framework-specific neural network containers.
 RLlib's :ref:`EnvRunners <rllib-key-concepts-env-runners>` use them for computing actions when stepping through the
 :ref:`RL environment <rllib-key-concepts-environments>` and RLlib's :ref:`Learners <rllib-key-concepts-learners>` use
-:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` for computing losses and gradients before an update step.
+:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances for computing losses and gradients before updating them.
 
 .. figure:: images/rl_modules/rl_module_overview.svg
     :width: 750
     :align: left
 
     **RLModule overview**: *(left)* A minimal :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` contains a neural network
-    and defines its exploration-, inference- and training forward logic to map observations to actions.
+    and defines its forward exploration-, inference- and training logic.
     *(right)* In more complex setups, a :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` contains
     many submodules, each itself an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instance and
-    identified by a ``ModuleID``. This way, you can implement arbitrarily complex multi-model and multi-agent algorithms.
+    identified by a ``ModuleID``, allowing you to implement arbitrarily complex multi-model and multi-agent algorithms.
 
 In a nutshell, an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` carries the neural
 network models and defines how to use them during the three phases of its RL lifecycle:
-Exploration, for collecting training data, inference when computing actions in production,
-and training for computing the loss function inputs.
+**Exploration**, for collecting training data, **inference** when computing actions for evaluation or in production,
+and **training** for computing the loss function inputs.
 
-.. link to new RLModule docs
-
-You can chose to use :ref:`RLlib's built-in default models and configure these <rllib_default_rl_modules_docs>` as needed,
-for example for changing the number of layers, the activation functions, etc.., or
+You can chose to use :ref:`RLlib's built-in default models and configure these <rllib-default-rl-modules-docs>` as needed,
+for example for changing the number of layers or the activation functions, or
 :ref:`write your own custom models in PyTorch <rllib-implementing-custom-rl-modules>`,
 allowing you to implement any architecture and computation logic.
 
@@ -205,11 +201,11 @@ allowing you to implement any architecture and computation logic.
     inference-only version of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, using it only to compute actions.
 
 Each :py:class:`~ray.rllib.env.env_runner.EnvRunner` actor, managed by the :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` of the Algorithm,
-has a copy of the user's RLModule.
+has a copy of the user's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 Also, each :py:class:`~ray.rllib.core.learner.learner.Learner` actor, managed by the
 :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` of the Algorithm has an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` copy.
 
-The :py:class:`~ray.rllib.env.env_runner.EnvRunner` copy is normally in its ``inference_only`` version, meaning the components
+The :py:class:`~ray.rllib.env.env_runner.EnvRunner` copy is normally in its ``inference_only`` version, meaning that components
 not required for bare action computation, for example a value function estimate, are missing to save memory.
 
 .. figure:: images/rl_modules/rl_module_in_learner.svg
@@ -235,25 +231,26 @@ RLlib sends around all training data the form of :ref:`Episodes <single-agent-ep
 
 The :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class describes
 single-agent trajectories. The :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` class contains several
-such single-agent episodes and stores all information about stepping times- and patterns of the individual agents.
+such single-agent episodes and describes the stepping times- and patterns of the individual agents with respect to each other.
 
-Both ``Episode`` classes store the entire (trajectory) data generated while stepping through an :ref:`RL environment <rllib-key-concepts-environments>`.
-This includes the observations, info dicts, actions, rewards, termination signals, and any
-model computations along the way, like RNN-states, action logits, or action log probabilities.
+Both ``Episode`` classes store the entire trajectory data generated while stepping through an :ref:`RL environment <rllib-key-concepts-environments>`.
+This data includes the observations, info dicts, actions, rewards, termination signals, and any
+model computations along the way, like recurrent states, action logits, or action log probabilities.
 
 .. tip::
     See here for `RLlib's standardized column names <https://github.com/ray-project/ray/blob/master/rllib/core/columns.py>`__.
+
     Note that episodes conveniently don't have to store any ``next obs`` information as it always overlaps
-    almost completely with the information under ``obs``. This design saves about 50% of memory, because
+    with the information under ``obs``. This design saves almost 50% of memory, because
     observations are often the largest piece in a trajectory. The same is true for ``state_in`` and ``state_out``
-    information for stateful networks. RLlib only keeps the ``state_out`` key in the episode.
+    information for stateful networks. RLlib only keeps the ``state_out`` key in the episodes.
 
 Typically, RLlib generates episode chunks of size ``config.rollout_fragment_length`` through the :ref:`EnvRunner <rllib-key-concepts-env-runners>`
 actors in the Algorithm's :ref:`EnvRunnerGroup <rllib-key-concepts-env-runners>`, and sends as many episode chunks to each
-:ref:`Learner <rllib-key-concepts-learners>` actor as required to build a training batch of exactly size
+:ref:`Learner <rllib-key-concepts-learners>` actor as required to build one training batch of exactly size
 ``config.train_batch_size_per_learner``.
 
-A typical :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` object looks as follows:
+A typical :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` object roughly looks as follows:
 
 .. code-block:: python
 
@@ -273,7 +270,7 @@ A typical :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` obj
     }
 
 For complex observations, for example ``gym.spaces.Dict``, the episode holds all observations in a struct entirely analogous
-to the observation space, with NumPy arrays at the leafs of that dict:
+to the observation space, with NumPy arrays at the leafs of that dict. For example:
 
 .. code-block:: python
 
@@ -315,8 +312,11 @@ RLlib provides two built-in :py:class:`~ray.rllib.env.env_runner.EnvRunner` clas
 :py:class:`~ray.rllib.env.multi_agent_env_runner.MultiAgentEnvRunner` that
 automatically handle these complexities. RLlib picks the correct type based on your
 configuration, in particular the `config.environment()` and `config.multi_agent()`
-settings. Call the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.is_multi_agent`
-method to find out, whether your config is multi-agent or not.
+settings.
+
+.. tip::
+    Call the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.is_multi_agent`
+    method to find out, whether your config is multi-agent or not.
 
 RLlib bundles several :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors through the
 :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` API.
@@ -393,11 +393,11 @@ loss functions used by different RL algorithms.
 
 RLlib always bundles several :py:class:`~ray.rllib.core.learner.learner.Learner` actors through
 the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` API, automatically applying
-distributed data parallelism (DDP) on the training data.
+distributed data parallelism (``DDP``) on the training data.
 You can also use a :py:class:`~ray.rllib.core.learner.learner.Learner` standalone to update your RLModule
 with a list of Episodes.
 
-Here is an example of creating a single (remote) :py:class:`~ray.rllib.core.learner.learner.Learner`
+Here is an example of creating a remote :py:class:`~ray.rllib.core.learner.learner.Learner`
 actor and calling its :py:meth:`~ray.rllib.core.learner.learner.Learner.update_from_episodes` method.
 
 .. testcode::
