@@ -43,7 +43,7 @@ cgroup v2 folders are created in tree structure as follows
                 .../default/  .../<task_id>_<attempt_id> (*N)
 ```
 
-- Raylet is responsible to create cgroup folder at startup, and cleanup the folder at its destruction
+- Raylet is responsible to create cgroup folder `/sys/fs/cgroup/ray_node_<node_id>`, `/sys/fs/cgroup/ray_node_<node_id>/internal` and `/sys/fs/cgroup/ray_node_<node_id>/application` at startup, and cleans up the folder upon process exit
 - Each ray node having their own cgroup folder, which contains the node id to differentiate with other raylet(s)
 - `/sys/fs/cgroup/ray_node_<node_id>/application` is where ray sets overall max resource for all application processes
 - If a task / actor execute with their max resource specified, they will be placed in a dedicated cgroup, identified by the task id and attempt id
