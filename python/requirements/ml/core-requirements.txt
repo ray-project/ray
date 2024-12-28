@@ -1,6 +1,6 @@
 # ML tracking integrations
 comet-ml==3.44.1
-mlflow>2.9.2
+mlflow==2.13.2
 wandb==0.17.0
 
 # ML training frameworks
@@ -8,8 +8,8 @@ xgboost==2.1.0
 lightgbm==3.3.5
 
 # Huggingface
-transformers>4.36.2
-accelerate>0.28.0
+transformers==4.39.3
+accelerate==1.2.1
 
 # DL libraries
 -r dl-cpu-requirements.txt
