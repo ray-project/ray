@@ -572,6 +572,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # Make sure, we have built our gym.vector.Env and RLModule properly.
         assert self.env and hasattr(self, "module")
 
+    @override(EnvRunner)
     def make_env(self) -> None:
         """Creates a vectorized gymnasium env and stores it in `self.env`.
 

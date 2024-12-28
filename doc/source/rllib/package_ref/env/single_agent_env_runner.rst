@@ -2,13 +2,19 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. _multi-agent-env-runner-reference-docs:
+.. _single-agent-env-runner-reference-docs:
 
 SingleAgentEnvRunner API
 ========================
 
 rllib.env.single_agent_env_runner.SingleAgentEnvRunner
-----------------------------------------------------
+------------------------------------------------------
 
 .. autoclass:: ray.rllib.env.single_agent_env_runner.SingleAgentEnvRunner
-    :members:
+
+    .. automethod:: __init__
+    .. automethod:: sample
+    .. automethod:: get_metrics
+    .. automethod:: get_spaces
+    .. automethod:: make_env
+    .. automethod:: make_module

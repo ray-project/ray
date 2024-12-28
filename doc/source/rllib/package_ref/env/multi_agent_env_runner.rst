@@ -11,4 +11,10 @@ rllib.env.multi_agent_env_runner.MultiAgentEnvRunner
 ----------------------------------------------------
 
 .. autoclass:: ray.rllib.env.multi_agent_env_runner.MultiAgentEnvRunner
-    :members:
+
+    .. automethod:: __init__
+    .. automethod:: sample
+    .. automethod:: get_metrics
+    .. automethod:: get_spaces
+    .. automethod:: make_env
+    .. automethod:: make_module

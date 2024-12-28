@@ -362,7 +362,7 @@ and using them to gather experiences in parallel:
         print("R=", episode.get_return())
 
 .. testcode::
-    :hidden:
+    :hide:
 
     for er in env_runners:
         er.stop()
