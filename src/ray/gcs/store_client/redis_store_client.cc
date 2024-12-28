@@ -31,7 +31,7 @@ namespace gcs {
 
 namespace {
 
-const std::string_view kClusterSeparator = "@";
+constexpr std::string_view kClusterSeparator = "@";
 
 // "[, ], -, ?, *, ^, \" are special chars in Redis pattern matching.
 // escape them with / according to the doc:
@@ -328,17 +328,16 @@ Status RedisStoreClient::DeleteByKeys(const std::string &table,
   auto context = redis_client_->GetPrimaryContext();
   for (auto &command : del_cmds) {
     // `callback` is copied to each `delete_callback` lambda. Don't move.
-    auto delete_callback =
-        [num_deleted, finished_count, total_count, callback = std::move(callback)](
-            const std::shared_ptr<CallbackReply> &reply) {
-          (*num_deleted) += reply->ReadAsInteger();
-          ++(*finished_count);
-          if (*finished_count == total_count) {
-            if (callback) {
-              callback(*num_deleted);
-            }
-          }
-        };
+    auto delete_callback = [num_deleted, finished_count, total_count, callback](
+                               const std::shared_ptr<CallbackReply> &reply) {
+      (*num_deleted) += reply->ReadAsInteger();
+      ++(*finished_count);
+      if (*finished_count == total_count) {
+        if (callback) {
+          callback(*num_deleted);
+        }
+      }
+    };
     SendRedisCmdArgsAsKeys(std::move(command), std::move(delete_callback));
   }
   return Status::OK();
