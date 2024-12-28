@@ -261,10 +261,10 @@ class MARWILConfig(AlgorithmConfig):
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
-                DefaultPPORLModule,
+                DefaultPPOTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=DefaultPPORLModule)
+            return RLModuleSpec(module_class=DefaultPPOTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "

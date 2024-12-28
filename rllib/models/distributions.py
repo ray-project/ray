@@ -245,4 +245,4 @@ class Distribution(abc.ABC):
         Generally, the choice of the deterministic replacement is informed by
         established conventions.
         """
-        raise NotImplementedError
+        return self
