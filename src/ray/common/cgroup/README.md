@@ -20,9 +20,10 @@ TODO(hjiang): reserve minimum resource will be supported in the future.
 
 ### Prerequisites
 
-- The feature is built upon cgroup, which only supports linux;
-- Only cgroup v2 is supported, meanwhile ray also requires raylet process to have write permission and cgroup v2 be mounted in rw mode;
-- If any of the prerequisites unsatisfied, when physical mode enabled, ray logs error with program keep working.
+- Ray runs in a Linux environment that supports Cgroup V2.
+- The cgroup2 filesystem is mounted at `/sys/fs/cgroup`.
+- Raylet has write permission to that mounted directory.
+- If any of the prerequisites unsatisfied, when physical mode enabled, ray logs error and continue running.
 
 ### Disclaimer
 
