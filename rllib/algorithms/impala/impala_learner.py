@@ -11,6 +11,7 @@ from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.connectors.common import NumpyToTensor
 from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
@@ -212,6 +213,13 @@ class IMPALALearner(Learner):
         super().remove_module(module_id)
         self.entropy_coeff_schedulers_per_module.pop(module_id)
 
+    @classmethod
+    @override(Learner)
+    def rl_module_required_apis(cls) -> list[type]:
+        # In order for a PPOLearner to update an RLModule, it must implement the
+        # following APIs:
+        return [ValueFunctionAPI]
+
 
 ImpalaLearner = IMPALALearner
 
@@ -222,7 +230,7 @@ class _GPULoaderThread(threading.Thread):
         *,
         in_queue: queue.Queue,
         out_queue: deque,
-        device: torch.device,
+        device: "torch.device",
         metrics_logger: MetricsLogger,
     ):
         super().__init__()

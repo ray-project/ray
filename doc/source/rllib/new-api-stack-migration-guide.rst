@@ -6,6 +6,13 @@
 .. _rllib-new-api-stack-migration-guide:
 
 
+.. testcode::
+    :hide:
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+    config = PPOConfig()
+
+
 New API stack migration guide
 =============================
 
@@ -22,29 +29,21 @@ RLlib classes and code to RLlib's new API stack.
     Note, though, that the Ray team continues to  design RLlib to be framework-agnostic.
 
 
-Change your AlgorithmConfig
----------------------------
+Check your AlgorithmConfig
+--------------------------
 
-RLlib turns on the new API stack by default for all RLlib algorithms. To deactivate it, use the `api_stack()` method
-in your `AlgorithmConfig` object like so:
+RLlib turns on the new API stack by default for all RLlib algorithms.
 
-.. testcode::
+.. note::
+    To **deactivate** the new API stack and switch back to the old one, use the
+    `api_stack()` method in your `AlgorithmConfig` object like so:
 
-    from ray.rllib.algorithms.ppo import PPOConfig
+    .. testcode::
 
-    config = (
-        PPOConfig()
-        # Switch both the new API stack flags to False (both True by default).
-        # This action disables the use of
-        # a) RLModule (replaces ModelV2) and Learner (replaces Policy).
-        # b) the correct EnvRunner, which replaces RolloutWorker, and
-        #    ConnectorV2 pipelines, which replaces the old stack Connectors.
-        .api_stack(
+        config.api_stack(
             enable_rl_module_and_learner=False,
             enable_env_runner_and_connector_v2=False,
         )
-    )
-
 
 Note that there are a few other differences between configuring an old API stack algorithm
 and its new stack counterpart.
@@ -271,18 +270,29 @@ In case you were using the `observation_filter` setting, perform the following t
     )
 
 
+.. hint::
+    The main switch for whether to explore or not during sample collection has moved
+    to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners` method.
+    See :ref:`here for more details <rllib-algo-config-exploration-docs>`.
+
+
+.. _rllib-algo-config-exploration-docs:
+
 AlgorithmConfig.exploration()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The new stack only supports the `explore` setting.
-It determines whether the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`, in the case `explore=True`,
-or the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`, in the case `explore=False`, is the method
-your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` calls
-inside the :py:class:`~ray.rllib.env.env_runner.EnvRunner`.
+The main switch for whether to explore or not during sample collection has moved from
+the deprecated ``AlgorithmConfig.exploration()`` method
+to :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners`:
+
+It determines whether the method your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` calls
+inside the :py:class:`~ray.rllib.env.env_runner.EnvRunner` is either
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`, in the case `explore=True`,
+or :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`, in the case `explore=False`.
 
 .. testcode::
 
-    config.exploration(explore=True)  # <- or False
+    config.env_runners(explore=True)  # <- or False
 
 
 The `exploration_config` setting is deprecated and no longer used. Instead, determine the exact exploratory
@@ -380,7 +390,7 @@ If you're using a custom :py:class:`~ray.rllib.models.modelv2.ModelV2` class and
 the entire NN architecture and possibly action distribution logic to the new API stack, see
 :ref:`RL Modules <rlmodule-guide>` in addition to this section.
 
-See these example scripts on `how to write a custom CNN-containing RL Module <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__
+Also, see these example scripts on `how to write a custom CNN-containing RL Module <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__
 and `how to write a custom LSTM-containing RL Module <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__.
 
 There are various options for translating an existing, custom :py:class:`~ray.rllib.models.modelv2.ModelV2` from the old API stack,
@@ -391,6 +401,99 @@ to the new API stack's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`:
    training run and use this checkpoint with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py>`__.
 #. Use an existing :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
    object from an old API stack training run, with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py>`__.
+
+In more complex scenarios, you might've implemented custom policies, such that you could modify the behavior of constructing models
+and distributions.
+
+
+Translating Policy.compute_actions_from_input_dict
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This old API stack method, as well as :py:meth:`~ray.rllib.policy.policy.Policy.compute_actions` and
+:py:meth:`~ray.rllib.policy.policy.Policy.compute_single_action`, directly translate to
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`
+and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`.
+:ref:`The RLModule guide explains how to implement this method <rlmodule-guide>`.
+
+
+Translating Policy.action_distribution_fn
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To translate :py:meth:`~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.action_distribution_fn`, write the following custom RLModule code:
+
+.. tab-set::
+
+    .. tab-item:: Same action dist. class
+
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.models.torch.torch_distributions import YOUR_DIST_CLASS
+
+
+            class MyRLModule(TorchRLModule):
+                def setup(self):
+                    ...
+                    # Set the following attribute at the end of your custom `setup()`.
+                    self.action_dist_cls = YOUR_DIST_CLASS
+
+
+    .. tab-item:: Different action dist. classes
+
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.models.torch.torch_distributions import (
+                YOUR_INFERENCE_DIST_CLASS,
+                YOUR_EXPLORATION_DIST_CLASS,
+                YOUR_TRAIN_DIST_CLASS,
+            )
+
+                def get_inference_action_dist_cls(self):
+                    return YOUR_INFERENCE_DIST_CLASS
+
+                def get_exploration_action_dist_cls(self):
+                    return YOUR_EXPLORATION_DIST_CLASS
+
+                def get_train_action_dist_cls(self):
+                    return YOUR_TRAIN_DIST_CLASS
+
+
+Translating Policy.action_sampler_fn
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To translate :py:meth:`~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.action_sampler_fn`, write the following custom RLModule code:
+
+.. testcode::
+    :skipif: True
+
+    from ray.rllib.models.torch.torch_distributions import YOUR_DIST_CLASS
+
+
+    class MyRLModule(TorchRLModule):
+
+        def _forward_exploration(self, batch):
+            computation_results = ...
+            my_dist = YOUR_DIST_CLASS(computation_results)
+            actions = my_dist.sample()
+            return {Columns.ACTIONS: actions}
+
+        # Maybe for inference, you would like to sample from the deterministic version
+        # of your distribution:
+        def _forward_inference(self, batch):
+            computation_results = ...
+            my_dist = YOUR_DIST_CLASS(computation_results)
+            greedy_actions = my_dist.to_deterministic().sample()
+            return {Columns.ACTIONS: greedy_actions}
+
+
+Policy.compute_log_likelihoods
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Implement your custom RLModule's :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_train` method and
+return the `Columns.ACTION_LOGP` key together with the corresponding action log probs in order to pass this information
+to your loss functions, which your code calls after `forward_train()`. The loss logic can then access
+`Columns.ACTION_LOGP`.
 
 
 Custom loss functions and policies
