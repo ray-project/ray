@@ -181,8 +181,8 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     h._init()
 
     if use_proxy:
-        proxy_handles = ray.get(client._controller.get_proxies.remote())
-        proxy_handle = list(proxy_handles.values())[0]
+        proxy_states = ray.get(client._controller.get_proxy_states.remote())
+        proxy_handle = list(proxy_states.values())[0].actor_handle
         wait_for_condition(
             router_populated_with_replicas,
             threshold=2,
@@ -280,8 +280,8 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
     config["deployments"][0]["num_replicas"] = 2
     client.deploy_apps(ServeDeploySchema(**{"applications": [config]}))
 
-    proxy_handles = ray.get(client._controller.get_proxies.remote())
-    proxy_handle = list(proxy_handles.values())[0]
+    proxy_states = ray.get(client._controller.get_proxy_states.remote())
+    proxy_handle = list(proxy_states.values())[0].actor_handle
 
     wait_for_condition(
         router_populated_with_replicas,

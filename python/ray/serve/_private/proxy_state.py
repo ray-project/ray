@@ -2,8 +2,10 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Set, Tuple, Type
+from copy import deepcopy
+from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Type
 
 import ray
 from ray import ObjectRef
@@ -20,6 +22,7 @@ from ray.serve._private.constants import (
     PROXY_READY_CHECK_TIMEOUT_S,
     RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    RAY_SERVE_NUM_PROXIES_PER_NODE,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
@@ -31,6 +34,8 @@ from ray.serve.schema import LoggingConfig, ProxyDetails, ProxyStatus
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+ProxyId = NamedTuple("ProxyId", [("node_id", NodeId), ("idx", int)])
 
 
 class ProxyWrapper(ABC):
@@ -551,6 +556,7 @@ class ProxyStateManager:
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
         actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
         timer: TimerBase = Timer(),
+        num_proxies_per_node: int = RAY_SERVE_NUM_PROXIES_PER_NODE,
     ):
         self.logging_config = logging_config
         if config is not None:
@@ -558,12 +564,22 @@ class ProxyStateManager:
         else:
             self._config = HTTPOptions()
         self._grpc_options = grpc_options or gRPCOptions()
-        self._proxy_states: Dict[NodeId, ProxyState] = dict()
-        self._proxy_restart_counts: Dict[NodeId, int] = dict()
+        self._proxy_states: Dict[ProxyId, ProxyState] = dict()
+        self._proxy_restart_counts: Dict[ProxyId, int] = dict()
         self._head_node_id: str = head_node_id
         self._proxy_actor_class = proxy_actor_class
         self._actor_proxy_wrapper_class = actor_proxy_wrapper_class
         self._timer = timer
+
+        if num_proxies_per_node > 1:
+            if sys.platform != "linux":
+                logger.warning(
+                    "Setting RAY_SERVE_NUM_PROXIES_PER_NODE > 1 is "
+                    "only supported on Linux, overriding it to 1."
+                )
+                num_proxies_per_node = 1
+
+        self._num_proxies_per_node = num_proxies_per_node
 
         self._cluster_node_info_cache = cluster_node_info_cache
 
@@ -593,20 +609,19 @@ class ProxyStateManager:
     def get_grpc_config(self) -> gRPCOptions:
         return self._grpc_options
 
-    def get_proxy_handles(self) -> Dict[NodeId, ActorHandle]:
-        return {
-            node_id: state.actor_handle for node_id, state in self._proxy_states.items()
-        }
+    def get_proxy_states(self) -> Dict[ProxyId, ProxyState]:
+        return deepcopy(self._proxy_states)
 
     def get_proxy_names(self) -> Dict[NodeId, str]:
         return {
-            node_id: state.actor_name for node_id, state in self._proxy_states.items()
+            proxy_id.node_id: state.actor_name
+            for proxy_id, state in self._proxy_states.items()
         }
 
     def get_proxy_details(self) -> Dict[NodeId, ProxyDetails]:
         return {
-            node_id: state.actor_details
-            for node_id, state in self._proxy_states.items()
+            proxy_id.node_id: state.actor_details
+            for proxy_id, state in self._proxy_states.items()
         }
 
     def get_alive_proxy_actor_ids(self) -> Set[str]:
@@ -629,8 +644,8 @@ class ProxyStateManager:
         target_nodes = self._get_target_nodes(proxy_nodes)
         target_node_ids = {node_id for node_id, _ in target_nodes}
 
-        for node_id, proxy_state in self._proxy_states.items():
-            draining = node_id not in target_node_ids
+        for proxy_id, proxy_state in self._proxy_states.items():
+            draining = proxy_id.node_id not in target_node_ids
             proxy_state.reconcile(draining)
 
         self._stop_proxies_if_needed()
@@ -664,12 +679,9 @@ class ProxyStateManager:
 
         return target_nodes
 
-    def _generate_actor_name(self, node_id: str) -> str:
-        return format_actor_name(SERVE_PROXY_NAME, node_id)
-
     def _start_proxy(
         self,
-        name: str,
+        actor_name: str,
         node_id: str,
         node_ip_address: str,
     ) -> ProxyWrapper:
@@ -707,35 +719,39 @@ class ProxyStateManager:
             logging_config=self.logging_config,
             config=self._config,
             grpc_options=grpc_options,
-            name=name,
+            name=actor_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
             port=port,
             proxy_actor_class=self._proxy_actor_class,
         )
 
-    def _start_proxies_if_needed(self, target_nodes) -> None:
+    def _start_proxies_if_needed(self, target_nodes: List[Tuple[str, str]]):
         """Start a proxy on every node if it doesn't already exist."""
 
         for node_id, node_ip_address in target_nodes:
-            if node_id in self._proxy_states:
-                continue
+            for idx in range(self._num_proxies_per_node):
+                proxy_id = ProxyId(node_id, idx)
+                if proxy_id in self._proxy_states:
+                    continue
 
-            name = self._generate_actor_name(node_id=node_id)
-            actor_proxy_wrapper = self._start_proxy(
-                name=name,
-                node_id=node_id,
-                node_ip_address=node_ip_address,
-            )
+                actor_name = format_actor_name(
+                    SERVE_PROXY_NAME, proxy_id.node_id, proxy_id.idx
+                )
+                actor_proxy_wrapper = self._start_proxy(
+                    actor_name=actor_name,
+                    node_id=proxy_id.node_id,
+                    node_ip_address=node_ip_address,
+                )
 
-            self._proxy_states[node_id] = ProxyState(
-                actor_proxy_wrapper=actor_proxy_wrapper,
-                actor_name=name,
-                node_id=node_id,
-                node_ip=node_ip_address,
-                proxy_restart_count=self._proxy_restart_counts.get(node_id, 0),
-                timer=self._timer,
-            )
+                self._proxy_states[proxy_id] = ProxyState(
+                    actor_proxy_wrapper=actor_proxy_wrapper,
+                    actor_name=actor_name,
+                    node_id=node_id,
+                    node_ip=node_ip_address,
+                    proxy_restart_count=self._proxy_restart_counts.get(proxy_id, 0),
+                    timer=self._timer,
+                )
 
     def _stop_proxies_if_needed(self) -> bool:
         """Removes proxy actors.
@@ -743,24 +759,24 @@ class ProxyStateManager:
         Removes proxy actors from any nodes that no longer exist or unhealthy proxy.
         """
         alive_node_ids = self._cluster_node_info_cache.get_alive_node_ids()
-        to_stop = []
-        for node_id, proxy_state in self._proxy_states.items():
-            if node_id not in alive_node_ids:
-                logger.info(f"Removing proxy on removed node '{node_id}'.")
-                to_stop.append(node_id)
+        to_stop: List[Tuple[NodeId, int]] = []
+        for proxy_id, proxy_state in self._proxy_states.items():
+            if proxy_id.node_id not in alive_node_ids:
+                logger.info(f"Removing proxy on removed node '{proxy_id.node_id}'.")
+                to_stop.append(proxy_id)
             elif proxy_state.status == ProxyStatus.UNHEALTHY:
                 logger.info(
-                    f"Proxy on node '{node_id}' is unhealthy. Shutting down "
+                    f"Proxy on node '{proxy_id.node_id}' is unhealthy. Shutting down "
                     "the unhealthy proxy and starting a new one."
                 )
-                to_stop.append(node_id)
+                to_stop.append(proxy_id)
             elif proxy_state.status == ProxyStatus.DRAINED:
-                logger.info(f"Removing drained proxy on node '{node_id}'.")
-                to_stop.append(node_id)
+                logger.info(f"Removing drained proxy on node '{proxy_id.node_id}'.")
+                to_stop.append(proxy_id)
 
-        for node_id in to_stop:
-            proxy_state = self._proxy_states.pop(node_id)
-            self._proxy_restart_counts[node_id] = proxy_state.proxy_restart_count + 1
+        for proxy_id in to_stop:
+            proxy_state = self._proxy_states.pop(proxy_id)
+            self._proxy_restart_counts[proxy_id] = proxy_state.proxy_restart_count + 1
             proxy_state.shutdown()
 
 

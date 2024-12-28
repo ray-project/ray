@@ -475,13 +475,12 @@ def test_controller_crashes_with_logging_config(serve_instance):
 
     # Check proxy logging
     def check_proxy_handle_in_controller():
-        proxy_handles = ray.get(client._controller.get_proxies.remote())
-        assert len(proxy_handles) == 1
+        assert len(ray.get(client._controller.get_proxy_states.remote())) == 1
         return True
 
     wait_for_condition(check_proxy_handle_in_controller)
-    proxy_handles = ray.get(client._controller.get_proxies.remote())
-    proxy_handle = list(proxy_handles.values())[0]
+    proxy_states = ray.get(client._controller.get_proxy_states.remote())
+    proxy_handle = list(proxy_states.values())[0].actor_handle
     file_path = ray.get(proxy_handle._get_logging_config.remote())
     # Send request, we should see json logging and debug log message in proxy log.
     resp = requests.get("http://127.0.0.1:8000")

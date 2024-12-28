@@ -10,14 +10,12 @@ import ray
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import run_background_task
 from ray._raylet import GcsClient
-from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     MultiplexedReplicaInfo,
-    NodeId,
     RunningReplicaInfo,
     TargetCapacityDirection,
 )
@@ -44,7 +42,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
-from ray.serve._private.proxy_state import ProxyStateManager
+from ray.serve._private.proxy_state import ProxyId, ProxyState, ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -337,11 +335,8 @@ class ServeController:
         }
         return EndpointSet(endpoints=data).SerializeToString()
 
-    def get_proxies(self) -> Dict[NodeId, ActorHandle]:
-        """Returns a dictionary of node ID to proxy actor handles."""
-        if self.proxy_state_manager is None:
-            return {}
-        return self.proxy_state_manager.get_proxy_handles()
+    def get_proxy_states(self) -> Dict[ProxyId, ProxyState]:
+        return self.proxy_state_manager.get_proxy_states()
 
     def get_proxy_names(self) -> bytes:
         """Returns the proxy actor name list serialized by protobuf."""

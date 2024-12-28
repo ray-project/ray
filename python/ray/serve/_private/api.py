@@ -110,11 +110,13 @@ def _start_controller(
         global_logging_config=global_logging_config,
     )
 
-    proxy_handles = ray.get(controller.get_proxies.remote())
+    proxy_handles = [
+        p.actor_handle for p in ray.get(controller.get_proxy_states.remote()).values()
+    ]
     if len(proxy_handles) > 0:
         try:
             ray.get(
-                [handle.ready.remote() for handle in proxy_handles.values()],
+                [handle.ready.remote() for handle in proxy_handles],
                 timeout=HTTP_PROXY_TIMEOUT,
             )
         except ray.exceptions.GetTimeoutError:

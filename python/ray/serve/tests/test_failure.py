@@ -81,11 +81,11 @@ def test_controller_failure(serve_instance):
 
 
 def _kill_http_proxies():
-    http_proxies = ray.get(
-        serve.context._global_client._controller.get_proxies.remote()
+    proxy_states = ray.get(
+        serve.context._global_client._controller.get_proxy_states.remote()
     )
-    for http_proxy in http_proxies.values():
-        ray.kill(http_proxy, no_restart=False)
+    for p in proxy_states.values():
+        ray.kill(p.actor_handle, no_restart=False)
 
 
 def test_http_proxy_failure(serve_instance):
