@@ -46,9 +46,8 @@ DATASET_METRICS = {
 
 
 class DataHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
-        self._session_name = dashboard_head.session_name
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
@@ -79,7 +78,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                         query_name, prom_query = query.value
                         # Dataset level
                         dataset_result = await self._query_prometheus(
-                            prom_query.format(metric, self._session_name, "dataset")
+                            prom_query.format(metric, self.session_name, "dataset")
                         )
                         for res in dataset_result["data"]["result"]:
                             dataset, value = res["metric"]["dataset"], res["value"][1]
@@ -89,7 +88,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                         # Operator level
                         operator_result = await self._query_prometheus(
                             prom_query.format(
-                                metric, self._session_name, "dataset, operator"
+                                metric, self.session_name, "dataset, operator"
                             )
                         )
                         for res in operator_result["data"]["result"]:
