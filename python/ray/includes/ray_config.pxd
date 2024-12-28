@@ -100,3 +100,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int gcs_rpc_server_reconnect_timeout_s() const
 
         int maximum_gcs_destroyed_actor_cached_count() const
+
+        c_bool record_task_actor_creation_sites() const
