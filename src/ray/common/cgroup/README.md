@@ -52,6 +52,8 @@ cgroup v2 folders are created in tree structure as follows
   + Attempt id is a monotonically increasing integer, which is used to different executions for the same task and indicates their order
 - Otherwise they will be placed under default application cgroup, having their max consumption bound by `/sys/fs/cgroup/ray_node_<node_id>/application`
 
+TODO(hjiang): Add more details on attempt id. For example, whether it's raylet-wise or task-wise.
+
 #### Cgroup lifecycle
 
 A cgroup's lifecycle is bound by a task / actor attempt.
