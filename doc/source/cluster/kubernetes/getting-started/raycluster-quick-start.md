@@ -45,7 +45,7 @@ kubectl get pods
 
 ```sh
 # Install CRD and KubeRay operator v1.2.2.
-kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.2.2"
+kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=master"
 
 # Confirm that the operator is running in the namespace `ray-system`.
 kubectl get pods
@@ -84,7 +84,7 @@ Once the KubeRay operator is running, you're ready to deploy a RayCluster. Creat
   :::{tab-item} Kustomize
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay repository:
-  kubectl apply -f "https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/release-1.2.2/ray-operator/config/samples/ray-cluster.sample.yaml"
+  kubectl apply -f "https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.sample.yaml"
   ```
   :::
 
@@ -209,7 +209,7 @@ kind delete cluster
 
 ```sh
 # [Step 6.1]: Delete the RayCluster CR
-kubectl delete -f "https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/release-1.2.2/ray-operator/config/samples/ray-cluster.sample.yaml"
+kubectl delete -f "https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.sample.yaml"
 
 # Confirm that the RayCluster's pods are gone by running
 kubectl get pods
@@ -217,7 +217,7 @@ kubectl get pods
 # kuberay-operator-7fbdbf8c89-pt8bk   1/1     Running   0          XXm
 
 # [Step 6.2]: Delete the KubeRay operator
-kubectl delete -k "https://github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.2.2"
+kubectl delete -k "https://github.com/ray-project/kuberay/ray-operator/config/default?ref=master"
 
 # Confirm that the KubeRay operator pod is gone by running
 kubectl get pods
