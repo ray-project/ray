@@ -364,7 +364,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
             del learner_group
 
 
-class TestLearnerGroupSaveLoadState(unittest.TestCase):
+class TestLearnerGroupSaveAndRestoreState(unittest.TestCase):
 
     FAKE_BATCH = {
         Columns.OBS: np.array(
