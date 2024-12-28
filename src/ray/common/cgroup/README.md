@@ -47,6 +47,8 @@ cgroup v2 folders are created in tree structure as follows
 - Each ray node having their own cgroup folder, which contains the node id to differentiate with other raylet(s)
 - `/sys/fs/cgroup/ray_node_<node_id>/application` is where ray sets overall max resource for all application processes
 - If a task / actor execute with their max resource specified, they will be placed in a dedicated cgroup, identified by the task id and attempt id
+  + Task id is a string which uniquely identifies a task
+  + Attempt id is a monotonically increasing integer, which is used to different executions for the same task and indicates their order
 - Otherwise they will be placed under default application cgroup, having their max consumption bound by `/sys/fs/cgroup/ray_node_<node_id>/application`
 
 #### Cgroup lifecycle
