@@ -142,92 +142,31 @@
           python groupby_benchmark.py --sf 10 --map-groups
           --group-by column02 column14
 
-########################
-# Streaming ingest tests
-########################
+#######################
+# Streaming split tests
+#######################
 
-- name: streaming_data_ingest_benchmark_1tb
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
+- name: streaming_split
 
   cluster:
-    byod:
-      type: gpu
-    cluster_compute: data_ingest_benchmark_compute.yaml
+    cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
     timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --streaming
+    script: python streaming_split_benchmark.py --num-workers 10
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 10
 
   variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: data_ingest_benchmark_compute_gce.yaml
-
-- name: streaming_data_ingest_benchmark_100gb_gpu
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: data_ingest_benchmark_compute_gpu.yaml
-
-  run:
-    timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --streaming --use-gpu
-    wait_for_nodes:
-      num_nodes: 3
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
-
-# This test case will early stop the data ingestion iteration on the GPU actors.
-# This is a common usage in PyTorch Lightning
-# (https://lightning.ai/docs/pytorch/stable/common/trainer.html#limit-train-batches).
-# There was a bug in Ray Data that caused GPU memoy leak (see #3.919).
-# We add this test case to cover this scenario.
-- name: streaming_data_ingest_benchmark_100gb_gpu_early_stop
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: data_ingest_benchmark_compute_gpu.yaml
-
-  run:
-    timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --streaming --use-gpu --early-stop
-    wait_for_nodes:
-      num_nodes: 3
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
+    - __suffix__: regular
+    - __suffix__: early_stop
+      # This test case will early stop the data ingestion iteration on the GPU actors.
+      # This is a common usage in PyTorch Lightning
+      # (https://lightning.ai/docs/pytorch/stable/common/trainer.html#limit-train-batches).
+      # There was a bug in Ray Data that caused GPU memory leak (see #34819).
+      # We add this test case to cover this scenario.
+      run:
+        script: python streaming_split_benchmark.py --num-workers 10 --early-stop
 
 ################
 # Training tests
@@ -294,6 +233,9 @@
       --to-tf image image
 
 - name: iter_torch_batches
+
+  cluster:
+    cluster_compute: autoscaling_gpu_compute.yaml
 
   run:
     timeout: 2400

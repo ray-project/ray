@@ -79,8 +79,10 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
 
     elif args.iter_torch_batches:
 
+        # In addition to consuming the data, we also want to test the performance of
+        # moving data to GPU.
         def consume_fn(ds):
-            for _ in ds.iter_torch_batches():
+            for _ in ds.iter_torch_batches(device="cuda"):
                 pass
 
     elif args.to_tf:
