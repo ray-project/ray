@@ -42,7 +42,7 @@ namespace ray::gcs {
 /// All IO operations happens on the same thread, which is managed by the pass-ed in
 /// [io_service].
 /// TODO (iycheng): Move the GcsHealthCheckManager to ray/common.
-class GcsHealthCheckManager {
+class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheckManager> {
  public:
   /// Constructor of GcsHealthCheckManager.
   ///
@@ -101,13 +101,13 @@ class GcsHealthCheckManager {
   /// It can be updated to support streaming call for efficiency.
   class HealthCheckContext {
    public:
-    HealthCheckContext(GcsHealthCheckManager *manager,
+    HealthCheckContext(std::shared_ptr<GcsHealthCheckManager> manager,
                        std::shared_ptr<grpc::Channel> channel,
                        NodeID node_id)
-        : manager_(manager),
+        : manager_(std::move(manager)),
           node_id_(node_id),
-          timer_(manager->io_service_),
-          health_check_remaining_(manager->failure_threshold_) {
+          timer_(manager_->io_service_),
+          health_check_remaining_(manager_->failure_threshold_) {
       request_.set_service(node_id.Hex());
       stub_ = grpc::health::v1::Health::NewStub(channel);
       timer_.expires_from_now(
@@ -124,7 +124,7 @@ class GcsHealthCheckManager {
    private:
     void StartHealthCheck();
 
-    GcsHealthCheckManager *manager_;
+    std::shared_ptr<GcsHealthCheckManager> manager_;
 
     NodeID node_id_;
 
@@ -134,12 +134,12 @@ class GcsHealthCheckManager {
     // Whether the health check has stopped.
     bool stopped_ = false;
 
-    /// gRPC related fields
-    std::unique_ptr<::grpc::health::v1::Health::Stub> stub_;
-
     grpc::ClientContext context_;
     ::grpc::health::v1::HealthCheckRequest request_;
     ::grpc::health::v1::HealthCheckResponse response_;
+
+    /// gRPC related fields
+    std::unique_ptr<::grpc::health::v1::Health::Stub> stub_;
 
     /// The timer is used to do async wait before the next try.
     Timer timer_;

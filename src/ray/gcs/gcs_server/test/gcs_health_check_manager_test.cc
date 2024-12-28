@@ -52,11 +52,12 @@ using namespace std::literals::chrono_literals;
 
 class GcsHealthCheckManagerTest : public ::testing::Test {
  protected:
-  GcsHealthCheckManagerTest() {}
+  GcsHealthCheckManagerTest() = default;
+  ~GcsHealthCheckManagerTest() = default;
   void SetUp() override {
     grpc::EnableDefaultHealthCheckService(true);
 
-    health_check = std::make_unique<gcs::GcsHealthCheckManager>(
+    health_check = std::make_shared<gcs::GcsHealthCheckManager>(
         io_service,
         [this](const NodeID &id) { dead_nodes.insert(id); },
         initial_delay_ms,
@@ -132,7 +133,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
   }
 
   instrumented_io_context io_service;
-  std::unique_ptr<gcs::GcsHealthCheckManager> health_check;
+  std::shared_ptr<gcs::GcsHealthCheckManager> health_check;
   std::unordered_map<NodeID, std::shared_ptr<rpc::GrpcServer>> servers;
   std::unordered_set<NodeID> dead_nodes;
   const int64_t initial_delay_ms = 100;

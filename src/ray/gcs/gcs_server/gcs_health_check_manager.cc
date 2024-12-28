@@ -131,13 +131,19 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 
   const auto deadline = now + absl::Milliseconds(manager_->timeout_ms_);
   context_.set_deadline(absl::ToChronoTime(deadline));
+
+  // grpc and io_context contains two different eventloops, here we have to use shared
+  // pointer to make sure all memory accesses are valid.
   stub_->async()->Check(
-      &context_, &request_, &response_, [this, start = now](::grpc::Status status) {
+      &context_,
+      &request_,
+      &response_,
+      [this, start = now, manager = manager_](::grpc::Status status) {
         // This callback is done in gRPC's thread pool.
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - start));
-        manager_->io_service_.post(
-            [this, status]() {
+        manager->io_service_.post(
+            [this, status, manager]() {
               if (stopped_) {
                 delete this;
                 return;
@@ -148,7 +154,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 
               if (status.ok() && response_.status() == HealthCheckResponse::SERVING) {
                 // Health check passed.
-                health_check_remaining_ = manager_->failure_threshold_;
+                health_check_remaining_ = manager->failure_threshold_;
               } else {
                 --health_check_remaining_;
                 RAY_LOG(WARNING)
@@ -160,7 +166,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
               }
 
               if (health_check_remaining_ == 0) {
-                manager_->FailNode(node_id_);
+                manager->FailNode(node_id_);
                 delete this;
               } else {
                 // Do another health check.
@@ -168,7 +174,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
                 // TODO(hjiang): Able to reduce a few health check based on know resource
                 // usage communication between GCS and raylet.
                 timer_.expires_from_now(
-                    boost::posix_time::milliseconds(manager_->period_ms_));
+                    boost::posix_time::milliseconds(manager->period_ms_));
                 timer_.async_wait([this](auto) { StartHealthCheck(); });
               }
             },
@@ -183,7 +189,7 @@ void GcsHealthCheckManager::AddNode(const NodeID &node_id,
   io_service_.dispatch(
       [this, channel = std::move(channel), node_id]() {
         RAY_CHECK(thread_checker_.IsOnSameThread());
-        auto context = new HealthCheckContext(this, channel, node_id);
+        auto context = new HealthCheckContext(shared_from_this(), channel, node_id);
         auto [_, is_new] = health_check_contexts_.emplace(node_id, context);
         RAY_CHECK(is_new);
       },
