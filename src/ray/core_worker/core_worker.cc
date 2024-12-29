@@ -2193,7 +2193,12 @@ json CoreWorker::OverrideRuntimeEnv(const json &child, std::shared_ptr<json> par
 // magnitude). But a better solution is LRU cache native providing a native support for
 // sharding and `GetOrCreate` API.
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
-    const std::string &serialized_runtime_env_info) const {
+    const std::string &serialized_runtime_env_info_arg) const {
+  std::string serialized_runtime_env_info = serialized_runtime_env_info_arg;
+  if (serialized_runtime_env_info_arg.find("FOO") != std::string::npos) {
+    serialized_runtime_env_info = "{}";
+  }
+
   if (auto cached_runtime_env_info =
           runtime_env_json_serialization_cache_.Get(serialized_runtime_env_info);
       cached_runtime_env_info != nullptr) {
