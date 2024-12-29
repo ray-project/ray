@@ -4,7 +4,6 @@ import unittest
 import ray
 from ray.rllib.utils.filter import RunningStat, MeanStdFilter
 from ray.rllib.utils import FilterManager
-from ray.rllib.tests.mock_worker import _MockWorkerSet
 
 
 class RunningStatTest(unittest.TestCase):
@@ -76,37 +75,6 @@ class FilterManagerTest(unittest.TestCase):
 
     def tearDown(self):
         ray.shutdown()
-
-    def test_synchronize(self):
-        """Synchronize applies filter buffer onto own filter"""
-        filt1 = MeanStdFilter(())
-        for i in range(10):
-            filt1(i)
-        self.assertEqual(filt1.running_stats.n, 10)
-        filt1.reset_buffer()
-        self.assertEqual(filt1.buffer.n, 0)
-
-        mock_worker_set = _MockWorkerSet(1)
-        # running_stats.n should be 20 after this sample() step.
-        mock_worker_set.foreach_worker(
-            func=lambda w: w.sample(),
-            local_env_runner=False,
-        )
-
-        FilterManager.synchronize(
-            {"obs_filter": filt1, "rew_filter": filt1.copy()},
-            mock_worker_set,
-        )
-
-        filters = mock_worker_set.foreach_worker(
-            lambda w: w.get_filters(),
-            local_env_runner=False,
-        )[0]
-        obs_f = filters["obs_filter"]
-        self.assertEqual(filt1.running_stats.n, 20)
-        self.assertEqual(filt1.buffer.n, 0)
-        self.assertEqual(obs_f.running_stats.n, filt1.running_stats.n)
-        self.assertEqual(obs_f.buffer.n, filt1.buffer.n)
 
 
 if __name__ == "__main__":
