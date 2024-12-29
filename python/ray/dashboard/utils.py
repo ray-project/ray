@@ -31,7 +31,6 @@ from ray._private.utils import (
 )
 from ray._raylet import GcsClient
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
-from ray.dashboard.optional_deps import aiohttp
 
 try:
     create_task = asyncio.create_task
@@ -161,6 +160,9 @@ class DashboardHeadModule(abc.ABC):
 
     @property
     def http_session(self):
+        assert not self._config.minimal, "http_session accessed in minimal Ray."
+        import aiohttp
+
         if self._http_session is not None:
             return self._http_session
         # Create a http session for all modules.
