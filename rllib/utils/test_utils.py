@@ -984,6 +984,7 @@ def run_rllib_example_script_experiment(
     keep_ray_up: bool = False,
     scheduler=None,
     progress_reporter=None,
+    restore_algo_from_checkpoint=None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1168,6 +1169,29 @@ def run_rllib_example_script_experiment(
         if args.output is not None:
             config.offline_data(output=args.output)
 
+        # Make sure the algorithm gets restored from a checkpoint right after
+        # initialization.
+        if restore_algo_from_checkpoint:
+            from ray.rllib.algorithms.callbacks import (
+                DefaultCallbacks,
+                make_multi_callbacks,
+            )
+
+            class _RestoreCheckpointCallback(DefaultCallbacks):
+                def on_algorithm_init(self, *, algorithm, **kwargs):
+                    print(f"On algo init: lr={algorithm.config.lr}")
+                    algorithm.restore_from_path(restore_algo_from_checkpoint)
+
+            if base_config.callbacks_class is not None:
+                base_config.callbacks(
+                    make_multi_callbacks([
+                        _RestoreCheckpointCallback,
+                        base_config.callbacks_class,
+                    ])
+                )
+            else:
+                base_config.callbacks(_RestoreCheckpointCallback)
+
     # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
         assert not args.as_test and not args.as_release_test
@@ -1222,7 +1246,6 @@ def run_rllib_example_script_experiment(
                 **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
             )
         )
-
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
     if progress_reporter is None and args.num_agents > 0:

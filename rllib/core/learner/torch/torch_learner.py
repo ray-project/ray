@@ -321,7 +321,7 @@ class TorchLearner(Learner):
         for name, optim in self._named_optimizers.items():
             ret[name] = {
                 "module_id": self._optimizer_name_to_module[name],
-                "state": copy_torch_tensors(optim.state_dict(), device="cpu"),
+                "state": convert_to_numpy(optim.state_dict()),
             }
         return ret
 
@@ -334,7 +334,7 @@ class TorchLearner(Learner):
                     config=self.config.get_config_for_module(state_dict["module_id"]),
                 )
             self._named_optimizers[name].load_state_dict(
-                copy_torch_tensors(state_dict["state"], device=self._device)
+                convert_to_torch_tensor(state_dict["state"])
             )
 
     @override(Learner)

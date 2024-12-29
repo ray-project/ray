@@ -1,6 +1,7 @@
 import abc
-import logging
+import inspect
 import json
+import logging
 import os
 from packaging import version
 import pathlib
@@ -54,8 +55,7 @@ logger = logging.getLogger(__name__)
 # (if the Learner-, RLModule, EnvRunner, and ConnectorV2 APIs are enabled).
 
 CHECKPOINT_VERSION = version.Version("1.1")
-CHECKPOINT_VERSION_LEARNER = version.Version("1.2")
-CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER = version.Version("2.0")
+CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER = version.Version("2.1")
 
 
 @PublicAPI(stability="alpha")
@@ -78,7 +78,7 @@ class Checkpointable(abc.ABC):
     # of the implementing class (which are `Checkpointable` themselves and thus should
     # have their own state- and metadata files).
     # After a `save_to_path([path])` this file can be found directly in: `path/`.
-    STATE_FILE_NAME = "state.pkl"
+    STATE_FILE_NAME = "state"
 
     # The filename of the pickle file that contains the class information of the
     # Checkpointable as well as all constructor args to be passed to such a class in
@@ -95,6 +95,7 @@ class Checkpointable(abc.ABC):
         *,
         state: Optional[StateDict] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        use_msgpack: bool = False,
     ) -> str:
         """Saves the state of the implementing class (or `state`) to `path`.
 
@@ -112,7 +113,7 @@ class Checkpointable(abc.ABC):
                 [component2]/
                         ...
                 [cls.METADATA_FILE_NAME] (json)
-                [cls.STATE_FILE_NAME] (pkl)
+                [cls.STATE_FILE_NAME] (pkl|msgpack)
 
         The main logic is to loop through all subcomponents of this Checkpointable
         and call their respective `save_to_path` methods. Then save the remaining
@@ -131,6 +132,9 @@ class Checkpointable(abc.ABC):
                 the implementing class through `self.get_state()`.
             filesystem: PyArrow FileSystem to use to access data at the `path`.
                 If not specified, this is inferred from the URI scheme of `path`.
+            use_msgpack: Whether the state file should be written using msgpack and
+                msgpack_numpy (file extension is `.msgpack`), rather than pickle (file
+                extension is `.pkl`).
 
         Returns:
             The path (str) where the state has been saved.
@@ -174,7 +178,9 @@ class Checkpointable(abc.ABC):
         ) as f:
             f.write(json.dumps(metadata).encode("utf-8"))
 
-        # Write the class and constructor args information to disk.
+        # Write the class and constructor args information to disk. Always use pickle
+        # for this, because this information contains classes and maybe other
+        # non-serializable data.
         with filesystem.open_output_stream(
             (path / self.CLASS_AND_CTOR_ARGS_FILE_NAME).as_posix()
         ) as f:
@@ -232,7 +238,7 @@ class Checkpointable(abc.ABC):
 
                 if worker_ip_addr == self_ip_addr:
                     comp.foreach_actor(
-                        lambda w, _path=comp_path, _state=comp_state_ref: (
+                        lambda w, _path=comp_path, _state=comp_state_ref, _use_msgpack=use_msgpack: (  # noqa
                             w.save_to_path(
                                 _path,
                                 state=(
@@ -240,13 +246,14 @@ class Checkpointable(abc.ABC):
                                     if _state is not None
                                     else w.get_state()
                                 ),
+                                use_msgpack=_use_msgpack,
                             )
                         ),
                         remote_actor_ids=[actor_to_use],
                     )
                 else:
                     # Save the checkpoint to the temporary directory on the worker.
-                    def _save(w, _state=comp_state_ref):
+                    def _save(w, _state=comp_state_ref, _use_msgpack=use_msgpack):
                         import tempfile
 
                         # Create a temporary directory on the worker.
@@ -256,6 +263,7 @@ class Checkpointable(abc.ABC):
                             state=(
                                 ray.get(_state) if _state is not None else w.get_state()
                             ),
+                            use_msgpack=_use_msgpack,
                         )
                         return tmpdir
 
@@ -291,13 +299,24 @@ class Checkpointable(abc.ABC):
                 # By providing the `state` arg, we make sure that the component does not
                 # have to call its own `get_state()` anymore, but uses what's provided
                 # here.
-                comp.save_to_path(comp_path, filesystem=filesystem, state=comp_state)
+                comp.save_to_path(
+                    comp_path,
+                    filesystem=filesystem,
+                    state=comp_state,
+                    use_msgpack=use_msgpack,
+                )
 
         # Write all the remaining state to disk.
-        with filesystem.open_output_stream(
-            (path / self.STATE_FILE_NAME).as_posix()
-        ) as f:
-            pickle.dump(state, f)
+        filename = (
+            path
+            / (self.STATE_FILE_NAME + (".msgpack" if use_msgpack else ".pkl"))
+        )
+        with filesystem.open_output_stream(filename.as_posix()) as f:
+            if use_msgpack:
+                msgpack = try_import_msgpack(error=True)
+                msgpack.dump(state, f)
+            else:
+                pickle.dump(state, f)
 
         return str(path)
 
@@ -333,7 +352,7 @@ class Checkpointable(abc.ABC):
                 [component2]/
                         ...
                 [cls.METADATA_FILE_NAME] (json)
-                [cls.STATE_FILE_NAME] (pkl)
+                [cls.STATE_FILE_NAME] (pkl|msgpack)
 
         Note that the self.METADATA_FILE_NAME file is not required to restore the state.
 
@@ -370,10 +389,18 @@ class Checkpointable(abc.ABC):
 
         # Restore the "base" state (not individual subcomponents).
         if component is None:
-            with filesystem.open_input_stream(
-                (path / self.STATE_FILE_NAME).as_posix()
-            ) as f:
-                state = pickle.load(f)
+            filename = path / self.STATE_FILE_NAME
+            if filename.with_suffix(".msgpack").is_file():
+                msgpack = try_import_msgpack(error=True)
+                with filesystem.open_input_stream(
+                    filename.with_suffix(".msgpack").as_posix()
+                ) as f:
+                    state = msgpack.load(f, strict_map_key=False)
+            else:
+                with filesystem.open_input_stream(
+                    filename.with_suffix(".pkl").as_posix()
+                ) as f:
+                    state = pickle.load(f)
             self.set_state(state)
 
             new_comp_names = {c[0] for c in self.get_checkpointable_components()}
@@ -417,12 +444,38 @@ class Checkpointable(abc.ABC):
         # cloud path gets broken (i.e. 'gs://' -> 'gs:/').
         path = pathlib.Path(path)
 
-        # Get the class constructor to call.
-        with filesystem.open_input_stream(
-            (path / cls.CLASS_AND_CTOR_ARGS_FILE_NAME).as_posix()
-        ) as f:
-            ctor_info = pickle.load(f)
-        ctor = ctor_info["class"]
+        # Get the class constructor to call and its args/kwargs.
+        # Try reading the pickle file first.
+        try:
+            with filesystem.open_input_stream(
+                (path / cls.CLASS_AND_CTOR_ARGS_FILE_NAME).as_posix()
+            ) as f:
+                ctor_info = pickle.load(f)
+            ctor = ctor_info["class"]
+            ctor_args = force_list(ctor_info["ctor_args_and_kwargs"][0])
+            ctor_kwargs = ctor_info["ctor_args_and_kwargs"][1]
+
+            # Inspect the ctor to see, which arguments in ctor_info should be replaced with
+            # the user provided **kwargs.
+            for i, (param_name, param) in enumerate(inspect.signature(ctor).parameters.items()):
+                if param_name in kwargs:
+                    val = kwargs.pop(param_name)
+                    if (
+                        param.kind == inspect._ParameterKind.POSITIONAL_OR_KEYWORD
+                        and len(ctor_args) > i
+                    ):
+                        ctor_args[i] = val
+                    else:
+                        ctor_kwargs[param_name] = val
+
+        # If the pickle file is from another python version, use provided
+        # args instead.
+        except Exception as e:
+            # Use class that this method was called on.
+            ctor = cls
+            # Use only user provided **kwargs.
+            ctor_args = []
+            ctor_kwargs = kwargs
 
         # Check, whether the constructor actually goes together with `cls`.
         if not issubclass(ctor, cls):
@@ -436,10 +489,8 @@ class Checkpointable(abc.ABC):
                 "an implementer of the `Checkpointable` API!"
             )
 
-        obj = ctor(
-            *ctor_info["ctor_args_and_kwargs"][0],
-            **ctor_info["ctor_args_and_kwargs"][1],
-        )
+        # Construct the initial object (without any particular state).
+        obj = ctor(*ctor_args, **ctor_kwargs)
         # Restore the state of the constructed object.
         obj.restore_from_path(path, filesystem=filesystem, **kwargs)
         # Return the new object.
@@ -454,6 +505,11 @@ class Checkpointable(abc.ABC):
         **kwargs,
     ) -> StateDict:
         """Returns the implementing class's current state as a dict.
+
+        The returned dict must only contain msgpack-serializable data if you want to
+        use the `AlgorithmConfig._msgpack_checkpoints` option. Consider returning your
+        non msgpack-serializable data from the `Checkpointable.get_ctor_args_and_kwargs`
+        method, instead.
 
         Args:
             components: An optional collection of string keys to be included in the
@@ -747,7 +803,7 @@ def get_checkpoint_info(
 
         # Valid Algorithm checkpoint >v0 file found?
         format = None
-        for extension in ["pkl", "msgpck"]:
+        for extension in ["pkl", "msgpck", "msgpack"]:
             state_file = checkpoint / f"algorithm_state.{extension}"
             if (
                 _exists_at_fs_path(filesystem, state_file.as_posix())
@@ -758,7 +814,7 @@ def get_checkpoint_info(
         if format is None:
             raise ValueError(
                 "Given checkpoint does not seem to be valid! No file with the name "
-                "`algorithm_state.[pkl|msgpck]` (or `checkpoint-[0-9]+`) found."
+                "`algorithm_state.[pkl|msgpack|msgpck]` (or `checkpoint-[0-9]+`) found."
             )
 
         info.update(
@@ -877,10 +933,7 @@ def convert_to_msgpack_checkpoint(
     state["worker"]["is_policy_to_train"] = NOT_SERIALIZABLE
 
     # Add RLlib checkpoint version (as string).
-    if state["config"]["enable_rl_module_and_learner"]:
-        state["checkpoint_version"] = str(CHECKPOINT_VERSION_LEARNER)
-    else:
-        state["checkpoint_version"] = str(CHECKPOINT_VERSION)
+    state["checkpoint_version"] = str(CHECKPOINT_VERSION)
 
     # Write state (w/o policies) to disk.
     state_file = os.path.join(msgpack_checkpoint_dir, "algorithm_state.msgpck")

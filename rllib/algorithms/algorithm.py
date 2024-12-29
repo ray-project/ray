@@ -91,7 +91,7 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.checkpoints import (
     Checkpointable,
     CHECKPOINT_VERSION,
-    CHECKPOINT_VERSION_LEARNER,
+    CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER,
     get_checkpoint_info,
     try_import_msgpack,
 )
@@ -300,7 +300,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     # Backward compatibility with old checkpoint system (now through the
     # `Checkpointable` API).
     METADATA_FILE_NAME = "rllib_checkpoint.json"
-    STATE_FILE_NAME = "algorithm_state.pkl"
+    STATE_FILE_NAME = "algorithm_state"
 
     @classmethod
     @override(Checkpointable)
@@ -2603,7 +2603,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # New API stack: Delegate to the `Checkpointable` implementation of
         # `save_to_path()`.
         if self.config.enable_rl_module_and_learner:
-            return self.save_to_path(checkpoint_dir)
+            return self.save_to_path(
+                checkpoint_dir,
+                use_msgpack=self.config._use_msgpack_checkpoints,
+            )
 
         checkpoint_dir = pathlib.Path(checkpoint_dir)
 
@@ -2617,7 +2620,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # Add RLlib checkpoint version.
         if self.config.enable_rl_module_and_learner:
-            state["checkpoint_version"] = CHECKPOINT_VERSION_LEARNER
+            state["checkpoint_version"] = CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER
         else:
             state["checkpoint_version"] = CHECKPOINT_VERSION
 

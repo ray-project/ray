@@ -2030,6 +2030,15 @@ py_test(
 # subdirectory: checkpoints/
 # ....................................
 py_test(
+    name = "examples/checkpoints/change_config_during_training",
+    main = "examples/checkpoints/change_config_during_training.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
+    size = "large",
+    srcs = ["examples/checkpoints/change_config_during_training.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward-first-config=150.0", "--stop-reward=450.0"]
+)
+
+py_test(
     name = "examples/checkpoints/checkpoint_by_custom_criteria",
     main = "examples/checkpoints/checkpoint_by_custom_criteria.py",
     tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
