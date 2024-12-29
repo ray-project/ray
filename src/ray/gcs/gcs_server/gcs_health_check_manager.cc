@@ -130,6 +130,9 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 
   // Get the context and response pointer before async call, since the order of function
   // arguments resolution is non-deterministic.
+  //
+  // In detail, for a function invocation `func(arg1, arg2)`, whether arg1 and arg2 is
+  // resolved first is vendor-specific.
   auto *context_ptr = context.get();
   auto *response_ptr = response.get();
 
