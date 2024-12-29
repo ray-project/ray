@@ -553,7 +553,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     if next_row is None:
                         next_row = next(iter)
                     next_keys = next_row[keys]
-                    while np.all(next_row[keys] == next_keys):
+                    while np.array_equal(next_row[keys], next_keys, equal_nan=True):
                         end += 1
                         try:
                             next_row = next(iter)
@@ -671,7 +671,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 def gen():
                     nonlocal iter
                     nonlocal next_row
-                    while key_fn(next_row) == next_keys:
+                    while np.array_equal(key_fn(next_row), next_keys, equal_nan=True):
                         yield next_row
                         try:
                             next_row = next(iter)

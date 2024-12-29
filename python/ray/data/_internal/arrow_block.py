@@ -73,7 +73,10 @@ def get_concat_and_sort_transform(context: DataContext) -> Callable:
 
 
 def is_nan(value):
-    return isinstance(value, float) and np.isnan(value)
+    try:
+        return isinstance(value, float) and np.isnan(value)
+    except TypeError:
+        return False
 
 
 def keys_equal(keys1, keys2):
