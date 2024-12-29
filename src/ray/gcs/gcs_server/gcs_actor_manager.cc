@@ -653,8 +653,18 @@ void GcsActorManager::HandleGetNamedActorInfo(
       iter->second->GetState() == rpc::ActorTableData::DEAD) {
     // The named actor was not found or the actor is already removed.
     std::stringstream stream;
-    stream << "Actor with name '" << name << "' was not found.";
-    RAY_LOG(DEBUG) << stream.str();
+    if (actor_id.IsNil() || iter == registered_actors_.end()) {
+      stream << "Actor with name '" << name << "' was not found.";
+      RAY_LOG(DEBUG) << stream.str();
+    } else {
+      stream << "Actor with name '" << name << "' was found, but it is DEAD.";
+      RAY_LOG(DEBUG) << stream.str();
+      // Update `registered_actors_` and `named_actors_` immediately to avoid race
+      // conditions. Without this, GCS might tell the core worker that the actor is not
+      // found when the core worker tries to `get_actor`, but still think the actor exists
+      // when the core worker tries to create a new actor with the same name.
+      DestroyActor(actor_id, GenActorRefDeletedCause(GetActor(actor_id)));
+    }
     status = Status::NotFound(stream.str());
   } else {
     *reply->mutable_actor_table_data() = iter->second->GetActorTableData();
@@ -931,7 +941,7 @@ void GcsActorManager::RemoveActorNameFromRegistry(
     if (namespace_it != named_actors_.end()) {
       auto it = namespace_it->second.find(actor->GetName());
       if (it != namespace_it->second.end()) {
-        RAY_LOG(INFO) << "Actor name " << actor->GetName() << " is cleand up.";
+        RAY_LOG(INFO) << "Actor name " << actor->GetName() << " is cleaned up.";
         namespace_it->second.erase(it);
       }
       // If we just removed the last actor in the namespace, remove the map.
