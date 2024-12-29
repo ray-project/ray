@@ -657,6 +657,7 @@ void GcsActorManager::HandleGetNamedActorInfo(
       stream << "Actor with name '" << name << "' was not found.";
       RAY_LOG(DEBUG) << stream.str();
     } else {
+      RAY_CHECK(iter->second->GetState() == rpc::ActorTableData::DEAD);
       stream << "Actor with name '" << name << "' was found, but it is DEAD.";
       RAY_LOG(DEBUG) << stream.str();
       // Update `registered_actors_` and `named_actors_` immediately to avoid race
