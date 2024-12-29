@@ -71,7 +71,8 @@ class DashboardAgentModule(abc.ABC):
         dependencies.
         """
 
-    def get_gcs_address(self):
+    @property
+    def gcs_address(self):
         return self._dashboard_agent.gcs_address
 
 
