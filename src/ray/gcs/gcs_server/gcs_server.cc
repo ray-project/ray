@@ -284,8 +284,8 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
-  node_info_service_.reset(new rpc::NodeInfoGrpcService(
-      io_context_provider_.GetDefaultIOContext(), *gcs_node_manager_));
+  node_info_service_ = std::make_unique<rpc::NodeInfoGrpcService>(
+      io_context_provider_.GetDefaultIOContext(), *gcs_node_manager_);
   rpc_server_.RegisterService(*node_info_service_);
 }
 
