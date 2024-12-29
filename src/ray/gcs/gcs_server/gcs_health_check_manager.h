@@ -111,14 +111,14 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
     HealthCheckContext(std::shared_ptr<GcsHealthCheckManager> manager,
                        std::shared_ptr<grpc::Channel> channel,
                        NodeID node_id)
-        : manager_(std::move(manager)),
+        : manager_(manager),
           node_id_(node_id),
-          timer_(manager_->io_service_),
-          health_check_remaining_(manager_->failure_threshold_) {
+          timer_(manager->io_service_),
+          health_check_remaining_(manager->failure_threshold_) {
       request_.set_service(node_id.Hex());
       stub_ = grpc::health::v1::Health::NewStub(channel);
       timer_.expires_from_now(
-          boost::posix_time::milliseconds(manager_->initial_delay_ms_));
+          boost::posix_time::milliseconds(manager->initial_delay_ms_));
       timer_.async_wait([this](auto) { StartHealthCheck(); });
     }
 
@@ -131,7 +131,7 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
    private:
     void StartHealthCheck();
 
-    std::shared_ptr<GcsHealthCheckManager> manager_;
+    std::weak_ptr<GcsHealthCheckManager> manager_;
 
     NodeID node_id_;
 

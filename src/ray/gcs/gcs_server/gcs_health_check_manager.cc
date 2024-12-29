@@ -120,7 +120,14 @@ void GcsHealthCheckManager::MarkNodeHealthy(const NodeID &node_id) {
 void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   using ::grpc::health::v1::HealthCheckResponse;
 
-  RAY_CHECK(manager_->thread_checker_.IsOnSameThread());
+  auto manager = manager_.lock();
+  if (manager == nullptr) {
+    RAY_CHECK(stopped_);
+    delete this;
+    return;
+  }
+
+  RAY_CHECK(manager->thread_checker_.IsOnSameThread());
 
   // If current context is requested to stop, directly destruct itself and exit.
   if (stopped_) {
@@ -131,7 +138,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   // Check latest health status, see whether a new rpc message is needed.
   const auto now = absl::Now();
   absl::Time next_check_time =
-      lastest_known_healthy_timestamp_ + absl::Milliseconds(manager_->period_ms_);
+      lastest_known_healthy_timestamp_ + absl::Milliseconds(manager->period_ms_);
   if (now <= next_check_time) {
     // Update message is fresh enough, skip current check and schedule later.
     int64_t next_schedule_millisec = (next_check_time - now) / absl::Milliseconds(1);
@@ -145,7 +152,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   new (&context_) grpc::ClientContext();
   response_.Clear();
 
-  const auto deadline = now + absl::Milliseconds(manager_->timeout_ms_);
+  const auto deadline = now + absl::Milliseconds(manager->timeout_ms_);
   context_.set_deadline(absl::ToChronoTime(deadline));
 
   // grpc and io_context contains two different eventloops, here we have to use shared
@@ -154,7 +161,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
       &context_,
       &request_,
       &response_,
-      [this, start = now, manager = manager_](::grpc::Status status) {
+      [this, start = now, manager = manager](::grpc::Status status) {
         // This callback is done in gRPC's thread pool.
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - start));
