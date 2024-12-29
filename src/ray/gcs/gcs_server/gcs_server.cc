@@ -297,7 +297,7 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
         "GcsServer.NodeDeathCallback");
   };
 
-  gcs_healthcheck_manager_ = std::make_shared<GcsHealthCheckManager>(
+  gcs_healthcheck_manager_ = GcsHealthCheckManager::Create(
       io_context_provider_.GetDefaultIOContext(), node_death_callback);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {

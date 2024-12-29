@@ -44,7 +44,7 @@ namespace ray::gcs {
 /// TODO (iycheng): Move the GcsHealthCheckManager to ray/common.
 class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheckManager> {
  public:
-  /// Constructor of GcsHealthCheckManager.
+  /// Factory constructor of GcsHealthCheckManager.
   ///
   /// \param io_service The thread where all operations in this class should run.
   /// \param on_node_death_callback The callback function when some node is marked as
@@ -53,7 +53,7 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
   /// \param period_ms The interval between two health checks for the same node.
   /// \param failure_threshold The threshold before a node will be marked as dead due to
   /// health check failure.
-  GcsHealthCheckManager(
+  static std::shared_ptr<GcsHealthCheckManager> Create(
       instrumented_io_context &io_service,
       std::function<void(const NodeID &)> on_node_death_callback,
       int64_t initial_delay_ms = RayConfig::instance().health_check_initial_delay_ms(),
@@ -89,6 +89,13 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
   void MarkNodeHealthy(const NodeID &node_id);
 
  private:
+  GcsHealthCheckManager(instrumented_io_context &io_service,
+                        std::function<void(const NodeID &)> on_node_death_callback,
+                        int64_t initial_delay_ms,
+                        int64_t timeout_ms,
+                        int64_t period_ms,
+                        int64_t failure_threshold);
+
   /// Fail a node when health check failed. It'll stop the health checking and
   /// call `on_node_death_callback_`.
   ///

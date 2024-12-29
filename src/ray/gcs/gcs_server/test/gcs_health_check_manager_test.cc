@@ -57,7 +57,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
   void SetUp() override {
     grpc::EnableDefaultHealthCheckService(true);
 
-    health_check = std::make_shared<gcs::GcsHealthCheckManager>(
+    health_check = gcs::GcsHealthCheckManager::Create(
         io_service,
         [this](const NodeID &id) { dead_nodes.insert(id); },
         initial_delay_ms,

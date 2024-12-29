@@ -26,6 +26,22 @@ DEFINE_stats(health_check_rpc_latency_ms,
 
 namespace ray::gcs {
 
+/*static*/ std::shared_ptr<GcsHealthCheckManager> GcsHealthCheckManager::Create(
+    instrumented_io_context &io_service,
+    std::function<void(const NodeID &)> on_node_death_callback,
+    int64_t initial_delay_ms,
+    int64_t timeout_ms,
+    int64_t period_ms,
+    int64_t failure_threshold) {
+  return std::shared_ptr<GcsHealthCheckManager>(
+      new GcsHealthCheckManager(io_service,
+                                std::move(on_node_death_callback),
+                                initial_delay_ms,
+                                timeout_ms,
+                                period_ms,
+                                failure_threshold));
+}
+
 GcsHealthCheckManager::GcsHealthCheckManager(
     instrumented_io_context &io_service,
     std::function<void(const NodeID &)> on_node_death_callback,
