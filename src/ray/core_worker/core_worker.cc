@@ -2381,7 +2381,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   int64_t depth = worker_context_.GetTaskDepth() + 1;
   // TODO(ekl) offload task building onto a thread pool for performance
 
-  RAY_CHECK(false) << "hjiang " << task_options.serialized_runtime_env_info;
+  // task_spec.serialized runtime info
+  // {\n  \"serializedRuntimeEnv\": \"{\\\"env_vars\\\": {\\\"FOO\\\": \\\"bar\\\"}}\",\n
+  // \"runtimeEnvConfig\": {\n    \"setupTimeoutSeconds\": 600,\n    \"eagerInstall\":
+  // true\n  }\n}
 
   BuildCommonTaskSpec(builder,
                       worker_context_.GetCurrentJobID(),
