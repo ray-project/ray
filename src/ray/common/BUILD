@@ -282,6 +282,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "status_or",
+    hdrs = ["status_or.h"],
+    deps = [
+        ":status",
+        "@com_google_absl//absl/base:core_headers"
+    ],
+)
+
+ray_cc_library(
     name = "source_location",
     srcs = ["source_location.cc"],
     hdrs = ["source_location.h"],
