@@ -2245,8 +2245,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   // yet, we will overwrite the filed eager_install when it did.
   std::shared_ptr<json> parent = nullptr;
   std::shared_ptr<rpc::RuntimeEnvInfo> parent_runtime_env_info = nullptr;
-  std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
-  runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
+  auto runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
 
   if (!IsRuntimeEnvInfoEmpty(serialized_runtime_env_info)) {
     RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env_info,
@@ -2260,7 +2259,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
           worker_context_.GetCurrentJobConfig().runtime_env_info());
     }
 
-    auto job_serialized_runtime_env =
+    const auto &job_serialized_runtime_env =
         worker_context_.GetCurrentJobConfig().runtime_env_info().serialized_runtime_env();
     if (!IsRuntimeEnvEmpty(job_serialized_runtime_env)) {
       parent = std::make_shared<json>(json::parse(job_serialized_runtime_env));
@@ -2275,9 +2274,11 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     parent_runtime_env_info = worker_context_.GetCurrentRuntimeEnvInfo();
   }
   if (parent == nullptr) {
+    runtime_env_json_serialization_cache_.Put(serialized_runtime_env_info,
+                                              runtime_env_info);
     return runtime_env_info;
   }
-  std::string serialized_runtime_env = runtime_env_info->serialized_runtime_env();
+  const std::string &serialized_runtime_env = runtime_env_info->serialized_runtime_env();
   json child_runtime_env = json::parse(serialized_runtime_env);
   auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
   auto serialized_override_runtime_env = override_runtime_env.dump();
