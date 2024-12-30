@@ -22,6 +22,7 @@ from ray.rllib.core import (
 from ray.rllib.utils import force_list
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import (
+    OldAPIStack,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.serialization import NOT_SERIALIZABLE, serialize_type
@@ -307,9 +308,8 @@ class Checkpointable(abc.ABC):
                 )
 
         # Write all the remaining state to disk.
-        filename = (
-            path
-            / (self.STATE_FILE_NAME + (".msgpack" if use_msgpack else ".pkl"))
+        filename = path / (
+            self.STATE_FILE_NAME + (".msgpack" if use_msgpack else ".pkl")
         )
         with filesystem.open_output_stream(filename.as_posix()) as f:
             if use_msgpack:
@@ -455,9 +455,11 @@ class Checkpointable(abc.ABC):
             ctor_args = force_list(ctor_info["ctor_args_and_kwargs"][0])
             ctor_kwargs = ctor_info["ctor_args_and_kwargs"][1]
 
-            # Inspect the ctor to see, which arguments in ctor_info should be replaced with
-            # the user provided **kwargs.
-            for i, (param_name, param) in enumerate(inspect.signature(ctor).parameters.items()):
+            # Inspect the ctor to see, which arguments in ctor_info should be replaced
+            # with the user provided **kwargs.
+            for i, (param_name, param) in enumerate(
+                inspect.signature(ctor).parameters.items()
+            ):
                 if param_name in kwargs:
                     val = kwargs.pop(param_name)
                     if (
@@ -470,7 +472,7 @@ class Checkpointable(abc.ABC):
 
         # If the pickle file is from another python version, use provided
         # args instead.
-        except Exception as e:
+        except Exception:
             # Use class that this method was called on.
             ctor = cls
             # Use only user provided **kwargs.
@@ -882,7 +884,7 @@ def get_checkpoint_info(
     return info
 
 
-@PublicAPI(stability="beta")
+@OldAPIStack
 def convert_to_msgpack_checkpoint(
     checkpoint: Union[str, Checkpoint],
     msgpack_checkpoint_dir: str,
@@ -974,7 +976,7 @@ def convert_to_msgpack_checkpoint(
     return msgpack_checkpoint_dir
 
 
-@PublicAPI(stability="beta")
+@OldAPIStack
 def convert_to_msgpack_policy_checkpoint(
     policy_checkpoint: Union[str, Checkpoint],
     msgpack_checkpoint_dir: str,

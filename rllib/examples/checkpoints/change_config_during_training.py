@@ -80,6 +80,7 @@ And if you are using the `--as-test` option, you should see a finel message:
 `env_runners/episode_return_mean` of 450.0 reached! ok
 ```
 """
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
@@ -90,11 +91,13 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     LEARNER_RESULTS,
 )
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
+    check,
     run_rllib_example_script_experiment,
 )
-from ray.tune.registry import get_trainable_cls, register_env
+from ray.tune.registry import register_env
 
 
 parser = add_rllib_example_script_args(
@@ -164,11 +167,12 @@ if __name__ == "__main__":
         best_result.metrics[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
         >= args.stop_reward_first_config
     )
+    best_checkpoint_path = best_result.checkpoint.path
 
     # Rebuild the algorithm (just for testing purposes).
     test_algo = base_config.build()
     # Load algo's state from best checkpoint.
-    test_algo.restore_from_path(best_result.checkpoint.path)
+    test_algo.restore_from_path(best_checkpoint_path)
     # Perform some checks on the restored state.
     assert test_algo.training_iteration > 0
     # Evaluate on the restored algorithm.
@@ -181,15 +185,26 @@ if __name__ == "__main__":
     # to the optimizer weights not having been restored properly).
     test_results = test_algo.train()
     assert (
-        test_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward_first_config
+        test_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+        >= args.stop_reward_first_config
     ), test_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     # Stop the test algorithm again.
     test_algo.stop()
 
+    # Make sure the algorithm gets restored from a checkpoint right after
+    # initialization.
+    class _RestoreCheckpointCallback(DefaultCallbacks):
+        def on_algorithm_init(self, *, algorithm, **kwargs):
+            module_p0 = algorithm.get_module("p0")
+            weight_before = convert_to_numpy(next(iter(module_p0.parameters())))
+            algorithm.restore_from_path(best_checkpoint_path)
+            # Make sure weights were updated.
+            weight_after = convert_to_numpy(next(iter(module_p0.parameters())))
+            check(weight_before, weight_after, false=True)
+
     # Change our config significantly.
     base_config = (
-        base_config
-        .training(
+        base_config.callbacks(_RestoreCheckpointCallback).training(
             lr=0.0003,
             train_batch_size=5000,
             grad_clip=100.0,
@@ -198,7 +213,7 @@ if __name__ == "__main__":
             vf_loss_coeff=0.01,
         )
         # Make multi-CPU/GPU.
-        #.learners(num_learners=2)
+        .learners(num_learners=2)
         # Use more env runners and more envs per env runner.
         .env_runners(num_env_runners=3, num_envs_per_env_runner=5)
     )
@@ -209,13 +224,13 @@ if __name__ == "__main__":
     # from the best checkpoint.
     # Note that the new experiment starts again from iteration=0 (unlike when you
     # use `tune.Tuner.restore()` after a crash or interrupted trial).
-    tuner_results = run_rllib_example_script_experiment(
-        base_config,
-        args,
-        stop=stop,
-        restore_algo_from_checkpoint=best_result.checkpoint.path,
-    )
+    tuner_results = run_rllib_example_script_experiment(base_config, args, stop=stop)
+
     # Confirm we have continued training with a different learning rate.
-    assert tuner_results[0].metrics[LEARNER_RESULTS][DEFAULT_MODULE_ID][
-        "default_optimizer_learning_rate"
-    ] == base_config.lr == 0.0003
+    assert (
+        tuner_results[0].metrics[LEARNER_RESULTS][DEFAULT_MODULE_ID][
+            "default_optimizer_learning_rate"
+        ]
+        == base_config.lr
+        == 0.0003
+    )

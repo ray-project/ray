@@ -1949,6 +1949,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 _env_runner.config.multi_agent(
                     policy_mapping_fn=new_agent_to_module_mapping_fn
                 )
+            # Force reset all ongoing episodes on the EnvRunner to avoid having
+            # different ModuleIDs compute actions for the same AgentID in the same
+            # episode.
+            # TODO (sven): Create an API for this.
+            _env_runner._needs_initial_reset = True
+
             return MultiRLModuleSpec.from_module(_env_runner.module)
 
         # Remove from (training) EnvRunners and sync weights.
@@ -2816,9 +2822,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Override from parent method, b/c we might have to sync the EnvRunner weights
         # after having restored/loaded the LearnerGroup state.
         super().restore_from_path(path, *args, **kwargs)
-        # Sync EnvRunners, but only if LearnerGroup's checkpoint can be found in path.
+
+        # Sync EnvRunners, if LearnerGroup's checkpoint can be found in path
+        # or user loaded a subcomponent within the LearnerGroup (for example a module).
         path = pathlib.Path(path)
-        if (path / "learner_group").is_dir():
+        if (path / COMPONENT_LEARNER_GROUP).is_dir() or (
+            "component" in kwargs and COMPONENT_LEARNER_GROUP in kwargs["component"]
+        ):
             # Make also sure, all (training) EnvRunners get the just loaded weights, but
             # only the inference-only ones.
             self.env_runner_group.sync_weights(

@@ -3473,8 +3473,8 @@ class AlgorithmConfig(_Config):
         """Sets the config's experimental settings.
 
         Args:
-            _use_msgpack_checkpoints: Create state files in all checkpoints through msgpack
-                rather than pickle.
+            _use_msgpack_checkpoints: Create state files in all checkpoints through
+                msgpack rather than pickle.
             _torch_grad_scaler_class: Class to use for torch loss scaling (and gradient
                 unscaling). The class must implement the following methods to be
                 compatible with a `TorchLearner`. These methods/APIs match exactly those
