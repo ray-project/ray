@@ -142,8 +142,6 @@ Status PlasmaObjectHeader::WriteAcquire(
   RAY_CHECK_EQ(num_read_acquires_remaining, 0UL);
   RAY_CHECK_EQ(num_read_releases_remaining, 0UL);
 
-  RAY_LOG(DEBUG) << "WriteAcquire old version " << version << " new version "
-                 << version + 1 << " num_readers " << num_readers;
   version++;
   is_sealed = false;
   data_size = write_data_size;

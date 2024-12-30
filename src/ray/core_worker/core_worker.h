@@ -612,12 +612,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_ids The IDs of the objects.
   Status ExperimentalChannelReadRelease(const std::vector<ObjectID> &object_ids);
 
-  /// Wait for objects to be ready and get their experimental mutable versions.
+  /// Wait for objects to be ready and read them. This method should only be used
+  /// for experimental mutable objects.
   ///
   /// \param[in] ids The object IDs to wait for.
   /// \param[in] timeout_ms The timeout in milliseconds.
   /// \param[in] num_returns The number of objects to wait for.
-  /// \param[out] results The resulting objects.
+  /// \param[out] results List of resulting object data. For any object that has not been
+  /// read in this round, `results[i]` will be nullptr.
   /// \return Status OK if successful, error otherwise.
   Status WaitAndGetExperimentalMutableObjects(
       const std::vector<ObjectID> &ids,
