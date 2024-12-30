@@ -2198,7 +2198,9 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   if (auto cached_runtime_env_info =
           runtime_env_json_serialization_cache_.Get(serialized_runtime_env_info);
       cached_runtime_env_info != nullptr) {
-    RAY_CHECK(false) << "hjiang " << cached_runtime_env_info->DebugString();
+    if (serialized_runtime_env_info.find("FOO") != std::string::npos) {
+      RAY_CHECK(false) << "hjiang " << cached_runtime_env_info->DebugString();
+    }
     return cached_runtime_env_info;
   }
 
@@ -2235,9 +2237,9 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     parent_runtime_env_info = worker_context_.GetCurrentRuntimeEnvInfo();
   }
   if (parent == nullptr) {
-
-    RAY_CHECK(false) << "hjiang " << runtime_env_info->DebugString();
-
+    if (serialized_runtime_env_info.find("FOO") != std::string::npos) {
+      RAY_CHECK(false) << "hjiang " << runtime_env_info->DebugString();
+    }
     runtime_env_json_serialization_cache_.Put(serialized_runtime_env_info,
                                               runtime_env_info);
     return runtime_env_info;
@@ -2262,7 +2264,9 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
 
   runtime_env_json_serialization_cache_.Put(serialized_runtime_env_info,
                                             runtime_env_info);
-  RAY_CHECK(false) << "hjiang " << runtime_env_info->DebugString();
+  if (serialized_runtime_env_info.find("FOO") != std::string::npos) {
+    RAY_CHECK(false) << "hjiang " << runtime_env_info->DebugString();
+  }
   return runtime_env_info;
 }
 
