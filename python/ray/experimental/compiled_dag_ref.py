@@ -17,6 +17,9 @@ def _process_return_vals(return_vals: List[Any], return_single_output: bool):
     if isinstance(return_vals, Exception):
         raise return_vals
 
+    if isinstance(return_vals, RayTaskError):
+        raise return_vals.as_instanceof_cause()
+
     for val in return_vals:
         if isinstance(val, RayTaskError):
             raise val.as_instanceof_cause()

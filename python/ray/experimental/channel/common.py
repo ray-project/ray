@@ -285,6 +285,7 @@ class ReaderInterface:
         self._input_channels = input_channels
         self._closed = False
         self._num_reads = 0
+        self._non_complete_object_refs: List[ObjectRef] = []
 
     def get_num_reads(self) -> int:
         return self._num_reads
@@ -340,15 +341,34 @@ class SynchronousReader(ReaderInterface):
         pass
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+        timeout = 1e6 if timeout is None or timeout == -1 else timeout
+        timeout_point = time.monotonic() + timeout
+        worker = ray._private.worker.global_worker
+        if len(self._non_complete_object_refs) > 0:
+            # If the last read failed early, we need to consume the data from
+            # the non-complete object refs before the next read. If we don't do
+            # this, the read operation will read different versions of the
+            # object refs.
+            (
+                _,
+                non_complete_object_refs_set,
+            ) = worker.experimental_wait_and_get_mutable_objects(
+                self._non_complete_object_refs,
+                num_returns=len(self._non_complete_object_refs),
+                timeout_ms=max(0, (timeout_point - time.monotonic()) * 1000),
+                return_exceptions=True,
+                # Skip deserialization to speed up this step.
+                skip_deserialization=True,
+                suppress_timeout_errors=False,
+            )
+            assert len(non_complete_object_refs_set) == 0
+            self._non_complete_object_refs = []
+
         waitable_to_num_consumers = {}
         for c in self._input_channels:
             waitables = c.get_ray_waitables()
             for w in waitables:
                 waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
-
-        worker = ray._private.worker.global_worker
-        timeout = 1e6 if timeout is None or timeout == -1 else timeout
-        timeout_point = time.monotonic() + timeout
         all_waitables = list(waitable_to_num_consumers.keys())
         while len(all_waitables) > 0:
             # Retrieve at most one object each time.
@@ -366,6 +386,18 @@ class SynchronousReader(ReaderInterface):
             for i, value in enumerate(values):
                 if all_waitables[i] in non_complete_object_refs_set:
                     continue
+                if isinstance(value, ray.exceptions.RayTaskError):
+                    self._non_complete_object_refs = list(non_complete_object_refs_set)
+                    for w in all_waitables:
+                        ctx.reset_data(w)
+                    # If we raise an exception immediately, it will be considered
+                    # as a system error which will cause the execution loop to
+                    # exit. Hence, return immediately and let `_process_return_vals`
+                    # handle the exception.
+                    #
+                    # Return a list of RayTaskError so that the caller will not
+                    # get an undefined partial result.
+                    return [value for _ in range(len(self._input_channels))]
                 ctx.set_data(
                     all_waitables[i],
                     value,
