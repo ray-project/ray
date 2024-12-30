@@ -2172,7 +2172,7 @@ tinyscaler==1.2.8
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   supersuit
-tokenizers==0.15.2
+tokenizers==0.21.0
     # via transformers
 toml==0.10.2
     # via tensorflow-datasets
@@ -2283,7 +2283,7 @@ traitlets==5.14.3
     #   nbconvert
     #   nbformat
     #   notebook
-transformers==4.39.3
+transformers==4.47.1
     # via
     #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
     #   mosaicml
