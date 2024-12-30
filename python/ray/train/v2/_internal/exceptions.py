@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from ray.train.v2._internal.constants import (
     DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
@@ -128,27 +128,26 @@ class BroadcastCollectiveTimeoutError(CollectiveTimeoutError):
         time, the collective will time out.
     """
 
-    def __init__(self, time_elapsed: Dict[int, Optional[float]], timeout_s: float):
+    def __init__(
+        self, time_elapsed: Optional[float], missing_ranks: List[int], timeout_s: float
+    ):
         self._time_elapsed = time_elapsed
+        self._missing_ranks = missing_ranks
         self._timeout_s = timeout_s
-        max_time_elapsed = max([t for t in time_elapsed.values() if t])
-        hanging_ranks = [i for i, t in time_elapsed.items() if t is None]
 
         message = (
-            f"The checkpoint broadcast timed out after {max_time_elapsed} seconds. "
-            "It may be caused by slow workers or not all workers calling "
-            "`ray.train.report`. Please make sure all workers called `ray.train.report`"
-            f"\nThe following ranks are not reaching the collective operation: "
-            f"{hanging_ranks}\n"
-            f"The current collective timeout is set to {timeout_s} seconds. "
-            f"You can set the {REPORT_BARRIER_TIMEOUT_S_ENV_VAR} environment variable."
+            f"The broadcast operation timed out after {time_elapsed:.2f} seconds. "
+            "Please make sure all worker ranks call `ray.train.report`. \n"
+            f"The following ranks have not called it: {missing_ranks}\n"
+            f"You can set this timeout with the {REPORT_BARRIER_TIMEOUT_S_ENV_VAR} "
+            f"environment variable (current value: {timeout_s:.2f} s)."
         )
         super().__init__(message)
 
     def __reduce__(self):
         return (
             self.__class__,
-            (self._time_elapsed, self._timeout_s),
+            (self._time_elapsed, self._missing_ranks, self._timeout_s),
         )
 
 

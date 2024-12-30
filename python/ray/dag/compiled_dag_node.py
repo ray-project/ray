@@ -24,7 +24,10 @@ import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.communicator import Communicator
-from ray.dag.constants import RAY_CGRAPH_VISUALIZE_SCHEDULE
+from ray.dag.constants import (
+    RAY_CGRAPH_ENABLE_NVTX_PROFILING,
+    RAY_CGRAPH_VISUALIZE_SCHEDULE,
+)
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.experimental.compiled_dag_ref import (
@@ -153,6 +156,17 @@ def do_exec_tasks(
         for task in tasks:
             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
+        if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
+            try:
+                import nvtx
+            except ImportError:
+                raise ImportError(
+                    "Please install nvtx to enable nsight profiling. "
+                    "You can install it by running `pip install nvtx`."
+                )
+            nvtx_profile = nvtx.Profile()
+            nvtx_profile.enable()
+
         done = False
         while True:
             if done:
@@ -163,6 +177,9 @@ def do_exec_tasks(
                 )
                 if done:
                     break
+
+        if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
+            nvtx_profile.disable()
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
         raise
@@ -759,7 +776,7 @@ class CompiledDAG:
             max_inflight_executions: The maximum number of in-flight executions that
                 are allowed to be sent to this DAG. Before submitting more requests,
                 the caller is responsible for calling ray.get to get the result,
-                otherwise, RayAdagCapacityExceeded is raised.
+                otherwise, RayCgraphCapacityExceeded is raised.
             overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution. If True, the communication
                 and computation can be overlapped, which can improve the
@@ -968,7 +985,7 @@ class CompiledDAG:
                 continue
             if (
                 len(task.downstream_task_idxs) == 0
-                and task.dag_node.is_adag_output_node
+                and task.dag_node.is_cgraph_output_node
             ):
                 assert self.output_task_idx is None, "More than one output node found"
                 self.output_task_idx = idx
@@ -1143,7 +1160,7 @@ class CompiledDAG:
                 continue
             if (
                 len(task.downstream_task_idxs) == 0
-                and not task.dag_node.is_adag_output_node
+                and not task.dag_node.is_cgraph_output_node
             ):
                 leaf_nodes.append(task.dag_node)
         # Leaf nodes are not allowed because the exception thrown by the leaf
@@ -1577,7 +1594,6 @@ class CompiledDAG:
             executable_tasks.sort(key=lambda task: task.bind_index)
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
-        # Build an execution schedule for each actor
         from ray.dag.constants import RAY_CGRAPH_ENABLE_PROFILING
 
         if RAY_CGRAPH_ENABLE_PROFILING:
@@ -1585,6 +1601,7 @@ class CompiledDAG:
         else:
             exec_task_func = do_exec_tasks
 
+        # Build an execution schedule for each actor
         self.actor_to_execution_schedule = self._build_execution_schedule()
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
@@ -1820,11 +1837,10 @@ class CompiledDAG:
         class Monitor(threading.Thread):
             def __init__(self):
                 super().__init__(daemon=True)
-                self.in_teardown = False
+                self.name = "CompiledGraphMonitorThread"
                 # Lock to make sure that we only perform teardown for this DAG
                 # once.
-                self.in_teardown_lock = threading.Lock()
-                self.name = "CompiledGraphMonitorThread"
+                self._in_teardown_lock = threading.Lock()
                 self._teardown_done = False
 
             def wait_teardown(self, kill_actors: bool = False):
@@ -1832,7 +1848,6 @@ class CompiledDAG:
 
                 ctx = DAGContext.get_current()
                 teardown_timeout = ctx.teardown_timeout
-
                 for actor, ref in outer.worker_task_refs.items():
                     timeout = False
                     try:
@@ -1865,54 +1880,38 @@ class CompiledDAG:
                         pass
 
             def teardown(self, kill_actors: bool = False):
-                do_teardown = False
-                with self.in_teardown_lock:
+                with self._in_teardown_lock:
                     if self._teardown_done:
                         return
 
-                    if not self.in_teardown:
-                        do_teardown = True
-                        self.in_teardown = True
+                    logger.info("Tearing down compiled DAG")
+                    outer._dag_submitter.close()
+                    outer._dag_output_fetcher.close()
 
-                if not do_teardown:
-                    # Teardown is already being performed.
-                    while True:
-                        with self.in_teardown_lock:
-                            if self._teardown_done:
-                                return
+                    for actor in outer.actor_refs:
+                        logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    # Cancel all actor loops in parallel.
+                    cancel_refs = [
+                        actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
+                        for actor, tasks in outer.actor_to_executable_tasks.items()
+                    ]
+                    for cancel_ref in cancel_refs:
+                        try:
+                            ray.get(cancel_ref, timeout=30)
+                        except ray.exceptions.RayChannelError:
+                            # Channel error happens when a channel is closed
+                            # or timed out. In this case, do not log.
+                            pass
+                        except Exception:
+                            logger.exception("Error cancelling worker task")
+                            pass
 
-                        time.sleep(0.1)
+                    for communicator_id in outer._communicator_ids:
+                        _destroy_communicator(communicator_id)
 
-                logger.info("Tearing down compiled DAG")
-                outer._dag_submitter.close()
-                outer._dag_output_fetcher.close()
-
-                for actor in outer.actor_refs:
-                    logger.info(f"Cancelling compiled worker on actor: {actor}")
-                # Cancel all actor loops in parallel.
-                cancel_refs = [
-                    actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
-                    for actor, tasks in outer.actor_to_executable_tasks.items()
-                ]
-                for cancel_ref in cancel_refs:
-                    try:
-                        ray.get(cancel_ref, timeout=30)
-                    except ray.exceptions.RayChannelError:
-                        # Channel error happens when a channel is closed
-                        # or timed out. In this case, do not log.
-                        pass
-                    except Exception:
-                        logger.exception("Error cancelling worker task")
-                        pass
-
-                for communicator_id in outer._communicator_ids:
-                    _destroy_communicator(communicator_id)
-
-                logger.info("Waiting for worker tasks to exit")
-                self.wait_teardown()
-                logger.info("Teardown complete")
-
-                with self.in_teardown_lock:
+                    logger.info("Waiting for worker tasks to exit")
+                    self.wait_teardown()
+                    logger.info("Teardown complete")
                     self._teardown_done = True
 
             def run(self):
@@ -1931,13 +1930,13 @@ class CompiledDAG:
             self._execution_index - self._max_finished_execution_index
         )
         if num_in_flight_requests > self._max_inflight_executions:
-            raise ray.exceptions.RayAdagCapacityExceeded(
+            raise ray.exceptions.RayCgraphCapacityExceeded(
                 f"There are {num_in_flight_requests} in-flight requests which "
                 "is more than specified _max_inflight_executions of the dag: "
                 f"{self._max_inflight_executions}. Retrieve the output using "
                 "ray.get before submitting more requests or increase "
                 "`max_inflight_executions`. "
-                "`adag.experimental_compile(_max_inflight_executions=...)`"
+                "`dag.experimental_compile(_max_inflight_executions=...)`"
             )
 
     def _has_execution_results(

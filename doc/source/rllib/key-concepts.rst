@@ -113,8 +113,8 @@ which implements the proximal policy optimization algorithm in RLlib.
             tune.run("PPO", config=config)
 
 
-RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
-Algorithm classes leverage parallel iterators to implement the desired computation pattern.
+RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` classes coordinate the distributed workflow of running rollouts and optimizing policies.
+They leverage parallel iterators to implement the desired computation pattern.
 The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
 
 .. figure:: images/a2c-arch.svg
@@ -211,8 +211,7 @@ Since all values are kept in arrays, this allows for efficient encoding and tran
         't': np.ndarray((200,), dtype=int64, min=0.0, max=34.0, mean=9.14)
     }
 
-In `multi-agent mode <rllib-concepts.html#policies-in-multi-agent>`__,
-sample batches are collected separately for each individual policy.
+In multi-agent mode, sample batches are collected separately for each individual policy.
 These batches are wrapped up together in a ``MultiAgentBatch``,
 serving as a container for the individual agents' sample batches.
 
@@ -226,7 +225,7 @@ Training Step Method (``Algorithm.training_step()``)
     ``RolloutWorker``, and ``Algorithm``, which can be read about on this page
     and the :ref:`rollout worker reference docs <rolloutworker-reference-docs>`.
 
-    Finally, developers who are looking to implement custom algorithms should familiarize themselves with the :ref:`Policy <rllib-policy-walkthrough>` and
+    Finally, developers who are looking to implement custom algorithms should familiarize themselves with the Policy and
     :ref:`Model <rllib-models-walkthrough>` classes.
 
 What is it?
@@ -290,7 +289,7 @@ An example implementation of VPG could look like the following:
     allowing for a strict separation of concerns and enabling us to use the same ``training_step()``
     method for both TF- and PyTorch versions of your algorithms.
     DL framework specific code should only be added to the
-    :ref:`Policy <rllib-policy-walkthrough>` (e.g. in its loss function(s)) and
+    Policy (e.g. in its loss function(s)) and
     :ref:`Model <rllib-models-walkthrough>` (e.g. tf.keras or torch.nn neural network code) classes.
 
 Let's further break down our above ``training_step()`` code.
