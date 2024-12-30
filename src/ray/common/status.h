@@ -110,6 +110,8 @@ enum class StatusCode : char {
   ChannelError = 35,
   // Indicates that a read or write on a channel (a mutable plasma object) timed out.
   ChannelTimeoutError = 36,
+  // Indicates that it is now unsafe to remove nodes from a (virtual) cluster.
+  UnsafeToRemove = 37,
   // If you add to this list, please also update kCodeToStr in status.cc.
 };
 
@@ -255,6 +257,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::ChannelTimeoutError, msg);
   }
 
+  static Status UnsafeToRemove(const std::string &msg) {
+    return Status(StatusCode::UnsafeToRemove, msg);
+  }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
@@ -308,6 +314,8 @@ class RAY_EXPORT Status {
   bool IsChannelError() const { return code() == StatusCode::ChannelError; }
 
   bool IsChannelTimeoutError() const { return code() == StatusCode::ChannelTimeoutError; }
+
+  bool IsUnsafeToRemove() const { return code() == StatusCode::UnsafeToRemove; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

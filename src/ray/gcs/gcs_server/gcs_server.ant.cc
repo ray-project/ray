@@ -21,7 +21,9 @@ namespace gcs {
 void GcsServer::InitGcsVirtualClusterManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   gcs_virtual_cluster_manager_ = std::make_shared<gcs::GcsVirtualClusterManager>(
-      *gcs_table_storage_, *gcs_publisher_);
+      *gcs_table_storage_,
+      *gcs_publisher_,
+      cluster_resource_scheduler_->GetClusterResourceManager());
   // Initialize by gcs tables data.
   gcs_virtual_cluster_manager_->Initialize(gcs_init_data);
   // Register service.

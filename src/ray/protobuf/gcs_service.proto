@@ -835,6 +835,10 @@ message CreateOrUpdateVirtualClusterReply {
   uint64 revision = 2;
   // Mapping from node id to it's instance.
   map<string, NodeInstance> node_instances = 3;
+  // The replica sets that gcs can fulfill at most to meet the reqest.
+  // This field is only used when the request failed and serving as a suggestion
+  // to adjust the requst or cluster.
+  map<string, int32> replica_sets_at_most = 4;
 }
 
 message RemoveVirtualClusterRequest {

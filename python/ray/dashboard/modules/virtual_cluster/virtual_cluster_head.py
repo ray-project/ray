@@ -38,6 +38,9 @@ class VirtualClusterHead(dashboard_utils.DashboardHeadModule):
                 reply, always_print_fields_with_no_presence=True
             )
             for virtual_cluster_data in data.get("virtualClusterDataList", []):
+                virtual_cluster_data["virtualClusterId"] = virtual_cluster_data.pop(
+                    "id"
+                )
                 virtual_cluster_data["revision"] = int(
                     virtual_cluster_data.get("revision", 0)
                 )
@@ -82,12 +85,12 @@ class VirtualClusterHead(dashboard_utils.DashboardHeadModule):
         reply = await (
             self._gcs_virtual_cluster_info_stub.CreateOrUpdateVirtualCluster(request)
         )
+        data = dashboard_utils.message_to_dict(
+            reply, always_print_fields_with_no_presence=True
+        )
 
         if reply.status.code == 0:
             logger.info("Virtual cluster %s created or updated", virtual_cluster_id)
-            data = dashboard_utils.message_to_dict(
-                reply, always_print_fields_with_no_presence=True
-            )
 
             return dashboard_optional_utils.rest_response(
                 success=True,
@@ -106,6 +109,7 @@ class VirtualClusterHead(dashboard_utils.DashboardHeadModule):
                     virtual_cluster_id, reply.status.message
                 ),
                 virtual_cluster_id=virtual_cluster_id,
+                replica_sets_at_most=data.get("replicaSetsAtMost", {}),
             )
 
     @routes.delete("/virtual_clusters/{virtual_cluster_id}")

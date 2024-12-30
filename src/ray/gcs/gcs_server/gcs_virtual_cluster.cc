@@ -101,8 +101,8 @@ void VirtualCluster::RemoveNodeInstances(ReplicaInstances replica_instances) {
   }
 }
 
-Status VirtualCluster::LookupIdleNodeInstances(
-    const ReplicaSets &replica_sets, ReplicaInstances &replica_instances) const {
+bool VirtualCluster::LookupIdleNodeInstances(const ReplicaSets &replica_sets,
+                                             ReplicaInstances &replica_instances) const {
   bool success = true;
   for (const auto &[template_id, replicas] : replica_sets) {
     auto &template_node_instances = replica_instances[template_id];
@@ -115,7 +115,6 @@ Status VirtualCluster::LookupIdleNodeInstances(
       success = false;
       continue;
     }
-
     auto empty_iter = iter->second.find(kEmptyJobClusterId);
     if (empty_iter == iter->second.end()) {
       success = false;
@@ -137,13 +136,7 @@ Status VirtualCluster::LookupIdleNodeInstances(
     }
   }
 
-  if (!success) {
-    // TODO(Shanly): Give a more detailed error message about the demand replica set and
-    // the idle replica instances.
-    return Status::OutOfResource("No enough node instances to assign.");
-  }
-
-  return Status::OK();
+  return success;
 }
 
 bool VirtualCluster::MarkNodeInstanceAsDead(const std::string &template_id,
@@ -237,8 +230,8 @@ Status ExclusiveCluster::CreateJobCluster(const std::string &job_cluster_id,
 
   ReplicaInstances replica_instances_to_add;
   // Lookup idle node instances from main cluster based on `replica_sets_to_add`.
-  auto status = LookupIdleNodeInstances(replica_sets, replica_instances_to_add);
-  if (!status.ok()) {
+  auto success = LookupIdleNodeInstances(replica_sets, replica_instances_to_add);
+  if (!success) {
     // TODO(Shanly): Give a more detailed error message about the demand replica set and
     // the idle replica instances.
     std::ostringstream ostr;
@@ -265,7 +258,9 @@ std::shared_ptr<JobCluster> ExclusiveCluster::DoCreateJobCluster(
   UpdateNodeInstances(std::move(replica_instances_to_add_to_current_cluster),
                       std::move(replica_instances_to_remove_from_current_cluster));
 
-  auto job_cluster = std::make_shared<JobCluster>(job_cluster_id);
+  // Create a job cluster.
+  auto job_cluster =
+      std::make_shared<JobCluster>(job_cluster_id, cluster_resource_manager_);
   job_cluster->UpdateNodeInstances(std::move(replica_instances_to_add),
                                    ReplicaInstances());
   RAY_CHECK(job_clusters_.emplace(job_cluster_id, job_cluster).second);
@@ -339,15 +334,31 @@ void ExclusiveCluster::ForeachJobCluster(
 ///////////////////////// MixedCluster /////////////////////////
 bool MixedCluster::IsIdleNodeInstance(const std::string &job_cluster_id,
                                       const gcs::NodeInstance &node_instance) const {
-  // TODO(Shanly): The job_cluster_id will always be empty in mixed mode although the node
-  // instance is assigned to one or two jobs, so we need to check the node resources
-  // usage.
-  return node_instance.is_dead();
+  if (node_instance.is_dead()) {
+    return true;
+  }
+  auto node_id =
+      scheduling::NodeID(NodeID::FromHex(node_instance.node_instance_id()).Binary());
+  const auto &node_resources = cluster_resource_manager_.GetNodeResources(node_id);
+  // TODO(Chong-Li): the resource view sync message may lag.
+  if (node_resources.normal_task_resources.IsEmpty() &&
+      node_resources.total == node_resources.available) {
+    return true;
+  }
+  return false;
 }
 
 bool MixedCluster::InUse() const {
-  // TODO(Shanly): Check if the virtual cluster still running jobs or placement groups.
-  return true;
+  for (const auto &[template_id, job_cluster_instances] : visible_node_instances_) {
+    for (const auto &[job_cluster_id, node_instances] : job_cluster_instances) {
+      for (const auto &[node_instance_id, node_instance] : node_instances) {
+        if (!IsIdleNodeInstance(job_cluster_id, *node_instance)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 ///////////////////////// PrimaryCluster /////////////////////////
@@ -429,10 +440,11 @@ std::shared_ptr<VirtualCluster> PrimaryCluster::LoadLogicalCluster(
   const auto &logical_cluster_id = data.id();
   std::shared_ptr<VirtualCluster> logical_cluster;
   if (data.mode() == rpc::AllocationMode::EXCLUSIVE) {
-    logical_cluster =
-        std::make_shared<ExclusiveCluster>(logical_cluster_id, async_data_flusher_);
+    logical_cluster = std::make_shared<ExclusiveCluster>(
+        logical_cluster_id, async_data_flusher_, cluster_resource_manager_);
   } else {
-    logical_cluster = std::make_shared<MixedCluster>(logical_cluster_id);
+    logical_cluster =
+        std::make_shared<MixedCluster>(logical_cluster_id, cluster_resource_manager_);
   }
   RAY_CHECK(logical_clusters_.emplace(logical_cluster_id, logical_cluster).second);
 
@@ -451,7 +463,8 @@ std::shared_ptr<VirtualCluster> PrimaryCluster::LoadLogicalCluster(
 
 Status PrimaryCluster::CreateOrUpdateVirtualCluster(
     rpc::CreateOrUpdateVirtualClusterRequest request,
-    CreateOrUpdateVirtualClusterCallback callback) {
+    CreateOrUpdateVirtualClusterCallback callback,
+    ReplicaSets *replica_sets_at_most) {
   // Calculate the node instances that to be added and to be removed.
   ReplicaInstances replica_instances_to_add_to_logical_cluster;
   ReplicaInstances replica_instances_to_remove_from_logical_cluster;
@@ -460,6 +473,25 @@ Status PrimaryCluster::CreateOrUpdateVirtualCluster(
       replica_instances_to_add_to_logical_cluster,
       replica_instances_to_remove_from_logical_cluster);
   if (!status.ok()) {
+    // Calculate the replica sets that we can fulfill the
+    // request at most. It can be used as a suggestion to adjust the request if it fails.
+    if (replica_sets_at_most) {
+      ReplicaInstances *replica_instances = nullptr;
+      if (status.IsOutOfResource()) {
+        replica_instances = &replica_instances_to_add_to_logical_cluster;
+      } else if (status.IsUnsafeToRemove()) {
+        replica_instances = &replica_instances_to_remove_from_logical_cluster;
+      }
+      if (replica_instances) {
+        for (const auto &[template_id, job_cluster_instances] : *replica_instances) {
+          for (const auto &[job_cluster_id, node_instances] : job_cluster_instances) {
+            if (!node_instances.empty()) {
+              (*replica_sets_at_most)[template_id] += node_instances.size();
+            }
+          }
+        }
+      }
+    }
     return status;
   }
 
@@ -468,10 +500,11 @@ Status PrimaryCluster::CreateOrUpdateVirtualCluster(
     // replica_instances_to_remove must be empty as the virtual cluster is a new one.
     RAY_CHECK(replica_instances_to_remove_from_logical_cluster.empty());
     if (request.mode() == rpc::AllocationMode::EXCLUSIVE) {
-      logical_cluster = std::make_shared<ExclusiveCluster>(request.virtual_cluster_id(),
-                                                           async_data_flusher_);
+      logical_cluster = std::make_shared<ExclusiveCluster>(
+          request.virtual_cluster_id(), async_data_flusher_, cluster_resource_manager_);
     } else {
-      logical_cluster = std::make_shared<MixedCluster>(request.virtual_cluster_id());
+      logical_cluster = std::make_shared<MixedCluster>(request.virtual_cluster_id(),
+                                                       cluster_resource_manager_);
     }
     logical_clusters_[request.virtual_cluster_id()] = logical_cluster;
   }
@@ -506,10 +539,14 @@ Status PrimaryCluster::DetermineNodeInstanceAdditionsAndRemovals(
         ReplicasDifference(logical_cluster->GetReplicaSets(), request.replica_sets());
     // Lookup idle node instances from the logical cluster based on
     // `replica_sets_to_remove`.
-    auto status = logical_cluster->LookupIdleNodeInstances(replica_sets_to_remove,
-                                                           replica_instances_to_remove);
-    if (!status.ok()) {
-      return status;
+    auto success = logical_cluster->LookupIdleNodeInstances(replica_sets_to_remove,
+                                                            replica_instances_to_remove);
+    if (!success) {
+      return Status::UnsafeToRemove(
+          "No enough nodes to remove from the virtual cluster. The replica sets that gcs "
+          "can remove "
+          "at most are shown below. Use it as a suggestion to "
+          "adjust your request or cluster.");
     }
   }
 
@@ -517,7 +554,15 @@ Status PrimaryCluster::DetermineNodeInstanceAdditionsAndRemovals(
       request.replica_sets(),
       logical_cluster ? logical_cluster->GetReplicaSets() : ReplicaSets());
   // Lookup idle node instances from main cluster based on `replica_sets_to_add`.
-  return LookupIdleNodeInstances(replica_sets_to_add, replica_instances_to_add);
+  auto success = LookupIdleNodeInstances(replica_sets_to_add, replica_instances_to_add);
+  if (!success) {
+    return Status::OutOfResource(
+        "No enough nodes to add to the virtual cluster. The replica sets that gcs can "
+        "add "
+        "at most are shown below. Use it as a suggestion to "
+        "adjust your request or cluster.");
+  }
+  return Status::OK();
 }
 
 bool PrimaryCluster::IsIdleNodeInstance(const std::string &job_cluster_id,
@@ -529,7 +574,7 @@ bool PrimaryCluster::IsIdleNodeInstance(const std::string &job_cluster_id,
 void PrimaryCluster::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   const auto &template_id = node.node_type_name();
   auto node_instance_id = NodeID::FromBinary(node.node_id()).Hex();
-  auto node_instance = std::make_shared<gcs::NodeInstance>();
+  auto node_instance = std::make_shared<gcs::NodeInstance>(node_instance_id);
   node_instance->set_template_id(template_id);
   node_instance->set_hostname(node.node_manager_hostname());
   node_instance->set_is_dead(false);
@@ -598,14 +643,15 @@ Status PrimaryCluster::RemoveLogicalCluster(const std::string &logical_cluster_i
   }
 
   // Check if the virtual cluster is in use.
+  ReplicaInstances in_use_instances;
   if (logical_cluster->InUse()) {
     std::ostringstream ostr;
     ostr << "The virtual cluster " << logical_cluster_id
-         << " can not be removed as it still in use.";
+         << " can not be removed as it is still in use. ";
     auto message = ostr.str();
     RAY_LOG(ERROR) << message;
-    // TODO(Shanly): build a new status.
-    return Status::InvalidArgument(message);
+
+    return Status::UnsafeToRemove(message);
   }
 
   const auto &replica_instances_to_remove = logical_cluster->GetVisibleNodeInstances();

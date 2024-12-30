@@ -27,18 +27,19 @@ namespace ray {
 namespace gcs {
 class GcsVirtualClusterManagerTest : public ::testing::Test {
  public:
-  GcsVirtualClusterManagerTest() {
+  GcsVirtualClusterManagerTest() : cluster_resource_manager_(io_service_) {
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_virtual_cluster_manager_ = std::make_unique<gcs::GcsVirtualClusterManager>(
-        *gcs_table_storage_, *gcs_publisher_);
+        *gcs_table_storage_, *gcs_publisher_, cluster_resource_manager_);
   }
 
   instrumented_io_context io_service_;
   std::unique_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
+  ClusterResourceManager cluster_resource_manager_;
 };
 
 class MockGcsInitData : public GcsInitData {
@@ -113,18 +114,21 @@ bool ReplicaSetsEquals(const ReplicaSets &lhs, const ReplicaSets &rhs) {
 
 class VirtualClusterTest : public ::testing::Test {
  public:
+  VirtualClusterTest() : cluster_resource_manager_(io_service_) {}
+
   std::shared_ptr<ray::gcs::PrimaryCluster> InitPrimaryCluster(
       size_t node_count,
       size_t template_count,
       absl::flat_hash_map<std::string,
                           absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>>>
           *template_id_to_nodes = nullptr) {
-    auto primary_cluster =
-        std::make_shared<ray::gcs::PrimaryCluster>([this](auto data, auto callback) {
+    auto primary_cluster = std::make_shared<ray::gcs::PrimaryCluster>(
+        [this](auto data, auto callback) {
           virtual_clusters_data_[data->id()] = data;
           callback(Status::OK(), data);
           return Status::OK();
-        });
+        },
+        cluster_resource_manager_);
 
     for (size_t i = 0; i < node_count; ++i) {
       auto node = Mocker::GenNodeInfo();
@@ -158,6 +162,8 @@ class VirtualClusterTest : public ::testing::Test {
     return status;
   }
 
+  instrumented_io_context io_service_;
+  ClusterResourceManager cluster_resource_manager_;
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> nodes_;
   absl::flat_hash_map<std::string, std::shared_ptr<rpc::VirtualClusterTableData>>
       virtual_clusters_data_;

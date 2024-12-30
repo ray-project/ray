@@ -21,12 +21,17 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
+#include "src/ray/raylet/scheduling/cluster_resource_manager.h"
 
 namespace ray {
 namespace gcs {
 
 struct NodeInstance {
-  NodeInstance() = default;
+  NodeInstance(const std::string &node_instance_id) {
+    node_instance_id_ = node_instance_id;
+  }
+
+  const std::string &node_instance_id() const { return node_instance_id_; }
 
   const std::string &hostname() const { return hostname_; }
   void set_hostname(const std::string &hostname) { hostname_ = hostname; }
@@ -46,24 +51,19 @@ struct NodeInstance {
 
   std::string DebugString() const {
     std::ostringstream stream;
-    stream << "NodeInstance(" << hostname_ << "," << template_id_ << ", " << is_dead_
-           << ")";
+    stream << "NodeInstance(" << node_instance_id_ << "," << hostname_ << ","
+           << template_id_ << ", " << is_dead_ << ")";
     return stream.str();
   }
 
  private:
+  std::string node_instance_id_;
   std::string hostname_;
   std::string template_id_;
   bool is_dead_ = false;
 };
 
 static const std::string kEmptyJobClusterId = "NIL";
-using CreateOrUpdateVirtualClusterCallback =
-    std::function<void(const Status &, std::shared_ptr<rpc::VirtualClusterTableData>)>;
-
-using RemoveVirtualClusterCallback = CreateOrUpdateVirtualClusterCallback;
-using GetVirtualClustersDataCallback =
-    std::function<void(std::shared_ptr<rpc::VirtualClusterTableData>)>;
 
 /// <template_id, _>
 ///               |
@@ -78,6 +78,13 @@ using ReplicaInstances = absl::flat_hash_map<
         absl::flat_hash_map<std::string, std::shared_ptr<gcs::NodeInstance>>>>;
 
 using ReplicaSets = absl::flat_hash_map<std::string, int32_t>;
+
+using CreateOrUpdateVirtualClusterCallback = std::function<void(
+    const Status &, std::shared_ptr<rpc::VirtualClusterTableData>, const ReplicaSets *)>;
+
+using RemoveVirtualClusterCallback = CreateOrUpdateVirtualClusterCallback;
+using GetVirtualClustersDataCallback =
+    std::function<void(std::shared_ptr<rpc::VirtualClusterTableData>)>;
 
 using AsyncClusterDataFlusher = std::function<Status(
     std::shared_ptr<rpc::VirtualClusterTableData>, CreateOrUpdateVirtualClusterCallback)>;
@@ -103,7 +110,7 @@ template <typename T>
 ReplicaInstances toReplicaInstances(const T &node_instances) {
   ReplicaInstances result;
   for (const auto &[id, node_instance] : node_instances) {
-    auto inst = std::make_shared<NodeInstance>();
+    auto inst = std::make_shared<NodeInstance>(id);
     inst->set_hostname(node_instance.hostname());
     inst->set_template_id(node_instance.template_id());
     result[node_instance.template_id()][kEmptyJobClusterId].emplace(id, std::move(inst));
@@ -112,7 +119,9 @@ ReplicaInstances toReplicaInstances(const T &node_instances) {
 }
 class VirtualCluster {
  public:
-  VirtualCluster(const std::string &id) : id_(id) {}
+  VirtualCluster(const std::string &id,
+                 const ClusterResourceManager &cluster_resource_manager)
+      : id_(id), cluster_resource_manager_(cluster_resource_manager) {}
   virtual ~VirtualCluster() = default;
 
   /// Get the id of the cluster.
@@ -151,9 +160,9 @@ class VirtualCluster {
   /// \param replica_sets The demand final replica sets.
   /// \param replica_instances The node instances lookuped best effort from the visible
   /// node instances.
-  /// \return OK if the lookup is successful, otherwise return an error.
-  Status LookupIdleNodeInstances(const ReplicaSets &replica_sets,
-                                 ReplicaInstances &replica_instances) const;
+  /// \return True if the lookup is successful, otherwise return false.
+  bool LookupIdleNodeInstances(const ReplicaSets &replica_sets,
+                               ReplicaInstances &replica_instances) const;
 
   /// Mark the node instance as dead.
   ///
@@ -170,6 +179,7 @@ class VirtualCluster {
 
   /// Check if the virtual cluster is in use.
   ///
+  /// \param in_use_instances The node instances that are still in use.
   /// \return True if the virtual cluster is in use, false otherwise.
   virtual bool InUse() const = 0;
 
@@ -207,14 +217,18 @@ class VirtualCluster {
   ReplicaSets replica_sets_;
   // Version number of the last modification to the cluster.
   uint64_t revision_{0};
+
+  const ClusterResourceManager &cluster_resource_manager_;
 };
 
 class JobCluster;
 class ExclusiveCluster : public VirtualCluster {
  public:
   ExclusiveCluster(const std::string &id,
-                   const AsyncClusterDataFlusher &async_data_flusher)
-      : VirtualCluster(id), async_data_flusher_(async_data_flusher) {}
+                   const AsyncClusterDataFlusher &async_data_flusher,
+                   const ClusterResourceManager &cluster_resource_manager)
+      : VirtualCluster(id, cluster_resource_manager),
+        async_data_flusher_(async_data_flusher) {}
 
   const std::string &GetID() const override { return id_; }
   rpc::AllocationMode GetMode() const override { return rpc::AllocationMode::EXCLUSIVE; }
@@ -284,7 +298,9 @@ class ExclusiveCluster : public VirtualCluster {
 
 class MixedCluster : public VirtualCluster {
  public:
-  MixedCluster(const std::string &id) : VirtualCluster(id) {}
+  MixedCluster(const std::string &id,
+               const ClusterResourceManager &cluster_resource_manager)
+      : VirtualCluster(id, cluster_resource_manager) {}
   MixedCluster &operator=(const MixedCluster &) = delete;
 
   const std::string &GetID() const override { return id_; }
@@ -308,8 +324,10 @@ class JobCluster : public MixedCluster {
 class PrimaryCluster : public ExclusiveCluster,
                        public std::enable_shared_from_this<PrimaryCluster> {
  public:
-  PrimaryCluster(const AsyncClusterDataFlusher &async_data_flusher)
-      : ExclusiveCluster(kPrimaryClusterID, async_data_flusher) {}
+  PrimaryCluster(const AsyncClusterDataFlusher &async_data_flusher,
+                 const ClusterResourceManager &cluster_resource_manager)
+      : ExclusiveCluster(
+            kPrimaryClusterID, async_data_flusher, cluster_resource_manager) {}
   PrimaryCluster &operator=(const PrimaryCluster &) = delete;
 
   /// Initialize with the gcs tables data synchronously.
@@ -331,10 +349,14 @@ class PrimaryCluster : public ExclusiveCluster,
   /// Create or update a new virtual cluster.
   ///
   /// \param request The request to create or update a virtual cluster.
-  /// cluster. \param callback The callback that will be called after the virtual
-  /// cluster is flushed. \return Status.
+  /// \param callback The callback that will be called after the virtual cluster
+  /// is flushed.
+  /// \param[out] replica_sets_at_most The replica sets that we can fulfill the
+  /// request at most. It can be used as a suggestion to adjust the request if it fails.
+  /// \return Status.
   Status CreateOrUpdateVirtualCluster(rpc::CreateOrUpdateVirtualClusterRequest request,
-                                      CreateOrUpdateVirtualClusterCallback callback);
+                                      CreateOrUpdateVirtualClusterCallback callback,
+                                      ReplicaSets *replica_sets_at_most = nullptr);
 
   /// Get the virtual cluster by the logical cluster id.
   ///

@@ -381,6 +381,7 @@ void GcsServer::InitClusterResourceScheduler() {
       [this](scheduling::NodeID node_id, const SchedulingContext *context) {
         // Check if the virtual cluster manager exists.
         if (gcs_virtual_cluster_manager_ == nullptr ||
+            context->virtual_cluster_id.empty() ||
             context->virtual_cluster_id == kPrimaryClusterID) {
           return true;
         }
