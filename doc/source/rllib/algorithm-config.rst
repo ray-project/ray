@@ -65,12 +65,14 @@ use :ref:`IMPALA <impala>` as your algorithm, you should import its specific con
     config = (
         # Create an `IMPALAConfig` instance.
         IMPALAConfig()
+        # Specify the RL environment.
+        .environment("CartPole-v1")
         # Change the learning rate.
         .training(lr=0.0004)
     )
 
-To change algorithm-specific settings, here for ``IMPALA``, also use the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training`
-method:
+To change algorithm-specific settings, here for ``IMPALA``, also use the
+:py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training` method:
 
 .. testcode::
 
