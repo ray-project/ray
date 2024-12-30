@@ -241,10 +241,12 @@ class GcsServer {
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The autoscaler state manager.
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
+  /// A publisher for publishing gcs messages.
+  std::unique_ptr<GcsPublisher> gcs_publisher_;
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
-  std::unique_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
+  std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The gcs redis failure detector.
   std::unique_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs placement group manager.
@@ -254,8 +256,6 @@ class GcsServer {
   /// The gcs placement group scheduler.
   /// [gcs_placement_group_scheduler_] depends on [raylet_client_pool_].
   std::unique_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
-  /// A publisher for publishing gcs messages.
-  std::unique_ptr<GcsPublisher> gcs_publisher_;
   /// Function table manager.
   std::unique_ptr<GcsFunctionManager> function_manager_;
   /// Stores references to URIs stored by the GCS for runtime envs.
