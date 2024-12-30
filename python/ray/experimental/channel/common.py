@@ -306,6 +306,14 @@ class ReaderInterface:
         """
         raise NotImplementedError
 
+    def _get_all_waitables_to_num_consumers(self) -> Dict[ObjectRef, int]:
+        waitable_to_num_consumers = {}
+        for c in self._input_channels:
+            waitables = c.get_ray_waitables()
+            for w in waitables:
+                waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
+        return waitable_to_num_consumers
+
     def read(self, timeout: Optional[float] = None) -> List[Any]:
         """
         Read from this reader.
@@ -340,8 +348,9 @@ class SynchronousReader(ReaderInterface):
     def start(self):
         pass
 
-    def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
-        timeout = 1e6 if timeout is None or timeout == -1 else timeout
+    def _consume_non_complete_object_refs_if_needed(
+        self, timeout: Optional[float] = None
+    ) -> None:
         timeout_point = time.monotonic() + timeout
         worker = ray._private.worker.global_worker
         if len(self._non_complete_object_refs) > 0:
@@ -364,12 +373,15 @@ class SynchronousReader(ReaderInterface):
             assert len(non_complete_object_refs_set) == 0
             self._non_complete_object_refs = []
 
-        waitable_to_num_consumers = {}
-        for c in self._input_channels:
-            waitables = c.get_ray_waitables()
-            for w in waitables:
-                waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
+    def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+        timeout = 1e6 if timeout is None or timeout == -1 else timeout
+        self._consume_non_complete_object_refs_if_needed(timeout)
+
+        waitable_to_num_consumers = self._get_all_waitables_to_num_consumers()
         all_waitables = list(waitable_to_num_consumers.keys())
+
+        timeout_point = time.monotonic() + timeout
+        worker = ray._private.worker.global_worker
         while len(all_waitables) > 0:
             # Retrieve at most one object each time.
             (
@@ -456,15 +468,10 @@ class AwaitableBackgroundReader(ReaderInterface):
 
     def _run(self):
         results = []
-        waitable_to_num_consumers = {}
-        all_waitables = []
-
-        for c in self._input_channels:
-            waitables = c.get_ray_waitables()
-            for w in waitables:
-                waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
-        worker = ray._private.worker.global_worker
+        waitable_to_num_consumers = self._get_all_waitables_to_num_consumers()
         all_waitables = list(waitable_to_num_consumers.keys())
+
+        worker = ray._private.worker.global_worker
         while len(all_waitables) > 0:
             (
                 values,
