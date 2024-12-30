@@ -28,7 +28,7 @@ namespace gcs {
 /// This implementation class of `WorkerInfoHandler`.
 class GcsWorkerManager : public rpc::WorkerInfoHandler {
  public:
-  explicit GcsWorkerManager(size_t max_num_worker_events,
+  explicit GcsWorkerManager(size_t max_num_dead_workers,
                             gcs::GcsTableStorage &gcs_table_storage,
                             GcsPublisher &gcs_publisher)
       : gcs_table_storage_(gcs_table_storage),
