@@ -3,7 +3,6 @@ import unittest
 
 import ray
 from ray.rllib.utils.filter import RunningStat, MeanStdFilter
-from ray.rllib.utils import FilterManager
 
 
 class RunningStatTest(unittest.TestCase):
