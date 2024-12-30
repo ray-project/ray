@@ -2109,25 +2109,29 @@ MAX_CHUNK_CHAR_LENGTH = 20000
 async def async_file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
     """Yield lines from a file as it's written as an async function"""
     for result in file_tail_iterator(path):
-        if result[0] and result[1] is None:  # file exists but reach EOF
+        if result[0] and result[1]:  # file exists but reach EOF
             await asyncio.sleep(1)
-        yield result[1]  # yield the lines or None if file doesn't exist
+        yield result[2]  # yield the lines or None if file doesn't exist
 
 
 def sync_file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
     """Yield lines from a file as it's written as a sync function"""
     for result in file_tail_iterator(path):
-        if result[0] and result[1] is None:  # file exists but reach EOF
+        if result[0] and result[1]:  # file exists but reach EOF
             time.sleep(1)
-        yield result[1]  # yield the lines or None if file doesn't exist
+        yield result[2]  # yield the lines or None if file doesn't exist
 
 
-def file_tail_iterator(path: str) -> Iterator[Tuple[bool, Optional[List[str]]]]:
+def file_tail_iterator(path: str) -> Iterator[Tuple[bool, bool, Optional[List[str]]]]:
     """Yield lines from a file as it's written.
 
-    The return value is a tuple of a boolean and an iterator. The boolean indicates
-    whether the file exists or not. The iterator yields lines from the file. The
-    iterator will be None until the file exists or if no new line has been written.
+    The return value is a tuple of 2 booleans and an iterator.
+    1. The first boolean indicates whether the file exists or not. True, when the file
+    exists.
+    2. The second boolean indicate whether EOF is reached or not. True, when EOF is
+    reached.
+    3. The iterator yields lines from the file. The iterator will be None until the
+    file exists or if no new line has been written.
 
     Returns lines in batches of up to 10 lines or 20000 characters,
     whichever comes first. If it's a chunk of 20000 characters, then
@@ -2139,7 +2143,7 @@ def file_tail_iterator(path: str) -> Iterator[Tuple[bool, Optional[List[str]]]]:
 
     while not os.path.exists(path):
         logger.debug(f"Path {path} doesn't exist yet.")
-        yield False, None
+        yield False, False, None
 
     EOF = ""
 
@@ -2162,12 +2166,12 @@ def file_tail_iterator(path: str) -> Iterator[Tuple[bool, Optional[List[str]]]]:
                 # Too many lines, return 10 lines in this chunk, and then
                 # continue reading the file.
                 if lines:
-                    yield True, lines
+                    yield True, curr_line == EOF, lines
                 else:
                     if os.path.exists(path):
-                        yield True, None
+                        yield True, curr_line == EOF, None
                     else:
-                        yield False, None
+                        yield False, curr_line == EOF, None
 
                 lines = []
                 chunk_char_count = 0
