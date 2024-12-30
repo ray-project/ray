@@ -600,18 +600,22 @@ void GcsServer::InitRuntimeEnvManager() {
   runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
       /*deleter=*/[this](const std::string &plugin_uri) {
         // A valid runtime env URI is of the form "protocol://hash".
-        std::string protocol_sep = "://";
-        auto protocol_end_pos = plugin_uri.find(protocol_sep);
+        static constexpr std::string_view protocol_sep = "://";
+        const std::string_view plugin_uri_view = plugin_uri;
+        auto protocol_end_pos = plugin_uri_view.find(protocol_sep);
         if (protocol_end_pos == std::string::npos) {
           RAY_LOG(ERROR) << "Plugin URI must be of form "
-                         << "<protocol>://<hash>, got " << plugin_uri;
+                         << "<protocol>://<hash>, got " << plugin_uri_view;
+          callback(/*successful=*/false);
         } else {
-          auto protocol = plugin_uri.substr(0, protocol_end_pos);
+          const std::string_view protocol = plugin_uri_view.substr(0, protocol_end_pos);
           if (protocol == "gcs") {
-            this->kv_manager_->GetInstance().Del("" /* namespace */,
-                                                 plugin_uri /* key */,
-                                                 false /* del_by_prefix*/,
-                                                 /*callback=*/[](int64_t) {});
+          } else {
+            this->kv_manager_->GetInstance().Del(
+                "" /* namespace */,
+                plugin_uri /* key */,
+                false /* del_by_prefix*/,
+                /*callback=*/[](int64_t) {});
           }
         }
       });
