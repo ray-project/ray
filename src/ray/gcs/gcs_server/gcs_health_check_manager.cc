@@ -160,20 +160,23 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   auto *response_ptr = response.get();
 
   const auto deadline = now + absl::Milliseconds(manager->timeout_ms_);
-  context.set_deadline(absl::ToChronoTime(deadline));
+  context->set_deadline(absl::ToChronoTime(deadline));
 
   // Callback is invoked whether async health check succeeds or fails.
   stub_->async()->Check(
       context_ptr,
       &request_,
       response_ptr,
-      [this, start = now, context = std::move(context), response = std::move(response)](
-          ::grpc::Status status) {
+      [this,
+       start = now,
+       context = std::move(context),
+       response = std::move(response),
+       manager = manager](::grpc::Status status) {
         // This callback is done in gRPC's thread pool.
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - start));
         manager->io_service_.post(
-            [this, status, response = std::move(response)]() {
+            [this, status, response = std::move(response), manager = manager]() {
               if (stopped_) {
                 delete this;
                 return;
