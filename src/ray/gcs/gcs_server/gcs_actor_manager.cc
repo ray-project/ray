@@ -328,6 +328,7 @@ GcsActorManager::GcsActorManager(
     GcsPublisher *gcs_publisher,
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
+    GcsVirtualClusterManager &gcs_virtual_cluster_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     const rpc::CoreWorkerClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
@@ -338,6 +339,7 @@ GcsActorManager::GcsActorManager(
           std::move(destroy_owned_placement_group_if_needed)),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
+      gcs_virtual_cluster_manager_(gcs_virtual_cluster_manager),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
@@ -710,6 +712,19 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   RAY_CHECK(register_callback);
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
+
+  auto virtual_cluster_id =
+      request.task_spec().scheduling_strategy().virtual_cluster_id();
+  if (!virtual_cluster_id.empty()) {
+    auto virtual_cluster =
+        gcs_virtual_cluster_manager_.GetVirtualCluster(virtual_cluster_id);
+    if ((virtual_cluster == nullptr) ||
+        (virtual_cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE)) {
+      std::stringstream stream;
+      stream << "Invalid virtual cluster, virtual cluster id: " << virtual_cluster_id;
+      return Status::InvalidArgument(stream.str());
+    }
+  }
 
   auto iter = registered_actors_.find(actor_id);
   if (iter != registered_actors_.end()) {

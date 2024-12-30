@@ -563,7 +563,7 @@ TEST_F(PrimaryClusterTest, RemoveJobCluster) {
   }
 }
 
-TEST_F(PrimaryClusterTest, RemoveLogicalCluster) {
+TEST_F(PrimaryClusterTest, RemoveVirtualCluster) {
   size_t node_count = 200;
   size_t template_count = 10;
   auto primary_cluster = InitPrimaryCluster(node_count, template_count);
@@ -616,7 +616,7 @@ TEST_F(PrimaryClusterTest, RemoveLogicalCluster) {
   }
 
   {
-    auto status = primary_cluster->RemoveLogicalCluster(
+    auto status = primary_cluster->RemoveVirtualCluster(
         virtual_cluster_id_0,
         [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
           ASSERT_TRUE(status.ok());
@@ -643,7 +643,7 @@ TEST_F(PrimaryClusterTest, RemoveLogicalCluster) {
 
   {
     // Remove the logical cluster that does not exist.
-    auto status = primary_cluster->RemoveLogicalCluster(
+    auto status = primary_cluster->RemoveVirtualCluster(
         virtual_cluster_id_0,
         [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
           ASSERT_FALSE(true);

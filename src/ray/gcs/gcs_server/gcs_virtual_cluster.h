@@ -305,7 +305,8 @@ class JobCluster : public MixedCluster {
   using MixedCluster::MixedCluster;
 };
 
-class PrimaryCluster : public ExclusiveCluster {
+class PrimaryCluster : public ExclusiveCluster,
+                       public std::enable_shared_from_this<PrimaryCluster> {
  public:
   PrimaryCluster(const AsyncClusterDataFlusher &async_data_flusher)
       : ExclusiveCluster(kPrimaryClusterID, async_data_flusher) {}
@@ -362,6 +363,15 @@ class PrimaryCluster : public ExclusiveCluster {
   /// removed.
   /// \return Status The status of the removal.
   Status RemoveLogicalCluster(const std::string &logical_cluster_id,
+                              RemoveVirtualClusterCallback callback);
+
+  /// Remove virtual cluster by the virtual cluster id.
+  ///
+  /// \param virtual_cluster_id The id of the virtual cluster to be removed.
+  /// \param callback The callback that will be called after the virtual cluster is
+  /// removed.
+  /// \return Status The status of the removal.
+  Status RemoveVirtualCluster(const std::string &virtual_cluster_id,
                               RemoveVirtualClusterCallback callback);
 
   /// Get virtual cluster's proto data.

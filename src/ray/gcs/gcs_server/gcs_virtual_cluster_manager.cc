@@ -86,10 +86,6 @@ std::shared_ptr<VirtualCluster> GcsVirtualClusterManager::GetVirtualCluster(
   if (virtual_cluster_id.empty()) {
     return nullptr;
   }
-  // check if it is the primary cluster
-  if (virtual_cluster_id == kPrimaryClusterID) {
-    return primary_cluster_;
-  }
   return primary_cluster_->GetVirtualCluster(virtual_cluster_id);
 }
 
@@ -141,8 +137,8 @@ void GcsVirtualClusterManager::HandleRemoveVirtualCluster(
     if (status.ok()) {
       RAY_LOG(INFO) << "Succeed in removing virtual cluster " << virtual_cluster_id;
     } else {
-      RAY_LOG(ERROR) << "Failed to remove virtual cluster " << virtual_cluster_id
-                     << ", status = " << status.ToString();
+      RAY_LOG(WARNING) << "Failed to remove virtual cluster " << virtual_cluster_id
+                       << ", status = " << status.ToString();
     }
     GCS_RPC_SEND_REPLY(callback, reply, status);
   };
@@ -153,7 +149,7 @@ void GcsVirtualClusterManager::HandleRemoveVirtualCluster(
     return;
   }
 
-  status = primary_cluster_->RemoveLogicalCluster(virtual_cluster_id, on_done);
+  status = primary_cluster_->RemoveVirtualCluster(virtual_cluster_id, on_done);
   if (!status.ok()) {
     on_done(status, nullptr);
   }
@@ -178,23 +174,31 @@ void GcsVirtualClusterManager::HandleCreateJobCluster(
   const auto &virtual_cluster_id = request.virtual_cluster_id();
   RAY_LOG(INFO) << "Start creating job cluster in virtual cluster: "
                 << virtual_cluster_id;
+  auto on_done = [reply, virtual_cluster_id, callback = std::move(send_reply_callback)](
+                     const Status &status,
+                     std::shared_ptr<rpc::VirtualClusterTableData> data) {
+    if (status.ok()) {
+      RAY_LOG(INFO) << "Succeed in creating virtual cluster " << virtual_cluster_id;
+    } else {
+      RAY_LOG(ERROR) << "Failed to create virtual cluster " << virtual_cluster_id
+                     << ", status = " << status.ToString();
+    }
+    GCS_RPC_SEND_REPLY(callback, reply, status);
+  };
+
   auto virtual_cluster = GetVirtualCluster(virtual_cluster_id);
   if (virtual_cluster == nullptr) {
     std::ostringstream ostr;
-    ostr << "Create job cluster for job " << request.job_id()
-         << " failed, virtual cluster not exists: " << virtual_cluster_id;
+    ostr << "virtual cluster not exists: " << virtual_cluster_id;
     std::string message = ostr.str();
-    RAY_LOG(ERROR) << message;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::NotFound(message));
+    on_done(Status::NotFound(message), nullptr);
     return;
   }
   if (virtual_cluster->GetMode() != rpc::AllocationMode::EXCLUSIVE) {
     std::ostringstream ostr;
-    ostr << "Create job cluster for job " << request.job_id()
-         << " failed, virtual cluster is not exclusive: " << virtual_cluster_id;
+    ostr << " virtual cluster is not exclusive: " << virtual_cluster_id;
     std::string message = ostr.str();
-    RAY_LOG(ERROR) << message;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::InvalidArgument(message));
+    on_done(Status::InvalidArgument(message), nullptr);
     return;
   }
   ReplicaSets replica_sets(request.replica_sets().begin(), request.replica_sets().end());
@@ -202,20 +206,21 @@ void GcsVirtualClusterManager::HandleCreateJobCluster(
   auto exclusive_cluster = dynamic_cast<ExclusiveCluster *>(virtual_cluster.get());
   std::string job_cluster_id = exclusive_cluster->BuildJobClusterID(request.job_id());
 
-  exclusive_cluster->CreateJobCluster(
+  auto status = exclusive_cluster->CreateJobCluster(
       job_cluster_id,
       std::move(replica_sets),
-      [reply, send_reply_callback, job_id = request.job_id()](
+      [reply, send_reply_callback, job_id = request.job_id(), on_done](
           const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
         if (status.ok()) {
           reply->set_job_cluster_id(data->id());
-          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+          on_done(status, data);
         } else {
-          RAY_LOG(ERROR) << "Create job cluster for job " << job_id << " failed, "
-                         << status.message();
-          GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+          on_done(status, data);
         }
       });
+  if (!status.ok()) {
+    on_done(status, nullptr);
+  }
 }
 
 Status GcsVirtualClusterManager::VerifyRequest(

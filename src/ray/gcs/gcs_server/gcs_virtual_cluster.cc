@@ -559,6 +559,36 @@ void PrimaryCluster::OnNodeInstanceDead(const std::string &node_instance_id,
   }
 }
 
+Status PrimaryCluster::RemoveVirtualCluster(const std::string &virtual_cluster_id,
+                                            RemoveVirtualClusterCallback callback) {
+  auto cluster_id = VirtualClusterID::FromBinary(virtual_cluster_id);
+  if (cluster_id.IsJobClusterID()) {
+    auto parent_cluster_id = cluster_id.ParentID().Binary();
+    auto virtual_cluster = GetVirtualCluster(parent_cluster_id);
+    if (virtual_cluster == nullptr) {
+      std::ostringstream ostr;
+      ostr << "Failed to remove virtual cluster, parent cluster not exists, virtual "
+              "cluster id: "
+           << virtual_cluster_id;
+      auto message = ostr.str();
+      return Status::NotFound(message);
+    }
+    if (virtual_cluster->GetMode() != rpc::AllocationMode::EXCLUSIVE) {
+      std::ostringstream ostr;
+      ostr << "Failed to remove virtual cluster, parent cluster is not exclusive, "
+              "virtual cluster id: "
+           << virtual_cluster_id;
+      auto message = ostr.str();
+      return Status::InvalidArgument(message);
+    }
+    ExclusiveCluster *exclusive_cluster =
+        dynamic_cast<ExclusiveCluster *>(virtual_cluster.get());
+    return exclusive_cluster->RemoveJobCluster(virtual_cluster_id, callback);
+  } else {
+    return RemoveLogicalCluster(virtual_cluster_id, callback);
+  }
+}
+
 Status PrimaryCluster::RemoveLogicalCluster(const std::string &logical_cluster_id,
                                             RemoveVirtualClusterCallback callback) {
   auto logical_cluster = GetLogicalCluster(logical_cluster_id);
@@ -596,6 +626,10 @@ Status PrimaryCluster::RemoveLogicalCluster(const std::string &logical_cluster_i
 
 std::shared_ptr<VirtualCluster> PrimaryCluster::GetVirtualCluster(
     const std::string &virtual_cluster_id) {
+  if (virtual_cluster_id == kPrimaryClusterID) {
+    return shared_from_this();
+  }
+
   // Check if it is a logical cluster
   auto logical_cluster = GetLogicalCluster(virtual_cluster_id);
   if (logical_cluster != nullptr) {

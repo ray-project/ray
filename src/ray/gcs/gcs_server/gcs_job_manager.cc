@@ -121,6 +121,20 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
+  auto virtual_cluster_id = mutable_job_table_data.virtual_cluster_id();
+  if (!virtual_cluster_id.empty()) {
+    auto virtual_cluster =
+        gcs_virtual_cluster_manager_.GetVirtualCluster(virtual_cluster_id);
+    if ((virtual_cluster == nullptr) ||
+        (virtual_cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE)) {
+      std::stringstream stream;
+      stream << "Invalid virtual cluster, virtual cluster id: " << virtual_cluster_id;
+      auto status = Status::InvalidArgument(stream.str());
+      on_done(status);
+      return;
+    }
+  }
+
   Status status =
       gcs_table_storage_.JobTable().Put(job_id, mutable_job_table_data, on_done);
   if (!status.ok()) {

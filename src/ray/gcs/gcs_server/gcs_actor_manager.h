@@ -25,6 +25,7 @@
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -318,6 +319,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
+      GcsVirtualClusterManager &gcs_virtual_cluster_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
       const rpc::CoreWorkerClientFactoryFn &worker_client_factory = nullptr);
 
@@ -701,6 +703,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   RuntimeEnvManager &runtime_env_manager_;
   /// Function manager for GC purpose
   GcsFunctionManager &function_manager_;
+  /// Virtual cluster manager for scheduling purpose
+  GcsVirtualClusterManager &gcs_virtual_cluster_manager_;
 
   UsageStatsClient *usage_stats_client_;
   /// Run a function on a delay. This is useful for guaranteeing data will be

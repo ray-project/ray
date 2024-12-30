@@ -421,6 +421,7 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
                                                      *gcs_publisher_,
                                                      *runtime_env_manager_,
                                                      *function_manager_,
+                                                     *gcs_virtual_cluster_manager_,
                                                      kv_manager_->GetInstance(),
                                                      client_factory);
   gcs_job_manager_->Initialize(gcs_init_data);
@@ -479,6 +480,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
           gcs_publisher_.get(),
           *runtime_env_manager_,
           *function_manager_,
+          *gcs_virtual_cluster_manager_,
           [this](const ActorID &actor_id) {
             gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(
                 actor_id);
