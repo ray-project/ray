@@ -139,26 +139,26 @@ class TestIterLine:
 
     def test_file_not_created(self, tmp):
         it = file_tail_iterator(tmp)
-        assert next(it) == (False, None)
+        assert next(it) == (False, False, None)
         f = open(tmp, "w")
         f.write("hi\n")
         f.flush()
-        assert next(it) == (True, ["hi\n"])
+        assert next(it) == (True, True, ["hi\n"])
 
     def test_wait_for_newline(self, tmp):
         it = file_tail_iterator(tmp)
-        assert next(it) == (False, None)
+        assert next(it) == (False, False, None)
 
         f = open(tmp, "w")
         f.write("no_newline_yet")
-        assert next(it) == (True, None)
+        assert next(it) == (True, True, None)
         f.write("\n")
         f.flush()
-        assert next(it) == (True, ["no_newline_yet\n"])
+        assert next(it) == (True, True, ["no_newline_yet\n"])
 
     def test_multiple_lines(self, tmp):
         it = file_tail_iterator(tmp)
-        assert next(it) == (False, None)
+        assert next(it) == (False, False, None)
 
         f = open(tmp, "w")
 
@@ -167,13 +167,13 @@ class TestIterLine:
             s = f"{i}\n"
             f.write(s)
             f.flush()
-            assert next(it) == (True, [s])
+            assert next(it) == (True, True, [s])
 
-        assert next(it) == (True, None)
+        assert next(it) == (True, True, None)
 
     def test_batching(self, tmp):
         it = file_tail_iterator(tmp)
-        assert next(it) == (False, None)
+        assert next(it) == (False, False, None)
 
         f = open(tmp, "w")
 
@@ -184,13 +184,13 @@ class TestIterLine:
                 f.write(f"{i}\n")
             f.flush()
 
-            assert next(it) == (True, [f"{i}\n" for i in range(10)])
+            assert next(it) == (True, False, [f"{i}\n" for i in range(10)])
 
-        assert next(it) == (True, None)
+        assert next(it) == (True, True, None)
 
     def test_max_line_batching(self, tmp):
         it = file_tail_iterator(tmp)
-        assert next(it) == (False, None)
+        assert next(it) == (False, False, None)
 
         f = open(tmp, "w")
 
@@ -201,17 +201,17 @@ class TestIterLine:
                 f.write(f"{i}\n")
             f.flush()
 
-            assert next(it) == (True, [f"{i}\n" for i in range(10)])
-            assert next(it) == (True, [f"{i}\n" for i in range(10, 20)])
-            assert next(it) == (True, [f"{i}\n" for i in range(20, 30)])
-            assert next(it) == (True, [f"{i}\n" for i in range(30, 40)])
-            assert next(it) == (True, [f"{i}\n" for i in range(40, 50)])
+            assert next(it) == (True, False, [f"{i}\n" for i in range(10)])
+            assert next(it) == (True, False, [f"{i}\n" for i in range(10, 20)])
+            assert next(it) == (True, False, [f"{i}\n" for i in range(20, 30)])
+            assert next(it) == (True, False, [f"{i}\n" for i in range(30, 40)])
+            assert next(it) == (True, False, [f"{i}\n" for i in range(40, 50)])
 
-        assert next(it) == (True, None)
+        assert next(it) == (True, True, None)
 
     def test_max_char_batching(self, tmp):
         it = file_tail_iterator(tmp)
-        assert next(it) == (False, None)
+        assert next(it) == (False, False, None)
 
         f = open(tmp, "w")
 
@@ -223,31 +223,32 @@ class TestIterLine:
         f.flush()
 
         # First line will come in a batch of its own
-        assert next(it) == (True, [f"{'1234567890' * 6000}\n"])
+        assert next(it) == (True, False, [f"{'1234567890' * 6000}\n"])
         # Other 4 lines will be batched together
         assert next(it) == (
             True,
+            False,
             [
                 f"{'1234567890' * 500}\n",
             ]
             * 4,
         )
-        assert next(it) == (True, None)
+        assert next(it) == (True, True, None)
 
     def test_delete_file(self):
         with NamedTemporaryFile() as tmp:
             it = file_tail_iterator(tmp.name)
             f = open(tmp.name, "w")
 
-            assert next(it) == (True, None)
+            assert next(it) == (True, True, None)
 
             f.write("hi\n")
             f.flush()
 
-            assert next(it) == (True, ["hi\n"])
+            assert next(it) == (True, True, ["hi\n"])
 
         # Calls should continue returning None after file deleted.
-        assert next(it) == (False, None)
+        assert next(it) == (False, True, None)
 
     @pytest.mark.asyncio
     async def test_wait_on_EOF_async(self, tmp):
