@@ -2237,6 +2237,8 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     parent_runtime_env_info = worker_context_.GetCurrentRuntimeEnvInfo();
   }
   if (parent == nullptr) {
+    // serialized_runtime_env: \"{\\\"env_vars\\\": {\\\"FOO\\\": \\\"bar\\\"}}\"\nruntime_env_config {\n  setup_timeout_seconds: 600\n  eager_install: true\n}\n\n
+
     if (serialized_runtime_env_info.find("FOO") != std::string::npos) {
       RAY_CHECK(false) << "hjiang " << runtime_env_info->DebugString();
     }
