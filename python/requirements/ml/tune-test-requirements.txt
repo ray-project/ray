@@ -11,7 +11,7 @@ pytest-remotedata==0.3.2
 pytorch-lightning==1.8.6
 fairscale==0.4.6
 shortuuid==1.0.1
-timm==1.0.12
+timm==0.9.2
 
 zoopt==0.4.1
 
