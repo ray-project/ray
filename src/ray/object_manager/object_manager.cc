@@ -107,10 +107,10 @@ ObjectManager::ObjectManager(
       client_call_manager_(
           main_service, ClusterID::Nil(), config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
-      get_spilled_object_url_(get_spilled_object_url),
+      get_spilled_object_url_(std::move(get_spilled_object_url)),
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
-  RAY_CHECK(config_.rpc_service_threads_number > 0);
+  RAY_CHECK_GT(config_.rpc_service_threads_number, 0);
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       static_cast<int64_t>(1L),
@@ -118,35 +118,31 @@ ObjectManager::ObjectManager(
 
   pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
 
-  const auto &object_is_local = [this](const ObjectID &object_id) {
+  auto object_is_local = [this](const ObjectID &object_id) {
     return local_objects_.count(object_id) != 0;
   };
-  const auto &send_pull_request = [this](const ObjectID &object_id,
-                                         const NodeID &client_id) {
+  auto send_pull_request = [this](const ObjectID &object_id, const NodeID &client_id) {
     SendPullRequest(object_id, client_id);
   };
-  const auto &cancel_pull_request = [this](const ObjectID &object_id) {
+  auto cancel_pull_request = [this](const ObjectID &object_id) {
     // We must abort this object because it may have only been partially
     // created and will cause a leak if we never receive the rest of the
     // object. This is a no-op if the object is already sealed or evicted.
     buffer_pool_.AbortCreate(object_id);
   };
-  const auto &get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
-  int64_t available_memory = config.object_store_memory;
-  if (available_memory < 0) {
-    available_memory = 0;
-  }
-  pull_manager_.reset(new PullManager(self_node_id_,
-                                      object_is_local,
-                                      send_pull_request,
-                                      cancel_pull_request,
-                                      fail_pull_request,
-                                      restore_spilled_object_,
-                                      get_time,
-                                      config.pull_timeout_ms,
-                                      available_memory,
-                                      pin_object,
-                                      get_spilled_object_url));
+  auto get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
+  const int64_t available_memory = std::max<long>(config.object_store_memory, 0);
+  pull_manager_ = std::make_unique<PullManager>(self_node_id_,
+                                                std::move(object_is_local),
+                                                std::move(send_pull_request),
+                                                std::move(cancel_pull_request),
+                                                std::move(fail_pull_request),
+                                                restore_spilled_object_,
+                                                std::move(get_time),
+                                                config.pull_timeout_ms,
+                                                available_memory,
+                                                std::move(pin_object),
+                                                get_spilled_object_url_);
 
   RAY_CHECK_OK(
       buffer_pool_store_client_->Connect(config_.store_socket_name.c_str(), "", 0, 300));
@@ -172,7 +168,7 @@ bool ObjectManager::IsPlasmaObjectSpillable(const ObjectID &object_id) {
 }
 
 void ObjectManager::RunRpcService(int index) {
-  SetThreadName("rpc.obj.mgr." + std::to_string(index));
+  SetThreadName(absl::StrFormat("rpc.obj.mgr.%d", index));
   rpc_service_.run();
 }
 
