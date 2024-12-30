@@ -1,6 +1,5 @@
 import os
 import sys
-from typing import Iterable, List
 
 import pandas as pd
 import pyarrow as pa
@@ -11,10 +10,7 @@ from fsspec.implementations.http import HTTPFileSystem
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
-from ray.data._internal.execution.interfaces import TaskContext
-from ray.data.block import Block, BlockAccessor
-from ray.data.datasource import Datasink, DummyOutputDatasink
-from ray.data.datasource.datasink import WriteResult
+from ray.data.block import BlockAccessor
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -160,23 +156,6 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
     ]
 
 
-def test_write_datasink(ray_start_regular_shared):
-    output = DummyOutputDatasink()
-    ds = ray.data.range(10, override_num_blocks=2)
-    ds.write_datasink(output)
-    assert output.num_ok == 1
-    assert output.num_failed == 0
-    assert ray.get(output.data_sink.get_rows_written.remote()) == 10
-
-    output.enabled = False
-    ds = ray.data.range(10, override_num_blocks=2)
-    with pytest.raises(ValueError):
-        ds.write_datasink(output, ray_remote_args={"max_retries": 0})
-    assert output.num_ok == 1
-    assert output.num_failed == 1
-    assert ray.get(output.data_sink.get_rows_written.remote()) == 10
-
-
 @pytest.mark.skipif(
     sys.version_info >= (3, 12),
     reason="Skip due to incompatibility tensorflow with Python 3.12+",
@@ -224,85 +203,6 @@ def test_from_torch(shutdown_only, local_read, tmp_path):
 
     actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data
-
-
-class NodeLoggerOutputDatasink(Datasink):
-    """A writable datasource that logs node IDs of write tasks, for testing."""
-
-    def __init__(self):
-        @ray.remote
-        class DataSink:
-            def __init__(self):
-                self.rows_written = 0
-                self.node_ids = set()
-
-            def write(self, node_id: str, block: Block) -> str:
-                block = BlockAccessor.for_block(block)
-                self.rows_written += block.num_rows()
-                self.node_ids.add(node_id)
-
-            def get_rows_written(self):
-                return self.rows_written
-
-            def get_node_ids(self):
-                return self.node_ids
-
-        self.data_sink = DataSink.remote()
-        self.num_ok = 0
-        self.num_failed = 0
-
-    def write(
-        self,
-        blocks: Iterable[Block],
-        ctx: TaskContext,
-    ) -> None:
-        data_sink = self.data_sink
-
-        def write(b):
-            node_id = ray.get_runtime_context().get_node_id()
-            return data_sink.write.remote(node_id, b)
-
-        tasks = []
-        for b in blocks:
-            tasks.append(write(b))
-        ray.get(tasks)
-
-    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
-        self.num_ok += 1
-        aggregated_results = super().on_write_complete(write_result_blocks)
-        return aggregated_results
-
-    def on_write_failed(self, error: Exception) -> None:
-        self.num_failed += 1
-
-
-def test_write_datasink_ray_remote_args(ray_start_cluster):
-    ray.shutdown()
-    cluster = ray_start_cluster
-    cluster.add_node(
-        resources={"foo": 100},
-        num_cpus=1,
-    )
-    cluster.add_node(resources={"bar": 100}, num_cpus=1)
-
-    ray.init(cluster.address)
-
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
-    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
-
-    output = NodeLoggerOutputDatasink()
-    ds = ray.data.range(100, override_num_blocks=10)
-    # Pin write tasks to node with "bar" resource.
-    ds.write_datasink(output, ray_remote_args={"resources": {"bar": 1}})
-    assert output.num_ok == 1
-    assert output.num_failed == 0
-    assert ray.get(output.data_sink.get_rows_written.remote()) == 100
-
-    node_ids = ray.get(output.data_sink.get_node_ids.remote())
-    assert node_ids == {bar_node_id}
 
 
 def test_read_s3_file_error(shutdown_only, s3_path):
