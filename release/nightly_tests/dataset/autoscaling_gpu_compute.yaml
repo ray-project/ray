@@ -16,7 +16,7 @@ head_node_type:
 
 worker_node_types:
     - name: worker-node
-      # Anyscale workspaces use m5.2xlarge worker nodes by default. For consistency, we 
+      # Anyscale workspaces use m5.2xlarge worker nodes by default. For consistency, we
       # use GPU nodes with the same number of vCPUs and memory.
       instance_type: g4dn.2xlarge
       min_workers: 0
