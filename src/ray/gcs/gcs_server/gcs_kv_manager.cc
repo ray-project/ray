@@ -75,13 +75,14 @@ void GcsInternalKVManager::HandleInternalKVPut(
   if (!status.ok()) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   } else {
-    auto callback = [reply, send_reply_callback](bool newly_added) {
-      reply->set_added_num(newly_added ? 1 : 0);
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-    };
+    auto callback =
+        [reply, send_reply_callback = std::move(send_reply_callback)](bool newly_added) {
+          reply->set_added_num(newly_added ? 1 : 0);
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        };
     kv_instance_->Put(request.namespace_(),
                       request.key(),
-                      request.value(),
+                      std::move(*request.mutable_value()),
                       request.overwrite(),
                       std::move(callback));
   }
