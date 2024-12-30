@@ -13,9 +13,10 @@ Overview
 --------
 
 RLlib offers a powerful checkpointing system for all its major classes, allowing you to save the
-states of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` and its subcomponents
-to disk and loading previously run experiment states back from disk, for example if you would like to continue
-training your models or deploy them into production.
+states of :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instances and their subcomponents
+to disk and loading previously run experiment states and individual subcomponents back from disk.
+This enables continuing to train your models from a previous state or deploying bare-bones PyTorch
+models into production.
 
 .. figure:: images/checkpointing/save_and_restore.svg
     :width: 500
@@ -29,8 +30,9 @@ training your models or deploy them into production.
 A checkpoint is a directory. It contains meta data, such as the class and the constructor arguments for creating a new instance,
 a pickle state file, and a human readable ``.json`` file with information about the Ray version and git commit of the checkpoint.
 
-You can also generate a new :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or other component instance from an
-existing checkpoint using the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` method,
+You can generate a new :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance or other subcomponent,
+like an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, from an existing checkpoint using
+the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` method,
 for example if you want to deploy a previously trained :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` - without
 any of the other RLlib components - into production.
 
@@ -104,7 +106,7 @@ how to create a checkpoint:
 
 
 Structure of a checkpoint directory
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
++++++++++++++++++++++++++++++++++++
 
 You now saved your PPO's state in the ``checkpoint_dir`` directory, or somewhere in ``~/ray_results/`` if you use Ray Tune.
 Take a look at what the directory now looks like:
@@ -119,14 +121,30 @@ Take a look at what the directory now looks like:
         learner_group/
         algorithm_state.pkl
         class_and_ctor_args.pkl
-        rllib_checkpoint.json
+        metadata.json
 
 Subdirectories inside a checkpoint dir, like ``env_runner/``, hint at a subcomponent's own checkpoint data.
 For example, an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` always also saves its
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` state and :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` state.
 See :ref:`here for the complete RLlib component tree <rllib-components-tree>`.
 
-The ``rllib_checkpoint.json`` file is for your convenience only and RLlib doesn't used this file.
+The ``metadata.json`` file is for your convenience only and RLlib doesn't used this file.
+
+.. note::
+    The file contains information on the Ray version used to create the checkpoint,
+    the Ray commit, the RLlib checkpoint version, and the names of the state- and constructor-information
+    files in the same directory.
+
+    .. code-block:: shell
+
+        $ more metadata.json
+        {
+            "class_and_ctor_args_file": "class_and_ctor_args.pkl",
+            "state_file": "state",
+            "ray_version": ..,
+            "ray_commit": ..,
+            "checkpoint_version": "2.1"
+        }
 
 The ``class_and_ctor_args.pkl`` file stores meta information needed to construct a "fresh" object, without any particular state.
 This information, as the filename suggests, contains the class of the saved object and its constructor arguments and keyword arguments.
@@ -156,7 +174,7 @@ method.
 .. _rllib-components-tree:
 
 RLlib's components tree
-~~~~~~~~~~~~~~~~~~~~~~~
++++++++++++++++++++++++
 
 The following is the structure of RLlib's components tree, showing under which name you can
 access a subcomponent's own checkpoint within the higher-level checkpoint. At the highest levet
@@ -177,85 +195,19 @@ is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class:
 
 .. note::
     The ``env_runner/`` subcomponent currently doesn't hold a copy of the RLModule's
-    checkpoint b/c it's already saved under ``learner/``. The Ray team is working on resolving
+    checkpoint because it's already saved under ``learner/``. The Ray team is working on resolving
     this issue, probably through softlinking to avoid duplicate files and unnecessary disk usage.
-
-
-
-
-
-
-vvvvvvvvvvvvvv TODO
-
-
-
-The ``rllib_checkpoint.json`` file contains the checkpoint version used for the user's
-convenience. From Ray RLlib 2.0 and up, all checkpoint versions will be
-backward compatible, meaning an RLlib version ``V`` will be able to
-handle any checkpoints created with Ray 2.0 or any version up to ``V``.
-
-.. code-block:: shell
-
-    $ more rllib_checkpoint.json
-    {"type": "Algorithm", "checkpoint_version": "1.0"}
-
-Now, let's check out the `policies/` sub-directory:
-
-.. code-block:: shell
-
-    $ cd policies
-    $ ls -la
-      .
-      ..
-      default_policy/
-
-We can see yet another sub-directory, called ``default_policy``. RLlib creates
-exactly one sub-directory inside the ``policies/`` dir per Policy instance that
-the Algorithm uses. In the standard single-agent case, this will be the
-"default_policy". Note here, that "default_policy" is the so-called PolicyID.
-In the multi-agent case, depending on your particular setup and environment,
-you might see multiple sub-directories here with different names (the PolicyIDs of
-the different policies trained). For example, if you are training 2 Policies
-with the IDs "policy_1" and "policy_2", you should see the sub-directories:
-
-.. code-block:: shell
-
-    $ ls -la
-      .
-      ..
-      policy_1/
-      policy_2/
-
-
-Lastly, let's quickly take a look at our ``default_policy`` sub-directory:
-
-.. code-block:: shell
-
-    $ cd default_policy
-    $ ls -la
-      .
-      ..
-      rllib_checkpoint.json
-      policy_state.pkl
-
-Similar to the algorithm's state (saved within ``algorithm_state.pkl``),
-a Policy's state is stored under the ``policy_state.pkl`` file. We'll cover more
-details on the contents of this file when talking about :py:class:`~ray.rllib.policy.policy.Policy` checkpoints below.
-Note that :py:class:`~ray.rllib.policy.policy.Policy` checkpoint also have a
-info file (``rllib_checkpoint.json``), which is always identical to the enclosing
-algorithm checkpoint version.
-
-^^^^^^^^^^^ end TODO
 
 
 Creating a new object from a checkpoint with `from_checkpoint`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Once you have a checkpoint of either an
+
 
 
 Restoring from a checkpoint with `restore_from_path`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 
 
 
@@ -285,6 +237,11 @@ Restoring from a checkpoint with `restore_from_path`
     my_new_ppo.train()
 
     my_new_ppo.stop()
+
+
+
+
+
 
 
 
