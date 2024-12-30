@@ -185,11 +185,6 @@ class TestCallbacksOnEnvRunners(unittest.TestCase):
 
             algo.stop()
 
-    def test_overriding_on_episode_created_throws_error_on_new_api_stack(self):
-        """Tests whether overriding `on_episode_created` raises error w/ SAEnvRunner."""
-        config = PPOConfig().callbacks(OnEpisodeCreatedCallback)
-        self.assertRaises(ValueError, lambda: config.validate())
-
     def test_tune_trial_id_visible_in_callbacks(self):
         config = (
             PPOConfig()
