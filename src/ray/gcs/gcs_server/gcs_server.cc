@@ -284,8 +284,8 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
-  node_info_service_.reset(new rpc::NodeInfoGrpcService(
-      io_context_provider_.GetDefaultIOContext(), *gcs_node_manager_));
+  node_info_service_ = std::make_unique<rpc::NodeInfoGrpcService>(
+      io_context_provider_.GetDefaultIOContext(), *gcs_node_manager_);
   rpc_server_.RegisterService(*node_info_service_);
 }
 
@@ -297,7 +297,7 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
         "GcsServer.NodeDeathCallback");
   };
 
-  gcs_healthcheck_manager_ = std::make_unique<GcsHealthCheckManager>(
+  gcs_healthcheck_manager_ = GcsHealthCheckManager::Create(
       io_context_provider_.GetDefaultIOContext(), node_death_callback);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
@@ -598,26 +598,30 @@ void GcsServer::InitPubSubHandler() {
 
 void GcsServer::InitRuntimeEnvManager() {
   runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
-      /*deleter=*/[this](const std::string &plugin_uri, auto callback) {
+      /*deleter=*/[this](const std::string &plugin_uri,
+                         std::function<void(bool)> callback) {
         // A valid runtime env URI is of the form "protocol://hash".
-        std::string protocol_sep = "://";
-        auto protocol_end_pos = plugin_uri.find(protocol_sep);
+        static constexpr std::string_view protocol_sep = "://";
+        const std::string_view plugin_uri_view = plugin_uri;
+        auto protocol_end_pos = plugin_uri_view.find(protocol_sep);
         if (protocol_end_pos == std::string::npos) {
           RAY_LOG(ERROR) << "Plugin URI must be of form "
-                         << "<protocol>://<hash>, got " << plugin_uri;
-          callback(false);
+                         << "<protocol>://<hash>, got " << plugin_uri_view;
+          callback(/*successful=*/false);
         } else {
-          auto protocol = plugin_uri.substr(0, protocol_end_pos);
+          const std::string_view protocol = plugin_uri_view.substr(0, protocol_end_pos);
           if (protocol != "gcs") {
             // Some URIs do not correspond to files in the GCS.  Skip deletion for
             // these.
-            callback(true);
+            callback(/*successful=*/true);
           } else {
             this->kv_manager_->GetInstance().Del(
                 "" /* namespace */,
                 plugin_uri /* key */,
                 false /* del_by_prefix*/,
-                [callback = std::move(callback)](int64_t) { callback(false); });
+                [callback = std::move(callback)](int64_t) {
+                  callback(/*successful=*/false);
+                });
           }
         }
       });
