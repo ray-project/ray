@@ -16,7 +16,7 @@ absl-py==1.4.0
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tensorflow-probability
-accelerate==1.2.1
+accelerate==0.28.0
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 adagio==0.2.4
     # via
@@ -183,7 +183,6 @@ backoff==1.10.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   segment-analytics-python
 base58==2.0.1
     # via aimrecords
@@ -235,7 +234,6 @@ cachetools==5.3.2
     # via
     #   aim
     #   google-auth
-    #   mlflow
 certifi==2023.11.17
     # via
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
@@ -270,6 +268,7 @@ click==8.1.7
     #   black
     #   click-option-group
     #   dask
+    #   databricks-cli
     #   distributed
     #   flask
     #   jupyter-cache
@@ -366,6 +365,8 @@ dask==2022.10.2 ; python_version < "3.12"
     # via
     #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
     #   distributed
+databricks-cli==0.18.0
+    # via mlflow
 datasets==2.19.1
     # via
     #   -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
@@ -391,8 +392,6 @@ defusedxml==0.7.1
     #   semgrep
 delta-sharing==1.0.5
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
-deprecated==1.2.15
-    # via opentelemetry-api
 dill==0.3.7
     # via
     #   datasets
@@ -640,7 +639,6 @@ googleapis-common-protos==1.61.0
     #   google-api-core
     #   grpcio-status
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   tensorflow-metadata
 gpy==1.13.1
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
@@ -650,15 +648,8 @@ gradio==3.50.2 ; platform_system != "Windows"
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 gradio-client==0.6.1
     # via gradio
-graphene==3.4.3
-    # via mlflow
 graphql-core==3.2.3
-    # via
-    #   graphene
-    #   graphql-relay
-    #   moto
-graphql-relay==3.2.0
-    # via graphene
+    # via moto
 graphviz==0.20.3
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 greenlet==3.0.1
@@ -672,6 +663,8 @@ grpcio==1.66.2 ; sys_platform != "darwin"
     #   grpcio-status
     #   grpcio-tools
     #   mlagents-envs
+    #   opencensus-proto
+    #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
@@ -1029,7 +1022,7 @@ ml-dtypes==0.3.2
     # via tensorflow
 mlagents-envs==0.28.0
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
-mlflow==2.13.2
+mlflow==2.9.2
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 mmh3==4.1.0
     # via pyiceberg
@@ -1263,7 +1256,9 @@ oauth2client==4.1.3
     #   gcs-oauth2-boto-plugin
     #   google-apitools
 oauthlib==3.2.2
-    # via requests-oauthlib
+    # via
+    #   databricks-cli
+    #   requests-oauthlib
 onnx==1.15.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
@@ -1280,42 +1275,39 @@ opencensus==0.11.3
     # via -r /ray/ci/../python/requirements.txt
 opencensus-context==0.1.3
     # via opencensus
+opencensus-proto==0.1.0
+    # via opentelemetry-exporter-opencensus
 opencv-python-headless==4.8.1.78
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 openpyxl==3.0.10
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-opentelemetry-api==1.9.0
+opentelemetry-api==1.1.0
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   mlflow
+    #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-sdk
-opentelemetry-exporter-otlp==1.9.0
+opentelemetry-exporter-opencensus==0.20b0
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
+opentelemetry-exporter-otlp==1.1.0
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
-opentelemetry-exporter-otlp-proto-grpc==1.9.0
+opentelemetry-exporter-otlp-proto-grpc==1.1.0
     # via opentelemetry-exporter-otlp
-opentelemetry-exporter-otlp-proto-http==1.9.0
-    # via opentelemetry-exporter-otlp
-opentelemetry-proto==1.9.0
-    # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
-opentelemetry-sdk==1.9.0
+opentelemetry-proto==1.1.0
+    # via opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-sdk==1.1.0
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   mlflow
+    #   opentelemetry-exporter-opencensus
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
-opentelemetry-semantic-conventions==0.28b0
+opentelemetry-semantic-conventions==0.20b0
     # via opentelemetry-sdk
 opt-einsum==3.3.0
     # via
@@ -1490,6 +1482,7 @@ protobuf==3.20.3
     #   mlflow
     #   onnx
     #   onnxruntime
+    #   opentelemetry-exporter-opencensus
     #   opentelemetry-proto
     #   proto-plus
     #   ray
@@ -1602,6 +1595,7 @@ pyjwt==2.8.0
     # via
     #   adal
     #   azure-cli-core
+    #   databricks-cli
     #   msal
     #   snowflake-connector-python
 pylance==0.10.18
@@ -1711,7 +1705,6 @@ python-dateutil==2.8.2
     #   botocore
     #   freezegun
     #   google-cloud-bigquery
-    #   graphene
     #   holidays
     #   jupyter-client
     #   kubernetes
@@ -1810,6 +1803,7 @@ requests==2.31.0
     #   azure-cli-core
     #   azure-core
     #   comet-ml
+    #   databricks-cli
     #   datasets
     #   delta-sharing
     #   dm-control
@@ -1830,7 +1824,6 @@ requests==2.31.0
     #   moto
     #   msal
     #   msrest
-    #   opentelemetry-exporter-otlp-proto-http
     #   pyiceberg
     #   ray
     #   requests-oauthlib
@@ -1989,6 +1982,7 @@ six==1.16.0
     #   azure-core
     #   bleach
     #   configobj
+    #   databricks-cli
     #   docker-pycreds
     #   ecdsa
     #   fs
@@ -2102,6 +2096,7 @@ sympy==1.13.1
     #   torch
 tabulate==0.9.0
     # via
+    #   databricks-cli
     #   jupyter-cache
     #   knack
 tblib==3.0.0
@@ -2164,7 +2159,7 @@ threadpoolctl==3.1.0
     #   scikit-learn
 tifffile==2024.7.21
     # via scikit-image
-timm==1.0.12
+timm==0.9.2
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
 tinycss2==1.3.0
     # via nbconvert
@@ -2243,7 +2238,7 @@ tornado==6.1
     #   notebook
     #   pymars
     #   terminado
-tqdm==4.67.1
+tqdm==4.64.1
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
@@ -2283,7 +2278,7 @@ traitlets==5.14.3
     #   nbconvert
     #   nbformat
     #   notebook
-transformers==4.39.3
+transformers==4.36.2
     # via
     #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
     #   mosaicml
@@ -2322,14 +2317,12 @@ typing-extensions==4.8.0
     #   fastapi
     #   gradio
     #   gradio-client
-    #   graphene
     #   gymnasium
     #   huggingface-hub
     #   lightning-utilities
     #   mypy
     #   myst-nb
     #   nevergrad
-    #   opentelemetry-sdk
     #   pydantic
     #   pydantic-core
     #   pytorch-lightning
@@ -2350,6 +2343,7 @@ urllib3==1.26.19
     #   botocore
     #   clickhouse-connect
     #   comet-ml
+    #   databricks-cli
     #   distributed
     #   docker
     #   dulwich
@@ -2443,7 +2437,6 @@ wrapt==1.14.1
     #   aiobotocore
     #   aws-xray-sdk
     #   comet-ml
-    #   deprecated
     #   tensorflow
     #   tensorflow-datasets
 wurlitzer==3.1.1
