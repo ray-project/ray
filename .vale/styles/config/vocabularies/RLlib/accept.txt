@@ -4,6 +4,7 @@
 boolean
 [Cc]heckpoints?(ing)?
 [Cc]heckpointable
+classmethods?
 coeff
 config
 (DQN|dqn)

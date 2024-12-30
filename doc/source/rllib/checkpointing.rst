@@ -74,28 +74,68 @@ RLlib classes, which thus far support the :py:class:`~ray.rllib.utils.checkpoint
 Creating a new checkpoint with `save_to_path()`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Here is an example, using the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class, showing
-how to create a checkpoint:
+You create a new checkpoint from an instantiated RLlib object through the
+:py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path` method.
 
-.. testcode::
+Here are two examples, single- and multi-agent, using the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class, showing
+how to create checkpoints:
 
-    from ray.rllib.algorithms.ppo import PPOConfig
+.. tab-set::
 
-    # Configure and build an initial algorithm.
-    config = (
-        PPOConfig()
-        .environment("Pendulum-v1")
-    )
-    ppo = config.build()
+    .. tab-item:: Single-agent setup
 
-    # Train for one iteration, then save to a checkpoint.
-    print(ppo.train())
-    checkpoint_dir = ppo.save_to_path()
-    print(f"saved algo to {checkpoint_dir}")
+        .. testcode::
 
-    # Shut down the algorithm.
-    ppo.stop()
+            from ray.rllib.algorithms.ppo import PPOConfig
 
+            # Configure and build an initial algorithm.
+            config = (
+                PPOConfig()
+                .environment("Pendulum-v1")
+            )
+            ppo = config.build()
+
+            # Train for one iteration, then save to a checkpoint.
+            print(ppo.train())
+            checkpoint_dir = ppo.save_to_path()
+            print(f"saved algo to {checkpoint_dir}")
+
+        .. testcode::
+            :hide:
+
+            ppo.stop()
+
+    .. tab-item:: Multi-agent setup
+
+        .. testcode::
+
+            from ray.rllib.algorithms.ppo import PPOConfig
+            from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
+            from ray.tune import register_env
+
+            register_env("multi-pendulum", lambda cfg: MultiAgentPendulum({"num_agents": 2}))
+
+            # Configure and build an initial algorithm.
+            multi_agent_config = (
+                PPOConfig()
+                .environment("multi-pendulum")
+                .multi_agent(
+                    policies={"p0", "p1"},
+                    # Agent IDs are 0 and 1 -> map to p0 and p1, respectively.
+                    policy_mapping_fn=lambda aid, eps, **kw: f"p{aid}"
+                )
+            )
+            ppo = multi_agent_config.build()
+
+            # Train for one iteration, then save to a checkpoint.
+            print(ppo.train())
+            multi_agent_checkpoint_dir = ppo.save_to_path()
+            print(f"saved algo to {multi_agent_checkpoint_dir}")
+
+        .. testcode::
+            :hide:
+
+            ppo.stop()
 
 .. note::
     When running your experiments with `Ray Tune <https://docs.ray.io/en/latest/tune/index.html>`__,
@@ -105,13 +145,28 @@ how to create a checkpoint:
     is ``~/ray_results/[your experiment name]``.
 
 
+Checkpoint versions
++++++++++++++++++++
+
+RLlib uses a checkpoint versioning system to figure out how to restore an Algorithm or any
+subcomponent from a given directory.
+
+From Ray 2.40 on, you can find the checkpoint version in the human readable ``metadata.json``
+file inside all checkpoint directories.
+
+Also starting from `Ray 2.40`, RLlib checkpoints are backward compatible. This means that
+a checkpoint created with Ray `2.x` can be read and handled by `Ray 2.x+n`, as long as `x >= 40`.
+The Ray team makes sure of not breaking this guarantee ever in the future through
+`comprehensive CI tests on checkpoints taken with previous Ray versions <https://github.com/ray-project/ray/tree/master/rllib/utils/tests/test_checkpointable.py>`__.
+
+
 .. _rllib-structure-of-checkpoint-dir:
 
 Structure of a checkpoint directory
 +++++++++++++++++++++++++++++++++++
 
-You now saved your PPO's state in the ``checkpoint_dir`` directory, or somewhere in ``~/ray_results/`` if you use Ray Tune.
-Take a look at what the directory now looks like:
+After saving your PPO's state in the ``checkpoint_dir`` directory, or somewhere in ``~/ray_results/`` if you use Ray Tune,
+take a look at what this directory looks like:
 
 .. code-block:: shell
 
@@ -169,18 +224,23 @@ The ``class_and_ctor_args.pkl`` file stores meta information needed to construct
 This information, as the filename suggests, contains the class of the saved object and its constructor arguments and keyword arguments.
 RLlib uses this file to create the initial new object when calling :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint`.
 
-Finally, the ``.._state.[pkl|msgpack]`` files contain the pickled or messagepacked state dict of the saved object.
+Finally, the ``.._state.[pkl|msgpack]`` files contain the pickled or msgpacked state dict of the saved object.
 RLlib obtains this state dict when saving a checkpoint through calling the object's
 :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.get_state` method.
 
 .. info::
     Support for ``msgpack`` based checkpoints is experimental, but might become the default in the future.
     Unlike ``pickle``, ``msgpack`` has the advantage of being independent of the python-version, thus allowing
-    users to recover experiment and model states from old checkpoints that have been generated with an older python
-    version.
+    users to recover experiment and model states from old checkpoints that have been generated with older python
+    versions.
 
-    The Ray team is working on completely separating state from architecture, where all state information should go into
-    the ``state.msgpack`` file and all architecture information should go into the ``class_and_ctor_args.pkl`` file.
+    The Ray team is working on completely separating state from architecture within checkpoints, meaning all state
+    information should go into the ``state.msgpack`` file, which is python-version independent,
+    whereas all architecture information should go into the ``class_and_ctor_args.pkl`` file, which still depends on
+    the python version. The latter part of the checkpoint, when restoring from it, would have to be provided by the user
+    at the time of checkpoint restoration.
+
+    `See here for an example that illustrates this in more detail <https://github.com/ray-project/ray/tree/master/rllib/examples/checkpoints/change_config_during_training.py>`__.
 
 
 .. _rllib-components-tree:
@@ -189,7 +249,7 @@ RLlib's components tree
 +++++++++++++++++++++++
 
 The following is the structure of RLlib's components tree, showing under which name you can
-access a subcomponent's own checkpoint within the higher-level checkpoint. At the highest levet
+access a subcomponent's own checkpoint within the higher-level checkpoint. At the highest level
 is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class:
 
 .. code-block:: shell
@@ -208,69 +268,73 @@ is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class:
 .. note::
     The ``env_runner/`` subcomponent currently doesn't hold a copy of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
     checkpoint because it's already saved under ``learner/``. The Ray team is working on resolving
-    this issue, probably through softlinking to avoid duplicate files and unnecessary disk usage.
+    this issue, probably through soft-linking to avoid duplicate files and unnecessary disk usage.
 
 
 Creating instances from a checkpoint with `from_checkpoint`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Once you have a checkpoint of either a trained :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or
-any of its :ref:`subcomponents <rllib-components-tree>`, you can now create new objects directly
+any of its :ref:`subcomponents <rllib-components-tree>`, you can now recreate new objects directly
 from this checkpoint.
 
-For example, you could create a new :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` from
-an existing algorithm checkpoint:
+Here are two examples:
 
-.. testcode::
+.. tab-set::
 
-    # Import the correct class to create from scratch using the checkpoint.
-    from ray.rllib.algorithms.algorithm import Algorithm
+    .. tab-item:: Create a new Algorithm from a checkpoint
 
-    # Use the already existing checkpoint in `checkpoint_dir`.
-    new_ppo = Algorithm.from_checkpoint(checkpoint_dir)
-    # Confirm the `new_ppo` matches the originally checkpointed one.
-    assert new_ppo.config.env == "Pendulum-v1"
+        To recreate an entire :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+        instance from a checkpoint, you can do:
 
-    # Continue training
-    new_ppo.train()
+        .. testcode::
 
-.. testcode::
-    :hide:
+            # Import the correct class to create from scratch using the checkpoint.
+            from ray.rllib.algorithms.algorithm import Algorithm
 
-    new_ppo.stop()
+            # Use the already existing checkpoint in `checkpoint_dir`.
+            new_ppo = Algorithm.from_checkpoint(checkpoint_dir)
+            # Confirm the `new_ppo` matches the originally checkpointed one.
+            assert new_ppo.config.env == "Pendulum-v1"
 
+            # Continue training
+            new_ppo.train()
 
-Using the exact same checkpoint from before and the same
-:py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` method, you could also only reconstruct
-the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` trained by your Algorithm from the algorithm's checkpoint.
-This becomes very useful when deploying trained models into production or evaluating them in a separate
-process while training is ongoing.
+        .. testcode::
+            :hide:
 
+            new_ppo.stop()
 
-.. testcode::
+    .. tab-item:: Create a new RLModule from an (Algorithm) checkpoint
 
-    from pathlib import Path
-    import torch
+        To recreate only the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` from
+        the algorithm's checkpoint, you can do the following.
+        This becomes very useful when deploying trained models into production or evaluating them in a separate
+        process while training is ongoing.
 
-    # Import the correct class to create from scratch using the checkpoint.
-    from ray.rllib.core.rl_module.rl_module import RLModule
+        .. testcode::
 
-    # Use the already existing checkpoint in `checkpoint_dir`, but go further down
-    # into its subdirectory for the single RLModule.
-    # See the preceding section on "RLlib's components tree" for the various elements in the RLlib
-    # components tree.
-    rl_module_checkpoint_dir = Path(checkpoint_dir) / "learner_group" / "learner" / "rl_module" / "default_policy"
+            from pathlib import Path
+            import torch
 
-    # Create the actual RLModule.
-    rl_module = RLModule.from_checkpoint(rl_module_checkpoint_dir)
+            # Import the correct class to create from scratch using the checkpoint.
+            from ray.rllib.core.rl_module.rl_module import RLModule
 
-    # Run a forward pass to compute action logits. Use a dummy Pendulum observation
-    # tensor (3d) and add a batch dim (B=1).
-    results = rl_module.forward_inference(
-        {"obs": torch.tensor([0.5, 0.25, -0.3]).unsqueeze(0).float()}
-    )
-    print(results)
+            # Use the already existing checkpoint in `checkpoint_dir`, but go further down
+            # into its subdirectory for the single RLModule.
+            # See the preceding section on "RLlib's components tree" for the various elements in the RLlib
+            # components tree.
+            rl_module_checkpoint_dir = Path(checkpoint_dir) / "learner_group" / "learner" / "rl_module" / "default_policy"
 
+            # Create the actual RLModule.
+            rl_module = RLModule.from_checkpoint(rl_module_checkpoint_dir)
+
+            # Run a forward pass to compute action logits. Use a dummy Pendulum observation
+            # tensor (3d) and add a batch dim (B=1).
+            results = rl_module.forward_inference(
+                {"obs": torch.tensor([0.5, 0.25, -0.3]).unsqueeze(0).float()}
+            )
+            print(results)
 
 See here for an `example on how to run policy inference after training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__
 and another `example on how to run policy inference, but with an LSTM <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_w_connector.py>`__.
@@ -282,162 +346,109 @@ and another `example on how to run policy inference, but with an LSTM <https://g
     or other deployment-friendly formats.
 
 
-.. .. hint::
-    A few things to note:
-    * The checkpoint saves the entire information on how to recreate a new object, identical to the original one.
-    *
-
-
 Restoring state from a checkpoint with `restore_from_path`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Normally, the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path` and :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint`
-methods are all you need to create checkpoints and re-create instances from them.
+Normally, the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path` and
+:py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` methods are all you need to create
+checkpoints and re-create instances from them.
 
 However, sometimes, you already have an instantiated object up and running and would like to "load" another
-state into it. For example, consider training two policy RLModules through multi-agent training and having them play
-against each other in a self-play fashion. After a while, you would like to swap out, without interrupting your
-experiment, one of the policy RLModules with a third one that you have saved to disk a while back.
+state into it. For example, consider training two :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` networks
+through multi-agent training playing against each other in a self-play fashion. After a while, you would like to swap out,
+without interrupting your experiment, one of the ``RLModules`` with a third one that you have saved to disk a while back.
 
-This is where the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.restore_from_path` method comes in handy. It
-loads a state from a path into an already running object. Compare this with :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint`,
-which always constructs a new object and returns it.
+This is where the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.restore_from_path` method comes in handy.
+It loads a state into an already running object, for example your Algorithm, or into a subcomponent of that object,
+for example a particular RLModule within your Algorithm. To inject your custom code defining when and how to load
+the state into the objects, you can use RLlib's callbacks APIs.
 
+See these following examples:
 
-.. testcode::
+.. tab-set::
 
-    from ray.rllib.algorithms.algorithm import Algorithm
+    .. tab-item:: Continue training
 
-    # Use any Checkpointable's (e.g. Algorithm's) `from_checkpoint()` method to create
-    # a new instance that has the exact same state as the one, which created the checkpoint
-    # in the first place:
-    my_new_ppo = Algorithm.from_checkpoint(checkpoint_dir)
+        When using RLlib directly (without Ray Tune), the problem of loading a state
+        into a running instance is quite simple:
 
-    # Continue training.
-    my_new_ppo.train()
+        .. testcode::
 
-    my_new_ppo.stop()
+            # Recreate the preceding PPO from the config.
+            new_ppo = config.build()
 
+            # Load the state stored previously in `checkpoint_dir` into the
+            # running algorithm instance.
+            new_ppo.restore_from_path(checkpoint_dir)
 
+            # Run another training iteration.
+            new_ppo.train()
 
-    # Re-build a fresh algorithm.
-    my_new_ppo = my_ppo_config.build()
+        .. testcode::
+            :hide:
 
-    # Restore the old (checkpointed) state.
-    my_new_ppo.restore_from_path(save_result)
+            new_ppo.stop()
 
-    # Continue training.
-    my_new_ppo.train()
+    .. tab-item:: Continue training (w/ Ray Tune)
 
-    my_new_ppo.stop()
+        However, when running through Ray Tune, you don't have direct access to the
+        Algorithm object or any of its subcomponents. you can use a simple custom callback
+        to solve for this.
 
+        .. todo: Add link to dedicated callbacks rst page once completed.
 
+        Also, see `this example script here for more details <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/change_config_during_training.py>`__.
 
+        .. testcode::
 
+            from ray import train, tune
 
+            # Define a simple callback that runs right after algorithm initialization.
+            from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
+            class LoadState(DefaultCallbacks):
+                def on_algorithm_init(self, *, algorithm, **kwargs):
+                    algorithm.restore_from_path(checkpoint_dir)
 
+            # Add the callback to your config.
+            config.callbacks(LoadState)
 
-Checkpoints are py-version specific, but can be converted to be version independent
------------------------------------------------------------------------------------
+            # Run the experiment (continuing from the checkpoint) through Ray Tune.
+            results = tune.Tuner(
+                config.algo_class,
+                param_space=config,
+                run_config=train.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
+            ).fit()
 
-Checkpoints created with the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path()` method
-are based on `cloudpickle <https://github.com/cloudpipe/cloudpickle>`__ and thus depend on the python version used.
-This means there is no guarantee that you are able to use a checkpoint created with ``python 3.x`` to restore
-an Algorithm in another environment that runs ``python 3.x+1``.
+    .. tab-item:: Continue multi-agent training with RLModule swapped out (w/ Ray Tune)
 
-However, we now provide a utility for converting a checkpoint into a python version independent checkpoint based on `msgpack <https://msgpack.org/>`__.
-You can then use the newly converted msgpack checkpoint to restore another
-Algorithm instance from it. Look at this this short example here on how to do this:
+        .. todo: Add link to dedicated callbacks rst page once completed.
 
-.. literalinclude:: doc_code/checkpointing.py
-    :language: python
-    :start-after: __rllib-convert-pickle-to-msgpack-checkpoint-begin__
-    :end-before: __rllib-convert-pickle-to-msgpack-checkpoint-end__
+        .. testcode::
 
-This way, you can continue to run your algorithms and `save()` them occasionally or
-- if you are running trials with Ray Tune - use Tune's integrated checkpointing settings.
-As has been, this will produce cloudpickle based checkpoints. Once you need to migrate to
-a higher (or lower) python version, use the ``convert_to_msgpack_checkpoint()`` utility,
-create a msgpack-based checkpoint and hand that to either ``Algorithm.from_checkpoint()``
-or provide this to your Tune config. RLlib is able to recreate Algorithms from both these
-formats now.
+            # Unzip checkpoint for that ray version into a temp directory.
+            with TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
 
+                # Restore the algorithm from the (old) msgpack-checkpoint, using the
+                # current Ray version's `config` object.
+                algo = PPO.from_checkpoint(path=temp_dir, config=current_config)
+                learner_res = algo.train()[LEARNER_RESULTS]
+                algo.stop()
 
-
-
-How do I restore an Algorithm from a checkpoint?
-------------------------------------------------
-
-Given our checkpoint path (returned by ``Algorithm.save()``), we can now
-create a completely new Algorithm instance and make it the exact same as the one we
-had stopped (and could thus no longer use) in the example above:
-
-.. literalinclude:: doc_code/checkpointing.py
-    :language: python
-    :start-after: __restore-from-algo-checkpoint-begin__
-    :end-before: __restore-from-algo-checkpoint-end__
-
-
-Alternatively, you could also first create a new Algorithm instance using the
-same config that you used for the original algo, and only then call the new
-Algorithm's ``restore()`` method, passing it the checkpoint directory:
-
-.. literalinclude:: doc_code/checkpointing.py
-    :language: python
-    :start-after: __restore-from-algo-checkpoint-2-begin__
-    :end-before: __restore-from-algo-checkpoint-2-end__
-
-The above procedure used to be the only way of restoring an algo, however, it is more tedious
-than using the ``from_checkpoint()`` utility as it requires an extra step and you will
-have to keep your original config stored somewhere.
-
-
-Which Algorithm checkpoint versions can I use?
-----------------------------------------------
-
-RLlib uses simple checkpoint versions (for example v0.1 or v1.0) to figure
-out how to restore an Algorithm (or a :py:class:`~ray.rllib.policy.policy.Policy`;
-see below) from a given
-checkpoint directory.
-
-From Ray 2.40 on, you can find the checkpoint version written in the
-``metadata.json`` file inside any checkpoint directory.
-RLlib doesn't use this file and it solely exists for your convenience.
-
-From `Ray 2.40` and up, all RLlib checkpoints are backward compatible, meaning an RLlib
-checkpoint created with Ray `2.x` can be read and handled by `Ray 2.x+n`, as long as `x >= 40`.
-The Ray team makes sure of not breaking this guarantee in the future through comprehensive
-CI tests on checkpoints taken with each Ray version, making sure every single commit
-
-
-
-How do I restore a multi-agent Algorithm with a subset of the original policies?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Imagine you have trained a multi-agent :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` with e.g. 100 different Policies and created
-a checkpoint from this :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
-The checkpoint now includes 100 sub-directories in the
-``policies/`` dir, named after the different policy IDs.
-
-After careful evaluation of the different policies, you would like to restore the
-:py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-and continue training it, but only with a subset of the original 100 policies,
-for example only with the policies, whose IDs are "polA" and "polB".
-
-You can use the original checkpoint (with the 100 policies in it) and the
-``Algorithm.from_checkpoint()`` utility to achieve this in an efficient way.
-
-This example here shows this for five original policies that you would like reduce to
-two policies:
-
-.. literalinclude:: doc_code/checkpointing.py
-    :language: python
-    :start-after: __restore-algorithm-from-checkpoint-with-fewer-policies-begin__
-    :end-before: __restore-algorithm-from-checkpoint-with-fewer-policies-end__
-
-Note that we had to change our original ``policy_mapping_fn`` from one that maps
-"agent0" to "pol0", "agent1" to "pol1", etc..
-to a new function that maps our five agents to only the two remaining policies:
-"agent0" and "agent1" to "pol0", all other agents to "pol1".
-
+                # Second experiment: Add all the policies to the config again that were
+                # present when the checkpoint was taken and try `from_checkpoint` again.
+                expanded_config = current_config.copy(copy_frozen=False)
+                all_pols = {"p0", "p1", "p2", "p3"}
+                expanded_config.multi_agent(
+                    policies=all_pols,
+                    # Create some completely new mapping function (that has nothing to
+                    # do with the checkpointed one).
+                    policy_mapping_fn=(
+                        lambda aid, eps, _p=tuple(all_pols), **kw: random.choice(_p)
+                    ),
+                    policies_to_train=all_pols,
+                )
+                algo = PPO.from_checkpoint(path=temp_dir, config=expanded_config)
+                learner_res = algo.train()[LEARNER_RESULTS]
+                algo.stop()

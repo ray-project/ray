@@ -130,6 +130,7 @@ if __name__ == "__main__":
         PPOConfig()
         .environment("CartPole-v1" if args.num_agents == 0 else "ma_cart")
         .training(lr=0.0001)
+        .experimental(_use_msgpack_checkpoints=True)
     )
 
     # Setup multi-agent, if required.
@@ -192,7 +193,8 @@ if __name__ == "__main__":
     test_algo.stop()
 
     # Make sure the algorithm gets restored from a checkpoint right after
-    # initialization.
+    # initialization. Note that this includes all subcomponents of the algorithm,
+    # including the optimizer states in the LearnerGroup/Learner actors.
     class _RestoreCheckpointCallback(DefaultCallbacks):
         def on_algorithm_init(self, *, algorithm, **kwargs):
             module_p0 = algorithm.get_module("p0")
@@ -202,9 +204,13 @@ if __name__ == "__main__":
             weight_after = convert_to_numpy(next(iter(module_p0.parameters())))
             check(weight_before, weight_after, false=True)
 
-    # Change our config significantly.
-    base_config = (
-        base_config.callbacks(_RestoreCheckpointCallback).training(
+    # Change the config.
+    (
+        base_config
+        # Make sure the algorithm gets restored upon initialization.
+        .callbacks(_RestoreCheckpointCallback)
+        # Change training parameters considerably.
+        .training(
             lr=0.0003,
             train_batch_size=5000,
             grad_clip=100.0,
