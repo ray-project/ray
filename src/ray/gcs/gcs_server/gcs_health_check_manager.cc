@@ -158,13 +158,20 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   // grpc and io_context contains two different eventloops, here we have to use shared
   // pointer to make sure all memory accesses are valid.
   stub_->async()->Check(
-      &context_,
-      &request_,
-      &response_,
-      [this, start = now, manager = manager](::grpc::Status status) {
+      &context_, &request_, &response_, [this, start = now](::grpc::Status status) {
+        auto manager = manager_.lock();
+        if (manager == nullptr) {
+          RAY_CHECK(stopped_);
+          delete this;
+          return;
+        }
+
         // This callback is done in gRPC's thread pool.
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - start));
+
+        // Have to capture shared pointer for health check manager to ensure `io_service`
+        // access is valid.
         manager->io_service_.post(
             [this, status, manager]() {
               if (stopped_) {
