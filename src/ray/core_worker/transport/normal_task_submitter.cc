@@ -63,9 +63,9 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         // There are idle workers, so we don't need more
         // workers.
         for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
-          RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
-                    worker_to_lease_entry_.end());
-          auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
+          auto iter = worker_to_lease_entry_.find(active_worker_addr);
+          RAY_CHECK(iter != worker_to_lease_entry_.end());
+          auto &lease_entry = iter->second;
           if (!lease_entry.is_busy) {
             OnWorkerIdle(active_worker_addr,
                          scheduling_key,
