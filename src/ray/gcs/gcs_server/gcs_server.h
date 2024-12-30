@@ -246,7 +246,7 @@ class GcsServer {
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
-  std::unique_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
+  std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The gcs redis failure detector.
   std::unique_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs placement group manager.
