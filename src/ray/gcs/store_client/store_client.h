@@ -46,7 +46,7 @@ class StoreClient {
   /// \return Status
   virtual Status AsyncPut(const std::string &table_name,
                           const std::string &key,
-                          const std::string &data,
+                          std::string data,
                           bool overwrite,
                           std::function<void(bool)> callback) = 0;
 
@@ -58,7 +58,7 @@ class StoreClient {
   /// \return Status
   virtual Status AsyncGet(const std::string &table_name,
                           const std::string &key,
-                          const OptionalItemCallback<std::string> &callback) = 0;
+                          OptionalItemCallback<std::string> callback) = 0;
 
   /// Get all data from the given table asynchronously.
   ///
@@ -66,7 +66,7 @@ class StoreClient {
   /// \param callback returns the key value pairs in a map.
   /// \return Status
   virtual Status AsyncGetAll(const std::string &table_name,
-                             const MapCallback<std::string, std::string> &callback) = 0;
+                             MapCallback<std::string, std::string> callback) = 0;
 
   /// Get all data from the given table asynchronously.
   ///
@@ -76,7 +76,7 @@ class StoreClient {
   /// \return Status
   virtual Status AsyncMultiGet(const std::string &table_name,
                                const std::vector<std::string> &keys,
-                               const MapCallback<std::string, std::string> &callback) = 0;
+                               MapCallback<std::string, std::string> callback) = 0;
 
   /// Delete data from the given table asynchronously.
   ///

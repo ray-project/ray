@@ -21,7 +21,7 @@ class MockStoreClient : public StoreClient {
               AsyncPut,
               (const std::string &table_name,
                const std::string &key,
-               const std::string &data,
+               std::string data,
                bool overwrite,
                std::function<void(bool)> callback),
               (override));
@@ -29,18 +29,18 @@ class MockStoreClient : public StoreClient {
               AsyncGet,
               (const std::string &table_name,
                const std::string &key,
-               const OptionalItemCallback<std::string> &callback),
+               OptionalItemCallback<std::string> callback),
               (override));
   MOCK_METHOD(Status,
               AsyncGetAll,
               (const std::string &table_name,
-               (const MapCallback<std::string, std::string> &callback)),
+               (MapCallback<std::string, std::string> callback)),
               (override));
   MOCK_METHOD(Status,
               AsyncMultiGet,
               (const std::string &table_name,
                const std::vector<std::string> &key,
-               (const MapCallback<std::string, std::string> &callback)),
+               (MapCallback<std::string, std::string> callback)),
               (override));
   MOCK_METHOD(Status,
               AsyncDelete,

@@ -40,7 +40,7 @@ class StoreClientInternalKV : public InternalKVInterface {
 
   void Put(const std::string &ns,
            const std::string &key,
-           const std::string &value,
+           std::string value,
            bool overwrite,
            std::function<void(bool)> callback) override;
 

@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/store_client/store_client.h"
@@ -37,20 +38,20 @@ class InMemoryStoreClient : public StoreClient {
 
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
-                  const std::string &data,
+                  std::string data,
                   bool overwrite,
                   std::function<void(bool)> callback) override;
 
   Status AsyncGet(const std::string &table_name,
                   const std::string &key,
-                  const OptionalItemCallback<std::string> &callback) override;
+                  OptionalItemCallback<std::string> callback) override;
 
   Status AsyncGetAll(const std::string &table_name,
-                     const MapCallback<std::string, std::string> &callback) override;
+                     MapCallback<std::string, std::string> callback) override;
 
   Status AsyncMultiGet(const std::string &table_name,
                        const std::vector<std::string> &keys,
-                       const MapCallback<std::string, std::string> &callback) override;
+                       MapCallback<std::string, std::string> callback) override;
 
   Status AsyncDelete(const std::string &table_name,
                      const std::string &key,
@@ -73,25 +74,35 @@ class InMemoryStoreClient : public StoreClient {
  private:
   struct InMemoryTable {
     /// Mutex to protect the records_ field and the index_keys_ field.
-    absl::Mutex mutex_;
+    mutable absl::Mutex mutex_;
     // Mapping from key to data.
+    // TODO(dayshah): benchmark reader/writer locks against boost::concurrent_flat_map
     absl::flat_hash_map<std::string, std::string> records_ ABSL_GUARDED_BY(mutex_);
   };
 
-  std::shared_ptr<InMemoryStoreClient::InMemoryTable> GetOrCreateTable(
-      const std::string &table_name) ABSL_LOCKS_EXCLUDED(mutex_);
+  // The returned reference is valid as long as the InMemoryStoreClient is alive and
+  // as long as no other thread erases the InMemoryTable from tables_.
+  InMemoryTable &GetOrCreateMutableTable(const std::string &table_name);
+
+  // 1) Will return nullptr if the table does not exist.
+  // 2) The returned pointer is valid as long as the InMemoryStoreClient is alive and
+  //    as long as no other thread erases the InMemoryTable from tables_.
+  const InMemoryTable *GetTable(const std::string &table_name);
 
   /// Mutex to protect the tables_ field.
   absl::Mutex mutex_;
-  absl::flat_hash_map<std::string, std::shared_ptr<InMemoryTable>> tables_
-      ABSL_GUARDED_BY(mutex_);
+  // node_hash_map to keep pointer validity and allow for InMemoryTable which holds a
+  // mutex to be held without extra heap alloation, most operations done on this are just
+  // find, for which performance is almost identical to flat_hash_map.
+  // Note: Do not erase from this as it will invalidate pointer from GetTable.
+  absl::node_hash_map<std::string, InMemoryTable> tables_ ABSL_GUARDED_BY(mutex_);
 
   /// Async API Callback needs to post to main_io_service_ to ensure the orderly execution
   /// of the callback.
   instrumented_io_context &main_io_service_;
 
   /// Current job id, auto-increment when request next-id.
-  int job_id_ ABSL_GUARDED_BY(mutex_) = 0;
+  std::atomic<int> job_id_ = 1;
 };
 
 }  // namespace ray::gcs
