@@ -623,6 +623,14 @@ py_test(
 )
 
 py_test(
+  name = "test_console_file_redirect",
+  size = "medium",
+  srcs = ["test_console_file_redirect.py"],
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_aws_batch_tag_update",
     size = "small",
     srcs = ["aws/test_aws_batch_tag_update.py"],

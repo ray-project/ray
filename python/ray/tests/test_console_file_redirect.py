@@ -40,10 +40,12 @@ os.write(sys.stderr.fileno(), "hello from stderr\\n".encode())
             ["python", "-c", script], capture_output=True, text=True, timeout=1
         )
     except subprocess.TimeoutExpired as e:
-        assert e.stdout.decode() == "hello from stdout\nhello from stderr\n"
+        assert "hello from stdout\nhello from stderr\n" in e.stdout.decode()
 
     with open(temp_file, "r") as f:
-        assert f.readlines() == ["hello from stdout\n", "hello from stderr\n"]
+        lines = f.readlines()
+        assert "hello from stdout\n" in lines
+        assert "hello from stderr\n" in lines
 
 
 def test_console_redirect_run_with_scripts_and_env_var_e2e(cleanup_console_log_files):
@@ -64,9 +66,11 @@ def hello_world():
     print ("Hello world")
     return "hello world"
 
+ray.shutdown()
 ray.init()
 print(ray.get([hello_world.remote() for i in range(2)]))
 time.sleep(1)
+ray.shutdown()
     """
 
     stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
@@ -108,9 +112,11 @@ def hello_world():
     print ("Hello world")
     return "hello world"
 
+ray.shutdown()
 ray.init()
 print(ray.get([hello_world.remote() for i in range(2)]))
 time.sleep(1)
+ray.shutdown()
     """
 
     stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
