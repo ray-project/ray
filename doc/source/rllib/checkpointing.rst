@@ -105,6 +105,8 @@ how to create a checkpoint:
     is ``~/ray_results/[your experiment name]``.
 
 
+.. _rllib-structure-of-checkpoint-dir:
+
 Structure of a checkpoint directory
 +++++++++++++++++++++++++++++++++++
 
@@ -126,9 +128,26 @@ Take a look at what the directory now looks like:
 Subdirectories inside a checkpoint dir, like ``env_runner/``, hint at a subcomponent's own checkpoint data.
 For example, an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` always also saves its
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` state and :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` state.
+
+.. note::
+    Each of the subcomponent's directories themselves contain a ``metadata.json`` file, a ``class_and_ctor_args.pkl`` file
+    and a ``.._state.pkl`` file, all serving the same purpose than their counterparts in the main algorithm checkpoint directory.
+    For example, inside the ``learner_group/`` subdirectory, you would find the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`'s own
+    state, construction, and meta information:
+
+    .. code-block:: shell
+
+        $ cd env_runner/
+        $ ls -la
+        .
+        ..
+        state.pkl
+        class_and_ctor_args.pkl
+        metadata.json
+
 See :ref:`here for the complete RLlib component tree <rllib-components-tree>`.
 
-The ``metadata.json`` file is for your convenience only and RLlib doesn't it.
+The ``metadata.json`` file exists for your convenience only and RLlib doesn't need it.
 
 .. note::
     The ``metadata.json`` file contains information about the Ray version used to create the checkpoint,
@@ -150,25 +169,18 @@ The ``class_and_ctor_args.pkl`` file stores meta information needed to construct
 This information, as the filename suggests, contains the class of the saved object and its constructor arguments and keyword arguments.
 RLlib uses this file to create the initial new object when calling :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint`.
 
-Finally, the ``.._state.pkl`` file contains the pickled state dict of the saved object. RLlib obtains this state dict
-when saving a checkpoint through calling the object's :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.get_state`
-method.
+Finally, the ``.._state.[pkl|msgpack]`` files contain the pickled or messagepacked state dict of the saved object.
+RLlib obtains this state dict when saving a checkpoint through calling the object's
+:py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.get_state` method.
 
-.. note::
-    Each of the subcomponent's directories themselves contain a ``rllib_checkpoint.json`` file, a ``class_and_ctor_args.pkl`` file
-    and a ``.._state.pkl`` file, all serving the same purpose than their counterparts in the main algorithm checkpoint directory.
-    For example, inside the ``learner_group/`` subdirectory, you would find the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`'s own
-    state, construction, and meta information:
+.. info::
+    Support for ``msgpack`` based checkpoints is experimental, but might become the default in the future.
+    Unlike ``pickle``, ``msgpack`` has the advantage of being independent of the python-version, thus allowing
+    users to recover experiment and model states from old checkpoints that have been generated with an older python
+    version.
 
-    .. code-block:: shell
-
-        $ cd env_runner/
-        $ ls -la
-        .
-        ..
-        state.pkl
-        class_and_ctor_args.pkl
-        metadata.json
+    The Ray team is working on completely separating state from architecture, where all state information should go into
+    the ``state.msgpack`` file and all architecture information should go into the ``class_and_ctor_args.pkl`` file.
 
 
 .. _rllib-components-tree:
@@ -199,15 +211,80 @@ is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class:
     this issue, probably through softlinking to avoid duplicate files and unnecessary disk usage.
 
 
-Creating a new object from a checkpoint with `from_checkpoint`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Creating instances from a checkpoint with `from_checkpoint`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Once you have a checkpoint of either an
+Once you have a checkpoint of either a trained :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or
+any of its :ref:`subcomponents <rllib-components-tree>`, you can now create new objects directly
+from this checkpoint.
+
+For example, you could create a new :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` from
+an existing algorithm checkpoint:
+
+.. testcode::
+
+    # Import the correct class to create from scratch using the checkpoint.
+    from ray.rllib.algorithms.algorithm import Algorithm
+
+    # Use the already existing checkpoint in `checkpoint_dir`.
+    new_ppo = Algorithm.from_checkpoint(checkpoint_dir)
+    # Confirm the `new_ppo` matches the originally checkpointed one.
+    assert new_ppo.config.env == "Pendulum-v1"
+
+    # Continue training
+    new_ppo.train()
+
+.. testcode::
+    :hide:
+
+    new_ppo.stop()
 
 
+Using the exact same checkpoint from before and the same ``.from_checkpoint()`` utility,
+you could also only reconstruct the RLModule trained by your Algorithm from the algorithm's checkpoint.
+This becomes very useful when deploying trained models into production or evaluating them in a separate
+process while training is ongoing.
 
-Restoring from a checkpoint with `restore_from_path`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. testcode::
+
+    from pathlib import Path
+    import torch
+
+    # Import the correct class to create from scratch using the checkpoint.
+    from ray.rllib.core.rl_module.rl_module import RLModule
+
+    # Use the already existing checkpoint in `checkpoint_dir`, but go further down
+    # into its subdirectory for the single RLModule.
+    # See the preceding section on "RLlib's components tree" for the various elements in the RLlib
+    # components tree.
+    rl_module_checkpoint_dir = Path(checkpoint_dir) / "learner_group" / "learner" / "rl_module" / "default_policy"
+
+    # Create the actual RLModule.
+    rl_module = RLModule.from_checkpoint(rl_module_checkpoint_dir)
+
+    # Run a forward pass to compute action logits. Use a dummy Pendulum observation
+    # tensor (3d) and add a batch dim (B=1).
+    results = rl_module.forward_inference(
+        {"obs": torch.tensor([0.5, 0.25, -0.3]).unsqueeze(0).float()}
+    )
+    print(results)
+
+
+See here for an `example on how to run policy inference after training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__
+and another `example on how to run policy inference, but with an LSTM <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_w_connector.py>`__.
+
+
+.. hint::
+
+    A few things to note:
+    * The checkpoint saves the entire information on how to recreate a new object, identical to the original one.
+    *
+
+
+Restoring state from a checkpoint with `restore_from_path`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 
 
 
@@ -382,53 +459,6 @@ Note that we had to change our original ``policy_mapping_fn`` from one that maps
 to a new function that maps our five agents to only the two remaining policies:
 "agent0" and "agent1" to "pol0", all other agents to "pol1".
 
-
-Model Exports
--------------
-
-Apart from creating checkpoints for your RLlib objects (such as an RLlib
-:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or
-an individual RLlib :py:class:`~ray.rllib.policy.policy.Policy`), it may also be very useful
-to only export your NN models in their native (non-RLlib dependent) format, for example
-as a keras- or PyTorch model.
-You could then use the trained NN models outside
-of RLlib, e.g. for serving purposes in your production environments.
-
-How do I export my NN Model?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-There are several ways of creating Keras- or PyTorch native model "exports".
-
-Here is the example code that illustrates these:
-
-.. literalinclude:: doc_code/checkpointing.py
-    :language: python
-    :start-after: __export-models-begin__
-    :end-before: __export-models-end__
-
-We can now export the Keras NN model (that our PPOTF1Policy inside the PPO Algorithm uses)
-to disk ...
-
-1) Using the Policy object:
-
-.. literalinclude:: doc_code/checkpointing.py
-    :language: python
-    :start-after: __export-models-1-begin__
-    :end-before: __export-models-1-end__
-
-2) Via the Policy's checkpointing method:
-
-.. literalinclude:: doc_code/checkpointing.py
-    :language: python
-    :start-after: __export-models-2-begin__
-    :end-before: __export-models-2-end__
-
-3) Via the Algorithm (Policy) checkpoint:
-
-.. literalinclude:: doc_code/checkpointing.py
-    :language: python
-    :start-after: __export-models-3-begin__
-    :end-before: __export-models-3-end__
 
 
 And what about exporting my NN Models in ONNX format?
