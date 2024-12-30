@@ -207,9 +207,6 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
         logits_per_action_per_atom = torch.reshape(
             batch, shape=(*batch.shape[:-1], self.action_space.n, self.num_atoms)
         )
-        # logits_per_action_per_atom = torch.reshape(
-        #     batch, shape=(-1, self.action_space.n, self.num_atoms)
-        # )
         # Calculate the probability for each action value atom. Note,
         # the sum along action value atoms of a single action value
         # must sum to one.
@@ -276,7 +273,6 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
                 qf_logits = centered_af_logits + vf_outs.view(
                     -1, *((1,) * (centered_af_logits.dim() - 1))
                 )
-                # qf_logits = centered_af_logits + vf_outs.unsqueeze(dim=-1)
                 # Calculate probabilites for the Q-value distribution along
                 # the support given by the atoms.
                 qf_probs = nn.functional.softmax(qf_logits, dim=-1)

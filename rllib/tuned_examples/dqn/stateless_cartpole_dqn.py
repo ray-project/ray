@@ -27,24 +27,24 @@ config = (
         train_batch_size_per_learner=32,
         replay_buffer_config={
             "type": "EpisodeReplayBuffer",
-            "capacity": 1000000,
+            "capacity": 1500000,
         },
         n_step=1,
         double_q=True,
         dueling=True,
         num_atoms=1,
-        epsilon=[(0, 1.0), (40000, 0.02)],
+        epsilon=[(0, 1.0), (60000, 0.02)],
     )
     .rl_module(
         # Settings identical to old stack.
         model_config=DefaultModelConfig(
             fcnet_hiddens=[256],
-            fcnet_activation="tanh",
-            fcnet_bias_initializer="uniform_",
-            head_fcnet_bias_initializer="uniform_",
+            # fcnet_activation="tanh",
+            # fcnet_bias_initializer="uniform_",
+            # head_fcnet_bias_initializer="uniform_",
             head_fcnet_hiddens=[256],
-            head_fcnet_activation="tanh",
-            lstm_kernel_initializer="xavier_uniform_",
+            # head_fcnet_activation="tanh",
+            # lstm_kernel_initializer="xavier_uniform_",
             use_lstm=True,
             max_seq_len=20,
         ),
