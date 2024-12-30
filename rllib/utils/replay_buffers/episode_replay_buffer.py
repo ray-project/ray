@@ -502,7 +502,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             random_n_step = isinstance(n_step, tuple)
         # Otherwise we use an n-step of 1.
         else:
-            actual_n_step = 1
+            assert (
+                not isinstance(n_step, tuple) and n_step == 1
+            ), "When sampling sequences n-step must be 1."
+            actual_n_step = n_step
 
         # Keep track of the indices that were sampled last for updating the
         # weights later (see `ray.rllib.utils.replay_buffer.utils.
