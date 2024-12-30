@@ -1629,10 +1629,10 @@ py_test(
 
 # Checkpointables
 py_test(
-    name = "utils/checkpoints/tests/test_checkpointable",
+    name = "utils/tests/test_checkpointable",
     tags = ["team:rllib", "utils"],
     size = "large",
-    srcs = ["utils/checkpoints/tests/test_checkpointable.py"]
+    srcs = ["utils/tests/test_checkpointable.py"]
 )
 
 # Errors
