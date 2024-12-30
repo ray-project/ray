@@ -80,6 +80,8 @@ class InMemoryStoreClient : public StoreClient {
     absl::flat_hash_map<std::string, std::string> records_ ABSL_GUARDED_BY(mutex_);
   };
 
+  // The returned reference is valid as long as the InMemoryStoreClient is alive and
+  // as long as no other thread erases the InMemoryTable from tables_.
   InMemoryTable &GetOrCreateMutableTable(const std::string &table_name);
 
   // 1) Will return nullptr if the table does not exist.
