@@ -144,6 +144,34 @@
         "tagsQuery": "",
         "type": "query",
         "useTags": false
+      },
+      {
+        "current": {
+          "selected": false
+        },
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
+        "description": "Filter queries to specific ray cluster for kubernetes.",
+        "error": null,
+        "hide": 0,
+        "includeAll": false,
+        "label": null,
+        "multi": false,
+        "name": "ray_io_cluster",
+        "options": [],
+        "query": {
+          "query": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 2,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
       }
     ]
   },
