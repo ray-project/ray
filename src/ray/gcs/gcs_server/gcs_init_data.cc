@@ -49,7 +49,7 @@ void GcsInitData::AsyncLoadWorkerTableData(const EmptyCallback &on_done) {
                       << worker_table_data_.size();
         on_done();
   };
-  RAY_CHECK_OK(gcs_table_storage_->WorkerTable().GetAll(load_worker_table_data_callback));
+  RAY_CHECK_OK(gcs_table_storage_.WorkerTable().GetAll(load_worker_table_data_callback));
 }
 
 void GcsInitData::AsyncLoadJobTableData(const EmptyCallback &on_done) {

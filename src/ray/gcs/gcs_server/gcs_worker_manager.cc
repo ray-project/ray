@@ -142,7 +142,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
               << ") allowed is reached. Old worker events will be overwritten. Set "
                  "`RAY_maximum_gcs_dead_worker_cached_count` to a higher value to store more.";
           const auto &clean_worker_id = sorted_dead_worker_deque_.front().first;
-          RAY_CHECK_OK(gcs_table_storage_->WorkerTable().Delete(clean_worker_id, nullptr));
+          RAY_CHECK_OK(gcs_table_storage_.WorkerTable().Delete(clean_worker_id, nullptr));
           sorted_dead_worker_deque_.pop_front();
         }
       });
