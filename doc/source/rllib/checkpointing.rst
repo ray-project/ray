@@ -206,7 +206,7 @@ is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class:
             module_to_env_connector/
 
 .. note::
-    The ``env_runner/`` subcomponent currently doesn't hold a copy of the RLModule's
+    The ``env_runner/`` subcomponent currently doesn't hold a copy of the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
     checkpoint because it's already saved under ``learner/``. The Ray team is working on resolving
     this issue, probably through softlinking to avoid duplicate files and unnecessary disk usage.
 
@@ -241,7 +241,7 @@ an existing algorithm checkpoint:
 
 
 Using the exact same checkpoint from before and the same ``.from_checkpoint()`` utility,
-you could also only reconstruct the RLModule trained by your Algorithm from the algorithm's checkpoint.
+you could also only reconstruct the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` trained by your Algorithm from the algorithm's checkpoint.
 This becomes very useful when deploying trained models into production or evaluating them in a separate
 process while training is ongoing.
 
@@ -274,9 +274,14 @@ process while training is ongoing.
 See here for an `example on how to run policy inference after training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__
 and another `example on how to run policy inference, but with an LSTM <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_w_connector.py>`__.
 
-
 .. hint::
+    Because your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is also a
+    `PyTorch Module <https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module>`__,
+    you can easily export your model to `ONNX <https://onnx.ai/>`__, `IREE <https://iree.dev/>`__,
+    or other deployment-friendly formats.
 
+
+.. .. hint::
     A few things to note:
     * The checkpoint saves the entire information on how to recreate a new object, identical to the original one.
     *
@@ -459,17 +464,3 @@ Note that we had to change our original ``policy_mapping_fn`` from one that maps
 to a new function that maps our five agents to only the two remaining policies:
 "agent0" and "agent1" to "pol0", all other agents to "pol1".
 
-
-
-And what about exporting my NN Models in ONNX format?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-RLlib also supports exporting your NN models in the ONNX format. For that, use the
-:py:class:`~ray.rllib.policy.policy.Policy` ``export_model`` method, but provide the
-extra ``onnx`` arg as follows:
-
-
-.. literalinclude:: doc_code/checkpointing.py
-    :language: python
-    :start-after: __export-models-as-onnx-begin__
-    :end-before: __export-models-as-onnx-end__
