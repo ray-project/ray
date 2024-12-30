@@ -14,7 +14,7 @@ def some_function(x):
 obj = some_function.remote()
 ```
 This function is limited by 500MiB memory usage, and if it tries to use more, it OOMs and fails.
-  + If a task / actor is not annotated with resource usage, ray caps max resource usage via heuristric estimation (i.e. 80% of the total logical resource). This is implemented by setting a max value on `/sys/fs/cgroup/ray_node_<node_id>/application` node (see chart below).
+  + User can set the limit to any number at node start; if not, ray will take a heuristric estimation on all application processes (i.e. 80% of the total logical resource). This is implemented by setting a max value on `/sys/fs/cgroup/ray_node_<node_id>/application` node (see chart below).
 
 TODO(hjiang): reserve minimum resource will be supported in the future.
 
