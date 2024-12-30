@@ -401,20 +401,21 @@ NodeManager::NodeManager(
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
                                         "NodeManager.GCTaskFailureReason");
 
+  std::function<std::shared_ptr<MutableObjectReaderInterface>(const NodeID &,
+                                                              rpc::ClientCallManager &)>
+      raylet_channel_client_factory =
+          [this](const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
+            const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(node_id);
+            RAY_CHECK(node_info) << "No GCS info for node " << node_id;
+            auto grpc_client =
+                rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
+                                                   node_info->node_manager_port(),
+                                                   client_call_manager);
+            return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
+          };
   mutable_object_provider_ = std::make_unique<core::experimental::MutableObjectProvider>(
-      *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this));
+      *store_client_, std::move(raylet_channel_client_factory));
 }
-
-std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
-    const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
-  const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(node_id);
-  RAY_CHECK(node_info) << "No GCS info for node " << node_id;
-  std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client =
-      rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
-                                         node_info->node_manager_port(),
-                                         client_call_manager);
-  return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
-};
 
 bool NodeManager::IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const {
   return failed_workers_cache_.count(worker_id) > 0 ||
