@@ -38,46 +38,42 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
 
-    bool keep_executing = true;
     {
       absl::MutexLock lock(&mu_);
       auto task_iter = cancelled_tasks_.find(task_spec.TaskId());
       if (task_iter != cancelled_tasks_.end()) {
         cancelled_tasks_.erase(task_iter);
-        keep_executing = false;
+        return;
       }
-      if (keep_executing) {
-        task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
-            current_sys_time_ms());
-        // Note that the dependencies in the task spec are mutated to only contain
-        // plasma dependencies after ResolveDependencies finishes.
-        const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
-                                           task_spec.GetDependencyIds(),
-                                           task_spec.IsActorCreationTask()
-                                               ? task_spec.ActorCreationId()
-                                               : ActorID::Nil(),
-                                           task_spec.GetRuntimeEnvHash());
-        auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-        scheduling_key_entry.task_queue.push_back(task_spec);
-        scheduling_key_entry.resource_spec = task_spec;
 
-        if (!scheduling_key_entry.AllWorkersBusy()) {
-          // There are idle workers, so we don't need more
-          // workers.
+      task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
+          current_sys_time_ms());
+      // Note that the dependencies in the task spec are mutated to only contain
+      // plasma dependencies after ResolveDependencies finishes.
+      const SchedulingKey scheduling_key(
+          task_spec.GetSchedulingClass(),
+          task_spec.GetDependencyIds(),
+          task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
+          task_spec.GetRuntimeEnvHash());
+      auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+      scheduling_key_entry.task_queue.push_back(task_spec);
+      scheduling_key_entry.resource_spec = task_spec;
 
-          for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
-            RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
-                      worker_to_lease_entry_.end());
-            auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
-            if (!lease_entry.is_busy) {
-              OnWorkerIdle(active_worker_addr,
-                           scheduling_key,
-                           /*was_error*/ false,
-                           /*error_detail*/ "",
-                           /*worker_exiting*/ false,
-                           lease_entry.assigned_resources);
-              break;
-            }
+      if (!scheduling_key_entry.AllWorkersBusy()) {
+        // There are idle workers, so we don't need more
+        // workers.
+        for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
+          RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
+                    worker_to_lease_entry_.end());
+          auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
+          if (!lease_entry.is_busy) {
+            OnWorkerIdle(active_worker_addr,
+                         scheduling_key,
+                         /*was_error*/ false,
+                         /*error_detail*/ "",
+                         /*worker_exiting*/ false,
+                         lease_entry.assigned_resources);
+            break;
           }
         }
         RequestNewWorkerIfNeeded(scheduling_key);
