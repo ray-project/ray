@@ -6,7 +6,7 @@ import traceback
 import numpy as np
 import psutil
 
-from benchmark import Benchmark
+from benchmark import run_benchmark
 import ray
 from ray._private.internal_api import memory_summary
 from ray.data._internal.util import _check_pyarrow_version
@@ -123,7 +123,7 @@ if __name__ == "__main__":
         f"{num_partitions * partition_size / 1e9}GB total"
     )
 
-    def run_benchmark(args):
+    def benchmark_fn():
         source = RandomIntRowDatasource()
         # Each row has an int64 key.
         num_rows_per_partition = partition_size // (8 + args.row_size_bytes)
@@ -179,12 +179,5 @@ if __name__ == "__main__":
 
         return results
 
-    benchmark = Benchmark("sort-shuffle")
-    benchmark.run_fn("main", run_benchmark, args)
-
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "")
-    if test_output_json:
-        out_file = open(test_output_json, "w")
-        benchmark.write_result(out_file)
-
+    run_benchmark(benchmark_fn, vars(args))
     ray.timeline("dump.json")

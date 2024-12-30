@@ -6,7 +6,7 @@ from PIL import Image
 
 import ray
 from ray.data import ActorPoolStrategy
-from benchmark import Benchmark
+from benchmark import run_benchmark
 
 BUCKET = "anyscale-imagenet"
 # This Parquet file contains the keys of images in the 'anyscale-imagenet' bucket.
@@ -14,9 +14,7 @@ METADATA_PATH = "s3://anyscale-imagenet/metadata.parquet"
 
 
 def main():
-    benchmark = Benchmark("read-from-uris")
-    benchmark.run_fn("imagenet", benchmark_fn)
-    benchmark.write_result()
+    run_benchmark(benchmark_fn)
 
 
 def benchmark_fn():

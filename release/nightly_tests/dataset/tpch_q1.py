@@ -8,7 +8,7 @@ import ray
 # TODO: We should make these public again.
 from ray.data._internal.aggregate import Count, Sum, Mean
 
-from benchmark import Benchmark
+from benchmark import run_benchmark
 
 
 def parse_args() -> argparse.Namespace:
@@ -19,7 +19,6 @@ def parse_args() -> argparse.Namespace:
 
 def main(args):
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
-    benchmark = Benchmark("tpch-q1")
 
     def benchmark_fn():
         # The TPC-H queries are a widely used set of benchmarks to measure the
@@ -49,8 +48,7 @@ def main(args):
             .materialize()
         )
 
-    benchmark.run_fn(str(vars(args)), benchmark_fn)
-    benchmark.write_result()
+    run_benchmark(benchmark_fn, vars(args))
 
 
 def compute_disc_price(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:

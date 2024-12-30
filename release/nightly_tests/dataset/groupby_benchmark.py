@@ -5,7 +5,7 @@ from pyarrow import types
 import pyarrow.compute as pc
 import ray
 
-from benchmark import Benchmark
+from benchmark import run_benchmark
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,7 +33,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
-    benchmark = Benchmark("groupby")
     consume_fn = get_consume_fn(args)
 
     def benchmark_fn():
@@ -41,8 +40,7 @@ def main(args):
         grouped_ds = ray.data.read_parquet(path).groupby(args.group_by)
         consume_fn(grouped_ds)
 
-    benchmark.run_fn(str(vars(args)), benchmark_fn)
-    benchmark.write_result()
+    run_benchmark(benchmark_fn, vars(args))
 
 
 def get_consume_fn(args: argparse.Namespace):

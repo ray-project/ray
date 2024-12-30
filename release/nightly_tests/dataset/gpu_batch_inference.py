@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torchvision.models import resnet50, ResNet50_Weights
 
-from benchmark import Benchmark, BenchmarkMetric
+from benchmark import run_benchmark, BenchmarkMetric
 import ray
 from ray.data import ActorPoolStrategy
 
@@ -150,7 +150,4 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args()
-
-    benchmark = Benchmark("gpu-batch-inference")
-    benchmark.run_fn("batch-inference", main, args)
-    benchmark.write_result()
+    run_benchmark(lambda: main(args), config=vars(args))

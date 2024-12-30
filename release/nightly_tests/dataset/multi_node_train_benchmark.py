@@ -3,12 +3,13 @@ from ray import train
 from ray.train import DataConfig, ScalingConfig, RunConfig, Checkpoint
 from ray.train.torch import TorchTrainer
 from ray.data.datasource.partitioning import Partitioning
+import argparse
 import tempfile
 import itertools
 import os
 import time
 
-from benchmark import Benchmark, BenchmarkMetric
+from benchmark import run_benchmark, BenchmarkMetric
 from image_loader_microbenchmark import (
     get_transform,
     crop_and_flip_image,
@@ -44,8 +45,6 @@ from dataset_benchmark_util import (
 
 
 def parse_args():
-    import argparse
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--data-root", type=str, help="Root of data directory")
@@ -751,23 +750,4 @@ def benchmark_code(
 
 if __name__ == "__main__":
     args = parse_args()
-    data_type = "synthetic" if args.use_synthetic_data else args.file_type
-    benchmark_name = (
-        f"read_{data_type}_repeat{args.repeat_ds}_train_"
-        f"{args.num_workers}workers_{args.target_worker_gb}gb_per_worker"
-    )
-
-    if args.preserve_order:
-        benchmark_name = f"{benchmark_name}_preserve_order"
-    if not args.skip_train_model:
-        benchmark_name = f"{benchmark_name}_resnet50"
-    if args.cache_input_ds:
-        case_name = "cache-input"
-    elif args.cache_output_ds:
-        case_name = "cache-output"
-    else:
-        case_name = "cache-none"
-
-    benchmark = Benchmark(benchmark_name)
-    benchmark.run_fn(case_name, benchmark_code, args=args)
-    benchmark.write_result("/tmp/multi_node_train_benchmark.json")
+    run_benchmark(lambda: benchmark_code(args), config=vars(args))

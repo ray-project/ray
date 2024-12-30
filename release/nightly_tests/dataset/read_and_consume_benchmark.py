@@ -4,7 +4,7 @@ import uuid
 
 import ray
 
-from benchmark import Benchmark
+from benchmark import run_benchmark
 
 # Add a random prefix to avoid conflicts between different runs.
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
@@ -35,7 +35,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
-    benchmark = Benchmark("read-and-consume")
     read_fn = get_read_fn(args)
     consume_fn = get_consume_fn(args)
 
@@ -43,8 +42,7 @@ def main(args):
         ds = read_fn(args.path)
         consume_fn(ds)
 
-    benchmark.run_fn(str(vars(args)), benchmark_fn)
-    benchmark.write_result()
+    run_benchmark(benchmark_fn, vars(args))
 
 
 def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:

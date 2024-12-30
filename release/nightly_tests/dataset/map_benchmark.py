@@ -5,7 +5,7 @@ import pyarrow.compute as pc
 import pandas as pd
 import ray
 
-from benchmark import Benchmark
+from benchmark import run_benchmark
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,7 +36,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace) -> None:
-    benchmark = Benchmark("map")
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
 
     def benchmark_fn():
@@ -62,8 +61,7 @@ def main(args: argparse.Namespace) -> None:
         for _ in ds.iter_internal_ref_bundles():
             pass
 
-    benchmark.run_fn(str(vars(args)), benchmark_fn)
-    benchmark.write_result()
+    run_benchmark(benchmark_fn, vars(args))
 
 
 def increment_row(row):

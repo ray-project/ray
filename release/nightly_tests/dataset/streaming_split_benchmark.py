@@ -1,7 +1,7 @@
 import argparse
 from typing import Optional
 
-from benchmark import Benchmark
+from benchmark import run_benchmark
 import ray
 
 
@@ -24,8 +24,6 @@ def main(args):
 
     Ray Train uses the same functionality to load data across training workers.
     """
-    benchmark = Benchmark("streaming-split")
-
     ds = ray.data.read_parquet("s3://ray-benchmark-data-internal/imagenet/parquet")
 
     num_rows = ds.count()
@@ -50,8 +48,7 @@ def main(args):
         ]
         ray.get(future)
 
-    benchmark.run_fn(str(vars(args)), benchmark_fn)
-    benchmark.write_result()
+    run_benchmark(benchmark_fn, vars(args))
 
 
 @ray.remote

@@ -1,17 +1,9 @@
-import gc
 import json
 import os
 import time
-from typing import Callable, Dict
-
-from ray.data.dataset import Dataset
-from typing import Any
-
+from typing import Callable, Dict, Any, Optional
 
 from enum import Enum
-
-import pyarrow as pa
-import pandas as pd
 
 
 class BenchmarkMetric(Enum):
@@ -24,159 +16,45 @@ class BenchmarkMetric(Enum):
     EXTRA_METRICS = "extra_metrics"
 
 
-class Benchmark:
-    """Utility class used for Ray Data release tests and benchmarks, which works
-    for both local and distributed benchmarking. When run on the nightly release
-    test pipeline, the results are written to our internal database, which
-    can then be rendered on the dashboard. Usage tips:
+def run_benchmark(
+    benchmark_fn: Callable[[], Dict], config: Optional[Dict[str, Any]] = None
+):
+    if config is None:
+        config = {}
 
-    A typical workflow would be:
+    metrics = _run_benchmark_fn(benchmark_fn)
+    _write_results(metrics, config)
 
-    benchmark = Benchmark("benchmark-name")
 
-    # set up (such as input read or generation)
-    ...
+def _run_benchmark_fn(benchmark_fn) -> Dict[BenchmarkMetric, Any]:
+    metrics = {}
 
-    benchmark.run_materialize_ds("case-1", fn_1)
-    # Could be Ray Data iterator, Torch DataLoader, TF Dataset...
-    benchmark.run_iterate_ds("case-2", dataset)
-    benchmark.run_fn("case-3", fn_3)
+    print("Running benchmark...")
+    start_time = time.time()
+    fn_output = benchmark_fn()
+    end_time = time.time()
 
-    # Writes a JSON with metrics of the form:
-    # {"case-1": {...}, "case-2": {...}, "case-3": {...}}
-    benchmark.write_result()
+    metrics[BenchmarkMetric.RUNTIME] = end_time - start_time
 
-    See example usage in ``aggregate_benchmark.py``.
-    """
-
-    def __init__(self, name):
-        self.name = name
-        self.result = {}
-        print(f"Running benchmark: {name}")
-
-    def run_materialize_ds(
-        self,
-        name: str,
-        fn: Callable[..., Dataset],
-        *fn_args,
-        **fn_kwargs,
-    ):
-        """Run a benchmark on materializing a Ray Dataset. ``fn`` is expected to
-        return the Dataset which is to be materialized. Runtime and throughput
-        are automatically calculated and reported."""
-
-        gc.collect()
-
-        print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        output_ds = fn(*fn_args, **fn_kwargs)
-        output_ds.materialize()
-        duration = time.perf_counter() - start_time
-
-        # TODO(chengsu): Record more metrics based on dataset stats.
-        num_rows = output_ds.count()
-        self.result[name] = {
-            BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.NUM_ROWS.value: num_rows,
-            BenchmarkMetric.THROUGHPUT.value: num_rows / duration,
-        }
-        print(f"Result of case {name}: {self.result[name]}")
-
-    def run_iterate_ds(
-        self,
-        name: str,
-        dataset: Any,
-    ):
-        """Run a benchmark iterating over a dataset. Runtime and throughput
-        are automatically calculated and reported. Supported dataset types are:
-        - Ray Dataset (`ray.data.Dataset`)
-        - iterator over Ray Dataset (`ray.data.iterator._IterableFromIterator` from
-            `.iter_batches()`,`.iter_torch_batches()`, `.iter_tf_batches()`)
-        - Torch DataLoader (`torch.utils.data.DataLoader`)
-        - TensorFlow Dataset (`tf.data.Dataset`)
-        """
-        # Import TF/Torch within this method, as not all benchmarks
-        # will use/install these libraries.
-        import tensorflow as tf
-        import torch
-
-        gc.collect()
-
-        print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        record_count = 0
-        ds_iterator = iter(dataset)
-        for batch in ds_iterator:
-            # Unwrap list to get the underlying batch format.
-            if isinstance(batch, (list, tuple)) and len(batch) > 0:
-                batch = batch[0]
-
-            # Get the batch size for various batch formats.
-            if isinstance(batch, dict):
-                feature_lengths = {k: len(batch[k]) for k in batch}
-                batch_size = max(feature_lengths.values())
-            elif isinstance(batch, (pa.Table, pd.DataFrame)):
-                batch_size = len(batch)
-            elif isinstance(batch, torch.Tensor):
-                batch_size = batch.size(dim=0)
-            elif isinstance(batch, tf.Tensor):
-                batch_size = batch.shape.as_list()[0]
+    extra_metrics = {}
+    if isinstance(fn_output, dict):
+        for metric_key, metric_val in fn_output.items():
+            if isinstance(metric_key, BenchmarkMetric):
+                metrics[metric_key.value] = metric_val
             else:
-                raise TypeError(f"Unexpected batch type: {type(batch)}")
-            record_count += batch_size
+                extra_metrics[metric_key] = metric_val
 
-        duration = time.perf_counter() - start_time
-        self.result[name] = {
-            BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.NUM_ROWS.value: record_count,
-            BenchmarkMetric.THROUGHPUT.value: record_count / duration,
-        }
-        print(f"Result of case {name}: {self.result[name]}")
+        metrics[BenchmarkMetric.EXTRA_METRICS] = extra_metrics
 
-    def run_fn(
-        self, name: str, fn: Callable[..., Dict[str, Any]], *fn_args, **fn_kwargs
-    ):
-        """Run a benchmark for a specific function; this is the most general
-        benchmark utility available and will work if the other benchmark methods
-        are too specific. However, ``fn`` is expected to return a
-        `Dict[str, Any]` of metric labels to metric values, which are reported
-        at the end of the benchmark. Runtime is automatically calculated and reported,
-        but all other metrics of interest must be calculated and returned by ``fn``."""
+    return metrics
 
-        gc.collect()
 
-        print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        # e.g. fn may output a dict of metrics
-        fn_output = fn(*fn_args, **fn_kwargs)
-        duration = time.perf_counter() - start_time
+def _write_results(metrics: Dict[BenchmarkMetric, Any], config: Dict[str, Any]):
+    results = {**config, **metrics}
 
-        curr_case_metrics = {
-            BenchmarkMetric.RUNTIME.value: duration,
-        }
-        if isinstance(fn_output, dict):
-            extra_metrics = {}
-            for metric_key, metric_val in fn_output.items():
-                if isinstance(metric_key, BenchmarkMetric):
-                    curr_case_metrics[metric_key.value] = metric_val
-                else:
-                    extra_metrics[metric_key] = metric_val
-            curr_case_metrics[BenchmarkMetric.EXTRA_METRICS.value] = extra_metrics
+    write_path = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
+    with open(write_path, "w") as f:
+        f.write(json.dumps(results))
 
-        self.result[name] = curr_case_metrics
-        print(f"Result of case {name}: {curr_case_metrics}")
-
-    def write_result(self, output_path="/tmp/result.json"):
-        """Write all collected benchmark results to `output_path`.
-        The result is a dict of the form:
-        ``{case_name: {metric_name: metric_value, ...}}``."""
-
-        test_output_json = os.environ.get("TEST_OUTPUT_JSON", output_path)
-        with open(test_output_json, "w") as f:
-            self.result["name"] = self.name
-            f.write(json.dumps(self.result))
-
-        print(
-            f"Finished benchmark {self.name}, metrics exported to {test_output_json}:"
-        )
-        print(self.result)
+    print(f"Finished benchmark, results exported to '{write_path}':")
+    print(results)
