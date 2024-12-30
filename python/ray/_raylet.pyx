@@ -3429,6 +3429,16 @@ cdef class CoreWorker:
             int num_returns,
             int64_t timeout_ms=-1,
             c_bool suppress_timeout_errors=False):
+        """
+        Wait for `num_returns` experimental mutable objects in `object_refs` to
+        be ready and read them.
+
+        Args:
+            object_refs: List of object refs to read.
+            num_returns: Number of objects to read in this round.
+            timeout_ms: Timeout in milliseconds.
+            suppress_timeout_errors: If True, suppress timeout errors.
+        """
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)

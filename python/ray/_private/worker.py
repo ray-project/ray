@@ -926,13 +926,32 @@ class Worker:
 
     def experimental_wait_and_get_mutable_objects(
         self,
-        object_refs,
-        num_returns,
+        object_refs: List[ObjectRef],
+        num_returns: int,
         timeout_ms: int = -1,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
         suppress_timeout_errors: bool = False,
     ) -> Tuple[List[Any], Set[ObjectRef]]:
+        """
+        Wait for `num_returns` experimental mutable objects in `object_refs` to
+        be ready and read them.
+
+        Args:
+            object_refs: List of object refs to read.
+            num_returns: Number of objects to read in this round.
+            timeout_ms: Timeout in milliseconds.
+            return_exceptions: If any of the objects deserialize to an
+                Exception object, whether to return them as values in the
+                returned list. If False, then the first found exception will be
+                raised.
+            skip_deserialization: If True, only the buffer will be released and
+                the object associated with the buffer will not be deserailized.
+            suppress_timeout_errors: If True, suppress timeout errors.
+        Returns:
+            A tuple containing the list of objects read and the set of
+            object refs that were not read in this round.
+        """
         for object_ref in object_refs:
             if not isinstance(object_ref, ObjectRef):
                 raise TypeError(
