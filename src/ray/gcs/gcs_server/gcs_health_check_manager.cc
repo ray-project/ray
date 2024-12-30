@@ -122,7 +122,6 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 
   auto manager = manager_.lock();
   if (manager == nullptr) {
-    RAY_CHECK(stopped_);
     delete this;
     return;
   }
@@ -161,7 +160,6 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
       &context_, &request_, &response_, [this, start = now](::grpc::Status status) {
         auto manager = manager_.lock();
         if (manager == nullptr) {
-          RAY_CHECK(stopped_);
           delete this;
           return;
         }
