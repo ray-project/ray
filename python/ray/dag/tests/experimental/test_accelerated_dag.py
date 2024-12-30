@@ -2678,13 +2678,14 @@ ref = compiled_dag.execute(1)
 ray.get(ref, timeout=100)
 """
     driver_proc = run_string_as_driver_nonblocking(driver_script)
+    pid = driver_proc.pid
     # wait for graph execution to start
     time.sleep(5)
-    proc = psutil.Process(driver_proc.pid)
+    proc = psutil.Process(pid)
     assert proc.status() == psutil.STATUS_RUNNING
-    driver_proc.send_signal(signal.SIGINT)  # ctrl+c
+    os.kill(pid, signal.SIGINT)  # ctrl+c
     # teardown will kill actors after standard 30 second timeout
-    wait_for_pid_to_exit(driver_proc.pid, 40)
+    wait_for_pid_to_exit(pid, 40)
 
 
 if __name__ == "__main__":
