@@ -128,10 +128,10 @@ For example, an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` always als
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` state and :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` state.
 See :ref:`here for the complete RLlib component tree <rllib-components-tree>`.
 
-The ``metadata.json`` file is for your convenience only and RLlib doesn't used this file.
+The ``metadata.json`` file is for your convenience only and RLlib doesn't it.
 
 .. note::
-    The file contains information on the Ray version used to create the checkpoint,
+    The ``metadata.json`` file contains information about the Ray version used to create the checkpoint,
     the Ray commit, the RLlib checkpoint version, and the names of the state- and constructor-information
     files in the same directory.
 
@@ -168,7 +168,7 @@ method.
         ..
         state.pkl
         class_and_ctor_args.pkl
-        rllib_checkpoint.json
+        metadata.json
 
 
 .. _rllib-components-tree:
@@ -308,14 +308,14 @@ out how to restore an Algorithm (or a :py:class:`~ray.rllib.policy.policy.Policy
 see below) from a given
 checkpoint directory.
 
-From Ray 2.1 on, you can find the checkpoint version written in the
-``rllib_checkpoint.json`` file at the top-level of your checkpoint directory.
-RLlib does not use this file or information therein, it solely exists for the
-user's convenience.
+From Ray 2.40 on, you can find the checkpoint version written in the
+``metadata.json`` file inside any checkpoint directory.
+RLlib doesn't use this file and it solely exists for your convenience.
 
-From Ray RLlib 2.0 and up, all checkpoint versions will be
-backward compatible, meaning some RLlib version 2.x will be able to
-handle any checkpoints created by RLlib 2.0 or any version up to 2.x.
+From `Ray 2.40` and up, all RLlib checkpoints are backward compatible, meaning an RLlib
+checkpoint created with Ray `2.x` can be read and handled by `Ray 2.x+n`, as long as `x >= 40`.
+The Ray team makes sure of not breaking this guarantee in the future through comprehensive
+CI tests on checkpoints taken with each Ray version, making sure every single commit
 
 
 Multi-agent Algorithm checkpoints
