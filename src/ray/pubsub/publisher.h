@@ -51,7 +51,7 @@ class EntityState {
 
   /// Publishes the message to subscribers of the entity.
   /// Returns true if there are subscribers, returns false otherwise.
-  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message);
+  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message, uint64_t msg_size);
 
   /// Manages the set of subscribers of this entity.
   bool AddSubscriber(SubscriberState *subscriber);
@@ -99,7 +99,7 @@ class SubscriptionIndex {
   /// Publishes the message to relevant subscribers.
   /// Returns true if there are subscribers listening on the entity key of the message,
   /// returns false otherwise.
-  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message);
+  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message, uint64_t msg_size);
 
   /// Adds a new subscriber and the key it subscribes to.
   /// When `key_id` is empty, the subscriber subscribes to all keys.

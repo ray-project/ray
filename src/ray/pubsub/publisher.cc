@@ -22,19 +22,17 @@ namespace pubsub {
 
 namespace pub_internal {
 
-bool EntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
+bool EntityState::Publish(std::shared_ptr<rpc::PubMessage> msg, uint64_t msg_size) {
   if (subscribers_.empty()) {
     return false;
   }
 
-  const int64_t message_size = msg->ByteSizeLong();
-
-  if (message_size > max_message_size_bytes_) {
+  if (msg_size > max_message_size_bytes_) {
     RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
         << "Pub/sub message exceeds max individual message "
            "size="
         << absl::StrCat(max_message_size_bytes_, "B, ")
-        << absl::StrCat("incoming msg size=", message_size, "B")
+        << absl::StrCat("incoming msg size=", msg_size, "B")
         << ". Dropping this message:\n"
         << msg->DebugString();
     return false;
@@ -49,14 +47,13 @@ bool EntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
     if (front_msg == nullptr) {
       // The message has no other reference.
       // This means that it has been published to all subscribers.
-    } else if (max_buffered_bytes_ > 0 &&
-               total_size_ + message_size > max_buffered_bytes_) {
+    } else if (max_buffered_bytes_ > 0 && total_size_ + msg_size > max_buffered_bytes_) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
           << "Pub/sub message is dropped to stay under the maximum configured buffer "
              "size="
           << absl::StrCat(max_buffered_bytes_, "B, ")
           << absl::StrCat("incoming msg size=",
-                          message_size,
+                          msg_size,
                           "B, current buffer size=",
                           total_size_,
                           "B")
@@ -81,8 +78,8 @@ bool EntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
   }
 
   pending_messages_.push(msg);
-  total_size_ += message_size;
-  message_sizes_.push(message_size);
+  total_size_ += msg_size;
+  message_sizes_.push(msg_size);
 
   for (auto &[id, subscriber] : subscribers_) {
     subscriber->QueueMessage(msg);
@@ -119,12 +116,13 @@ int64_t SubscriptionIndex::GetNumBufferedBytes() const {
   return num_bytes_buffered;
 }
 
-bool SubscriptionIndex::Publish(std::shared_ptr<rpc::PubMessage> pub_message) {
-  const bool publish_to_all = subscribers_to_all_->Publish(pub_message);
+bool SubscriptionIndex::Publish(std::shared_ptr<rpc::PubMessage> pub_message,
+                                uint64_t msg_size) {
+  const bool publish_to_all = subscribers_to_all_->Publish(pub_message, msg_size);
   bool publish_to_entity = false;
   auto it = entities_.find(pub_message->key_id());
   if (it != entities_.end()) {
-    publish_to_entity = it->second->Publish(pub_message);
+    publish_to_entity = it->second->Publish(pub_message, msg_size);
   }
   return publish_to_all || publish_to_entity;
 }
@@ -435,10 +433,12 @@ void Publisher::Publish(rpc::PubMessage pub_message) {
   // before there's any subscriber for the object.
   pub_message.set_sequence_id(++next_sequence_id_);
 
+  const uint64_t msg_size = pub_message.ByteSizeLong();
   cum_pub_message_cnt_[channel_type]++;
-  cum_pub_message_bytes_cnt_[channel_type] += pub_message.ByteSizeLong();
+  cum_pub_message_bytes_cnt_[channel_type] += msg_size;
 
-  subscription_index.Publish(std::make_shared<rpc::PubMessage>(std::move(pub_message)));
+  subscription_index.Publish(std::make_shared<rpc::PubMessage>(std::move(pub_message)),
+                             msg_size);
 }
 
 void Publisher::PublishFailure(const rpc::ChannelType channel_type,
