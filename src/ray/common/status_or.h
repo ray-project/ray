@@ -24,6 +24,7 @@
 
 namespace ray {
 
+// TODO(hjiang): Introduce statusor related macros.
 template <typename T>
 class StatusOr {
  public:
@@ -163,13 +164,11 @@ class StatusOr {
   // Copy current value out if OK status, otherwise construct default value.
   T value_or_default() const & {
     static_assert(std::is_copy_constructible_v<T>, "T must by copy constructable");
-    static_assert(std::is_default_constructible_v<T>, "T must by default constructable");
     if (ok()) return get();
     return T{};
   }
   T value_or_default() && {
     static_assert(std::is_copy_constructible_v<T>, "T must by copy constructable");
-    static_assert(std::is_default_constructible_v<T>, "T must by default constructable");
     if (ok()) return std::move(get());
     return T{};
   }
@@ -181,13 +180,10 @@ class StatusOr {
   T &get() { return data_; }
   const T &get() const { return data_; }
 
-  void CheckHasValue() const {
-    if (!has_value()) {
-      throw std::runtime_error(status_.message());
-    }
-  }
-
   Status status_;
+
+  // TODO(hjiang): Consider using union to construct `data_` as abseil implementation.
+  // https://github.com/abseil/abseil-cpp/blob/fcc8630eede5498b48b45b99e4eaa1406d6657e9/absl/status/internal/statusor_internal.h#L317-L333
   T data_;
 };
 
@@ -211,19 +207,19 @@ auto StatusOr<T>::and_then(F &&f) && {
 
 template <typename T>
 T &StatusOr<T>::value() & {
-  CheckHasValue();
+  RAY_CHECK(has_value());
   return get();
 }
 
 template <typename T>
 const T &StatusOr<T>::value() const & {
-  CheckHasValue();
+  RAY_CHECK(has_value());
   return get();
 }
 
 template <typename T>
 T &&StatusOr<T>::value() && {
-  CheckHasValue();
+  RAY_CHECK(has_value());
   auto &val = get();
   return std::move(val);
 }
