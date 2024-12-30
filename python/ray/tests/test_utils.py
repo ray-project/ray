@@ -112,6 +112,7 @@ def test_get_current_node_cpu_model_name():
     ):
         assert get_current_node_cpu_model_name() == "Intel Xeon"
 
+
 # Polyfill anext() function for Python 3.9 compatibility
 # May raise StopAsyncIteration.
 async def anext_polyfill(iterator):
