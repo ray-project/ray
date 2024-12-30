@@ -14,19 +14,19 @@ class AlgorithmBase:
         Returns:
             A list of resource bundles for the learner workers.
         """
-        if config.num_learner_workers > 0:
-            if config.num_gpus_per_learner_worker:
+        if config.num_learners > 0:
+            if config.num_gpus_per_learner:
                 # to prevent learner gpus from having their corresponding CPUs
                 # being scheduled for non-learner actors, we make GPU only
                 # bundles which will be used by the learner workers.
                 learner_bundles = [
-                    {"GPU": config.num_gpus_per_learner_worker}
-                    for _ in range(config.num_learner_workers)
+                    {"GPU": config.num_gpus_per_learner}
+                    for _ in range(config.num_learners)
                 ]
-            elif config.num_cpus_per_learner_worker:
+            elif config.num_cpus_per_learner:
                 learner_bundles = [
-                    {"CPU": config.num_cpus_per_learner_worker}
-                    for _ in range(config.num_learner_workers)
+                    {"CPU": config.num_cpus_per_learner}
+                    for _ in range(config.num_learners)
                 ]
         else:
             learner_bundles = [
@@ -34,10 +34,10 @@ class AlgorithmBase:
                     # sampling and training is not done concurrently when local is
                     # used, so pick the max.
                     "CPU": max(
-                        config.num_cpus_per_learner_worker,
-                        config.num_cpus_for_local_worker,
+                        config.num_cpus_per_learner,
+                        config.num_cpus_for_main_process,
                     ),
-                    "GPU": config.num_gpus_per_learner_worker,
+                    "GPU": config.num_gpus_per_learner,
                 }
             ]
         return learner_bundles
