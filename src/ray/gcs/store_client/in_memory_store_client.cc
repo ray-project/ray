@@ -87,7 +87,7 @@ Status InMemoryStoreClient::AsyncMultiGet(
   auto result = absl::flat_hash_map<std::string, std::string>();
   auto table = GetTable(table_name);
   if (table != nullptr) {
-    absl::MutexLock lock(&(table->mutex_));
+    absl::ReaderMutexLock lock(&(table->mutex_));
     for (const auto &key : keys) {
       auto it = table->records_.find(key);
       if (it == table->records_.end()) {
