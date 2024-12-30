@@ -27,7 +27,8 @@ MutableObjectProvider::MutableObjectProvider(plasma::PlasmaClientInterface &plas
       io_context_(),
       io_work_guard_(io_context_.get_executor()),
       io_thread_pool_(RayConfig::instance().mutable_object_provider_num_threads()) {
-  for (int i = 0; i < RayConfig::instance().mutable_object_provider_num_threads(); ++i) {
+  for (uint32_t i = 0; i < RayConfig::instance().mutable_object_provider_num_threads();
+       ++i) {
     boost::asio::post(io_thread_pool_, [this]() {  // TODO(jhumphri): Decompose this.
 #ifndef _WIN32
       // Block SIGINT and SIGTERM so they will be handled by the main thread.
