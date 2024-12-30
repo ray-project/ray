@@ -299,6 +299,62 @@ Status CoreWorker::RegisterWorkerToRaylet(raylet::RayletConnection &conn,
   return Status::OK();
 }
 
+Status CoreWorker::RegisterWorkerToRayletWithPort(
+    raylet::RayletConnection &conn,
+    const WorkerID &worker_id,
+    rpc::WorkerType worker_type,
+    const JobID &job_id,
+    int runtime_env_hash,
+    const Language &language,
+    const std::string &ip_address,
+    const std::string &serialized_job_config,
+    const StartupToken &startup_token,
+    NodeID *raylet_id,
+    int port) {
+  flatbuffers::FlatBufferBuilder fbb;
+  // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
+  auto register_client_request =
+      protocol::CreateRegisterClientRequest(fbb,
+                                            static_cast<int>(worker_type),
+                                            to_flatbuf(fbb, worker_id),
+                                            getpid(),
+                                            startup_token,
+                                            to_flatbuf(fbb, job_id),
+                                            runtime_env_hash,
+                                            language,
+                                            fbb.CreateString(ip_address),
+                                            /*port=*/port,
+                                            fbb.CreateString(serialized_job_config));
+  auto announce_port_message =
+      protocol::CreateAnnounceWorkerPort(fbb, port, fbb.CreateString(""));
+  auto message_with_port = protocol::CreateRegisterClientWithPortRequest(
+      fbb, std::move(register_client_request), std::move(announce_port_message));
+  fbb.Finish(message_with_port);
+
+  // Register the process ID with the raylet.
+  // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
+  std::vector<uint8_t> reply;
+  auto request_status =
+      conn.AtomicRequestReply(MessageType::RegisterClientWithPortRequest,
+                              MessageType::RegisterClientWithPortResponse,
+                              &reply,
+                              &fbb);
+  if (!request_status.ok()) {
+    return Status(
+        request_status.code(),
+        std::string("[RayletClient] Unable to register worker with port to raylet. ") +
+            request_status.message());
+  }
+  auto reply_message =
+      flatbuffers::GetRoot<protocol::RegisterClientWithPortResponse>(reply.data());
+  bool success = reply_message->success();
+  if (!success) {
+    return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+  }
+
+  return Status::OK();
+}
+
 CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
@@ -410,17 +466,38 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       io_service_, options_.raylet_socket, /*num_retries=*/-1, /*timeout=*/-1);
   NodeID local_raylet_id;
   int assigned_port = 0;
-  Status raylet_client_status = RegisterWorkerToRaylet(*raylet_conn,
-                                                       GetWorkerID(),
-                                                       options_.worker_type,
-                                                       worker_context_.GetCurrentJobID(),
-                                                       options_.runtime_env_hash,
-                                                       options_.language,
-                                                       options_.node_ip_address,
-                                                       options_.serialized_job_config,
-                                                       options_.startup_token,
-                                                       &local_raylet_id,
-                                                       &assigned_port);
+  Status raylet_client_status = Status::OK();
+
+  // If worker port already assigned, directly use it, otherwise get an available port
+  // from node manager.
+  if (options_.worker_avai_port.has_value()) {
+    assigned_port = options_.worker_avai_port.value();
+    raylet_client_status =
+        RegisterWorkerToRayletWithPort(*raylet_conn,
+                                       GetWorkerID(),
+                                       options_.worker_type,
+                                       worker_context_.GetCurrentJobID(),
+                                       options_.runtime_env_hash,
+                                       options_.language,
+                                       options_.node_ip_address,
+                                       options_.serialized_job_config,
+                                       options_.startup_token,
+                                       &local_raylet_id,
+                                       assigned_port);
+  } else {
+    raylet_client_status = RegisterWorkerToRaylet(*raylet_conn,
+                                                  GetWorkerID(),
+                                                  options_.worker_type,
+                                                  worker_context_.GetCurrentJobID(),
+                                                  options_.runtime_env_hash,
+                                                  options_.language,
+                                                  options_.node_ip_address,
+                                                  options_.serialized_job_config,
+                                                  options_.startup_token,
+                                                  &local_raylet_id,
+                                                  &assigned_port);
+  }
+
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
     RAY_LOG(ERROR).WithField(worker_id)
@@ -906,10 +983,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   RAY_CHECK_EQ(options_.worker_type != WorkerType::DRIVER, niced);
 #endif
 
-  // Tell the raylet the port that we are listening on.
-  // NOTE: This also marks the worker as available in Raylet. We do this at the
+  // Tell the raylet the port that we are listening on, only do when port hasn't been
+  // announced. NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
-  ConnectToRayletInternal();
+  if (!options_.worker_avai_port.has_value()) {
+    ConnectToRayletInternal();
+  }
 }
 
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
