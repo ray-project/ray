@@ -1800,6 +1800,13 @@ py_test(
 )
 
 py_test(
+    name = "test_check_multi_agent",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_check_multi_agent.py"]
+)
+
+py_test(
     name = "test_actor_manager",
     tags = ["team:rllib", "utils", "exclusive"],
     size = "medium",
