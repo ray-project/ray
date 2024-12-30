@@ -606,16 +606,14 @@ void GcsServer::InitRuntimeEnvManager() {
         if (protocol_end_pos == std::string::npos) {
           RAY_LOG(ERROR) << "Plugin URI must be of form "
                          << "<protocol>://<hash>, got " << plugin_uri_view;
-          callback(/*successful=*/false);
         } else {
           const std::string_view protocol = plugin_uri_view.substr(0, protocol_end_pos);
           if (protocol == "gcs") {
           } else {
-            this->kv_manager_->GetInstance().Del(
-                "" /* namespace */,
-                plugin_uri /* key */,
-                false /* del_by_prefix*/,
-                /*callback=*/[](int64_t) {});
+            this->kv_manager_->GetInstance().Del("" /* namespace */,
+                                                 plugin_uri /* key */,
+                                                 false /* del_by_prefix*/,
+                                                 /*callback=*/[](int64_t) {});
           }
         }
       });
