@@ -240,8 +240,9 @@ an existing algorithm checkpoint:
     new_ppo.stop()
 
 
-Using the exact same checkpoint from before and the same ``.from_checkpoint()`` utility,
-you could also only reconstruct the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` trained by your Algorithm from the algorithm's checkpoint.
+Using the exact same checkpoint from before and the same
+:py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` method, you could also only reconstruct
+the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` trained by your Algorithm from the algorithm's checkpoint.
 This becomes very useful when deploying trained models into production or evaluating them in a separate
 process while training is ongoing.
 
@@ -290,7 +291,17 @@ and another `example on how to run policy inference, but with an LSTM <https://g
 Restoring state from a checkpoint with `restore_from_path`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Normally, the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path` and :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint`
+methods are all you need to create checkpoints and re-create instances from them.
 
+However, sometimes, you already have an instantiated object up and running and would like to "load" another
+state into it. For example, consider training two policy RLModules through multi-agent training and having them play
+against each other in a self-play fashion. After a while, you would like to swap out, without interrupting your
+experiment, one of the policy RLModules with a third one that you have saved to disk a while back.
+
+This is where the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.restore_from_path` method comes in handy. It
+loads a state from a path into an already running object. Compare this with :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint`,
+which always constructs a new object and returns it.
 
 
 .. testcode::
@@ -398,40 +409,6 @@ From `Ray 2.40` and up, all RLlib checkpoints are backward compatible, meaning a
 checkpoint created with Ray `2.x` can be read and handled by `Ray 2.x+n`, as long as `x >= 40`.
 The Ray team makes sure of not breaking this guarantee in the future through comprehensive
 CI tests on checkpoints taken with each Ray version, making sure every single commit
-
-
-Multi-agent Algorithm checkpoints
----------------------------------
-
-In case you are working with a multi-agent setup and have more than one
-:py:class:`~ray.rllib.policy.policy.Policy` to train inside your
-:py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, you
-can create an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` checkpoint in the
-exact same way as described above and will find your individual
-:py:class:`~ray.rllib.policy.policy.Policy` checkpoints
-inside the sub-directory ``policies/``.
-
-For example:
-
-.. literalinclude:: doc_code/checkpointing.py
-    :language: python
-    :start-after: __multi-agent-checkpoints-begin__
-    :end-before: __multi-agent-checkpoints-end__
-
-
-Assuming you would like to restore all policies within the checkpoint, you would
-do so just as described above in the single-agent case
-(via ``algo = Algorithm.from_checkpoint([path to your multi-agent checkpoint])``).
-
-However, there may be a situation where you have so many policies in your algorithm
-(e.g. you are doing league-based training) and would like to restore a new Algorithm
-instance from your checkpoint, but only include some of the original policies in this
-new Algorithm object. In this case, you can also do:
-
-.. literalinclude:: doc_code/checkpointing.py
-    :language: python
-    :start-after: __multi-agent-checkpoints-restore-policy-sub-set-begin__
-    :end-before: __multi-agent-checkpoints-restore-policy-sub-set-end__
 
 
 
