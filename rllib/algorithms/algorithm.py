@@ -774,23 +774,27 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             method_config["type"] = method_type
 
         if self.config.enable_rl_module_and_learner:
-            if self.env_runner_group:
-                spaces = self.env_runner_group.get_spaces()
-            elif self.eval_env_runner_group:
-                spaces = self.eval_env_runner_group.get_spaces()
-            else:
-                from ray.rllib.env import INPUT_ENV_SPACES
+            from ray.rllib.env import INPUT_ENV_SPACES
 
-                spaces = {
-                    INPUT_ENV_SPACES: (
-                        self.config.observation_space,
-                        self.config.action_space,
-                    ),
-                    DEFAULT_MODULE_ID: (
-                        self.config.observation_space,
-                        self.config.action_space,
-                    ),
-                }
+            spaces = {
+                INPUT_ENV_SPACES: (
+                    self.config.observation_space,
+                    self.config.action_space,
+                )
+            }
+            if self.env_runner_group:
+                spaces.update(self.env_runner_group.get_spaces())
+            elif self.eval_env_runner_group:
+                spaces.update(self.eval_env_runner_group.get_spaces())
+            else:
+                spaces.update(
+                    {
+                        DEFAULT_MODULE_ID: (
+                            self.config.observation_space,
+                            self.config.action_space,
+                        ),
+                    }
+                )
 
             module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
                 spaces=spaces,
@@ -993,24 +997,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 step_ctx=train_iter_ctx,
                 iteration_results={**train_results, **eval_results},
             )
-
-        # TODO (sven): Deprecate this API, this should be done via a custom Callback.
-        #  Provide example script/update existing one.
-        if self.config.env_task_fn is not None:
-            if not callable(self.config.env_task_fn):
-                raise ValueError(
-                    "`env_task_fn` must be None or a callable taking"
-                    " [train_results, env, env_ctx] as args!"
-                )
-
-            def fn(env, env_context, task_fn):
-                new_task = task_fn(results, env, env_context)
-                cur_task = env.get_task()
-                if cur_task != new_task:
-                    env.set_task(new_task)
-
-            fn = functools.partial(fn, task_fn=self.config.env_task_fn)
-            self.env_runner_group.foreach_env_with_context(fn)
 
         return results
 

@@ -1056,20 +1056,6 @@ void LocalTaskManager::SetWorkerBacklog(SchedulingClass scheduling_class,
   }
 }
 
-int64_t LocalTaskManager::TotalBacklogSize(SchedulingClass scheduling_class) {
-  auto backlog_it = backlog_tracker_.find(scheduling_class);
-  if (backlog_it == backlog_tracker_.end()) {
-    return 0;
-  }
-
-  int64_t sum = 0;
-  for (const auto &worker_id_and_backlog_size : backlog_it->second) {
-    sum += worker_id_and_backlog_size.second;
-  }
-
-  return sum;
-}
-
 void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
   RAY_CHECK(worker != nullptr);
   auto allocated_instances = worker->GetAllocatedInstances()

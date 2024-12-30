@@ -31,7 +31,6 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
-from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -71,7 +70,6 @@ from ray.rllib.utils.typing import (
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
-    ResultDict,
     RLModuleSpecType,
     SampleBatchType,
 )
@@ -314,7 +312,6 @@ class AlgorithmConfig(_Config):
         self._is_atari = None
         self.disable_env_checking = False
         # Deprecated settings:
-        self.env_task_fn = None
         self.render_env = False
         self.action_mask_key = "action_mask"
 
@@ -568,6 +565,7 @@ class AlgorithmConfig(_Config):
         # TODO: Remove, once all deprecation_warning calls upon using these keys
         #  have been removed.
         # === Deprecated keys ===
+        self.env_task_fn = DEPRECATED_VALUE
         self.enable_connectors = DEPRECATED_VALUE
         self.simple_optimizer = DEPRECATED_VALUE
         self.monitor = DEPRECATED_VALUE
@@ -699,11 +697,8 @@ class AlgorithmConfig(_Config):
         # inside `self.experimental()` before potentially overwriting it in the
         # following.
         enable_new_api_stack = config_dict.get(
-            "_enable_new_api_stack",
-            config_dict.get(
-                "enable_rl_module_and_learner",
-                config_dict.get("enable_env_runner_and_connector_v2"),
-            ),
+            "enable_rl_module_and_learner",
+            config_dict.get("enable_env_runner_and_connector_v2"),
         )
         if enable_new_api_stack is not None:
             self.api_stack(
@@ -954,7 +949,7 @@ class AlgorithmConfig(_Config):
             logger_creator=self.logger_creator,
         )
 
-    def build_env_to_module_connector(self, env):
+    def build_env_to_module_connector(self, env, device=None):
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
@@ -1028,7 +1023,7 @@ class AlgorithmConfig(_Config):
             # Batch all data.
             pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
             # Convert to Tensors.
-            pipeline.append(NumpyToTensor())
+            pipeline.append(NumpyToTensor(device=device))
 
         return pipeline
 
@@ -1632,9 +1627,6 @@ class AlgorithmConfig(_Config):
         env_config: Optional[EnvConfigDict] = NotProvided,
         observation_space: Optional[gym.spaces.Space] = NotProvided,
         action_space: Optional[gym.spaces.Space] = NotProvided,
-        env_task_fn: Optional[
-            Callable[[ResultDict, EnvType, EnvContext], Any]
-        ] = NotProvided,
         render_env: Optional[bool] = NotProvided,
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
@@ -1643,7 +1635,7 @@ class AlgorithmConfig(_Config):
         is_atari: Optional[bool] = NotProvided,
         action_mask_key: Optional[str] = NotProvided,
         # Deprecated args.
-        auto_wrap_old_gym_envs=DEPRECATED_VALUE,
+        env_task_fn=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1659,10 +1651,6 @@ class AlgorithmConfig(_Config):
                 `worker_index`, `vector_index`, and `remote`).
             observation_space: The observation space for the Policies of this Algorithm.
             action_space: The action space for the Policies of this Algorithm.
-            env_task_fn: A callable taking the last train results, the base env and the
-                env context as args and returning a new task to set the env to.
-                The env must be a `TaskSettableEnv` sub-class for this to work.
-                See `examples/curriculum_learning.py` for an example.
             render_env: If True, try to render the environment on the local worker or on
                 worker 1 (if num_env_runners > 0). For vectorized envs, this usually
                 means that only the first sub-environment is rendered.
@@ -1698,9 +1686,9 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if auto_wrap_old_gym_envs != DEPRECATED_VALUE:
+        if env_task_fn != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.environment(auto_wrap_old_gym_envs=..)",
+                old="AlgorithmConfig.environment(env_task_fn=..)",
                 error=True,
             )
         if env is not NotProvided:
@@ -1711,8 +1699,6 @@ class AlgorithmConfig(_Config):
             self.observation_space = observation_space
         if action_space is not NotProvided:
             self.action_space = action_space
-        if env_task_fn is not NotProvided:
-            self.env_task_fn = env_task_fn
         if render_env is not NotProvided:
             self.render_env = render_env
         if clip_rewards is not NotProvided:
@@ -3529,7 +3515,8 @@ class AlgorithmConfig(_Config):
         if _enable_new_api_stack != DEPRECATED_VALUE:
             deprecation_warning(
                 old="config.experimental(_enable_new_api_stack=...)",
-                new="config.api_stack(enable_rl_module_and_learner=...)",
+                new="config.api_stack(enable_rl_module_and_learner=...,"
+                "enable_env_runner_and_connector_v2=...)",
                 error=True,
             )
 
@@ -4494,6 +4481,16 @@ class AlgorithmConfig(_Config):
             # `enable_rl_module_and_learner=True`.
             return
 
+        # Warn about new API stack on by default.
+        logger.warning(
+            f"You are running {self.algo_class.__name__} on the new API stack! "
+            "This is the new default behavior for this algorithm. If you don't "
+            "want to use the new API stack, set `config.api_stack("
+            "enable_rl_module_and_learner=False,"
+            "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
+            "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+        )
+
         # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
         # `enable_env_runner_and_connector_v2` must be True or both False.
         if not self.enable_env_runner_and_connector_v2:
@@ -4590,16 +4587,6 @@ class AlgorithmConfig(_Config):
     # TODO (sven): Once everything is on the new API stack, we won't need this method
     #  anymore.
     def _validate_to_be_deprecated_settings(self):
-        # Env task fn is about to be deprecated.
-        if self.enable_rl_module_and_learner and self.env_task_fn is not None:
-            deprecation_warning(
-                old="AlgorithmConfig.env_task_fn",
-                help="The `env_task_fn` API is not supported on the new API stack! "
-                "Curriculum learning should instead be implemented solely via "
-                "custom callbacks. Check out our curriculum learning example "
-                "script for more information: "
-                "https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py",  # noqa
-            )
         # `render_env` is deprecated on new API stack.
         if self.enable_env_runner_and_connector_v2 and self.render_env is not False:
             deprecation_warning(
@@ -5229,25 +5216,25 @@ class AlgorithmConfig(_Config):
 
         return policies, is_policy_to_train
 
-    @Deprecated(new="AlgorithmConfig.get_multi_rl_module_spec()", error=False)
+    @Deprecated(new="AlgorithmConfig.get_multi_rl_module_spec()", error=True)
     def get_marl_module_spec(self, *args, **kwargs):
-        return self.get_multi_rl_module_spec(*args, **kwargs)
+        pass
 
-    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=False)
+    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=True)
     def rollouts(self, *args, **kwargs):
-        return self.env_runners(*args, **kwargs)
+        pass
 
-    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=False)
+    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=True)
     def exploration(self, *args, **kwargs):
-        return self.env_runners(*args, **kwargs)
+        pass
 
     @property
     @Deprecated(
         new="AlgorithmConfig.fault_tolerance(restart_failed_env_runners=..)",
-        error=False,
+        error=True,
     )
     def recreate_failed_env_runners(self):
-        return self.restart_failed_env_runners
+        pass
 
     @recreate_failed_env_runners.setter
     def recreate_failed_env_runners(self, value):
@@ -5258,9 +5245,9 @@ class AlgorithmConfig(_Config):
         )
 
     @property
-    @Deprecated(new="AlgorithmConfig._enable_new_api_stack", error=False)
+    @Deprecated(new="AlgorithmConfig._enable_new_api_stack", error=True)
     def _enable_new_api_stack(self):
-        return self.enable_rl_module_and_learner
+        pass
 
     @_enable_new_api_stack.setter
     def _enable_new_api_stack(self, value):
@@ -5276,262 +5263,261 @@ class AlgorithmConfig(_Config):
         pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_env_runners", error=False)
+    @Deprecated(new="AlgorithmConfig.num_env_runners", error=True)
     def num_rollout_workers(self):
-        return self.num_env_runners
+        pass
 
     @num_rollout_workers.setter
     def num_rollout_workers(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_rollout_workers",
             new="AlgorithmConfig.num_env_runners",
-            error=False,
+            error=True,
         )
-        self.num_env_runners = value
 
     @property
-    @Deprecated(new="AlgorithmConfig.evaluation_num_workers", error=False)
+    @Deprecated(new="AlgorithmConfig.evaluation_num_workers", error=True)
     def evaluation_num_workers(self):
-        return self.evaluation_num_env_runners
+        pass
 
     @evaluation_num_workers.setter
     def evaluation_num_workers(self, value):
         deprecation_warning(
             old="AlgorithmConfig.evaluation_num_workers",
             new="AlgorithmConfig.evaluation_num_env_runners",
-            error=False,
+            error=True,
         )
-        self.evaluation_num_env_runners = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_envs_per_env_runner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_envs_per_env_runner", error=True)
     def num_envs_per_worker(self):
-        return self.num_envs_per_env_runner
+        pass
 
     @num_envs_per_worker.setter
     def num_envs_per_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_envs_per_worker",
             new="AlgorithmConfig.num_envs_per_env_runner",
-            error=False,
+            error=True,
         )
-        self.num_envs_per_env_runner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.ignore_env_runner_failures", error=False)
+    @Deprecated(new="AlgorithmConfig.ignore_env_runner_failures", error=True)
     def ignore_worker_failures(self):
-        return self.ignore_env_runner_failures
+        pass
 
     @ignore_worker_failures.setter
     def ignore_worker_failures(self, value):
         deprecation_warning(
             old="AlgorithmConfig.ignore_worker_failures",
             new="AlgorithmConfig.ignore_env_runner_failures",
-            error=False,
+            error=True,
         )
-        self.ignore_env_runner_failures = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.restart_failed_env_runners", error=False)
+    @Deprecated(new="AlgorithmConfig.restart_failed_env_runners", error=True)
     def recreate_failed_workers(self):
-        return self.restart_failed_env_runners
+        pass
 
     @recreate_failed_workers.setter
     def recreate_failed_workers(self, value):
         deprecation_warning(
             old="AlgorithmConfig.recreate_failed_workers",
             new="AlgorithmConfig.restart_failed_env_runners",
-            error=False,
+            error=True,
         )
-        self.restart_failed_env_runners = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.max_num_env_runner_restarts", error=False)
+    @Deprecated(new="AlgorithmConfig.max_num_env_runner_restarts", error=True)
     def max_num_worker_restarts(self):
-        return self.max_num_env_runner_restarts
+        pass
 
     @max_num_worker_restarts.setter
     def max_num_worker_restarts(self, value):
         deprecation_warning(
             old="AlgorithmConfig.max_num_worker_restarts",
             new="AlgorithmConfig.max_num_env_runner_restarts",
-            error=False,
+            error=True,
         )
-        self.max_num_env_runner_restarts = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.delay_between_env_runner_restarts_s", error=False)
+    @Deprecated(new="AlgorithmConfig.delay_between_env_runner_restarts_s", error=True)
     def delay_between_worker_restarts_s(self):
-        return self.delay_between_env_runner_restarts_s
+        pass
 
     @delay_between_worker_restarts_s.setter
     def delay_between_worker_restarts_s(self, value):
         deprecation_warning(
             old="AlgorithmConfig.delay_between_worker_restarts_s",
             new="AlgorithmConfig.delay_between_env_runner_restarts_s",
-            error=False,
+            error=True,
         )
-        self.delay_between_env_runner_restarts_s = value
+        pass
 
     @property
     @Deprecated(
-        new="AlgorithmConfig.num_consecutive_env_runner_failures_tolerance", error=False
+        new="AlgorithmConfig.num_consecutive_env_runner_failures_tolerance", error=True
     )
     def num_consecutive_worker_failures_tolerance(self):
-        return self.num_consecutive_env_runner_failures_tolerance
+        pass
 
     @num_consecutive_worker_failures_tolerance.setter
     def num_consecutive_worker_failures_tolerance(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_consecutive_worker_failures_tolerance",
             new="AlgorithmConfig.num_consecutive_env_runner_failures_tolerance",
-            error=False,
+            error=True,
         )
-        self.num_consecutive_env_runner_failures_tolerance = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.env_runner_health_probe_timeout_s", error=False)
+    @Deprecated(new="AlgorithmConfig.env_runner_health_probe_timeout_s", error=True)
     def worker_health_probe_timeout_s(self):
-        return self.env_runner_health_probe_timeout_s
+        pass
 
     @worker_health_probe_timeout_s.setter
     def worker_health_probe_timeout_s(self, value):
         deprecation_warning(
             old="AlgorithmConfig.worker_health_probe_timeout_s",
             new="AlgorithmConfig.env_runner_health_probe_timeout_s",
-            error=False,
+            error=True,
         )
-        self.env_runner_health_probe_timeout_s = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.env_runner_restore_timeout_s", error=False)
+    @Deprecated(new="AlgorithmConfig.env_runner_restore_timeout_s", error=True)
     def worker_restore_timeout_s(self):
-        return self.env_runner_restore_timeout_s
+        pass
 
     @worker_restore_timeout_s.setter
     def worker_restore_timeout_s(self, value):
         deprecation_warning(
             old="AlgorithmConfig.worker_restore_timeout_s",
             new="AlgorithmConfig.env_runner_restore_timeout_s",
-            error=False,
+            error=True,
         )
-        self.env_runner_restore_timeout_s = value
+        pass
 
     @property
     @Deprecated(
         new="AlgorithmConfig.validate_env_runners_after_construction",
-        error=False,
+        error=True,
     )
     def validate_workers_after_construction(self):
-        return self.validate_env_runners_after_construction
+        pass
 
     @validate_workers_after_construction.setter
     def validate_workers_after_construction(self, value):
         deprecation_warning(
             old="AlgorithmConfig.validate_workers_after_construction",
             new="AlgorithmConfig.validate_env_runners_after_construction",
-            error=False,
+            error=True,
         )
-        self.validate_env_runners_after_construction = value
+        pass
 
     # Cleanups from `resources()`.
     @property
-    @Deprecated(new="AlgorithmConfig.num_cpus_per_env_runner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_cpus_per_env_runner", error=True)
     def num_cpus_per_worker(self):
-        return self.num_cpus_per_env_runner
+        pass
 
     @num_cpus_per_worker.setter
     def num_cpus_per_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_cpus_per_worker",
             new="AlgorithmConfig.num_cpus_per_env_runner",
-            error=False,
+            error=True,
         )
-        self.num_cpus_per_env_runner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_gpus_per_env_runner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_gpus_per_env_runner", error=True)
     def num_gpus_per_worker(self):
-        return self.num_gpus_per_env_runner
+        pass
 
     @num_gpus_per_worker.setter
     def num_gpus_per_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_gpus_per_worker",
             new="AlgorithmConfig.num_gpus_per_env_runner",
-            error=False,
+            error=True,
         )
-        self.num_gpus_per_env_runner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.custom_resources_per_env_runner", error=False)
+    @Deprecated(new="AlgorithmConfig.custom_resources_per_env_runner", error=True)
     def custom_resources_per_worker(self):
-        return self.custom_resources_per_env_runner
+        pass
 
     @custom_resources_per_worker.setter
     def custom_resources_per_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.custom_resources_per_worker",
             new="AlgorithmConfig.custom_resources_per_env_runner",
-            error=False,
+            error=True,
         )
-        self.custom_resources_per_env_runner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_learners", error=False)
+    @Deprecated(new="AlgorithmConfig.num_learners", error=True)
     def num_learner_workers(self):
-        return self.num_learners
+        pass
 
     @num_learner_workers.setter
     def num_learner_workers(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_learner_workers",
             new="AlgorithmConfig.num_learners",
-            error=False,
+            error=True,
         )
-        self.num_learners = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_cpus_per_learner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_cpus_per_learner", error=True)
     def num_cpus_per_learner_worker(self):
-        return self.num_cpus_per_learner
+        pass
 
     @num_cpus_per_learner_worker.setter
     def num_cpus_per_learner_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_cpus_per_learner_worker",
             new="AlgorithmConfig.num_cpus_per_learner",
-            error=False,
+            error=True,
         )
-        self.num_cpus_per_learner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_gpus_per_learner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_gpus_per_learner", error=True)
     def num_gpus_per_learner_worker(self):
-        return self.num_gpus_per_learner
+        pass
 
     @num_gpus_per_learner_worker.setter
     def num_gpus_per_learner_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_gpus_per_learner_worker",
             new="AlgorithmConfig.num_gpus_per_learner",
-            error=False,
+            error=True,
         )
-        self.num_gpus_per_learner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_cpus_for_local_worker", error=False)
+    @Deprecated(new="AlgorithmConfig.num_cpus_for_local_worker", error=True)
     def num_cpus_for_local_worker(self):
-        return self.num_cpus_for_main_process
+        pass
 
     @num_cpus_for_local_worker.setter
     def num_cpus_for_local_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_cpus_for_local_worker",
             new="AlgorithmConfig.num_cpus_for_main_process",
-            error=False,
+            error=True,
         )
-        self.num_cpus_for_main_process = value
+        pass
 
 
 class TorchCompileWhatToCompile(str, Enum):

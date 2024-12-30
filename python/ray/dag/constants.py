@@ -13,12 +13,14 @@ COLLECTIVE_OPERATION_KEY = "collective_operation"
 DAGNODE_TYPE_KEY = "__dag_node_type__"
 
 # Feature flag to turn off the deadlock detection.
-RAY_ADAG_ENABLE_DETECT_DEADLOCK = (
-    os.environ.get("RAY_ADAG_ENABLE_DETECT_DEADLOCK", "1") == "1"
+RAY_CGRAPH_ENABLE_DETECT_DEADLOCK = (
+    os.environ.get("RAY_CGRAPH_ENABLE_DETECT_DEADLOCK", "1") == "1"
 )
 
 # Feature flag to turn on profiling.
-RAY_ADAG_ENABLE_PROFILING = os.environ.get("RAY_ADAG_ENABLE_PROFILING", "0") == "1"
+RAY_CGRAPH_ENABLE_PROFILING = os.environ.get("RAY_CGRAPH_ENABLE_PROFILING", "0") == "1"
 
 # Feature flag to turn on visualization of the execution schedule.
-RAY_ADAG_VISUALIZE_SCHEDULE = os.environ.get("RAY_ADAG_VISUALIZE_SCHEDULE", "0") == "1"
+RAY_CGRAPH_VISUALIZE_SCHEDULE = (
+    os.environ.get("RAY_CGRAPH_VISUALIZE_SCHEDULE", "0") == "1"
+)
