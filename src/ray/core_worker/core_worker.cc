@@ -1676,12 +1676,6 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status CoreWorker::ExperimentalChannelReadRelease(
-    const std::vector<ObjectID> &object_ids) {
-  RAY_CHECK_EQ(object_ids.size(), 1UL);
-  return experimental_mutable_object_provider_->ReadRelease(object_ids[0]);
-}
-
 Status CoreWorker::ExperimentalRegisterMutableObjectWriter(
     const ObjectID &writer_object_id, const std::vector<NodeID> &remote_reader_node_ids) {
   experimental_mutable_object_provider_->RegisterWriterChannel(writer_object_id,

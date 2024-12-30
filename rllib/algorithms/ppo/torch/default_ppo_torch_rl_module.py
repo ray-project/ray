@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.ppo.default_ppo_rl_module import DefaultPPORLModule
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
@@ -16,6 +17,12 @@ torch, nn = try_import_torch()
 
 @DeveloperAPI
 class DefaultPPOTorchRLModule(TorchRLModule, DefaultPPORLModule):
+    def __init__(self, *args, **kwargs):
+        catalog_class = kwargs.pop("catalog_class", None)
+        if catalog_class is None:
+            catalog_class = PPOCatalog
+        super().__init__(*args, **kwargs, catalog_class=catalog_class)
+
     @override(RLModule)
     def _forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Default forward pass (used for inference and exploration)."""
