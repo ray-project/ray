@@ -289,6 +289,7 @@ def test_controller_recover_target_capacity(
         "upscaling_factor": 4,
         "downscaling_factor": 4,
         "metrics_interval_s": 1,
+        "look_back_period_s": 5,
     },
     max_ongoing_requests=2,
     graceful_shutdown_timeout_s=0,
