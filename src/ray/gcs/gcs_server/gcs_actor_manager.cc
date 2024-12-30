@@ -762,7 +762,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
       std::stringstream stream;
       stream << "Actor with name '" << actor->GetName()
              << "' already exists in the namespace " << actor->GetRayNamespace();
-      return Status::NotFound(stream.str());
+      return Status::AlreadyExists(stream.str());
     }
   }
 
