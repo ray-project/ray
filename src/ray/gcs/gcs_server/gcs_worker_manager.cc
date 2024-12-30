@@ -138,7 +138,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
         // If limit enforced, replace one.
         if (max_num_dead_workers_ > 0 && sorted_dead_worker_deque_.size() > max_num_dead_workers_) {
           RAY_LOG_EVERY_MS(WARNING, 10000)
-              << "Max number of dead workers event (" << max_num_worker_events_
+              << "Max number of dead workers event (" << max_num_dead_workers_
               << ") allowed is reached. Old worker events will be overwritten. Set "
                  "`RAY_maximum_gcs_dead_worker_cached_count` to a higher value to store more.";
           const auto &clean_worker_id = sorted_dead_worker_deque_.front().first;
