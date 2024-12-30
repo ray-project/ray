@@ -51,7 +51,7 @@ class EntityState {
 
   /// Publishes the message to subscribers of the entity.
   /// Returns true if there are subscribers, returns false otherwise.
-  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message, uint64_t msg_size);
+  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message, size_t msg_size);
 
   /// Manages the set of subscribers of this entity.
   bool AddSubscriber(SubscriberState *subscriber);
@@ -73,17 +73,17 @@ class EntityState {
   // the message in buffer.
   std::queue<std::weak_ptr<rpc::PubMessage>> pending_messages_;
   // Size of each inflight message.
-  std::queue<int64_t> message_sizes_;
+  std::queue<size_t> message_sizes_;
   // Protobuf messages fail to serialize if 2GB or larger. Cap published
   // message batches to this size to ensure that we can publish each message
   // batch. Individual messages larger than this limit will also be dropped.
   // TODO(swang): Pubsub clients should also ensure that they don't try to
   // publish messages larger than this.
-  const int64_t max_message_size_bytes_;
+  const size_t max_message_size_bytes_;
   // Set to -1 to disable buffering.
-  const int64_t max_buffered_bytes_;
+  const size_t max_buffered_bytes_;
   // Total size of inflight messages.
-  int64_t total_size_ = 0;
+  size_t total_size_ = 0;
 };
 
 /// Per-channel two-way index for subscribers and the keys they subscribe to.

@@ -22,7 +22,7 @@ namespace pubsub {
 
 namespace pub_internal {
 
-bool EntityState::Publish(std::shared_ptr<rpc::PubMessage> msg, uint64_t msg_size) {
+bool EntityState::Publish(std::shared_ptr<rpc::PubMessage> msg, size_t msg_size) {
   if (subscribers_.empty()) {
     return false;
   }
@@ -117,7 +117,7 @@ int64_t SubscriptionIndex::GetNumBufferedBytes() const {
 }
 
 bool SubscriptionIndex::Publish(std::shared_ptr<rpc::PubMessage> pub_message,
-                                uint64_t msg_size) {
+                                size_t msg_size) {
   const bool publish_to_all = subscribers_to_all_->Publish(pub_message, msg_size);
   bool publish_to_entity = false;
   auto it = entities_.find(pub_message->key_id());
@@ -433,7 +433,7 @@ void Publisher::Publish(rpc::PubMessage pub_message) {
   // before there's any subscriber for the object.
   pub_message.set_sequence_id(++next_sequence_id_);
 
-  const uint64_t msg_size = pub_message.ByteSizeLong();
+  const size_t msg_size = pub_message.ByteSizeLong();
   cum_pub_message_cnt_[channel_type]++;
   cum_pub_message_bytes_cnt_[channel_type] += msg_size;
 
