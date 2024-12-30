@@ -61,7 +61,7 @@ class EntityState {
   /// Gets the current set of subscribers, keyed by subscriber IDs.
   const absl::flat_hash_map<SubscriberID, SubscriberState *> &Subscribers() const;
 
-  int64_t GetNumBufferedBytes() const { return total_size_; }
+  size_t GetNumBufferedBytes() const { return total_size_; }
 
  protected:
   // Subscribers of this entity.
