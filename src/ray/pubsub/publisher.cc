@@ -47,7 +47,8 @@ bool EntityState::Publish(std::shared_ptr<rpc::PubMessage> msg, size_t msg_size)
     if (front_msg == nullptr) {
       // The message has no other reference.
       // This means that it has been published to all subscribers.
-    } else if (max_buffered_bytes_ > 0 && total_size_ + msg_size > max_buffered_bytes_) {
+    } else if (max_buffered_bytes_ > 0 &&
+               total_size_ + msg_size > static_cast<size_t>(max_buffered_bytes_)) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
           << "Pub/sub message is dropped to stay under the maximum configured buffer "
              "size="
