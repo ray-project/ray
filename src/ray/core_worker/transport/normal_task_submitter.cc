@@ -76,8 +76,8 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
             break;
           }
         }
-        RequestNewWorkerIfNeeded(scheduling_key);
       }
+      RequestNewWorkerIfNeeded(scheduling_key);
     }
   });
   return Status::OK();
