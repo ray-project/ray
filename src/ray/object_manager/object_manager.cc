@@ -131,7 +131,7 @@ ObjectManager::ObjectManager(
     buffer_pool_.AbortCreate(object_id);
   };
   auto get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
-  const int64_t available_memory = std::max<long>(config.object_store_memory, 0);
+  const int64_t available_memory = std::max<int64_t>(config.object_store_memory, 0);
   pull_manager_ = std::make_unique<PullManager>(self_node_id_,
                                                 std::move(object_is_local),
                                                 std::move(send_pull_request),
