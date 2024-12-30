@@ -8,7 +8,8 @@ xgboost==2.1.0
 lightgbm==3.3.5
 
 # Huggingface
-transformers==4.39.3
+transformers==4.36.2
+accelerate==0.28.0
 accelerate==1.2.1
 
 # DL libraries
