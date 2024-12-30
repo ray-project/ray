@@ -691,8 +691,6 @@ h5py==3.10.0
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
-higher==0.2.1
-    # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
 hjson==3.1.0
     # via deepspeed
 holidays==0.39
@@ -2187,7 +2185,6 @@ torch==2.3.0
     #   botorch
     #   deepspeed
     #   fairscale
-    #   higher
     #   linear-operator
     #   monai
     #   mosaicml
