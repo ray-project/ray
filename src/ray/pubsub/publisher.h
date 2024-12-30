@@ -45,6 +45,7 @@ class SubscriberState;
 /// State for an entity / topic in a pub/sub channel.
 class EntityState {
  public:
+  /// \param max_buffered_bytes set to -1 to disable buffering.
   EntityState(int64_t max_message_size_bytes, int64_t max_buffered_bytes)
       : max_message_size_bytes_(max_message_size_bytes),
         max_buffered_bytes_(max_buffered_bytes) {}
@@ -81,7 +82,7 @@ class EntityState {
   // publish messages larger than this.
   const size_t max_message_size_bytes_;
   // Set to -1 to disable buffering.
-  const size_t max_buffered_bytes_;
+  const int64_t max_buffered_bytes_;
   // Total size of inflight messages.
   size_t total_size_ = 0;
 };
