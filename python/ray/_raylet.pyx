@@ -3437,7 +3437,7 @@ cdef class CoreWorker:
                          .WaitAndGetExperimentalMutableObjects(
                             c_object_ids, timeout_ms, num_returns, results))
 
-        # Users can determine whether `timeout` was raised by checking the value
+        # The caller can determine whether `timeout` was raised by checking the value
         # of `results`. At the same time, users still want to get the values of some
         # objects even if some objects are not ready. Hence, we don't raise
         # the exception if `suppress_timeout_errors` is set to True and instead return

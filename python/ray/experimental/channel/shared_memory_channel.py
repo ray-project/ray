@@ -8,7 +8,7 @@ import ray
 import ray.exceptions
 from ray import ObjectRef
 from ray._raylet import SerializedObject
-from ray.experimental.channel import utils
+from ray.experimental.channel import ChannelContext, utils
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.utils import get_self_actor
@@ -476,8 +476,6 @@ class Channel(ChannelInterface):
         self.ensure_registered_as_reader()
 
         start_time = time.monotonic()
-
-        from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
         ret = ctx.get_data(self._local_reader_ref)
