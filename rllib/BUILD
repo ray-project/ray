@@ -1052,44 +1052,6 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# Memory leak tests
-#
-# Tag: memory_leak_tests
-# --------------------------------------------------------------------
-
-# @OldAPIStack
-py_test(
-    name = "test_memory_leak_appo_old_api_stack",
-    tags = ["team:rllib", "memory_leak_tests"],
-    main = "utils/tests/run_memory_leak_tests.py",
-    size = "large",
-    srcs = ["utils/tests/run_memory_leak_tests.py"],
-    data = ["tuned_examples/appo/memory-leak-test-appo.yaml"],
-    args = ["--dir=tuned_examples/appo"]
-)
-# @OldAPIStack
-py_test(
-    name = "test_memory_leak_impala_old_api_stack",
-    tags = ["team:rllib", "memory_leak_tests"],
-    main = "utils/tests/run_memory_leak_tests.py",
-    size = "large",
-    srcs = ["utils/tests/run_memory_leak_tests.py"],
-    data = ["tuned_examples/impala/memory-leak-test-impala.yaml"],
-    args = ["--dir=tuned_examples/impala"]
-)
-# @OldAPIStack
-py_test(
-    name = "test_memory_leak_ppo_old_api_stack",
-    tags = ["team:rllib", "memory_leak_tests"],
-    main = "utils/tests/run_memory_leak_tests.py",
-    size = "large",
-    srcs = ["utils/tests/run_memory_leak_tests.py"],
-    data = ["tuned_examples/ppo/memory-leak-test-ppo.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-
-
-# --------------------------------------------------------------------
 # Connector(V1) tests
 # rllib/connector/
 #

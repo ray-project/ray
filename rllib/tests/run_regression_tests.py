@@ -3,18 +3,19 @@
 # @OldAPIStack
 
 import argparse
+import importlib
+import json
 import os
 from pathlib import Path
 import sys
 import re
+import uuid
 import yaml
 
 import ray
 from ray import air
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib import _register_all
-from ray.rllib.common import SupportedFileType
-from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -104,6 +105,61 @@ parser.add_argument(
 # Obsoleted arg, use --dir instead.
 parser.add_argument("--yaml-dir", type=str, default="")
 
+
+def _load_experiments_from_file(
+    config_file: str,
+    file_type: str,
+    stop=None,
+    checkpoint_config=None,
+) -> dict:
+    # Yaml file.
+    if file_type == "yaml":
+        with open(config_file) as f:
+            experiments = yaml.safe_load(f)
+            if stop is not None and stop != "{}":
+                raise ValueError("`stop` criteria only supported for python files.")
+        # Make sure yaml experiments are always old API stack.
+        for experiment in experiments.values():
+            experiment["config"]["enable_rl_module_and_learner"] = False
+            experiment["config"]["enable_env_runner_and_connector_v2"] = False
+    # Python file case (ensured by file type enum)
+    else:
+        module_name = os.path.basename(config_file).replace(".py", "")
+        spec = importlib.util.spec_from_file_location(module_name, config_file)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+
+        if not hasattr(module, "config"):
+            raise ValueError(
+                "Your Python file must contain a 'config' variable "
+                "that is an AlgorithmConfig object."
+            )
+        algo_config = getattr(module, "config")
+        if stop is None:
+            stop = getattr(module, "stop", {})
+        else:
+            stop = json.loads(stop)
+
+        # Note: we do this gymnastics to support the old format that
+        # "_run_rllib_experiments" expects. Ideally, we'd just build the config and
+        # run the algo.
+        config = algo_config.to_dict()
+        experiments = {
+            f"default_{uuid.uuid4().hex}": {
+                "run": algo_config.algo_class,
+                "env": config.get("env"),
+                "config": config,
+                "stop": stop,
+            }
+        }
+
+    for key, val in experiments.items():
+        experiments[key]["checkpoint_config"] = checkpoint_config or {}
+
+    return experiments
+
+
 if __name__ == "__main__":
     args = parser.parse_args()
 
@@ -137,14 +193,14 @@ if __name__ == "__main__":
     for file in files:
         config_is_python = False
         # For python files, need to make sure, we only deliver the module name into the
-        # `load_experiments_from_file` function (everything from "/ray/rllib" on).
+        # `_load_experiments_from_file` function (everything from "/ray/rllib" on).
         if file.endswith(".py"):
             if file.endswith("__init__.py"):  # weird CI learning test (BAZEL) case
                 continue
-            experiments = load_experiments_from_file(file, SupportedFileType.python)
+            experiments = _load_experiments_from_file(file, "py")
             config_is_python = True
         else:
-            experiments = load_experiments_from_file(file, SupportedFileType.yaml)
+            experiments = _load_experiments_from_file(file, "yaml")
 
         assert (
             len(experiments) == 1
