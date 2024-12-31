@@ -89,6 +89,10 @@ config object through calling the
     # Build the algorithm instance.
     impala = config.build_algo()
 
+.. testcode::
+    :hide:
+
+    impala.stop()
 
 The config object stored inside any built :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance
 is a copy of your original config. This allows you to further alter your original config object and
@@ -101,6 +105,10 @@ build another algorithm instance without affecting the previously built one:
     # ... and build a new IMPALA from it.
     another_impala = config.build_algo()
 
+.. testcode::
+    :hide:
+
+    another_impala.stop()
 
 If you are working with `Ray Tune <https://docs.ray.io/en/latest/tune/index.html>`__,
 pass your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
