@@ -1,7 +1,6 @@
 import copy
 import dataclasses
 from enum import Enum
-import inspect
 import logging
 import math
 import sys
@@ -551,6 +550,7 @@ class AlgorithmConfig(_Config):
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
 
         # `self.experimental()`
+        self._use_msgpack_checkpoints = False
         self._torch_grad_scaler_class = None
         self._torch_lr_scheduler_classes = None
         self._tf_policy_handles_more_than_one_loss = False
@@ -3459,6 +3459,7 @@ class AlgorithmConfig(_Config):
     def experimental(
         self,
         *,
+        _use_msgpack_checkpoints: Optional[bool] = NotProvided,
         _torch_grad_scaler_class: Optional[Type] = NotProvided,
         _torch_lr_scheduler_classes: Optional[
             Union[List[Type], Dict[ModuleID, List[Type]]]
@@ -3467,12 +3468,12 @@ class AlgorithmConfig(_Config):
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
-        # Deprecated args.
-        _enable_new_api_stack=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
         Args:
+            _use_msgpack_checkpoints: Create state files in all checkpoints through
+                msgpack rather than pickle.
             _torch_grad_scaler_class: Class to use for torch loss scaling (and gradient
                 unscaling). The class must implement the following methods to be
                 compatible with a `TorchLearner`. These methods/APIs match exactly those
@@ -3512,14 +3513,8 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if _enable_new_api_stack != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config.experimental(_enable_new_api_stack=...)",
-                new="config.api_stack(enable_rl_module_and_learner=...,"
-                "enable_env_runner_and_connector_v2=...)",
-                error=True,
-            )
-
+        if _use_msgpack_checkpoints is not NotProvided:
+            self._use_msgpack_checkpoints = _use_msgpack_checkpoints
         if _tf_policy_handles_more_than_one_loss is not NotProvided:
             self._tf_policy_handles_more_than_one_loss = (
                 _tf_policy_handles_more_than_one_loss
@@ -4527,28 +4522,6 @@ class AlgorithmConfig(_Config):
             setting_name="lr",
             description="learning rate",
         )
-
-        # Check and error if `on_episode_created` callback has been overridden on the
-        # new API stack AND this is a single-agent setup (multi-agent does not use
-        # gym.vector.Env yet and therefore the reset call is still made manually,
-        # allowing for the callback to be fired).
-        if not self.is_multi_agent() and self.callbacks_class is not DefaultCallbacks:
-            default_src = inspect.getsource(DefaultCallbacks.on_episode_created)
-            try:
-                user_src = inspect.getsource(self.callbacks_class.on_episode_created)
-            # In case user has setup a `partial` instead of an actual Callbacks class.
-            except AttributeError:
-                user_src = default_src
-            if default_src != user_src:
-                raise ValueError(
-                    "When using the new API stack in single-agent and with EnvRunners, "
-                    "you cannot override the `DefaultCallbacks.on_episode_created()` "
-                    "method anymore! This particular callback is no longer supported "
-                    "b/c we are using `gym.vector.Env`, which automatically resets "
-                    "individual sub-environments when they are terminated. Instead, "
-                    "override the `on_episode_start` method, which gets fired right "
-                    "after the `env.reset()` call."
-                )
 
         # This is not compatible with RLModules, which all have a method
         # `forward_exploration` to specify custom exploration behavior.
