@@ -235,6 +235,14 @@ if setup_spec.type == SetupType.RAY:
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
         ],
+        "azure": [
+            "azure-cli-core",
+            "azure-identity",
+            "azure-mgmt-compute",
+            "azure-mgmt-network",
+            "azure-mgmt-resource",
+            "msrestazure",
+        ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
             # Tracking issues: https://github.com/grpc/grpc/issues/33714
@@ -338,9 +346,12 @@ if setup_spec.type == SetupType.RAY:
     # that most people do not need.
     #
     # Instead, when cpp is supported, we add a "all-cpp".
+    exclude_from_all = {"cpp", "azure"}
     setup_spec.extras["all"] = list(
         set(
-            chain.from_iterable([v for k, v in setup_spec.extras.items() if k != "cpp"])
+            chain.from_iterable(
+                [v for k, v in setup_spec.extras.items() if k not in exclude_from_all]
+            )
         )
     )
     if RAY_EXTRA_CPP:
