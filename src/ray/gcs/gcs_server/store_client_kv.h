@@ -27,7 +27,8 @@ namespace gcs {
 /// of public APIs.
 class StoreClientInternalKV : public InternalKVInterface {
  public:
-  explicit StoreClientInternalKV(std::unique_ptr<StoreClient> store_client, instrumented_io_context& io_context);
+  explicit StoreClientInternalKV(std::unique_ptr<StoreClient> store_client,
+                                 instrumented_io_context &io_context);
 
   void Get(const std::string &ns,
            const std::string &key,
@@ -60,7 +61,7 @@ class StoreClientInternalKV : public InternalKVInterface {
  private:
   std::unique_ptr<StoreClient> delegate_;
   const std::string table_name_;
-  instrumented_io_context& io_context_;
+  instrumented_io_context &io_context_;
 };
 }  // namespace gcs
 }  // namespace ray

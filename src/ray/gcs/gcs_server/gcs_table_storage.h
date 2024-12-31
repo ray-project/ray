@@ -89,6 +89,7 @@ class GcsTable {
  protected:
   std::string table_name_;
   std::shared_ptr<StoreClient> store_client_;
+  // All callbacks will be run in this io_context.
   instrumented_io_context &io_context_;
 };
 

@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2024 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ namespace internal {
 template <typename T>
 struct function_traits_helper : public boost::function_traits<T> {
   using type = T;
-  using std_function_type = std::function<T>;
 };
 
 }  // namespace internal
@@ -35,6 +34,8 @@ struct function_traits_helper : public boost::function_traits<T> {
 // - std::function
 // - member function pointers
 // - lambdas and callable objects, or anything with an operator()
+//
+// For usage, see function_trait_test.cc
 template <typename T, typename = void>
 struct function_traits;
 
@@ -44,11 +45,6 @@ struct function_traits<R (*)(Args...)> : internal::function_traits_helper<R(Args
 
 template <typename R, typename... Args>
 struct function_traits<R(Args...)> : internal::function_traits_helper<R(Args...)> {};
-
-// Specialization for std::function
-template <typename R, typename... Args>
-struct function_traits<std::function<R(Args...)>>
-    : internal::function_traits_helper<R(Args...)> {};
 
 // Specialization for member function pointers
 template <typename C, typename R, typename... Args>
@@ -60,9 +56,20 @@ template <typename C, typename R, typename... Args>
 struct function_traits<R (C::*)(Args...) const>
     : internal::function_traits_helper<R(Args...)> {};
 
-// Specialization for callable objects (e.g., lambdas and functors)
+template <typename C, typename R, typename... Args>
+struct function_traits<R (C::*)(Args...) &&>
+    : internal::function_traits_helper<R(Args...)> {};
+
+// Specialization for callable objects (e.g., std::function, lambdas and functors)
 template <typename T>
 struct function_traits<T, decltype(void(&T::operator()))>
     : function_traits<decltype(&T::operator())> {};
+
+// std::function<FuncType>&, && -> FuncType
+template <typename T>
+struct function_traits<T &> : function_traits<T> {};
+
+template <typename T>
+struct function_traits<T &&> : function_traits<T> {};
 
 }  // namespace ray

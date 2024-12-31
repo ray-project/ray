@@ -63,7 +63,7 @@ Status InMemoryStoreClient::AsyncGetAll(
     absl::ReaderMutexLock lock(&(table->mutex_));
     result = table->records_;
   }
-   std::move(callback).Post("GcsInMemoryStore.GetAll", std::move(result));
+  std::move(callback).Post("GcsInMemoryStore.GetAll", std::move(result));
   return Status::OK();
 }
 
@@ -83,7 +83,7 @@ Status InMemoryStoreClient::AsyncMultiGet(
       result.emplace(key, it->second);
     }
   }
-    std::move(callback).Post("GcsInMemoryStore.GetAll", std::move(result));
+  std::move(callback).Post("GcsInMemoryStore.GetAll", std::move(result));
   return Status::OK();
 }
 
@@ -162,7 +162,7 @@ Status InMemoryStoreClient::AsyncExists(const std::string &table_name,
     absl::ReaderMutexLock lock(&(table->mutex_));
     result = table->records_.contains(key);
   }
-    std::move(callback).Post("GcsInMemoryStore.Exists", result);
+  std::move(callback).Post("GcsInMemoryStore.Exists", result);
   return Status::OK();
 }
 

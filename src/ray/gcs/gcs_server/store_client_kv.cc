@@ -65,7 +65,7 @@ void StoreClientInternalKV::Get(
       MakeKey(ns, key),
       {[callback = std::move(callback)](auto status, auto result) {
          RAY_CHECK(status.ok()) << "Fails to get key from storage " << status;
-        callback(result.has_value() ? std::optional<std::string>(result.value())
+         callback(result.has_value() ? std::optional<std::string>(result.value())
                                      : std::optional<std::string>());
        },
        io_context_}));
@@ -104,8 +104,11 @@ void StoreClientInternalKV::Put(const std::string &ns,
   if (!callback) {
     callback = [](auto) {};
   }
-  RAY_CHECK_OK(delegate_->AsyncPut(
-      table_name_, MakeKey(ns, key),std::move(value) , overwrite, {callback, io_context_}));
+  RAY_CHECK_OK(delegate_->AsyncPut(table_name_,
+                                   MakeKey(ns, key),
+                                   std::move(value),
+                                   overwrite,
+                                   {callback, io_context_}));
 }
 
 void StoreClientInternalKV::Del(const std::string &ns,
