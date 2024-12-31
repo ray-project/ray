@@ -1676,6 +1676,18 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
             # Fire the callback for re-created workers.
             make_callback(
+                "on_env_runners_recreated",
+                callbacks_objects=self.callbacks,
+                callbacks_functions=self.config.callbacks_on_env_runners_recreated,
+                kwargs=dict(
+                    algorithm=self,
+                    env_runner_group=workers,
+                    env_runner_indices=restored,
+                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                ),
+            )
+            # TODO (sven): Deprecate this call.
+            make_callback(
                 "on_workers_recreated",
                 callbacks_objects=self.callbacks,
                 callbacks_functions=self.config.callbacks_on_workers_recreated,

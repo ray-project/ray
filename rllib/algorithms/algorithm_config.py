@@ -69,6 +69,7 @@ from ray.rllib.utils.typing import (
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
+    ResultDict,
     RLModuleSpecType,
     SampleBatchType,
 )
@@ -402,7 +403,7 @@ class AlgorithmConfig(_Config):
         #  deprecated.
         self.callbacks_class = Callbacks
         self.callbacks_on_algorithm_init = None
-        self.callbacks_on_workers_recreated = None
+        self.callbacks_on_env_runners_recreated = None
         self.callbacks_on_checkpoint_loaded = None
         self.callbacks_on_environment_created = None
         self.callbacks_on_episode_created = None
@@ -903,6 +904,8 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
+        # Check callbacks settings.
+        self._validate_callbacks_settings()
         # Check framework specific settings.
         self._validate_framework_settings()
         # Check resources specific settings.
@@ -2367,27 +2370,124 @@ class AlgorithmConfig(_Config):
         self,
         callbacks_class: Optional[Type[Callbacks], List[Type[Callbacks]]] = NotProvided,
         *,
-        on_algorithm_init: Optional[Callable[[Algorithm], None]] = NotProvided,
+        on_algorithm_init: Optional[Callable] = NotProvided,
+        on_train_result: Optional[Callable] = NotProvided,
+        on_evaluate_start: Optional[Callable] = NotProvided,
+        on_evaluate_end: Optional[Callable] = NotProvided,
+        on_env_runners_recreated: Optional[Callable] = NotProvided,
+        on_checkpoint_loaded: Optional[Callable] = NotProvided,
+        on_environment_created: Optional[Callable] = NotProvided,
+        on_episode_created: Optional[Callable] = NotProvided,
+        on_episode_start: Optional[Callable] = NotProvided,
+        on_episode_step: Optional[Callable] = NotProvided,
+        on_episode_end: Optional[Callable] = NotProvided,
+        on_sample_end: Optional[Callable] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the callbacks configuration.
 
         Args:
             callbacks_class: Callbacks class, whose methods are called during
-                various phases of training and environment sample collection.
+                various phases of training and RL environment sample collection.
                 TODO (sven): Change the link to new rst callbacks page.
                 See the `Callbacks` class and
                 `examples/metrics/custom_metrics_and_callbacks.py` for more usage
                 information.
-            on_algorithm_init: A callable, taking the Algorithm and forward
-                compatibility kwargs, called after Algorithm initialization.
+            on_algorithm_init: A callable or a list of callables. If a list, RLlib calls
+                the items in the same sequence. `on_algorithm_init` methods overridden
+                in `callbacks_class` take precedence and are called first.
+                See
+                :py:meth:`~ray.rllib.callbacks.callbacks.Callbacks.on_algorithm_init`
+                for more information.
+            on_evaluate_start: A callable or a list of callables. If a list, RLlib calls
+                the items in the same sequence. `on_algorithm_init` methods overridden
+                in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.Callbacks.on_evaluate_start`  # noqa
+                for more information.
+            on_evaluate_end: A callable or a list of callables. If a list, RLlib calls
+                the items in the same sequence. `on_algorithm_init` methods overridden
+                in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.Callbacks.on_evaluate_end`
+                for more information.
+            on_env_runners_recreated: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.Callbacks.on_env_runners_recreated`  # noqa
+                for more information.
+            on_checkpoint_loaded: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.Callbacks.on_checkpoint_loaded`  # noqa
+                for more information.
+            on_environment_created: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.Callbacks.on_environment_created`  # noqa
+                for more information.
+                **kwargs)`.
+            on_episode_created: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.Callbacks.on_episode_created`  # noqa
+                for more information.
+            on_episode_start: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.Callbacks.on_episode_start`
+                for more information.
+            on_episode_step: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.Callbacks.on_episode_step`
+                for more information.
+            on_episode_end: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.Callbacks.on_episode_end`
+                for more information.
+            on_sample_end: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.Callbacks.on_sample_end`
+                for more information.
 
         Returns:
             This updated AlgorithmConfig object.
         """
         if callbacks_class is not NotProvided:
+            # Check, whether given `callbacks` is a callable.
+            # TODO (sven): Once the old API stack is deprecated, this can also be None
+            #  (which should then become the default value for this attribute).
+            if not callable(callbacks_class):
+                raise ValueError(
+                    "`config.callbacks_class` must be a callable method that "
+                    "returns a subclass of DefaultCallbacks, got "
+                    f"{callbacks_class}!"
+                )
             self.callbacks_class = callbacks_class
         if on_algorithm_init is not NotProvided:
             self.callbacks_on_algorithm_init = on_algorithm_init
+        if on_train_result is not NotProvided:
+            self.callbacks_on_train_result = on_train_result
+        if on_evaluate_start is not NotProvided:
+            self.callbacks_on_evaluate_start = on_evaluate_start
+        if on_evaluate_end is not NotProvided:
+            self.callbacks_on_evaluate_end = on_evaluate_end
+        if on_env_runners_recreated is not NotProvided:
+            self.callbacks_on_env_runners_recreated = on_env_runners_recreated
+        if on_checkpoint_loaded is not NotProvided:
+            self.callbacks_on_checkpoint_loaded = on_checkpoint_loaded
+        if on_environment_created is not NotProvided:
+            self.callbacks_on_environment_created = on_environment_created
+        if on_episode_created is not NotProvided:
+            self.callbacks_on_episode_created = on_episode_created
+        if on_episode_start is not NotProvided:
+            self.callbacks_on_episode_start = on_episode_start
+        if on_episode_step is not NotProvided:
+            self.callbacks_on_episode_step = on_episode_step
+        if on_episode_end is not NotProvided:
+            self.callbacks_on_episode_end = on_episode_end
+        if on_sample_end is not NotProvided:
+            self.callbacks_on_sample_end = on_sample_end
 
         return self
 
@@ -4272,6 +4372,34 @@ class AlgorithmConfig(_Config):
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
     # -----------------------------------------------------------
+    def _validate_callbacks_settings(self) -> None:
+        """Validates callbacks settings."""
+        # Old API stack:
+        # - self.callbacks_cls must be a subclass of Callbacks.
+        # - All self.callbacks_... attributes must be None.
+        if not self.enable_env_runner_and_connector_v2:
+            if (
+                self.callbacks_on_environment_created is not None
+                or self.callbacks_on_algorithm_init is not None
+                or self.callbacks_on_train_result is not None
+                or self.callbacks_on_evaluate_start is not None
+                or self.callbacks_on_evaluate_end is not None
+                or self.callbacks_on_sample_end is not None
+                or self.callbacks_on_environment_created is not None
+                or self.callbacks_on_episode_created is not None
+                or self.callbacks_on_episode_start is not None
+                or self.callbacks_on_episode_step is not None
+                or self.callbacks_on_episode_end is not None
+                or self.callbacks_on_checkpoint_loaded is not None
+                or self.callbacks_on_env_runners_recreated is not None
+            ):
+                raise ValueError(
+                    "Config settings `config.callbacks(on_....=lambda ..)` aren't "
+                    "supported on the old API stack! Switch to the new API stack "
+                    "through `config.api_stack(enable_env_runner_and_connector_v2=True,"
+                    " enable_rl_module_and_learner=True)`."
+                )
+
     def _validate_framework_settings(self) -> None:
         """Validates framework settings and checks whether framework is installed."""
         _tf1, _tf, _tfv = None, None, None

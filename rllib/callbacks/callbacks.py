@@ -64,33 +64,94 @@ class Callbacks(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
-    def on_workers_recreated(
+    def on_train_result(
         self,
         *,
         algorithm: "Algorithm",
-        worker_set: "EnvRunnerGroup",
-        worker_ids: List[int],
+        metrics_logger: Optional[MetricsLogger] = None,
+        result: dict,
+        **kwargs,
+    ) -> None:
+        """Called at the end of Algorithm.train().
+
+        Args:
+            algorithm: Current Algorithm instance.
+            metrics_logger: The MetricsLogger object inside the Algorithm. Can be
+                used to log custom metrics after traing results are available.
+            result: Dict of results returned from Algorithm.train() call.
+                You can mutate this object to add additional metrics.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_evaluate_start(
+        self,
+        *,
+        algorithm: "Algorithm",
+        metrics_logger: Optional[MetricsLogger] = None,
+        **kwargs,
+    ) -> None:
+        """Callback before evaluation starts.
+
+        This method gets called at the beginning of Algorithm.evaluate().
+
+        Args:
+            algorithm: Reference to the algorithm instance.
+            metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
+                used to log custom metrics before running the next round of evaluation.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_evaluate_end(
+        self,
+        *,
+        algorithm: "Algorithm",
+        metrics_logger: Optional[MetricsLogger] = None,
+        evaluation_metrics: dict,
+        **kwargs,
+    ) -> None:
+        """Runs when the evaluation is done.
+
+        Runs at the end of Algorithm.evaluate().
+
+        Args:
+            algorithm: Reference to the algorithm instance.
+            metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
+                used to log custom metrics after the most recent evaluation round.
+            evaluation_metrics: Results dict to be returned from algorithm.evaluate().
+                You can mutate this object to add additional metrics.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_env_runners_recreated(
+        self,
+        *,
+        algorithm: "Algorithm",
+        env_runner_group: "EnvRunnerGroup",
+        env_runner_indices: List[int],
         is_evaluation: bool,
         **kwargs,
     ) -> None:
-        """Callback run after one or more workers have been recreated.
+        """Callback run after one or more EnvRunner actors have been recreated.
 
-        You can access (and change) the worker(s) in question via the following code
+        You can access and change the EnvRunners in question through the following code
         snippet inside your custom override of this method:
-
-        Note that any "worker" inside the algorithm's `self.env_runner_group` and
-        `self.eval_env_runner_group` are instances of a subclass of EnvRunner.
 
         .. testcode::
             from ray.rllib.callbacks.callbacks import Callbacks
 
             class MyCallbacks(Callbacks):
-                def on_workers_recreated(
+                def on_env_runners_recreated(
                     self,
                     *,
                     algorithm,
-                    worker_set,
-                    worker_ids,
+                    env_runner_group,
+                    env_runner_indices,
                     is_evaluation,
                     **kwargs,
                 ):
@@ -116,12 +177,12 @@ class Callbacks(metaclass=_CallbackMeta):
 
         Args:
             algorithm: Reference to the Algorithm instance.
-            worker_set: The EnvRunnerGroup object in which the workers in question
+            env_runner_group: The EnvRunnerGroup object in which the workers in question
                 reside. You can use a `worker_set.foreach_worker(remote_worker_ids=...,
                 local_worker=False)` method call to execute custom
                 code on the recreated (remote) workers. Note that the local worker is
                 never recreated as a failure of this would also crash the Algorithm.
-            worker_ids: The list of (remote) worker IDs that have been recreated.
+            env_runner_indices: The list of (remote) worker IDs that have been recreated.
             is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup
                 (located in `Algorithm.eval_env_runner_group`) or not.
         """
@@ -141,16 +202,6 @@ class Callbacks(metaclass=_CallbackMeta):
         Args:
             algorithm: Reference to the Algorithm instance.
             kwargs: Forward compatibility placeholder.
-        """
-        pass
-
-    @OldAPIStack
-    def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
-        """Callback run whenever a new policy is added to an algorithm.
-
-        Args:
-            policy_id: ID of the newly created policy.
-            policy: The policy just created.
         """
         pass
 
@@ -180,35 +231,6 @@ class Callbacks(metaclass=_CallbackMeta):
                 have all the config key/value pairs in it as well as the
                 EnvContext-typical properties: `worker_index`, `num_workers`, and
                 `remote`.
-            kwargs: Forward compatibility placeholder.
-        """
-        pass
-
-    @OldAPIStack
-    def on_sub_environment_created(
-        self,
-        *,
-        worker: "EnvRunner",
-        sub_environment: EnvType,
-        env_context: EnvContext,
-        env_index: Optional[int] = None,
-        **kwargs,
-    ) -> None:
-        """Callback run when a new sub-environment has been created.
-
-        This method gets called after each sub-environment (usually a
-        gym.Env) has been created, validated (RLlib built-in validation
-        + possible custom validation function implemented by overriding
-        `Algorithm.validate_env()`), wrapped (e.g. video-wrapper), and seeded.
-
-        Args:
-            worker: Reference to the current rollout worker.
-            sub_environment: The sub-environment instance that has been
-                created. This is usually a gym.Env object.
-            env_context: The `EnvContext` object that has been passed to
-                the env's constructor.
-            env_index: The index of the sub-environment that has been created
-                (within the vector of sub-environments of the BaseEnv).
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -417,44 +439,53 @@ class Callbacks(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
-    def on_evaluate_start(
+    def on_sample_end(
         self,
         *,
-        algorithm: "Algorithm",
+        env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
+        samples: Union[SampleBatch, List[EpisodeType]],
+        # TODO (sven): Deprecate these args.
+        worker: Optional["EnvRunner"] = None,
         **kwargs,
     ) -> None:
-        """Callback before evaluation starts.
-
-        This method gets called at the beginning of Algorithm.evaluate().
+        """Called at the end of `EnvRunner.sample()`.
 
         Args:
-            algorithm: Reference to the algorithm instance.
-            metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
-                used to log custom metrics before running the next round of evaluation.
+            env_runner: Reference to the current EnvRunner object.
+            metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
+                used to log custom metrics during env/episode stepping.
+            samples: Batch to be returned. You can mutate this
+                object to modify the samples generated.
             kwargs: Forward compatibility placeholder.
         """
         pass
 
-    @OverrideToImplementCustomLogic
-    def on_evaluate_end(
+    @OldAPIStack
+    def on_sub_environment_created(
         self,
         *,
-        algorithm: "Algorithm",
-        metrics_logger: Optional[MetricsLogger] = None,
-        evaluation_metrics: dict,
+        worker: "EnvRunner",
+        sub_environment: EnvType,
+        env_context: EnvContext,
+        env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
-        """Runs when the evaluation is done.
+        """Callback run when a new sub-environment has been created.
 
-        Runs at the end of Algorithm.evaluate().
+        This method gets called after each sub-environment (usually a
+        gym.Env) has been created, validated (RLlib built-in validation
+        + possible custom validation function implemented by overriding
+        `Algorithm.validate_env()`), wrapped (e.g. video-wrapper), and seeded.
 
         Args:
-            algorithm: Reference to the algorithm instance.
-            metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
-                used to log custom metrics after the most recent evaluation round.
-            evaluation_metrics: Results dict to be returned from algorithm.evaluate().
-                You can mutate this object to add additional metrics.
+            worker: Reference to the current rollout worker.
+            sub_environment: The sub-environment instance that has been
+                created. This is usually a gym.Env object.
+            env_context: The `EnvContext` object that has been passed to
+                the env's constructor.
+            env_index: The index of the sub-environment that has been created
+                (within the vector of sub-environments of the BaseEnv).
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -494,30 +525,17 @@ class Callbacks(metaclass=_CallbackMeta):
         """
         pass
 
-    @OverrideToImplementCustomLogic
-    def on_sample_end(
-        self,
-        *,
-        env_runner: Optional["EnvRunner"] = None,
-        metrics_logger: Optional[MetricsLogger] = None,
-        samples: Union[SampleBatch, List[EpisodeType]],
-        # TODO (sven): Deprecate these args.
-        worker: Optional["EnvRunner"] = None,
-        **kwargs,
-    ) -> None:
-        """Called at the end of `EnvRunner.sample()`.
+    @OldAPIStack
+    def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
+        """Callback run whenever a new policy is added to an algorithm.
 
         Args:
-            env_runner: Reference to the current EnvRunner object.
-            metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
-                used to log custom metrics during env/episode stepping.
-            samples: Batch to be returned. You can mutate this
-                object to modify the samples generated.
-            kwargs: Forward compatibility placeholder.
+            policy_id: ID of the newly created policy.
+            policy: The policy just created.
         """
         pass
 
-    @OverrideToImplementCustomLogic
+    @OldAPIStack
     def on_learn_on_batch(
         self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs
     ) -> None:
@@ -541,25 +559,16 @@ class Callbacks(metaclass=_CallbackMeta):
         """
         pass
 
-    @OverrideToImplementCustomLogic
-    def on_train_result(
+    # Deprecated, use `on_env_runners_recreated`, instead.
+    def on_workers_recreated(
         self,
         *,
-        algorithm: "Algorithm",
-        metrics_logger: Optional[MetricsLogger] = None,
-        result: dict,
+        algorithm,
+        worker_set,
+        worker_ids,
+        is_evaluation,
         **kwargs,
     ) -> None:
-        """Called at the end of Algorithm.train().
-
-        Args:
-            algorithm: Current Algorithm instance.
-            metrics_logger: The MetricsLogger object inside the Algorithm. Can be
-                used to log custom metrics after traing results are available.
-            result: Dict of results returned from Algorithm.train() call.
-                You can mutate this object to add additional metrics.
-            kwargs: Forward compatibility placeholder.
-        """
         pass
 
 
