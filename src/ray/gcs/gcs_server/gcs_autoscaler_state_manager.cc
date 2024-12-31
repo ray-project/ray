@@ -130,7 +130,7 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
   // Iterate through each placement group load.
   for (auto &&pg_data :
        std::move(*placement_group_load->mutable_placement_group_data())) {
-    auto gang_resource_req = state->add_pending_gang_resource_requests();
+    auto *gang_resource_req = state->add_pending_gang_resource_requests();
     auto pg_state = pg_data.state();
     auto pg_id = PlacementGroupID::FromBinary(pg_data.placement_group_id());
     // For each placement group, if it's not pending/rescheduling, skip it since.
