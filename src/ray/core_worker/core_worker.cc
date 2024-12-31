@@ -1791,8 +1791,6 @@ Status CoreWorker::WaitAndGetExperimentalMutableObjects(
     int64_t timeout_ms,
     int num_objects,
     std::vector<std::shared_ptr<RayObject>> &results) {
-  RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects start ids.size() " << ids.size()
-                 << " num_objects " << num_objects;
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
     return Status::Invalid(
         "Number of objects to wait-and-get for must be between 1 and the number of ids.");
@@ -1815,9 +1813,6 @@ Status CoreWorker::WaitAndGetExperimentalMutableObjects(
       if (status.IsChannelError()) {
         return status;
       }
-      RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects remaining_timeout: "
-                     << remaining_timeout << " iteration_timeout: " << iteration_timeout
-                     << " status: " << status.ToString();
       // Skip if the result is already acquired.
       if (results[i] != nullptr) {
         continue;
@@ -1826,13 +1821,8 @@ Status CoreWorker::WaitAndGetExperimentalMutableObjects(
       // Try to acquire the object.
       Status s = experimental_mutable_object_provider_->ReadAcquire(
           ids[i], results[i], iteration_timeout);
-      RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects status: " << s.ToString()
-                     << " iteration_timeout: " << iteration_timeout;
       if (s.ok()) {
         num_acquired++;
-        RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects acquired object "
-                       << ids[i] << " num_acquired: " << num_acquired
-                       << " num_objects: " << num_objects;
         if (num_acquired == num_objects) {
           return Status::OK();
         }
@@ -1842,11 +1832,6 @@ Status CoreWorker::WaitAndGetExperimentalMutableObjects(
 
       auto now = std::chrono::steady_clock::now();
       timed_out = now >= *timeout_point;
-      RAY_LOG(DEBUG) << "WaitAndGetExperimentalMutableObjects now: "
-                     << now.time_since_epoch().count()
-                     << " timeout_point: " << timeout_point->time_since_epoch().count()
-                     << " timed_out: " << timed_out << " num_acquired: " << num_acquired
-                     << " num_objects: " << num_objects;
       if (!timed_out) {
         remaining_timeout =
             std::chrono::duration_cast<std::chrono::milliseconds>(*timeout_point - now)
