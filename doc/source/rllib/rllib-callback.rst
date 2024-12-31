@@ -4,6 +4,19 @@
 
 .. _rllib-callback-docs:
 
+RLlib's callback APIs
+=====================
+
+
+
+.. note::
+
+    Currently, RLlib only invokes callbacks in :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+    and :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors.
+    The Ray team is considering expanding callbacks onto :py:class:`~ray.rllib.core.learner.learner.Learner`
+    actors and possibly :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances as well.
+
+
 
 Callbacks and Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -39,10 +52,61 @@ and
         :members:
 
 
-Chaining Callbacks
-~~~~~~~~~~~~~~~~~~
+Chaining callbacks
+------------------
 
-Use the :py:func:`~ray.rllib.algorithms.callbacks.make_multi_callbacks` utility to chain
-multiple callbacks together.
+You can define more than one :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` class and send them in a list to the
+:py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks` method.
+You can also send lists of callables, instead of a single callable, to the different
+arguments of that method.
 
-.. autofunction:: ray.rllib.algorithms.callbacks.make_multi_callbacks
+For example, assume you already have a subclass of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`
+written and would like to reuse it in different experiments. However, one of your experiments
+requires some debug callback code you would like to inject only temporarily for a couple of runs.
+
+Resolution order of chained callbacks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib resolves all available callback methods and callables for a given event
+as follows:
+
+Subclasses of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` take precedence
+over individual or lists of callables provided through the various arguments of
+the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks` method.
+
+For example, assume the callback event is ``on_train_result``, which fires at the end of
+a training iteration and inside the algorithm's process.
+
+- RLlib loops through the list of all given :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`
+  subclasses and calls their ``on_train_result`` method. Thereby, it keeps the exact order the user
+  provided in the list.
+- RLlib then loops through the list of all defined ``on_train_result`` callables. The user configured these
+  by calling the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks` method
+  and defining the ``on_train_result`` argument in this call.
+
+.. code-block:: python
+
+    class MyCallbacks(RLlibCallback):
+        def on_train_result(self, *, algorithm, metrics_logger, result, **kwargs):
+            print("subclass 1")
+
+    class MyDebugCallbacks(RLlibCallback):
+        def on_train_result(self, *, algorithm, metrics_logger, result, **kwargs):
+            print("subclass 2")
+
+    # Define the callbacks order through the config.
+    # Subclasses first, then individual `on_train_result` (or other events) callables:
+    config.callbacks(
+        callbacks_class=[MyDebugCallbacks, MyCallbacks],
+        on_train_result=[
+            lambda algorithm, **kw: print('in lambda 1'),
+            lambda algorithm, **kw: print('in lambda 2'),
+        ],
+    )
+
+    # When training the algorithm, after each training iteration, you should see
+    # something like:
+    # > subclass 2
+    # > subclass 1
+    # > in lambda 1
+    # > in lambda 2
