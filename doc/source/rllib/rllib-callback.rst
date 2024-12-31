@@ -7,7 +7,98 @@
 RLlib's callback APIs
 =====================
 
+Overview
+--------
 
+RLlib's callbacks are the easiest way for you to inject code into your experiments.
+
+In a nutshell, you define the code you want to execute at certain events and pass it to your
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`.
+
+Here is an example of defining a simple lambda that prints out an episode's return after
+the episode has terminated:
+
+.. testcode::
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+
+    ppo = config = (
+        PPOConfig()
+        .environment("CartPole-v1")
+        .callbacks(
+            on_episode_end=(
+                lambda episode, **kw: print(f"Episode done. R={episode.get_return()}")
+            )
+        )
+        .build()
+    )
+    ppo.train()
+
+.. testcode::
+    :hide:
+
+    ppo.stop()
+
+
+Callback lambdas vs stateful RLlibCallback
+------------------------------------------
+There are two ways to define custom code to be executed at the various callback events.
+
+Callback lambdas
+~~~~~~~~~~~~~~~~
+If your injected code is rather simple and doesn't require state or storing temporary
+information to be reused in succeeding calls triggered by the same event, you can use a lambda
+and pass it to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks`
+method as previously shown.
+
+See here for a :ref:`complete list of supported callback events <rllib-callback-event-overview>`.
+The names of the events always match the argument names for the
+:py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks` method.
+
+
+Stateful RLlibCallback
+~~~~~~~~~~~~~~~~~~~~~~
+If you need your code to be stateful and be able to temporarily store results for reuse
+in succeeding calls triggered by the same or a different event, you
+need to subclass the :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` API and then implement
+one or more methods, for example :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`:
+
+Here is the same example, printing out a terminated episode's return, but using
+a subclass of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`.
+
+.. testcode::
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.callbacks.callbacks import RLlibCallback
+
+    class EpisodeReturn(RLlibCallback):
+        def on_episode_end(self, *, episode, **kwargs):
+            print(f"Episode done. R={episode.get_return()}")
+
+    ppo = (
+        PPOConfig()
+        .environment("CartPole-v1")
+        .callbacks(EpisodeReturn)
+        .build()
+    )
+    ppo.train()
+
+.. testcode::
+    :hide:
+
+    ppo.stop()
+
+
+.. _rllib-callback-event-overview:
+
+Overview of all callback events
+-------------------------------
+
+During a training iteration, the Algorithm normally walks through the following event tree. Note
+that some of the events in the tree happen simultaneously, on different processes through Ray actors.
+For example an EnvRunner actor may trigger its ``on_episode_start`` event while at the same time another
+EnvRunner actor may trigger its ``on_sample_end`` event and the main Algorithm process triggers
+``on_train_result``.
 
 .. note::
 
@@ -17,34 +108,31 @@ RLlib's callback APIs
     actors and possibly :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances as well.
 
 
+Here is a high-level overview of all supported events in RLlib's callbacks system.
 
-Callbacks and Custom Metrics
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. code-block:: text
 
-You can provide callbacks to be called at points during policy evaluation.
-These callbacks have access to state for the current
-`episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__.
-Certain callbacks such as ``on_postprocess_trajectory``, ``on_sample_end``,
-and ``on_train_result`` are also places where custom postprocessing can be applied to
-intermediate data or results.
+    Algorithm
+        .__init__()
+            `on_algorithm_init` - After algorithm construction and setup.
+        .train()
+            `on_train_result` - After a training iteration.
+        .evaluate()
+            `on_evaluate_start` - Before evaluation starts using the eval ``EnvRunnerGroup``.
+            `on_evaluate_end` - After evaluation is finished.
+        .restore_from_path()
+            `on_checkpoint_loaded` - After a checkpoint's new state has been loaded.
 
-User-defined state can be stored for the
-`episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__
-in the ``episode.user_data`` dict, and custom scalar metrics reported by saving values
-to the ``episode.custom_metrics`` dict. These custom metrics are aggregated and
-reported as part of training results. For a full example, take a look at
-`this example script here <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__
-and
-`these unit test cases here <https://github.com/ray-project/ray/blob/master/rllib/algorithms/tests/test_callbacks_old_stack.py>`__.
+    EnvRunner
+        .__init__()
+            `on_environment_created` - After the RL environment has been created.
+        .sample()
+            `on_episode_created` - After a new episode object has been created.
+            `on_episode_start` - After an episode object has started (after ``env.reset()``).
+            `on_episode_step` - After an episode object has stepped (after ``env.step()``).
+            `on_episode_end` - After an episode object has terminated (or truncated).
+            `on_sample_end` - At the end of the ``EnvRunner.sample()`` call.
 
-.. tip::
-    You can create custom logic that can run on each evaluation episode by checking
-    if the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` is in
-    evaluation mode, through accessing ``worker.policy_config["in_evaluation"]``.
-    You can then implement this check in ``on_episode_start()`` or ``on_episode_end()``
-    in your subclass of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`.
-    For running callbacks before and after the evaluation
-    runs in whole we provide ``on_evaluate_start()`` and ``on_evaluate_end``.
 
 .. dropdown:: Click here to see the full API of the ``RLlibCallback`` class
 
@@ -110,3 +198,41 @@ a training iteration and inside the algorithm's process.
     # > subclass 1
     # > in lambda 1
     # > in lambda 2
+
+
+Examples
+--------
+
+Here are two examples showing you how to setup custom callbacks on the
+Algorithm process as well as on the EnvRunner processes.
+
+Both examples utilize the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`
+API to log the custom computations happening in the injected code to the main
+metrics system.
+
+
+.. todo: uncomment this once metrics-logger.rst page is online.
+   Read :ref:`more about the MetricsLogger API here <>`__ or also take a look at this
+   more complex example on
+   `how to generate and log a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
+
+
+Example 1: on_train_result
+--------------------------
+
+The following example demonstrates how to implement
+
+
+
+Example 2: on_episode_end
+-------------------------
+
+
+
+.. tip::
+    You can base your custom logic on whether the calling EnvRunner is a regular "training"
+    EnvRunner, used to collect training samples, or an "eval" EnvRunner, used to play
+    through episodes for evaluation only.
+    Access the ``env_runner.config.in_evaluation`` boolean flag, which is True on
+    eval EnvRunner actors and False on training ones.
+

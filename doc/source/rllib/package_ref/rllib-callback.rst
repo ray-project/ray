@@ -9,7 +9,7 @@
 Callback APIs
 =============
 
-RLlib's callbacks APIs enable you to inject code into your experiment, your Algorithm,
+RLlib's callback APIs enable you to inject code into your experiment, your Algorithm,
 and its subcomponents.
 
 You can either subclass :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` and implement
