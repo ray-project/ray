@@ -88,7 +88,7 @@ class CachedChannel(ChannelInterface):
         ), "Cannot read from the serialization context while inner channel is None."
         value = self._inner_channel.read(timeout)
         ctx.set_data(self._channel_id, value, self._num_reads)
-        # NOTE: Currently we make a contract with aDAG users that the
+        # NOTE: Currently we make a contract with Compiled Graph users that the
         # channel results should not be mutated by the actor methods.
         # When the user needs to modify the channel results, they should
         # make a copy of the channel results and modify the copy.

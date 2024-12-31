@@ -69,7 +69,7 @@ def _create_channel_ref(
     return object_ref
 
 
-# aDAG maintains 1 reader object reference (also called buffer) per node.
+# Compiled Graph maintains 1 reader object reference (also called buffer) per node.
 # reader_ref: The object reference.
 # ref_owner_actor_id: The actor who created the object reference.
 # num_readers: The number of reader actors who reads this object reference.

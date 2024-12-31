@@ -604,14 +604,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_id The ID of the object.
   Status ExperimentalChannelSetError(const ObjectID &object_id);
 
-  /// Experimental method for mutable objects. Releases the objects, allowing them
-  /// to be written again. If the caller did not previously Get the objects,
-  /// then this first blocks until the latest value is available to read, then
-  /// releases the value.
-  ///
-  /// \param[in] object_ids The IDs of the objects.
-  Status ExperimentalChannelReadRelease(const std::vector<ObjectID> &object_ids);
-
   /// Wait for objects to be ready and read them. This method should only be used
   /// for experimental mutable objects.
   ///
@@ -699,7 +691,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] IDs of the objects to wait for.
   /// \param[in] num_objects Number of objects that should appear.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
-  /// \param[out] results A bitset that indicates each object has appeared or not.
+  /// \param[out] results A vector of booleans that indicates each object has appeared or
+  /// not.
   /// \return Status.
   Status Wait(const std::vector<ObjectID> &object_ids,
               const int num_objects,

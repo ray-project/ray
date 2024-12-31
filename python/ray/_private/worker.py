@@ -893,7 +893,6 @@ class Worker:
             Tuple[ray._raylet.Buffer, bytes]
         ] = self.core_worker.get_objects(
             object_refs,
-            self.current_task_id,
             timeout_ms,
         )
 
@@ -3067,7 +3066,6 @@ def wait(
             ray_waitables,
             num_returns,
             timeout_milliseconds,
-            worker.current_task_id,
             fetch_local,
         )
         return ready_ids, remaining_ids
