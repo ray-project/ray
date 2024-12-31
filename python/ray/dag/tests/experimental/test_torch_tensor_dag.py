@@ -573,7 +573,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
         dag = actor1.recv.bind(dag)
     with pytest.raises(
         ValueError,
-        match=r"Accelerated DAGs do not support mixed usage of type hints.*",
+        match=r"Compiled Graphs do not support mixed usage of type hints.*",
     ):
         dag.experimental_compile()
 
@@ -587,7 +587,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
         dag = actor1.recv.bind(dag)
     with pytest.raises(
         ValueError,
-        match=r"Accelerated DAGs do not support mixed usage of type hints.*",
+        match=r"Compiled Graphs do not support mixed usage of type hints.*",
     ):
         dag.experimental_compile()
 
@@ -604,7 +604,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
     with pytest.raises(
         ValueError,
         match=(
-            "Accelerated DAGs currently only support "
+            "Compiled Graphs currently only support "
             "a single custom NCCL group, but multiple "
             "have been specified."
         ),

@@ -1940,7 +1940,7 @@ class TestLeafNode:
 def test_output_node(ray_start_regular):
     """
     This test is similar to the `test_output_node` in `test_output_node.py`, but
-    this test is for the accelerated DAG.
+    this test is for Compiled Graph.
     """
 
     @ray.remote
@@ -2072,7 +2072,7 @@ def test_simulate_pipeline_parallelism(ray_start_regular, single_fetch):
 
 
 def test_channel_read_after_close(ray_start_regular):
-    # Tests that read to a channel after accelerated DAG teardown raises a
+    # Tests that read to a channel after Compiled Graph teardown raises a
     # RayChannelError exception as the channel is closed (see issue #46284).
     @ray.remote
     class Actor:
@@ -2092,7 +2092,7 @@ def test_channel_read_after_close(ray_start_regular):
 
 
 def test_channel_write_after_close(ray_start_regular):
-    # Tests that write to a channel after accelerated DAG teardown raises a
+    # Tests that write to a channel after Compiled Graph teardown raises a
     # RayChannelError exception as the channel is closed.
     @ray.remote
     class Actor:
@@ -2291,7 +2291,7 @@ class TestWorker:
 
 
 """
-Accelerated DAGs support the following two cases for the input/output of the graph:
+Compiled Graphs support the following two cases for the input/output of the graph:
 
 1. Both the input and output of the graph are the driver process.
 2. Both the input and output of the graph are the same actor process.
