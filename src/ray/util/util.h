@@ -20,6 +20,7 @@
 
 #ifdef __linux__
 #include <sys/syscall.h>
+#include <unistd.h>
 #endif
 
 #ifdef _WIN32
@@ -108,7 +109,7 @@ inline uint64_t GetTid() {
 #elif defined(_WIN32)
 inline DWORD GetTid() { return GetCurrentThreadId(); }
 #else
-inline pid_t GetTid() { return syscall(__NR_gettid); }
+inline pid_t GetTid() { return gettid(); }
 #endif
 
 inline int64_t current_sys_time_s() {
