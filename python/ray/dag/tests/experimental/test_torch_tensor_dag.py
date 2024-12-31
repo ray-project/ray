@@ -1302,7 +1302,7 @@ def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
 def test_tensor_writable_warning_suppressed(ray_start_regular):
-    """When we move cpu tensor to gpu, aDAG does zero-copy with is_wriatble=False.
+    """When we move cpu tensor to gpu, Compiled Graph does zero-copy with is_writable=False.
     Torch doesn't like it, so it prints warning. We know that it is safe to do it,
     so Ray suppress the warning message. This test verifies the warning is not
     printed in this scenario.
