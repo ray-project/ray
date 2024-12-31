@@ -101,6 +101,7 @@ def get_device(
                 # with ID=1 on the node.
                 return torch.device(config.local_gpu_idx)
         elif custom_resources_requested:
+            from ray.air._internal.torch_utils import get_devices
             # The `get_devices()` api in ray.air should handle the custom accelerator
             # and return torch.device("cpu") if not accelerator is available.
             return get_devices()[0]
