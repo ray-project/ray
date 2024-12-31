@@ -2199,8 +2199,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   // true\n}\n\n
   if (serialized_runtime_env_info_arg.find("FOO") != std::string::npos) {
     auto runtime_env = std::make_shared<rpc::RuntimeEnvInfo>();
-    runtime_env->set_serialized_runtime_env(
-        "\"{\\\"env_vars\\\": {\\\"FOO\\\": \\\"bar\\\"}}\"");
+    runtime_env->set_serialized_runtime_env("{\"env_vars\": {\"FOO\": \"bar\"}}");
     auto *config = runtime_env->mutable_runtime_env_config();
     config->set_setup_timeout_seconds(600);
     config->set_eager_install(true);
