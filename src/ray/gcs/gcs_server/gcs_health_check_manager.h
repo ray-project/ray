@@ -141,12 +141,10 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
     // Whether the health check has stopped.
     bool stopped_ = false;
 
-    grpc::ClientContext context_;
-    ::grpc::health::v1::HealthCheckRequest request_;
-    ::grpc::health::v1::HealthCheckResponse response_;
-
     /// gRPC related fields
     std::unique_ptr<::grpc::health::v1::Health::Stub> stub_;
+
+    ::grpc::health::v1::HealthCheckRequest request_;
 
     /// The timer is used to do async wait before the next try.
     Timer timer_;
