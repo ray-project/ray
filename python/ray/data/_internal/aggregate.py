@@ -366,12 +366,7 @@ class Quantile(_AggregateOnKeyBase):
 
 
 class Unique(_AggregateOnKeyBase):
-    """Defines unique aggregation.
-
-    Note:
-        `ignore_nulls` is hardcoded to `False` as it simply
-        gives one extra item in the output.
-    """
+    """Defines unique aggregation."""
 
     def __init__(
         self,
