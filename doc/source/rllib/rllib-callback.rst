@@ -134,10 +134,30 @@ Here is a high-level overview of all supported events in RLlib's callbacks syste
             `on_sample_end` - At the end of the ``EnvRunner.sample()`` call.
 
 
-.. dropdown:: Click here to see the full API of the ``RLlibCallback`` class
+.. currentmodule:: ray.rllib.callbacks.callbacks
 
-    .. autoclass:: ray.rllib.callbacks.callbacks.RLlibCallback
-        :members:
+.. dropdown:: Click here to see all Algorithm-bound methods of ``RLlibCallback``
+    .. autosummary::
+        :nosignatures:
+        :toctree: doc/
+
+        ~RLlibCallback.on_algorithm_init
+        ~RLlibCallback.on_evaluate_start
+        ~RLlibCallback.on_evaluate_end
+        ~RLlibCallback.on_env_runners_recreated
+        ~RLlibCallback.on_checkpoint_loaded
+
+.. dropdown:: Click here to see all EnvRunner-bound methods of ``RLlibCallback``
+    .. autosummary::
+        :nosignatures:
+        :toctree: doc/
+
+        ~RLlibCallback.on_environment_created
+        ~RLlibCallback.on_episode_created
+        ~RLlibCallback.on_episode_start
+        ~RLlibCallback.on_episode_step
+        ~RLlibCallback.on_episode_end
+        ~RLlibCallback.on_sample_end
 
 
 Chaining callbacks
@@ -176,28 +196,28 @@ a training iteration and inside the algorithm's process.
 
     class MyCallbacks(RLlibCallback):
         def on_train_result(self, *, algorithm, metrics_logger, result, **kwargs):
-            print("subclass 1")
+            print("RLlibCallback subclass")
 
     class MyDebugCallbacks(RLlibCallback):
         def on_train_result(self, *, algorithm, metrics_logger, result, **kwargs):
-            print("subclass 2")
+            print("debug subclass")
 
     # Define the callbacks order through the config.
     # Subclasses first, then individual `on_train_result` (or other events) callables:
     config.callbacks(
-        callbacks_class=[MyDebugCallbacks, MyCallbacks],
+        callbacks_class=[MyDebugCallbacks, MyCallbacks],  # <- note: debug class first
         on_train_result=[
-            lambda algorithm, **kw: print('in lambda 1'),
-            lambda algorithm, **kw: print('in lambda 2'),
+            lambda algorithm, **kw: print('lambda 1'),
+            lambda algorithm, **kw: print('lambda 2'),
         ],
     )
 
     # When training the algorithm, after each training iteration, you should see
     # something like:
-    # > subclass 2
-    # > subclass 1
-    # > in lambda 1
-    # > in lambda 2
+    # > debug subclass
+    # > RLlibCallback subclass
+    # > lambda 1
+    # > lambda 2
 
 
 Examples
@@ -220,12 +240,72 @@ metrics system.
 Example 1: on_train_result
 --------------------------
 
-The following example demonstrates how to implement
+The following example demonstrates how to implement a simple custom function writing the replay buffer
+contents to disk from time to time.
 
+You normally don't want the contents of buffers to be written with your
+:ref:`Algorithm checkpoints <rllib-checkpointing-docs>`, so doing this in a more
+controlled fashion through a custom callback would be a good compromise.
+
+.. testcode::
+
+    import ormsgpack
+    from ray.rllib.algorithms.dqn import DQNConfig
+
+    def _write_buffer_if_necessary(algorithm, metrics_logger, result):
+        # Write the buffer contents only every ith iteration.
+        if algorithm.training_iteration % 2 == 0:
+            # python dict
+            buffer_contents = algorithm.local_replay_buffer.get_state()
+
+            # binary
+            msgpacked = ormsgpack.packb(
+               buffer_contents,
+               option=ormsgpack.OPT_SERIALIZE_NUMPY,
+            )
+
+            # Open some file and write the buffer contents into it using `ormsgpack`.
+            with open("replay_buffer_contents.msgpack", "wb") as f:
+               f.write(msgpacked)
+
+    config = (
+        DQNConfig()
+        .environment("CartPole-v1")
+        .callbacks(
+           on_train_result=_write_buffer_if_necessary,
+        )
+    )
+    dqn = config.build()
+
+    # Train n times. Expect buffer to be written every ith iteration.
+    for _ in range(4):
+        print(dqn.train())
+
+.. tip::
+   See :ref:`here for the exact call signatures and expected argument types <rllib-callback-reference-algo-bound>`
+   of all available callbacks.
 
 
 Example 2: on_episode_end
 -------------------------
+
+The following example demonstrates how to implement custom RLlibCallback class computing
+the average first-joint angle, ``theta1`` of the `Acrobot-v1 RL environment <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/acrobot.py>`__.
+
+It is decribed in the original environment's code as:
+
+.. code-block:: text
+    `theta1` is the angle of the first joint, where an angle of 0 indicates the first
+    link is pointing directly downwards.
+
+
+
+
+You normally don't want the contents of buffers to be written with your
+:ref:`Algorithm checkpoints <rllib-checkpointing-docs>`, so doing this in a more
+controlled fashion through a custom callback would be a good compromise.
+
+.. testcode::
 
 
 
@@ -235,4 +315,9 @@ Example 2: on_episode_end
     through episodes for evaluation only.
     Access the ``env_runner.config.in_evaluation`` boolean flag, which is True on
     eval EnvRunner actors and False on training ones.
+
+
+.. tip::
+   See :ref:`here for the exact call signatures and expected argument types <rllib-callback-reference-algo-bound>`
+   of all available callbacks.
 

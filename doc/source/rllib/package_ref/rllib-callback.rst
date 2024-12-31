@@ -75,6 +75,9 @@ Methods you should implement for custom behavior
     The Ray team is considering expanding callbacks onto :py:class:`~ray.rllib.core.learner.learner.Learner`
     actors and possibly :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances as well.
 
+
+.. _rllib-callback-reference-algo-bound:
+
 Callbacks invoked in Algorithm
 ------------------------------
 
@@ -87,6 +90,9 @@ Callbacks invoked in Algorithm
     ~RLlibCallback.on_evaluate_end
     ~RLlibCallback.on_env_runners_recreated
     ~RLlibCallback.on_checkpoint_loaded
+
+
+.. _rllib-callback-reference-env-runner-bound:
 
 Callbacks invoked in EnvRunner
 ------------------------------
@@ -101,5 +107,3 @@ Callbacks invoked in EnvRunner
     ~RLlibCallback.on_episode_step
     ~RLlibCallback.on_episode_end
     ~RLlibCallback.on_sample_end
-
-
