@@ -164,6 +164,10 @@ class TorchTensorNcclChannel(ChannelInterface):
             self._cpu_data_channel.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self):
+        reader = utils.get_self_actor()
+        if reader == self._writer:
+            self._local_channel.ensure_registered_as_reader()
+            return
         self._gpu_data_channel.ensure_registered_as_reader()
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.ensure_registered_as_reader()
@@ -194,11 +198,30 @@ class TorchTensorNcclChannel(ChannelInterface):
             # normally.
             self.serialization_ctx.set_use_external_transport(False)
 
-        # First send the extracted tensors through a GPU-specific channel.
-        self._gpu_data_channel.write(gpu_tensors)
-        # Next send the non-tensor data through a CPU-specific channel. The
+        # The `write` operation of the shared memory channel must be called
+        # before the `write` operation of the GPU channel. This is because in
+        # `_read_list`, the channel's `read` operation waits for all underlying
+        # mutable objects for all input channels to be consumed.
+        #
+        # Step 1: `_cpu_data_channel.write` is called to write data into the
+        # mutable object.
+        # Step 2: `_read_list` consumes the mutable object.
+        # Step 3: After all underlying mutable objects of all input channels are
+        # consumed, `read` is called in the receiver of the NCCL channel.
+        #
+        # If we call NCCL write before the CPU channel write, then the shared
+        # memory channel's `write` operation will block because the NCCL write
+        # operation blocks forever until the NCCL read operation is called. However,
+        # the `read` operation of the NCCL channel will never be called because
+        # `_read_list` will never consume the mutable object that hasn't been
+        # written yet.
+
+        # First send the non-tensor data through a CPU-specific channel. The
         # data contains placeholders for the extracted tensors.
         self._cpu_data_channel.write(cpu_data)
+
+        # Next send the extracted tensors through a GPU-specific channel.
+        self._gpu_data_channel.write(gpu_tensors)
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
         """
@@ -275,9 +298,21 @@ class TorchTensorNcclChannel(ChannelInterface):
         # Next, read and deserialize the non-tensor data. The registered custom
         # deserializer will replace the found tensor placeholders with
         # `tensors`.
-        data = self._cpu_data_channel.read(
+        #
+        # We need to deserialize the CPU data channel first in `read` instead of
+        # `_read_list` because the deserialization of the CPU data channel relies
+        # on the out-of-band tensors in the serialization context. Therefore, the
+        # `read` method of the NCCL channel must be called first to ensure that
+        # the out-of-band tensors are ready.
+        serialized_data, metadata = self._cpu_data_channel.read(
             timeout=timeout,
         )
+        rets = self._worker.deserialize_objects(
+            [(serialized_data, metadata)], self._cpu_data_channel.get_ray_waitables()
+        )
+        assert len(rets) == 1
+        ret = rets[0]
+
         # Check that all placeholders had a corresponding tensor.
         (
             _,
@@ -285,7 +320,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         ) = self.serialization_ctx.reset_out_of_band_tensors([])
         assert deserialized_tensor_placeholders == set(range(len(tensors)))
 
-        return data
+        return ret
 
     def read(self, timeout: Optional[float] = None) -> Any:
         """
@@ -327,10 +362,19 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def get_ray_waitables(self) -> List[ObjectRef]:
         self.ensure_registered_as_reader()
+        reader = utils.get_self_actor()
+        if reader == self._writer:
+            return self._local_channel.get_ray_waitables()
         waitables = []
         waitables.extend(self._gpu_data_channel.get_ray_waitables())
         if self._cpu_data_channel is not None:
-            waitables.extend(self._cpu_data_channel.get_ray_waitables())
+            cpu_waitables = self._cpu_data_channel.get_ray_waitables()
+            assert len(cpu_waitables) == 1
+            # Skip deserialization of the CPU data in `_read_list` and
+            # handle the deserialization in the channel's `read()` method
+            # after the out-of-band tensors are ready in the serialization
+            # context instead.
+            waitables.append((cpu_waitables[0][0], True))
         return waitables
 
     def close(self) -> None:

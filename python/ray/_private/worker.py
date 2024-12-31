@@ -965,7 +965,7 @@ class Worker:
         )
 
         if skip_deserialization:
-            return None, set()
+            return data_metadata_pairs, set()
 
         non_complete_object_refs_set = set()
         for i, (data, _) in enumerate(data_metadata_pairs):

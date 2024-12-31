@@ -256,9 +256,12 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
-    def get_ray_waitables(self) -> List[ObjectRef]:
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
         """
-        Get the ObjectRefs that will be read in the next read() call.
+        Get a list of tuples containing an ObjectRef and a boolean flag.
+        The flag indicates whether the ObjectRef should skip deserialization
+        in `experimental_wait_and_get_mutable_objects` and instead be
+        deserialized in the channel's `read()` method instead.
         """
         raise NotImplementedError
 
@@ -308,11 +311,20 @@ class ReaderInterface:
 
     def _get_all_waitables_to_num_consumers(self) -> Dict[ObjectRef, int]:
         waitable_to_num_consumers = {}
+        skip_deserialization_waitables_to_num_consumers = {}
         for c in self._input_channels:
             waitables = c.get_ray_waitables()
-            for w in waitables:
-                waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
-        return waitable_to_num_consumers
+            for waitable, skip_deserialization in waitables:
+                target_dict = (
+                    skip_deserialization_waitables_to_num_consumers
+                    if skip_deserialization
+                    else waitable_to_num_consumers
+                )
+                target_dict[waitable] = target_dict.get(waitable, 0) + 1
+        return (
+            waitable_to_num_consumers,
+            skip_deserialization_waitables_to_num_consumers,
+        )
 
     def read(self, timeout: Optional[float] = None) -> List[Any]:
         """
@@ -377,30 +389,48 @@ class SynchronousReader(ReaderInterface):
         timeout = 1e6 if timeout is None or timeout == -1 else timeout
         self._consume_non_complete_object_refs_if_needed(timeout)
 
-        waitable_to_num_consumers = self._get_all_waitables_to_num_consumers()
-        all_waitables = list(waitable_to_num_consumers.keys())
+        (
+            waitables_to_num_consumers,
+            skip_deserialization_waitables_to_num_consumers,
+        ) = self._get_all_waitables_to_num_consumers()
+        normal_waitables = list(waitables_to_num_consumers.keys())
+        skip_deserialization_waitables = list(
+            skip_deserialization_waitables_to_num_consumers.keys()
+        )
 
         timeout_point = time.monotonic() + timeout
         worker = ray._private.worker.global_worker
-        while len(all_waitables) > 0:
+        while len(normal_waitables) > 0 or len(skip_deserialization_waitables) > 0:
             # Retrieve at most one object each time.
+            use_normal_waitables = len(normal_waitables) > 0
+            target_waitable_group = (
+                normal_waitables
+                if use_normal_waitables
+                else skip_deserialization_waitables
+            )
+            target_waitable_group_num_consumers = (
+                waitables_to_num_consumers
+                if use_normal_waitables
+                else skip_deserialization_waitables_to_num_consumers
+            )
             (
                 values,
                 non_complete_object_refs_set,
             ) = worker.experimental_wait_and_get_mutable_objects(
-                all_waitables,
+                target_waitable_group,
                 num_returns=1,
                 timeout_ms=max(0, (timeout_point - time.monotonic()) * 1000),
                 return_exceptions=True,
+                skip_deserialization=not use_normal_waitables,
                 suppress_timeout_errors=True,
             )
             ctx = ChannelContext.get_current().serialization_context
             for i, value in enumerate(values):
-                if all_waitables[i] in non_complete_object_refs_set:
+                if target_waitable_group[i] in non_complete_object_refs_set:
                     continue
                 if isinstance(value, ray.exceptions.RayTaskError):
                     self._non_complete_object_refs = list(non_complete_object_refs_set)
-                    for w in all_waitables:
+                    for w in target_waitable_group:
                         ctx.reset_data(w)
                     # If we raise an exception immediately, it will be considered
                     # as a system error which will cause the execution loop to
@@ -411,17 +441,21 @@ class SynchronousReader(ReaderInterface):
                     # get an undefined partial result.
                     return [value for _ in range(len(self._input_channels))]
                 ctx.set_data(
-                    all_waitables[i],
+                    target_waitable_group[i],
                     value,
-                    waitable_to_num_consumers[all_waitables[i]],
+                    target_waitable_group_num_consumers[target_waitable_group[i]],
                 )
-            all_waitables = list(non_complete_object_refs_set)
-            if time.monotonic() > timeout_point and len(all_waitables) != 0:
+            target_waitable_group = list(non_complete_object_refs_set)
+            if time.monotonic() > timeout_point and len(target_waitable_group) != 0:
                 # This ensures that the reader attempts to retrieve
                 # data once even when the `timeout` is 0.
                 raise ray.exceptions.RayChannelTimeoutError(
                     "Timed out waiting for channel data."
                 )
+            if use_normal_waitables:
+                normal_waitables = target_waitable_group
+            else:
+                skip_deserialization_waitables = target_waitable_group
 
         results = []
         for c in self._input_channels:
@@ -467,32 +501,60 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
+        # TODO(kevin85421): Consume non-complete object refs.
+        # TODO(kevin85421): Consume waitable one by one.
+        (
+            waitables_to_num_consumers,
+            skip_deserialization_waitables_to_num_consumers,
+        ) = self._get_all_waitables_to_num_consumers()
+        normal_waitables = list(waitables_to_num_consumers.keys())
+        skip_deserialization_waitables = list(
+            skip_deserialization_waitables_to_num_consumers.keys()
+        )
+
         results = []
-        waitable_to_num_consumers = self._get_all_waitables_to_num_consumers()
-        all_waitables = list(waitable_to_num_consumers.keys())
 
         worker = ray._private.worker.global_worker
-        while len(all_waitables) > 0:
+        while len(normal_waitables) > 0 or len(skip_deserialization_waitables) > 0:
+            use_normal_waitables = len(normal_waitables) > 0
+            target_waitable_group = (
+                normal_waitables
+                if use_normal_waitables
+                else skip_deserialization_waitables
+            )
+            target_waitable_group_num_consumers = (
+                waitables_to_num_consumers
+                if use_normal_waitables
+                else skip_deserialization_waitables_to_num_consumers
+            )
+
             (
                 values,
                 non_complete_object_refs_set,
             ) = worker.experimental_wait_and_get_mutable_objects(
-                all_waitables,
-                len(all_waitables),
+                target_waitable_group,
+                num_returns=len(target_waitable_group),
                 timeout_ms=1000,
                 return_exceptions=True,
+                skip_deserialization=not use_normal_waitables,
                 suppress_timeout_errors=True,
             )
+
             ctx = ChannelContext.get_current().serialization_context
             for i, value in enumerate(values):
-                if all_waitables[i] in non_complete_object_refs_set:
+                if target_waitable_group[i] in non_complete_object_refs_set:
                     continue
                 ctx.set_data(
-                    all_waitables[i],
+                    target_waitable_group[i],
                     value,
-                    waitable_to_num_consumers[all_waitables[i]],
+                    target_waitable_group_num_consumers[target_waitable_group[i]],
                 )
-            all_waitables = list(non_complete_object_refs_set)
+
+            target_waitable_group = list(non_complete_object_refs_set)
+            if use_normal_waitables:
+                normal_waitables = target_waitable_group
+            else:
+                skip_deserialization_waitables = target_waitable_group
             if sys.is_finalizing():
                 return results
 

@@ -500,9 +500,9 @@ class Channel(ChannelInterface):
             ret = rets[0]
         return ret
 
-    def get_ray_waitables(self) -> List[ObjectRef]:
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
         self.ensure_registered_as_reader()
-        return [self._local_reader_ref]
+        return [(self._local_reader_ref, False)]
 
     def release_buffer(self, timeout: Optional[float] = None) -> None:
         assert (
