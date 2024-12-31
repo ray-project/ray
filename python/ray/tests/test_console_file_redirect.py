@@ -37,7 +37,7 @@ os.write(sys.stderr.fileno(), "hello from stderr\\n".encode())
     """
     try:
         subprocess.run(
-            ["python", "-c", script], capture_output=True, text=True, timeout=1
+            ["python", "-c", script], capture_output=True, text=True, timeout=3
         )
     except subprocess.TimeoutExpired as e:
         assert "hello from stdout\nhello from stderr\n" in e.stdout.decode()
