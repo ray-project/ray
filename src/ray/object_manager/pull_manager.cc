@@ -21,28 +21,28 @@
 namespace ray {
 
 PullManager::PullManager(
-    NodeID &self_node_id,
-    const std::function<bool(const ObjectID &)> object_is_local,
-    const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
-    const std::function<void(const ObjectID &)> cancel_pull_request,
-    const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
-    const RestoreSpilledObjectCallback restore_spilled_object,
-    const std::function<double()> get_time_seconds,
+    NodeID self_node_id,
+    std::function<bool(const ObjectID &)> object_is_local,
+    std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+    std::function<void(const ObjectID &)> cancel_pull_request,
+    std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
+    RestoreSpilledObjectCallback restore_spilled_object,
+    std::function<double()> get_time_seconds,
     int pull_timeout_ms,
     int64_t num_bytes_available,
     std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
     std::function<std::string(const ObjectID &)> get_locally_spilled_object_url)
-    : self_node_id_(self_node_id),
-      object_is_local_(object_is_local),
-      send_pull_request_(send_pull_request),
-      cancel_pull_request_(cancel_pull_request),
-      restore_spilled_object_(restore_spilled_object),
-      get_time_seconds_(get_time_seconds),
+    : self_node_id_(std::move(self_node_id)),
+      object_is_local_(std::move(object_is_local)),
+      send_pull_request_(std::move(send_pull_request)),
+      cancel_pull_request_(std::move(cancel_pull_request)),
+      restore_spilled_object_(std::move(restore_spilled_object)),
+      get_time_seconds_(std::move(get_time_seconds)),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
-      pin_object_(pin_object),
-      get_locally_spilled_object_url_(get_locally_spilled_object_url),
-      fail_pull_request_(fail_pull_request),
+      pin_object_(std::move(pin_object)),
+      get_locally_spilled_object_url_(std::move(get_locally_spilled_object_url)),
+      fail_pull_request_(std::move(fail_pull_request)),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
@@ -54,9 +54,9 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
   absl::flat_hash_set<ObjectID> seen;
   std::vector<rpc::ObjectReference> deduplicated;
   for (const auto &ref : object_ref_bundle) {
-    const auto &id = ObjectRefToId(ref);
-    if (seen.count(id) == 0) {
-      seen.insert(id);
+    const auto id = ObjectRefToId(ref);
+    const bool is_new = seen.insert(id).second;
+    if (is_new) {
       deduplicated.emplace_back(ref);
     }
   }
@@ -592,28 +592,30 @@ void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
 }
 
 bool PullManager::TryPinObject(const ObjectID &object_id) {
-  if (pinned_objects_.count(object_id) == 0) {
-    auto ref = pin_object_(object_id);
-    if (ref != nullptr) {
-      num_succeeded_pins_total_++;
-      pinned_objects_size_ += ref->GetSize();
-      pinned_objects_[object_id] = std::move(ref);
-
-      auto it = object_pull_requests_.find(object_id);
-      RAY_CHECK(it != object_pull_requests_.end());
-      ray::stats::STATS_pull_manager_object_request_time_ms.Record(
-          absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
-          "StartToPin");
-      if (it->second.activate_time_ms > 0) {
-        ray::stats::STATS_pull_manager_object_request_time_ms.Record(
-            absl::GetCurrentTimeNanos() / 1e3 - it->second.activate_time_ms,
-            "MemoryAvailableToPin");
-      }
-    } else {
-      num_failed_pins_total_++;
-    }
+  if (pinned_objects_.count(object_id) > 0) {
+    return true;
   }
-  return pinned_objects_.count(object_id) > 0;
+  auto ref = pin_object_(object_id);
+  if (ref != nullptr) {
+    num_succeeded_pins_total_++;
+    pinned_objects_size_ += ref->GetSize();
+    pinned_objects_[object_id] = std::move(ref);
+
+    auto it = object_pull_requests_.find(object_id);
+    RAY_CHECK(it != object_pull_requests_.end());
+    ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+        absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
+        "StartToPin");
+    if (it->second.activate_time_ms > 0) {
+      ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+          absl::GetCurrentTimeNanos() / 1e3 - it->second.activate_time_ms,
+          "MemoryAvailableToPin");
+    }
+    return true;
+  }
+
+  num_failed_pins_total_++;
+  return false;
 }
 
 void PullManager::UnpinObject(const ObjectID &object_id) {
