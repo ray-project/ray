@@ -2393,13 +2393,12 @@ class AlgorithmConfig(_Config):
                 various phases of training and RL environment sample collection.
                 TODO (sven): Change the link to new rst callbacks page.
                 See the `RLlibCallback` class and
-                `examples/metrics/custom_metrics_and_callbacks.py` for more usage
-                information.
+                `examples/metrics/custom_metrics_and_callbacks.py` for more information.
             on_algorithm_init: A callable or a list of callables. If a list, RLlib calls
                 the items in the same sequence. `on_algorithm_init` methods overridden
                 in `callbacks_class` take precedence and are called first.
                 See
-                :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`
+                :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`  # noqa
                 for more information.
             on_evaluate_start: A callable or a list of callables. If a list, RLlib calls
                 the items in the same sequence. `on_algorithm_init` methods overridden
@@ -2409,7 +2408,7 @@ class AlgorithmConfig(_Config):
             on_evaluate_end: A callable or a list of callables. If a list, RLlib calls
                 the items in the same sequence. `on_algorithm_init` methods overridden
                 in `callbacks_class` take precedence and are called first.
-                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_evaluate_end`
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_evaluate_end`  # noqa
                 for more information.
             on_env_runners_recreated: A callable or a list of callables. If a list,
                 RLlib calls the items in the same sequence. `on_algorithm_init` methods
@@ -2426,7 +2425,6 @@ class AlgorithmConfig(_Config):
                 overridden in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_environment_created`  # noqa
                 for more information.
-                **kwargs)`.
             on_episode_created: A callable or a list of callables. If a list,
                 RLlib calls the items in the same sequence. `on_algorithm_init` methods
                 overridden in `callbacks_class` take precedence and are called first.
@@ -2435,22 +2433,22 @@ class AlgorithmConfig(_Config):
             on_episode_start: A callable or a list of callables. If a list,
                 RLlib calls the items in the same sequence. `on_algorithm_init` methods
                 overridden in `callbacks_class` take precedence and are called first.
-                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_start`
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_start`  # noqa
                 for more information.
             on_episode_step: A callable or a list of callables. If a list,
                 RLlib calls the items in the same sequence. `on_algorithm_init` methods
                 overridden in `callbacks_class` take precedence and are called first.
-                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_step`
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_step`  # noqa
                 for more information.
             on_episode_end: A callable or a list of callables. If a list,
                 RLlib calls the items in the same sequence. `on_algorithm_init` methods
                 overridden in `callbacks_class` take precedence and are called first.
-                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_end`
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_end`  # noqa
                 for more information.
             on_sample_end: A callable or a list of callables. If a list,
                 RLlib calls the items in the same sequence. `on_algorithm_init` methods
                 overridden in `callbacks_class` take precedence and are called first.
-                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_sample_end`
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_sample_end`  # noqa
                 for more information.
 
         Returns:
