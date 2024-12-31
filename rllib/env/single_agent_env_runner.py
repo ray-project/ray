@@ -393,6 +393,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
                     )
+                    self._make_on_episode_callback(
+                        "on_episode_created",
+                        env_index,
+                        episodes,
+                    )
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
