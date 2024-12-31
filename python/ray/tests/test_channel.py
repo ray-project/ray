@@ -36,7 +36,15 @@ def retrieve_object_refs(channels, timeout_s=3):
     waitable_to_num_consumers = {}
     for c in channels:
         waitables = c.get_ray_waitables()
-        for w in waitables:
+        for w, skip_deserialization in waitables:
+            # This helper function doesn't work for TorchTensorNCCLChannel.
+            # To support it, we need to separate the waitables into two groups:
+            #
+            # 1. Waitables that need to be deserialized
+            # 2. Waitables that don't need to be deserialized
+            #
+            # in `_read_list`.
+            assert skip_deserialization is False
             waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
 
     worker = ray._private.worker.global_worker
