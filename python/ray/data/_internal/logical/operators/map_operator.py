@@ -258,20 +258,26 @@ class Project(AbstractMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        cols: List[str],
+        cols: Optional[List[str]] = None,
+        cols_rename: Optional[Dict[str, str]] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__("Project", input_op=input_op, ray_remote_args=ray_remote_args)
         self._compute = compute
         self._batch_size = DEFAULT_BATCH_SIZE
-        self._cols = cols
+        self._cols = cols or []
+        self._cols_rename = cols_rename or {}
         self._batch_format = "pyarrow"
         self._zero_copy_batch = True
 
     @property
-    def cols(self) -> List[str]:
+    def cols(self) -> Optional[List[str]]:
         return self._cols
+
+    @property
+    def cols_rename(self) -> Optional[Dict[str, str]]:
+        return self._cols_rename
 
     @property
     def can_modify_num_rows(self) -> bool:

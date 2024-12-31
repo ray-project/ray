@@ -28,7 +28,7 @@ std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!core_worker_process)
       << "The process is already initialized for core worker.";
-  core_worker_process.reset(new CoreWorkerProcessImpl(options));
+  core_worker_process = std::make_unique<CoreWorkerProcessImpl>(options);
 
 #ifndef _WIN32
   // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
@@ -79,17 +79,18 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      ? ComputeDriverIdFromJob(options_.job_id)
                      : WorkerID::FromRandom()) {
   if (options_.enable_logging) {
-    std::stringstream app_name;
-    app_name << LanguageString(options_.language) << "-core-"
-             << WorkerTypeString(options_.worker_type);
+    std::stringstream app_name_ss;
+    app_name_ss << LanguageString(options_.language) << "-core-"
+                << WorkerTypeString(options_.worker_type);
     if (!worker_id_.IsNil()) {
-      app_name << "-" << worker_id_;
+      app_name_ss << "-" << worker_id_;
     }
-    // TODO(hjiang): Unify log directory and log filepath.
-    RayLog::StartRayLog(app_name.str(),
+    const std::string app_name = app_name_ss.str();
+    const std::string log_filepath =
+        RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
+    RayLog::StartRayLog(app_name,
                         RayLogLevel::INFO,
-                        /*log_dir=*/options_.log_dir,
-                        /*ray_log_filepath=*/"",
+                        log_filepath,
                         ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
                         ray::RayLog::GetRayLogRotationBackupCountOrDefault());
     if (options_.install_failure_signal_handler) {
