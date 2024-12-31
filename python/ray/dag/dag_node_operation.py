@@ -5,7 +5,7 @@ import copy
 import logging
 import ray
 import heapq
-from collections import defaultdict
+from collections import defaultdict, deque
 
 
 logger = logging.getLogger(__name__)
@@ -284,6 +284,14 @@ def _add_edge(
         label,
         control_dependency,
     )
+
+
+def _remove_edge(
+    from_node: _DAGOperationGraphNode,
+    to_node: _DAGOperationGraphNode,
+):
+    del from_node.out_edges[(to_node.task_idx, to_node.operation.type)]
+    del to_node.in_edges[(from_node.task_idx, from_node.operation.type)]
 
 
 def _push_candidate_node_if_ready(
@@ -745,6 +753,7 @@ def _generate_actor_to_execution_schedule(
 
 
 def _generate_overlapped_execution_schedule(
+    graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
     actor_to_execution_schedule: Dict[
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ],
@@ -776,6 +785,7 @@ def _generate_overlapped_execution_schedule(
     for overlapped_schedule in actor_to_overlapped_schedule.values():
         for i in range(len(overlapped_schedule)):
             if overlapped_schedule[i].is_nccl_read:
+                added_edges = []
                 # For each NCCL read operation (i.e., recv), scan backwards
                 # to find the nearest compute node to swap with so that
                 # the NCCL read operation can be overlapped with computation.
@@ -787,14 +797,60 @@ def _generate_overlapped_execution_schedule(
                         overlapped_schedule[j + 1 : i + 1] = prev_ops
                         overlapped_schedule[j] = nccl_read_op
                         break
-                    if (
-                        overlapped_schedule[j].is_nccl_read
-                        or overlapped_schedule[j].is_nccl_write_to_upstream_actor
-                    ):
+                    elif overlapped_schedule[j].is_nccl_read:
                         # Skip the overlap optimization when the relative order
                         # of NCCL operations cannot be changed.
+                        for edge in added_edges:
+                            _remove_edge(edge[0], edge[1])
                         break
+                    elif overlapped_schedule[j].is_nccl_write:
+                        if _swap_ok(
+                            overlapped_schedule[i], overlapped_schedule[j], graph
+                        ):
+                            # Add a control dependency between the two NCCL operations
+                            # to capture the new "happens-before" relationship.
+                            _add_edge(
+                                overlapped_schedule[i],
+                                overlapped_schedule[j],
+                                control_dependency=True,
+                            )
+                            # Record the newly added control dependency in case
+                            # we need to revert, then continue the search
+                            added_edges.append(
+                                (overlapped_schedule[i], overlapped_schedule[j])
+                            )
+                        else:
+                            # Skip the overlap optimization when the relative order
+                            # of NCCL operations cannot be changed.
+                            for edge in added_edges:
+                                _remove_edge(edge[0], edge[1])
+                            break
+
     return actor_to_overlapped_schedule
+
+
+def _swap_ok(
+    nccl_read_op: _DAGOperationGraphNode,
+    nccl_write_op: _DAGOperationGraphNode,
+    graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
+) -> bool:
+    """
+    Check if the swap of two NCCL operations is allowed.
+    """
+    # If nccl_write_op must happen before nccl_read_op, then we cannot swap.
+    # Otherwise, we can swap.
+    visited = set()
+    queue = deque([nccl_write_op])
+    while queue:
+        node = queue.popleft()
+        visited.add(node)
+        for out_node_task_idx, out_node_type in node.out_edges:
+            out_node = graph[out_node_task_idx][out_node_type]
+            if out_node == nccl_read_op:
+                return False
+            if out_node not in visited:
+                queue.append(out_node)
+    return True
 
 
 def _extract_execution_schedule(

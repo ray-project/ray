@@ -1,3 +1,4 @@
+import copy
 import weakref
 import asyncio
 from collections import defaultdict
@@ -1799,6 +1800,7 @@ class CompiledDAG:
         graph = _build_dag_node_operation_graph(
             self.idx_to_task, actor_to_operation_nodes
         )
+        graph_copy = copy.deepcopy(graph)
         # Step 2: Generate an execution schedule for each actor using topological sort
         actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
 
@@ -1806,7 +1808,7 @@ class CompiledDAG:
         actor_to_overlapped_schedule = None
         if self._overlap_gpu_communication:
             actor_to_overlapped_schedule = _generate_overlapped_execution_schedule(
-                actor_to_execution_schedule
+                graph_copy, actor_to_execution_schedule
             )
 
         if RAY_CGRAPH_VISUALIZE_SCHEDULE:
