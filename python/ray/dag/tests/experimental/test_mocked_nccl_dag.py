@@ -7,7 +7,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.exceptions import RayChannelError
+from ray.exceptions import RayChannelError, RayTaskError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.conftest import (
     Barrier,
@@ -197,7 +197,7 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster, send_as_dict):
 
     # Sending wrong shape errors.
     ref = compiled_dag.execute(i, shape=(20,), dtype=dtype)
-    with pytest.raises(RayChannelError):
+    with pytest.raises(RayTaskError):
         ray.get(ref)
 
     # Sending correct shape still errors because the DAG has already been torn
