@@ -9,6 +9,8 @@ doctest(
             "**/tests/**",
             "suggest/**",
             "impl/test_utils.py",
+            # Already covered by Ray Train doctests
+            "context.py",
             # Deprecated
             "automl/**",
             "cluster_info.py",
