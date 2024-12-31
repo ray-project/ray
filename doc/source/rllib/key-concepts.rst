@@ -414,13 +414,14 @@ actor and calling its :py:meth:`~ray.rllib.core.learner.learner.Learner.update_f
         .training(lr=0.0001)
         .rl_module(model_config=DefaultModelConfig(fcnet_hiddens=[64, 32]))
     )
+    # Get the Learner class.
     ppo_learner_class = config.get_default_learner_class()
+
     # Create the Learner actor.
     learner_actor = ray.remote(ppo_learner_class).remote(
         config=config,
         module_spec=config.get_multi_rl_module_spec(env=gym.make("Acrobot-v1")),
     )
-
     # Build the Learner.
     ray.get(learner_actor.build.remote())
 
