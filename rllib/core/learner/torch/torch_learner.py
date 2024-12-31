@@ -462,7 +462,11 @@ class TorchLearner(Learner):
         after setting up all variables because `configure_optimizer_for_module` is
         called in this `Learner.build()`.
         """
-        self._device = get_device(self.config, self.config.num_gpus_per_learner)
+        self._device = get_device(
+            self.config, 
+            self.config.num_gpus_per_learner, 
+            self.config.custom_resources_per_learner
+        )
 
         super().build()
 

@@ -145,9 +145,11 @@ class LearnerGroup(Checkpointable):
                 # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
                 # - (0.01 * self.config.num_aggregator_actors_per_learner),
             )
+            custom_resources_per_learner = self.config.custom_resources_per_learner
             resources_per_learner = {
                 "CPU": num_cpus_per_learner,
                 "GPU": num_gpus_per_learner,
+                **custom_resources_per_learner
             }
 
             backend_executor = BackendExecutor(

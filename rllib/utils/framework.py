@@ -51,7 +51,7 @@ def convert_to_tensor(
 
 
 @PublicAPI
-def get_device(config: "AlgorithmConfig", num_gpus_requested: int = 1):
+def get_device(config: "AlgorithmConfig", num_gpus_requested: int = 1, custom_resources_requested={}):
     """Returns a single device (CPU or some GPU) depending on a config.
 
     Args:
@@ -59,6 +59,8 @@ def get_device(config: "AlgorithmConfig", num_gpus_requested: int = 1):
         num_gpus_requested: The number of GPUs actually requested. This may be the value
             of `config.num_gpus_per_env_runner` when for example calling this function
             from an EnvRunner.
+        custom_resources_requested: Similar to the GPU, the dictionary contains the number 
+            of accelerators actually requested.
 
     Returns:
         A single device (or name) given `config` and `num_gpus_requested`.
@@ -94,6 +96,10 @@ def get_device(config: "AlgorithmConfig", num_gpus_requested: int = 1):
                 # `torch.cuda.device_count() = 1` and torch.device(0) maps to that GPU
                 # with ID=1 on the node.
                 return torch.device(config.local_gpu_idx)
+        elif custom_resources_per_learner:
+            # The `get_devices()` api in ray.air should handle the custom accelerator 
+            # and return torch.device("cpu") if not accelerator is available.
+            return get_devices()[0]
         else:
             return torch.device("cpu")
     else:
