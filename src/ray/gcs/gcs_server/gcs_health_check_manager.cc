@@ -167,11 +167,9 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
       context_ptr,
       &request_,
       response_ptr,
-      [this,
-       start = now,
-       context = std::move(context),
-       response = std::move(response)](::grpc::Status status) {
-      auto manager = manager_.lock();
+      [this, start = now, context = std::move(context), response = std::move(response)](
+          ::grpc::Status status) {
+        auto manager = manager_.lock();
         if (manager == nullptr) {
           delete this;
           return;
