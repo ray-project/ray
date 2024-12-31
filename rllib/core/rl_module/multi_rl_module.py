@@ -20,7 +20,6 @@ from typing import (
 
 import gymnasium as gym
 
-from ray.rllib.core import COMPONENT_MULTI_RL_MODULE_SPEC
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.utils import force_list
@@ -420,17 +419,6 @@ class MultiRLModule(RLModule):
     ) -> StateDict:
         state = {}
 
-        # We store the current RLModuleSpec as well as it might have changed over time
-        # (modules added/removed from `self`).
-        if self._check_component(
-            COMPONENT_MULTI_RL_MODULE_SPEC,
-            components,
-            not_components,
-        ):
-            state[COMPONENT_MULTI_RL_MODULE_SPEC] = MultiRLModuleSpec.from_module(
-                self
-            ).to_dict()
-
         for module_id, rl_module in self.get_checkpointable_components():
             if self._check_component(module_id, components, not_components):
                 state[module_id] = rl_module.get_state(
@@ -454,27 +442,8 @@ class MultiRLModule(RLModule):
         Args:
             state: The state dict to set.
         """
-        # Check the given MultiRLModuleSpec and - if there are changes in the individual
-        # sub-modules - apply these to this MultiRLModule.
-        if COMPONENT_MULTI_RL_MODULE_SPEC in state:
-            multi_rl_module_spec = MultiRLModuleSpec.from_dict(
-                state[COMPONENT_MULTI_RL_MODULE_SPEC]
-            )
-            # Go through all of our current modules and check, whether they are listed
-            # in the given MultiRLModuleSpec. If not, erase them from `self`.
-            for module_id, module in self._rl_modules.copy().items():
-                if module_id not in multi_rl_module_spec.rl_module_specs:
-                    self.remove_module(module_id, raise_err_if_not_found=True)
-            # Go through all the modules in the given MultiRLModuleSpec and if
-            # they are not present in `self`, add them.
-            for module_id, module_spec in multi_rl_module_spec.rl_module_specs.items():
-                if module_id not in self:
-                    self.add_module(module_id, module_spec.build(), override=False)
-
         # Now, set the individual states
         for module_id, module_state in state.items():
-            if module_id == COMPONENT_MULTI_RL_MODULE_SPEC:
-                continue
             if module_id in self:
                 self._rl_modules[module_id].set_state(module_state)
 

@@ -10,7 +10,6 @@ from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core import (
     Columns,
     COMPONENT_LEARNER,
-    COMPONENT_MULTI_RL_MODULE_SPEC,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
@@ -431,7 +430,6 @@ class TestLearnerGroupSaveAndRestoreState(unittest.TestCase):
             weights_after_update = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-            weights_after_update.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
             # Weights after the update must be different from original ones.
             check(initial_weights, weights_after_update, false=True)
 
@@ -454,7 +452,6 @@ class TestLearnerGroupSaveAndRestoreState(unittest.TestCase):
             weights_after_2_updates_with_break = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-            weights_after_2_updates_with_break.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
             learner_group.shutdown()
             del learner_group
 
@@ -464,7 +461,6 @@ class TestLearnerGroupSaveAndRestoreState(unittest.TestCase):
             weights_after_restore = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-            weights_after_restore.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
             check(initial_weights, weights_after_restore)
             # Perform 2 updates to get to the same state as the previous learners.
             learner_group.update_from_episodes(FAKE_EPISODES)

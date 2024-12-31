@@ -43,7 +43,7 @@ class TorchRLModule(nn.Module, RLModule):
     framework: str = "torch"
 
     # Stick with torch default.
-    STATE_FILE_NAME = "module_state.pt"
+    STATE_FILE_NAME = "module_state"
 
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)

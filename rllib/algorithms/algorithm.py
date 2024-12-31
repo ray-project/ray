@@ -91,7 +91,7 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.checkpoints import (
     Checkpointable,
     CHECKPOINT_VERSION,
-    CHECKPOINT_VERSION_LEARNER,
+    CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER,
     get_checkpoint_info,
     try_import_msgpack,
 )
@@ -300,7 +300,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     # Backward compatibility with old checkpoint system (now through the
     # `Checkpointable` API).
     METADATA_FILE_NAME = "rllib_checkpoint.json"
-    STATE_FILE_NAME = "algorithm_state.pkl"
+    STATE_FILE_NAME = "algorithm_state"
 
     @classmethod
     @override(Checkpointable)
@@ -1633,16 +1633,38 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # Get the state of the correct (reference) worker. For example the local
             # worker of an EnvRunnerGroup.
             state = from_worker.get_state()
+            state_ref = ray.put(state)
+
+            def _sync_env_runner(er):
+                er.set_state(ray.get(state_ref))
+
             # Take out (old) connector states from local worker's state.
             if not self.config.enable_env_runner_and_connector_v2:
                 for pol_states in state["policy_states"].values():
                     pol_states.pop("connector_configs", None)
-            state_ref = ray.put(state)
+
+            elif self.config.is_multi_agent():
+
+                multi_rl_module_spec = MultiRLModuleSpec.from_module(from_worker.module)
+
+                def _sync_env_runner(er):  # noqa
+                    # Remove modules, if necessary.
+                    for module_id, module in er.module._rl_modules.copy().items():
+                        if module_id not in multi_rl_module_spec.rl_module_specs:
+                            er.module.remove_module(
+                                module_id, raise_err_if_not_found=True
+                            )
+                    # Add modules, if necessary.
+                    for mid, mod_spec in multi_rl_module_spec.rl_module_specs.items():
+                        if mid not in er.module:
+                            er.module.add_module(mid, mod_spec.build(), override=False)
+                    # Now that the MultiRLModule is fixed, update the state.
+                    er.set_state(ray.get(state_ref))
 
             # By default, entire local EnvRunner state is synced after restoration
             # to bring the previously failed EnvRunner up to date.
             workers.foreach_worker(
-                func=lambda w: w.set_state(ray.get(state_ref)),
+                func=_sync_env_runner,
                 remote_worker_ids=restored,
                 # Don't update the local EnvRunner, b/c it's the one we are synching
                 # from.
@@ -1949,6 +1971,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 _env_runner.config.multi_agent(
                     policy_mapping_fn=new_agent_to_module_mapping_fn
                 )
+            # Force reset all ongoing episodes on the EnvRunner to avoid having
+            # different ModuleIDs compute actions for the same AgentID in the same
+            # episode.
+            # TODO (sven): Create an API for this.
+            _env_runner._needs_initial_reset = True
+
             return MultiRLModuleSpec.from_module(_env_runner.module)
 
         # Remove from (training) EnvRunners and sync weights.
@@ -2603,7 +2631,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # New API stack: Delegate to the `Checkpointable` implementation of
         # `save_to_path()`.
         if self.config.enable_rl_module_and_learner:
-            return self.save_to_path(checkpoint_dir)
+            return self.save_to_path(
+                checkpoint_dir,
+                use_msgpack=self.config._use_msgpack_checkpoints,
+            )
 
         checkpoint_dir = pathlib.Path(checkpoint_dir)
 
@@ -2617,7 +2648,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # Add RLlib checkpoint version.
         if self.config.enable_rl_module_and_learner:
-            state["checkpoint_version"] = CHECKPOINT_VERSION_LEARNER
+            state["checkpoint_version"] = CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER
         else:
             state["checkpoint_version"] = CHECKPOINT_VERSION
 
@@ -2813,9 +2844,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Override from parent method, b/c we might have to sync the EnvRunner weights
         # after having restored/loaded the LearnerGroup state.
         super().restore_from_path(path, *args, **kwargs)
-        # Sync EnvRunners, but only if LearnerGroup's checkpoint can be found in path.
+
+        # Sync EnvRunners, if LearnerGroup's checkpoint can be found in path
+        # or user loaded a subcomponent within the LearnerGroup (for example a module).
         path = pathlib.Path(path)
-        if (path / "learner_group").is_dir():
+        if (path / COMPONENT_LEARNER_GROUP).is_dir() or (
+            "component" in kwargs and COMPONENT_LEARNER_GROUP in kwargs["component"]
+        ):
             # Make also sure, all (training) EnvRunners get the just loaded weights, but
             # only the inference-only ones.
             self.env_runner_group.sync_weights(
