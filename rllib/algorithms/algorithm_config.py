@@ -2401,52 +2401,55 @@ class AlgorithmConfig(_Config):
                 :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`  # noqa
                 for more information.
             on_evaluate_start: A callable or a list of callables. If a list, RLlib calls
-                the items in the same sequence. `on_algorithm_init` methods overridden
+                the items in the same sequence. `on_evaluate_start` methods overridden
                 in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_evaluate_start`  # noqa
                 for more information.
             on_evaluate_end: A callable or a list of callables. If a list, RLlib calls
-                the items in the same sequence. `on_algorithm_init` methods overridden
+                the items in the same sequence. `on_evaluate_end` methods overridden
                 in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_evaluate_end`  # noqa
                 for more information.
             on_env_runners_recreated: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
-                overridden in `callbacks_class` take precedence and are called first.
+                RLlib calls the items in the same sequence. `on_env_runners_recreated`
+                methods overridden in `callbacks_class` take precedence and are called
+                first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_env_runners_recreated`  # noqa
                 for more information.
             on_checkpoint_loaded: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
-                overridden in `callbacks_class` take precedence and are called first.
+                RLlib calls the items in the same sequence. `on_checkpoint_loaded`
+                methods overridden in `callbacks_class` take precedence and are called
+                first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_checkpoint_loaded`  # noqa
                 for more information.
             on_environment_created: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
-                overridden in `callbacks_class` take precedence and are called first.
+                RLlib calls the items in the same sequence. `on_environment_created`
+                methods overridden in `callbacks_class` take precedence and are called
+                first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_environment_created`  # noqa
                 for more information.
             on_episode_created: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                RLlib calls the items in the same sequence. `on_episode_created` methods
                 overridden in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_created`  # noqa
                 for more information.
             on_episode_start: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                RLlib calls the items in the same sequence. `on_episode_start` methods
                 overridden in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_start`  # noqa
                 for more information.
             on_episode_step: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                RLlib calls the items in the same sequence. `on_episode_step` methods
                 overridden in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_step`  # noqa
                 for more information.
             on_episode_end: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                RLlib calls the items in the same sequence. `on_episode_end` methods
                 overridden in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_end`  # noqa
                 for more information.
             on_sample_end: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                RLlib calls the items in the same sequence. `on_sample_end` methods
                 overridden in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_sample_end`  # noqa
                 for more information.
@@ -2454,6 +2457,9 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if callbacks_class is None:
+            callbacks_class = RLlibCallback
+
         if callbacks_class is not NotProvided:
             # Check, whether given `callbacks` is a callable.
             # TODO (sven): Once the old API stack is deprecated, this can also be None
