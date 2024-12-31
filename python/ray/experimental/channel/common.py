@@ -413,6 +413,8 @@ class SynchronousReader(ReaderInterface):
                 if use_normal_waitables
                 else skip_deserialization_waitables_to_num_consumers
             )
+            # Retrieve one mutable object reference at a time so that we can fail
+            # early if one of the object's data is a `RayTaskError`.
             (
                 values,
                 non_complete_object_refs_set,
