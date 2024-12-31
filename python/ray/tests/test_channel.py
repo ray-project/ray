@@ -19,7 +19,7 @@ from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.dag.compiled_dag_node import CompiledDAG
-from ray._private.test_utils import get_actor_node_id
+from ray._private.test_utils import get_actor_node_id, retrieve_mutable_object_refs
 
 logger = logging.getLogger(__name__)
 
@@ -30,47 +30,6 @@ def create_driver_actor():
             ray.get_runtime_context().get_node_id(), soft=False
         )
     ).remote()
-
-
-def retrieve_object_refs(channels, timeout_s=3):
-    waitable_to_num_consumers = {}
-    for c in channels:
-        waitables = c.get_ray_waitables()
-        for w, skip_deserialization in waitables:
-            # This helper function doesn't work for TorchTensorNCCLChannel.
-            # To support it, we need to separate the waitables into two groups:
-            #
-            # 1. Waitables that need to be deserialized
-            # 2. Waitables that don't need to be deserialized
-            #
-            # in `_read_list`.
-            assert skip_deserialization is False
-            waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
-
-    worker = ray._private.worker.global_worker
-    all_waitables = list(waitable_to_num_consumers.keys())
-    if len(all_waitables) == 0:
-        return
-    (
-        values,
-        non_complete_object_refs_set,
-    ) = worker.experimental_wait_and_get_mutable_objects(
-        all_waitables,
-        num_returns=len(all_waitables),
-        timeout_ms=timeout_s * 1000,
-        return_exceptions=True,
-        suppress_timeout_errors=False,
-    )
-    ctx = ChannelContext.get_current().serialization_context
-    for i, value in enumerate(values):
-        if all_waitables[i] in non_complete_object_refs_set:
-            continue
-        ctx.set_data(
-            all_waitables[i],
-            value,
-            waitable_to_num_consumers[all_waitables[i]],
-        )
-
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "darwin",
@@ -90,7 +49,7 @@ def test_put_local_get(ray_start_regular):
     for i in range(num_writes):
         val = i.to_bytes(8, "little")
         chan.write(val)
-        retrieve_object_refs([chan])
+        retrieve_mutable_object_refs([chan])
         assert chan.read() == val
 
 
@@ -109,7 +68,7 @@ def test_read_timeout(ray_start_regular):
     )
 
     with pytest.raises(RayChannelTimeoutError):
-        retrieve_object_refs([chan], 1)
+        retrieve_mutable_object_refs([chan], 1)
 
 
 @pytest.mark.skipif(
@@ -173,7 +132,7 @@ def test_driver_as_reader(ray_start_cluster, remote):
     chan = ray.get(a.get_channel.remote())
 
     ray.get(a.write.remote())
-    retrieve_object_refs([chan])
+    retrieve_mutable_object_refs([chan])
     assert chan.read() == b"x"
 
 
@@ -216,11 +175,11 @@ def test_driver_as_reader_with_resize(ray_start_cluster, remote):
     chan = ray.get(a.get_channel.remote())
 
     ray.get(a.write.remote())
-    retrieve_object_refs([chan])
+    retrieve_mutable_object_refs([chan])
     assert chan.read() == b"x"
 
     ray.get(a.write_large.remote())
-    retrieve_object_refs([chan])
+    retrieve_mutable_object_refs([chan])
     assert chan.read() == b"x" * 2000
 
 
@@ -253,7 +212,7 @@ def test_set_error_before_read(ray_start_regular):
             self._channel.write(arr)
 
         def read(self):
-            retrieve_object_refs([self._channel])
+            retrieve_mutable_object_refs([self._channel])
             self.arr = self._channel.read()
             # Keep self.arr in scope. While self.arr is in scope, its backing
             # shared_ptr<MutableObjectBuffer> in C++ will also stay in scope.
@@ -323,7 +282,7 @@ def test_errors(ray_start_regular):
             [(driver_actor, get_actor_node_id(driver_actor))], do_write=True
         )
     )
-    retrieve_object_refs([chan])
+    retrieve_mutable_object_refs([chan])
     assert chan.read() == b"hello"
 
     @ray.remote
@@ -332,7 +291,7 @@ def test_errors(ray_start_regular):
             pass
 
         def read(self, chan):
-            retrieve_object_refs([chan])
+            retrieve_mutable_object_refs([chan])
             return chan.read()
 
     readers = [Reader.remote(), Reader.remote()]
@@ -360,7 +319,7 @@ def test_put_different_meta(ray_start_regular):
     def _test(val):
         chan.write(val)
 
-        retrieve_object_refs([chan])
+        retrieve_mutable_object_refs([chan])
         read_val = chan.read()
         if isinstance(val, np.ndarray):
             assert np.array_equal(read_val, val)
@@ -387,7 +346,7 @@ def test_multiple_channels_different_nodes(ray_start_cluster):
     @ray.remote(num_cpus=1)
     class Actor:
         def read(self, channel, val):
-            retrieve_object_refs([channel])
+            retrieve_mutable_object_refs([channel])
             read_val = channel.read()
             if isinstance(val, np.ndarray):
                 assert np.array_equal(read_val, val)
@@ -425,7 +384,7 @@ def test_resize_channel_on_same_node(ray_start_regular):
     def _test(val):
         chan.write(val)
 
-        retrieve_object_refs([chan])
+        retrieve_mutable_object_refs([chan])
         read_val = chan.read()
         if isinstance(val, np.ndarray):
             assert np.array_equal(read_val, val)
@@ -457,7 +416,7 @@ def test_resize_channel_on_same_node_with_actor(ray_start_regular):
             pass
 
         def read(self, channel, val):
-            retrieve_object_refs([channel])
+            retrieve_mutable_object_refs([channel])
             read_val = channel.read()
             if isinstance(val, np.ndarray):
                 assert np.array_equal(read_val, val)
@@ -503,7 +462,7 @@ def test_resize_channel_on_different_nodes(ray_start_cluster):
             pass
 
         def read(self, channel, val):
-            retrieve_object_refs([channel])
+            retrieve_mutable_object_refs([channel])
             read_val = channel.read()
             if isinstance(val, np.ndarray):
                 assert np.array_equal(read_val, val)
@@ -545,12 +504,12 @@ def test_put_remote_get(ray_start_regular, num_readers):
         def read(self, chan, num_writes):
             for i in range(num_writes):
                 val = i.to_bytes(8, "little")
-                retrieve_object_refs([chan])
+                retrieve_mutable_object_refs([chan])
                 assert chan.read() == val
 
             for i in range(num_writes):
                 val = i.to_bytes(100, "little")
-                retrieve_object_refs([chan])
+                retrieve_mutable_object_refs([chan])
                 assert chan.read() == val
 
             for val in [
@@ -558,7 +517,7 @@ def test_put_remote_get(ray_start_regular, num_readers):
                 "hello again",
                 1000,
             ]:
-                retrieve_object_refs([chan])
+                retrieve_mutable_object_refs([chan])
                 assert chan.read() == val
 
     num_writes = 1000
@@ -632,7 +591,7 @@ def test_remote_reader(ray_start_cluster, remote):
 
         def read(self, num_reads):
             for _ in range(num_reads):
-                retrieve_object_refs([self._reader_chan])
+                retrieve_mutable_object_refs([self._reader_chan])
                 self._reader_chan.read()
 
     reader_and_node_list = []
@@ -699,7 +658,7 @@ def test_remote_reader_close(ray_start_cluster, remote):
 
         def read(self):
             try:
-                retrieve_object_refs([self._reader_chan])
+                retrieve_mutable_object_refs([self._reader_chan])
                 self._reader_chan.read()
             except RayChannelError:
                 pass
@@ -862,7 +821,7 @@ def test_cached_channel_single_reader():
             self._chan = channel
 
         def read(self):
-            retrieve_object_refs([self._chan])
+            retrieve_mutable_object_refs([self._chan])
             return self._chan.read()
 
         def get_ctx_buffer_size(self):
@@ -907,8 +866,8 @@ def test_cached_channel_multi_readers(ray_start_cluster):
         def pass_channel(self, channel):
             self._chan = channel
 
-        def retrieve_object_refs(self):
-            retrieve_object_refs([self._chan])
+        def retrieve_mutable_object_refs(self):
+            retrieve_mutable_object_refs([self._chan])
 
         def read(self):
             return self._chan.read()
@@ -930,7 +889,7 @@ def test_cached_channel_multi_readers(ray_start_cluster):
 
     channel.write("hello")
     # first read
-    ray.get(actor.retrieve_object_refs.remote())
+    ray.get(actor.retrieve_mutable_object_refs.remote())
     assert ray.get(actor.read.remote()) == "hello"
     assert ray.get(actor.get_ctx_buffer_size.remote()) == 1
     # second read
@@ -940,7 +899,7 @@ def test_cached_channel_multi_readers(ray_start_cluster):
     # Write again after reading num_readers times.
     channel.write("world")
     # first read
-    ray.get(actor.retrieve_object_refs.remote())
+    ray.get(actor.retrieve_mutable_object_refs.remote())
     assert ray.get(actor.read.remote()) == "world"
     assert ray.get(actor.get_ctx_buffer_size.remote()) == 1
     # second read
@@ -981,7 +940,7 @@ def test_composite_channel_single_reader(ray_start_cluster):
             return self._chan
 
         def read(self):
-            retrieve_object_refs([self._chan])
+            retrieve_mutable_object_refs([self._chan])
             return self._chan.read()
 
         def write(self, value):
@@ -1021,7 +980,7 @@ def test_composite_channel_single_reader(ray_start_cluster):
         )
     )
     ray.get(actor2.write.remote("world hello"))
-    retrieve_object_refs([actor2_to_driver_channel])
+    retrieve_mutable_object_refs([actor2_to_driver_channel])
     assert actor2_to_driver_channel.read() == "world hello"
 
 
@@ -1057,7 +1016,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
             return self._chan
 
         def read(self):
-            retrieve_object_refs([self._chan])
+            retrieve_mutable_object_refs([self._chan])
             return self._chan.read()
 
         def write(self, value):
@@ -1111,7 +1070,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
     )
     ray.get(actor2.pass_channel.remote(actor1_output_channel))
     ray.get(actor1.write.remote("world hello"))
-    retrieve_object_refs([actor1_output_channel])
+    retrieve_mutable_object_refs([actor1_output_channel])
     assert ray.get(actor2.read.remote()) == "world hello"
     assert actor1_output_channel.read() == "world hello"
 
@@ -1168,14 +1127,14 @@ def test_put_error(ray_start_cluster):
     # Putting a bytes object multiple times is okay.
     for _ in range(3):
         ray.get(a.write.remote(write_error=False))
-        retrieve_object_refs([chan])
+        retrieve_mutable_object_refs([chan])
         assert chan.read() == b"x"
 
     # Putting an exception multiple times is okay.
     for _ in range(3):
         ray.get(a.write.remote(write_error=True))
         try:
-            retrieve_object_refs([chan])
+            retrieve_mutable_object_refs([chan])
             assert chan.read()
         except Exception as exc:
             assert isinstance(exc, ValueError)
@@ -1208,7 +1167,7 @@ def test_payload_large(ray_start_cluster):
             return ray.get_runtime_context().get_node_id()
 
         def read(self, channel, val):
-            retrieve_object_refs([channel])
+            retrieve_mutable_object_refs([channel])
             assert channel.read() == val
 
     def create_actor(node):
@@ -1259,7 +1218,7 @@ def test_payload_resize_large(ray_start_cluster):
             return ray.get_runtime_context().get_node_id()
 
         def read(self, channel, val):
-            retrieve_object_refs([channel])
+            retrieve_mutable_object_refs([channel])
             assert channel.read() == val
 
     def create_actor(node):
@@ -1310,7 +1269,7 @@ def test_readers_on_different_nodes(ray_start_cluster):
             return ray.get_runtime_context().get_node_id()
 
         def read(self, channel, val):
-            retrieve_object_refs([channel])
+            retrieve_mutable_object_refs([channel])
             assert channel.read() == val
             return val
 
@@ -1366,7 +1325,7 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
             return ray.get_runtime_context().get_node_id()
 
         def read(self, channel, val):
-            retrieve_object_refs([channel])
+            retrieve_mutable_object_refs([channel])
             assert channel.read() == val
             return val
 
@@ -1453,7 +1412,7 @@ def test_buffered_channel(shutdown_only):
     for i in range(BUFFER_SIZE * 3):
         read_idx += 1
         assert ray.get(a.write.remote(i))
-        retrieve_object_refs([chan])
+        retrieve_mutable_object_refs([chan])
         assert chan.read() == i
         assert chan.next_read_index == read_idx % BUFFER_SIZE
 
@@ -1469,11 +1428,11 @@ def test_buffered_channel(shutdown_only):
     # Test read timeout.
     for i in range(BUFFER_SIZE):
         # This reads all previous writes.
-        retrieve_object_refs([chan])
+        retrieve_mutable_object_refs([chan])
         assert chan.read() == i
     # This read times out because there's no new write, and the call blocks.
     with pytest.raises(ray.exceptions.RayChannelTimeoutError):
-        retrieve_object_refs([chan], 1)
+        retrieve_mutable_object_refs([chan], 1)
 
     print("Test serialization/deserialization works")
     deserialized = pickle.loads(pickle.dumps(chan))

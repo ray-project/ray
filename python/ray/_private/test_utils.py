@@ -48,6 +48,7 @@ from ray.core.generated import (
 )
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.experimental.channel import ChannelContext
 
 
 logger = logging.getLogger(__name__)
@@ -2295,3 +2296,43 @@ def close_common_connections(pid):
         if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD.
             os.close(fd)
             print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")
+
+
+def retrieve_mutable_object_refs(channels, timeout_s=3):
+    waitable_to_num_consumers = {}
+    for c in channels:
+        waitables = c.get_ray_waitables()
+        for w, skip_deserialization in waitables:
+            # This helper function doesn't work for TorchTensorNCCLChannel.
+            # To support it, we need to separate the waitables into two groups:
+            #
+            # 1. Waitables that need to be deserialized
+            # 2. Waitables that don't need to be deserialized
+            #
+            # in `_read_list`.
+            assert skip_deserialization is False
+            waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
+
+    worker = ray._private.worker.global_worker
+    all_waitables = list(waitable_to_num_consumers.keys())
+    if len(all_waitables) == 0:
+        return
+    (
+        values,
+        non_complete_object_refs_set,
+    ) = worker.experimental_wait_and_get_mutable_objects(
+        all_waitables,
+        num_returns=len(all_waitables),
+        timeout_ms=timeout_s * 1000,
+        return_exceptions=True,
+        suppress_timeout_errors=False,
+    )
+    ctx = ChannelContext.get_current().serialization_context
+    for i, value in enumerate(values):
+        if all_waitables[i] in non_complete_object_refs_set:
+            continue
+        ctx.set_data(
+            all_waitables[i],
+            value,
+            waitable_to_num_consumers[all_waitables[i]],
+        )
