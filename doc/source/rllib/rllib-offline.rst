@@ -61,7 +61,7 @@ this agent and then use its policy to record expert data to local disk.
     # the tabular recording data.
     tabular_data_path = None
 
-.. testcode::
+.. code-block::
 
     from ray.rllib.algorithms.ppo import PPOConfig
     from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
