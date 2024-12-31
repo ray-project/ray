@@ -411,7 +411,8 @@ void GcsAutoscalerStateManager::HandleDrainNode(
 
 std::string GcsAutoscalerStateManager::DebugString() const {
   std::ostringstream stream;
-  stream << "GcsAutoscalerStateManager: " << "\n- last_seen_autoscaler_state_version_: "
+  stream << "GcsAutoscalerStateManager: "
+         << "\n- last_seen_autoscaler_state_version_: "
          << last_seen_autoscaler_state_version_
          << "\n- last_cluster_resource_state_version_: "
          << last_cluster_resource_state_version_ << "\n- pending demands:\n";
