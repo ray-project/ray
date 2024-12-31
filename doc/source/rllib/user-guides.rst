@@ -22,6 +22,7 @@ User Guides
     rllib-torch2x
     rllib-fault-tolerance
     rllib-dev
+    scaling-guide
 
 
 .. _rllib-feature-guide:
