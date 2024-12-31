@@ -44,10 +44,10 @@ kubectl get pods
 ````{tab-item} Kustomize
 
 ```sh
-# Install CRD and KubeRay operator v1.2.2.
+# Install CRD and KubeRay operator.
 kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=master"
 
-# Confirm that the operator is running in the namespace `ray-system`.
+# Confirm that the operator is running.
 kubectl get pods
 # NAME                                READY   STATUS    RESTARTS   AGE
 # kuberay-operator-6d57c9f797-ffvph   1/1     Running   0          2m14s
