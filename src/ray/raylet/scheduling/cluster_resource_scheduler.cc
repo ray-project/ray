@@ -311,9 +311,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
       !IsSchedulableOnNode(best_node,
                            task_spec.GetRequiredPlacementResources().GetResourceMap(),
                            requires_object_store_memory)) {
-    // Prefer waiting on the local node since the local node is chosen for a reason (e.g.
-    // spread).
-    if (preferred_node_id == local_node_id_.Binary()) {
+    // Prefer waiting on the local node if possible
+    // since the local node is chosen for a reason (e.g. spread).
+    if ((preferred_node_id == local_node_id_.Binary()) && NodeAvailable(local_node_id_)) {
       *is_infeasible = false;
       return local_node_id_;
     }
