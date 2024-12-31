@@ -15,12 +15,11 @@ If you think there is anything missing, please open an issue on `Github`_.
 
 .. _`GitHub`: https://github.com/ray-project/ray/issues
 
-.. TODO: Eventually, move all reference pages into this dir here (doc/source/rllib/package_ref/)
-
 .. toctree::
     :maxdepth: 2
 
     algorithm.rst
+    rllib-callback.rst
     env.rst
     policy.rst
     models.rst
