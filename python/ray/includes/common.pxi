@@ -70,6 +70,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ObjectStoreFullError(message)
     elif status.IsInvalidArgument():
         raise ValueError(message)
+    elif status.IsAlreadyExists():
+        raise ValueError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsObjectRefEndOfStream():
