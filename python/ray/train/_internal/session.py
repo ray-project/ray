@@ -568,6 +568,11 @@ def _tune_task_and_actor_launch_hook(
     )
 
 
+# Global _TrainSession object initialized by Ray Tune function trainables
+# and Ray Train V1 workers.
+_session: Optional[_TrainSession] = None
+
+
 def init_session(*args, **kwargs) -> None:
     global _session
     if _session:
