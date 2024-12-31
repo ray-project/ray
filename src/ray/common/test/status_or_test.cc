@@ -200,4 +200,23 @@ TEST(StatusOrTest, AndThen) {
   }
 }
 
+TEST(StatusOrTest, OrElse) {
+  auto f = [](const StatusOr<int> &statusor) {
+    EXPECT_FALSE(statusor.ok());
+    return StatusOr<int>{static_cast<int>(statusor.status().code())};
+  };
+
+  // Error status.
+  {
+    Status error_status = Status::InvalidArgument("msg");
+    StatusOr<int> s = std::move(error_status);
+    EXPECT_EQ(s.or_else(f).value(), static_cast<int>(StatusCode::InvalidArgument));
+  }
+  // OK status.
+  {
+    StatusOr<int> s = 10;
+    EXPECT_EQ(s.or_else(f).value(), 10);
+  }
+}
+
 }  // namespace ray

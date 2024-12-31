@@ -82,7 +82,6 @@ class StatusOr {
   //    // Handle error
   // }
   bool ok() const { return status_.ok(); }
-  bool has_value() const { return ok(); }
   explicit operator bool() const { return ok(); }
 
   template <typename U>
@@ -111,6 +110,14 @@ class StatusOr {
   auto and_then(F &&f) const &;
   template <typename F>
   auto and_then(F &&f) &&;
+
+  // Apply the functor [f] if `this->ok() == false`, otherwise return the value contained.
+  template <typename F>
+  auto or_else(F &&f) &;
+  template <typename F>
+  auto or_else(F &&f) const &;
+  template <typename F>
+  auto or_else(F &&f) &&;
 
   // Returns a reference to the current value.
   //
@@ -206,20 +213,38 @@ auto StatusOr<T>::and_then(F &&f) && {
 }
 
 template <typename T>
+template <typename F>
+auto StatusOr<T>::or_else(F &&f) & {
+  return ok() ? this->value() : std::forward<F>(f)(this->status());
+}
+
+template <typename T>
+template <typename F>
+auto StatusOr<T>::or_else(F &&f) const & {
+  return ok() ? this->value() : std::forward<F>(f)(this->status());
+}
+
+template <typename T>
+template <typename F>
+auto StatusOr<T>::or_else(F &&f) && {
+  return ok() ? this->value() : std::forward<F>(f)(this->status());
+}
+
+template <typename T>
 T &StatusOr<T>::value() & {
-  RAY_CHECK(has_value());
+  RAY_CHECK(ok());
   return get();
 }
 
 template <typename T>
 const T &StatusOr<T>::value() const & {
-  RAY_CHECK(has_value());
+  RAY_CHECK(ok());
   return get();
 }
 
 template <typename T>
 T &&StatusOr<T>::value() && {
-  RAY_CHECK(has_value());
+  RAY_CHECK(ok());
   auto &val = get();
   return std::move(val);
 }
