@@ -228,7 +228,7 @@ Finally, the ``.._state.[pkl|msgpack]`` files contain the pickled or msgpacked s
 RLlib obtains this state dict when saving a checkpoint through calling the object's
 :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.get_state` method.
 
-.. info::
+.. note::
     Support for ``msgpack`` based checkpoints is experimental, but might become the default in the future.
     Unlike ``pickle``, ``msgpack`` has the advantage of being independent of the python-version, thus allowing
     users to recover experiment and model states from old checkpoints that have been generated with older python
@@ -241,7 +241,6 @@ RLlib obtains this state dict when saving a checkpoint through calling the objec
     at the time of checkpoint restoration.
 
     `See here for an example that illustrates this in more detail <https://github.com/ray-project/ray/tree/master/rllib/examples/checkpoints/change_config_during_training.py>`__.
-
 
 .. _rllib-components-tree:
 
