@@ -330,19 +330,13 @@ class APPOConfig(IMPALAConfig):
             from ray.rllib.algorithms.appo.torch.appo_torch_rl_module import (
                 APPOTorchRLModule as RLModule,
             )
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import (
-                APPOTfRLModule as RLModule,
-            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
                 "Use either 'torch' or 'tf2'."
             )
 
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-
-        return RLModuleSpec(module_class=RLModule, catalog_class=PPOCatalog)
+        return RLModuleSpec(module_class=RLModule)
 
     @property
     @override(AlgorithmConfig)
