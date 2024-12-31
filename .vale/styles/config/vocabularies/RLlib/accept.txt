@@ -2,6 +2,7 @@
 # Add new terms alphabetically.
 (APPO|appo)
 boolean
+[Cc]allables?
 coeff
 config
 (DQN|dqn)

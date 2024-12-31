@@ -42,12 +42,12 @@ the episode has terminated:
 
 Callback lambdas vs stateful RLlibCallback
 ------------------------------------------
-There are two ways to define custom code to be executed at the various callback events.
+There are two ways to define custom code and have it executed during the various callback events.
 
 Callback lambdas
 ~~~~~~~~~~~~~~~~
-If your injected code is rather simple and doesn't require state or storing temporary
-information to be reused in succeeding calls triggered by the same event, you can use a lambda
+If your injected code is rather simple and doesn't need to store temporary information
+for reuse in succeeding event calls, you can use a lambda
 and pass it to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks`
 method as previously shown.
 
@@ -224,28 +224,19 @@ Examples
 --------
 
 Here are two examples showing you how to setup custom callbacks on the
-Algorithm process as well as on the EnvRunner processes.
-
-Both examples utilize the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`
-API to log the custom computations happening in the injected code to the main
-metrics system.
+:ref:`Algorithm <rllib-key-concepts-algorithms>` process as well as on the
+:ref:`EnvRunner <rllib-key-concepts-env-runners>` processes.
 
 
-.. todo: uncomment this once metrics-logger.rst page is online.
-   Read :ref:`more about the MetricsLogger API here <>`__ or also take a look at this
-   more complex example on
-   `how to generate and log a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
-
-
-Example 1: on_train_result
---------------------------
+Example 1: `on_train_result`
+----------------------------
 
 The following example demonstrates how to implement a simple custom function writing the replay buffer
 contents to disk from time to time.
 
-You normally don't want the contents of buffers to be written with your
-:ref:`Algorithm checkpoints <rllib-checkpointing-docs>`, so doing this in a more
-controlled fashion through a custom callback would be a good compromise.
+You normally don't want to write the contents of buffers along with your
+:ref:`Algorithm checkpoints <rllib-checkpointing-docs>`, so doing this less often, in a more
+controlled fashion through a custom callback could be a good compromise.
 
 .. testcode::
 
@@ -286,36 +277,85 @@ controlled fashion through a custom callback would be a good compromise.
    of all available callbacks.
 
 
-Example 2: on_episode_end
--------------------------
+Example 2: `on_episode_end`
+---------------------------
 
-The following example demonstrates how to implement custom RLlibCallback class computing
-the average first-joint angle, ``theta1`` of the `Acrobot-v1 RL environment <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/acrobot.py>`__.
+The following example demonstrates how to implement a custom :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` class
+computing the average "first-joint angle" of the
+`Acrobot-v1 RL environment <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/acrobot.py>`__.
 
-It is decribed in the original environment's code as:
+.. figure:: images/acrobot-v1.png
+    :width: 150
+    :align: left
 
-.. code-block:: text
-    `theta1` is the angle of the first joint, where an angle of 0 indicates the first
-    link is pointing directly downwards.
+    **The Acrobot-v1 environment**: The env's code described the angle you are about to
+    compute and log through your custom callback as:
 
+    .. code-block:: text
+        `theta1` is the angle of the first joint, where an angle of 0.0 indicates that the first
+        link is pointing directly downwards.
 
+The example utilizes RLlib's :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`
+API to log the custom computations happening in the injected code your Algorithm's main results system.
 
+.. todo: uncomment this once metrics-logger.rst page is online.
+   Read :ref:`more about the MetricsLogger API here <>`__ or also
 
-You normally don't want the contents of buffers to be written with your
-:ref:`Algorithm checkpoints <rllib-checkpointing-docs>`, so doing this in a more
-controlled fashion through a custom callback would be a good compromise.
+Also take a look at this more complex example on `how to generate and log a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
 
 .. testcode::
 
+    import math
+    import numpy as np
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
+    class LogAcrobotAngle(RLlibCallback):
+        def on_episode_step(self, *, episode, env, **kwargs):
+            # First get the angle from the env (note that `env` is a VectorEnv).
+            # See https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/acrobot.py
+            # for the env's source code.
+            cos_theta1, sin_theta1 = env.envs[0].unwrapped.state[0], env.envs[0].unwrapped.state[1]
+            # Convert cos/sin/tan into degree.
+            deg_theta1 = math.degrees(math.atan2(sin_theta1, cos_theta1))
+
+            # Log the theta1 degree value in the episode object, temporarily.
+            episode.add_temporary_timestep_data("theta1", deg_theta1)
+
+        def on_episode_end(self, *, episode, metrics_logger, **kwargs):
+            # Get all the logged theta1 degree values and average them.
+            theta1s = episode.get_temporary_timestep_data("theta1")
+            avg_theta1 = np.mean(theta1s)
+
+            # Log the final result - per episode - to the MetricsLogger.
+            # Report with a sliding/smoothing window of 50.
+            metrics_logger.log_value("theta1_mean", avg_theta1, reduce="mean", window=50)
+
+    config = (
+        PPOConfig()
+        .environment("Acrobot-v1")
+        .callbacks(
+            callbacks_class=LogAcrobotAngle,
+        )
+    )
+    ppo = config.build()
+
+    # Train n times. Expect `theta1_mean` to be found in the results under:
+    # `env_runners/theta1_mean`
+    for i in range(10):
+        results = ppo.train()
+        print(
+            f"iter={i} "
+            f"theta1_mean={results['env_runners']['theta1_mean']} "
+            f"R={results['env_runners']['episode_return_mean']}"
+        )
 
 .. tip::
     You can base your custom logic on whether the calling EnvRunner is a regular "training"
-    EnvRunner, used to collect training samples, or an "eval" EnvRunner, used to play
+    EnvRunner, used to collect training samples, or an evaluation EnvRunner, used to play
     through episodes for evaluation only.
     Access the ``env_runner.config.in_evaluation`` boolean flag, which is True on
-    eval EnvRunner actors and False on training ones.
-
+    evaluation EnvRunner actors and False on training ones.
 
 .. tip::
    See :ref:`here for the exact call signatures and expected argument types <rllib-callback-reference-algo-bound>`
