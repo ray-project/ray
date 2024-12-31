@@ -45,7 +45,7 @@ from ray.experimental.channel import (
     SynchronousWriter,
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
-    RayDAGArgs,
+    CompiledDAGArgs,
     CompositeChannel,
     IntraProcessChannel,
 )
@@ -727,7 +727,7 @@ class CompiledDAG:
         reader ref on the driver node if the channel backing store needs to be resized.
         However, remote functions cannot be invoked on the driver.
 
-        An accelerated DAG creates an actor from this class when the DAG is intialized.
+        A Compiled Graph creates an actor from this class when the DAG is initialized.
         The actor is on the same node as the driver. This class has an empty
         implementation, though it serves as a way for the output writer to invoke remote
         functions on the driver node.
@@ -1045,7 +1045,7 @@ class CompiledDAG:
                     nccl_actors_p2p.add(actor_handle)
                     custom_communicator = dag_node.type_hint.get_custom_communicator()
                     mixed_nccl_group_error_message = (
-                        "Accelerated DAGs do not support mixed usage of "
+                        "Compiled Graphs do not support mixed usage of "
                         "type hints of default NCCL group "
                         '(i.e., TorchTensor(transport="nccl"))'
                         "and custom NCCL group "
@@ -1063,7 +1063,7 @@ class CompiledDAG:
                         if self._custom_communicator_p2p is not None:
                             if self._custom_communicator_p2p != custom_communicator:
                                 raise ValueError(
-                                    "Accelerated DAGs currently only support "
+                                    "Compiled Graphs currently only support "
                                     "a single custom NCCL group, but multiple "
                                     "have been specified. Check all the "
                                     "TorchTensor(transport=nccl_group) type hints "
@@ -2114,13 +2114,13 @@ class CompiledDAG:
         self._check_inputs(args, kwargs)
         if len(args) == 1 and len(kwargs) == 0:
             # When serializing a tuple, the Ray serializer invokes pickle5, which adds
-            # several microseconds of overhead. One common case for accelerated DAGs is
+            # several microseconds of overhead. One common case for Compiled Graphs is
             # passing a single argument (oftentimes of of type `bytes`, which requires
             # no serialization). To avoid imposing this overhead on this common case, we
             # create a fast path for this case that avoids pickle5.
             inp = args[0]
         else:
-            inp = RayDAGArgs(args=args, kwargs=kwargs)
+            inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
         self.raise_if_too_many_inflight_requests()
         self._dag_submitter.write(inp, self._submit_timeout)
@@ -2186,7 +2186,7 @@ class CompiledDAG:
                 # pickle5.
                 inp = args[0]
             else:
-                inp = RayDAGArgs(args=args, kwargs=kwargs)
+                inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
             self.raise_if_too_many_inflight_requests()
             await self._dag_submitter.write(inp)

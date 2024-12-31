@@ -176,8 +176,8 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
   (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
 }
 
-const absl::flat_hash_map<NodeID, rpc::ResourcesData>
-    &GcsResourceManager::NodeResourceReportView() const {
+const absl::flat_hash_map<NodeID, rpc::ResourcesData> &
+GcsResourceManager::NodeResourceReportView() const {
   return node_resource_usages_;
 }
 
@@ -187,7 +187,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   if (!node_resource_usages_.empty()) {
     rpc::ResourceUsageBatchData batch;
-    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+    absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
         aggregate_load;
 
     for (const auto &usage : node_resource_usages_) {
@@ -333,8 +333,7 @@ void GcsResourceManager::UpdatePlacementGroupLoad(
 
 std::string GcsResourceManager::DebugString() const {
   std::ostringstream stream;
-  stream << "GcsResourceManager: "
-         << "\n- GetAllAvailableResources request count: "
+  stream << "GcsResourceManager: " << "\n- GetAllAvailableResources request count: "
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
          << "\n- GetAllTotalResources request count: "
          << counts_[CountType::GET_All_TOTAL_RESOURCES_REQUEST]

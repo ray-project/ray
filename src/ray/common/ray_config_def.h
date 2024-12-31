@@ -759,7 +759,7 @@ RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HP
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
-/// Ray-internal auxiliary tasks (e.g., accelerated dag workers).
+/// Ray-internal auxiliary tasks (e.g., compiled graph workers).
 RAY_CONFIG(std::string, system_concurrency_group_name, "_ray_system")
 
 // Maximum size of the batches when broadcasting resources to raylet.

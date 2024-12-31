@@ -29,7 +29,7 @@ class GcsResourceManager;
 
 class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
  public:
-  GcsAutoscalerStateManager(const std::string &session_name,
+  GcsAutoscalerStateManager(std::string session_name,
                             GcsNodeManager &gcs_node_manager,
                             GcsActorManager &gcs_actor_manager,
                             const GcsPlacementGroupManager &gcs_placement_group_manager,
@@ -70,14 +70,14 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   void OnNodeDead(const NodeID &node) { node_resource_info_.erase(node); }
 
-  const absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
-      &GetNodeResourceInfo() const {
+  const absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>> &
+  GetNodeResourceInfo() const {
     return node_resource_info_;
   }
 
  private:
   /// \brief Get the aggregated resource load from all nodes.
-  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+  absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
   GetAggregatedResourceLoad() const;
 
   /// \brief Internal method for populating the rpc::ClusterResourceState
@@ -139,7 +139,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   void GetClusterResourceConstraints(rpc::autoscaler::ClusterResourceState *state);
 
   // Ray cluster session name.
-  const std::string session_name_ = "";
+  const std::string session_name_;
 
   /// Gcs node manager that provides node status information.
   GcsNodeManager &gcs_node_manager_;
