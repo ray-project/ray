@@ -9,6 +9,7 @@ from ray import train, tune
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.context import DataContext
 from ray.train import Checkpoint, ScalingConfig
+from ray.train._internal.session import get_session
 from ray.train.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group
 
@@ -138,7 +139,7 @@ def test_repr(ray_start_4_cpus):
 def test_metadata_propagation_base(ray_start_4_cpus):
     class MyTrainer(BaseTrainer):
         def training_loop(self):
-            assert train.get_context().get_metadata() == {"a": 1, "b": 1}
+            assert get_session().metadata == {"a": 1, "b": 1}
             with tempfile.TemporaryDirectory() as path:
                 checkpoint = Checkpoint.from_directory(path)
                 checkpoint.set_metadata({"b": 2, "c": 3})
