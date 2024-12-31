@@ -872,7 +872,7 @@ class Worker:
                 returned list. If False, then the first found exception will be
                 raised.
             skip_deserialization: If true, only the buffer will be released and
-                the object associated with the buffer will not be deserailized.
+                the object associated with the buffer will not be deserialized.
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop

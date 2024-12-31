@@ -289,6 +289,10 @@ class ReaderInterface:
         self._input_channels = input_channels
         self._closed = False
         self._num_reads = 0
+        # List of object refs that were not completed in the last read.
+        # The reader returns immediately when a RayTaskError is found.
+        # This list must be consumed before the next read to avoid reading
+        # stale data remaining from the last read.
         self._non_complete_object_refs: List[ObjectRef] = []
 
     def get_num_reads(self) -> int:
@@ -310,7 +314,18 @@ class ReaderInterface:
         """
         raise NotImplementedError
 
-    def _get_all_waitables_to_num_consumers(self) -> Dict[ObjectRef, int]:
+    def _get_all_waitables_to_num_consumers(
+        self,
+    ) -> Tuple[Dict[ObjectRef, int], Dict[ObjectRef, int]]:
+        """
+        Returns two lists of tuples, where each tuple contains an ObjectRef and an
+        integer. The integer indicates the number of consumers for the ObjectRef.
+
+        The first list contains mutable object refs that need to be deserialized
+        when we first retrieve them (i.e., in `_read_list`). The second list
+        contains mutable object refs that do not need to be deserialized in `_read_list`
+        and instead need to be deserialized in the channel's `read()` method.
+        """
         waitable_to_num_consumers = {}
         skip_deserialization_waitables_to_num_consumers = {}
         for c in self._input_channels:
@@ -403,6 +418,10 @@ class ReaderInterface:
                 #
                 # Return a list of RayTaskError so that the caller will not
                 # get an undefined partial result.
+                #
+                # TODO(kevin85421): Should we consider reading channels that
+                # are ready to be read and returning them as partial results
+                # along with the RayTaskError?
                 return [value for _ in range(len(self._input_channels))]
             ctx.set_data(
                 target_waitable_group[i],
