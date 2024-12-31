@@ -106,6 +106,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
         --build-name mlgpubuild
         --only-tags gpu,gpu_only
+        --except-tags doctest
     depends_on: [ "mlgpubuild", "forge" ]
 
   - label: ":train: ml: train gpu {{matrix.python}} tests ({{matrix.worker_id}})"
@@ -149,7 +150,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
         --parallelism-per-worker 3
-        --except-tags soft_imports,gpu_only,rllib,multinode
+        --except-tags doctest,soft_imports,gpu_only,rllib,multinode
     depends_on: [ "mlbuild", "forge" ]
 
   - label: ":train: ml: tune soft import tests"
@@ -253,6 +254,25 @@ steps:
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... ml 
         --except-tags gpu,post_wheel_build,doctest,highly_parallel
+        --parallelism-per-worker 3
+        --skip-ray-installation
+    depends_on: [ "mlbuild", "forge" ]
+
+  - label: ":train: ml: gpu doc tests"
+    tags: 
+      - train
+      - tune
+      - doc
+    instance_type: large
+    commands:
+      # doc tests
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... ml 
+        --only-tags doctest,gpu
+        --parallelism-per-worker 3
+      # doc examples
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... ml 
+        --only-tags gpu
+        --except-tags post_wheel_build,doctest,highly_parallel
         --parallelism-per-worker 3
         --skip-ray-installation
     depends_on: [ "mlbuild", "forge" ]
