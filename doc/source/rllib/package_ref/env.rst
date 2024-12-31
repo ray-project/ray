@@ -50,6 +50,7 @@ Environment API Reference
 .. toctree::
    :maxdepth: 1
 
+   env/env_runner.rst
    env/multi_agent_env.rst
    env/single_agent_episode.rst
    env/utils.rst

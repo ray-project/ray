@@ -134,7 +134,7 @@ In a nutshell, they carry the neural networks and define how to use them during 
 reinforcement learning: Exploration, inference and training.
 A minimal RL Module can contain a single neural network and define its exploration-, inference- and
 training logic to only map observations to actions. Since RL Modules can map observations to actions, they naturally
-implement reinforcement learning policies in RLlib and can therefore be found in the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`,
+implement reinforcement learning policies in RLlib and can therefore be found in the ``RolloutWorker``,
 where their exploration and inference logic is used to sample from an environment.
 The second place in RLlib where RL Modules commonly occur is the :py:class:`~ray.rllib.core.learner.learner.Learner`,
 where their training logic is used in training the neural network.
@@ -146,8 +146,8 @@ contains multiple RL Modules. The following figure is a rough sketch of how the 
 
 .. note::
 
-    RL Modules are currently in alpha stage. They are wrapped in legacy :py:class:`~ray.rllib.policy.Policy` objects
-    to be used in :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` for sampling.
+    RL Modules are currently in alpha stage. They are wrapped in legacy ``Policy`` objects
+    to be used in ``RolloutWorker`` for sampling.
     This should be transparent to the user, but the following
     `Policy Evaluation <key-concepts.html#policy-evaluation>`__ section still refers to these legacy Policy objects.
 

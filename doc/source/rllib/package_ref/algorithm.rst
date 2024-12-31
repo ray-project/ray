@@ -9,7 +9,7 @@ Algorithms
 
 The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class is the highest-level API in RLlib responsible for **WHEN** and **WHAT** of RL algorithms.
 Things like **WHEN** should we sample the algorithm, **WHEN** should we perform a neural network update, and so on.
-The **HOW** will be delegated to components such as :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`, etc..
+The **HOW** will be delegated to components such as ``RolloutWorker``, etc..
 
 It is the main entry point for RLlib users to interact with RLlib's algorithms.
 
@@ -24,9 +24,9 @@ and thus fully supports distributed hyperparameter tuning for RL.
     :align: left
 
     **A typical RLlib Algorithm object:** Algorithms are normally comprised of
-    N :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` that
+    N ``RolloutWorker`` that
     orchestrated via a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object.
-    Each worker own its own a set of :py:class:`~ray.rllib.policy.policy.Policy` objects and their NN models per worker, plus a :py:class:`~ray.rllib.env.base_env.BaseEnv` instance per worker.
+    Each worker own its own a set of ``Policy`` objects and their NN models per worker, plus a :py:class:`~ray.rllib.env.base_env.BaseEnv` instance per worker.
 
 Building Custom Algorithm Classes
 ---------------------------------
