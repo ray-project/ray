@@ -206,9 +206,37 @@ actors in the Algorithm's :ref:`EnvRunnerGroup <rllib-key-concepts-env-runners>`
 
 A typical :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` object roughly looks as follows:
 
+.. code-block:: python
+
+    # A SingleAgentEpisode of length 20 has roughly the following schematic structure.
+    # Note that after these 20 steps, you have 20 actions and rewards, but 21 observations and info dicts
+    # due to the initial "reset" observation/infos.
+    episode = {
+        'obs': np.ndarray((21, 4), dtype=float32),  # 21 due to additional reset obs
+        'infos': [{}, {}, {}, {}, .., {}, {}],  # infos are always lists of dicts
+        'actions': np.ndarray((20,), dtype=int64),  # Discrete(4) action space
+        'rewards': np.ndarray((20,), dtype=float32),
+        'extra_model_outputs': {
+            'action_dist_inputs': np.ndarray((20, 4), dtype=float32),  # Discrete(4) action space
+        },
+        'is_terminated': False,  # <- single bool
+        'is_truncated': True,  # <- single bool
+    }
+
 For complex observations, for example ``gym.spaces.Dict``, the episode holds all observations in a struct entirely analogous
 to the observation space, with NumPy arrays at the leafs of that dict. For example:
 
+.. code-block:: python
+
+    episode_w_complex_observations = {
+        'obs': {
+            "camera": np.ndarray((21, 64, 64, 3), dtype=float32),  # RGB images
+            "sensors": {
+                "front": np.ndarray((21, 15), dtype=float32),  # 1D tensors
+                "rear": np.ndarray((21, 5), dtype=float32),  # another batch of 1D tensors
+            },
+        },
+        ...
 
 Because RLlib keeps all values in NumPy arrays, this allows for efficient encoding and
 transmission across the network.
@@ -253,6 +281,45 @@ You can also use an :py:class:`~ray.rllib.env.env_runner.EnvRunner` standalone t
 Here is an example of creating a set of remote :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors
 and using them to gather experiences in parallel:
 
+.. testcode::
+
+    import tree  # pip install dm_tree
+    import ray
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+
+    # Configure the EnvRunners.
+    config = (
+        PPOConfig()
+        .environment("Acrobot-v1")
+        .env_runners(num_env_runners=2, num_envs_per_env_runner=1)
+    )
+    # Create the EnvRunner actors.
+    env_runners = [
+        ray.remote(SingleAgentEnvRunner).remote(config=config)
+        for _ in range(config.num_env_runners)
+    ]
+
+    # Gather lists of `SingleAgentEpisode`s (each EnvRunner actor returns one
+    # such list with exactly two episodes in it).
+    episodes = ray.get([
+        er.sample.remote(num_episodes=3)
+        for er in env_runners
+    ])
+    # Two remote EnvRunners used.
+    assert len(episodes) == 2
+    # Each EnvRunner returns three episodes
+    assert all(len(eps_list) == 3 for eps_list in episodes)
+
+    # Report the returns of all episodes collected
+    for episode in tree.flatten(episodes):
+        print("R=", episode.get_return())
+
+.. testcode::
+    :hide:
+
+    for er in env_runners:
+        er.stop.remote()
 
 
 .. _rllib-key-concepts-learners:
@@ -287,3 +354,33 @@ with a list of Episodes.
 Here is an example of creating a remote :py:class:`~ray.rllib.core.learner.learner.Learner`
 actor and calling its :py:meth:`~ray.rllib.core.learner.learner.Learner.update_from_episodes` method.
 
+.. testcode::
+
+    import gymnasium as gym
+    import ray
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+
+    # Configure the Learner.
+    config = (
+        PPOConfig()
+        .environment("Acrobot-v1")
+        .training(lr=0.0001)
+        .rl_module(model_config=DefaultModelConfig(fcnet_hiddens=[64, 32]))
+    )
+    # Get the Learner class.
+    ppo_learner_class = config.get_default_learner_class()
+
+    # Create the Learner actor.
+    learner_actor = ray.remote(ppo_learner_class).remote(
+        config=config,
+        module_spec=config.get_multi_rl_module_spec(env=gym.make("Acrobot-v1")),
+    )
+    # Build the Learner.
+    ray.get(learner_actor.build.remote())
+
+    # Perform an update from the list of episodes we got from the `EnvRunners` above.
+    learner_results = ray.get(learner_actor.update_from_episodes.remote(
+        episodes=tree.flatten(episodes)
+    ))
+    print(learner_results["default_policy"]["policy_loss"])
