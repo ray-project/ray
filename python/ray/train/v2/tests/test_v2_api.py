@@ -57,9 +57,9 @@ def test_train_v2_import(monkeypatch, env_v2_enabled):
     # isort: on
 
     # Import from the absolute module paths as references
-    from ray.train.v2.api.config import ScalingConfig as ScalingConfigV2
     from ray.train.v2.api.config import FailureConfig as FailureConfigV2
     from ray.train.v2.api.config import RunConfig as RunConfigV2
+    from ray.train.v2.api.config import ScalingConfig as ScalingConfigV2
     from ray.train.v2.api.result import Result as ResultV2
 
     if env_v2_enabled:
