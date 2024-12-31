@@ -169,9 +169,9 @@ class RLlibCallback(metaclass=_CallbackMeta):
                     # Note that we set `local_worker=False` to NOT include it (local
                     # workers are never recreated; if they fail, the entire Algorithm
                     # fails).
-                    worker_set.foreach_worker(
+                    env_runner_group.foreach_worker(
                         func,
-                        remote_worker_ids=worker_ids,
+                        remote_worker_ids=env_runner_indices,
                         local_worker=False,
                     )
 
