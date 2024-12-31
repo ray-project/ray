@@ -315,11 +315,9 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gymnasium==1.0.0",
         "lz4",
-        "scikit-image",
+        "ormsgpack==1.7.0",
         "pyyaml",
         "scipy",
-        "typer",
-        "rich",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"]
