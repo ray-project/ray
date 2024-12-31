@@ -58,7 +58,7 @@ from functools import partial
 
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.callbacks.callbacks import Callbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
@@ -146,7 +146,7 @@ def _remote_fn(env_runner, new_task: int):
     env_runner.make_env()
 
 
-class EnvTaskCallback(Callbacks):
+class EnvTaskCallback(RLlibCallback):
     """Custom callback implementing `on_train_result()` for changing the envs' maps."""
 
     def on_train_result(

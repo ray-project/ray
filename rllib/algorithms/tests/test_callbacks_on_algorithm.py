@@ -4,13 +4,13 @@ import unittest
 
 import ray
 from ray import tune
-from ray.rllib.callbacks.callbacks import Callbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray.rllib.utils.test_utils import check
 
 
-class OnWorkersRecreatedCallbacks(Callbacks):
+class OnWorkersRecreatedCallbacks(RLlibCallback):
     def on_workers_recreated(
         self,
         *,
@@ -33,7 +33,7 @@ class OnWorkersRecreatedCallbacks(Callbacks):
         print(results)  # should print "pong" n times (one for each recreated worker).
 
 
-class InitAndCheckpointRestoredCallbacks(Callbacks):
+class InitAndCheckpointRestoredCallbacks(RLlibCallback):
     def on_algorithm_init(self, *, algorithm, metrics_logger, **kwargs):
         self._on_init_was_called = True
 
@@ -50,7 +50,7 @@ class TestCallbacks(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_on_workers_recreated_callback(self):
+    def test_on_env_runners_recreated_callback(self):
         tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
 
         config = (
@@ -65,13 +65,13 @@ class TestCallbacks(unittest.TestCase):
         )
 
         algo = config.build()
-        original_worker_ids = algo.env_runner_group.healthy_worker_ids()
-        for id_ in original_worker_ids:
+        original_env_runner_ids = algo.env_runner_group.healthy_worker_ids()
+        for id_ in original_env_runner_ids:
             check(algo.metrics.peek(f"worker_{id_}_recreated", default=0), 0)
         check(algo.metrics.peek("total_num_workers_recreated", default=0), 0)
 
         # After building the algorithm, we should have 2 healthy (remote) workers.
-        self.assertTrue(len(original_worker_ids) == 3)
+        self.assertTrue(len(original_env_runner_ids) == 3)
 
         # Train a bit (and have the envs/workers crash).
         for _ in range(3):
@@ -97,17 +97,16 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(InitAndCheckpointRestoredCallbacks)
         )
         algo = config.build()
-        self.assertTrue(algo.callbacks._on_init_was_called)
-        self.assertTrue(not hasattr(algo.callbacks, "_on_checkpoint_loaded_was_called"))
+        callbacks = algo.callbacks[0]
+        self.assertTrue(callbacks._on_init_was_called)
+        self.assertTrue(not hasattr(callbacks, "_on_checkpoint_loaded_was_called"))
         algo.train()
         # Save algo and restore.
         with tempfile.TemporaryDirectory() as tmpdir:
             algo.save(checkpoint_dir=tmpdir)
-            self.assertTrue(
-                not hasattr(algo.callbacks, "_on_checkpoint_loaded_was_called")
-            )
+            self.assertTrue(not hasattr(callbacks, "_on_checkpoint_loaded_was_called"))
             algo.load_checkpoint(checkpoint_dir=tmpdir)
-            self.assertTrue(algo.callbacks._on_checkpoint_loaded_was_called)
+            self.assertTrue(callbacks._on_checkpoint_loaded_was_called)
         algo.stop()
 
 

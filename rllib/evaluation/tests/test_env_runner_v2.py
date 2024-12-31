@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 
 import ray
-from ray.rllib.callbacks.callbacks import Callbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.connectors.connector import ActionConnector, ConnectorContext
 from ray.rllib.evaluation.metrics import RolloutMetrics
@@ -282,7 +282,7 @@ class TestEnvRunnerV2(unittest.TestCase):
                 assert ac_data.input_dict, "raw input dict should be available"
                 return ac_data
 
-        class AddActionConnectorCallbacks(Callbacks):
+        class AddActionConnectorCallbacks(RLlibCallback):
             def on_create_policy(self, *, policy_id, policy) -> None:
                 policy.action_connectors.append(
                     CheckInputDictActionConnector(ConnectorContext.from_policy(policy))
@@ -427,7 +427,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         self.assertTrue(len(list(outputs[0].agent_rewards.keys())) == 2)
 
     def test_env_error(self):
-        class CheckErrorCallbacks(Callbacks):
+        class CheckErrorCallbacks(RLlibCallback):
             def on_episode_end(
                 self, *, worker, base_env, policies, episode, env_index=None, **kwargs
             ) -> None:

@@ -51,19 +51,15 @@ script with the above recommended options:
 |          71.3123 |                 153.79 |                    358 |
 +------------------+------------------------+------------------------+
 """
-from typing import Optional
-
 import gymnasium as gym
 import numpy as np
 import torch
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.callbacks.callbacks import Callbacks
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,

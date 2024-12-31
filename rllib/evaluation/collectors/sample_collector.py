@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorType
 
 if TYPE_CHECKING:
-    from ray.rllib.callbacks.callbacks import Callbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class SampleCollector(metaclass=ABCMeta):
     def __init__(self,
                  policy_map: PolicyMap,
                  clip_rewards: Union[bool, float],
-                 callbacks: "Callbacks",
+                 callbacks: "RLlibCallback",
                  multiple_episodes_in_batch: bool = True,
                  rollout_fragment_length: int = 200,
                  count_steps_by: str = "env_steps"):

@@ -32,13 +32,13 @@ if TYPE_CHECKING:
 
 
 @PublicAPI
-class Callbacks(metaclass=_CallbackMeta):
+class RLlibCallback(metaclass=_CallbackMeta):
     """Abstract base class for RLlib callbacks (similar to Keras callbacks).
 
     These callbacks can be used for custom metrics and custom postprocessing.
 
     By default, all of these callbacks are no-ops. To configure custom training
-    callbacks, subclass Callbacks and then set
+    callbacks, subclass RLlibCallback and then set
     {"callbacks": YourCallbacksClass} in the algo config.
     """
 
@@ -143,9 +143,9 @@ class Callbacks(metaclass=_CallbackMeta):
         snippet inside your custom override of this method:
 
         .. testcode::
-            from ray.rllib.callbacks.callbacks import Callbacks
+            from ray.rllib.callbacks.callbacks import RLlibCallback
 
-            class MyCallbacks(Callbacks):
+            class MyCallbacks(RLlibCallback):
                 def on_env_runners_recreated(
                     self,
                     *,
@@ -182,7 +182,8 @@ class Callbacks(metaclass=_CallbackMeta):
                 local_worker=False)` method call to execute custom
                 code on the recreated (remote) workers. Note that the local worker is
                 never recreated as a failure of this would also crash the Algorithm.
-            env_runner_indices: The list of (remote) worker IDs that have been recreated.
+            env_runner_indices: The list of (remote) worker IDs that have been
+                recreated.
             is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup
                 (located in `Algorithm.eval_env_runner_group`) or not.
         """
@@ -572,7 +573,7 @@ class Callbacks(metaclass=_CallbackMeta):
         pass
 
 
-class MemoryTrackingCallbacks(Callbacks):
+class MemoryTrackingCallbacks(RLlibCallback):
     """MemoryTrackingCallbacks can be used to trace and track memory usage
     in rollout workers.
 
@@ -599,7 +600,7 @@ class MemoryTrackingCallbacks(Callbacks):
         # Will track the top 10 lines where memory is allocated
         tracemalloc.start(10)
 
-    @override(Callbacks)
+    @override(RLlibCallback)
     def on_episode_end(
         self,
         *,
@@ -638,5 +639,3 @@ class MemoryTrackingCallbacks(Callbacks):
             episode.custom_metrics["tracemalloc/worker/data"] = worker_data
         episode.custom_metrics["tracemalloc/worker/rss"] = worker_rss
         episode.custom_metrics["tracemalloc/worker/vms"] = worker_vms
-
-

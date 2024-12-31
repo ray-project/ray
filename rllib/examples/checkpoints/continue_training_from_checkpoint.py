@@ -86,7 +86,7 @@ import time
 
 from ray import train, tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.callbacks.callbacks import Callbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.metrics import (
@@ -114,7 +114,7 @@ parser.add_argument(
 parser.set_defaults(checkpoint_freq=1, checkpoint_at_end=True)
 
 
-class CrashAfterNIters(Callbacks):
+class CrashAfterNIters(RLlibCallback):
     """Callback that makes the algo crash after a certain avg. return is reached."""
 
     def __init__(self):

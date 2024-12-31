@@ -96,7 +96,7 @@ from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-    from ray.rllib.callbacks.callbacks import Callbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -326,7 +326,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         )
         self.env_context = env_context
         self.config: AlgorithmConfig = config
-        self.callbacks: Callbacks = self.config.callbacks_class()
+        self.callbacks: RLlibCallback = self.config.callbacks_class()
         self.recreated_worker: bool = recreated_worker
 
         # Setup current policy_mapping_fn. Start with the one from the config, which

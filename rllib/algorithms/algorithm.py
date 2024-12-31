@@ -629,9 +629,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # Create the callbacks object.
         if self.config.enable_env_runner_and_connector_v2:
-            self.callbacks = [
-                cls() for cls in self.config.callbacks_class
-            ]
+            self.callbacks = [cls() for cls in force_list(self.config.callbacks_class)]
         else:
             self.callbacks = self.config.callbacks_class()
 
@@ -879,7 +877,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Run `on_algorithm_init` callback after initialization is done.
         make_callback(
             "on_algorithm_init",
-            self.config.callbacks_class,
+            self.callbacks,
             self.config.callbacks_on_algorithm_init,
             kwargs=dict(
                 algorithm=self,
@@ -1690,7 +1688,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             make_callback(
                 "on_workers_recreated",
                 callbacks_objects=self.callbacks,
-                callbacks_functions=self.config.callbacks_on_workers_recreated,
                 kwargs=dict(
                     algorithm=self,
                     worker_set=workers,
@@ -2712,7 +2709,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # Restore from the checkpoint file or dir.
             checkpoint_info = get_checkpoint_info(checkpoint_dir)
             checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(
-                checkpoint_info)
+                checkpoint_info
+            )
             self.__setstate__(checkpoint_data)
 
         # Call the `on_checkpoint_loaded` callback.
@@ -3186,7 +3184,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
             deprecation_warning(
                 "callbacks dict interface",
-                "a class extending rllib.callbacks.callbacks.Callbacks; "
+                "a class extending rllib.callbacks.callbacks.RLlibCallback; "
                 "see `rllib/examples/metrics/custom_metrics_and_callbacks.py` for an "
                 "example.",
                 error=True,

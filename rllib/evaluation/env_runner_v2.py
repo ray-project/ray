@@ -39,7 +39,7 @@ from ray.util.debug import log_once
 if TYPE_CHECKING:
     from gymnasium.envs.classic_control.rendering import SimpleImageViewer
 
-    from ray.rllib.callbacks.callbacks import Callbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 
@@ -210,7 +210,7 @@ class EnvRunnerV2:
         worker: "RolloutWorker",
         base_env: BaseEnv,
         multiple_episodes_in_batch: bool,
-        callbacks: "Callbacks",
+        callbacks: "RLlibCallback",
         perf_stats: _PerfStats,
         rollout_fragment_length: int = 200,
         count_steps_by: str = "env_steps",

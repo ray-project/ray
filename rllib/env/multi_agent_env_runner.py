@@ -86,9 +86,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._setup_metrics()
 
         # Create our callbacks object.
-        self._callbacks = [
-            cls() for cls in force_list(self.config.callbacks_class)
-        ]
+        self._callbacks = [cls() for cls in force_list(self.config.callbacks_class)]
 
         # Set device.
         self._device = get_device(

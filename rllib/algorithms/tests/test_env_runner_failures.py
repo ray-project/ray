@@ -7,7 +7,6 @@ import unittest
 import ray
 from ray.util.state import list_actors
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.callbacks.callbacks import Callbacks
 from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.ppo import PPOConfig

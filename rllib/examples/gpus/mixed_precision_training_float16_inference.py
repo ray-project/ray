@@ -54,18 +54,14 @@ In the console output, you should see something like this:
 |         281.3231 |                 455.81 |                   1426 |
 +------------------+------------------------+------------------------+
 """
-from typing import Optional
-
 import gymnasium as gym
 import numpy as np
 import torch
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.callbacks.callbacks import Callbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -79,7 +75,6 @@ parser.set_defaults(
     algo="PPO",
     enable_new_api_stack=True,
 )
-
 
 
 def on_algorithm_init(

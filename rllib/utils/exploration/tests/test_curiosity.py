@@ -3,7 +3,7 @@ import sys
 import unittest
 
 import ray
-from ray.rllib.callbacks.callbacks import Callbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -11,7 +11,7 @@ from ray.rllib.utils.metrics import (
 )
 
 
-class MyCallBack(Callbacks):
+class MyCallBack(RLlibCallback):
     def __init__(self):
         super().__init__()
         self.deltas = []

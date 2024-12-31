@@ -13,7 +13,7 @@ from ray.rllib.utils.typing import PolicyID, AgentID
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from ray.rllib.callbacks.callbacks import Callbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class MultiAgentSampleBatchBuilder:
         self,
         policy_map: Dict[PolicyID, Policy],
         clip_rewards: bool,
-        callbacks: "Callbacks",
+        callbacks: "RLlibCallback",
     ):
         """Initialize a MultiAgentSampleBatchBuilder.
 

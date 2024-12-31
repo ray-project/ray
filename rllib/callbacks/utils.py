@@ -1,4 +1,4 @@
-from ray.rllib.callbacks.callbacks import Callbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OldAPIStack
 
@@ -11,12 +11,12 @@ def make_callback(
     args=None,
     kwargs=None,
 ) -> None:
-    # Loop through all available Callbacks objects.
+    # Loop through all available RLlibCallback objects.
     callbacks_objects = force_list(callbacks_objects)
     for callback_obj in callbacks_objects:
         getattr(callback_obj, callback_name)(*(args or ()), **(kwargs or {}))
 
-    # Loop through all available Callbacks objects.
+    # Loop through all available RLlibCallback objects.
     callbacks_functions = force_list(callbacks_functions)
     for callback_fn in callbacks_functions:
         callback_fn(*(args or ()), **(kwargs or {}))
@@ -24,7 +24,7 @@ def make_callback(
 
 @OldAPIStack
 def _make_multi_callbacks(callback_class_list):
-    class _MultiCallbacks(Callbacks):
+    class _MultiCallbacks(RLlibCallback):
         IS_CALLBACK_CONTAINER = True
 
         def __init__(self):
@@ -41,6 +41,10 @@ def _make_multi_callbacks(callback_class_list):
             for callback in self._callback_list:
                 callback.on_workers_recreated(**kwargs)
 
+        # Only on new API stack.
+        def on_env_runners_recreated(self, **kwargs) -> None:
+            pass
+
         def on_checkpoint_loaded(self, **kwargs) -> None:
             for callback in self._callback_list:
                 callback.on_checkpoint_loaded(**kwargs)
@@ -53,7 +57,6 @@ def _make_multi_callbacks(callback_class_list):
             for callback in self._callback_list:
                 callback.on_environment_created(**kwargs)
 
-        @OldAPIStack
         def on_sub_environment_created(self, **kwargs) -> None:
             for callback in self._callback_list:
                 callback.on_sub_environment_created(**kwargs)
@@ -82,18 +85,17 @@ def _make_multi_callbacks(callback_class_list):
             for callback in self._callback_list:
                 callback.on_evaluate_end(**kwargs)
 
-        @OldAPIStack
         def on_postprocess_trajectory(
-                self,
-                *,
-                worker,
-                episode,
-                agent_id,
-                policy_id,
-                policies,
-                postprocessed_batch,
-                original_batches,
-                **kwargs,
+            self,
+            *,
+            worker,
+            episode,
+            agent_id,
+            policy_id,
+            policies,
+            postprocessed_batch,
+            original_batches,
+            **kwargs,
         ) -> None:
             for callback in self._callback_list:
                 callback.on_postprocess_trajectory(
@@ -111,10 +113,8 @@ def _make_multi_callbacks(callback_class_list):
             for callback in self._callback_list:
                 callback.on_sample_end(**kwargs)
 
-        @OldAPIStack
         def on_learn_on_batch(
-                self, *, policy, train_batch, result: dict,
-                **kwargs
+            self, *, policy, train_batch, result: dict, **kwargs
         ) -> None:
             for callback in self._callback_list:
                 callback.on_learn_on_batch(
@@ -126,5 +126,3 @@ def _make_multi_callbacks(callback_class_list):
                 callback.on_train_result(**kwargs)
 
     return _MultiCallbacks
-
-

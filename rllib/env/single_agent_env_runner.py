@@ -9,7 +9,7 @@ from gymnasium.wrappers.vector import DictInfoToList
 from gymnasium.envs.registration import VectorizeMode
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.callbacks.callbacks import Callbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
@@ -83,7 +83,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.metrics = MetricsLogger()
 
         # Create our callbacks object.
-        self._callbacks: List[Callbacks] = [
+        self._callbacks: List[RLlibCallback] = [
             cls() for cls in force_list(self.config.callbacks_class)
         ]
 
