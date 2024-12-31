@@ -10,6 +10,7 @@ from ray.rllib.algorithms.dqn.default_dqn_rl_module import (
     QF_TARGET_NEXT_PREDS,
     QF_TARGET_NEXT_PROBS,
 )
+from ray.rllib.algorithms.dqn.dqn_catalog import DQNCatalog
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
 from ray.rllib.core.rl_module.apis.q_net_api import QNetAPI
@@ -26,6 +27,12 @@ torch, nn = try_import_torch()
 @DeveloperAPI
 class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
     framework: str = "torch"
+
+    def __init__(self, *args, **kwargs):
+        catalog_class = kwargs.pop("catalog_class", None)
+        if catalog_class is None:
+            catalog_class = DQNCatalog
+        super().__init__(*args, **kwargs, catalog_class=catalog_class)
 
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
