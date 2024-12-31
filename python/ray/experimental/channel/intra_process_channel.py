@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 from ray import ObjectRef
 from ray.experimental.channel import ChannelContext
@@ -64,7 +64,7 @@ class IntraProcessChannel(ChannelInterface):
         ctx = ChannelContext.get_current().serialization_context
         return ctx.get_data(self._channel_id)
 
-    def get_ray_waitables(self) -> List[ObjectRef]:
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
         self.ensure_registered_as_reader()
         return []
 

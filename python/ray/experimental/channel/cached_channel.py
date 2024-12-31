@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 from ray import ObjectRef
 from ray.experimental.channel.common import ChannelInterface
@@ -101,7 +101,7 @@ class CachedChannel(ChannelInterface):
         # https://github.com/ray-project/ray/issues/47409
         return ctx.get_data(self._channel_id)
 
-    def get_ray_waitables(self) -> List[ObjectRef]:
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
         self.ensure_registered_as_reader()
         from ray.experimental.channel import ChannelContext
 

@@ -618,7 +618,7 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         self._next_read_index %= self._num_shm_buffers
         return output
 
-    def get_ray_waitables(self) -> List[ObjectRef]:
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
         self.ensure_registered_as_reader()
         return self._buffers[self._next_read_index].get_ray_waitables()
 
@@ -765,7 +765,7 @@ class CompositeChannel(ChannelInterface):
         self.ensure_registered_as_reader()
         return self._channel_dict[self._resolve_actor_id()].read(timeout)
 
-    def get_ray_waitables(self) -> List[ObjectRef]:
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
         self.ensure_registered_as_reader()
         return self._channel_dict[self._resolve_actor_id()].get_ray_waitables()
 

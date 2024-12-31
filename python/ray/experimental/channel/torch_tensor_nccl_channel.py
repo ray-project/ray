@@ -360,7 +360,7 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         return data
 
-    def get_ray_waitables(self) -> List[ObjectRef]:
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
         self.ensure_registered_as_reader()
         reader = utils.get_self_actor()
         if reader == self._writer:
@@ -659,7 +659,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
         # each tensor.
         return bufs
 
-    def get_ray_waitables(self) -> List[ObjectRef]:
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
         self.ensure_registered_as_reader()
         if self._static_tensor_metadata is not None:
             return []
