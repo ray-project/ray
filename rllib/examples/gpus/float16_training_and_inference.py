@@ -58,7 +58,7 @@ import numpy as np
 import torch
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import Callbacks
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
@@ -78,28 +78,24 @@ parser.set_defaults(
 )
 
 
-class MakeAllRLModulesFloat16(DefaultCallbacks):
+def on_algorithm_init(
+    algorithm: Algorithm,
+    **kwargs,
+) -> None:
     """Callback making sure that all RLModules in the algo are `half()`'ed."""
 
-    def on_algorithm_init(
-        self,
-        *,
-        algorithm: Algorithm,
-        metrics_logger: Optional[MetricsLogger] = None,
-        **kwargs,
-    ) -> None:
-        # Switch all Learner RLModules to float16.
-        algorithm.learner_group.foreach_learner(
-            lambda learner: learner.module.foreach_module(lambda mid, mod: mod.half())
-        )
-        # Switch all EnvRunner RLModules (assuming single RLModules) to float16.
-        algorithm.env_runner_group.foreach_worker(
+    # Switch all Learner RLModules to float16.
+    algorithm.learner_group.foreach_learner(
+        lambda learner: learner.module.foreach_module(lambda mid, mod: mod.half())
+    )
+    # Switch all EnvRunner RLModules (assuming single RLModules) to float16.
+    algorithm.env_runner_group.foreach_worker(
+        lambda env_runner: env_runner.module.half()
+    )
+    if algorithm.eval_env_runner_group:
+        algorithm.eval_env_runner_group.foreach_worker(
             lambda env_runner: env_runner.module.half()
         )
-        if algorithm.eval_env_runner_group:
-            algorithm.eval_env_runner_group.foreach_worker(
-                lambda env_runner: env_runner.module.half()
-            )
 
 
 class WriteObsAndRewardsAsFloat16(ConnectorV2):
@@ -231,7 +227,7 @@ if __name__ == "__main__":
         .environment("CartPole-v1")
         # Plug in our custom callback (on_algorithm_init) to make all RLModules
         # float16 models.
-        .callbacks(MakeAllRLModulesFloat16)
+        .callbacks(on_algorithm_init=on_algorithm_init)
         # Plug in our custom loss scaler class to stabilize gradient computations
         # (by scaling the loss, then unscaling the gradients before applying them).
         # This is using the built-in, experimental feature of TorchLearner.

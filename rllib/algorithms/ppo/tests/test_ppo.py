@@ -5,7 +5,7 @@ import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
 )
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import Callbacks
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import DEFAULT_OPTIMIZER, LR_KEY
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
@@ -27,7 +27,7 @@ def get_model_config(lstm=False):
     )
 
 
-class MyCallbacks(DefaultCallbacks):
+class MyCallbacks(Callbacks):
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
         stats = result[LEARNER_RESULTS][DEFAULT_MODULE_ID]
         # Entropy coeff goes to 0.05, then 0.0 (per iter).

@@ -5,14 +5,14 @@ import gymnasium as gym
 
 import ray
 from ray import train, tune
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import Callbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 
 
-class EpisodeAndSampleCallbacks(DefaultCallbacks):
+class EpisodeAndSampleCallbacks(Callbacks):
     def __init__(self):
         super().__init__()
         self.counts = Counter()
@@ -45,7 +45,7 @@ class EpisodeAndSampleCallbacks(DefaultCallbacks):
         self.counts.update({"sample": 1})
 
 
-class OnEnvironmentCreatedCallback(DefaultCallbacks):
+class OnEnvironmentCreatedCallback(Callbacks):
     def on_environment_created(self, *, env_runner, env, env_context, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(env, gym.Env)
@@ -63,7 +63,7 @@ class OnEnvironmentCreatedCallback(DefaultCallbacks):
         )
 
 
-class OnEpisodeCreatedCallback(DefaultCallbacks):
+class OnEpisodeCreatedCallback(Callbacks):
     def on_episode_created(
         self,
         *,

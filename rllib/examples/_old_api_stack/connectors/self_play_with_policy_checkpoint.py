@@ -12,7 +12,7 @@ import tempfile
 import ray
 from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import Callbacks
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.env.utils import try_import_pyspiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
@@ -48,7 +48,7 @@ MAIN_POLICY_ID = "main"
 OPPONENT_POLICY_ID = "opponent"
 
 
-class AddPolicyCallback(DefaultCallbacks):
+class AddPolicyCallback(Callbacks):
     def __init__(self, checkpoint_dir):
         self._checkpoint_dir = checkpoint_dir
         super().__init__()

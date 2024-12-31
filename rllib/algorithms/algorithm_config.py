@@ -22,7 +22,7 @@ import tree
 from packaging import version
 
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import Callbacks
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module import validate_module_id
@@ -398,7 +398,21 @@ class AlgorithmConfig(_Config):
         self._learner_class = None
 
         # `self.callbacks()`
-        self.callbacks_class = DefaultCallbacks
+        # TODO (sven): Set this default to None, once the old API stack has been
+        #  deprecated.
+        self.callbacks_class = Callbacks
+        self.callbacks_on_algorithm_init = None
+        self.callbacks_on_workers_recreated = None
+        self.callbacks_on_checkpoint_loaded = None
+        self.callbacks_on_environment_created = None
+        self.callbacks_on_episode_created = None
+        self.callbacks_on_episode_start = None
+        self.callbacks_on_episode_step = None
+        self.callbacks_on_episode_end = None
+        self.callbacks_on_evaluate_start = None
+        self.callbacks_on_evaluate_end = None
+        self.callbacks_on_sample_end = None
+        self.callbacks_on_train_result = None
 
         # `self.explore()`
         self.explore = True
@@ -636,7 +650,7 @@ class AlgorithmConfig(_Config):
             config["policies"] = policies_dict
 
         # Switch out deprecated vs new config keys.
-        config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
+        config["callbacks"] = config.pop("callbacks_class", None)
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
@@ -836,7 +850,7 @@ class AlgorithmConfig(_Config):
 
         The resulting values don't have any code in them.
         Classes (such as `callbacks_class`) are converted to their full
-        classpath, e.g. `ray.rllib.algorithms.callbacks.DefaultCallbacks`.
+        classpath, e.g. `ray.rllib.callbacks.callbacks.Callbacks`.
         Actual code such as lambda functions ware written as their source
         code (str) plus any closure information for properly restoring the
         code inside the AlgorithmConfig object made from the returned dict data.
@@ -2349,29 +2363,31 @@ class AlgorithmConfig(_Config):
 
         return self
 
-    def callbacks(self, callbacks_class) -> "AlgorithmConfig":
+    def callbacks(
+        self,
+        callbacks_class: Optional[Type[Callbacks], List[Type[Callbacks]]] = NotProvided,
+        *,
+        on_algorithm_init: Optional[Callable[[Algorithm], None]] = NotProvided,
+    ) -> "AlgorithmConfig":
         """Sets the callbacks configuration.
 
         Args:
             callbacks_class: Callbacks class, whose methods are called during
                 various phases of training and environment sample collection.
-                See the `DefaultCallbacks` class and
+                TODO (sven): Change the link to new rst callbacks page.
+                See the `Callbacks` class and
                 `examples/metrics/custom_metrics_and_callbacks.py` for more usage
                 information.
+            on_algorithm_init: A callable, taking the Algorithm and forward
+                compatibility kwargs, called after Algorithm initialization.
 
         Returns:
             This updated AlgorithmConfig object.
         """
-        if callbacks_class is None:
-            callbacks_class = DefaultCallbacks
-        # Check, whether given `callbacks` is a callable.
-        if not callable(callbacks_class):
-            raise ValueError(
-                "`config.callbacks_class` must be a callable method that "
-                "returns a subclass of DefaultCallbacks, got "
-                f"{callbacks_class}!"
-            )
-        self.callbacks_class = callbacks_class
+        if callbacks_class is not NotProvided:
+            self.callbacks_class = callbacks_class
+        if on_algorithm_init is not NotProvided:
+            self.callbacks_on_algorithm_init = on_algorithm_init
 
         return self
 

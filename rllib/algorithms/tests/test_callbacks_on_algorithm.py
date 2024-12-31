@@ -4,13 +4,13 @@ import unittest
 
 import ray
 from ray import tune
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import Callbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray.rllib.utils.test_utils import check
 
 
-class OnWorkersRecreatedCallbacks(DefaultCallbacks):
+class OnWorkersRecreatedCallbacks(Callbacks):
     def on_workers_recreated(
         self,
         *,
@@ -33,7 +33,7 @@ class OnWorkersRecreatedCallbacks(DefaultCallbacks):
         print(results)  # should print "pong" n times (one for each recreated worker).
 
 
-class InitAndCheckpointRestoredCallbacks(DefaultCallbacks):
+class InitAndCheckpointRestoredCallbacks(Callbacks):
     def on_algorithm_init(self, *, algorithm, metrics_logger, **kwargs):
         self._on_init_was_called = True
 

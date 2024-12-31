@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import Callbacks
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.core.columns import Columns
@@ -77,7 +77,7 @@ PENDULUM_FAKE_BATCH = SampleBatch(
 )
 
 
-class MyCallbacks(DefaultCallbacks):
+class MyCallbacks(Callbacks):
     @staticmethod
     def _check_lr_torch(policy, policy_id):
         for j, opt in enumerate(policy._optimizers):

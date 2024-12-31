@@ -2,12 +2,12 @@ from collections import Counter
 import unittest
 
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
+from ray.rllib.callbacks.callbacks import Callbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
 
 
-class EpisodeAndSampleCallbacks(DefaultCallbacks):
+class EpisodeAndSampleCallbacks(Callbacks):
     def __init__(self):
         super().__init__()
         self.counts = Counter()
@@ -25,7 +25,7 @@ class EpisodeAndSampleCallbacks(DefaultCallbacks):
         self.counts.update({"sample": 1})
 
 
-class OnSubEnvironmentCreatedCallback(DefaultCallbacks):
+class OnSubEnvironmentCreatedCallback(Callbacks):
     def on_sub_environment_created(
         self, *, worker, sub_environment, env_context, **kwargs
     ):
@@ -41,7 +41,7 @@ class OnSubEnvironmentCreatedCallback(DefaultCallbacks):
         )
 
 
-class OnEpisodeCreatedCallback(DefaultCallbacks):
+class OnEpisodeCreatedCallback(Callbacks):
     def __init__(self):
         super().__init__()
         self._reset_counter = 0

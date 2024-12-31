@@ -61,7 +61,7 @@ import gymnasium as gym
 import numpy as np
 from typing import Optional, Sequence
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import Callbacks
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.images import resize
@@ -79,7 +79,7 @@ parser.set_defaults(
 )
 
 
-class EnvRenderCallback(DefaultCallbacks):
+class EnvRenderCallback(Callbacks):
     """A custom callback to render the environment.
 
     This can be used to create videos of the episodes for some or all EnvRunners

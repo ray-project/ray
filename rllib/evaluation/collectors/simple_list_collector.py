@@ -29,7 +29,7 @@ _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import Callbacks
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ class SimpleListCollector(SampleCollector):
         self,
         policy_map: PolicyMap,
         clip_rewards: Union[bool, float],
-        callbacks: "DefaultCallbacks",
+        callbacks: "Callbacks",
         multiple_episodes_in_batch: bool = True,
         rollout_fragment_length: int = 200,
         count_steps_by: str = "env_steps",

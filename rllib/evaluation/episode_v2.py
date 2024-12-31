@@ -15,7 +15,7 @@ from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import AgentID, EnvID, EnvInfoDict, PolicyID, TensorType
 
 if TYPE_CHECKING:
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import Callbacks
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 
@@ -30,7 +30,7 @@ class EpisodeV2:
         policy_mapping_fn: Callable[[AgentID, "EpisodeV2", "RolloutWorker"], PolicyID],
         *,
         worker: Optional["RolloutWorker"] = None,
-        callbacks: Optional["DefaultCallbacks"] = None,
+        callbacks: Optional["Callbacks"] = None,
     ):
         """Initializes an Episode instance.
 
