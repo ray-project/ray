@@ -782,7 +782,7 @@ def test_torch_tensor_nccl_direct_return(ray_start_regular):
     # Error is thrown if we do not send a tensor. Currently the receiver cannot
     # catch the exception so the DAG cannot be used again.
     ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype, send_tensor=False)
-    with pytest.raises(RayChannelError):
+    with pytest.raises(RayTaskError):
         ray.get(ref)
 
     with pytest.raises(RayChannelError):

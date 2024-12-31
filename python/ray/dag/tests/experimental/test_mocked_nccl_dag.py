@@ -298,7 +298,7 @@ def test_p2p_direct_return_error(capsys, ray_start_cluster):
 
     # Error is thrown if we do not send a tensor.
     ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=True)
-    with pytest.raises(RayChannelError):
+    with pytest.raises(RayTaskError):
         ray.get(ref)
 
     # Currently the receiver cannot catch the exception so the DAG cannot be
