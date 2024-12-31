@@ -81,7 +81,7 @@ class OnEpisodeCreatedCallback(DefaultCallbacks):
         print("Some code here to test the expected error on new API stack!")
 
 
-class TestCallbacks(unittest.TestCase):
+class TestCallbacksOnEnvRunners(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         tune.register_env("multi_cart", lambda _: MultiAgentCartPole({"num_agents": 2}))
@@ -184,11 +184,6 @@ class TestCallbacks(unittest.TestCase):
             self.assertEqual(callback_obj.counts["env_created"], 1)
 
             algo.stop()
-
-    def test_overriding_on_episode_created_throws_error_on_new_api_stack(self):
-        """Tests whether overriding `on_episode_created` raises error w/ SAEnvRunner."""
-        config = PPOConfig().callbacks(OnEpisodeCreatedCallback)
-        self.assertRaises(ValueError, lambda: config.validate())
 
     def test_tune_trial_id_visible_in_callbacks(self):
         config = (

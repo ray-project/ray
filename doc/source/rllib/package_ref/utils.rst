@@ -255,8 +255,4 @@ Other utilities
    :toctree: doc/
 
    utils.tensor_dtype.get_np_dtype
-   common.CLIArguments
-   common.FrameworkEnum
-   common.SupportedFileType
    core.rl_module.validate_module_id
-   train.load_experiments_from_file
