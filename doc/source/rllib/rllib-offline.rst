@@ -9,7 +9,7 @@ Getting Started
 ---------------
 
 RLlib's offline RL API enables you to work with experiences read from offline storage (for example, disk, cloud storage,
-streaming systems, Hadoop Distributed File System/HDFS). For example, you might want to read experiences saved from previous training runs, collected
+streaming systems, Hadoop Distributed File System (HDFS). For example, you might want to read experiences saved from previous training runs, collected
 from experts, or gathered from policies deployed in `web applications <https://arxiv.org/abs/1811.00260>`__. You can 
 also log new agent experiences produced during online training for future use.
 
@@ -214,7 +214,7 @@ You use these data in the next example to train a new policy through Offline RL 
     # remaining episodes in the `EnvRunner`s buffer isn't written to disk.
     algo.stop()
 
-.. note:: The stored episode data is formatted as ``binary``. Each episode is converted into its dictionary representation and serialized using ``msgpack-numpy``, 
+.. note:: RLlib formats The stored episode data as ``binary``. Each episode is converted into its dictionary representation and serialized using ``msgpack-numpy``, 
     ensuring version compatibility.
 
 RLlib's  recording process is efficient because it utilizes multiple :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` instances during 
@@ -349,7 +349,7 @@ reduce training time, resource consumption, and associated costs.
 Using External Expert Experiences
 ---------------------------------
 Your expert data is often already available, either recorded from an operational system or directly provided by human experts. Typically, 
-this data is stored in a tabular (columnar) format. RLlib's new Offline RL API simplifies the use of such data by allowing direct ingestion 
+you might store this data in a tabular (columnar) format. RLlib's new Offline RL API simplifies the use of such data by allowing direct ingestion 
 through a specified schema that organizes the expert data. The API default schema for reading data is provided in
 :py:data:`~ray.rllib.offline.offline_prelearner.SCHEMA`.
 
@@ -704,7 +704,7 @@ each of them using a single GPU.
 Using Cloud Storage
 -------------------
 Unlike RLlib's previous stack, the new Offline RL API is cloud-agnostic and fully integrates with PyArrow. You can utilize any available cloud storage path or PyArrow-compatible filesystem. If 
-using a PyArrow (or compatible) filesystem, ensure that your ``input_`` path is a relative path within this filesystem. Similar to Ray Data, you can also use placeholders, lists of files
+using a PyArrow or compatible filesystem, ensure that your ``input_`` path is a relative path within this filesystem. Similar to Ray Data, you can also use placeholders, lists of files
 or folders, or simply specify a single folder to read recursively from.
 
 For example, to read from a storage bucket in GCS, you can specify the folder location as follows:
@@ -812,7 +812,7 @@ Data locality is a critical factor in achieving fast data processing. For instan
 sufficient to enable efficient streaming for RLlib's Offline RL API. Additional adjustments to consider include:
 
 - Multi-Region Buckets: Use multi-region storage to improve data availability and potentially enhance access speeds for distributed systems.
-- Storage class optimization within bucklets: Use **standard storage** for frequent access and low-latency streaming. Avoid archival storage classes (for example, AWS Glacier, GCP Archive) for streaming workloads due to high retrieval times.
+- Storage class optimization within buckets: Use **standard storage** for frequent access and low-latency streaming. Avoid archival storage classes like AWS Glacier or GCP Archive for streaming workloads due to high retrieval times.
 
 Data Sharding
 ~~~~~~~~~~~~~
@@ -906,7 +906,7 @@ With the preceding code you would enable :ref:`Ray Data <data>` to start up to `
     **Reading Operations** layer (see :ref:`How to tune reading operations <how-to-tune-reading-operations>`). However, due to the overhead associated with scaling reading operations up or down, backpressure - and 
     in severe cases, object spilling or Out-Of-Memory (OOM) errors - can't always be entirely avoided.
 
-You can also enable autoscaling in your **Post-Processing (PreLearner)** by providing an interval instead of a straight number:
+You can also enable auto-scaling in your **Post-Processing (PreLearner)** by providing an interval instead of a straight number:
 
 .. code-block:: python
 
@@ -1162,7 +1162,7 @@ Here is an example of how you can change the scheduling strategy:
 
 Batch Size
 ~~~~~~~~~~
-Batch size is one of the simplest parameters to adjust for optimizing performance in RLlib's new Offline RL API. Small batch sizes may underutilize hardware, leading to inefficiencies, while overly large batch sizes can exceed memory limits. In a streaming pipeline, the selected batch size impacts how data is partitioned and processed across parallel workers. Larger 
+Batch size is one of the simplest parameters to adjust for optimizing performance in RLlib's new Offline RL API. Small batch sizes may under-utilize hardware, leading to inefficiencies, while overly large batch sizes can exceed memory limits. In a streaming pipeline, the selected batch size impacts how data is partitioned and processed across parallel workers. Larger 
 batch sizes reduce the overhead of frequent task coordination, but if they exceed hardware constraints, they can slow down the entire pipeline. You can configure the training batch size using the `train_batch_size_per_learner` attribute as shown below.
 
 .. code-block:: python
@@ -1337,7 +1337,7 @@ The following example demonstrates how to use a custom :py:class:`~ray.rllib.off
     import gymnasium as gym
     import numpy as np
     import uuid
-    from typing import Dict, List, Optional, Union
+    from typing import Any, Dict, List, Optional, Union
 
     from ray import data
     from ray.rllib.env.single_agent_episode import SingleAgentEpisode
