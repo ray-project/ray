@@ -121,7 +121,3 @@ if [[ "${CI-}" == "true" ]]; then
     fi
   fi
 fi
-
-# Append bazel executable directory to system `PATH`.
-BAZEL_EXEC_BIN=$(dirname "$(which bazel)")
-echo "export PATH=${BAZEL_EXEC_BIN}:\$PATH" >> ~/.bashrc
