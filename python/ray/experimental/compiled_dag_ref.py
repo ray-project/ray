@@ -2,7 +2,7 @@ import asyncio
 from typing import Any, List, Optional
 
 import ray
-from ray.exceptions import RayChannelError, RayTaskError
+from ray.exceptions import RayChannelError, RayChannelTimeoutError, RayTaskError
 from ray.util.annotations import PublicAPI
 
 
@@ -111,6 +111,8 @@ class CompiledDAGRef:
                 self._execution_index, self._channel_index, timeout
             )
             return _process_return_vals(return_vals, True)
+        except RayChannelTimeoutError:
+            raise
         except RayChannelError as channel_error:
             # If we get a channel error, we'd like to call ray.get()
             # on the actor task refs to check if this is a result of

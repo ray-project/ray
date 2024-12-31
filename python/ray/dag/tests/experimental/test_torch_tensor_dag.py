@@ -947,7 +947,11 @@ def test_torch_tensor_exceptions2(
     ref = compiled_dag.execute(1)
     with pytest.raises(
         ValueError,
-        match="Task annotated with _direct_return=True must return a CUDA torch.Tensor, instead found value `1`. DAG will shut down.",
+        match=(
+            "Task annotated with _direct_return=True must return a "
+            "CUDA torch.Tensor, instead found value `1`. "
+            "DAG will shut down."
+        ),
     ):
         ray.get(ref)
 
