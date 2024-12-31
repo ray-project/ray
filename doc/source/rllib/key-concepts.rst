@@ -365,7 +365,7 @@ and using them to gather experiences in parallel:
     :hide:
 
     for er in env_runners:
-        er.stop()
+        er.stop.remote()
 
 
 .. _rllib-key-concepts-learners:
