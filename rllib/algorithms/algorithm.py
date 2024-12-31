@@ -1633,16 +1633,38 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # Get the state of the correct (reference) worker. For example the local
             # worker of an EnvRunnerGroup.
             state = from_worker.get_state()
+            state_ref = ray.put(state)
+
+            def _sync_env_runner(er):
+                er.set_state(ray.get(state_ref))
+
             # Take out (old) connector states from local worker's state.
             if not self.config.enable_env_runner_and_connector_v2:
                 for pol_states in state["policy_states"].values():
                     pol_states.pop("connector_configs", None)
-            state_ref = ray.put(state)
+
+            elif self.config.is_multi_agent():
+
+                multi_rl_module_spec = MultiRLModuleSpec.from_module(from_worker.module)
+
+                def _sync_env_runner(er):  # noqa
+                    # Remove modules, if necessary.
+                    for module_id, module in er.module._rl_modules.copy().items():
+                        if module_id not in multi_rl_module_spec.rl_module_specs:
+                            er.module.remove_module(
+                                module_id, raise_err_if_not_found=True
+                            )
+                    # Add modules, if necessary.
+                    for mid, mod_spec in multi_rl_module_spec.rl_module_specs.items():
+                        if mid not in er.module:
+                            er.module.add_module(mid, mod_spec.build(), override=False)
+                    # Now that the MultiRLModule is fixed, update the state.
+                    er.set_state(ray.get(state_ref))
 
             # By default, entire local EnvRunner state is synced after restoration
             # to bring the previously failed EnvRunner up to date.
             workers.foreach_worker(
-                func=lambda w: w.set_state(ray.get(state_ref)),
+                func=_sync_env_runner,
                 remote_worker_ids=restored,
                 # Don't update the local EnvRunner, b/c it's the one we are synching
                 # from.

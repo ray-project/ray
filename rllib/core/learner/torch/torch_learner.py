@@ -338,7 +338,7 @@ class TorchLearner(Learner):
                 )
             if name in self._named_optimizers:
                 self._named_optimizers[name].load_state_dict(
-                    convert_to_torch_tensor(state_dict["state"])
+                    convert_to_torch_tensor(state_dict["state"], device=self._device)
                 )
 
     @override(Learner)
