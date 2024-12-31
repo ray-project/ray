@@ -2106,7 +2106,9 @@ class AlgorithmConfig(_Config):
         num_learners: Optional[int] = NotProvided,
         num_cpus_per_learner: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
-        custom_resources_per_learner: Optional[Dict[str, Union[float, int]]] = NotProvided,
+        custom_resources_per_learner: Optional[
+            Dict[str, Union[float, int]]
+        ] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         max_requests_in_flight_per_learner: Optional[int] = NotProvided,
     ):
@@ -2130,9 +2132,10 @@ class AlgorithmConfig(_Config):
                 then you shouldn't change `num_cpus_per_learner` (from its default
                 value of 1).
             custom_resources_per_learner: A dict that specify custom resources allocated
-                per Learner worker. Similar to the GPU, if you declare a certain NPU/HPU 
-                (which is already supported in ray train) resource greater than 0, such 
-                as {"NPU": 1}, the training will run on the the corresponding accelerator.
+                per Learner worker. Similar to the GPU, if you declare a certain number
+                for NPU/HPU (which is already supported in ray train) greater than 0,
+                such as {"NPU": 1}, the training will run on the the corresponding
+                accelerator.
             local_gpu_idx: If `num_gpus_per_learner` > 0, and
                 `num_learners` < 2, then RLlib uses this GPU index for training. This is
                 an index into the available
