@@ -129,7 +129,7 @@ Configuring multi-agent specific settings
 Configuring offline RL specific settings
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.offline_rl
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.offline_data
     :noindex:
 
 .. _rllib-config-evaluation:
