@@ -2234,7 +2234,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
           worker_context_.GetCurrentJobConfig().runtime_env_info());
     }
 
-    const auto &job_serialized_runtime_env =
+    auto job_serialized_runtime_env =
         worker_context_.GetCurrentJobConfig().runtime_env_info().serialized_runtime_env();
     if (!IsRuntimeEnvEmpty(job_serialized_runtime_env)) {
       parent = std::make_shared<json>(json::parse(job_serialized_runtime_env));
@@ -2256,7 +2256,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
                                               runtime_env_info);
     return runtime_env_info;
   }
-  const std::string &serialized_runtime_env = runtime_env_info->serialized_runtime_env();
+  const std::string serialized_runtime_env = runtime_env_info->serialized_runtime_env();
   json child_runtime_env = json::parse(serialized_runtime_env);
   auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
   auto serialized_override_runtime_env = override_runtime_env.dump();

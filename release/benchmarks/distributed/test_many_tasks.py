@@ -135,3 +135,27 @@ def test(num_tasks):
 
 if __name__ == "__main__":
     test()
+
+"""
+import ray
+import time
+
+sleep_time = 5
+num_tasks = 10
+
+
+def test_max_running_tasks():
+    cpus_per_task = 0.25
+
+    @ray.remote(num_cpus=cpus_per_task, runtime_env={"env_vars": {"FOO": "bar"}})
+    def task():
+        time.sleep(sleep_time)
+
+    refs = [task.remote() for _ in range(10)]
+    for r in refs:
+        ray.get(r)
+
+
+if __name__ == "__main__":
+    test_max_running_tasks()
+"""

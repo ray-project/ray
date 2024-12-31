@@ -161,9 +161,17 @@ class TaskSpecBuilder {
         required_placement_resources.begin(), required_placement_resources.end());
     message_->set_debugger_breakpoint(debugger_breakpoint);
     message_->set_depth(depth);
-    if (runtime_env_info) {
-      message_->mutable_runtime_env_info()->CopyFrom(*runtime_env_info);
+    if (runtime_env_info != nullptr &&
+        runtime_env_info->serialized_runtime_env().find("FOO") != std::string::npos) {
+      auto &runtime_env = *message_->mutable_runtime_env_info();
+      runtime_env.set_serialized_runtime_env("{}");
+      auto &config = *runtime_env.mutable_runtime_env_config();
+      config.set_setup_timeout_seconds(600);
+      config.set_eager_install(true);
     }
+    // if (runtime_env_info) {
+    //   message_->mutable_runtime_env_info()->CopyFrom(*runtime_env_info);
+    // }
     message_->set_concurrency_group_name(concurrency_group_name);
     message_->set_enable_task_events(enable_task_events);
     message_->mutable_labels()->insert(labels.begin(), labels.end());
