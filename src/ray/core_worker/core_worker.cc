@@ -2194,6 +2194,19 @@ json CoreWorker::OverrideRuntimeEnv(const json &child, std::shared_ptr<json> par
 // sharding and `GetOrCreate` API.
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
     const std::string &serialized_runtime_env_info_arg) const {
+  // serialized_runtime_env: \"{\\\"env_vars\\\": {\\\"FOO\\\":
+  // \\\"bar\\\"}}\"\nruntime_env_config {\n  setup_timeout_seconds: 600\n  eager_install:
+  // true\n}\n\n
+  if (serialized_runtime_env_info_arg.find("FOO") != std::string::npos) {
+    auto runtime_env = std::make_shared<rpc::RuntimeEnvInfo>();
+    runtime_env->set_serialized_runtime_env(
+        "\"{\\\"env_vars\\\": {\\\"FOO\\\": \\\"bar\\\"}}\"");
+    auto *config = runtime_env->mutable_runtime_env_config();
+    config->set_setup_timeout_seconds(600);
+    config->set_eager_install(true);
+    return runtime_env;
+  }
+
   std::string serialized_runtime_env_info = serialized_runtime_env_info_arg;
   if (auto cached_runtime_env_info =
           runtime_env_json_serialization_cache_.Get(serialized_runtime_env_info);
@@ -2237,8 +2250,6 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     parent_runtime_env_info = worker_context_.GetCurrentRuntimeEnvInfo();
   }
   if (parent == nullptr) {
-    // serialized_runtime_env: \"{\\\"env_vars\\\": {\\\"FOO\\\": \\\"bar\\\"}}\"\nruntime_env_config {\n  setup_timeout_seconds: 600\n  eager_install: true\n}\n\n
-
     if (serialized_runtime_env_info.find("FOO") != std::string::npos) {
       RAY_CHECK(false) << "hjiang " << runtime_env_info->DebugString();
     }
