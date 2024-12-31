@@ -13,7 +13,7 @@ import torch
 import time
 from ray.air._internal import torch_utils
 from ray.dag import InputNode
-from ray.exceptions import RayChannelError
+from ray.exceptions import RayChannelError, RayTaskError
 from ray.dag.output_node import MultiOutputNode
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
@@ -744,7 +744,7 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
 
     # Error is thrown if we send the wrong shape. Currently the receiver cannot
     # catch the exception so the DAG cannot be used again.
-    with pytest.raises(RayChannelError):
+    with pytest.raises(RayTaskError):
         ref = compiled_dag.execute(i, shape=(20,), dtype=dtype)
         ray.get(ref)
 
