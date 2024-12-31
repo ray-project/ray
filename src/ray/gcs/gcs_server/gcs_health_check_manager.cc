@@ -168,14 +168,18 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - start));
 
-        // Have to capture shared pointer for health check manager to ensure `io_service`
-        // access is valid.
         manager->io_service_.post(
-            [this, status, manager]() {
+            [this, status]() {
               if (stopped_) {
                 delete this;
                 return;
               }
+              auto manager = manager_.lock();
+              if (manager == nullptr) {
+                delete this;
+                return;
+              }
+
               RAY_LOG(DEBUG) << "Health check status: "
                              << HealthCheckResponse_ServingStatus_Name(
                                     response_.status());
