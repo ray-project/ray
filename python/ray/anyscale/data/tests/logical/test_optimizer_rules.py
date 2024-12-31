@@ -1,3 +1,5 @@
+import re
+
 import pandas as pd
 import pyarrow.compute as pc
 import pytest
@@ -36,7 +38,7 @@ def test_apply_local_limit(ray_start_regular_shared):
         ds,
         "Read[ReadRange] -> MapRows[Map(f1)] -> Limit[limit=1]",
         [{"id": 0}],
-        ["ReadRange->Map(f1->Limit[1])", "limit=1"],
+        ["ReadRange->Map(f1)", "limit=1"],
     )
     assert ds._block_num_rows() == [1]
 
@@ -46,7 +48,7 @@ def test_apply_local_limit(ray_start_regular_shared):
         ds,
         "Read[ReadRange] -> MapRows[Map(f1)] -> Limit[limit=50]",
         [{"id": i} for i in range(50)],
-        ["ReadRange->Map(f1->Limit[50])", "limit=50"],
+        ["ReadRange->Map(f1)", "limit=50"],
     )
     assert ds._block_num_rows() == [50]
 
@@ -377,11 +379,158 @@ def test_projection_pushdown_no_intersection(ray_start_regular_shared):
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
 
-    error_msg = (
-        "Identified projections where the latter is not a subset " "of the former"
-    )
-    with pytest.raises(RuntimeError, match=error_msg):
+    expected_error_msg = "Selected columns '{'sepal.width'}' needs to be a subset of"
+
+    with pytest.raises(ValueError) as excinfo:
         LogicalOptimizer().optimize(logical_plan)
+
+    error_msg = str(excinfo.value)
+    assert expected_error_msg in error_msg
+
+
+def test_projection_select_rename_merge(ray_start_regular_shared):
+    """Test that select on renamed column is handled."""
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+    ds = ds.map_batches(lambda d: d)
+    ds = ds.select_columns(["sepal.length", "petal.width"])
+    ds = ds.rename_columns({"sepal.length": "length", "petal.width": "width"})
+    ds = ds.select_columns(["length"])
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    assert isinstance(optimized_logical_plan.dag, Project)
+
+    select_op = optimized_logical_plan.dag
+
+    assert set(select_op.cols) == {"sepal.length"}, select_op.cols
+    assert select_op.cols_rename == {
+        "sepal.length": "length",
+    }, select_op.cols_rename
+
+
+def test_projection_pushdown_rename_conflict(ray_start_regular_shared):
+    """Test that renaming the same column to different names raises an error."""
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+    ds = ds.select_columns(["sepal.length", "petal.width"])
+
+    # First projection renames 'sepal.length' to 'length'
+    ds = ds.rename_columns({"sepal.length": "length"})
+
+    # Second projection renames 'petal.width' to 'length', which conflicts with the
+    # first projection
+    ds = ds.rename_columns({"petal.width": "length"})
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+
+    error_msg_pattern = (
+        r"Identified projections with conflict in renaming: 'length' is mapped from "
+        r"multiple sources: 'sepal.length' and 'petal.width'."
+    )
+
+    with pytest.raises(ValueError, match=error_msg_pattern):
+        LogicalOptimizer().optimize(logical_plan)
+
+
+def test_projection_pushdown_rename_nonexistent_column(ray_start_regular_shared):
+    """
+    Test that renaming a column that doesn't exist in projecting_op raises
+    an error.
+    """
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+
+    # First projection has no renames, just selects the columns
+    ds = ds.select_columns(["sepal.length", "petal.width"])
+
+    # Second projection tries to rename a non-existing column 'col3'
+    ds = ds.rename_columns({"col3": "new_col3"})
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+
+    # Pattern to match in the error message
+    error_msg_pattern = r"Identified projections with invalid rename columns: col3"
+
+    with pytest.raises(ValueError) as excinfo:
+        LogicalOptimizer().optimize(logical_plan)
+
+    # Use re.search to check for a part of the error message with a pattern
+    assert re.search(error_msg_pattern, str(excinfo.value))
+
+
+def test_projection_pushdown_merge_rename(ray_start_regular_shared):
+    """
+    Test that valid select and renaming merges correctly.
+    """
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+    ds = ds.map_batches(lambda d: d)
+    ds = ds.select_columns(["sepal.length", "petal.width"])
+
+    # First projection renames 'sepal.length' to 'length'
+    ds = ds.rename_columns({"sepal.length": "length"})
+
+    # Second projection renames 'petal.width' to 'width'
+    ds = ds.rename_columns({"petal.width": "width"})
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    assert isinstance(optimized_logical_plan.dag, Project)
+
+    select_op = optimized_logical_plan.dag
+
+    # Check that both "sepal.length" and "petal.width" are present in the columns,
+    # regardless of their order.
+    assert set(select_op.cols) == {"sepal.length", "petal.width"}, select_op.cols
+    assert select_op.cols_rename == {
+        "sepal.length": "length",
+        "petal.width": "width",
+    }, select_op.cols_rename
+
+
+def test_projection_pushdown_merge_rename_chaining(ray_start_regular_shared):
+    """
+    Test that valid renaming merges correctly, including renaming chains.
+    """
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+    ds = ds.map_batches(lambda d: d)
+
+    # First projection renames 'sepal.length' to 'length'
+    ds = ds.rename_columns({"sepal.length": "length"})
+
+    # Second projection renames 'length' to 'short_length'
+    ds = ds.rename_columns({"length": "short_length"})
+
+    # Third projection renames 'petal.width' to 'width'
+    ds = ds.rename_columns({"petal.width": "width"})
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    assert isinstance(optimized_logical_plan.dag, Project)
+
+    select_op = optimized_logical_plan.dag
+
+    # Check that the renaming chain has been resolved correctly
+    assert not select_op.cols, select_op.cols
+    assert select_op.cols_rename == {
+        "sepal.length": "short_length",
+        "petal.width": "width",
+    }, select_op.cols_rename
 
 
 def test_projection_pushdown_merge(ray_start_regular_shared):
@@ -402,7 +551,7 @@ def test_projection_pushdown_merge(ray_start_regular_shared):
     assert isinstance(optimized_logical_plan.dag, Project)
 
     select_op = optimized_logical_plan.dag
-    assert select_op.cols == ["petal.width"], select_op.columns
+    assert select_op.cols == ["petal.width"], select_op.cols
 
 
 def test_pushdown_divergent_branches(ray_start_regular_shared):

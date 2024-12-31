@@ -61,6 +61,7 @@ def plan_read_files_op(
             yield from op.reader.read_paths(
                 paths,
                 columns=op.columns,
+                columns_rename=op.columns_rename,
                 filter_expr=op.filter_expr,
                 filesystem=op.filesystem,
             )

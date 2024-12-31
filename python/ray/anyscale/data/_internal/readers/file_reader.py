@@ -1,5 +1,5 @@
 import abc
-from typing import TYPE_CHECKING, Iterable, List, Optional
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
 from ray.data.block import DataBatch
 
@@ -23,6 +23,7 @@ class FileReader(abc.ABC):
         *,
         filter_expr: "pyarrow.dataset.Expression",
         columns: Optional[List[str]],
+        columns_rename: Optional[Dict[str, str]],
         filesystem: "pyarrow.fs.FileSystem"
     ) -> Iterable[DataBatch]:
         """Read batches of data from the given file paths.

@@ -1034,6 +1034,7 @@ class Dataset:
                     "to be strings."
                 )
 
+            cols_rename = names
         elif isinstance(names, list):
             if not names:
                 raise ValueError(
@@ -1057,6 +1058,7 @@ class Dataset:
                     f"schema names: {current_names}."
                 )
 
+            cols_rename = dict(zip(current_names, names))
         else:
             raise TypeError(
                 f"rename_columns expected names to be either List[str] or "
@@ -1069,25 +1071,21 @@ class Dataset:
                 f"got {concurrency}."
             )
 
-        def rename_columns(batch: "pyarrow.Table") -> "pyarrow.Table":
-            # Versions of PyArrow before 17 don't support renaming columns with a dict.
-            if isinstance(names, dict):
-                column_names_list = batch.column_names
-                for i, column_name in enumerate(column_names_list):
-                    if column_name in names:
-                        column_names_list[i] = names[column_name]
-            else:
-                column_names_list = names
+        # Construct the plan and project operation
+        from ray.data._internal.compute import TaskPoolStrategy
 
-            return batch.rename_columns(column_names_list)
+        compute = TaskPoolStrategy(size=concurrency)
 
-        return self.map_batches(
-            rename_columns,
-            batch_format="pyarrow",
-            zero_copy_batch=True,
-            concurrency=concurrency,
-            **ray_remote_args,
+        plan = self._plan.copy()
+        select_op = Project(
+            self._logical_plan.dag,
+            cols=None,
+            cols_rename=cols_rename,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
+        logical_plan = LogicalPlan(select_op, self.context)
+        return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(

@@ -54,6 +54,7 @@ class NativeFileReader(FileReader):
         paths: List[str],
         *,
         columns: Optional[List[str]] = None,
+        columns_rename: Optional[Dict[str, str]] = None,
         filter_expr: Optional["pyarrow.dataset.Expression"] = None,
         filesystem,
     ) -> Iterable[DataBatch]:
@@ -65,6 +66,12 @@ class NativeFileReader(FileReader):
         # when using multiple threads.
         if self._data_context.execution_options.preserve_order:
             num_threads = 0
+
+        if columns and columns_rename:
+            assert set(columns_rename.keys()).issubset(columns), (
+                f"All column rename keys must be a subset of the columns list. "
+                f"Invalid keys: {set(columns_rename.keys()) - set(columns)}"
+            )
 
         def _read_paths(paths: List[str]):
             for path in paths:
@@ -84,10 +91,12 @@ class NativeFileReader(FileReader):
                     if self._include_paths:
                         batch = _add_column_to_batch(batch, "path", path)
                     for partition, value in partitions.items():
-                        if columns is None or partition in columns:
+                        if not columns or partition in columns:
                             batch = _add_column_to_batch(batch, partition, value)
-                    if columns is not None:
+                    if columns:
                         batch = _filter_columns(batch, columns)
+                    if columns_rename:
+                        batch = _rename_columns(batch, columns_rename)
                     yield batch
 
         if num_threads > 0:
@@ -194,6 +203,21 @@ class NativeFileReader(FileReader):
             in_memory_size = file_size
 
         return in_memory_size
+
+
+def _rename_columns(batch: DataBatch, columns_rename: Dict[str, str]) -> DataBatch:
+    assert isinstance(batch, (pd.DataFrame, dict, pyarrow.Table)), batch
+
+    if isinstance(batch, pd.DataFrame):
+        batch = batch.rename(columns=columns_rename)
+    elif isinstance(batch, dict):
+        batch = {columns_rename.get(k, k): v for k, v in batch.items()}
+    elif isinstance(batch, pyarrow.Table):
+        batch = batch.rename_columns(
+            [columns_rename.get(col, col) for col in batch.schema.names]
+        )
+
+    return batch
 
 
 def _filter_columns(batch: DataBatch, columns: List[str]) -> DataBatch:

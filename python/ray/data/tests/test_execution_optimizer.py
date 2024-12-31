@@ -358,9 +358,6 @@ def test_project_operator_select(ray_start_regular_shared):
     assert isinstance(physical_op.input_dependency, TaskPoolMapOperator)
 
 
-@pytest.mark.skip(
-    reason="Skip until https://github.com/anyscale/rayturbo/pull/1266 is merged"
-)
 def test_project_operator_rename(ray_start_regular_shared):
     """
     Checks that the physical plan is properly generated for the Project operator from
