@@ -12,6 +12,7 @@ from typing import (
     List,
     NamedTuple,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -343,6 +344,48 @@ class ReaderInterface:
         self._num_reads += 1
         return outputs
 
+    def _process_values_and_waitables(
+        self,
+        values: List[Any],
+        target_waitable_group: List[ObjectRef],
+        non_complete_object_refs_set: Set[ObjectRef],
+        target_waitable_group_num_consumers: Dict[ObjectRef, int],
+    ) -> Optional[List[Any]]:
+        """Process channel values and handle any task errors.
+
+        Args:
+            values: List of values to process
+            target_waitable_group: List of object refs being processed
+            non_complete_object_refs_set: Set of incomplete object refs
+            target_waitable_group_num_consumers: Dict mapping object refs to
+                number of consumers
+
+        Returns:
+            List[Any]: List of RayTaskError if error encountered, None otherwise
+        """
+        ctx = ChannelContext.get_current().serialization_context
+        for i, value in enumerate(values):
+            if target_waitable_group[i] in non_complete_object_refs_set:
+                continue
+            if isinstance(value, ray.exceptions.RayTaskError):
+                self._non_complete_object_refs = list(non_complete_object_refs_set)
+                for w in target_waitable_group:
+                    ctx.reset_data(w)
+                # If we raise an exception immediately, it will be considered
+                # as a system error which will cause the execution loop to
+                # exit. Hence, return immediately and let `_process_return_vals`
+                # handle the exception.
+                #
+                # Return a list of RayTaskError so that the caller will not
+                # get an undefined partial result.
+                return [value for _ in range(len(self._input_channels))]
+            ctx.set_data(
+                target_waitable_group[i],
+                value,
+                target_waitable_group_num_consumers[target_waitable_group[i]],
+            )
+        return None
+
     def close(self) -> None:
         self._closed = True
         for channel in self._input_channels:
@@ -426,27 +469,16 @@ class SynchronousReader(ReaderInterface):
                 skip_deserialization=not use_normal_waitables,
                 suppress_timeout_errors=True,
             )
-            ctx = ChannelContext.get_current().serialization_context
-            for i, value in enumerate(values):
-                if target_waitable_group[i] in non_complete_object_refs_set:
-                    continue
-                if isinstance(value, ray.exceptions.RayTaskError):
-                    self._non_complete_object_refs = list(non_complete_object_refs_set)
-                    for w in target_waitable_group:
-                        ctx.reset_data(w)
-                    # If we raise an exception immediately, it will be considered
-                    # as a system error which will cause the execution loop to
-                    # exit. Hence, return immediately and let `_process_return_vals`
-                    # handle the exception.
-                    #
-                    # Return a list of RayTaskError so that the caller will not
-                    # get an undefined partial result.
-                    return [value for _ in range(len(self._input_channels))]
-                ctx.set_data(
-                    target_waitable_group[i],
-                    value,
-                    target_waitable_group_num_consumers[target_waitable_group[i]],
-                )
+
+            ray_task_errors = self._process_values_and_waitables(
+                values,
+                target_waitable_group,
+                non_complete_object_refs_set,
+                target_waitable_group_num_consumers,
+            )
+            if ray_task_errors is not None:
+                return ray_task_errors
+
             target_waitable_group = list(non_complete_object_refs_set)
             if time.monotonic() > timeout_point and len(target_waitable_group) != 0:
                 # This ensures that the reader attempts to retrieve
@@ -504,7 +536,6 @@ class AwaitableBackgroundReader(ReaderInterface):
 
     def _run(self):
         # TODO(kevin85421): Consume non-complete object refs.
-        # TODO(kevin85421): Consume waitable one by one.
         (
             waitables_to_num_consumers,
             skip_deserialization_waitables_to_num_consumers,
@@ -535,22 +566,21 @@ class AwaitableBackgroundReader(ReaderInterface):
                 non_complete_object_refs_set,
             ) = worker.experimental_wait_and_get_mutable_objects(
                 target_waitable_group,
-                num_returns=len(target_waitable_group),
+                num_returns=1,
                 timeout_ms=1000,
                 return_exceptions=True,
                 skip_deserialization=not use_normal_waitables,
                 suppress_timeout_errors=True,
             )
 
-            ctx = ChannelContext.get_current().serialization_context
-            for i, value in enumerate(values):
-                if target_waitable_group[i] in non_complete_object_refs_set:
-                    continue
-                ctx.set_data(
-                    target_waitable_group[i],
-                    value,
-                    target_waitable_group_num_consumers[target_waitable_group[i]],
-                )
+            ray_task_errors = self._process_values_and_waitables(
+                values,
+                target_waitable_group,
+                non_complete_object_refs_set,
+                target_waitable_group_num_consumers,
+            )
+            if ray_task_errors is not None:
+                return ray_task_errors
 
             target_waitable_group = list(non_complete_object_refs_set)
             if use_normal_waitables:
