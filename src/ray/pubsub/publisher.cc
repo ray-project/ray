@@ -333,8 +333,9 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
       const rpc::PubMessage &msg = **it;
 
       int64_t msg_size_bytes = msg.ByteSizeLong();
-      if (num_total_bytes > 0 && num_total_bytes + msg_size_bytes >
-                                     RayConfig::instance().max_grpc_message_size()) {
+      if (num_total_bytes > 0 &&
+          num_total_bytes + msg_size_bytes >
+              static_cast<int64_t>(RayConfig::instance().max_grpc_message_size())) {
         // Adding this message to the batch would put us over the serialization
         // size threshold.
         break;
