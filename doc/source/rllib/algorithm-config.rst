@@ -13,7 +13,7 @@ the auto-validated and type-safe gateway into configuring and building an RLlib
 
 In essence, you first create an instance of :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
 and then call some of its methods to set various configuration options. RLlib uses the following, `black <https://github.com/psf/black>`__ compliant format
-in all parts of the code.
+in all parts of its code.
 
 Note that you can chain together more than one method call, including the constructor:
 
@@ -48,8 +48,8 @@ Note that you can chain together more than one method call, including the constr
 Algorithm specific config classes
 ---------------------------------
 
-You don't use ``AlgorithmConfig`` directly in practice, but rather use its algorithm-specific
-subclasses such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig`. Each subclass comes
+You don't use the base ``AlgorithmConfig`` class directly in practice, but always its algorithm-specific
+subclasses, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig`. Each subclass comes
 with its own set of additional arguments to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training`
 method.
 
@@ -124,13 +124,13 @@ Generic config settings
 -----------------------
 
 Most config settings are generic and apply to all of RLlib's :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` classes.
-The following sections walk you through the most important config settings users should pay close attention to for before
+The following sections walk you through the most important config settings users should pay close attention to before
 diving further into other config settings and before starting with hyperparameter fine tuning.
 
 RL Environment
 ~~~~~~~~~~~~~~
 
-To configure, which RL environment your algorithm trains against, use the ``env`` argument to the
+To configure, which :ref:`RL environment <rllib-environments-doc>` your algorithm trains against, use the ``env`` argument to the
 :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment` method:
 
 .. testcode::
@@ -149,6 +149,8 @@ Set the learning rate for updating your models through the ``lr`` argument to th
 
     config.training(lr=0.0001)
 
+.. _rllib-algo-configuration-train-batch-size:
+
 Train batch size
 ~~~~~~~~~~~~~~~~
 
@@ -159,6 +161,19 @@ method:
 .. testcode::
 
     config.training(train_batch_size_per_learner=256)
+
+.. note::
+    You can compute the total, effective train batch size through multiplying
+    ``train_batch_size_per_learner`` with ``(num_learners or 1)``.
+    Or you can also just check the value of your config's
+    :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.total_train_batch_size` property:
+
+    .. testcode::
+
+        config.training(train_batch_size_per_learner=256)
+        config.learners(num_learners=2)
+        print(config.total_train_batch_size)  # expect: 512 = 256 * 2
+
 
 Discount factor `gamma`
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -173,6 +188,8 @@ method:
 
 Scaling with `num_env_runners` and `num_learners`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. todo (sven): link to scaling guide, once separated out in its own rst.
 
 Set the number of :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors used to collect training samples
 through the ``num_env_runners`` argument to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners`
@@ -213,9 +230,13 @@ and `forward_inference()` when ``explore=False``. The default value is ``explore
 Rollout length
 ~~~~~~~~~~~~~~
 
-Set the number of timesteps each :py:class:`~ray.rllib.env.env_runner.EnvRunner` steps through each of its env copies
-through the ``rollout_fragment_length`` argument to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners`
-method:
+Set the number of timesteps that each :py:class:`~ray.rllib.env.env_runner.EnvRunner` steps
+through with each of its RL environment copies through the ``rollout_fragment_length`` argument.
+Pass this argument to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners`
+method. Note that some algorithms, like :py:class:`~ray.rllib.algorithms.ppo.PPO`,
+set this value automatically, based on the :ref:`train batch size <rllib-algo-configuration-train-batch-size>`,
+number of :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors and number of envs per
+:py:class:`~ray.rllib.env.env_runner.EnvRunner`.
 
 .. testcode::
 
@@ -230,16 +251,23 @@ class and its algo-specific subclasses come with many more configuration options
 To structure things more semantically, :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` groups
 its various config settings into the following categories, each represented by its own method:
 
-- :ref:`Config settings for the RL environment <rllib-config-env>`,
-- :ref:`Config settings for training behavior (including algo-specific settings) <rllib-config-training>`,
-- :ref:`Config settings for EnvRunners <rllib-config-env-runners>`,
-- :ref:`Config settings for Learners <rllib-config-learners>`,
-- :ref:`Config settings for adding callbacks <rllib-config-callbacks>`,
-- :ref:`Config settings for multi-agent setups <rllib-config-multi_agent>`,
-- :ref:`Config settings for offline RL <rllib-config-offline_data>`,
-- :ref:`Config settings for evaluating policies <rllib-config-evaluation>`,
-- :ref:`Config settings for the DL framework <rllib-config-framework>`,
-- :ref:`Config settings for reporting and logging behavior <rllib-config-reporting>`,
-- :ref:`Config settings for checkpointing <rllib-config-checkpointing>`,
-- :ref:`Config settings for debugging <rllib-config-debugging>`,
+- :ref:`Config settings for the RL environment <rllib-config-env>`
+- :ref:`Config settings for training behavior (including algo-specific settings) <rllib-config-training>`
+- :ref:`Config settings for EnvRunners <rllib-config-env-runners>`
+- :ref:`Config settings for Learners <rllib-config-learners>`
+- :ref:`Config settings for adding callbacks <rllib-config-callbacks>`
+- :ref:`Config settings for multi-agent setups <rllib-config-multi_agent>`
+- :ref:`Config settings for offline RL <rllib-config-offline_data>`
+- :ref:`Config settings for evaluating policies <rllib-config-evaluation>`
+- :ref:`Config settings for the DL framework <rllib-config-framework>`
+- :ref:`Config settings for reporting and logging behavior <rllib-config-reporting>`
+- :ref:`Config settings for checkpointing <rllib-config-checkpointing>`
+- :ref:`Config settings for debugging <rllib-config-debugging>`
 - :ref:`Experimental config settings <rllib-config-experimental>`
+
+To familiarize yourself with the vast number of RLlib's different config options, you can browse through
+`RLlib's examples folder <https://github.com/ray-project/ray/tree/master/rllib/examples>`__ or take a look at this
+:ref:`examples folder overview page <rllib-examples-overview-docs>`.
+
+Each example script usually introduces a new config setting or shows you how to implement specific customizations through
+a combination of setting certain config options and adding custom code to your experiment.

@@ -3,6 +3,8 @@
 .. include:: /_includes/rllib/new_api_stack.rst
 
 
+.. _rllib-examples-overview-docs:
+
 Examples
 ========
 
