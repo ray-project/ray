@@ -463,9 +463,9 @@ class TorchLearner(Learner):
         called in this `Learner.build()`.
         """
         self._device = get_device(
-            self.config, 
-            self.config.num_gpus_per_learner, 
-            self.config.custom_resources_per_learner
+            self.config,
+            self.config.num_gpus_per_learner,
+            self.config.custom_resources_per_learner,
         )
 
         super().build()

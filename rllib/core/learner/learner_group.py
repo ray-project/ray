@@ -149,7 +149,7 @@ class LearnerGroup(Checkpointable):
             resources_per_learner = {
                 "CPU": num_cpus_per_learner,
                 "GPU": num_gpus_per_learner,
-                **custom_resources_per_learner
+                **custom_resources_per_learner,
             }
 
             backend_executor = BackendExecutor(
