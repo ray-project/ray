@@ -327,6 +327,31 @@ class ReaderInterface:
             skip_deserialization_waitables_to_num_consumers,
         )
 
+    def _consume_non_complete_object_refs_if_needed(
+        self, timeout: Optional[float] = None
+    ) -> None:
+        timeout_point = time.monotonic() + timeout
+        worker = ray._private.worker.global_worker
+        if len(self._non_complete_object_refs) > 0:
+            # If the last read failed early, we need to consume the data from
+            # the non-complete object refs before the next read. If we don't do
+            # this, the read operation will read different versions of the
+            # object refs.
+            (
+                _,
+                non_complete_object_refs_set,
+            ) = worker.experimental_wait_and_get_mutable_objects(
+                self._non_complete_object_refs,
+                num_returns=len(self._non_complete_object_refs),
+                timeout_ms=max(0, (timeout_point - time.monotonic()) * 1000),
+                return_exceptions=True,
+                # Skip deserialization to speed up this step.
+                skip_deserialization=True,
+                suppress_timeout_errors=False,
+            )
+            assert len(non_complete_object_refs_set) == 0
+            self._non_complete_object_refs = []
+
     def read(self, timeout: Optional[float] = None) -> List[Any]:
         """
         Read from this reader.
@@ -402,31 +427,6 @@ class SynchronousReader(ReaderInterface):
 
     def start(self):
         pass
-
-    def _consume_non_complete_object_refs_if_needed(
-        self, timeout: Optional[float] = None
-    ) -> None:
-        timeout_point = time.monotonic() + timeout
-        worker = ray._private.worker.global_worker
-        if len(self._non_complete_object_refs) > 0:
-            # If the last read failed early, we need to consume the data from
-            # the non-complete object refs before the next read. If we don't do
-            # this, the read operation will read different versions of the
-            # object refs.
-            (
-                _,
-                non_complete_object_refs_set,
-            ) = worker.experimental_wait_and_get_mutable_objects(
-                self._non_complete_object_refs,
-                num_returns=len(self._non_complete_object_refs),
-                timeout_ms=max(0, (timeout_point - time.monotonic()) * 1000),
-                return_exceptions=True,
-                # Skip deserialization to speed up this step.
-                skip_deserialization=True,
-                suppress_timeout_errors=False,
-            )
-            assert len(non_complete_object_refs_set) == 0
-            self._non_complete_object_refs = []
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
         timeout = 1e6 if timeout is None or timeout == -1 else timeout
@@ -535,7 +535,9 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
-        # TODO(kevin85421): Consume non-complete object refs.
+        # TODO(kevin85421): What's a good timeout for this?
+        # Should we make it configurable?
+        self._consume_non_complete_object_refs_if_needed(60)
         (
             waitables_to_num_consumers,
             skip_deserialization_waitables_to_num_consumers,
