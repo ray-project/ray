@@ -52,7 +52,7 @@ def test_train_v2_import(monkeypatch, env_v2_enabled):
     # Load from the public `ray.train` module
     # isort: off
     importlib.reload(ray.train)
-    from ray.train import FailureConfig, Result, RunConfig
+    from ray.train import FailureConfig, Result, RunConfig, ScalingConfig
 
     # isort: on
 
