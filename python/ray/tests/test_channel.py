@@ -14,7 +14,6 @@ import ray
 import ray.cluster_utils
 import ray.exceptions
 import ray.experimental.channel as ray_channel
-from ray.experimental.channel.common import ChannelContext
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -30,6 +29,7 @@ def create_driver_actor():
             ray.get_runtime_context().get_node_id(), soft=False
         )
     ).remote()
+
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "darwin",
