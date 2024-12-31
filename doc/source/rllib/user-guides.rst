@@ -12,6 +12,7 @@ User Guides
     :hidden:
 
     rllib-advanced-api
+    rllib-callback
     rllib-models
     rllib-saving-and-loading-algos-and-policies
     single-agent-episode
@@ -40,6 +41,14 @@ RLlib Feature Guides
         .. button-ref:: rllib-advanced-api-doc
 
             Advanced Features of the RLlib Python API
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: rllib-callback
+
+            Injecting custom code into RLlib through the ``RLlibCallback`` APIs
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
