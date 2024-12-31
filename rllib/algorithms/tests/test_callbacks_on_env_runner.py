@@ -5,14 +5,14 @@ import gymnasium as gym
 
 import ray
 from ray import train, tune
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 
 
-class EpisodeAndSampleCallbacks(DefaultCallbacks):
+class EpisodeAndSampleCallbacks(RLlibCallback):
     def __init__(self):
         super().__init__()
         self.counts = Counter()
@@ -45,7 +45,7 @@ class EpisodeAndSampleCallbacks(DefaultCallbacks):
         self.counts.update({"sample": 1})
 
 
-class OnEnvironmentCreatedCallback(DefaultCallbacks):
+class OnEnvironmentCreatedCallback(RLlibCallback):
     def on_environment_created(self, *, env_runner, env, env_context, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(env, gym.Env)
@@ -63,7 +63,7 @@ class OnEnvironmentCreatedCallback(DefaultCallbacks):
         )
 
 
-class OnEpisodeCreatedCallback(DefaultCallbacks):
+class OnEpisodeCreatedCallback(RLlibCallback):
     def on_episode_created(
         self,
         *,
@@ -115,7 +115,7 @@ class TestCallbacksOnEnvRunners(unittest.TestCase):
                 )
                 config.environment("multi_cart")
             algo = config.build()
-            callback_obj = algo.env_runner._callbacks
+            callback_obj = algo.env_runner._callbacks[0]
 
             # We must have had exactly one env creation event (already before training).
             self.assertEqual(callback_obj.counts["env_created"], 1)
@@ -164,7 +164,7 @@ class TestCallbacksOnEnvRunners(unittest.TestCase):
                 config.environment("multi_cart")
 
             algo = config.build()
-            callback_obj = algo.env_runner._callbacks
+            callback_obj = algo.env_runner._callbacks[0]
 
             # We must have had exactly one env creation event (already before training).
             self.assertEqual(callback_obj.counts["env_created"], 1)

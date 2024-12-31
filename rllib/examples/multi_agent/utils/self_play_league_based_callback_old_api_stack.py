@@ -2,13 +2,13 @@ import re
 
 import numpy as np
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 
 @Deprecated(help="Use the example for the new RLlib API stack", error=False)
-class SelfPlayLeagueBasedCallbackOldAPIStack(DefaultCallbacks):
+class SelfPlayLeagueBasedCallbackOldAPIStack(RLlibCallback):
     def __init__(self, win_rate_threshold):
         super().__init__()
         # All policies in the league.

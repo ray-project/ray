@@ -70,7 +70,7 @@ from typing import Optional
 
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -96,7 +96,7 @@ parser.set_defaults(
 )
 
 
-class AssertEvalCallback(DefaultCallbacks):
+class AssertEvalCallback(RLlibCallback):
     def on_train_result(
         self,
         *,

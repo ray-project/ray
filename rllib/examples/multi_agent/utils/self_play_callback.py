@@ -2,12 +2,12 @@ from collections import defaultdict
 
 import numpy as np
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 
-class SelfPlayCallback(DefaultCallbacks):
+class SelfPlayCallback(RLlibCallback):
     def __init__(self, win_rate_threshold):
         super().__init__()
         # 0=RandomPolicy, 1=1st main policy snapshot,
