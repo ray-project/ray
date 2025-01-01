@@ -1,18 +1,14 @@
 # Common terms used in the RL and RLlib worlds.
 # Add new terms alphabetically.
-[Aa]lgos?
 (APPO|appo)
 boolean
 coeff
 config
 (DQN|dqn)
-[Ee]nvs?
+[Ee]nv
 (IMPALA|impala)
-logits?
-log-probs?
 hyperparameters?
 MARLModule
-(MARWIL|marwil)
 MLAgents
 multiagent
 postprocessing
@@ -20,10 +16,9 @@ postprocessing
 [Pp]y[Tt]orch
 pragmas?
 (RL|rl)lib
-RNN
-RLModules?
+RLModule
 rollout
 (SAC|sac)
 SGD
 [Tt]ensor[Ff]low
-timesteps?
+timestep
