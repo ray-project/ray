@@ -76,7 +76,7 @@ class TestCallbacks(unittest.TestCase):
         # Train a bit (and have the envs/workers crash).
         for _ in range(3):
             print(algo.train())
-            time.sleep(5.0)
+            time.sleep(15.0)
 
         algo.restore_workers(algo.env_runner_group)
         # After training, the `on_workers_recreated` callback should have captured
