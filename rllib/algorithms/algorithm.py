@@ -1663,7 +1663,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 for pol_states in state["policy_states"].values():
                     pol_states.pop("connector_configs", None)
 
-            elif self.config.is_multi_agent():
+            elif self.config.is_multi_agent:
 
                 multi_rl_module_spec = MultiRLModuleSpec.from_module(from_worker.module)
 
