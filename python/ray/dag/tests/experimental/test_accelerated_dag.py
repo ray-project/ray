@@ -2656,7 +2656,7 @@ def test_signature_mismatch(shutdown_only):
 def test_sigint_get_dagref(ray_start_cluster):
     driver_script = """
 import ray
-from ray.dag import InputNode, MultiOutputNode
+from ray.dag import InputNode
 import time
 
 ray.init()
@@ -2666,13 +2666,10 @@ class Actor:
     def sleep(self, x):
         while(True):
             time.sleep(x)
-    def get(self, x):
-        return x
 
 a = Actor.remote()
 with InputNode() as inp:
     dag = a.sleep.bind(inp)
-    dag = a.get.bind(dag)
 compiled_dag = dag.experimental_compile()
 ref = compiled_dag.execute(1)
 ray.get(ref, timeout=100)
