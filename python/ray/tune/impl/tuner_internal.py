@@ -17,8 +17,8 @@ from typing import (
 
 import pyarrow.fs
 
-import ray
 import ray.cloudpickle as pickle
+import ray.train
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.train import ScalingConfig
