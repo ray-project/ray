@@ -26,17 +26,34 @@ class TestClickHouseDatasource:
             columns=["column1", "column2"],
             order_by=(["column1"], False),
             client_settings={"setting1": "value1"},
-            client_kwargs={"arg1": "value1"},
+            client_kwargs={"client_name": "test-client"},
         )
         datasource._client = mock_clickhouse_client
         return datasource
 
     def test_init(self, datasource):
-        # Test query generation with columns, filters, and order_by
         expected_query = (
             "SELECT column1, column2 FROM default.table_name ORDER BY column1"
         )
         assert datasource._query == expected_query
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_init_with_filter(self, mock_init_client):
+        mock_client = MagicMock()
+        mock_init_client.return_value = mock_client
+        mock_client.query.return_value = MagicMock()
+        ds_with_filters = ClickHouseDatasource(
+            table="default.table_name",
+            dsn="clickhouse://user:password@localhost:8123/default",
+            columns=["column1", "column2"],
+            filters="label = 2 AND text IS NOT NULL",
+            order_by=(["column1"], False),
+        )
+        assert (
+            ds_with_filters._query == "SELECT column1, column2 FROM default.table_name "
+            "WHERE label = 2 AND text IS NOT NULL "
+            "ORDER BY column1"
+        )
 
     def test_estimate_inmemory_data_size(self, datasource):
         mock_client = mock.MagicMock()
@@ -101,9 +118,7 @@ class TestClickHouseDatasource:
         "columns, expected_query_part",
         [
             (
-                [
-                    "field1",
-                ],
+                ["field1"],
                 "SELECT field1 FROM default.table_name",
             ),
             (["field1", "field2"], "SELECT field1, field2 FROM default.table_name"),
@@ -130,6 +145,7 @@ class TestClickHouseDatasource:
         generated_query = datasource._generate_query()
         assert expected_query_part in generated_query
 
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
     @pytest.mark.parametrize(
         "query_params, expected_query",
         [
@@ -181,10 +197,32 @@ class TestClickHouseDatasource:
                 "SELECT field1, field2, field3 FROM default.table_name "
                 "ORDER BY (field1, field2, field3) DESC",
             ),
+            (
+                {
+                    "columns": None,
+                    "filters": "label = 2",
+                },
+                "SELECT * FROM default.table_name WHERE label = 2",
+            ),
+            (
+                {
+                    "columns": ["field1", "field2"],
+                    "filters": "label = 2 AND text IS NOT NULL",
+                    "order_by": (["field1"], False),
+                },
+                "SELECT field1, field2 FROM default.table_name WHERE label = 2 AND "
+                "text IS NOT NULL ORDER BY field1",
+            ),
         ],
     )
-    def test_generate_query_full(self, datasource, query_params, expected_query):
+    def test_generate_query_full(
+        self, mock_init_client, datasource, query_params, expected_query
+    ):
+        mock_client = MagicMock()
+        mock_init_client.return_value = mock_client
+        mock_client.query.return_value = MagicMock()
         datasource._columns = query_params.get("columns")
+        datasource._filters = query_params.get("filters")
         datasource._order_by = query_params.get("order_by")
         generated_query = datasource._generate_query()
         assert expected_query == generated_query
@@ -243,6 +281,52 @@ class TestClickHouseDatasource:
         datasource._get_sample_block = MagicMock(return_value=mock_block_accessor)
         read_tasks = datasource.get_read_tasks(parallelism=2)
         assert len(read_tasks) == 0
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    @pytest.mark.parametrize(
+        "filters_str, expect_error",
+        [
+            ("label = 2 AND text IS NOT NULL", False),
+            ("some_col = 'my;string' AND another_col > 10", False),
+            ("AND label = 2", True),
+            ("some_col =", True),
+            ("col = 123; DROP TABLE foobar", True),
+            ("col = 'someval", True),
+            ("col = NULL", True),
+        ],
+    )
+    def test_filters_validation(self, mock_init_client, filters_str, expect_error):
+        mock_client = MagicMock()
+        mock_init_client.return_value = mock_client
+        if expect_error:
+            mock_client.query.side_effect = Exception("Simulated parse error")
+            with pytest.raises(ValueError):
+                ClickHouseDatasource(
+                    table="default.table_name",
+                    dsn="clickhouse://user:password@localhost:8123/default",
+                    filters=filters_str,
+                )
+        else:
+            mock_client.query.return_value = MagicMock()
+            try:
+                ds = ClickHouseDatasource(
+                    table="default.table_name",
+                    dsn="clickhouse://user:password@localhost:8123/default",
+                    filters=filters_str,
+                )
+                assert f"WHERE {filters_str}" in ds._query
+            except Exception as e:
+                pytest.fail(f"Unexpected error for filters={filters_str}. Error: {e}")
+
+    def test_filters_none(self):
+        table_name = "default.table_name"
+        dsn = "clickhouse://user:password@localhost:8123/default"
+        with mock.patch.object(ClickHouseDatasource, "_init_client") as mocked_init:
+            mock_client = MagicMock()
+            mocked_init.return_value = mock_client
+            ds = ClickHouseDatasource(table=table_name, dsn=dsn, filters=None)
+        assert "WHERE" not in ds._query
+        assert ds._filters is None
 
 
 if __name__ == "__main__":
