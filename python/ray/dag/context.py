@@ -70,8 +70,9 @@ class DAGContext:
             executions is beyond the DAG capacity, the new execution would
             be blocked in the first place; therefore, this limit is only
             enforced when it is smaller than the DAG capacity.
-        max_inflight_executions: The maximum number of in-flight executions
-            that can be submitted before consuming the output.
+        max_inflight_executions: The maximum number of in-flight executions that
+            can be submitted via `execute` or `execute_async` before consuming
+            the output using `ray.get()`.
         overlap_gpu_communication: Whether to overlap GPU communication with
             computation during DAG execution. If True, the communication
             and computation can be overlapped, which can improve the
