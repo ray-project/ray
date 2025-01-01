@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pyarrow as pa
+from pyarrow.fs import FileSelector, FileType
 
 import ray
 from ray.anyscale.data._internal.logical.operators.list_files_operator import (
@@ -21,6 +22,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     Row,
     RowMapTransformFn,
 )
+from ray.data._internal.util import call_with_retry
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
@@ -88,6 +90,7 @@ def create_map_operator(
                 row[PATH_COLUMN_NAME],
                 logical_op.filesystem,
                 logical_op.ignore_missing_paths,
+                data_context.retried_io_errors,
             ):
                 if not _has_file_extension(file_path, logical_op.file_extensions):
                     logger.debug(
@@ -136,16 +139,23 @@ def _get_file_infos(
     path: str,
     filesystem: "pyarrow.fs.FileSystem",
     ignore_missing_path: bool,
+    retry_on_error_messages: Optional[List[str]] = None,
 ) -> Iterable[Tuple[str, Optional[int]]]:
     from pyarrow.fs import FileType
 
     try:
-        file_info = filesystem.get_file_info(path)
+        file_info = call_with_retry(
+            lambda: filesystem.get_file_info(path),
+            description=f"get file info for path '{path}'",
+            match=retry_on_error_messages,
+        )
     except OSError as e:
         _handle_read_os_error(e, path)
 
     if file_info.type == FileType.Directory:
-        yield from _expand_directory(path, filesystem, ignore_missing_path)
+        yield from _expand_directory(
+            path, filesystem, ignore_missing_path, retry_on_error_messages
+        )
     elif file_info.type == FileType.File:
         yield (path, file_info.size)
     elif file_info.type == FileType.NotFound and ignore_missing_path:
@@ -158,15 +168,17 @@ def _expand_directory(
     base_path: str,
     filesystem: "pyarrow.fs.FileSystem",
     ignore_missing_path: bool,
+    retry_on_error_messages: Optional[List[str]] = None,
 ) -> Iterable[Tuple[str, Optional[int]]]:
-    from pyarrow.fs import FileSelector, FileType
-
     exclude_prefixes = [".", "_"]
     selector = FileSelector(
         base_path, recursive=False, allow_not_found=ignore_missing_path
     )
-    files = filesystem.get_file_info(selector)
-
+    files = call_with_retry(
+        lambda: filesystem.get_file_info(selector),
+        description=f"get file info for path '{base_path}'",
+        match=retry_on_error_messages,
+    )
     for file_ in files:
         if not file_.path.startswith(base_path):
             continue
