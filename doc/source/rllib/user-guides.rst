@@ -88,4 +88,12 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-dev
 
-            How To Contribute To RLlib?
+            How To Contribute To RLlib
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: scaling-guide
+
+            How to run RLlib experiments at scale
