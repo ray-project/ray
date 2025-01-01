@@ -198,6 +198,15 @@ class TorchTensorNcclChannel(ChannelInterface):
             # normally.
             self.serialization_ctx.set_use_external_transport(False)
 
+        # Throw an exception if metadata mismatch is detected. This must
+        # be called before the `write` operation of the CPU channel. If a
+        # metadata mismatch is detected in the `write` operation of the GPU
+        # channel after the CPU channel has already written data, that data
+        # needs to be consumed before the next `write` operation of the CPU
+        # channel can complete.
+        metadata_list = self._gpu_data_channel.tensors_to_metadata(gpu_tensors)
+        self._gpu_data_channel.validate_metadata_mismatch(metadata_list)
+
         # The `write` operation of the shared memory channel must be called
         # before the `write` operation of the GPU channel. This is because in
         # `_read_list`, the channel's `read` operation waits for all underlying
@@ -215,7 +224,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         # the `read` operation of the NCCL channel will never be called because
         # `_read_list` will never consume the mutable object that hasn't been
         # written yet.
-        self._gpu_data_channel.validate_metadata_mismatch(gpu_tensors)
+
         # First send the non-tensor data through a CPU-specific channel. The
         # data contains placeholders for the extracted tensors.
         self._cpu_data_channel.write(cpu_data)
@@ -519,7 +528,6 @@ class _TorchTensorNcclChannel(ChannelInterface):
         Returns: The metadata to send to the reader. None means that we should
             not send any metadata message to the reader.
         """
-        ctx = ChannelContext.get_current()
 
         # TODO(swang): Currently any exceptions thrown during this method are
         # fatal for the DAG because there is no way for the receiver to receive
@@ -528,35 +536,11 @@ class _TorchTensorNcclChannel(ChannelInterface):
         # channel can send empty data alongside the exception to avoid hanging.
 
         # Get the shape and dtype of each tensor to send.
-        metadata_list = []
-        for tensor in tensors:
-            # Basic type checking.
-            if not isinstance(tensor, self.torch.Tensor):
-                raise ValueError("Task must return torch.Tensors")
-
-            if tensor.device != ctx.torch_device:
-                raise ValueError(
-                    f"torch.Tensor must be on the default device: {ctx.torch_device}"
-                )
-
-            metadata = _TorchTensorMetadata(tensor.shape, tensor.dtype)
-            metadata_list.append(metadata)
+        metadata_list = self.tensors_to_metadata(tensors)
 
         if self._static_tensor_metadata is not None:
-            if metadata_list != self._static_tensor_metadata:
-                metadata_str = [
-                    f"(shape={m.shape}, dtype={m.dtype})" for m in metadata_list
-                ]
-                expected_str = [
-                    f"(shape={m.shape}, dtype={m.dtype})"
-                    for m in self._static_tensor_metadata
-                ]
-                raise ValueError(
-                    "Expected torch.Tensors with shapes and dtypes: "
-                    "[" + ", ".join(expected_str) + "], "
-                    "found: [" + ", ".join(metadata_str) + "]. "
-                    "DAG will shut down."
-                )
+            # Raise an exception if the metadata mismatch is detected.
+            self.validate_metadata_mismatch(metadata_list)
             # The receiver has already determined the shape and dtype of the
             # tensors from a previous send, so no need to send the metadata
             # again.
@@ -569,10 +553,12 @@ class _TorchTensorNcclChannel(ChannelInterface):
             self._static_tensor_metadata = metadata_list
         return metadata_list
 
-    def validate_metadata_mismatch(self, tensors: List["torch.Tensor"]):
+    def tensors_to_metadata(
+        self, tensors: List["torch.Tensor"]
+    ) -> List[_TorchTensorMetadata]:
         """
-        Validate that the metadata of the tensors matches the static metadata
-        if `static_shape=True` was set.
+        Helper method to convert a list of torch tensors to a list of
+        _TorchTensorMetadata objects.
         """
         ctx = ChannelContext.get_current()
         metadata_list = []
@@ -588,7 +574,13 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
             metadata = _TorchTensorMetadata(tensor.shape, tensor.dtype)
             metadata_list.append(metadata)
+        return metadata_list
 
+    def validate_metadata_mismatch(self, metadata_list: List[_TorchTensorMetadata]):
+        """
+        Validate that the metadata of the tensors matches the static metadata
+        if `static_shape=True` was set.
+        """
         if self._static_tensor_metadata is None:
             return
         if metadata_list != self._static_tensor_metadata:
