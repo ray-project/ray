@@ -945,7 +945,7 @@ class Worker:
                 returned list. If False, then the first found exception will be
                 raised.
             skip_deserialization: If True, only the buffer will be released and
-                the object associated with the buffer will not be deserailized.
+                the object associated with the buffer will not be deserialized.
             suppress_timeout_errors: If True, suppress timeout errors.
         Returns:
             A tuple containing the list of objects read and the set of
