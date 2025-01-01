@@ -195,6 +195,8 @@ def test_log_rotation(shutdown_only, monkeypatch):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
+    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
+    # substring of "python-core-worker".
     log_rotating_component = [
         ray_constants.PROCESS_TYPE_DASHBOARD,
         ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
