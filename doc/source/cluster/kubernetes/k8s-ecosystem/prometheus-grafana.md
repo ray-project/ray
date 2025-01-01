@@ -106,7 +106,6 @@ kubectl get service
 ## Step 5: Collect Head Node metrics with a PodMonitor
 
 RayService creates two Kubernetes services for the head Pod—one managed by the RayService and the other by the underlying RayCluster. Therefore, it is recommended to use a PodMonitor to monitor the metrics for head Pods to avoid misconfigurations that could result in double counting the same metrics when using a ServiceMonitor.
-We need to use **PodMonitor** for monitoring. Otherwise, some metrics in the Grafana Dashboard may be doubled.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
