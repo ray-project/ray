@@ -103,7 +103,7 @@ kubectl get service
     Because we forward the port of Grafana to `127.0.0.1:3000` in this example, we set `RAY_GRAFANA_IFRAME_HOST` to `http://127.0.0.1:3000`.
   * `http://` is required.
 
-## Step 5: Collect Head Node metrics with PodMonitors
+## Step 5: Collect Head Node metrics with a PodMonitor
 
 Since RayService creates two services, one managed by RayCluster and the other by RayService.
 We need to use **PodMonitor** for monitoring. Otherwise, some metrics in the Grafana Dashboard may be doubled.
