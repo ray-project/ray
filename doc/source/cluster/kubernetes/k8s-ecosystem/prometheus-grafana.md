@@ -168,7 +168,7 @@ spec:
   #     release: prometheus
   ```
 
-* **PodMonitor** in `namespaceSelector` and `selector` are used to select Kubernetes Pods.
+* `namespaceSelector` and `selector` are used to select Kubernetes Pods.
   ```sh
   kubectl get pod -n default -l ray.io/node-type=head
   # NAME                            READY   STATUS    RESTARTS   AGE
