@@ -41,6 +41,7 @@ from ray.train import Checkpoint
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
+from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.core import (
     COMPONENT_ENV_RUNNER,
@@ -627,7 +628,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         self._record_usage(self.config)
 
         # Create the callbacks object.
-        self.callbacks = self.config.callbacks_class()
+        if self.config.enable_env_runner_and_connector_v2:
+            self.callbacks = [cls() for cls in force_list(self.config.callbacks_class)]
+        else:
+            self.callbacks = self.config.callbacks_class()
 
         if self.config.log_level in ["WARN", "ERROR"]:
             logger.info(
@@ -869,7 +873,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 self.offline_data.spaces = spaces
 
         # Run `on_algorithm_init` callback after initialization is done.
-        self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)
+        make_callback(
+            "on_algorithm_init",
+            self.callbacks,
+            self.config.callbacks_on_algorithm_init,
+            kwargs=dict(
+                algorithm=self,
+                metrics_logger=self.metrics,
+            ),
+        )
 
     @OverrideToImplementCustomLogic
     @classmethod
@@ -1049,7 +1061,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     config=self.evaluation_config,
                 )
 
-        self.callbacks.on_evaluate_start(algorithm=self, metrics_logger=self.metrics)
+        make_callback(
+            "on_evaluate_start",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_evaluate_start,
+            kwargs=dict(algorithm=self, metrics_logger=self.metrics),
+        )
 
         env_steps = agent_steps = 0
         batches = []
@@ -1138,10 +1155,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     eval_results["off_policy_estimator"][name] = avg_estimate
 
         # Trigger `on_evaluate_end` callback.
-        self.callbacks.on_evaluate_end(
-            algorithm=self,
-            metrics_logger=self.metrics,
-            evaluation_metrics=eval_results,
+        make_callback(
+            "on_evaluate_end",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_evaluate_end,
+            kwargs=dict(
+                algorithm=self,
+                metrics_logger=self.metrics,
+                evaluation_metrics=eval_results,
+            ),
         )
 
         # Also return the results here for convenience.
@@ -1671,11 +1693,27 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
 
             # Fire the callback for re-created workers.
-            self.callbacks.on_workers_recreated(
-                algorithm=self,
-                worker_set=workers,
-                worker_ids=restored,
-                is_evaluation=workers.local_env_runner.config.in_evaluation,
+            make_callback(
+                "on_env_runners_recreated",
+                callbacks_objects=self.callbacks,
+                callbacks_functions=self.config.callbacks_on_env_runners_recreated,
+                kwargs=dict(
+                    algorithm=self,
+                    env_runner_group=workers,
+                    env_runner_indices=restored,
+                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                ),
+            )
+            # TODO (sven): Deprecate this call.
+            make_callback(
+                "on_workers_recreated",
+                callbacks_objects=self.callbacks,
+                kwargs=dict(
+                    algorithm=self,
+                    worker_set=workers,
+                    worker_ids=restored,
+                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                ),
             )
 
     @OverrideToImplementCustomLogic
@@ -2697,18 +2735,22 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # `restore_from_path()`.
         if self.config.enable_rl_module_and_learner:
             self.restore_from_path(checkpoint_dir)
+        else:
+            # Checkpoint is provided as a local directory.
+            # Restore from the checkpoint file or dir.
+            checkpoint_info = get_checkpoint_info(checkpoint_dir)
+            checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(
+                checkpoint_info
+            )
+            self.__setstate__(checkpoint_data)
 
-            # Call the `on_checkpoint_loaded` callback.
-            self.callbacks.on_checkpoint_loaded(algorithm=self)
-            return
-
-        # Checkpoint is provided as a local directory.
-        # Restore from the checkpoint file or dir.
-        checkpoint_info = get_checkpoint_info(checkpoint_dir)
-        checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
-        self.__setstate__(checkpoint_data)
         # Call the `on_checkpoint_loaded` callback.
-        self.callbacks.on_checkpoint_loaded(algorithm=self)
+        make_callback(
+            "on_checkpoint_loaded",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_checkpoint_loaded,
+            kwargs=dict(algorithm=self),
+        )
 
     @override(Checkpointable)
     def get_state(
@@ -2866,8 +2908,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         #  point in time. In here, the result dict has already been "compiled" (reduced)
         #  by the MetricsLogger and there is probably no point in adding more Stats
         #  here.
-        self.callbacks.on_train_result(
-            algorithm=self, metrics_logger=self.metrics, result=result
+        make_callback(
+            "on_train_result",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_train_result,
+            kwargs=dict(
+                algorithm=self,
+                metrics_logger=self.metrics,
+                result=result,
+            ),
         )
         # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
@@ -3170,7 +3219,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
             deprecation_warning(
                 "callbacks dict interface",
-                "a class extending rllib.algorithms.callbacks.DefaultCallbacks; "
+                "a class extending rllib.callbacks.callbacks.RLlibCallback; "
                 "see `rllib/examples/metrics/custom_metrics_and_callbacks.py` for an "
                 "example.",
                 error=True,
@@ -3406,7 +3455,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 config=self.evaluation_config,
             )
 
-        self.callbacks.on_evaluate_start(algorithm=self, metrics_logger=self.metrics)
+        make_callback(
+            "on_evaluate_start",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_evaluate_start,
+            kwargs=dict(
+                algorithm=self,
+                metrics_logger=self.metrics,
+            ),
+        )
 
         env_steps = agent_steps = 0
 

@@ -9,7 +9,8 @@ from gymnasium.wrappers.vector import DictInfoToList
 from gymnasium.envs.registration import VectorizeMode
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
+from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
@@ -24,6 +25,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
@@ -81,7 +83,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.metrics = MetricsLogger()
 
         # Create our callbacks object.
-        self._callbacks: DefaultCallbacks = self.config.callbacks_class()
+        self._callbacks: List[RLlibCallback] = [
+            cls() for cls in force_list(self.config.callbacks_class)
+        ]
 
         # Set device.
         self._device = get_device(
@@ -219,10 +223,15 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 )
 
             # Make the `on_sample_end` callback.
-            self._callbacks.on_sample_end(
-                env_runner=self,
-                metrics_logger=self.metrics,
-                samples=samples,
+            make_callback(
+                "on_sample_end",
+                callbacks_objects=self._callbacks,
+                callbacks_functions=self.config.callbacks_on_sample_end,
+                kwargs=dict(
+                    env_runner=self,
+                    metrics_logger=self.metrics,
+                    samples=samples,
+                ),
             )
 
         self._time_after_sampling = time.perf_counter()
@@ -648,11 +657,16 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._needs_initial_reset = True
 
         # Call the `on_environment_created` callback.
-        self._callbacks.on_environment_created(
-            env_runner=self,
-            metrics_logger=self.metrics,
-            env=self.env.unwrapped,
-            env_context=env_ctx,
+        make_callback(
+            "on_environment_created",
+            callbacks_objects=self._callbacks,
+            callbacks_functions=self.config.callbacks_on_environment_created,
+            kwargs=dict(
+                env_runner=self,
+                metrics_logger=self.metrics,
+                env=self.env.unwrapped,
+                env_context=env_ctx,
+            ),
         )
 
     @override(EnvRunner)
@@ -726,13 +740,18 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
     def _make_on_episode_callback(self, which: str, idx: int, episodes):
-        getattr(self._callbacks, which)(
-            episode=episodes[idx],
-            env_runner=self,
-            metrics_logger=self.metrics,
-            env=self.env.unwrapped,
-            rl_module=self.module,
-            env_index=idx,
+        make_callback(
+            which,
+            callbacks_objects=self._callbacks,
+            callbacks_functions=getattr(self.config, f"callbacks_{which}"),
+            kwargs=dict(
+                episode=episodes[idx],
+                env_runner=self,
+                metrics_logger=self.metrics,
+                env=self.env.unwrapped,
+                rl_module=self.module,
+                env_index=idx,
+            ),
         )
 
     def _increase_sampled_metrics(self, num_steps, num_episodes_completed):
