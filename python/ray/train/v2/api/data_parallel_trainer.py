@@ -224,7 +224,7 @@ class DataParallelTrainer:
 
     def _initialize_controller(
         self, **controller_init_kwargs
-    ) -> Union[TrainController, ActorHandle[TrainController]]:
+    ) -> Union[TrainController, ActorHandle]:
         if self._run_controller_as_actor:
             # Attach the controller to the node running the driver script.
             controller_actor_cls = ray.remote(
@@ -240,7 +240,7 @@ class DataParallelTrainer:
             return TrainController(**controller_init_kwargs)
 
     def _run_controller(
-        self, controller: Union[TrainController, ActorHandle[TrainController]]
+        self, controller: Union[TrainController, ActorHandle]
     ) -> Result:
         if self._run_controller_as_actor:
             ray.get(controller.run.remote())
