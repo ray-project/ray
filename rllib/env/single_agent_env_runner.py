@@ -6,7 +6,6 @@ from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
 from gymnasium.wrappers.vector import DictInfoToList
-from gymnasium.envs.registration import VectorizeMode
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.callbacks import RLlibCallback
@@ -641,11 +640,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             gym.make_vec(
                 "rllib-single-agent-env-v0",
                 num_envs=self.config.num_envs_per_env_runner,
-                vectorization_mode=(
-                    VectorizeMode.ASYNC
-                    if self.config.remote_worker_envs
-                    else VectorizeMode.SYNC
-                ),
+                vectorization_mode=self.config.gym_env_vectorize_mode.lower(),
             )
         )
 
