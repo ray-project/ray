@@ -80,7 +80,7 @@ class DAGNode(DAGNodeBase):
 
         self._type_hint: ChannelOutputType = ChannelOutputType()
         # Whether this node calls `experimental_compile`.
-        self.is_adag_output_node = False
+        self.is_cgraph_output_node = False
 
     def _collect_upstream_nodes(self) -> List["DAGNode"]:
         """
@@ -214,7 +214,9 @@ class DAGNode(DAGNodeBase):
                 enforced when it is smaller than the DAG capacity.
             _max_inflight_executions: The maximum number of in-flight executions that
                 can be submitted via `execute` or `execute_async` before consuming
-                the output using `ray.get()`.
+                the output using `ray.get()`. Before calling more `execute` or
+                `execute_async`, the caller is responsible for calling `ray.get()`
+                to get the result, otherwise, `RayCgraphCapacityExceeded` is raised.
             _overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution. If True, the communication
                 and computation can be overlapped, which can improve the
@@ -235,7 +237,7 @@ class DAGNode(DAGNodeBase):
             _max_buffered_results = ctx.max_buffered_results
 
         # Validate whether this DAG node has already been compiled.
-        if self.is_adag_output_node:
+        if self.is_cgraph_output_node:
             raise ValueError(
                 "It is not allowed to call `experimental_compile` on the same DAG "
                 "object multiple times no matter whether `teardown` is called or not. "
@@ -244,7 +246,7 @@ class DAGNode(DAGNodeBase):
         # Whether this node is an output node in the DAG. We cannot determine
         # this in the constructor because the output node is determined when
         # `experimental_compile` is called.
-        self.is_adag_output_node = True
+        self.is_cgraph_output_node = True
         return build_compiled_dag_from_ray_dag(
             self,
             _submit_timeout,
@@ -424,7 +426,7 @@ class DAGNode(DAGNodeBase):
         """
         visited = set()
         queue = [self]
-        adag_output_node: Optional[DAGNode] = None
+        cgraph_output_node: Optional[DAGNode] = None
 
         while queue:
             node = queue.pop(0)
@@ -432,16 +434,16 @@ class DAGNode(DAGNodeBase):
                 self._raise_nested_dag_node_error(node._bound_args)
 
             if node not in visited:
-                if node.is_adag_output_node:
+                if node.is_cgraph_output_node:
                     # Validate whether there are multiple nodes that call
                     # `experimental_compile`.
-                    if adag_output_node is not None:
+                    if cgraph_output_node is not None:
                         raise ValueError(
                             "The DAG was compiled more than once. The following two "
                             "nodes call `experimental_compile`: "
-                            f"(1) {adag_output_node}, (2) {node}"
+                            f"(1) {cgraph_output_node}, (2) {node}"
                         )
-                    adag_output_node = node
+                    cgraph_output_node = node
                 fn(node)
                 visited.add(node)
                 """
