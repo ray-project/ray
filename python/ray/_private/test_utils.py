@@ -2220,15 +2220,11 @@ def has_no_words(string, words):
 def find_available_port(start, end, port_num=1):
     ports = []
     for _ in range(port_num):
-        random_port = 0
-        with socket.socket() as s:
-            s.bind(("", 0))
-            random_port = s.getsockname()[1]
-        if random_port >= start and random_port <= end and random_port not in ports:
-            ports.append(random_port)
-            continue
-
-        for port in range(start, end + 1):
+        # start from a random point in the range to avoid port conflict
+        random_offset = random.randint(start, end + 1)
+        for port in list(range(random_offset, end + 1)) + list(
+            range(start, random_offset)
+        ):
             if port in ports:
                 continue
             try:
