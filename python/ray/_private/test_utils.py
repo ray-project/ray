@@ -2298,41 +2298,50 @@ def close_common_connections(pid):
             print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")
 
 
-def retrieve_mutable_object_refs(channels, timeout_s=3):
+def retrieve_mutable_object_refs(channels, timeout_s=30):
     waitable_to_num_consumers = {}
+    skip_deserialization_waitables_to_num_consumers = {}
     for c in channels:
         waitables = c.get_ray_waitables()
-        for w, skip_deserialization in waitables:
-            # This helper function doesn't work for TorchTensorNCCLChannel.
-            # To support it, we need to separate the waitables into two groups:
-            #
-            # 1. Waitables that need to be deserialized
-            # 2. Waitables that don't need to be deserialized
-            #
-            # in `_read_list`.
-            assert skip_deserialization is False
-            waitable_to_num_consumers[w] = waitable_to_num_consumers.get(w, 0) + 1
+        for waitable, skip_deserialization in waitables:
+            target_dict = (
+                skip_deserialization_waitables_to_num_consumers
+                if skip_deserialization
+                else waitable_to_num_consumers
+            )
+            target_dict[waitable] = target_dict.get(waitable, 0) + 1
 
     worker = ray._private.worker.global_worker
-    all_waitables = list(waitable_to_num_consumers.keys())
-    if len(all_waitables) == 0:
-        return
-    (
-        values,
-        non_complete_object_refs_set,
-    ) = worker.experimental_wait_and_get_mutable_objects(
-        all_waitables,
-        num_returns=len(all_waitables),
-        timeout_ms=timeout_s * 1000,
-        return_exceptions=True,
-        suppress_timeout_errors=False,
+    normal_waitables = list(waitable_to_num_consumers.keys())
+    skip_deserialization_waitables = list(
+        skip_deserialization_waitables_to_num_consumers.keys()
     )
     ctx = ChannelContext.get_current().serialization_context
-    for i, value in enumerate(values):
-        if all_waitables[i] in non_complete_object_refs_set:
-            continue
-        ctx.set_data(
-            all_waitables[i],
-            value,
-            waitable_to_num_consumers[all_waitables[i]],
-        )
+    for waitables, waitables_dict, skip_deserialization in [
+        (normal_waitables, waitable_to_num_consumers, False),
+        (
+            skip_deserialization_waitables,
+            skip_deserialization_waitables_to_num_consumers,
+            True,
+        ),
+    ]:
+        if len(waitables) != 0:
+            (
+                values,
+                non_complete_object_refs_set,
+            ) = worker.experimental_wait_and_get_mutable_objects(
+                waitables,
+                num_returns=len(waitables),
+                timeout_ms=timeout_s * 1000,
+                return_exceptions=True,
+                suppress_timeout_errors=True,
+                skip_deserialization=skip_deserialization,
+            )
+            for i, value in enumerate(values):
+                if waitables[i] in non_complete_object_refs_set:
+                    continue
+                ctx.set_data(
+                    waitables[i],
+                    value,
+                    waitables_dict[waitables[i]],
+                )

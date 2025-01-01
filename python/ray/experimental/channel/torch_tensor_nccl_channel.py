@@ -215,7 +215,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         # the `read` operation of the NCCL channel will never be called because
         # `_read_list` will never consume the mutable object that hasn't been
         # written yet.
-
+        self._gpu_data_channel.validate_metadata_mismatch(gpu_tensors)
         # First send the non-tensor data through a CPU-specific channel. The
         # data contains placeholders for the extracted tensors.
         self._cpu_data_channel.write(cpu_data)
@@ -568,6 +568,43 @@ class _TorchTensorNcclChannel(ChannelInterface):
             # not match this metadata.
             self._static_tensor_metadata = metadata_list
         return metadata_list
+
+    def validate_metadata_mismatch(self, tensors: List["torch.Tensor"]):
+        """
+        Validate that the metadata of the tensors matches the static metadata
+        if `static_shape=True` was set.
+        """
+        ctx = ChannelContext.get_current()
+        metadata_list = []
+        for tensor in tensors:
+            # Basic type checking.
+            if not isinstance(tensor, self.torch.Tensor):
+                raise ValueError("Task must return torch.Tensors")
+
+            if tensor.device != ctx.torch_device:
+                raise ValueError(
+                    f"torch.Tensor must be on the default device: {ctx.torch_device}"
+                )
+
+            metadata = _TorchTensorMetadata(tensor.shape, tensor.dtype)
+            metadata_list.append(metadata)
+
+        if self._static_tensor_metadata is None:
+            return
+        if metadata_list != self._static_tensor_metadata:
+            metadata_str = [
+                f"(shape={m.shape}, dtype={m.dtype})" for m in metadata_list
+            ]
+            expected_str = [
+                f"(shape={m.shape}, dtype={m.dtype})"
+                for m in self._static_tensor_metadata
+            ]
+            raise ValueError(
+                "Expected torch.Tensors with shapes and dtypes: "
+                "[" + ", ".join(expected_str) + "], "
+                "found: [" + ", ".join(metadata_str) + "]. "
+                "DAG will shut down."
+            )
 
     def write(
         self,
