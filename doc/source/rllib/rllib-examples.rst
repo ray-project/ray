@@ -354,6 +354,8 @@ RLModules
    multi-agent scenarios with pre-trained policies.
 
 
+.. _rllib-tuned-examples-docs:
+
 Tuned examples
 --------------
 

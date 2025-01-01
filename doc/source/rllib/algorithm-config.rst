@@ -143,9 +143,18 @@ To configure, which :ref:`RL environment <rllib-environments-doc>` your algorith
 
 .. testcode::
 
-    config.environment()
+    config.environment("Humanoid-v5")
 
 See this :ref:`RL environment guide <rllib-environments-doc>` for more details.
+
+.. tip::
+    Install both `Atari <https://ale.farama.org/environments/>`__ and
+    `MuJoCo <https://gymnasium.farama.org/environments/mujoco>`__ to be able to run
+    all of RLlib's :ref:`tuned examples <rllib-tuned-examples-docs>`:
+
+    .. code-block:: bash
+
+        pip install "gymnasium[atari,accept-rom-license,mujoco]"
 
 Learning rate `lr`
 ~~~~~~~~~~~~~~~~~~
