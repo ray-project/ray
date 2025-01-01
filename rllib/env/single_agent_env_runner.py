@@ -635,12 +635,17 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 env_context=env_ctx,
             )
         gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
+        vectorize_mode = self.config.gym_env_vectorize_mode
 
         self.env = DictInfoToList(
             gym.make_vec(
                 "rllib-single-agent-env-v0",
                 num_envs=self.config.num_envs_per_env_runner,
-                vectorization_mode=self.config.gym_env_vectorize_mode.lower(),
+                vectorization_mode=(
+                    vectorize_mode
+                    if isinstance(vectorize_mode, gym.envs.registration.VectorizeMode)
+                    else gym.envs.registration.VectorizeMode(vectorize_mode.lower())
+                ),
             )
         )
 
