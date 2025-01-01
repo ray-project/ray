@@ -2299,6 +2299,12 @@ def close_common_connections(pid):
 
 
 def retrieve_mutable_object_refs(channels, timeout_s=30):
+    """
+    Retrieves the mutable object refs from the channels and sets the data in the
+    serialization context. Raises a timeout error if an
+    `experimental_wait_and_get_mutable_objects` call cannot complete within `timeout_s`
+    seconds.
+    """
     waitable_to_num_consumers = {}
     skip_deserialization_waitables_to_num_consumers = {}
     for c in channels:
@@ -2334,7 +2340,7 @@ def retrieve_mutable_object_refs(channels, timeout_s=30):
                 num_returns=len(waitables),
                 timeout_ms=timeout_s * 1000,
                 return_exceptions=True,
-                suppress_timeout_errors=True,
+                suppress_timeout_errors=False,
                 skip_deserialization=skip_deserialization,
             )
             for i, value in enumerate(values):
