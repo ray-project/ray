@@ -58,7 +58,7 @@ from functools import partial
 
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
@@ -146,7 +146,7 @@ def _remote_fn(env_runner, new_task: int):
     env_runner.make_env()
 
 
-class EnvTaskCallback(DefaultCallbacks):
+class EnvTaskCallback(RLlibCallback):
     """Custom callback implementing `on_train_result()` for changing the envs' maps."""
 
     def on_train_result(
@@ -175,7 +175,7 @@ class EnvTaskCallback(DefaultCallbacks):
                     f"Switching task/map on all EnvRunners to #{new_task} (0=easiest, "
                     f"2=hardest), b/c R={current_return} on current task."
                 )
-                algorithm.env_runner_group.foreach_worker(
+                algorithm.env_runner_group.foreach_env_runner(
                     func=partial(_remote_fn, new_task=new_task)
                 )
                 algorithm._counters["current_env_task"] = new_task
@@ -190,7 +190,7 @@ class EnvTaskCallback(DefaultCallbacks):
                 "Emergency brake: Our policy seemed to have collapsed -> Setting task "
                 "back to 0."
             )
-            algorithm.env_runner_group.foreach_worker(
+            algorithm.env_runner_group.foreach_env_runner(
                 func=partial(_remote_fn, new_task=0)
             )
             algorithm._counters["current_env_task"] = 0
