@@ -6,7 +6,6 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -188,21 +187,17 @@ class ForwardHealthCheckToEnvWorkerMultiAgent(MultiAgentEnvRunner):
         return super().ping()
 
 
-class AddModuleCallback(DefaultCallbacks):
-    def __init__(self):
-        super().__init__()
-
-    def on_algorithm_init(self, *, algorithm, metrics_logger, **kwargs):
-        # Add a custom module to algorithm.
-        spec = algorithm.config.get_default_rl_module_spec()
-        spec.observation_space = gym.spaces.Box(low=0, high=1, shape=(8,))
-        spec.action_space = gym.spaces.Discrete(2)
-        spec.inference_only = True
-        algorithm.add_module(
-            module_id="test_module",
-            module_spec=spec,
-            add_to_eval_env_runners=True,
-        )
+def on_algorithm_init(algorithm, **kwargs):
+    # Add a custom module to algorithm.
+    spec = algorithm.config.get_default_rl_module_spec()
+    spec.observation_space = gym.spaces.Box(low=0, high=1, shape=(8,))
+    spec.action_space = gym.spaces.Discrete(2)
+    spec.inference_only = True
+    algorithm.add_module(
+        module_id="test_module",
+        module_spec=spec,
+        add_to_eval_env_runners=True,
+    )
 
 
 class TestWorkerFailures(unittest.TestCase):
@@ -345,7 +340,7 @@ class TestWorkerFailures(unittest.TestCase):
                 # Make a dummy call to the eval worker's policy_mapping_fn and
                 # make sure the restored eval worker received the correct one from
                 # the eval config (not the main workers' one).
-                test = algo.eval_env_runner_group.foreach_worker(
+                test = algo.eval_env_runner_group.foreach_env_runner(
                     lambda w: w.config.policy_mapping_fn(0, None)
                 )
                 self.assertEqual(test[0], "This is the eval mapping fn")
@@ -621,7 +616,7 @@ class TestWorkerFailures(unittest.TestCase):
                     },
                 ),
             )
-            .callbacks(AddModuleCallback)
+            .callbacks(on_algorithm_init=on_algorithm_init)
             .fault_tolerance(
                 restart_failed_env_runners=True,  # But recover.
                 # Throwing error in constructor is a bad idea.
@@ -666,7 +661,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Rollout worker has test module.
         self.assertTrue(
             all(
-                algo.env_runner_group.foreach_worker(
+                algo.env_runner_group.foreach_env_runner(
                     has_test_module, local_env_runner=False
                 )
             )
@@ -674,7 +669,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Eval worker has test module.
         self.assertTrue(
             all(
-                algo.eval_env_runner_group.foreach_worker(
+                algo.eval_env_runner_group.foreach_env_runner(
                     has_test_module, local_env_runner=False
                 )
             )
