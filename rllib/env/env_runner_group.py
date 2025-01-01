@@ -36,6 +36,7 @@ from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import (
     Deprecated,
     deprecation_warning,
@@ -102,14 +103,13 @@ class EnvRunnerGroup:
                 If None, PolicySpecs will be using the Algorithm's default Policy
                 class.
             config: Optional AlgorithmConfig (or config dict).
-            num_env_runners: Deprecated arg, use `num_env_runners` inside `config`
-                instead. The number of remote EnvRunners to create. If None, use
-                `config.num_env_runners`.
             local_env_runner: Whether to create a local (non @ray.remote) EnvRunner
                 in the returned set as well (default: True). If `num_env_runners`
                 is 0, always create a local EnvRunner.
             logdir: Optional logging directory for workers.
             _setup: Whether to actually set up workers. This is only for testing.
+            tune_trial_id: The Ray Tune trial ID, if this EnvRunnerGroup is part of
+                an Algorithm run as a Tune trial. None, otherwise.
         """
         if num_workers != DEPRECATED_VALUE or local_worker != DEPRECATED_VALUE:
             deprecation_warning(
@@ -330,9 +330,14 @@ class EnvRunnerGroup:
         return self._local_env_runner
 
     @DeveloperAPI
-    def healthy_worker_ids(self) -> List[int]:
+    def healthy_env_runner_ids(self) -> List[int]:
         """Returns the list of remote worker IDs."""
         return self._worker_manager.healthy_actor_ids()
+
+    @DeveloperAPI
+    def healthy_worker_ids(self) -> List[int]:
+        """Returns the list of remote worker IDs."""
+        return self.healthy_env_runner_ids()
 
     @DeveloperAPI
     def num_remote_env_runners(self) -> int:
@@ -342,17 +347,27 @@ class EnvRunnerGroup:
     @DeveloperAPI
     def num_remote_workers(self) -> int:
         """Returns the number of remote EnvRunners."""
-        return self._worker_manager.num_actors()
+        return self.num_remote_env_runners()
 
     @DeveloperAPI
-    def num_healthy_remote_workers(self) -> int:
+    def num_healthy_remote_env_runners(self) -> int:
         """Returns the number of healthy remote workers."""
         return self._worker_manager.num_healthy_actors()
 
     @DeveloperAPI
-    def num_healthy_workers(self) -> int:
+    def num_healthy_remote_workers(self) -> int:
+        """Returns the number of healthy remote workers."""
+        return self.num_healthy_remote_env_runners()
+
+    @DeveloperAPI
+    def num_healthy_env_runners(self) -> int:
         """Returns the number of all healthy workers, including the local worker."""
         return int(bool(self._local_env_runner)) + self.num_healthy_remote_workers()
+
+    @DeveloperAPI
+    def num_healthy_workers(self) -> int:
+        """Returns the number of all healthy workers, including the local worker."""
+        return self.num_healthy_env_runners()
 
     @DeveloperAPI
     def num_in_flight_async_reqs(self) -> int:
@@ -639,7 +654,7 @@ class EnvRunnerGroup:
             if global_vars is not None:
                 self.local_env_runner.set_global_vars(global_vars)
 
-    @DeveloperAPI
+    @OldAPIStack
     def add_policy(
         self,
         policy_id: PolicyID,
@@ -874,31 +889,30 @@ class EnvRunnerGroup:
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
-        # Deprecated args.
-        local_worker=DEPRECATED_VALUE,
     ) -> List[T]:
         """Calls the given function with each EnvRunner as its argument.
 
         Args:
-            func: The function to call for each worker (as only arg).
+            func: The function to call for each EnvRunners. The only call argument is
+                the respective EnvRunner instance.
             local_env_runner: Whether to apply `func` to local EnvRunner, too.
                 Default is True.
-            healthy_only: Apply `func` on known-to-be healthy workers only.
-            remote_worker_ids: Apply `func` on a selected set of remote workers. Use
-                None (default) for all remote EnvRunners.
+            healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
+            remote_worker_ids: Apply `func` on a selected set of remote EnvRunners.
+                Use None (default) for all remote EnvRunners.
             timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
                 fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
                 synchronous execution).
-            return_obj_refs: whether to return ObjectRef instead of actual results.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of this EnvRunnerGroup.
-            mark_healthy: Whether to mark all those workers healthy again that are
+            mark_healthy: Whether to mark all those EnvRunners healthy again that are
                 currently marked unhealthy AND that returned results from the remote
                 call (within the given `timeout_seconds`).
-                Note that workers are NOT set unhealthy, if they simply time out
+                Note that EnvRunners are NOT set unhealthy, if they simply time out
                 (only if they return a RayActorError).
                 Also note that this setting is ignored if `healthy_only=True` (b/c
-                `mark_healthy` only affects workers that are currently tagged as
+                `mark_healthy` only affects EnvRunners that are currently tagged as
                 unhealthy).
 
         Returns:
@@ -950,22 +964,24 @@ class EnvRunnerGroup:
         """Calls the given function with each EnvRunner and its ID as its arguments.
 
         Args:
-            func: The function to call for each worker (as only arg).
-            local_env_runner: Whether to apply `func` tn local worker, too.
+            func: The function to call for each EnvRunners. The call arguments are
+                the EnvRunner's index (int) and the respective EnvRunner instance
+                itself.
+            local_env_runner: Whether to apply `func` to the local EnvRunner, too.
                 Default is True.
-            healthy_only: Apply `func` on known-to-be healthy workers only.
-            remote_worker_ids: Apply `func` on a selected set of remote workers.
+            healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
+            remote_worker_ids: Apply `func` on a selected set of remote EnvRunners.
             timeout_seconds: Time to wait for results. Default is None.
-            return_obj_refs: whether to return ObjectRef instead of actual results.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of this EnvRunnerGroup.
-            mark_healthy: Whether to mark all those workers healthy again that are
+            mark_healthy: Whether to mark all those EnvRunners healthy again that are
                 currently marked unhealthy AND that returned results from the remote
                 call (within the given `timeout_seconds`).
                 Note that workers are NOT set unhealthy, if they simply time out
                 (only if they return a RayActorError).
                 Also note that this setting is ignored if `healthy_only=True` (b/c
-                `mark_healthy` only affects workers that are currently tagged as
+                `mark_healthy` only affects EnvRunners that are currently tagged as
                 unhealthy).
 
         Returns:
@@ -1008,12 +1024,12 @@ class EnvRunnerGroup:
     ) -> int:
         """Calls the given function asynchronously with each EnvRunner as the argument.
 
-        foreach_worker_async() does not return results directly. Instead,
-        fetch_ready_async_reqs() can be used to pull results in an async manner
-        whenever they are available.
+        Does not return results directly. Instead, `fetch_ready_async_reqs()` can be
+        used to pull results in an async manner whenever they are available.
 
         Args:
-            func: The function to call for each EnvRunner (as only arg).
+            func: The function to call for each EnvRunners. The only call argument is
+                the respective EnvRunner instance.
             healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
             remote_worker_ids: Apply `func` on a selected set of remote EnvRunners.
 
