@@ -20,11 +20,13 @@ namespace experimental {
 
 MutableObjectProvider::MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
                                              RayletFactory factory,
+                                             bool owned_by_raylet,
                                              std::function<Status(void)> check_signals)
     : plasma_(plasma),
       object_manager_(std::make_shared<ray::experimental::MutableObjectManager>(
           std::move(check_signals))),
-      raylet_client_factory_(std::move(std::move(factory))) {}
+      raylet_client_factory_(std::move(std::move(factory))),
+      owned_by_raylet_(owned_by_raylet) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
   for (std::unique_ptr<boost::asio::executor_work_guard<
@@ -262,16 +264,17 @@ void MutableObjectProvider::PollWriterClosure(
 }
 
 void MutableObjectProvider::RunIOContext(instrumented_io_context &io_context) {
-  // TODO(jhumphri): Decompose this.
+// TODO(jhumphri): Decompose this.
 #ifndef _WIN32
-  // Block SIGINT and SIGTERM so they will be handled by the main thread.
-  sigset_t mask;
-  sigemptyset(&mask);
-  sigaddset(&mask, SIGINT);
-  sigaddset(&mask, SIGTERM);
-  pthread_sigmask(SIG_BLOCK, &mask, nullptr);
+  if (owned_by_raylet_) {
+    // Block SIGINT and SIGTERM so they will be handled by the main thread.
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &mask, nullptr);
+  }
 #endif
-
   SetThreadName("worker.channel_io");
   io_context.run();
   RAY_LOG(INFO) << "Core worker channel io service stopped.";

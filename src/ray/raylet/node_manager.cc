@@ -402,7 +402,7 @@ NodeManager::NodeManager(
                                         "NodeManager.GCTaskFailureReason");
 
   mutable_object_provider_ = std::make_unique<core::experimental::MutableObjectProvider>(
-      *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this));
+      *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this), true);
 }
 
 std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(

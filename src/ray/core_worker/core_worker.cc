@@ -614,6 +614,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       std::make_shared<experimental::MutableObjectProvider>(
           *plasma_store_provider_->store_client(),
           raylet_channel_client_factory,
+          false,
           options.check_signals);
 #endif
 
