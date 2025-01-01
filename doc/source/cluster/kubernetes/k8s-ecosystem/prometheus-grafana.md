@@ -171,11 +171,11 @@ spec:
 * `namespaceSelector` and `selector` are used to select Kubernetes Pods.
   ```sh
   kubectl get pod -n default -l ray.io/node-type=head
-  # NAME                            READY   STATUS    RESTARTS   AGE
-  # raycluster-kuberay-head-fj78s   0/1     Running   0          36s
+  # NAME                                  READY   STATUS    RESTARTS   AGE
+  # raycluster-embed-grafana-head-khfs4   1/1     Running   0          4m38s
   ```
 
-* `relabelings` replaces the label `__meta_kubernetes_pod_label_ray_io_cluster` with the new label name `ray_io_cluster` in the scraped metrics.
+* `relabelings`: This configuration maps the label `__meta_kubernetes_pod_label_ray_io_cluster` to a new label `ray_io_cluster` in the scraped metrics. This ensures that every metric scraped by this PodMonitor includes the name of the RayCluster custom resource to which the Pod belongs. The `ray_io_cluster` label will contain the name of the RayCluster associated with the head node Pod. This relabeling is particularly important when deploying multiple RayClusters, as it allows you to distinguish between metrics from different clusters.
 
 ## Step 6: Collect Worker Node metrics with PodMonitors
 
