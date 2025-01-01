@@ -266,7 +266,7 @@ void MutableObjectProvider::PollWriterClosure(
 void MutableObjectProvider::RunIOContext(instrumented_io_context &io_context) {
 // TODO(jhumphri): Decompose this.
 #ifndef _WIN32
-  if (owned_by_raylet_) {
+  if (!owned_by_raylet_) {
     // Block SIGINT and SIGTERM so they will be handled by the main thread.
     sigset_t mask;
     sigemptyset(&mask);
