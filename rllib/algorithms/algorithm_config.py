@@ -4375,7 +4375,8 @@ class AlgorithmConfig(_Config):
     # -----------------------------------------------------------
     def _validate_env_runner_settings(self) -> None:
         allowed_vectorize_modes = set(
-            gym.envs.registration.VectorizeMode.__members__.keys()
+            list(gym.envs.registration.VectorizeMode.__members__.keys())
+            + list(gym.envs.registration.VectorizeMode.__members__.values())
         )
         if self.gym_env_vectorize_mode not in allowed_vectorize_modes:
             raise ValueError(
