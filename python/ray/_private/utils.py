@@ -19,6 +19,7 @@ import tempfile
 import threading
 import time
 from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
+from logging.handlers import RotatingFileHandler
 import warnings
 from inspect import signature
 from pathlib import Path
@@ -420,6 +421,46 @@ class Unbuffered(object):
         return getattr(self.stream, attr)
 
 
+class RotatingFileStream:
+    """
+    A wrapper around RotatingFileHandler that emulates a stream interface.
+    """
+
+    def __init__(self, path, max_bytes, backup_count, encoding="utf-8", mode="a"):
+        self.name = path
+        self.logger = logging.getLogger(f"RotatingLogger_{path}")
+        self.logger.setLevel(logging.DEBUG)
+        handler = RotatingFileHandler(
+            path,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding=encoding,
+            mode=mode,
+        )
+        # Only log message content without anything else.
+        formatter = logging.Formatter("%(message)s")
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+
+    def write(self, message):
+        if message.strip():  # Avoid writing empty messages
+            self.logger.debug(message)
+
+    def flush(self):
+        for handler in self.logger.handlers:
+            handler.flush()
+
+    def close(self):
+        for handler in self.logger.handlers:
+            handler.close()
+
+    def name(self):
+        return self.name
+
+    def seekable(self):
+        return False
+
+
 def open_log(path, unbuffered=False, **kwargs):
     """
     Opens the log file at `path`, with the provided kwargs being given to
@@ -430,6 +471,24 @@ def open_log(path, unbuffered=False, **kwargs):
     kwargs.setdefault("mode", "a")
     kwargs.setdefault("encoding", "utf-8")
     stream = open(path, **kwargs)
+    if unbuffered:
+        return Unbuffered(stream)
+    else:
+        return stream
+
+
+def open_log_with_rotation(
+    path, rotation_max_size=sys.maxsize, rotation_file_num=1, unbuffered=False, **kwargs
+):
+    """Opens the log file at `path`, which is backed by `logging` module supporting
+    rotation."""
+    stream = RotatingFileStream(
+        path,
+        max_bytes=rotation_max_size,
+        backup_count=rotation_file_num,
+        encoding=kwargs.get("encoding", "utf-8"),
+        mode=kwargs.get("mode", "a"),
+    )
     if unbuffered:
         return Unbuffered(stream)
     else:

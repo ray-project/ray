@@ -26,7 +26,12 @@ from ray._private import storage
 from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
 from ray._private.services import serialize_config, get_address
-from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
+from ray._private.utils import (
+    open_log,
+    open_log_with_rotation,
+    try_to_create_directory,
+    try_to_symlink,
+)
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -911,6 +916,38 @@ class Node:
         )
         log_stdout = None if log_stdout_fname is None else open_log(log_stdout_fname)
         log_stderr = None if log_stderr_fname is None else open_log(log_stderr_fname)
+        return log_stdout, log_stderr
+
+    def get_log_file_handles_with_rotation(
+        self,
+        name: str,
+        unique: bool = False,
+        create_out: bool = True,
+        create_err: bool = True,
+        rotation_max_size: int = sys.maxsize,
+        rotation_file_num: int = 1,
+    ) -> Tuple[Optional[IO[AnyStr]], Optional[IO[AnyStr]]]:
+        log_stdout_fname, log_stderr_fname = self.get_log_file_names(
+            name, unique=unique, create_out=create_out, create_err=create_err
+        )
+        log_stdout = (
+            None
+            if log_stdout_fname is None
+            else open_log_with_rotation(
+                log_stdout_fname,
+                rotation_max_size=rotation_max_size,
+                rotation_file_num=rotation_file_num,
+            )
+        )
+        log_stderr = (
+            None
+            if log_stderr_fname is None
+            else open_log_with_rotation(
+                log_stderr_fname,
+                rotation_max_size=rotation_max_size,
+                rotation_file_num=rotation_file_num,
+            )
+        )
         return log_stdout, log_stderr
 
     def _get_log_file_name(
