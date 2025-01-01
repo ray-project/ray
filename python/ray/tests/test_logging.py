@@ -138,6 +138,8 @@ def test_log_file_exists(shutdown_only):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
+    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
+    # substring of "python-core-worker".
     log_rotating_component = [
         (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
         (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
@@ -148,7 +150,6 @@ def test_log_file_exists(shutdown_only):
         (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER, [".log"]),
         (ray_constants.PROCESS_TYPE_RAYLET, [".out", ".err"]),
         (ray_constants.PROCESS_TYPE_GCS_SERVER, [".out", ".err"]),
-        (ray_constants.PROCESS_TYPE_WORKER, [".out", ".err"]),
     ]
 
     # Run the basic workload.
@@ -168,22 +169,21 @@ def test_log_file_exists(shutdown_only):
             filename = path.stem
             suffix = path.suffix
             if component in filename:
-                # core-worker log also contains "worker keyword". We ignore this case.
-                if (
-                    component == ray_constants.PROCESS_TYPE_WORKER
-                    and ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER in filename
-                ):
-                    continue
-                if suffix in suffixes:
-                    return True
-                else:
-                    # unexpected suffix.
-                    return False
+                return suffix in suffixes
 
         return False
 
     for component in log_rotating_component:
         assert component_and_suffix_exists(component, paths), (component, paths)
+
+    # Special handle application log.
+    application_log_prefix = ray_constants.PROCESS_TYPE_WORKER
+    appplication_log_suffixes = [".out", ".err"]
+    for path in paths:
+        filename = path.stem
+        suffix = path.suffix
+        if filename.startswith(application_log_prefix):
+            return suffix in appplication_log_suffixes
 
 
 def test_log_rotation(shutdown_only, monkeypatch):
