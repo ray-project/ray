@@ -73,6 +73,8 @@ The following examples demonstrate this on RLlib's :py:class:`~ray.rllib.algorit
 
     .. tab-item:: Manage Algorithm instance directly
 
+        .. testcode::
+
             from ray.rllib.algorithms.ppo import PPOConfig
 
             # Configure.
