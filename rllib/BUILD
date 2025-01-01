@@ -1589,6 +1589,16 @@ py_test(
 # Tag: utils
 # --------------------------------------------------------------------
 
+# Checkpointables
+py_test(
+    name = "utils/tests/test_checkpointable",
+    tags = ["team:rllib", "utils"],
+    size = "large",
+    data = glob(["utils/tests/old_checkpoints/**"]),
+    srcs = ["utils/tests/test_checkpointable.py"]
+)
+
+# Errors
 py_test(
     name = "test_errors",
     tags = ["team:rllib", "utils"],
@@ -1596,6 +1606,7 @@ py_test(
     srcs = ["utils/tests/test_errors.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "test_minibatch_utils",
     tags = ["team:rllib", "utils"],
@@ -1610,13 +1621,7 @@ py_test(
     srcs = ["utils/tests/test_serialization.py"]
 )
 
-py_test(
-    name = "test_curiosity",
-    tags = ["team:rllib", "utils"],
-    size = "large",
-    srcs = ["utils/exploration/tests/test_curiosity.py"]
-)
-
+# @OldAPIStack
 py_test(
     name = "test_explorations",
     tags = ["team:rllib", "utils"],
@@ -1624,6 +1629,7 @@ py_test(
     srcs = ["utils/exploration/tests/test_explorations.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "test_value_predictions",
     tags = ["team:rllib", "utils"],
@@ -1646,6 +1652,7 @@ py_test(
     srcs = ["utils/schedules/tests/test_schedules.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "test_framework_agnostic_components",
     tags = ["team:rllib", "utils"],
@@ -1991,6 +1998,15 @@ py_test(
 
 # subdirectory: checkpoints/
 # ....................................
+py_test(
+    name = "examples/checkpoints/change_config_during_training",
+    main = "examples/checkpoints/change_config_during_training.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
+    size = "large",
+    srcs = ["examples/checkpoints/change_config_during_training.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward-first-config=150.0", "--stop-reward=450.0"]
+)
+
 py_test(
     name = "examples/checkpoints/checkpoint_by_custom_criteria",
     main = "examples/checkpoints/checkpoint_by_custom_criteria.py",
@@ -2673,7 +2689,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core", "no_main"],
     size = "large",
     srcs = ["examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--framework=torch", "--checkpoint-freq=20", "--checkpoint-at-end", "--num-cpus=4", "--algo=PPO"]
+    args = ["--enable-new-api-stack", "--as-test", "--num-agents=2", "--framework=torch", "--checkpoint-freq=20", "--checkpoint-at-end", "--num-cpus=4", "--algo=PPO"]
 )
 
 py_test(
