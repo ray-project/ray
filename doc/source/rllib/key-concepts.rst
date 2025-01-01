@@ -91,14 +91,35 @@ The following examples demonstrate this on RLlib's :py:class:`~ray.rllib.algorit
             # Train for one iteration, which is 2000 timesteps (1 train batch).
             print(algo.train())
 
-        ,, testcode::
+        .. testcode::
             :hide:
 
             algo.stop()
 
     .. tab-item:: Run Algorithm through Ray Tune
 
-        blabla
+        .. testcode::
+
+            from ray import train, tune
+            from ray.rllib.algorithms.ppo import PPOConfig
+
+            # Configure.
+            config = (
+                PPOConfig()
+                .environment("CartPole-v1")
+                .training(
+                    train_batch_size_per_learner=2000,
+                    lr=0.0004,
+                )
+            )
+
+            # Train through Ray Tune.
+            results = tune.Tuner(
+                "PPO",
+                param_space=config,
+                # Train for 4000 timesteps (2 iterations).
+                run_config=train.RunConfig(stop={"num_env_steps_sampled_lifetime": 4000}),
+            ).fit()
 
 .. _rllib-key-concepts-environments:
 
