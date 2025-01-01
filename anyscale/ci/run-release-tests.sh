@@ -59,6 +59,7 @@ if [[ "${BUILDKITE_BRANCH}" != "releases/"* && "${RAYCI_RUN_ALL_RELEASE_TEST:-0}
 else
     python3 ray_release/scripts/build_pipeline.py \
         --test-collection-file release/release_runtime_tests.yaml \
+        --test-collection-file release/release_data_tests.yaml \
         --test-collection-file release/release_tests.yaml \
         --run-jailed-tests \
         --global-config runtime_config.yaml \
