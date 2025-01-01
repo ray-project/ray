@@ -165,7 +165,7 @@ class SelfPlayLeagueBasedCallbackOldAPIStack(RLlibCallback):
                         worker.set_policy_mapping_fn(policy_mapping_fn)
                         worker.set_is_policy_to_train(_trainable_policies)
 
-                    algorithm.env_runner_group.foreach_worker(_set)
+                    algorithm.env_runner_group.foreach_env_runner(_set)
                 else:
                     base_pol = algorithm.get_policy(policy_id)
                     new_policy = algorithm.add_policy(

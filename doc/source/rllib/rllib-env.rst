@@ -126,6 +126,11 @@ For example:
     algo = config.build()
     print(algo.train())
 
+.. testcode::
+    :hide:
+
+    algo.stop()
+
 .. tip::
 
     For all supported environment names registered with Farama, refer to these
@@ -179,6 +184,11 @@ For example:
     algo = config.build()
     print(algo.train())
 
+.. testcode::
+    :hide:
+
+    algo.stop()
+
 
 Specifying by Tune-Registered Lambda
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -204,6 +214,11 @@ For example:
     )
     algo = config.build()
     print(algo.train())
+
+.. testcode::
+    :hide:
+
+    algo.stop()
 
 For a complete example using a custom environment, see the
 `custom_gym_env.py example script <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__.

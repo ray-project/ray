@@ -59,7 +59,7 @@ If your config is set to the old API stack, use the
     )
 
 
-.. _rllib_default_rl_modules_docs:
+.. _rllib-default-rl-modules-docs:
 
 Default RLModules
 -----------------
