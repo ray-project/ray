@@ -179,7 +179,7 @@ spec:
 
 ## Step 6: Collect Worker Node metrics with PodMonitors
 
-To collect worker metrics, we can use `Prometheus PodMonitors CRD` instead.
+Similar to the head Pod, this tutorial also uses a PodMonitor to collect metrics from worker Pods. The reason for using separate PodMonitors for head Pods and worker Pods is that the head Pod exposes multiple metric endpoints, whereas a worker Pod exposes only one.
 
 **Note**: We could create a Kubernetes service with selectors a common label subset from our worker pods, however, this is not ideal because our workers are independent from each other, that is, they are not a collection of replicas spawned by replicaset controller. Due to that, we should avoid using a Kubernetes service for grouping them together.
 
