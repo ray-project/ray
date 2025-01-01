@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_bool
+from ray.actor import ActorHandle
 from ray.train import BackendConfig, Checkpoint
 from ray.train._internal.data_config import DataConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
@@ -19,7 +20,9 @@ from ray.train.v2._internal.callbacks.metrics import (
 )
 from ray.train.v2._internal.constants import (
     _UNSUPPORTED,
+    DEFAULT_RUN_CONTROLLER_AS_ACTOR,
     METRICS_ENABLED_ENV_VAR,
+    RUN_CONTROLLER_AS_ACTOR_ENV_VAR,
     get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
@@ -163,6 +166,10 @@ class DataParallelTrainer:
         if metadata != _UNSUPPORTED:
             raise NotImplementedError(error_msg.format("metadata"))
 
+        self._run_controller_as_actor = env_bool(
+            RUN_CONTROLLER_AS_ACTOR_ENV_VAR, DEFAULT_RUN_CONTROLLER_AS_ACTOR
+        )
+
     def fit(self) -> Result:
         train_fn = construct_train_func(
             self.train_loop_per_worker,
@@ -195,16 +202,7 @@ class DataParallelTrainer:
 
         # TODO: Add support for user-defined callbacks
 
-        # By default, attach the controller to the node running the driver script.
-        controller_actor_cls = ray.remote(
-            num_cpus=0,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=ray.get_runtime_context().get_node_id(), soft=False
-            ),
-            runtime_env={"env_vars": get_env_vars_to_propagate()},
-        )(TrainController)
-
-        controller = controller_actor_cls.remote(
+        controller = self._initialize_controller(
             train_fn=train_fn,
             scaling_policy=create_scaling_policy(self.scaling_config),
             failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
@@ -212,9 +210,8 @@ class DataParallelTrainer:
             callbacks=callbacks,
             resume_from_checkpoint=self.resume_from_checkpoint,
         )
-        ray.get(controller.run.remote())
+        result = self._run_controller(controller)
 
-        result = ray.get(controller.get_result.remote())
         if result.error:
             # NOTE: If the training run errored out, raise an error back to the
             # user's driver script.
@@ -224,6 +221,33 @@ class DataParallelTrainer:
             raise result.error
 
         return result
+
+    def _initialize_controller(
+        self, **controller_init_kwargs
+    ) -> Union[TrainController, ActorHandle[TrainController]]:
+        if self._run_controller_as_actor:
+            # Attach the controller to the node running the driver script.
+            controller_actor_cls = ray.remote(
+                num_cpus=0,
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    node_id=ray.get_runtime_context().get_node_id(), soft=False
+                ),
+                runtime_env={"env_vars": get_env_vars_to_propagate()},
+            )(TrainController)
+
+            return controller_actor_cls.remote(**controller_init_kwargs)
+        else:
+            return TrainController(**controller_init_kwargs)
+
+    def _run_controller(
+        self, controller: Union[TrainController, ActorHandle[TrainController]]
+    ) -> Result:
+        if self._run_controller_as_actor:
+            ray.get(controller.run.remote())
+            return ray.get(controller.get_result.remote())
+        else:
+            controller.run()
+            return controller.get_result()
 
     @classmethod
     def restore(cls, *args, **kwargs):
