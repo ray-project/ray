@@ -657,7 +657,7 @@ def sample_fragments(
 
     sample_fragment = cached_remote_fn(_sample_fragment)
     futures = []
-    scheduling = local_scheduling or "SPREAD"
+    scheduling = local_scheduling or DataContext.get_current().scheduling_strategy
     for sample in file_samples:
         # Sample the first rows batch in i-th file.
         # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
