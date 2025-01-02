@@ -30,8 +30,8 @@ class MetricsLogger:
     - Reducing these collected values using a user specified reduction method (for
     example "min" or "mean") and other settings controlling the reduction and internal
     data, such as sliding windows or EMA coefficients.
-    - Resetting the logged values after a `reduce()` call in order to make space for
-    new values to be logged.
+    - Optionally clearing all logged values after a `reduce()` call in order to make
+    space for new data.
 
     .. testcode::
 
