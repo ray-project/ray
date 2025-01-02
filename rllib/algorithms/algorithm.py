@@ -41,6 +41,7 @@ from ray.train import Checkpoint
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
+from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.core import (
     COMPONENT_ENV_RUNNER,
@@ -627,7 +628,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         self._record_usage(self.config)
 
         # Create the callbacks object.
-        self.callbacks = self.config.callbacks_class()
+        if self.config.enable_env_runner_and_connector_v2:
+            self.callbacks = [cls() for cls in force_list(self.config.callbacks_class)]
+        else:
+            self.callbacks = self.config.callbacks_class()
 
         if self.config.log_level in ["WARN", "ERROR"]:
             logger.info(
@@ -687,7 +691,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 validate_env=self.validate_env,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.config,
-                num_env_runners=self.config.num_env_runners,
                 local_env_runner=True,
                 logdir=self.logdir,
                 tune_trial_id=self.trial_id,
@@ -715,7 +718,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 validate_env=None,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.evaluation_config,
-                num_env_runners=self.config.evaluation_num_env_runners,
                 logdir=self.logdir,
                 tune_trial_id=self.trial_id,
             )
@@ -871,7 +873,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 self.offline_data.spaces = spaces
 
         # Run `on_algorithm_init` callback after initialization is done.
-        self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)
+        make_callback(
+            "on_algorithm_init",
+            self.callbacks,
+            self.config.callbacks_on_algorithm_init,
+            kwargs=dict(
+                algorithm=self,
+                metrics_logger=self.metrics,
+            ),
+        )
 
     @OverrideToImplementCustomLogic
     @classmethod
@@ -1051,7 +1061,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     config=self.evaluation_config,
                 )
 
-        self.callbacks.on_evaluate_start(algorithm=self, metrics_logger=self.metrics)
+        make_callback(
+            "on_evaluate_start",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_evaluate_start,
+            kwargs=dict(algorithm=self, metrics_logger=self.metrics),
+        )
 
         env_steps = agent_steps = 0
         batches = []
@@ -1140,10 +1155,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     eval_results["off_policy_estimator"][name] = avg_estimate
 
         # Trigger `on_evaluate_end` callback.
-        self.callbacks.on_evaluate_end(
-            algorithm=self,
-            metrics_logger=self.metrics,
-            evaluation_metrics=eval_results,
+        make_callback(
+            "on_evaluate_end",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_evaluate_end,
+            kwargs=dict(
+                algorithm=self,
+                metrics_logger=self.metrics,
+                evaluation_metrics=eval_results,
+            ),
         )
 
         # Also return the results here for convenience.
@@ -1317,7 +1337,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     ),
                 )
 
-                self.eval_env_runner_group.foreach_worker_async(
+                self.eval_env_runner_group.foreach_env_runner_async(
                     func=functools.partial(
                         _env_runner_remote, num=_num, round=_round, iter=algo_iteration
                     ),
@@ -1333,7 +1353,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     all_metrics.append(metrics)
             # Old API stack -> RolloutWorkers return batches.
             else:
-                self.eval_env_runner_group.foreach_worker_async(
+                self.eval_env_runner_group.foreach_env_runner_async(
                     func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
                 )
                 results = self.eval_env_runner_group.fetch_ready_async_reqs(
@@ -1460,7 +1480,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     + bool(i <= (units_left_to_do % num_healthy_workers))
                     for i in range(1, num_workers + 1)
                 ]
-                self.eval_env_runner_group.foreach_worker_async(
+                self.eval_env_runner_group.foreach_env_runner_async(
                     func=functools.partial(
                         _env_runner_remote, num=_num, round=_round, iter=algo_iteration
                     ),
@@ -1504,7 +1524,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     )
                     if i * units_per_healthy_remote_worker < units_left_to_do
                 ]
-                self.eval_env_runner_group.foreach_worker_async(
+                self.eval_env_runner_group.foreach_env_runner_async(
                     func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
                     remote_worker_ids=selected_eval_worker_ids,
                 )
@@ -1633,16 +1653,38 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # Get the state of the correct (reference) worker. For example the local
             # worker of an EnvRunnerGroup.
             state = from_worker.get_state()
+            state_ref = ray.put(state)
+
+            def _sync_env_runner(er):
+                er.set_state(ray.get(state_ref))
+
             # Take out (old) connector states from local worker's state.
             if not self.config.enable_env_runner_and_connector_v2:
                 for pol_states in state["policy_states"].values():
                     pol_states.pop("connector_configs", None)
-            state_ref = ray.put(state)
+
+            elif self.config.is_multi_agent():
+
+                multi_rl_module_spec = MultiRLModuleSpec.from_module(from_worker.module)
+
+                def _sync_env_runner(er):  # noqa
+                    # Remove modules, if necessary.
+                    for module_id, module in er.module._rl_modules.copy().items():
+                        if module_id not in multi_rl_module_spec.rl_module_specs:
+                            er.module.remove_module(
+                                module_id, raise_err_if_not_found=True
+                            )
+                    # Add modules, if necessary.
+                    for mid, mod_spec in multi_rl_module_spec.rl_module_specs.items():
+                        if mid not in er.module:
+                            er.module.add_module(mid, mod_spec.build(), override=False)
+                    # Now that the MultiRLModule is fixed, update the state.
+                    er.set_state(ray.get(state_ref))
 
             # By default, entire local EnvRunner state is synced after restoration
             # to bring the previously failed EnvRunner up to date.
-            workers.foreach_worker(
-                func=lambda w: w.set_state(ray.get(state_ref)),
+            workers.foreach_env_runner(
+                func=_sync_env_runner,
                 remote_worker_ids=restored,
                 # Don't update the local EnvRunner, b/c it's the one we are synching
                 # from.
@@ -1651,11 +1693,27 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
 
             # Fire the callback for re-created workers.
-            self.callbacks.on_workers_recreated(
-                algorithm=self,
-                worker_set=workers,
-                worker_ids=restored,
-                is_evaluation=workers.local_env_runner.config.in_evaluation,
+            make_callback(
+                "on_env_runners_recreated",
+                callbacks_objects=self.callbacks,
+                callbacks_functions=self.config.callbacks_on_env_runners_recreated,
+                kwargs=dict(
+                    algorithm=self,
+                    env_runner_group=workers,
+                    env_runner_indices=restored,
+                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                ),
+            )
+            # TODO (sven): Deprecate this call.
+            make_callback(
+                "on_workers_recreated",
+                callbacks_objects=self.callbacks,
+                kwargs=dict(
+                    algorithm=self,
+                    worker_set=workers,
+                    worker_ids=restored,
+                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                ),
             )
 
     @OverrideToImplementCustomLogic
@@ -1858,9 +1916,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Add to (training) EnvRunners and sync weights.
         if add_to_env_runners:
             if multi_rl_module_spec is None:
-                multi_rl_module_spec = self.env_runner_group.foreach_worker(_add)[0]
+                multi_rl_module_spec = self.env_runner_group.foreach_env_runner(_add)[0]
             else:
-                self.env_runner_group.foreach_worker(_add)
+                self.env_runner_group.foreach_env_runner(_add)
             self.env_runner_group.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
                 inference_only=True,
@@ -1868,11 +1926,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Add to eval EnvRunners and sync weights.
         if add_to_eval_env_runners is True and self.eval_env_runner_group is not None:
             if multi_rl_module_spec is None:
-                multi_rl_module_spec = self.eval_env_runner_group.foreach_worker(_add)[
-                    0
-                ]
+                multi_rl_module_spec = self.eval_env_runner_group.foreach_env_runner(
+                    _add
+                )[0]
             else:
-                self.eval_env_runner_group.foreach_worker(_add)
+                self.eval_env_runner_group.foreach_env_runner(_add)
             self.eval_env_runner_group.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
                 inference_only=True,
@@ -1960,9 +2018,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Remove from (training) EnvRunners and sync weights.
         if remove_from_env_runners:
             if multi_rl_module_spec is None:
-                multi_rl_module_spec = self.env_runner_group.foreach_worker(_remove)[0]
+                multi_rl_module_spec = self.env_runner_group.foreach_env_runner(
+                    _remove
+                )[0]
             else:
-                self.env_runner_group.foreach_worker(_remove)
+                self.env_runner_group.foreach_env_runner(_remove)
             self.env_runner_group.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
                 inference_only=True,
@@ -1974,11 +2034,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             and self.eval_env_runner_group is not None
         ):
             if multi_rl_module_spec is None:
-                multi_rl_module_spec = self.eval_env_runner_group.foreach_worker(
+                multi_rl_module_spec = self.eval_env_runner_group.foreach_env_runner(
                     _remove
                 )[0]
             else:
-                self.eval_env_runner_group.foreach_worker(_remove)
+                self.eval_env_runner_group.foreach_env_runner(_remove)
             self.eval_env_runner_group.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
                 inference_only=True,
@@ -2530,11 +2590,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # Update all EnvRunner workers.
         if remove_from_env_runners:
-            self.env_runner_group.foreach_worker(fn, local_env_runner=True)
+            self.env_runner_group.foreach_env_runner(fn, local_env_runner=True)
 
         # Update the evaluation worker set's workers, if required.
         if remove_from_eval_env_runners and self.eval_env_runner_group is not None:
-            self.eval_env_runner_group.foreach_worker(fn, local_env_runner=True)
+            self.eval_env_runner_group.foreach_env_runner(fn, local_env_runner=True)
 
     @OldAPIStack
     def export_policy_model(
@@ -2675,18 +2735,22 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # `restore_from_path()`.
         if self.config.enable_rl_module_and_learner:
             self.restore_from_path(checkpoint_dir)
+        else:
+            # Checkpoint is provided as a local directory.
+            # Restore from the checkpoint file or dir.
+            checkpoint_info = get_checkpoint_info(checkpoint_dir)
+            checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(
+                checkpoint_info
+            )
+            self.__setstate__(checkpoint_data)
 
-            # Call the `on_checkpoint_loaded` callback.
-            self.callbacks.on_checkpoint_loaded(algorithm=self)
-            return
-
-        # Checkpoint is provided as a local directory.
-        # Restore from the checkpoint file or dir.
-        checkpoint_info = get_checkpoint_info(checkpoint_dir)
-        checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
-        self.__setstate__(checkpoint_data)
         # Call the `on_checkpoint_loaded` callback.
-        self.callbacks.on_checkpoint_loaded(algorithm=self)
+        make_callback(
+            "on_checkpoint_loaded",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_checkpoint_loaded,
+            kwargs=dict(algorithm=self),
+        )
 
     @override(Checkpointable)
     def get_state(
@@ -2844,8 +2908,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         #  point in time. In here, the result dict has already been "compiled" (reduced)
         #  by the MetricsLogger and there is probably no point in adding more Stats
         #  here.
-        self.callbacks.on_train_result(
-            algorithm=self, metrics_logger=self.metrics, result=result
+        make_callback(
+            "on_train_result",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_train_result,
+            kwargs=dict(
+                algorithm=self,
+                metrics_logger=self.metrics,
+                result=result,
+            ),
         )
         # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
@@ -3148,7 +3219,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
             deprecation_warning(
                 "callbacks dict interface",
-                "a class extending rllib.algorithms.callbacks.DefaultCallbacks; "
+                "a class extending rllib.callbacks.callbacks.RLlibCallback; "
                 "see `rllib/examples/metrics/custom_metrics_and_callbacks.py` for an "
                 "example.",
                 error=True,
@@ -3384,7 +3455,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 config=self.evaluation_config,
             )
 
-        self.callbacks.on_evaluate_start(algorithm=self, metrics_logger=self.metrics)
+        make_callback(
+            "on_evaluate_start",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_evaluate_start,
+            kwargs=dict(
+                algorithm=self,
+                metrics_logger=self.metrics,
+            ),
+        )
 
         env_steps = agent_steps = 0
 
@@ -3409,7 +3488,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
             if i * units_per_healthy_remote_worker < self.config.evaluation_duration
         ]
-        self.eval_env_runner_group.foreach_worker_async(
+        self.eval_env_runner_group.foreach_env_runner_async(
             func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
             remote_worker_ids=selected_eval_worker_ids,
         )
@@ -3708,7 +3787,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if hasattr(self, "env_runner_group") and "worker" in state and state["worker"]:
             self.env_runner.set_state(state["worker"])
             remote_state_ref = ray.put(state["worker"])
-            self.env_runner_group.foreach_worker(
+            self.env_runner_group.foreach_env_runner(
                 lambda w: w.set_state(ray.get(remote_state_ref)),
                 local_env_runner=False,
             )
@@ -3724,7 +3803,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
                 # If evaluation workers are used, also restore the policies
                 # there in case they are used for evaluation purpose.
-                self.eval_env_runner_group.foreach_worker(_setup_eval_worker)
+                self.eval_env_runner_group.foreach_env_runner(_setup_eval_worker)
 
         # Restore replay buffer data.
         if self.local_replay_buffer is not None:

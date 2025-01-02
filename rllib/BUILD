@@ -1594,6 +1594,7 @@ py_test(
     name = "utils/tests/test_checkpointable",
     tags = ["team:rllib", "utils"],
     size = "large",
+    data = glob(["utils/tests/old_checkpoints/**"]),
     srcs = ["utils/tests/test_checkpointable.py"]
 )
 
