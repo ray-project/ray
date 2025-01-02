@@ -15,16 +15,15 @@ class TestEnvRunnerGroup(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_foreach_worker(self):
+    def test_foreach_env_runner(self):
         """Test to make sure basic sychronous calls to remote workers work."""
         ws = EnvRunnerGroup(
             config=(
                 PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=2)
             ),
-            num_env_runners=2,
         )
 
-        modules = ws.foreach_worker(
+        modules = ws.foreach_env_runner(
             lambda w: w.module,
             local_env_runner=True,
         )
@@ -34,7 +33,7 @@ class TestEnvRunnerGroup(unittest.TestCase):
         for m in modules:
             self.assertIsInstance(m, RLModule)
 
-        modules = ws.foreach_worker(
+        modules = ws.foreach_env_runner(
             lambda w: w.module,
             local_env_runner=False,
         )
@@ -44,16 +43,15 @@ class TestEnvRunnerGroup(unittest.TestCase):
 
         ws.stop()
 
-    def test_foreach_worker_return_obj_refss(self):
+    def test_foreach_env_runner_return_obj_refss(self):
         """Test to make sure return_obj_refs parameter works."""
         ws = EnvRunnerGroup(
             config=(
                 PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=2)
             ),
-            num_env_runners=2,
         )
 
-        module_refs = ws.foreach_worker(
+        module_refs = ws.foreach_env_runner(
             lambda w: isinstance(w.module, RLModule),
             local_env_runner=False,
             return_obj_refs=True,
@@ -66,18 +64,17 @@ class TestEnvRunnerGroup(unittest.TestCase):
 
         ws.stop()
 
-    def test_foreach_worker_async(self):
+    def test_foreach_env_runner_async(self):
         """Test to make sure basic asychronous calls to remote workers work."""
         ws = EnvRunnerGroup(
             config=(
                 PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=2)
             ),
-            num_env_runners=2,
         )
 
         # Fired async request against both remote workers.
         self.assertEqual(
-            ws.foreach_worker_async(
+            ws.foreach_env_runner_async(
                 lambda w: isinstance(w.module, RLModule),
             ),
             2,

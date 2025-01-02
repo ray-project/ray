@@ -48,7 +48,10 @@ SingleAgentEpisode
 ==================
 
 This page describes the single-agent case only.
-See here for a detailed description of the multi-agent case (work in progress).
+
+.. note::
+    The Ray team is working on a detailed description of the multi-agent case, analogous to this page here,
+    but for :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode`.
 
 
 Creating a SingleAgentEpisode
