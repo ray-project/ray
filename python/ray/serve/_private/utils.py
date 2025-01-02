@@ -4,6 +4,7 @@ import importlib
 import inspect
 import logging
 import os
+import random
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -536,7 +537,12 @@ def get_capacity_adjusted_num_replicas(
 
 
 def generate_request_id() -> str:
-    return str(uuid.uuid4())
+    # NOTE(edoakes): we use random.getrandbits because it reduces CPU overhead
+    # significantly. This is less cryptographically secure but should be ok for
+    # request ID generation.
+    # See https://bugs.python.org/issue45556 for discussion.
+    # return str(uuid.uuid4())
+    return str(uuid.UUID(int=random.getrandbits(128), version=4))
 
 
 def inside_ray_client_context() -> bool:

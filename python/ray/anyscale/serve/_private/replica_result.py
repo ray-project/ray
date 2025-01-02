@@ -2,7 +2,6 @@ import asyncio
 import concurrent.futures
 import inspect
 import logging
-import uuid
 from asyncio import run_coroutine_threadsafe
 from functools import wraps
 from typing import Any, AsyncIterator, Callable, Coroutine, Iterator, Optional, Union
@@ -16,6 +15,7 @@ from ray.exceptions import ActorUnavailableError, RayTaskError
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.http_util import MessageQueue
 from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.utils import generate_request_id
 from ray.serve.exceptions import RequestCancelledError
 from ray.serve.generated import serve_proprietary_pb2
 
@@ -78,8 +78,8 @@ class gRPCReplicaResult(ReplicaResult):
                 self.consume_messages_from_gen()
             )
 
-        # keep track of in flight requests
-        self._response_id = uuid.uuid4()
+        # Keep track of in-flight requests.
+        self._response_id = generate_request_id()
         request_context = ray.serve.context._serve_request_context.get()
         _add_in_flight_request(
             request_context._internal_request_id, self._response_id, self._call
