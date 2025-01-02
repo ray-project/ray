@@ -708,7 +708,7 @@ class gRPCProxy(GenericProxy):
     ) -> ResponseGenerator:
         handle_arg = proxy_request.request_object()
         response_generator = ProxyResponseGenerator(
-            handle.remote(handle_arg),
+            handle.remote(pickle.dumps(handle_arg)),
             timeout_s=self.request_timeout_s,
         )
 
@@ -775,7 +775,7 @@ class HTTPProxy(GenericProxy):
             proxy_router,
             request_timeout_s=request_timeout_s,
         )
-        self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
+        self.self_actor_name = ray.get_runtime_context().get_actor_name()
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
 
     @property
@@ -952,9 +952,8 @@ class HTTPProxy(GenericProxy):
             # Response is returned as raw bytes, convert it to ASGI messages.
             result_callback = convert_object_to_asgi_messages
         else:
-            self_actor_handle = self.self_actor_handle
             handle_arg = proxy_request.request_object(
-                receive_asgi_messages=self_actor_handle.receive_asgi_messages.remote
+                proxy_actor_name=self.self_actor_name,
             )
             # Messages are returned as pickled dictionaries.
             result_callback = pickle.loads
@@ -969,7 +968,7 @@ class HTTPProxy(GenericProxy):
         )
 
         response_generator = ProxyResponseGenerator(
-            handle.remote(handle_arg),
+            handle.remote(pickle.dumps(handle_arg)),
             timeout_s=self.request_timeout_s,
             disconnected_task=proxy_asgi_receive_task,
             result_callback=result_callback,
