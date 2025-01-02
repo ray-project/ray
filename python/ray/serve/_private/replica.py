@@ -312,7 +312,6 @@ class ReplicaBase(ABC):
     def _configure_logger_and_profilers(
         self, logging_config: Union[None, Dict, LoggingConfig]
     ):
-
         if logging_config is None:
             logging_config = {}
         if isinstance(logging_config, dict):
