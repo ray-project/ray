@@ -46,7 +46,7 @@ HTTP_PROXY_TIMEOUT = 60
 #: max construtor retry count, deploy() is considered failed.
 #: By default we set threshold as min(num_replicas * 3, this value)
 MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = int(
-    os.environ.get("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", "100")
+    os.environ.get("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", "20")
 )
 
 #: Default histogram buckets for latency tracker.
