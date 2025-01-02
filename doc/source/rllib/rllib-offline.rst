@@ -1456,7 +1456,7 @@ The preceding example illustrates the flexibility of RLlib's Offline RL API for 
     from ray.actor import ActorHandle
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
-    from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
+    from ray.rllib.algorithms.bc.torch.default_bc_torch_rl_module import DefaultBCTorchRLModule
     from ray.rllib.connectors.common import AddObservationsFromEpisodesToBatch, BatchIndividualItems, NumpyToTensor, AgentToModuleMapping
     from ray.rllib.connectors.learner.add_columns_from_episodes_to_train_batch import AddColumnsFromEpisodesToTrainBatch
     from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
@@ -1644,7 +1644,7 @@ The preceding example illustrates the flexibility of RLlib's Offline RL API for 
                     conv_activation="relu",
                 ),
                 inference_only=False,
-                module_class=BCTorchRLModule,
+                module_class=DefaultBCTorchRLModule,
                 catalog_class=BCCatalog,
                 action_space = gym.spaces.Discrete(len(vocabulary)),
                 observation_space=gym.spaces.Box(0.0, 1.0, (len(vocabulary), 1, 1), np.float32),
