@@ -520,8 +520,10 @@ ray_cc_library(
     hdrs = glob(
         [
             "src/ray/gcs/gcs_server/*.h",
-        ],
-    ),
+        ]
+    ) + [
+        "src/ray/anyscale/gcs/gcs_server/gcs_server_io_context_policy.h",
+    ],
     deps = [
         ":autoscaler_rpc",
         ":gcs",
@@ -535,6 +537,7 @@ ray_cc_library(
         ":raylet_client_lib",
         ":scheduler",
         ":worker_rpc",
+        "//src/ray/common:ray_syncer",
         "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/util:thread_checker",
         "@boost//:bimap",
