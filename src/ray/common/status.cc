@@ -36,41 +36,41 @@
 
 namespace ray {
 
-#define STATUS_CODE_OK "OK"
-#define STATUS_CODE_OUT_OF_MEMORY "Out of memory"
-#define STATUS_CODE_KEY_ERROR "Key error"
-#define STATUS_CODE_TYPE_ERROR "Type error"
-#define STATUS_CODE_INVALID "Invalid"
-#define STATUS_CODE_IO_ERROR "IOError"
-#define STATUS_CODE_UNKNOWN_ERROR "Unknown error"
-#define STATUS_CODE_NOT_IMPLEMENTED "NotImplemented"
-#define STATUS_CODE_REDIS_ERROR "RedisError"
-#define STATUS_CODE_TIMED_OUT "TimedOut"
-#define STATUS_CODE_INTERRUPTED "Interrupted"
-#define STATUS_CODE_INTENTIONAL_SYSTEM_EXIT "IntentionalSystemExit"
-#define STATUS_CODE_UNEXPECTED_SYSTEM_EXIT "UnexpectedSystemExit"
-#define STATUS_CODE_CREATION_TASK_ERROR "CreationTaskError"
-#define STATUS_CODE_NOT_FOUND "NotFound"
-#define STATUS_CODE_DISCONNECTED "Disconnected"
-#define STATUS_CODE_SCHEDULING_CANCELLED "SchedulingCancelled"
-#define STATUS_CODE_ALREADY_EXISTS "AlreadyExists"
-#define STATUS_CODE_OBJECT_EXISTS "ObjectExists"
-#define STATUS_CODE_OBJECT_NOT_FOUND "ObjectNotFound"
-#define STATUS_CODE_OBJECT_ALREADY_SEALED "ObjectAlreadySealed"
-#define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
-#define STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL "TransientObjectStoreFull"
-#define STATUS_CODE_OUT_OF_DISK "OutOfDisk"
-#define STATUS_CODE_OBJECT_UNKNOWN_OWNER "ObjectUnknownOwner"
-#define STATUS_CODE_RPC_ERROR "RpcError"
-#define STATUS_CODE_OUT_OF_RESOURCE "OutOfResource"
-#define STATUS_CODE_OBJECT_REF_END_OF_STREAM "ObjectRefEndOfStream"
-#define STATUS_CODE_AUTH_ERROR "AuthError"
-#define STATUS_CODE_INVALID_ARGUMENT "InvalidArgument"
-#define STATUS_CODE_CHANNEL_ERROR "ChannelError"
-#define STATUS_CODE_CHANNEL_TIMEOUT_ERROR "ChannelTimeoutError"
+const std::string STATUS_CODE_OK = "OK";
+const std::string STATUS_CODE_OUT_OF_MEMORY = "Out of memory";
+const std::string STATUS_CODE_KEY_ERROR = "Key error";
+const std::string STATUS_CODE_TYPE_ERROR = "Type error";
+const std::string STATUS_CODE_INVALID = "Invalid";
+const std::string STATUS_CODE_IO_ERROR = "IOError";
+const std::string STATUS_CODE_UNKNOWN_ERROR = "Unknown error";
+const std::string STATUS_CODE_NOT_IMPLEMENTED = "NotImplemented";
+const std::string STATUS_CODE_REDIS_ERROR = "RedisError";
+const std::string STATUS_CODE_TIMED_OUT = "TimedOut";
+const std::string STATUS_CODE_INTERRUPTED = "Interrupted";
+const std::string STATUS_CODE_INTENTIONAL_SYSTEM_EXIT = "IntentionalSystemExit";
+const std::string STATUS_CODE_UNEXPECTED_SYSTEM_EXIT = "UnexpectedSystemExit";
+const std::string STATUS_CODE_CREATION_TASK_ERROR = "CreationTaskError";
+const std::string STATUS_CODE_NOT_FOUND = "NotFound";
+const std::string STATUS_CODE_DISCONNECTED = "Disconnected";
+const std::string STATUS_CODE_SCHEDULING_CANCELLED = "SchedulingCancelled";
+const std::string STATUS_CODE_ALREADY_EXISTS = "AlreadyExists";
+const std::string STATUS_CODE_OBJECT_EXISTS = "ObjectExists";
+const std::string STATUS_CODE_OBJECT_NOT_FOUND = "ObjectNotFound";
+const std::string STATUS_CODE_OBJECT_ALREADY_SEALED = "ObjectAlreadySealed";
+const std::string STATUS_CODE_OBJECT_STORE_FULL = "ObjectStoreFull";
+const std::string STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL = "TransientObjectStoreFull";
+const std::string STATUS_CODE_OUT_OF_DISK = "OutOfDisk";
+const std::string STATUS_CODE_OBJECT_UNKNOWN_OWNER = "ObjectUnknownOwner";
+const std::string STATUS_CODE_RPC_ERROR = "RpcError";
+const std::string STATUS_CODE_OUT_OF_RESOURCE = "OutOfResource";
+const std::string STATUS_CODE_OBJECT_REF_END_OF_STREAM = "ObjectRefEndOfStream";
+const std::string STATUS_CODE_AUTH_ERROR = "AuthError";
+const std::string STATUS_CODE_INVALID_ARGUMENT = "InvalidArgument";
+const std::string STATUS_CODE_CHANNEL_ERROR = "ChannelError";
+const std::string STATUS_CODE_CHANNEL_TIMEOUT_ERROR = "ChannelTimeoutError";
 
 // not a real status (catch all for codes not known)
-#define STATUS_CODE_UNKNOWN "Unknown"
+const std::string STATUS_CODE_UNKNOWN = "Unknown";
 
 namespace {
 
