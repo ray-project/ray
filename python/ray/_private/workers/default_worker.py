@@ -273,8 +273,10 @@ if __name__ == "__main__":
     worker = ray._private.worker.global_worker
 
     # Setup log file.
-    out_file, err_file = node.get_log_file_handles(
-        get_worker_log_file_name(args.worker_type)
+    out_file, err_file = node.get_log_file_handle_with_rotation(
+        get_worker_log_file_name(args.worker_type),
+        rotation_max_size=args.logging_rotate_bytes,
+        rotation_file_num=args.logging_rotate_backup_count,
     )
     configure_log_file(out_file, err_file)
     worker.set_out_file(out_file)

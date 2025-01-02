@@ -275,23 +275,26 @@ def test_log_rotation(shutdown_only, monkeypatch):
 
     # TODO(hjiang): Enable after log rotation implemented for user application.
     #
-    # # Test application log, which starts with `worker-`.
-    # # Should be tested separately with other components since "worker" is a substring
-    # # of "python-core-worker".
-    # #
-    # # Check file count.
-    # application_stdout_paths = []
-    # for path in paths:
-    #    if path.stem.startswith("worker-") and re.search(r".*\.out(\.\d+)?", str(path))
-    # # and path.stat().st_size > 0:
-    #         application_stdout_paths.append(path)
-    # assert len(application_stdout_paths) == 4, application_stdout_paths
+    # Test application log, which starts with `worker-`.
+    # Should be tested separately with other components since "worker" is a substring
+    # of "python-core-worker".
+    #
+    # Check file count.
+    application_stdout_paths = []
+    for path in paths:
+        if (
+            path.stem.startswith("worker-")
+            and re.search(r".*\.out(\.\d+)?", str(path))
+            and path.stat().st_size > 0
+        ):
+            application_stdout_paths.append(path)
+    assert len(application_stdout_paths) == 4, application_stdout_paths
 
-    # # Check file content, each file should have one line.
-    # for cur_path in application_stdout_paths:
-    #     with cur_path.open() as f:
-    #         lines = f.readlines()
-    #         assert len(lines) == 1, lines
+    # Check file content, each file should have one line.
+    for cur_path in application_stdout_paths:
+        with cur_path.open() as f:
+            lines = f.readlines()
+            assert len(lines) == 1, lines
 
 
 def test_periodic_event_stats(shutdown_only):
