@@ -559,7 +559,7 @@ class ClusterStatusParser:
                     ResourceRequestByCount(
                         bundle=dict(r.request.resources_bundle.items()), count=r.count
                     )
-                    for r in constraint_request.min_bundles
+                    for r in constraint_request.resource_requests
                 ]
             )
             constraint_demand.append(demand)

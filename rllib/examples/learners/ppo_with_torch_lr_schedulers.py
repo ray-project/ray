@@ -53,7 +53,7 @@ import numpy as np
 from typing import Optional
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import DEFAULT_OPTIMIZER
@@ -71,7 +71,7 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 torch, _ = try_import_torch()
 
 
-class LRChecker(DefaultCallbacks):
+class LRChecker(RLlibCallback):
     def on_algorithm_init(
         self,
         *,

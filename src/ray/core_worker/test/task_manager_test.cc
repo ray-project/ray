@@ -104,7 +104,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   MOCK_METHOD(bool, Enabled, (), (const, override));
 
-  MOCK_METHOD(const std::string, DebugString, (), (override));
+  MOCK_METHOD(std::string, DebugString, (), (override));
 };
 
 class TaskManagerTest : public ::testing::Test {
@@ -126,8 +126,8 @@ class TaskManagerTest : public ::testing::Test {
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore(
             io_context_.GetIoService(), reference_counter_.get()))),
         manager_(
-            store_,
-            reference_counter_,
+            *store_,
+            *reference_counter_,
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
             },
@@ -688,7 +688,8 @@ TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
       {},
       "",
       0,
-      TaskID::Nil());
+      TaskID::Nil(),
+      "");
   builder.SetActorTaskSpec(
       actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0);
   TaskSpecification spec = builder.Build();

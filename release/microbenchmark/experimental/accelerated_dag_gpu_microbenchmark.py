@@ -119,7 +119,7 @@ def exec_ray_dag(
     sender,
     receiver,
     use_nccl=False,
-    use_adag=True,
+    use_cgraph=True,
     static_shape=False,
     direct_return=False,
 ):
@@ -127,7 +127,7 @@ def exec_ray_dag(
     with InputNode() as inp:
         dag = sender.send.bind(SHAPE, DTYPE, inp)
 
-        if use_adag:
+        if use_cgraph:
             dag = dag.with_type_hint(
                 TorchTensorType(
                     _static_shape=static_shape,
@@ -138,7 +138,7 @@ def exec_ray_dag(
 
         dag = receiver.recv.bind(dag)
 
-    if use_adag:
+    if use_cgraph:
         dag = dag.experimental_compile()
 
         def _run():
@@ -154,7 +154,7 @@ def exec_ray_dag(
 
     results = timeit(label, _run)
 
-    if use_adag:
+    if use_cgraph:
         dag.teardown()
 
     # Workaround for Ray bug in reusing GPUs too quickly.
@@ -301,7 +301,7 @@ def exec_ray_core_cpu(sender_hint, receiver_hint):
     time.sleep(1)
     sender = TorchTensorWorker.options(scheduling_strategy=sender_hint).remote()
     receiver = TorchTensorWorker.options(scheduling_strategy=receiver_hint).remote()
-    return exec_ray_dag("exec_ray_core_cpu", sender, receiver, use_adag=False)
+    return exec_ray_dag("exec_ray_core_cpu", sender, receiver, use_cgraph=False)
 
 
 def exec_ray_dag_gpu_ipc_gpu():
@@ -355,7 +355,7 @@ def exec_ray_core_gpu(sender_hint, receiver_hint):
     receiver = TorchTensorWorker.options(
         num_gpus=1, scheduling_strategy=receiver_hint
     ).remote()
-    return exec_ray_dag("exec_ray_core_gpu", sender, receiver, use_adag=False)
+    return exec_ray_dag("exec_ray_core_gpu", sender, receiver, use_cgraph=False)
 
 
 def main(distributed):
@@ -375,7 +375,7 @@ def main(distributed):
     # NCCL takes a while to warm up on multi node so increase the default
     # timeout.
     ctx = DAGContext.get_current()
-    ctx.retrieval_timeout = 120
+    ctx.get_timeout = 120
 
     sender_hint, receiver_hint = None, None
     if distributed:

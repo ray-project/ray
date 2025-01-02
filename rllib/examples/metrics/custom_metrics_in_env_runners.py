@@ -11,7 +11,7 @@ custom `Algorithm.training_step()` methods, custom loss functions, custom callba
 and custom EnvRunners.
 
 This example:
-    - demonstrates how to write a custom Callbacks subclass, which overrides some
+    - demonstrates how to write a custom RLlibCallback subclass, which overrides some
     EnvRunner-bound methods, such as `on_episode_start`, `on_episode_step`, and
     `on_episode_end`.
     - shows how to temporarily store per-timestep data inside the currently running
@@ -24,7 +24,7 @@ This example:
     window of 200 episodes), a maximum per-episode metric (over a sliding window of 100
     episodes), and an EMA-smoothed metric.
 
-In this script, we define a custom `DefaultCallbacks` class and then override some of
+In this script, we define a custom `RLlibCallback` class and then override some of
 its methods in order to define custom behavior during episode sampling. In particular,
 we add custom metrics to the Algorithm's published result dict (once per
 iteration) before it is sent back to Ray Tune (and possibly a WandB logger).
@@ -82,7 +82,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 import numpy as np
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.images import resize
 from ray.rllib.utils.test_utils import (
@@ -92,7 +92,7 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls, register_env
 
 
-class MsPacmanHeatmapCallback(DefaultCallbacks):
+class MsPacmanHeatmapCallback(RLlibCallback):
     """A custom callback to extract information from MsPacman and log these.
 
     This callback logs:

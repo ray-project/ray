@@ -2229,7 +2229,9 @@ int main(int argc, char **argv) {
       []() { ray::RayLog::ShutDownRayLog(); },
       argv[0],
       ray::RayLogLevel::INFO,
-      /*log_dir=*/"");
+      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

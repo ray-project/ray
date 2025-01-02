@@ -13,11 +13,9 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
-import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/export_api/export_runtime_env.proto";
 
 // ExportDriverJobEventData defines the event_data stored by the export API

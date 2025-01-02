@@ -48,9 +48,9 @@ run_experiments(
             "run": "IMPALA",
             "env": "CartPole-v1",
             "config": {
-                "num_workers": 8,
+                "num_env_runners": 8,
                 "num_gpus": 0,
-                "num_envs_per_worker": 5,
+                "num_envs_per_env_runner": 5,
                 "remote_worker_envs": True,
                 "remote_env_batch_wait_ms": 99999999,
                 "rollout_fragment_length": 50,

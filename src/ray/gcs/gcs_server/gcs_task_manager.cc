@@ -20,9 +20,9 @@
 #include <stdexcept>
 
 #include "absl/strings/match.h"
+#include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
-#include "src/ray/common/id.h"
 
 namespace ray {
 namespace gcs {

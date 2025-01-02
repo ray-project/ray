@@ -127,12 +127,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CSchedulingStrategy &scheduling_strategy,
             c_string debugger_breakpoint,
             c_string serialized_retry_exception_allowlist,
+            c_string call_site,
             const CTaskID current_task_id)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CActorCreationOptions &options,
-            const c_string &extension_data, CActorID *actor_id)
+            const c_string &extension_data,
+            c_string call_site,
+            CActorID *actor_id)
         CRayStatus CreatePlacementGroup(
             const CPlacementGroupCreationOptions &options,
             CPlacementGroupID *placement_group_id)
@@ -147,6 +150,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int max_retries,
             c_bool retry_exceptions,
             c_string serialized_retry_exception_allowlist,
+            c_string call_site,
             c_vector[CObjectReference] &task_returns,
             const CTaskID current_task_id)
         CRayStatus KillActor(
@@ -285,8 +289,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
                                 const CObjectID &generator_id,
                                 const unique_ptr[CAddress] &owner_address)
-        CRayStatus ExperimentalChannelReadRelease(
-                    const c_vector[CObjectID] &object_ids)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] results)
         CRayStatus GetIfLocal(

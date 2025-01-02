@@ -1,7 +1,10 @@
 import abc
 from typing import List
 
+from ray.util.annotations import PublicAPI
 
+
+@PublicAPI(stability="alpha")
 class InferenceOnlyAPI(abc.ABC):
     """An API to be implemented by RLModules that have an inference-only mode.
 

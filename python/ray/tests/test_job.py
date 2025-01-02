@@ -110,7 +110,7 @@ from time import sleep
 ray.init(address="{}")
 open("{}", "w+").close()
 
-print("My job id: ", str(ray.get_runtime_context().job_id))
+print("My job id: ", str(ray.get_runtime_context().get_job_id()))
 
 {}
 ray.shutdown()

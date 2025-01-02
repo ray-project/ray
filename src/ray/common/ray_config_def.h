@@ -112,6 +112,10 @@ RAY_CONFIG(bool, report_actor_placement_resources, true)
 /// TODO: maybe group this under RAY_DEBUG.
 RAY_CONFIG(bool, record_ref_creation_sites, false)
 
+/// Collects the stacktrace of the task invocation, or actor creation. The stacktrace is
+/// serialized into the TaskSpec and is viewable from the Dashboard. Default is disabled.
+RAY_CONFIG(bool, record_task_actor_creation_sites, false)
+
 /// Objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
 /// will be eagerly evicted in a batch by freeing all plasma copies in the
@@ -201,7 +205,7 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
 // limit in Ray to avoid crashing with many small inlined task arguments.
 // Keep in sync with GCS_STORAGE_MAX_SIZE in packaging.py.
-RAY_CONFIG(int64_t, max_grpc_message_size, 512 * 1024 * 1024)
+RAY_CONFIG(size_t, max_grpc_message_size, 512 * 1024 * 1024)
 
 // The max gRPC message size (the gRPC internal default is 4MB) in communication with the
 // Agent.
@@ -755,7 +759,7 @@ RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HP
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
-/// Ray-internal auxiliary tasks (e.g., accelerated dag workers).
+/// Ray-internal auxiliary tasks (e.g., compiled graph workers).
 RAY_CONFIG(std::string, system_concurrency_group_name, "_ray_system")
 
 // Maximum size of the batches when broadcasting resources to raylet.

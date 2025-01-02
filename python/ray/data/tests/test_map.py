@@ -416,13 +416,91 @@ def test_add_column(ray_start_regular_shared):
         ray.data.range(5).add_column("foo", lambda x: x["id"] + 1, batch_format="foo")
 
 
-@pytest.mark.parametrize("names", (["foo", "bar"], {"spam": "foo", "ham": "bar"}))
-def test_rename_columns(ray_start_regular_shared, names):
+@pytest.mark.parametrize(
+    "names, expected_schema",
+    [
+        ({"spam": "foo", "ham": "bar"}, ["foo", "bar"]),
+        ({"spam": "foo"}, ["foo", "ham"]),
+        (["foo", "bar"], ["foo", "bar"]),
+    ],
+)
+def test_rename_columns(ray_start_regular_shared, names, expected_schema):
     ds = ray.data.from_items([{"spam": 0, "ham": 0}])
 
     renamed_ds = ds.rename_columns(names)
+    renamed_schema_names = renamed_ds.schema().names
 
-    assert renamed_ds.schema().names == ["foo", "bar"]
+    assert sorted(renamed_schema_names) == sorted(expected_schema)
+
+
+@pytest.mark.parametrize(
+    "names, expected_exception, expected_message",
+    [
+        # Case 1: Empty dictionary, should raise ValueError
+        ({}, ValueError, "rename_columns received 'names' with no entries."),
+        # Case 2: Invalid dictionary (duplicate values), should raise ValueError
+        (
+            {"spam": "foo", "ham": "foo"},
+            ValueError,
+            "rename_columns received duplicate values in the 'names': "
+            "{'spam': 'foo', 'ham': 'foo'}",
+        ),
+        # Case 3: Dictionary with non-string keys/values, should raise ValueError
+        (
+            {"spam": 1, "ham": "bar"},
+            ValueError,
+            "rename_columns requires both keys and values in the 'names' to be "
+            "strings.",
+        ),
+        # Case 4: Empty list, should raise ValueError
+        (
+            [],
+            ValueError,
+            "rename_columns requires 'names' with at least one column name.",
+        ),
+        # Case 5: List with duplicate values, should raise ValueError
+        (
+            ["foo", "bar", "foo"],
+            ValueError,
+            "rename_columns received duplicate values in the 'names': "
+            "['foo', 'bar', 'foo']",
+        ),
+        # Case 6: List with non-string values, should raise ValueError
+        (
+            ["foo", "bar", 1],
+            ValueError,
+            "rename_columns requires all elements in the 'names' to be strings.",
+        ),
+        # Case 7: Mismatched length of list and current column names, should raise
+        # ValueError
+        (
+            ["foo", "bar", "baz"],
+            ValueError,
+            "rename_columns requires 'names': ['foo', 'bar', 'baz'] length match "
+            "current schema names: ['spam', 'ham'].",
+        ),
+        # Case 8: Invalid type for `names` (integer instead of dict or list), should
+        # raise TypeError
+        (
+            42,
+            TypeError,
+            "rename_columns expected names to be either List[str] or Dict[str, str], "
+            "got <class 'int'>.",
+        ),
+    ],
+)
+def test_rename_columns_error_cases(
+    ray_start_regular_shared, names, expected_exception, expected_message
+):
+    # Simulate a dataset with two columns: "spam" and "ham"
+    ds = ray.data.from_items([{"spam": 0, "ham": 0}])
+
+    # Test that the correct exception is raised
+    with pytest.raises(expected_exception) as exc_info:
+        ds.rename_columns(names)
+
+    # Verify that the exception message matches the expected message
+    assert str(exc_info.value) == expected_message
 
 
 def test_filter_mutex(ray_start_regular_shared, tmp_path):
@@ -552,6 +630,29 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
         ds1.drop_columns(["col1", "col2", "col2"])
 
 
+def test_select_rename_columns(ray_start_regular_shared):
+    ds = ray.data.range(1)
+
+    def map_fn(row):
+        return {"a": "a", "b": "b", "c": "c"}
+
+    ds = ds.map(map_fn)
+    result = ds.rename_columns({"a": "A"}).select_columns("A").take_all()
+    assert result == [{"A": "a"}]
+    result = ds.rename_columns({"a": "A"}).select_columns("b").take_all()
+    assert result == [{"b": "b"}]
+    result = ds.rename_columns({"a": "x", "b": "y"}).select_columns("c").take_all()
+    assert result == [{"c": "c"}]
+    result = ds.rename_columns({"a": "x", "b": "y"}).select_columns("x").take_all()
+    assert result == [{"x": "a"}]
+    result = ds.rename_columns({"a": "x", "b": "y"}).select_columns("y").take_all()
+    assert result == [{"y": "b"}]
+    result = ds.rename_columns({"a": "b", "b": "a"}).select_columns("b").take_all()
+    assert result == [{"b": "a"}]
+    result = ds.rename_columns({"a": "b", "b": "a"}).select_columns("a").take_all()
+    assert result == [{"a": "b"}]
+
+
 def test_select_columns(ray_start_regular_shared):
     # Test pandas and arrow
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
@@ -560,7 +661,7 @@ def test_select_columns(ray_start_regular_shared):
     ds2 = ds1.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
 
     for each_ds in [ds1, ds2]:
-        assert each_ds.select_columns(cols=[]).take(1) == []
+        # Test selecting with empty columns
         assert each_ds.select_columns(cols=["col1", "col2", "col3"]).take(1) == [
             {"col1": 1, "col2": 2, "col3": 3}
         ]
@@ -578,12 +679,34 @@ def test_select_columns(ray_start_regular_shared):
             each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).materialize()
 
 
-@pytest.mark.parametrize("cols", [None, 1, [1]])
-def test_select_columns_validation(ray_start_regular_shared, cols):
+@pytest.mark.parametrize(
+    "cols, expected_exception, expected_error",
+    [
+        ([], ValueError, "select_columns requires at least one column to select"),
+        (
+            None,
+            TypeError,
+            "select_columns requires 'cols' to be a string or a list of strings.",
+        ),
+        (
+            1,
+            TypeError,
+            "select_columns requires 'cols' to be a string or a list of strings.",
+        ),
+        (
+            [1],
+            ValueError,
+            "select_columns requires all elements of 'cols' to be strings.",
+        ),
+    ],
+)
+def test_select_columns_validation(
+    ray_start_regular_shared, cols, expected_exception, expected_error
+):
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds1 = ray.data.from_pandas(df)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(expected_exception, match=expected_error):
         ds1.select_columns(cols=cols)
 
 

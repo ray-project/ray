@@ -42,7 +42,7 @@ are represented by slightly different maps that the agent has to navigate.
    :end-before: __END_curriculum_learning_example_env_options__
 
 Then, define the central piece controlling the curriculum, which is a custom callbacks class
-overriding the :py:meth:`~ray.rllib.algorithms.callbacks.DefaultCallbacks.on_train_result`.
+overriding the :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_train_result`.
 
 
 .. TODO move to doc_code and make it use algo configs.
@@ -50,9 +50,9 @@ overriding the :py:meth:`~ray.rllib.algorithms.callbacks.DefaultCallbacks.on_tra
 
     import ray
     from ray import tune
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
-    class MyCallbacks(DefaultCallbacks):
+    class MyCallbacks(RLlibCallback):
         def on_train_result(self, algorithm, result, **kwargs):
             if result["env_runners"]["episode_return_mean"] > 200:
                 task = 2
@@ -118,13 +118,13 @@ and
     if the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` is in
     evaluation mode, through accessing ``worker.policy_config["in_evaluation"]``.
     You can then implement this check in ``on_episode_start()`` or ``on_episode_end()``
-    in your subclass of :py:class:`~ray.rllib.algorithms.callbacks.DefaultCallbacks`.
+    in your subclass of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`.
     For running callbacks before and after the evaluation
     runs in whole we provide ``on_evaluate_start()`` and ``on_evaluate_end``.
 
-.. dropdown:: Click here to see the full API of the ``DefaultCallbacks`` class
+.. dropdown:: Click here to see the full API of the ``RLlibCallback`` class
 
-    .. autoclass:: ray.rllib.algorithms.callbacks.DefaultCallbacks
+    .. autoclass:: ray.rllib.callbacks.callbacks.RLlibCallback
         :members:
 
 

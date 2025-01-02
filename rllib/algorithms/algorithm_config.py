@@ -1,7 +1,6 @@
 import copy
 import dataclasses
 from enum import Enum
-import inspect
 import logging
 import math
 import sys
@@ -23,7 +22,7 @@ import tree
 from packaging import version
 
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module import validate_module_id
@@ -399,7 +398,21 @@ class AlgorithmConfig(_Config):
         self._learner_class = None
 
         # `self.callbacks()`
-        self.callbacks_class = DefaultCallbacks
+        # TODO (sven): Set this default to None, once the old API stack has been
+        #  deprecated.
+        self.callbacks_class = RLlibCallback
+        self.callbacks_on_algorithm_init = None
+        self.callbacks_on_env_runners_recreated = None
+        self.callbacks_on_checkpoint_loaded = None
+        self.callbacks_on_environment_created = None
+        self.callbacks_on_episode_created = None
+        self.callbacks_on_episode_start = None
+        self.callbacks_on_episode_step = None
+        self.callbacks_on_episode_end = None
+        self.callbacks_on_evaluate_start = None
+        self.callbacks_on_evaluate_end = None
+        self.callbacks_on_sample_end = None
+        self.callbacks_on_train_result = None
 
         # `self.explore()`
         self.explore = True
@@ -551,6 +564,7 @@ class AlgorithmConfig(_Config):
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
 
         # `self.experimental()`
+        self._use_msgpack_checkpoints = False
         self._torch_grad_scaler_class = None
         self._torch_lr_scheduler_classes = None
         self._tf_policy_handles_more_than_one_loss = False
@@ -637,7 +651,7 @@ class AlgorithmConfig(_Config):
             config["policies"] = policies_dict
 
         # Switch out deprecated vs new config keys.
-        config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
+        config["callbacks"] = config.pop("callbacks_class", None)
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
@@ -697,11 +711,8 @@ class AlgorithmConfig(_Config):
         # inside `self.experimental()` before potentially overwriting it in the
         # following.
         enable_new_api_stack = config_dict.get(
-            "_enable_new_api_stack",
-            config_dict.get(
-                "enable_rl_module_and_learner",
-                config_dict.get("enable_env_runner_and_connector_v2"),
-            ),
+            "enable_rl_module_and_learner",
+            config_dict.get("enable_env_runner_and_connector_v2"),
         )
         if enable_new_api_stack is not None:
             self.api_stack(
@@ -840,7 +851,7 @@ class AlgorithmConfig(_Config):
 
         The resulting values don't have any code in them.
         Classes (such as `callbacks_class`) are converted to their full
-        classpath, e.g. `ray.rllib.algorithms.callbacks.DefaultCallbacks`.
+        classpath, e.g. `ray.rllib.callbacks.callbacks.RLlibCallback`.
         Actual code such as lambda functions ware written as their source
         code (str) plus any closure information for properly restoring the
         code inside the AlgorithmConfig object made from the returned dict data.
@@ -893,6 +904,8 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
+        # Check callbacks settings.
+        self._validate_callbacks_settings()
         # Check framework specific settings.
         self._validate_framework_settings()
         # Check resources specific settings.
@@ -952,7 +965,7 @@ class AlgorithmConfig(_Config):
             logger_creator=self.logger_creator,
         )
 
-    def build_env_to_module_connector(self, env):
+    def build_env_to_module_connector(self, env, device=None):
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
@@ -1026,7 +1039,7 @@ class AlgorithmConfig(_Config):
             # Batch all data.
             pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
             # Convert to Tensors.
-            pipeline.append(NumpyToTensor())
+            pipeline.append(NumpyToTensor(device=device))
 
         return pipeline
 
@@ -2353,29 +2366,136 @@ class AlgorithmConfig(_Config):
 
         return self
 
-    def callbacks(self, callbacks_class) -> "AlgorithmConfig":
+    def callbacks(
+        self,
+        callbacks_class: Optional[
+            Union[Type[RLlibCallback], List[Type[RLlibCallback]]]
+        ] = NotProvided,
+        *,
+        on_algorithm_init: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_train_result: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_evaluate_start: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_evaluate_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_env_runners_recreated: Optional[
+            Union[Callable, List[Callable]]
+        ] = NotProvided,
+        on_checkpoint_loaded: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_environment_created: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_episode_created: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_episode_start: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_episode_step: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_episode_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_sample_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
+    ) -> "AlgorithmConfig":
         """Sets the callbacks configuration.
 
         Args:
-            callbacks_class: Callbacks class, whose methods are called during
-                various phases of training and environment sample collection.
-                See the `DefaultCallbacks` class and
-                `examples/metrics/custom_metrics_and_callbacks.py` for more usage
-                information.
+            callbacks_class: RLlibCallback class, whose methods are called during
+                various phases of training and RL environment sample collection.
+                TODO (sven): Change the link to new rst callbacks page.
+                See the `RLlibCallback` class and
+                `examples/metrics/custom_metrics_and_callbacks.py` for more information.
+            on_algorithm_init: A callable or a list of callables. If a list, RLlib calls
+                the items in the same sequence. `on_algorithm_init` methods overridden
+                in `callbacks_class` take precedence and are called first.
+                See
+                :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`  # noqa
+                for more information.
+            on_evaluate_start: A callable or a list of callables. If a list, RLlib calls
+                the items in the same sequence. `on_evaluate_start` methods overridden
+                in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_evaluate_start`  # noqa
+                for more information.
+            on_evaluate_end: A callable or a list of callables. If a list, RLlib calls
+                the items in the same sequence. `on_evaluate_end` methods overridden
+                in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_evaluate_end`  # noqa
+                for more information.
+            on_env_runners_recreated: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_env_runners_recreated`
+                methods overridden in `callbacks_class` take precedence and are called
+                first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_env_runners_recreated`  # noqa
+                for more information.
+            on_checkpoint_loaded: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_checkpoint_loaded`
+                methods overridden in `callbacks_class` take precedence and are called
+                first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_checkpoint_loaded`  # noqa
+                for more information.
+            on_environment_created: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_environment_created`
+                methods overridden in `callbacks_class` take precedence and are called
+                first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_environment_created`  # noqa
+                for more information.
+            on_episode_created: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_episode_created` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_created`  # noqa
+                for more information.
+            on_episode_start: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_episode_start` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_start`  # noqa
+                for more information.
+            on_episode_step: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_episode_step` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_step`  # noqa
+                for more information.
+            on_episode_end: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_episode_end` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_end`  # noqa
+                for more information.
+            on_sample_end: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_sample_end` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_sample_end`  # noqa
+                for more information.
 
         Returns:
             This updated AlgorithmConfig object.
         """
         if callbacks_class is None:
-            callbacks_class = DefaultCallbacks
-        # Check, whether given `callbacks` is a callable.
-        if not callable(callbacks_class):
-            raise ValueError(
-                "`config.callbacks_class` must be a callable method that "
-                "returns a subclass of DefaultCallbacks, got "
-                f"{callbacks_class}!"
-            )
-        self.callbacks_class = callbacks_class
+            callbacks_class = RLlibCallback
+
+        if callbacks_class is not NotProvided:
+            # Check, whether given `callbacks` is a callable.
+            # TODO (sven): Once the old API stack is deprecated, this can also be None
+            #  (which should then become the default value for this attribute).
+            if not callable(callbacks_class):
+                raise ValueError(
+                    "`config.callbacks_class` must be a callable method that "
+                    "returns a subclass of DefaultCallbacks, got "
+                    f"{callbacks_class}!"
+                )
+            self.callbacks_class = callbacks_class
+        if on_algorithm_init is not NotProvided:
+            self.callbacks_on_algorithm_init = on_algorithm_init
+        if on_train_result is not NotProvided:
+            self.callbacks_on_train_result = on_train_result
+        if on_evaluate_start is not NotProvided:
+            self.callbacks_on_evaluate_start = on_evaluate_start
+        if on_evaluate_end is not NotProvided:
+            self.callbacks_on_evaluate_end = on_evaluate_end
+        if on_env_runners_recreated is not NotProvided:
+            self.callbacks_on_env_runners_recreated = on_env_runners_recreated
+        if on_checkpoint_loaded is not NotProvided:
+            self.callbacks_on_checkpoint_loaded = on_checkpoint_loaded
+        if on_environment_created is not NotProvided:
+            self.callbacks_on_environment_created = on_environment_created
+        if on_episode_created is not NotProvided:
+            self.callbacks_on_episode_created = on_episode_created
+        if on_episode_start is not NotProvided:
+            self.callbacks_on_episode_start = on_episode_start
+        if on_episode_step is not NotProvided:
+            self.callbacks_on_episode_step = on_episode_step
+        if on_episode_end is not NotProvided:
+            self.callbacks_on_episode_end = on_episode_end
+        if on_sample_end is not NotProvided:
+            self.callbacks_on_sample_end = on_sample_end
 
         return self
 
@@ -3462,6 +3582,7 @@ class AlgorithmConfig(_Config):
     def experimental(
         self,
         *,
+        _use_msgpack_checkpoints: Optional[bool] = NotProvided,
         _torch_grad_scaler_class: Optional[Type] = NotProvided,
         _torch_lr_scheduler_classes: Optional[
             Union[List[Type], Dict[ModuleID, List[Type]]]
@@ -3470,12 +3591,12 @@ class AlgorithmConfig(_Config):
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
-        # Deprecated args.
-        _enable_new_api_stack=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
         Args:
+            _use_msgpack_checkpoints: Create state files in all checkpoints through
+                msgpack rather than pickle.
             _torch_grad_scaler_class: Class to use for torch loss scaling (and gradient
                 unscaling). The class must implement the following methods to be
                 compatible with a `TorchLearner`. These methods/APIs match exactly those
@@ -3515,13 +3636,8 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if _enable_new_api_stack != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config.experimental(_enable_new_api_stack=...)",
-                new="config.api_stack(enable_rl_module_and_learner=...)",
-                error=True,
-            )
-
+        if _use_msgpack_checkpoints is not NotProvided:
+            self._use_msgpack_checkpoints = _use_msgpack_checkpoints
         if _tf_policy_handles_more_than_one_loss is not NotProvided:
             self._tf_policy_handles_more_than_one_loss = (
                 _tf_policy_handles_more_than_one_loss
@@ -3691,6 +3807,12 @@ class AlgorithmConfig(_Config):
         eval_config_obj.in_evaluation = True
         eval_config_obj.evaluation_config = None
 
+        # Force-set the `num_env_runners` setting to `self.evaluation_num_env_runners`.
+        # Actually, the `self.evaluation_num_env_runners` is merely a convenience
+        # attribute and might be set instead through:
+        # `config.evaluation(evaluation_config={"num_env_runners": ...})`
+        eval_config_obj.num_env_runners = self.evaluation_num_env_runners
+
         # NOTE: The following if-block is only relevant for the old API stack.
         # For the new API stack (EnvRunners), the evaluation methods of Algorithm
         # explicitly tell each EnvRunner on each sample call, how many timesteps
@@ -3815,7 +3937,7 @@ class AlgorithmConfig(_Config):
 
         Returns:
             The Learner class to use for this algorithm either as a class type or as
-            a string (e.g. ray.rllib.core.learner.testing.torch.BC).
+            a string (e.g. "ray.rllib.algorithms.ppo.ppo_learner.PPOLearner").
         """
         raise NotImplementedError
 
@@ -4259,6 +4381,34 @@ class AlgorithmConfig(_Config):
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
     # -----------------------------------------------------------
+    def _validate_callbacks_settings(self) -> None:
+        """Validates callbacks settings."""
+        # Old API stack:
+        # - self.callbacks_cls must be a subclass of RLlibCallback.
+        # - All self.callbacks_... attributes must be None.
+        if not self.enable_env_runner_and_connector_v2:
+            if (
+                self.callbacks_on_environment_created is not None
+                or self.callbacks_on_algorithm_init is not None
+                or self.callbacks_on_train_result is not None
+                or self.callbacks_on_evaluate_start is not None
+                or self.callbacks_on_evaluate_end is not None
+                or self.callbacks_on_sample_end is not None
+                or self.callbacks_on_environment_created is not None
+                or self.callbacks_on_episode_created is not None
+                or self.callbacks_on_episode_start is not None
+                or self.callbacks_on_episode_step is not None
+                or self.callbacks_on_episode_end is not None
+                or self.callbacks_on_checkpoint_loaded is not None
+                or self.callbacks_on_env_runners_recreated is not None
+            ):
+                raise ValueError(
+                    "Config settings `config.callbacks(on_....=lambda ..)` aren't "
+                    "supported on the old API stack! Switch to the new API stack "
+                    "through `config.api_stack(enable_env_runner_and_connector_v2=True,"
+                    " enable_rl_module_and_learner=True)`."
+                )
+
     def _validate_framework_settings(self) -> None:
         """Validates framework settings and checks whether framework is installed."""
         _tf1, _tf, _tfv = None, None, None
@@ -4483,6 +4633,16 @@ class AlgorithmConfig(_Config):
             # `enable_rl_module_and_learner=True`.
             return
 
+        # Warn about new API stack on by default.
+        logger.warning(
+            f"You are running {self.algo_class.__name__} on the new API stack! "
+            "This is the new default behavior for this algorithm. If you don't "
+            "want to use the new API stack, set `config.api_stack("
+            "enable_rl_module_and_learner=False,"
+            "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
+            "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+        )
+
         # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
         # `enable_env_runner_and_connector_v2` must be True or both False.
         if not self.enable_env_runner_and_connector_v2:
@@ -4519,28 +4679,6 @@ class AlgorithmConfig(_Config):
             setting_name="lr",
             description="learning rate",
         )
-
-        # Check and error if `on_episode_created` callback has been overridden on the
-        # new API stack AND this is a single-agent setup (multi-agent does not use
-        # gym.vector.Env yet and therefore the reset call is still made manually,
-        # allowing for the callback to be fired).
-        if not self.is_multi_agent() and self.callbacks_class is not DefaultCallbacks:
-            default_src = inspect.getsource(DefaultCallbacks.on_episode_created)
-            try:
-                user_src = inspect.getsource(self.callbacks_class.on_episode_created)
-            # In case user has setup a `partial` instead of an actual Callbacks class.
-            except AttributeError:
-                user_src = default_src
-            if default_src != user_src:
-                raise ValueError(
-                    "When using the new API stack in single-agent and with EnvRunners, "
-                    "you cannot override the `DefaultCallbacks.on_episode_created()` "
-                    "method anymore! This particular callback is no longer supported "
-                    "b/c we are using `gym.vector.Env`, which automatically resets "
-                    "individual sub-environments when they are terminated. Instead, "
-                    "override the `on_episode_start` method, which gets fired right "
-                    "after the `env.reset()` call."
-                )
 
         # This is not compatible with RLModules, which all have a method
         # `forward_exploration` to specify custom exploration behavior.
@@ -5208,25 +5346,25 @@ class AlgorithmConfig(_Config):
 
         return policies, is_policy_to_train
 
-    @Deprecated(new="AlgorithmConfig.get_multi_rl_module_spec()", error=False)
+    @Deprecated(new="AlgorithmConfig.get_multi_rl_module_spec()", error=True)
     def get_marl_module_spec(self, *args, **kwargs):
-        return self.get_multi_rl_module_spec(*args, **kwargs)
+        pass
 
-    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=False)
+    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=True)
     def rollouts(self, *args, **kwargs):
-        return self.env_runners(*args, **kwargs)
+        pass
 
-    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=False)
+    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=True)
     def exploration(self, *args, **kwargs):
-        return self.env_runners(*args, **kwargs)
+        pass
 
     @property
     @Deprecated(
         new="AlgorithmConfig.fault_tolerance(restart_failed_env_runners=..)",
-        error=False,
+        error=True,
     )
     def recreate_failed_env_runners(self):
-        return self.restart_failed_env_runners
+        pass
 
     @recreate_failed_env_runners.setter
     def recreate_failed_env_runners(self, value):
@@ -5237,9 +5375,9 @@ class AlgorithmConfig(_Config):
         )
 
     @property
-    @Deprecated(new="AlgorithmConfig._enable_new_api_stack", error=False)
+    @Deprecated(new="AlgorithmConfig._enable_new_api_stack", error=True)
     def _enable_new_api_stack(self):
-        return self.enable_rl_module_and_learner
+        pass
 
     @_enable_new_api_stack.setter
     def _enable_new_api_stack(self, value):
@@ -5255,262 +5393,261 @@ class AlgorithmConfig(_Config):
         pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_env_runners", error=False)
+    @Deprecated(new="AlgorithmConfig.num_env_runners", error=True)
     def num_rollout_workers(self):
-        return self.num_env_runners
+        pass
 
     @num_rollout_workers.setter
     def num_rollout_workers(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_rollout_workers",
             new="AlgorithmConfig.num_env_runners",
-            error=False,
+            error=True,
         )
-        self.num_env_runners = value
 
     @property
-    @Deprecated(new="AlgorithmConfig.evaluation_num_workers", error=False)
+    @Deprecated(new="AlgorithmConfig.evaluation_num_workers", error=True)
     def evaluation_num_workers(self):
-        return self.evaluation_num_env_runners
+        pass
 
     @evaluation_num_workers.setter
     def evaluation_num_workers(self, value):
         deprecation_warning(
             old="AlgorithmConfig.evaluation_num_workers",
             new="AlgorithmConfig.evaluation_num_env_runners",
-            error=False,
+            error=True,
         )
-        self.evaluation_num_env_runners = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_envs_per_env_runner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_envs_per_env_runner", error=True)
     def num_envs_per_worker(self):
-        return self.num_envs_per_env_runner
+        pass
 
     @num_envs_per_worker.setter
     def num_envs_per_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_envs_per_worker",
             new="AlgorithmConfig.num_envs_per_env_runner",
-            error=False,
+            error=True,
         )
-        self.num_envs_per_env_runner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.ignore_env_runner_failures", error=False)
+    @Deprecated(new="AlgorithmConfig.ignore_env_runner_failures", error=True)
     def ignore_worker_failures(self):
-        return self.ignore_env_runner_failures
+        pass
 
     @ignore_worker_failures.setter
     def ignore_worker_failures(self, value):
         deprecation_warning(
             old="AlgorithmConfig.ignore_worker_failures",
             new="AlgorithmConfig.ignore_env_runner_failures",
-            error=False,
+            error=True,
         )
-        self.ignore_env_runner_failures = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.restart_failed_env_runners", error=False)
+    @Deprecated(new="AlgorithmConfig.restart_failed_env_runners", error=True)
     def recreate_failed_workers(self):
-        return self.restart_failed_env_runners
+        pass
 
     @recreate_failed_workers.setter
     def recreate_failed_workers(self, value):
         deprecation_warning(
             old="AlgorithmConfig.recreate_failed_workers",
             new="AlgorithmConfig.restart_failed_env_runners",
-            error=False,
+            error=True,
         )
-        self.restart_failed_env_runners = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.max_num_env_runner_restarts", error=False)
+    @Deprecated(new="AlgorithmConfig.max_num_env_runner_restarts", error=True)
     def max_num_worker_restarts(self):
-        return self.max_num_env_runner_restarts
+        pass
 
     @max_num_worker_restarts.setter
     def max_num_worker_restarts(self, value):
         deprecation_warning(
             old="AlgorithmConfig.max_num_worker_restarts",
             new="AlgorithmConfig.max_num_env_runner_restarts",
-            error=False,
+            error=True,
         )
-        self.max_num_env_runner_restarts = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.delay_between_env_runner_restarts_s", error=False)
+    @Deprecated(new="AlgorithmConfig.delay_between_env_runner_restarts_s", error=True)
     def delay_between_worker_restarts_s(self):
-        return self.delay_between_env_runner_restarts_s
+        pass
 
     @delay_between_worker_restarts_s.setter
     def delay_between_worker_restarts_s(self, value):
         deprecation_warning(
             old="AlgorithmConfig.delay_between_worker_restarts_s",
             new="AlgorithmConfig.delay_between_env_runner_restarts_s",
-            error=False,
+            error=True,
         )
-        self.delay_between_env_runner_restarts_s = value
+        pass
 
     @property
     @Deprecated(
-        new="AlgorithmConfig.num_consecutive_env_runner_failures_tolerance", error=False
+        new="AlgorithmConfig.num_consecutive_env_runner_failures_tolerance", error=True
     )
     def num_consecutive_worker_failures_tolerance(self):
-        return self.num_consecutive_env_runner_failures_tolerance
+        pass
 
     @num_consecutive_worker_failures_tolerance.setter
     def num_consecutive_worker_failures_tolerance(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_consecutive_worker_failures_tolerance",
             new="AlgorithmConfig.num_consecutive_env_runner_failures_tolerance",
-            error=False,
+            error=True,
         )
-        self.num_consecutive_env_runner_failures_tolerance = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.env_runner_health_probe_timeout_s", error=False)
+    @Deprecated(new="AlgorithmConfig.env_runner_health_probe_timeout_s", error=True)
     def worker_health_probe_timeout_s(self):
-        return self.env_runner_health_probe_timeout_s
+        pass
 
     @worker_health_probe_timeout_s.setter
     def worker_health_probe_timeout_s(self, value):
         deprecation_warning(
             old="AlgorithmConfig.worker_health_probe_timeout_s",
             new="AlgorithmConfig.env_runner_health_probe_timeout_s",
-            error=False,
+            error=True,
         )
-        self.env_runner_health_probe_timeout_s = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.env_runner_restore_timeout_s", error=False)
+    @Deprecated(new="AlgorithmConfig.env_runner_restore_timeout_s", error=True)
     def worker_restore_timeout_s(self):
-        return self.env_runner_restore_timeout_s
+        pass
 
     @worker_restore_timeout_s.setter
     def worker_restore_timeout_s(self, value):
         deprecation_warning(
             old="AlgorithmConfig.worker_restore_timeout_s",
             new="AlgorithmConfig.env_runner_restore_timeout_s",
-            error=False,
+            error=True,
         )
-        self.env_runner_restore_timeout_s = value
+        pass
 
     @property
     @Deprecated(
         new="AlgorithmConfig.validate_env_runners_after_construction",
-        error=False,
+        error=True,
     )
     def validate_workers_after_construction(self):
-        return self.validate_env_runners_after_construction
+        pass
 
     @validate_workers_after_construction.setter
     def validate_workers_after_construction(self, value):
         deprecation_warning(
             old="AlgorithmConfig.validate_workers_after_construction",
             new="AlgorithmConfig.validate_env_runners_after_construction",
-            error=False,
+            error=True,
         )
-        self.validate_env_runners_after_construction = value
+        pass
 
     # Cleanups from `resources()`.
     @property
-    @Deprecated(new="AlgorithmConfig.num_cpus_per_env_runner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_cpus_per_env_runner", error=True)
     def num_cpus_per_worker(self):
-        return self.num_cpus_per_env_runner
+        pass
 
     @num_cpus_per_worker.setter
     def num_cpus_per_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_cpus_per_worker",
             new="AlgorithmConfig.num_cpus_per_env_runner",
-            error=False,
+            error=True,
         )
-        self.num_cpus_per_env_runner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_gpus_per_env_runner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_gpus_per_env_runner", error=True)
     def num_gpus_per_worker(self):
-        return self.num_gpus_per_env_runner
+        pass
 
     @num_gpus_per_worker.setter
     def num_gpus_per_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_gpus_per_worker",
             new="AlgorithmConfig.num_gpus_per_env_runner",
-            error=False,
+            error=True,
         )
-        self.num_gpus_per_env_runner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.custom_resources_per_env_runner", error=False)
+    @Deprecated(new="AlgorithmConfig.custom_resources_per_env_runner", error=True)
     def custom_resources_per_worker(self):
-        return self.custom_resources_per_env_runner
+        pass
 
     @custom_resources_per_worker.setter
     def custom_resources_per_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.custom_resources_per_worker",
             new="AlgorithmConfig.custom_resources_per_env_runner",
-            error=False,
+            error=True,
         )
-        self.custom_resources_per_env_runner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_learners", error=False)
+    @Deprecated(new="AlgorithmConfig.num_learners", error=True)
     def num_learner_workers(self):
-        return self.num_learners
+        pass
 
     @num_learner_workers.setter
     def num_learner_workers(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_learner_workers",
             new="AlgorithmConfig.num_learners",
-            error=False,
+            error=True,
         )
-        self.num_learners = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_cpus_per_learner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_cpus_per_learner", error=True)
     def num_cpus_per_learner_worker(self):
-        return self.num_cpus_per_learner
+        pass
 
     @num_cpus_per_learner_worker.setter
     def num_cpus_per_learner_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_cpus_per_learner_worker",
             new="AlgorithmConfig.num_cpus_per_learner",
-            error=False,
+            error=True,
         )
-        self.num_cpus_per_learner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_gpus_per_learner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_gpus_per_learner", error=True)
     def num_gpus_per_learner_worker(self):
-        return self.num_gpus_per_learner
+        pass
 
     @num_gpus_per_learner_worker.setter
     def num_gpus_per_learner_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_gpus_per_learner_worker",
             new="AlgorithmConfig.num_gpus_per_learner",
-            error=False,
+            error=True,
         )
-        self.num_gpus_per_learner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_cpus_for_local_worker", error=False)
+    @Deprecated(new="AlgorithmConfig.num_cpus_for_local_worker", error=True)
     def num_cpus_for_local_worker(self):
-        return self.num_cpus_for_main_process
+        pass
 
     @num_cpus_for_local_worker.setter
     def num_cpus_for_local_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_cpus_for_local_worker",
             new="AlgorithmConfig.num_cpus_for_main_process",
-            error=False,
+            error=True,
         )
-        self.num_cpus_for_main_process = value
+        pass
 
 
 class TorchCompileWhatToCompile(str, Enum):

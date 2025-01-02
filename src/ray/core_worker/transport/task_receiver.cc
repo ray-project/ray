@@ -27,8 +27,8 @@ namespace core {
 
 void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
                         rpc::Address rpc_address,
-                        std::shared_ptr<DependencyWaiter> dependency_waiter) {
-  waiter_ = std::move(dependency_waiter);
+                        DependencyWaiter *dependency_waiter) {
+  waiter_ = dependency_waiter;
   rpc_address_ = rpc_address;
   client_pool_ = client_pool;
 }

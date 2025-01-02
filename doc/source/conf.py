@@ -118,7 +118,11 @@ myst_heading_anchors = 3
 # arising from type annotations. See https://github.com/ray-project/ray/pull/46103
 # for additional context.
 nitpicky = True
-nitpick_ignore_regex = [("py:class", ".*")]
+nitpick_ignore_regex = [
+    ("py:class", ".*"),
+    # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
+    ("py:obj", "ray\.data\.datasource\.datasink\.WriteReturnType"),
+]
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to

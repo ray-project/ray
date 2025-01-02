@@ -120,6 +120,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       uint64_t server_unavailable_timeout_seconds,
       std::function<void()> server_unavailable_timeout_callback,
       std::string server_name) {
+    // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
+    // invoke private constructors.
     return std::shared_ptr<RetryableGrpcClient>(
         new RetryableGrpcClient(std::move(channel),
                                 io_context,
@@ -267,6 +269,8 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
   };
 
   return std::shared_ptr<RetryableGrpcClient::RetryableGrpcRequest>(
+      // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
+      // invoke private constructors.
       new RetryableGrpcClient::RetryableGrpcRequest(
           std::move(executor), std::move(failure_callback), request_bytes, timeout_ms));
 }

@@ -39,11 +39,11 @@ class AbstractMap(AbstractOneToOne):
                 of `input_op` will be the inputs to this operator.
             min_rows_per_bundled_input: The target number of rows to pass to
                 ``MapOperator._add_bundled_input()``.
-            ray_remote_args: Args to provide to ray.remote.
+            ray_remote_args: Args to provide to :func:`ray.remote`.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
-                prior to initializing the worker. Args returned from this dict will
+                prior to initializing the worker. Args returned from this dict
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
         """
@@ -95,7 +95,7 @@ class AbstractUDFMap(AbstractMap):
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Args to provide to ray.remote.
+            ray_remote_args: Args to provide to :func:`ray.remote`.
         """
         name = self._get_operator_name(name, fn)
         super().__init__(
@@ -250,20 +250,26 @@ class Project(AbstractMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        cols: List[str],
+        cols: Optional[List[str]] = None,
+        cols_rename: Optional[Dict[str, str]] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__("Project", input_op=input_op, ray_remote_args=ray_remote_args)
         self._compute = compute
         self._batch_size = DEFAULT_BATCH_SIZE
-        self._cols = cols
+        self._cols = cols or []
+        self._cols_rename = cols_rename or {}
         self._batch_format = "pyarrow"
         self._zero_copy_batch = True
 
     @property
-    def cols(self) -> List[str]:
+    def cols(self) -> Optional[List[str]]:
         return self._cols
+
+    @property
+    def cols_rename(self) -> Optional[Dict[str, str]]:
+        return self._cols_rename
 
     @property
     def can_modify_num_rows(self) -> bool:

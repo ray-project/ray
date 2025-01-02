@@ -232,7 +232,7 @@ class SingleAgentEpisode:
             truncated: A boolean indicating, if the episode has been truncated.
             t_started: Optional. The starting timestep of the episode. The default
                 is zero. If data is provided, the starting point is from the last
-                observation onwards (i.e. `t_started = len(observations) - 1). If
+                observation onwards (i.e. `t_started = len(observations) - 1`). If
                 this parameter is provided the episode starts at the provided value.
             len_lookback_buffer: The size of the (optional) lookback buffers to keep in
                 front of this Episode for each type of data (observations, actions,
