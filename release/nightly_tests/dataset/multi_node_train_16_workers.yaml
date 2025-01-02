@@ -5,11 +5,11 @@ max_workers: 1
 
 head_node_type:
     name: head_node
-    instance_type: g4dn.4xlarge
+    instance_type: m5.4xlarge
 
 worker_node_types:
     - name: worker_node
       instance_type: g4dn.4xlarge
-      max_workers: 15
-      min_workers: 15
+      max_workers: 16
+      min_workers: 16
       use_spot: false
