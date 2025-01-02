@@ -649,23 +649,11 @@ void GcsActorManager::HandleGetNamedActorInfo(
 
   Status status = Status::OK();
   auto iter = registered_actors_.find(actor_id);
-  if (actor_id.IsNil() || iter == registered_actors_.end() ||
-      iter->second->GetState() == rpc::ActorTableData::DEAD) {
+  if (actor_id.IsNil() || iter == registered_actors_.end()) {
     // The named actor was not found or the actor is already removed.
     std::stringstream stream;
-    if (actor_id.IsNil() || iter == registered_actors_.end()) {
-      stream << "Actor with name '" << name << "' was not found.";
-      RAY_LOG(DEBUG) << stream.str();
-    } else {
-      RAY_CHECK(iter->second->GetState() == rpc::ActorTableData::DEAD);
-      stream << "Actor with name '" << name << "' was found, but it is DEAD.";
-      RAY_LOG(DEBUG) << stream.str();
-      // Update `registered_actors_` and `named_actors_` immediately to avoid race
-      // conditions. Without this, GCS might tell the core worker that the actor is not
-      // found when the core worker tries to `get_actor`, but still think the actor exists
-      // when the core worker tries to create a new actor with the same name.
-      DestroyActor(actor_id, GenActorRefDeletedCause(GetActor(actor_id)));
-    }
+    stream << "Actor with name '" << name << "' was not found.";
+    RAY_LOG(DEBUG) << stream.str();
     status = Status::NotFound(stream.str());
   } else {
     *reply->mutable_actor_table_data() = iter->second->GetActorTableData();
