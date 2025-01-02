@@ -277,8 +277,8 @@ controlled fashion through a custom callback could be a good compromise.
    of all available callbacks.
 
 
-Example 2: `on_episode_end`
----------------------------
+Example 2: `on_episode_step` and `on_episode_end`
+-------------------------------------------------
 
 The following example demonstrates how to implement a custom :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` class
 computing the average "first-joint angle" of the
@@ -299,7 +299,7 @@ The example utilizes RLlib's :py:class:`~ray.rllib.utils.metrics.metrics_logger.
 API to log the custom computations happening in the injected code your Algorithm's main results system.
 
 .. todo: uncomment this once metrics-logger.rst page is online.
-   Read :ref:`more about the MetricsLogger API here <>`__ or also
+   Read :ref:`more about the MetricsLogger API here <rllib-metric-logger-doc>`__ or also ...
 
 Also take a look at this more complex example on `how to generate and log a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
 
