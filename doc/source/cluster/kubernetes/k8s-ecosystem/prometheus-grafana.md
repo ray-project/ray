@@ -62,8 +62,8 @@ kubectl apply -f ray-cluster.embed-grafana.yaml
 kubectl get pod -l ray.io/node-type=head
 
 # Example output:
-# NAME                            READY   STATUS    RESTARTS   AGE
-# raycluster-kuberay-head-btwc2   1/1     Running   0          63s
+# NAME                                  READY   STATUS    RESTARTS   AGE
+# raycluster-embed-grafana-head-98fqt   1/1     Running   0          11m
 
 # Wait until all Ray Pods are running and forward the port of the Prometheus metrics endpoint in a new terminal.
 kubectl port-forward ${RAYCLUSTER_HEAD_POD} 8080:8080
@@ -72,13 +72,15 @@ curl localhost:8080
 # Example output (Prometheus metrics format):
 # # HELP ray_spill_manager_request_total Number of {spill, restore} requests.
 # # TYPE ray_spill_manager_request_total gauge
-# ray_spill_manager_request_total{Component="raylet",NodeAddress="10.244.0.13",Type="Restored",Version="2.0.0"} 0.0
+# ray_spill_manager_request_total{Component="raylet", NodeAddress="10.244.0.13", SessionName="session_2025-01-02_07-58-21_419367_11", Type="FailedDeletion", Version="2.9.0", container="ray-head", endpoint="metrics", instance="10.244.0.13:8080", job="prometheus-system/ray-head-monitor", namespace="default", pod="raycluster-embed-grafana-head-98fqt", ray_io_cluster="raycluster-embed-grafana"} 0
 
 # Ensure that the port (8080) for the metrics endpoint is also defined in the head's Kubernetes service.
 kubectl get service
 
-# NAME                          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                         AGE
-# raycluster-kuberay-head-svc   ClusterIP   10.96.201.142   <none>        6379/TCP,8265/TCP,8080/TCP,8000/TCP,10001/TCP   106m
+# NAME                                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                                    AGE
+# kuberay-operator                    ClusterIP   10.96.137.190   <none>        8080/TCP                                                   13m
+# kubernetes                          ClusterIP   10.96.0.1       <none>        443/TCP                                                    14m
+# raycluster-embed-grafana-head-svc   ClusterIP   None            <none>        44217/TCP,10001/TCP,44227/TCP,8265/TCP,6379/TCP,8080/TCP   13m
 ```
 
 * KubeRay exposes a Prometheus metrics endpoint in port **8080** via a built-in exporter by default. Hence, we do not need to install any external exporter.
@@ -175,7 +177,13 @@ spec:
   # raycluster-embed-grafana-head-khfs4   1/1     Running   0          4m38s
   ```
 
-* `relabelings`: This configuration maps the label `__meta_kubernetes_pod_label_ray_io_cluster` to a new label `ray_io_cluster` in the scraped metrics. This ensures that every metric scraped by this PodMonitor includes the name of the RayCluster custom resource to which the Pod belongs. The `ray_io_cluster` label will contain the name of the RayCluster associated with the head node Pod. This relabeling is particularly important when deploying multiple RayClusters, as it allows you to distinguish between metrics from different clusters.
+* `relabelings`: This configuration renames the label `__meta_kubernetes_pod_label_ray_io_cluster` to `ray_io_cluster` in the scraped metrics. It ensures that each metric includes the name of the RayCluster to which the Pod belongs. This is especially useful for distinguishing metrics when deploying multiple RayClusters. For example, a metric with the `ray_io_cluster` label might look like this:
+
+  ```
+  ray_node_cpu_count{SessionName="session_2025-01-02_07-58-21_419367_11", container="ray-head", endpoint="metrics", instance="10.244.0.13:8080", ip="10.244.0.13", job="raycluster-embed-grafana-head-svc", namespace="default", pod="raycluster-embed-grafana-head-98fqt", ray_io_cluster="raycluster-embed-grafana", service="raycluster-embed-grafana-head-svc"}
+  ```
+
+  In this example, `raycluster-embed-grafana` is the name of the RayCluster resource.
 
 ## Step 6: Collect Worker Node metrics with PodMonitors
 
