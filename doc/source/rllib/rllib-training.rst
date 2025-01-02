@@ -269,7 +269,7 @@ Specifying Framework Options
 Specifying Rollout Workers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.rollouts
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners
     :noindex:
 
 
@@ -412,16 +412,16 @@ inference. Make sure to set ``num_gpus: 1`` if you want to use a GPU. If the lea
 4. Finally, if both model and environment are compute intensive, then enable `remote worker envs <rllib-env.html#vectorized>`__ with `async batching <rllib-env.html#vectorized>`__ by setting ``remote_worker_envs: True`` and optionally ``remote_env_batch_wait_ms``. This batches inference on GPUs in the rollout workers while letting envs run asynchronously in separate actors, similar to the `SEED <https://ai.googleblog.com/2020/03/massively-scaling-reinforcement.html>`__ architecture. The number of workers and number of envs per worker should be tuned to maximize GPU utilization.
 
 In case you are using lots of workers (``num_env_runners >> 10``) and you observe worker failures for whatever reasons, which normally interrupt your RLlib training runs, consider using
-the config settings ``ignore_env_runner_failures=True``, ``recreate_failed_env_runners=True``, or ``restart_failed_sub_environments=True``:
+the config settings ``ignore_env_runner_failures=True``, ``restart_failed_env_runners=True``, or ``restart_failed_sub_environments=True``:
 
-``ignore_env_runner_failures``: When set to True, your Algorithm will not crash due to a single worker error but continue for as long as there is at least one functional worker remaining.
-``recreate_failed_env_runners``: When set to True, your Algorithm will attempt to replace/recreate any failed worker(s) with newly created one(s). This way, your number of workers will never decrease, even if some of them fail from time to time.
-``restart_failed_sub_environments``: When set to True and there is a failure in one of the vectorized sub-environments in one of your workers, the worker will try to recreate only the failed sub-environment and re-integrate the newly created one into your vectorized env stack on that worker.
+``restart_failed_env_runners``: When set to True (default), your Algorithm will attempt to restart any failed EnvRunner and replace it with a newly created one. This way, your number of workers will never decrease, even if some of them fail from time to time.
+``ignore_env_runner_failures``: When set to True, your Algorithm will not crash due to an EnvRunner error, but continue for as long as there is at least one functional worker remaining. This setting is ignored when ``restart_failed_env_runners=True``.
+``restart_failed_sub_environments``: When set to True and there is a failure in one of the vectorized sub-environments in one of your EnvRunners, RLlib tries to recreate only the failed sub-environment and re-integrate the newly created one into your vectorized env stack on that EnvRunner.
 
-Note that only one of ``ignore_env_runner_failures`` or ``recreate_failed_env_runners`` may be set to True (they are mutually exclusive settings). However,
+Note that only one of ``ignore_env_runner_failures`` or ``restart_failed_env_runners`` should be set to True (they are mutually exclusive settings). However,
 you can combine each of these with the ``restart_failed_sub_environments=True`` setting.
-Using these options will make your training runs much more stable and more robust against occasional OOM or other similar "once in a while" errors on your workers
-themselves or inside your environments.
+Using these options will make your training runs much more stable and more robust against occasional OOM or other similar "once in a while" errors on the EnvRunners
+themselves or inside your custom environments.
 
 
 Debugging RLlib Experiments

@@ -318,7 +318,7 @@ class DashboardHead:
             f"{dashboard_http_host}:{http_port}".encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        ),
+        )
         self.gcs_client.internal_kv_put(
             dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
             f"{self.ip}:{self.grpc_port}".encode(),

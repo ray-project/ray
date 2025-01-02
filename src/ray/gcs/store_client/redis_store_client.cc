@@ -31,7 +31,7 @@ namespace gcs {
 
 namespace {
 
-const std::string_view kClusterSeparator = "@";
+constexpr std::string_view kClusterSeparator = "@";
 
 // "[, ], -, ?, *, ^, \" are special chars in Redis pattern matching.
 // escape them with / according to the doc:
@@ -116,12 +116,12 @@ RedisStoreClient::RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name,
                                   const std::string &key,
-                                  const std::string &data,
+                                  std::string data,
                                   bool overwrite,
                                   std::function<void(bool)> callback) {
   RedisCommand command{/*command=*/overwrite ? "HSET" : "HSETNX",
                        RedisKey{external_storage_namespace_, table_name},
-                       /*args=*/{key, data}};
+                       /*args=*/{key, std::move(data)}};
   RedisCallback write_callback = nullptr;
   if (callback) {
     write_callback =
@@ -136,7 +136,7 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name,
 
 Status RedisStoreClient::AsyncGet(const std::string &table_name,
                                   const std::string &key,
-                                  const OptionalItemCallback<std::string> &callback) {
+                                  OptionalItemCallback<std::string> callback) {
   RAY_CHECK(callback != nullptr);
 
   auto redis_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
@@ -144,9 +144,11 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
     if (!reply->IsNil()) {
       result = reply->ReadAsString();
     }
-    RAY_CHECK(!reply->IsError())
-        << "Failed to get from Redis with status: " << reply->ReadAsStatus();
-    callback(Status::OK(), std::move(result));
+    Status status = Status::OK();
+    if (reply->IsError()) {
+      status = reply->ReadAsStatus();
+    }
+    callback(status, std::move(result));
   };
 
   RedisCommand command{/*command=*/"HGET",
@@ -156,14 +158,13 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
   return Status::OK();
 }
 
-Status RedisStoreClient::AsyncGetAll(
-    const std::string &table_name,
-    const MapCallback<std::string, std::string> &callback) {
+Status RedisStoreClient::AsyncGetAll(const std::string &table_name,
+                                     MapCallback<std::string, std::string> callback) {
   RAY_CHECK(callback);
   RedisScanner::ScanKeysAndValues(redis_client_,
                                   RedisKey{external_storage_namespace_, table_name},
                                   RedisMatchPattern::Any(),
-                                  callback);
+                                  std::move(callback));
   return Status::OK();
 }
 
@@ -189,10 +190,9 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
   return DeleteByKeys(table_name, keys, callback);
 }
 
-Status RedisStoreClient::AsyncMultiGet(
-    const std::string &table_name,
-    const std::vector<std::string> &keys,
-    const MapCallback<std::string, std::string> &callback) {
+Status RedisStoreClient::AsyncMultiGet(const std::string &table_name,
+                                       const std::vector<std::string> &keys,
+                                       MapCallback<std::string, std::string> callback) {
   RAY_CHECK(callback);
   if (keys.empty()) {
     callback({});
@@ -483,10 +483,11 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
 // Returns True if at least 1 key is deleted, False otherwise.
 bool RedisDelKeyPrefixSync(const std::string &host,
                            int32_t port,
+                           const std::string &username,
                            const std::string &password,
                            bool use_ssl,
                            const std::string &external_storage_namespace) {
-  RedisClientOptions options(host, port, password, use_ssl);
+  RedisClientOptions options(host, port, username, password, use_ssl);
   auto cli = std::make_unique<RedisClient>(options);
 
   instrumented_io_context io_service;
@@ -502,7 +503,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   });
 
   auto status = cli->Connect(io_service);
-  RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
+  RAY_CHECK_OK(status) << "Failed to connect to redis";
 
   auto context = cli->GetPrimaryContext();
   // Delete all such keys by using empty table name.

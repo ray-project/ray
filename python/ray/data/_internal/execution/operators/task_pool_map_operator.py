@@ -20,6 +20,7 @@ class TaskPoolMapOperator(MapOperator):
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         target_max_block_size: Optional[int],
         name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
@@ -49,11 +50,12 @@ class TaskPoolMapOperator(MapOperator):
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Customize the ray remote args for this op's tasks.
+            ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
         """
         super().__init__(
             map_transformer,
             input_op,
+            data_context,
             name,
             target_max_block_size,
             min_rows_per_bundle,
@@ -83,7 +85,7 @@ class TaskPoolMapOperator(MapOperator):
         dynamic_ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
 
-        data_context = DataContext.get_current()
+        data_context = self.data_context
         if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
             # The `_generator_backpressure_num_objects` parameter should be
             # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
@@ -97,6 +99,7 @@ class TaskPoolMapOperator(MapOperator):
             data_context,
             ctx,
             *bundle.block_refs,
+            **self.get_map_task_kwargs(),
         )
         self._submit_data_task(gen, bundle)
 

@@ -11,6 +11,7 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray.data import Schema
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -64,7 +65,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     # Two files, override_num_blocks=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -308,7 +309,7 @@ def test_json_read_meta_provider(
     # Expect to lazily compute all metadata correctly.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     with pytest.raises(NotImplementedError):
         ray.data.read_json(
@@ -354,7 +355,7 @@ def test_json_read_with_read_options(
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
 
 @pytest.mark.parametrize(
@@ -397,7 +398,7 @@ def test_json_read_with_parse_options(
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("two", pa.string())]))
 
 
 @pytest.mark.parametrize(
@@ -602,7 +603,7 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     # Single large file, default block_size
     num_chars = 2500000
@@ -621,7 +622,9 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
     # Test metadata ops.
     assert ds.count() == num_rows
     assert ds.input_files() == [_unwrap_protocol(path2)]
-    assert "{one: string, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(
+        pa.schema([("one", pa.string()), ("two", pa.string())])
+    )
 
     # Single file, negative and zero block_size (expect failure)
     df3 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})

@@ -692,3 +692,8 @@ def compose_state_message(
         else:
             state_message = death_reason_message
     return state_message
+
+
+def close_logger_file_descriptor(logger_instance):
+    for handler in logger_instance.handlers:
+        handler.close()

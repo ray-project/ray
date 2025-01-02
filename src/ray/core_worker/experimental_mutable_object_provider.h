@@ -29,12 +29,10 @@ namespace experimental {
 // mutable objects and pushes them to remote nodes as needed.
 class MutableObjectProvider {
  public:
-  typedef std::function<std::shared_ptr<MutableObjectReaderInterface>(
-      const NodeID &node_id, rpc::ClientCallManager &client_call_manager)>
-      RayletFactory;
+  using RayletFactory = std::function<std::shared_ptr<MutableObjectReaderInterface>(
+      const NodeID &, rpc::ClientCallManager &)>;
 
-  MutableObjectProvider(std::shared_ptr<plasma::PlasmaClientInterface> plasma,
-                        RayletFactory factory);
+  MutableObjectProvider(plasma::PlasmaClientInterface &plasma, RayletFactory factory);
 
   ~MutableObjectProvider();
 
@@ -145,7 +143,7 @@ class MutableObjectProvider {
 
  private:
   struct LocalReaderInfo {
-    int64_t num_readers;
+    int64_t num_readers{};
     ObjectID local_object_id;
   };
 
@@ -158,14 +156,14 @@ class MutableObjectProvider {
   void PollWriterClosure(
       instrumented_io_context &io_context,
       const ObjectID &writer_object_id,
-      std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
-          remote_readers);
+      const std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
+          &remote_readers);
 
   // Kicks off `io_context`.
   void RunIOContext(instrumented_io_context &io_context);
 
   // The plasma store.
-  std::shared_ptr<plasma::PlasmaClientInterface> plasma_;
+  plasma::PlasmaClientInterface &plasma_;
 
   // Object manager for the mutable objects.
   std::shared_ptr<ray::experimental::MutableObjectManager> object_manager_;

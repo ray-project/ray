@@ -97,12 +97,10 @@ def test_readers_on_different_nodes(ray_start_cluster):
         z = c.inc.bind(inp)
         dag = MultiOutputNode([x, y, z])
 
-    adag = dag.experimental_compile()
+    cdag = dag.experimental_compile()
 
     for i in range(1, 10):
-        assert ray.get(adag.execute(1)) == [i, i, i]
-
-    adag.teardown()
+        assert ray.get(cdag.execute(1)) == [i, i, i]
 
 
 def test_bunch_readers_on_different_nodes(ray_start_cluster):
@@ -136,14 +134,12 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
             outputs.append(actor.inc.bind(inp))
         dag = MultiOutputNode(outputs)
 
-    adag = dag.experimental_compile()
+    cdag = dag.experimental_compile()
 
     for i in range(1, 10):
-        assert ray.get(adag.execute(1)) == [
+        assert ray.get(cdag.execute(1)) == [
             i for _ in range(ACTORS_PER_NODE * (NUM_REMOTE_NODES + 1))
         ]
-
-    adag.teardown()
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -189,8 +185,6 @@ def test_pp(ray_start_cluster, single_fetch):
 
     # So that raylets' error messages are printed to the driver
     time.sleep(2)
-
-    compiled_dag.teardown()
 
 
 def test_payload_large(ray_start_cluster, monkeypatch):
@@ -241,10 +235,6 @@ def test_payload_large(ray_start_cluster, monkeypatch):
         result = ray.get(ref)
         assert result == val
 
-    # Note: must teardown before starting a new Ray session, otherwise you'll get
-    # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("num_actors", [1, 4])
 @pytest.mark.parametrize("num_nodes", [1, 4])
@@ -292,10 +282,11 @@ def test_multi_node_multi_reader_large_payload(
 
     for _ in range(3):
         ref = compiled_dag.execute(val)
-        result = ray.get(ref)
+        # In the CI environment, the object store may use /tmp instead of /dev/shm
+        # due to limited size of /tmp/shm and therefore has degraded performance.
+        # Therefore, we use a longer timeout to avoid flakiness.
+        result = ray.get(ref, timeout=50)
         assert result == [val for _ in range(ACTORS_PER_NODE * (NUM_REMOTE_NODES + 1))]
-
-    compiled_dag.teardown()
 
 
 def test_multi_node_dag_from_actor(ray_start_cluster):
@@ -331,12 +322,12 @@ def test_multi_node_dag_from_actor(ray_start_cluster):
                     x,
                 )
 
-            self._adag = dag.experimental_compile(
-                _execution_timeout=120,
+            self._cdag = dag.experimental_compile(
+                _submit_timeout=120,
             )
 
         def call(self, prompt: str) -> bytes:
-            return ray.get(self._adag.execute(prompt))
+            return ray.get(self._cdag.execute(prompt))
 
     parallel = DriverActor.remote()
     assert ray.get(parallel.call.remote("abc")) == "abc"

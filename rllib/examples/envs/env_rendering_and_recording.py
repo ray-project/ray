@@ -61,7 +61,7 @@ import gymnasium as gym
 import numpy as np
 from typing import Optional, Sequence
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.images import resize
@@ -73,10 +73,13 @@ from ray.tune.registry import get_trainable_cls, register_env
 from ray import tune
 
 parser = add_rllib_example_script_args(default_reward=20.0)
-parser.set_defaults(env="ALE/Pong-v5")
+parser.set_defaults(
+    enable_new_api_stack=True,
+    env="ale_py:ALE/Pong-v5",
+)
 
 
-class EnvRenderCallback(DefaultCallbacks):
+class EnvRenderCallback(RLlibCallback):
     """A custom callback to render the environment.
 
     This can be used to create videos of the episodes for some or all EnvRunners
@@ -88,9 +91,17 @@ class EnvRenderCallback(DefaultCallbacks):
     """
 
     def __init__(self, env_runner_indices: Optional[Sequence[int]] = None):
+        """Initializes an EnvRenderCallback instance.
+
+        Args:
+            env_runner_indices: The (optional) EnvRunner indices, for this callback
+                should be active. If None, activates the rendering for all EnvRunners.
+                If a Sequence type, only renders, if the EnvRunner index is found in
+                `env_runner_indices`.
+        """
         super().__init__()
         # Only render and record on certain EnvRunner indices?
-        self.env_runner_indices = env_runner_indices
+        self._env_runner_indices = env_runner_indices
         # Per sample round (on this EnvRunner), we want to only log the best- and
         # worst performing episode's videos in the custom metrics. Otherwise, too much
         # data would be sent to WandB.
@@ -108,22 +119,23 @@ class EnvRenderCallback(DefaultCallbacks):
         rl_module,
         **kwargs,
     ) -> None:
-        """On each env.step(), we add the render image to our Episode instance.
+        """Adds current render image to episode's temporary data.
 
         Note that this would work with MultiAgentEpisodes as well.
         """
+        # Skip, if this EnvRunner's index is not in `self._env_runner_indices`.
         if (
-            self.env_runner_indices is not None
-            and env_runner.worker_index not in self.env_runner_indices
+            self._env_runner_indices is not None
+            and env_runner.worker_index not in self._env_runner_indices
         ):
             return
 
         # If we have a vector env, only render the sub-env at index 0.
         if isinstance(env.unwrapped, gym.vector.VectorEnv):
-            image = env.envs[0].render()
+            image = env.unwrapped.envs[0].render()
         # Render the gym.Env.
         else:
-            image = env.render()
+            image = env.unwrapped.render()
 
         # Original render images for CartPole are 400x600 (hxw). We'll downsize here to
         # a very small dimension (to save space and bandwidth).
@@ -155,6 +167,12 @@ class EnvRenderCallback(DefaultCallbacks):
         at the very env of sampling (when we know, which episode was the best and
         worst). See `on_sample_end` for the implemented logging logic.
         """
+        if (
+            self._env_runner_indices is not None
+            and env_runner.worker_index not in self._env_runner_indices
+        ):
+            return
+
         # Get the episode's return.
         episode_return = episode.get_return()
 
@@ -224,14 +242,10 @@ class EnvRenderCallback(DefaultCallbacks):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
-
     # Register our environment with tune.
     def _env_creator(cfg):
         cfg.update({"render_mode": "rgb_array"})
-        if args.env.startswith("ALE/"):
+        if args.env.startswith("ale_py:ALE/"):
             cfg.update(
                 {
                     # Make analogous to old v4 + NoFrameskip.
@@ -267,7 +281,7 @@ if __name__ == "__main__":
             entropy_coeff=0.01,
             num_epochs=10,
             # Linearly adjust learning rate based on number of GPUs.
-            lr=0.00015 * (args.num_gpus or 1),
+            lr=0.00015 * (args.num_learners or 1),
             grad_clip=100.0,
             grad_clip_by="global_norm",
         )

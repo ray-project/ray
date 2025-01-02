@@ -65,7 +65,7 @@ NODE_QUERY_FAILURE_WARNING = (
 def _convert_filters_type(
     filter: List[Tuple[str, PredicateType, SupportedFilterType]],
     schema: StateSchema,
-) -> List[Tuple[str, SupportedFilterType]]:
+) -> List[Tuple[str, PredicateType, SupportedFilterType]]:
     """Convert the given filter's type to SupportedFilterType.
 
     This method is necessary because click can only accept a single type
@@ -155,7 +155,7 @@ class StateAPIManager:
     def _filter(
         self,
         data: List[dict],
-        filters: List[Tuple[str, SupportedFilterType]],
+        filters: List[Tuple[str, PredicateType, SupportedFilterType]],
         state_dataclass: StateSchema,
         detail: bool,
     ) -> List[dict]:
@@ -181,6 +181,8 @@ class StateAPIManager:
                 if filter_column not in filterable_columns:
                     raise ValueError(
                         f"The given filter column {filter_column} is not supported. "
+                        "Enter filters with –-filter key=value "
+                        "or –-filter key!=value "
                         f"Supported filter columns: {filterable_columns}"
                     )
 
@@ -467,9 +469,11 @@ class StateAPIManager:
 
             # Num pre-truncation is the number of tasks returned from
             # source + num filtered on source
-            num_after_truncation = len(result) + reply.num_filtered_on_gcs
-            num_total = reply.num_total_stored + reply.num_status_task_events_dropped
+            num_after_truncation = len(result)
+            num_total = len(result) + reply.num_status_task_events_dropped
 
+            # Only certain filters are done on GCS, so here the filter function is still
+            # needed to apply all the filters
             result = self._filter(result, option.filters, TaskState, option.detail)
             num_filtered = len(result)
 
@@ -482,6 +486,16 @@ class StateAPIManager:
                 total=num_total,
                 num_after_truncation=num_after_truncation,
                 num_filtered=num_filtered,
+            )
+
+        # In the error case
+        if reply.status.code != 0:
+            return ListApiResponse(
+                result=[],
+                total=0,
+                num_after_truncation=0,
+                num_filtered=0,
+                warnings=[reply.status.message],
             )
 
         return await get_or_create_event_loop().run_in_executor(

@@ -15,6 +15,7 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 
 #include "gtest/gtest.h"
+#include "mock/ray/core_worker/memory_store.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
@@ -50,7 +51,8 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             resources,
                             serialized_runtime_env,
                             depth,
-                            TaskID::Nil());
+                            TaskID::Nil(),
+                            "");
   return builder.Build();
 }
 TaskSpecification BuildEmptyTaskSpec() {
@@ -113,6 +115,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
                                    const NodeID &node_id,
                                    const WorkerID &worker_id) override {}
 
+  bool IsTaskPending(const TaskID &task_id) const override { return true; }
+
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
   int num_inlined_dependencies = 0;
@@ -123,7 +127,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
 class MockActorCreator : public ActorCreatorInterface {
  public:
-  MockActorCreator() {}
+  MockActorCreator() = default;
 
   Status RegisterActor(const TaskSpecification &task_spec) const override {
     return Status::OK();
@@ -168,7 +172,7 @@ class MockActorCreator : public ActorCreatorInterface {
 };
 
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -181,7 +185,7 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
 
 TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   // Actor dependency resolved first.
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -195,8 +199,12 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
       actor_handle_id.Binary());
 
   int num_resolved = 0;
+  std::promise<bool> dependencies_resolved;
   actor_creator.actor_pending = true;
-  resolver.ResolveDependencies(task, [&](const Status &) { num_resolved++; });
+  resolver.ResolveDependencies(task, [&](const Status &) {
+    num_resolved++;
+    dependencies_resolved.set_value(true);
+  });
   ASSERT_EQ(num_resolved, 0);
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
 
@@ -210,6 +218,8 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
   ASSERT_TRUE(store->Put(data, obj));
+  // Wait for the async callback to call
+  ASSERT_TRUE(dependencies_resolved.get_future().get());
   ASSERT_EQ(num_resolved, 1);
 
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
@@ -217,7 +227,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
 
 TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   // Object dependency resolved first.
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -231,8 +241,12 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
       actor_handle_id.Binary());
 
   int num_resolved = 0;
+  std::promise<bool> dependencies_resolved;
   actor_creator.actor_pending = true;
-  resolver.ResolveDependencies(task, [&](const Status &) { num_resolved++; });
+  resolver.ResolveDependencies(task, [&](const Status &) {
+    num_resolved++;
+    dependencies_resolved.set_value(true);
+  });
   ASSERT_EQ(num_resolved, 0);
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
 
@@ -246,12 +260,15 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   for (const auto &cb : actor_creator.callbacks) {
     cb(Status());
   }
+  // Wait for the async callback to call
+  ASSERT_TRUE(dependencies_resolved.get_future().get());
+
   ASSERT_EQ(num_resolved, 1);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -264,7 +281,12 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
+  std::promise<bool> dependencies_resolved;
+  resolver.ResolveDependencies(task, [&](Status) {
+    ok = true;
+    dependencies_resolved.set_value(true);
+  });
+  ASSERT_TRUE(dependencies_resolved.get_future().get());
   ASSERT_TRUE(ok);
   ASSERT_TRUE(task.ArgByRef(0));
   // Checks that the object id is still a direct call id.
@@ -273,7 +295,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -287,7 +309,12 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
+  std::promise<bool> dependencies_resolved;
+  resolver.ResolveDependencies(task, [&](Status) {
+    ok = true;
+    dependencies_resolved.set_value(true);
+  });
+  ASSERT_TRUE(dependencies_resolved.get_future().get());
   // Tests that the task proto was rewritten to have inline argument values.
   ASSERT_TRUE(ok);
   ASSERT_FALSE(task.ArgByRef(0));
@@ -299,7 +326,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -310,11 +337,17 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
+  std::promise<bool> dependencies_resolved;
+  resolver.ResolveDependencies(task, [&](Status) {
+    ok = true;
+    dependencies_resolved.set_value(true);
+  });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
   ASSERT_TRUE(store->Put(*data, obj1));
   ASSERT_TRUE(store->Put(*data, obj2));
+
+  ASSERT_TRUE(dependencies_resolved.get_future().get());
   // Tests that the task proto was rewritten to have inline argument values after
   // resolution completes.
   ASSERT_TRUE(ok);
@@ -328,7 +361,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -340,11 +373,17 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj2.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
+  std::promise<bool> dependencies_resolved;
+  resolver.ResolveDependencies(task, [&](Status) {
+    ok = true;
+    dependencies_resolved.set_value(true);
+  });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
   ASSERT_TRUE(store->Put(*data, obj1));
   ASSERT_TRUE(store->Put(*data, obj2));
+
+  ASSERT_TRUE(dependencies_resolved.get_future().get());
   // Tests that the task proto was rewritten to have inline argument values after
   // resolution completes.
   ASSERT_TRUE(ok);
@@ -358,7 +397,8 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
 }
 
 TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  InstrumentedIOContextWithThread io_context("TestCancelDependencyResolution");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -383,10 +423,14 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
   // Check for leaks.
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
+
+  io_context.Stop();
 }
 
+// Even if dependencies are already local, the ResolveDependencies callbacks are still
+// called asynchronously in the event loop as a different task.
 TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -398,7 +442,12 @@ TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok](Status) { ok = true; });
+  std::promise<bool> dependencies_resolved;
+  resolver.ResolveDependencies(task, [&](Status) {
+    ok = true;
+    dependencies_resolved.set_value(true);
+  });
+  ASSERT_TRUE(dependencies_resolved.get_future().get());
   ASSERT_TRUE(ok);
   // Check for leaks.
   ASSERT_EQ(resolver.NumPendingTasks(), 0);

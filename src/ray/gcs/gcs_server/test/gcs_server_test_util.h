@@ -99,6 +99,12 @@ struct GcsServerMocker {
       callbacks.push_back(callback);
     }
 
+    void PrestartWorkers(
+        const rpc::PrestartWorkersRequest &request,
+        const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override {
+      RAY_LOG(FATAL) << "Not implemented";
+    }
+
     /// WorkerLeaseInterface
     void ReleaseUnusedActorWorkers(
         const std::vector<WorkerID> &workers_in_use,
@@ -320,6 +326,10 @@ struct GcsServerMocker {
       reply.set_is_accepted(true);
       drain_raylet_callbacks.push_back(callback);
     };
+
+    void IsLocalWorkerDead(
+        const WorkerID &worker_id,
+        const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) override{};
 
     void NotifyGCSRestart(
         const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override{};

@@ -1,6 +1,4 @@
 import argparse
-from collections import Counter
-import copy
 import json
 import logging
 import os
@@ -18,7 +16,6 @@ from typing import (
     Type,
     Union,
 )
-import yaml
 
 import gymnasium as gym
 from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary
@@ -28,15 +25,12 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.integrations.wandb import WandbLoggerCallback, WANDB_ENV_VAR
-from ray.rllib.common import SupportedFileType
 from ray.rllib.core import DEFAULT_MODULE_ID, Columns
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
-from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.annotations import OldAPIStack
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
@@ -44,15 +38,13 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
     NUM_ENV_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_EPISODES_LIFETIME,
 )
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
 
 
-from ray.tune import CLIReporter, run_experiments
+from ray.tune import CLIReporter
 
 
 if TYPE_CHECKING:
@@ -293,15 +285,19 @@ def add_rllib_example_script_args(
     )
 
     # Learner scaling options.
-    # Old API stack: config.num_gpus.
-    # New API stack: config.num_learners (w/ num_gpus_per_learner=1).
     parser.add_argument(
-        "--num-gpus",
+        "--num-learners",
         type=int,
-        default=0,
-        help="The number of GPUs/Learners to use. If none or not enough GPUs "
-        "are available, will still create `--num-gpus` Learners, but place them on one "
-        "CPU each, instead.",
+        default=None,
+        help="The number of Learners to use. If none, use the algorithm's default "
+        "value.",
+    )
+    parser.add_argument(
+        "--num-gpus-per-learner",
+        type=float,
+        default=None,
+        help="The number of GPUs per Learner to use. If none and there are enough GPUs "
+        "for all required Learners (--num-learners), use a value of 1, otherwise 0.",
     )
 
     # Ray init options.
@@ -311,6 +307,15 @@ def add_rllib_example_script_args(
         action="store_true",
         help="Init Ray in local mode for easier debugging.",
     )
+
+    # Old API stack: config.num_gpus.
+    parser.add_argument(
+        "--num-gpus",
+        type=int,
+        default=0,
+        help="The number of GPUs to use (if on the old API stack).",
+    )
+
     return parser
 
 
@@ -416,6 +421,14 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 x = x.detach().cpu().numpy()
             if isinstance(y, torch.Tensor):
                 y = y.detach().cpu().numpy()
+
+        # Stats objects.
+        from ray.rllib.utils.metrics.stats import Stats
+
+        if isinstance(x, Stats):
+            x = x.peek()
+        if isinstance(y, Stats):
+            y = y.peek()
 
         # Using decimals.
         if atol is None and rtol is None:
@@ -795,8 +808,6 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
         ENV_RUNNER_RESULTS,
         FAULT_TOLERANCE_STATS,
         LEARNER_RESULTS,
-        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-        NUM_ENV_STEPS_SAMPLED_LIFETIME,
         TIMERS,
     )
 
@@ -805,8 +816,6 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
         ENV_RUNNER_RESULTS,
         FAULT_TOLERANCE_STATS,
         LEARNER_RESULTS,
-        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-        NUM_ENV_STEPS_SAMPLED_LIFETIME,
         TIMERS,
         TRAINING_ITERATION,
         "config",
@@ -958,326 +967,6 @@ def check_train_results(train_results: ResultDict):
     return train_results
 
 
-@Deprecated(new="run_learning_tests_from_yaml_or_py(config_files=...)", error=False)
-def run_learning_tests_from_yaml(
-    yaml_files: List[str],
-    *,
-    framework: Optional[str] = None,
-    max_num_repeats: int = 2,
-    use_pass_criteria_as_stop: bool = True,
-    smoke_test: bool = False,
-):
-    return run_learning_tests_from_yaml_or_py(
-        yaml_files,
-        framework=framework,
-        max_num_repeats=max_num_repeats,
-        use_pass_criteria_as_stop=use_pass_criteria_as_stop,
-        smoke_test=smoke_test,
-    )
-
-
-def run_learning_tests_from_yaml_or_py(
-    config_files: List[str],
-    *,
-    framework: Optional[str] = None,
-    max_num_repeats: int = 2,
-    use_pass_criteria_as_stop: bool = True,
-    smoke_test: bool = False,
-) -> Dict[str, Any]:
-    """Runs the given experiments in config_files and returns results dict.
-
-    Args:
-        framework: The framework to use for running this test. If None,
-            run the test on all frameworks.
-        config_files: List of yaml or py config file names.
-        max_num_repeats: How many times should we repeat a failed
-            experiment?
-        use_pass_criteria_as_stop: Configure the Trial so that it stops
-            as soon as pass criterias are met.
-        smoke_test: Whether this is just a smoke-test. If True,
-            set time_total_s to 5min and don't early out due to rewards
-            or timesteps reached.
-
-    Returns:
-        A results dict mapping strings (e.g. "time_taken", "stats", "passed") to
-            the respective stats/values.
-    """
-    print("Will run the following config files:")
-    for config_file in config_files:
-        print("->", config_file)
-
-    # All trials we'll ever run in this test script.
-    all_trials = []
-    # The experiments (by name) we'll run up to `max_num_repeats` times.
-    experiments = {}
-    # The results per experiment.
-    checks = {}
-    # Metrics per experiment.
-    stats = {}
-
-    start_time = time.monotonic()
-
-    def should_check_eval(experiment):
-        # If we have evaluation workers, use their rewards.
-        # This is useful for offline learning tests, where
-        # we evaluate against an actual environment.
-        return bool(experiment["config"].get("evaluation_interval"))
-
-    # Loop through all collected files and gather experiments.
-    # Set correct framework(s).
-    for config_file in config_files:
-        # For python files, need to make sure, we only deliver the module name into the
-        # `load_experiments_from_file` function (everything from "/ray/rllib" on).
-        if config_file.endswith(".py"):
-            if config_file.endswith(
-                "__init__.py"
-            ):  # weird CI learning test (BAZEL) case
-                continue
-            tf_experiments = load_experiments_from_file(
-                config_file, SupportedFileType.python
-            )
-        else:
-            tf_experiments = load_experiments_from_file(
-                config_file, SupportedFileType.yaml
-            )
-
-        # Add torch version of all experiments to the list.
-        for k, e in tf_experiments.items():
-            # If framework given as arg, use that framework.
-            if framework is not None:
-                frameworks = [framework]
-            # If framework given in config, only test for that framework.
-            # Some algos do not have both versions available.
-            elif "frameworks" in e:
-                frameworks = e["frameworks"]
-            else:
-                # By default we don't run tf2, because tf2's multi-gpu support
-                # isn't complete yet.
-                frameworks = ["tf", "torch"]
-            # Pop frameworks key to not confuse Tune.
-            e.pop("frameworks", None)
-
-            e["stop"] = e["stop"] if "stop" in e else {}
-            e["pass_criteria"] = e["pass_criteria"] if "pass_criteria" in e else {}
-
-            check_eval = should_check_eval(e)
-            episode_reward_key = (
-                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
-                if not check_eval
-                else f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
-            )
-
-            # For smoke-tests, we just run for n min.
-            if smoke_test:
-                # 0sec for each(!) experiment/trial.
-                # This is such that if there are many experiments/trials
-                # in a test (e.g. rllib_learning_test), each one can at least
-                # create its Algorithm and run a first iteration.
-                e["stop"]["time_total_s"] = 0
-            else:
-                if use_pass_criteria_as_stop:
-                    # We also stop early, once we reach the desired reward.
-                    min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
-                    if min_reward is not None:
-                        e["stop"][episode_reward_key] = min_reward
-
-            # Generate `checks` dict for all experiments
-            # (tf, tf2 and/or torch).
-            for framework in frameworks:
-                k_ = k + "-" + framework
-                ec = copy.deepcopy(e)
-                ec["config"]["framework"] = framework
-                if framework == "tf2":
-                    ec["config"]["eager_tracing"] = True
-
-                checks[k_] = {
-                    "min_reward": ec["pass_criteria"].get(episode_reward_key, 0.0),
-                    "min_throughput": ec["pass_criteria"].get("timesteps_total", 0.0)
-                    / (ec["stop"].get("time_total_s", 1.0) or 1.0),
-                    "time_total_s": ec["stop"].get("time_total_s"),
-                    "failures": 0,
-                    "passed": False,
-                }
-                # This key would break tune.
-                ec.pop("pass_criteria", None)
-
-                # One experiment to run.
-                experiments[k_] = ec
-
-    # Keep track of those experiments we still have to run.
-    # If an experiment passes, we'll remove it from this dict.
-    experiments_to_run = experiments.copy()
-
-    # When running as a release test, use `/mnt/cluster_storage` as the storage path.
-    release_test_storage_path = "/mnt/cluster_storage"
-    if os.path.exists(release_test_storage_path):
-        for k, e in experiments_to_run.items():
-            e["storage_path"] = release_test_storage_path
-
-    try:
-        ray.init(address="auto")
-    except ConnectionError:
-        ray.init()
-
-    for i in range(max_num_repeats):
-        # We are done.
-        if len(experiments_to_run) == 0:
-            print("All experiments finished.")
-            break
-
-        print(f"Starting learning test iteration {i}...")
-
-        # Print out the actual config.
-        print("== Test config ==")
-        print(yaml.dump(experiments_to_run))
-
-        # Run remaining experiments.
-        trials = run_experiments(
-            experiments_to_run,
-            resume=False,
-            verbose=2,
-            progress_reporter=CLIReporter(
-                metric_columns={
-                    TRAINING_ITERATION: "iter",
-                    "time_total_s": "time_total_s",
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts (sampled)",
-                    NUM_ENV_STEPS_TRAINED_LIFETIME: "ts (trained)",
-                    NUM_EPISODES_LIFETIME: "train_episodes",
-                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "reward_mean",
-                    (
-                        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
-                        f"{EPISODE_RETURN_MEAN}"
-                    ): "eval_reward_mean",
-                },
-                parameter_columns=["framework"],
-                sort_by_metric=True,
-                max_report_frequency=30,
-            ),
-        )
-
-        all_trials.extend(trials)
-
-        # Check each experiment for whether it passed.
-        # Criteria is to a) reach reward AND b) to have reached the throughput
-        # defined by `NUM_ENV_STEPS_(SAMPLED|TRAINED)` / `time_total_s`.
-        for experiment in experiments_to_run.copy():
-            print(f"Analyzing experiment {experiment} ...")
-            # Collect all trials within this experiment (some experiments may
-            # have num_samples or grid_searches defined).
-            trials_for_experiment = []
-            for t in trials:
-                trial_exp = re.sub(".+/([^/]+)$", "\\1", t.local_dir)
-                if trial_exp == experiment:
-                    trials_for_experiment.append(t)
-            print(f" ... Trials: {trials_for_experiment}.")
-
-            check_eval = should_check_eval(experiments[experiment])
-
-            # Error: Increase failure count and repeat.
-            if any(t.status == "ERROR" for t in trials_for_experiment):
-                print(" ... ERROR.")
-                checks[experiment]["failures"] += 1
-            # Smoke-tests always succeed.
-            elif smoke_test:
-                print(" ... SMOKE TEST (mark ok).")
-                checks[experiment]["passed"] = True
-                del experiments_to_run[experiment]
-            # Experiment finished: Check reward achieved and timesteps done
-            # (throughput).
-            else:
-                # Use best_result's reward to check min_reward.
-                if check_eval:
-                    episode_return_mean = np.mean(
-                        [
-                            t.metric_analysis[
-                                f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
-                                f"{EPISODE_RETURN_MEAN}"
-                            ]["max"]
-                            for t in trials_for_experiment
-                        ]
-                    )
-                else:
-                    episode_return_mean = np.mean(
-                        [
-                            t.metric_analysis[
-                                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
-                            ]["max"]
-                            for t in trials_for_experiment
-                        ]
-                    )
-                desired_reward = checks[experiment]["min_reward"]
-
-                # Use last_result["timesteps_total"] to check throughput.
-                timesteps_total = np.mean(
-                    [t.last_result["timesteps_total"] for t in trials_for_experiment]
-                )
-                total_time_s = np.mean(
-                    [t.last_result["time_total_s"] for t in trials_for_experiment]
-                )
-
-                # TODO(jungong) : track training- and env throughput separately.
-                throughput = timesteps_total / (total_time_s or 1.0)
-                # Throughput verification is not working. Many algorithm, e.g. TD3,
-                # achieves the learning goal, but fails the throughput check
-                # miserably.
-                # TODO(jungong): Figure out why.
-                #
-                # desired_throughput = checks[experiment]["min_throughput"]
-                desired_throughput = None
-
-                # Record performance.
-                stats[experiment] = {
-                    "episode_reward_mean": float(episode_return_mean),
-                    "throughput": (
-                        float(throughput) if throughput is not None else 0.0
-                    ),
-                }
-
-                print(
-                    f" ... Desired reward={desired_reward}; "
-                    f"desired throughput={desired_throughput}"
-                )
-
-                # We failed to reach desired reward or the desired throughput.
-                if (desired_reward and episode_return_mean < desired_reward) or (
-                    desired_throughput and throughput < desired_throughput
-                ):
-                    print(
-                        " ... Not successful: Actual "
-                        f"return={episode_return_mean}; "
-                        f"actual throughput={throughput}"
-                    )
-                    checks[experiment]["failures"] += 1
-                # We succeeded!
-                else:
-                    print(
-                        " ... Successful: (mark ok). Actual "
-                        f"return={episode_return_mean}; "
-                        f"actual throughput={throughput}"
-                    )
-                    checks[experiment]["passed"] = True
-                    del experiments_to_run[experiment]
-
-    ray.shutdown()
-
-    time_taken = time.monotonic() - start_time
-
-    # Create results dict and write it to disk.
-    result = {
-        "time_taken": float(time_taken),
-        "trial_states": dict(Counter([trial.status for trial in all_trials])),
-        "last_update": float(time.time()),
-        "stats": stats,
-        "passed": [k for k, exp in checks.items() if exp["passed"]],
-        "not_passed": [k for k, exp in checks.items() if not exp["passed"]],
-        "failures": {
-            k: exp["failures"] for k, exp in checks.items() if exp["failures"] > 0
-        },
-    }
-
-    return result
-
-
 # TODO (sven): Make this the de-facto, well documented, and unified utility for most of
 #  our tests:
 #  - CI (label: "learning_tests")
@@ -1292,6 +981,7 @@ def run_rllib_example_script_experiment(
     trainable: Optional[Type] = None,
     tune_callbacks: Optional[List] = None,
     keep_config: bool = False,
+    keep_ray_up: bool = False,
     scheduler=None,
     progress_reporter=None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
@@ -1347,7 +1037,7 @@ def run_rllib_example_script_experiment(
         keep_config: Set this to True, if you don't want this utility to change the
             given `base_config` in any way and leave it as-is. This is helpful
             for those example scripts which demonstrate how to set config settings
-            that are taken care of automatically in this function otherwise (e.g.
+            that are otherwise taken care of automatically in this function (e.g.
             `num_env_runners`).
 
     Returns:
@@ -1373,7 +1063,9 @@ def run_rllib_example_script_experiment(
     if stop is None:
         stop = {
             f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
-            f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+            f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": (
+                args.stop_timesteps
+            ),
             TRAINING_ITERATION: args.stop_iters,
         }
 
@@ -1388,35 +1080,72 @@ def run_rllib_example_script_experiment(
         if args.env is not None and config.env is None:
             config.environment(args.env)
 
-        # Enable the new API stack?
-        if args.enable_new_api_stack:
+        # Disable the new API stack?
+        if not args.enable_new_api_stack:
             config.api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
             )
 
         # Define EnvRunner/RolloutWorker scaling and behavior.
         if args.num_env_runners is not None:
             config.env_runners(num_env_runners=args.num_env_runners)
 
-        # Define compute resources used automatically (only using the --num-gpus arg).
+        # Define compute resources used automatically (only using the --num-learners
+        # and --num-gpus-per-learner args).
         # New stack.
         if config.enable_rl_module_and_learner:
-            # Do we have GPUs available in the cluster?
-            num_gpus = ray.cluster_resources().get("GPU", 0)
-            if args.num_gpus > 0 and num_gpus < args.num_gpus:
-                logger.warning(
-                    f"You are running your script with --num-gpus={args.num_gpus}, "
-                    f"but your cluster only has {num_gpus} GPUs! Will run "
-                    f"with {num_gpus} CPU Learners instead."
+            if args.num_gpus > 0:
+                raise ValueError(
+                    "--num-gpus is not supported on the new API stack! To train on "
+                    "GPUs, use the command line options `--num-gpus-per-learner=1` and "
+                    "`--num-learners=[your number of available GPUs]`, instead."
                 )
+
+            # Do we have GPUs available in the cluster?
+            num_gpus_available = ray.cluster_resources().get("GPU", 0)
+            # Number of actual Learner instances (including the local Learner if
+            # `num_learners=0`).
+            num_actual_learners = (
+                args.num_learners
+                if args.num_learners is not None
+                else config.num_learners
+            ) or 1  # 1: There is always a local Learner, if num_learners=0.
+            # How many were hard-requested by the user
+            # (through explicit `--num-gpus-per-learner >= 1`).
+            num_gpus_requested = (args.num_gpus_per_learner or 0) * num_actual_learners
+            # Number of GPUs needed, if `num_gpus_per_learner=None` (auto).
+            num_gpus_needed_if_available = (
+                args.num_gpus_per_learner
+                if args.num_gpus_per_learner is not None
+                else 1
+            ) * num_actual_learners
             # Define compute resources used.
-            config.resources(num_gpus=0)
-            config.learners(
-                num_learners=args.num_gpus,
-                num_gpus_per_learner=1 if num_gpus >= args.num_gpus > 0 else 0,
-            )
-            config.resources(num_gpus=0)
+            config.resources(num_gpus=0)  # old API stack setting
+            if args.num_learners is not None:
+                config.learners(num_learners=args.num_learners)
+
+            # User wants to use GPUs if available, but doesn't hard-require them.
+            if args.num_gpus_per_learner is None:
+                if num_gpus_available >= num_gpus_needed_if_available:
+                    config.learners(num_gpus_per_learner=1)
+                else:
+                    config.learners(num_gpus_per_learner=0, num_cpus_per_learner=1)
+
+            # User hard-requires n GPUs, but they are not available -> Error.
+            elif num_gpus_available < num_gpus_requested:
+                raise ValueError(
+                    "You are running your script with --num-learners="
+                    f"{args.num_learners} and --num-gpus-per-learner="
+                    f"{args.num_gpus_per_learner}, but your cluster only has "
+                    f"{num_gpus_available} GPUs! Will run "
+                    f"with {num_gpus_available} CPU Learners instead."
+                )
+
+            # All required GPUs are available -> Use them.
+            else:
+                config.learners(num_gpus_per_learner=args.num_gpus_per_learner)
+
         # Old stack.
         else:
             config.resources(num_gpus=args.num_gpus)
@@ -1466,10 +1195,12 @@ def run_rllib_example_script_experiment(
                         break
                 if val is not None and not np.isnan(val) and val >= threshold:
                     print(f"Stop criterium ({key}={threshold}) fulfilled!")
-                    ray.shutdown()
+                    if not keep_ray_up:
+                        ray.shutdown()
                     return results
 
-        ray.shutdown()
+        if not keep_ray_up:
+            ray.shutdown()
         return results
 
     # Run the experiment using Ray Tune.
@@ -1491,7 +1222,6 @@ def run_rllib_example_script_experiment(
                 **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
             )
         )
-
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
     if progress_reporter is None and args.num_agents > 0:
@@ -1521,11 +1251,11 @@ def run_rllib_example_script_experiment(
     results = tune.Tuner(
         trainable or config.algo_class,
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop=stop,
             verbose=args.verbose,
             callbacks=tune_callbacks,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
@@ -1539,7 +1269,17 @@ def run_rllib_example_script_experiment(
     ).fit()
     time_taken = time.time() - start_time
 
-    ray.shutdown()
+    if not keep_ray_up:
+        ray.shutdown()
+
+    # Error out, if Tuner.fit() failed to run. Otherwise, erroneous examples might pass
+    # the CI tests w/o us knowing that they are broken (b/c some examples do not have
+    # a --as-test flag and/or any passing criteris).
+    if results.errors:
+        raise RuntimeError(
+            "Running the example script resulted in one or more errors! "
+            f"{[e.args[0].args[2] for e in results.errors]}"
+        )
 
     # If run as a test, check whether we reached the specified success criteria.
     test_passed = False
@@ -1743,14 +1483,14 @@ def check_reproducibilty(
         results1 = tune.Tuner(
             algo_class,
             param_space=algo_config.to_dict(),
-            run_config=air.RunConfig(stop=stop_dict, verbose=1),
+            run_config=train.RunConfig(stop=stop_dict, verbose=1),
         ).fit()
         results1 = results1.get_best_result().metrics
 
         results2 = tune.Tuner(
             algo_class,
             param_space=algo_config.to_dict(),
-            run_config=air.RunConfig(stop=stop_dict, verbose=1),
+            run_config=train.RunConfig(stop=stop_dict, verbose=1),
         ).fit()
         results2 = results2.get_best_result().metrics
 

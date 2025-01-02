@@ -21,40 +21,12 @@
 
 #include "absl/container/btree_map.h"
 #include "ray/common/grpc_util.h"
-#include "ray/common/network_util.h"
-#include "ray/rpc/grpc_client.h"
+#include "ray/rpc/retryable_grpc_client.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
-
-class GcsRpcClient;
-
-/// \class Executor
-/// Executor saves operation and support retries.
-class Executor {
- public:
-  Executor(std::function<void(const ray::Status &)> abort_callback)
-      : abort_callback_(std::move(abort_callback)) {}
-
-  /// This function is used to execute the given operation.
-  ///
-  /// \param operation The operation to be executed.
-  void Execute(std::function<void()> operation) {
-    operation_ = std::move(operation);
-    operation_();
-  }
-
-  /// This function is used to retry the given operation.
-  void Retry() { operation_(); }
-
-  void Abort(const ray::Status &status) { abort_callback_(status); }
-
- private:
-  std::function<void(ray::Status)> abort_callback_;
-  std::function<void()> operation_;
-};
 
 /// Convenience macro to invoke VOID_GCS_RPC_CLIENT_METHOD_FULL with defaults.
 ///
@@ -117,7 +89,7 @@ class Executor {
                         NAMESPACE::METHOD##Reply,                          \
                         handle_payload_status>(                            \
         &NAMESPACE::SERVICE::Stub::PrepareAsync##METHOD,                   \
-        *grpc_client,                                                      \
+        grpc_client,                                                       \
         #NAMESPACE "::" #SERVICE ".grpc_client." #METHOD,                  \
         request,                                                           \
         callback,                                                          \
@@ -166,53 +138,71 @@ class GcsRpcClient {
   GcsRpcClient(const std::string &address,
                const int port,
                ClientCallManager &client_call_manager)
-      : gcs_address_(address),
-        gcs_port_(port),
-        io_context_(&client_call_manager.GetMainService()),
-        timer_(std::make_unique<boost::asio::deadline_timer>(*io_context_)) {
+      : gcs_address_(address), gcs_port_(port) {
     channel_ = CreateGcsChannel(address, port);
     // If not the reconnection will continue to work.
     auto deadline =
         std::chrono::system_clock::now() +
         std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
     if (!channel_->WaitForConnected(deadline)) {
-      RAY_LOG(ERROR) << "Failed to connect to GCS at address " << address << ":" << port
-                     << " within "
-                     << ::RayConfig::instance().gcs_rpc_server_connect_timeout_s()
-                     << " seconds.";
-      gcs_is_down_ = true;
-    } else {
-      gcs_is_down_ = false;
+      RAY_LOG(WARNING) << "Failed to connect to GCS at address " << address << ":" << port
+                       << " within "
+                       << ::RayConfig::instance().gcs_rpc_server_connect_timeout_s()
+                       << " seconds.";
     }
 
     job_info_grpc_client_ =
-        std::make_unique<GrpcClient<JobInfoGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<JobInfoGcsService>>(channel_, client_call_manager);
     actor_info_grpc_client_ =
-        std::make_unique<GrpcClient<ActorInfoGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<ActorInfoGcsService>>(channel_, client_call_manager);
     node_info_grpc_client_ =
-        std::make_unique<GrpcClient<NodeInfoGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<NodeInfoGcsService>>(channel_, client_call_manager);
     node_resource_info_grpc_client_ =
-        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(channel_,
+        std::make_shared<GrpcClient<NodeResourceInfoGcsService>>(channel_,
                                                                  client_call_manager);
     worker_info_grpc_client_ =
-        std::make_unique<GrpcClient<WorkerInfoGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<WorkerInfoGcsService>>(channel_, client_call_manager);
     placement_group_info_grpc_client_ =
-        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(channel_,
+        std::make_shared<GrpcClient<PlacementGroupInfoGcsService>>(channel_,
                                                                    client_call_manager);
     internal_kv_grpc_client_ =
-        std::make_unique<GrpcClient<InternalKVGcsService>>(channel_, client_call_manager);
-    internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
+        std::make_shared<GrpcClient<InternalKVGcsService>>(channel_, client_call_manager);
+    internal_pubsub_grpc_client_ = std::make_shared<GrpcClient<InternalPubSubGcsService>>(
         channel_, client_call_manager);
     task_info_grpc_client_ =
-        std::make_unique<GrpcClient<TaskInfoGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<TaskInfoGcsService>>(channel_, client_call_manager);
     autoscaler_state_grpc_client_ =
-        std::make_unique<GrpcClient<autoscaler::AutoscalerStateService>>(
+        std::make_shared<GrpcClient<autoscaler::AutoscalerStateService>>(
             channel_, client_call_manager);
 
     runtime_env_grpc_client_ =
-        std::make_unique<GrpcClient<RuntimeEnvGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<RuntimeEnvGcsService>>(channel_, client_call_manager);
 
-    SetupCheckTimer();
+    retryable_grpc_client_ = RetryableGrpcClient::Create(
+        channel_,
+        client_call_manager.GetMainService(),
+        /*max_pending_requests_bytes=*/
+        ::RayConfig::instance().gcs_grpc_max_request_queued_max_bytes(),
+        /*check_channel_status_interval_milliseconds=*/
+        ::RayConfig::instance()
+            .grpc_client_check_connection_status_interval_milliseconds(),
+        /*server_unavailable_timeout_seconds=*/
+        ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s(),
+        /*server_unavailable_timeout_callback=*/
+        []() {
+          RAY_LOG(ERROR) << "Failed to connect to GCS within "
+                         << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
+                         << " seconds. "
+                         << "GCS may have been killed. It's either GCS is terminated by "
+                            "`ray stop` or "
+                         << "is killed unexpectedly. If it is killed unexpectedly, "
+                         << "see the log file gcs_server.out. "
+                         << "https://docs.ray.io/en/master/ray-observability/user-guides/"
+                            "configure-logging.html#logging-directory-structure. "
+                         << "The program will terminate.";
+          std::_Exit(EXIT_FAILURE);
+        },
+        /*server_name=*/"GCS");
   }
 
   template <typename Service,
@@ -221,69 +211,32 @@ class GcsRpcClient {
             bool handle_payload_status>
   void invoke_async_method(
       PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
-      GrpcClient<Service> &grpc_client,
+      std::shared_ptr<GrpcClient<Service>> grpc_client,
       const std::string &call_name,
       const Request &request,
       const ClientCallback<Reply> &callback,
       const int64_t timeout_ms) {
-    auto executor = new Executor(
-        [callback](const ray::Status &status) { callback(status, Reply()); });
-    auto operation_callback = [this, request, callback, executor, timeout_ms](
-                                  const ray::Status &status, Reply &&reply) {
-      if (status.ok()) {
-        if constexpr (handle_payload_status) {
-          Status st =
-              (reply.status().code() == (int)StatusCode::OK)
-                  ? Status()
-                  : Status(StatusCode(reply.status().code()), reply.status().message());
-          callback(st, std::move(reply));
-        } else {
-          callback(status, std::move(reply));
-        }
-        delete executor;
-      } else if (!IsGrpcRetryableStatus(status)) {
-        callback(status, std::move(reply));
-        delete executor;
-      } else {
-        /* In case of GCS failure, we queue the request and these requests will be */
-        /* executed once GCS is back. */
-        gcs_is_down_ = true;
-        auto request_bytes = request.ByteSizeLong();
-        if (pending_requests_bytes_ + request_bytes >
-            ::RayConfig::instance().gcs_grpc_max_request_queued_max_bytes()) {
-          RAY_LOG(WARNING) << "Pending queue for failed GCS request has reached the "
-                           << "limit. Blocking the current thread until GCS is back";
-          while (gcs_is_down_ && !shutdown_) {
-            CheckChannelStatus(false);
-            std::this_thread::sleep_for(std::chrono::milliseconds(
-                ::RayConfig::instance()
-                    .gcs_client_check_connection_status_interval_milliseconds()));
-          }
-          if (shutdown_) {
-            callback(Status::Disconnected("GCS client has been disconnected."),
-                     std::move(reply));
-            delete executor;
+    retryable_grpc_client_->template CallMethod<Service, Request, Reply>(
+        prepare_async_function,
+        std::move(grpc_client),
+        call_name,
+        request,
+        [callback](const Status &status, Reply &&reply) {
+          if (status.ok()) {
+            if constexpr (handle_payload_status) {
+              Status st = (reply.status().code() == static_cast<int>(StatusCode::OK))
+                              ? Status()
+                              : Status(StatusCode(reply.status().code()),
+                                       reply.status().message());
+              callback(st, std::move(reply));
+            } else {
+              callback(status, std::move(reply));
+            }
           } else {
-            executor->Retry();
+            callback(status, std::move(reply));
           }
-        } else {
-          pending_requests_bytes_ += request_bytes;
-          auto timeout = timeout_ms == -1 ? absl::InfiniteFuture()
-                                          : absl::Now() + absl::Milliseconds(timeout_ms);
-          pending_requests_.emplace(timeout, std::make_pair(executor, request_bytes));
-        }
-      }
-    };
-    auto operation = [prepare_async_function,
-                      &grpc_client,
-                      call_name,
-                      request,
-                      operation_callback,
-                      timeout_ms]() {
-      grpc_client.template CallMethod<Request, Reply>(
-          prepare_async_function, request, operation_callback, call_name, timeout_ms);
-    };
-    executor->Execute(std::move(operation));
+        },
+        timeout_ms);
   }
 
   /// Add job info to GCS Service.
@@ -596,16 +549,6 @@ class GcsRpcClient {
                              runtime_env_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  void Shutdown() {
-    if (!shutdown_.exchange(true)) {
-      // First call to shut down this GCS RPC client.
-      absl::MutexLock lock(&timer_mu_);
-      timer_->cancel();
-    } else {
-      RAY_LOG(DEBUG) << "GCS RPC client has already shutdown.";
-    }
-  }
-
   std::pair<std::string, int64_t> GetAddress() const {
     return std::make_pair(gcs_address_, gcs_port_);
   }
@@ -613,120 +556,25 @@ class GcsRpcClient {
   std::shared_ptr<grpc::Channel> GetChannel() const { return channel_; }
 
  private:
-  void SetupCheckTimer() {
-    auto duration = boost::posix_time::milliseconds(
-        ::RayConfig::instance()
-            .gcs_client_check_connection_status_interval_milliseconds());
-    absl::MutexLock lock(&timer_mu_);
-    timer_->expires_from_now(duration);
-    timer_->async_wait([this](boost::system::error_code error) {
-      if (error == boost::system::errc::success) {
-        CheckChannelStatus();
-      }
-    });
-  }
-
-  void CheckChannelStatus(bool reset_timer = true) {
-    if (shutdown_) {
-      return;
-    }
-
-    auto status = channel_->GetState(false);
-    // https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
-    // https://grpc.github.io/grpc/core/connectivity__state_8h_source.html
-    if (status != GRPC_CHANNEL_READY) {
-      RAY_LOG(DEBUG) << "GCS channel status: " << status;
-    }
-
-    // We need to cleanup all the pending requests which are timeout.
-    auto now = absl::Now();
-    while (!pending_requests_.empty()) {
-      auto iter = pending_requests_.begin();
-      if (iter->first > now) {
-        break;
-      }
-      auto [executor, request_bytes] = iter->second;
-      executor->Abort(
-          ray::Status::TimedOut("Timed out while waiting for GCS to become available."));
-      pending_requests_bytes_ -= request_bytes;
-      delete executor;
-      pending_requests_.erase(iter);
-    }
-
-    switch (status) {
-    case GRPC_CHANNEL_TRANSIENT_FAILURE:
-    case GRPC_CHANNEL_CONNECTING:
-      if (!gcs_is_down_) {
-        gcs_is_down_ = true;
-      } else {
-        if (absl::ToInt64Seconds(absl::Now() - gcs_last_alive_time_) >=
-            ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()) {
-          RAY_LOG(ERROR) << "Failed to connect to GCS within "
-                         << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
-                         << " seconds. "
-                         << "GCS may have been killed. It's either GCS is terminated by "
-                            "`ray stop` or "
-                         << "is killed unexpectedly. If it is killed unexpectedly, "
-                         << "see the log file gcs_server.out. "
-                         << "https://docs.ray.io/en/master/ray-observability/user-guides/"
-                            "configure-logging.html#logging-directory-structure. "
-                         << "The program will terminate.";
-          std::_Exit(EXIT_FAILURE);
-        }
-      }
-      break;
-    case GRPC_CHANNEL_SHUTDOWN:
-      RAY_CHECK(shutdown_) << "Channel shoud never go to this status.";
-      break;
-    case GRPC_CHANNEL_READY:
-    case GRPC_CHANNEL_IDLE:
-      gcs_last_alive_time_ = absl::Now();
-      gcs_is_down_ = false;
-      // Retry the one queued.
-      while (!pending_requests_.empty()) {
-        pending_requests_.begin()->second.first->Retry();
-        pending_requests_.erase(pending_requests_.begin());
-      }
-      pending_requests_bytes_ = 0;
-      break;
-    default:
-      RAY_LOG(FATAL) << "Not covered status: " << status;
-    }
-    SetupCheckTimer();
-  }
-
   const std::string gcs_address_;
   const int64_t gcs_port_;
-
-  instrumented_io_context *const io_context_;
-
-  // Timer can be called from either the GCS RPC event loop, or the application's
-  // main thread. It needs to be protected by a mutex.
-  absl::Mutex timer_mu_;
-  const std::unique_ptr<boost::asio::deadline_timer> timer_;
+  std::shared_ptr<grpc::Channel> channel_;
+  std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;
 
   /// The gRPC-generated stub.
-  std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
-  std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
-  std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
-  std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
-  std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
-  std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
+  std::shared_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
+  std::shared_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
+  std::shared_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
+  std::shared_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
+  std::shared_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
+  std::shared_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;
-  std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
-  std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
-  std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
-  std::unique_ptr<GrpcClient<RuntimeEnvGcsService>> runtime_env_grpc_client_;
-  std::unique_ptr<GrpcClient<autoscaler::AutoscalerStateService>>
+  std::shared_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
+  std::shared_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
+  std::shared_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
+  std::shared_ptr<GrpcClient<RuntimeEnvGcsService>> runtime_env_grpc_client_;
+  std::shared_ptr<GrpcClient<autoscaler::AutoscalerStateService>>
       autoscaler_state_grpc_client_;
-
-  std::shared_ptr<grpc::Channel> channel_;
-  bool gcs_is_down_ = false;
-  absl::Time gcs_last_alive_time_ = absl::Now();
-
-  std::atomic<bool> shutdown_ = false;
-  absl::btree_multimap<absl::Time, std::pair<Executor *, size_t>> pending_requests_;
-  size_t pending_requests_bytes_ = 0;
 
   friend class GcsClientReconnectionTest;
   FRIEND_TEST(GcsClientReconnectionTest, ReconnectionBackoff);

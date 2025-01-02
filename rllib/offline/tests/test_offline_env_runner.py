@@ -18,11 +18,6 @@ class TestOfflineEnvRunner(unittest.TestCase):
         self.base_path = pathlib.Path("/tmp/")
         self.config = (
             PPOConfig()
-            # Enable new API stack and use EnvRunner.
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(
                 # This defines how many rows per file we will
                 # have (given `num_rows_per_file` in the
@@ -62,7 +57,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
             output_write_episodes=True,
         )
 
-        offline_env_runner = OfflineSingleAgentEnvRunner(config, worker_index=1)
+        offline_env_runner = OfflineSingleAgentEnvRunner(config=config, worker_index=1)
         # Sample 100 episodes.
         _ = offline_env_runner.sample(
             num_episodes=100,
@@ -114,7 +109,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
             output_compress_columns=[],
         )
 
-        offline_env_runner = OfflineSingleAgentEnvRunner(config, worker_index=1)
+        offline_env_runner = OfflineSingleAgentEnvRunner(config=config, worker_index=1)
 
         _ = offline_env_runner.sample(
             num_timesteps=100,
@@ -170,7 +165,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
             # }
         )
 
-        offline_env_runner = OfflineSingleAgentEnvRunner(config, worker_index=1)
+        offline_env_runner = OfflineSingleAgentEnvRunner(config=config, worker_index=1)
 
         _ = offline_env_runner.sample(
             num_timesteps=100,

@@ -84,9 +84,15 @@ class CompiledDAGRef:
         raise ValueError("CompiledDAGRef cannot be pickled.")
 
     def __del__(self):
-        # If not yet, get the result and discard to avoid execution result leak.
+        # If the dag is already teardown, it should do nothing.
+        if self._dag.is_teardown:
+            return
+
+        # If not yet, release native buffers to avoid execution result leak. Note that
+        # we skip python-based deserialization as the values stored in the buffers are
+        # not used.
         if not self._ray_get_called:
-            self.get()
+            self._dag.release_output_channel_buffers(self._execution_index)
 
     def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:
@@ -94,6 +100,7 @@ class CompiledDAGRef:
                 "ray.get() can only be called once "
                 "on a CompiledDAGRef, and it was already called."
             )
+
         self._ray_get_called = True
         return_vals = self._dag._execute_until(
             self._execution_index, self._channel_index, timeout

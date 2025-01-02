@@ -5,7 +5,6 @@ from libcpp.vector cimport vector as c_vector
 from ray.includes.common cimport (
     CObjectLocation,
     CGcsClientOptions,
-    CPythonGcsClient,
     CPythonGcsPublisher,
     CPythonGcsSubscriber,
     kWorkerSetupHookKeyName,
@@ -70,6 +69,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
     elif status.IsInvalidArgument():
+        raise ValueError(message)
+    elif status.IsAlreadyExists():
         raise ValueError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)

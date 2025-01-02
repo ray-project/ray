@@ -17,25 +17,22 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
-#include "ray/gcs/gcs_server/state_util.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
 namespace gcs {
 
 GcsAutoscalerStateManager::GcsAutoscalerStateManager(
-    const std::string &session_name,
+    std::string session_name,
     GcsNodeManager &gcs_node_manager,
     GcsActorManager &gcs_actor_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager,
-    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
-    : session_name_(session_name),
+    rpc::NodeManagerClientPool &raylet_client_pool)
+    : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
       gcs_actor_manager_(gcs_actor_manager),
       gcs_placement_group_manager_(gcs_placement_group_manager),
-      raylet_client_pool_(std::move(raylet_client_pool)),
-      last_cluster_resource_state_version_(0),
-      last_seen_autoscaler_state_version_(0) {}
+      raylet_client_pool_(raylet_client_pool) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -61,7 +58,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
 
   // Never seen any autoscaling state before - so just takes this.
   if (!autoscaling_state_.has_value()) {
-    autoscaling_state_ = std::move(request.autoscaling_state());
+    autoscaling_state_ = *std::move(request.mutable_autoscaling_state());
     send_reply_callback(ray::Status::OK(), nullptr, nullptr);
     return;
   }
@@ -80,7 +77,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
   }
 
   // We should overwrite the cache version.
-  autoscaling_state_ = std::move(request.autoscaling_state());
+  autoscaling_state_ = std::move(*request.mutable_autoscaling_state());
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
@@ -131,8 +128,9 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
   }
 
   // Iterate through each placement group load.
-  for (const auto &pg_data : placement_group_load->placement_group_data()) {
-    auto gang_resource_req = state->add_pending_gang_resource_requests();
+  for (auto &&pg_data :
+       std::move(*placement_group_load->mutable_placement_group_data())) {
+    auto *gang_resource_req = state->add_pending_gang_resource_requests();
     auto pg_state = pg_data.state();
     auto pg_id = PlacementGroupID::FromBinary(pg_data.placement_group_id());
     // For each placement group, if it's not pending/rescheduling, skip it since.
@@ -149,7 +147,7 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
 
     // Copy the PG's bundles to the request.
-    for (const auto &bundle : pg_data.bundles()) {
+    for (auto &&bundle : std::move(*pg_data.mutable_bundles())) {
       if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
         // We will be skipping **placed** bundle (which has node id associated with it).
         // This is to avoid double counting the bundles that are already placed when
@@ -161,8 +159,8 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       }
       // Add the resources.
       auto resource_req = gang_resource_req->add_requests();
-      resource_req->mutable_resources_bundle()->insert(bundle.unit_resources().begin(),
-                                                       bundle.unit_resources().end());
+      *resource_req->mutable_resources_bundle() =
+          std::move(*bundle.mutable_unit_resources());
 
       // Add the placement constraint.
       if (pg_constraint.has_value()) {
@@ -170,8 +168,6 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       }
     }
   }
-
-  return;
 }
 
 void GcsAutoscalerStateManager::GetClusterResourceConstraints(
@@ -224,12 +220,11 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
   iter->second.first = absl::Now();
 }
 
-std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
 GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
-  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+  absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
       aggregate_load;
   for (const auto &info : node_resource_info_) {
-    // Aggregate the load reported by each raylet.
     gcs::FillAggregateLoad(info.second.second, &aggregate_load);
   }
   return aggregate_load;
@@ -287,9 +282,9 @@ void GcsAutoscalerStateManager::GetNodeStates(
     node_state_proto->mutable_node_activity()->CopyFrom(
         gcs_node_info.state_snapshot().node_activity());
 
+    auto const node_id = NodeID::FromBinary(node_state_proto->node_id());
     // The node is alive. We need to check if the node is idle.
-    auto const node_resource_iter =
-        node_resource_info_.find(NodeID::FromBinary(node_state_proto->node_id()));
+    auto const node_resource_iter = node_resource_info_.find(node_id);
 
     RAY_CHECK(node_resource_iter != node_resource_info_.end());
 
@@ -326,8 +321,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
     node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
 
     // Add dynamic PG labels.
-    const auto &pgs_on_node = gcs_placement_group_manager_.GetBundlesOnNode(
-        NodeID::FromBinary(gcs_node_info.node_id()));
+    const auto &pgs_on_node = gcs_placement_group_manager_.GetBundlesOnNode(node_id);
     for (const auto &[pg_id, _bundle_indices] : pgs_on_node) {
       node_state_proto->mutable_dynamic_labels()->insert(
           {FormatPlacementGroupLabelName(pg_id.Hex()), ""});
@@ -396,7 +390,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   raylet_address.set_ip_address(node->node_manager_address());
   raylet_address.set_port(node->node_manager_port());
 
-  const auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(raylet_address);
+  const auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
   raylet_client->DrainRaylet(
       request.reason(),
       request.reason_message(),
@@ -413,6 +407,30 @@ void GcsAutoscalerStateManager::HandleDrainNode(
         }
         send_reply_callback(status, nullptr, nullptr);
       });
+}
+
+std::string GcsAutoscalerStateManager::DebugString() const {
+  std::ostringstream stream;
+  stream << "GcsAutoscalerStateManager: "
+         << "\n- last_seen_autoscaler_state_version_: "
+         << last_seen_autoscaler_state_version_
+         << "\n- last_cluster_resource_state_version_: "
+         << last_cluster_resource_state_version_ << "\n- pending demands:\n";
+
+  auto aggregate_load = GetAggregatedResourceLoad();
+  for (const auto &[shape, demand] : aggregate_load) {
+    auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size() +
+                       demand.num_ready_requests_queued();
+
+    stream << "\t{";
+    if (num_pending > 0) {
+      for (const auto &[resource, quantity] : shape) {
+        stream << resource << ": " << quantity << ", ";
+      }
+    }
+    stream << "} * " << num_pending << "\n";
+  }
+  return stream.str();
 }
 
 }  // namespace gcs

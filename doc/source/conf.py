@@ -74,6 +74,8 @@ extensions = [
 ]
 
 # Configuration for algolia
+# Note: This API key grants read access to our indexes and is intended to be public.
+# See https://www.algolia.com/doc/guides/security/api-keys/ for more information.
 docsearch_app_id = "LBHF0PABBL"
 docsearch_api_key = "6c42f30d9669d8e42f6fc92f44028596"
 docsearch_index_name = "docs-ray"
@@ -116,7 +118,11 @@ myst_heading_anchors = 3
 # arising from type annotations. See https://github.com/ray-project/ray/pull/46103
 # for additional context.
 nitpicky = True
-nitpick_ignore_regex = [("py:class", ".*")]
+nitpick_ignore_regex = [
+    ("py:class", ".*"),
+    # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
+    ("py:obj", "ray\.data\.datasource\.datasink\.WriteReturnType"),
+]
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to

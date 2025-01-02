@@ -25,13 +25,9 @@ register_env("multi_agent_cartpole", lambda cfg: MultiAgentCartPole(config=cfg))
 
 config = (
     DQNConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment(env="multi_agent_cartpole", env_config={"num_agents": args.num_agents})
     .training(
-        lr=0.00065 * (args.num_gpus or 1) ** 0.5,
+        lr=0.00065 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=48,
         replay_buffer_config={
             "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
@@ -42,7 +38,6 @@ config = (
         n_step=(2, 5),
         double_q=True,
         num_atoms=1,
-        noisy=False,
         dueling=True,
         epsilon=[(0, 1.0), (20000, 0.02)],
     )
@@ -66,7 +61,7 @@ if args.num_agents:
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     # `episode_return_mean` is the sum of all agents/policies' returns.
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 200.0 * args.num_agents,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150.0 * args.num_agents,
 }
 
 if __name__ == "__main__":

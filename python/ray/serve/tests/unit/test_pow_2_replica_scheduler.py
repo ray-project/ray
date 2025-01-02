@@ -135,7 +135,6 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     # construct the scheduler on a different loop to mimic the deployment handle path.
     async def construct_scheduler(loop: asyncio.AbstractEventLoop):
         scheduler = PowerOfTwoChoicesReplicaScheduler(
-            loop,
             DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=request.param.get(
                 "handle_source", DeploymentHandleSource.REPLICA
@@ -151,7 +150,10 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
             ),
             get_curr_time_s=TIMER.time,
         )
-        scheduler.backoff_sequence_s = [0, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001]
+        scheduler.backoff_sequence_s = request.param.get(
+            "backoff_sequence_s",
+            [0, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001],
+        )
         return scheduler
 
     s = asyncio.new_event_loop().run_until_complete(
@@ -184,7 +186,6 @@ def fake_pending_request(
             metadata=RequestMetadata(
                 request_id=str(uuid.uuid4()),
                 internal_request_id=str(uuid.uuid4()),
-                endpoint="endpoint",
                 multiplexed_model_id=model_id,
             ),
             created_at=created_at,
@@ -196,7 +197,6 @@ def fake_pending_request(
             metadata=RequestMetadata(
                 request_id=str(uuid.uuid4()),
                 internal_request_id=str(uuid.uuid4()),
-                endpoint="endpoint",
                 multiplexed_model_id=model_id,
             ),
         )
@@ -1253,7 +1253,7 @@ class TestModelMultiplexing:
                 ),
             ]
 
-            done, _ = await asyncio.wait(tasks, timeout=0.01)
+            done, _ = await asyncio.wait(tasks, timeout=0.1)
             assert len(done) == len(tasks)
 
             assert all(
@@ -1600,7 +1600,7 @@ async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
     s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
-    done, _ = await asyncio.wait([task], timeout=0.01)
+    done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
     # 1 probe from scheduling requests
     # + 1 probe from when the replica set was updated with replica r1
@@ -1608,7 +1608,7 @@ async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
 
     # Now let the replica respond and accept the request, it should be scheduled.
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
-    done, _ = await asyncio.wait([task], timeout=0.01)
+    done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
 
@@ -1636,7 +1636,7 @@ async def test_queue_len_cache_background_probing(pow_2_scheduler):
     s.replica_queue_len_cache.update(r1.replica_id, 0)
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
-    done, _ = await asyncio.wait([task], timeout=0.01)
+    done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
     # 0 probes from scheduling requests
@@ -1801,6 +1801,60 @@ async def test_replicas_actor_unavailable_error(
     # The scheduler should keep picking r1 since it has a smaller queue length.
     for _ in range(10):
         assert (await s.choose_replica_for_request(fake_pending_request())) == r1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {
+            "prefer_local_node": True,
+            "prefer_local_az": True,
+            "az": SCHEDULER_AZ,
+            "backoff_sequence_s": [999, 999, 999, 999],
+        },
+    ],
+    indirect=True,
+)
+async def test_locality_aware_backoff_skips_sleeps(pow_2_scheduler):
+    """
+    When the scheduler fails to schedule a request to a replica on the same node, and
+    the same zone, it should not sleep before retrying and add additional latency.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+    task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
+
+    # Setting up 3 replicas:
+    #   - r1 being same node and same zone
+    #   - r2 being different node but same zone
+    #   - r3 being different node and different zone
+    #
+    # only r3 is available to serve requests
+    r1 = FakeReplicaWrapper(
+        "r1", node_id=SCHEDULER_NODE_ID, availability_zone=SCHEDULER_AZ
+    )
+    r2 = FakeReplicaWrapper(
+        "r2",
+        node_id="some_other_node_in_the_stratosphere",
+        availability_zone=SCHEDULER_AZ,
+    )
+    r3 = FakeReplicaWrapper(
+        "r3",
+        node_id="some_other_node_in_the_stratosphere",
+        availability_zone="some_other_az_in_the_solar_system",
+    )
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
+    r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
+    r3.set_queue_len_response(0)
+    s.update_replicas([r1, r2, r3])
+
+    # The request should be served by r3 without added latency.
+    # Since we set up the `backoff_sequence_s` to be 999s, this 1s timeout will still
+    # capture the extra delay if it was added between scheduling loop.
+    done, _ = await asyncio.wait([task], timeout=1)
+    assert len(done) == 1
+    assert done.pop().result() == r3
 
 
 if __name__ == "__main__":

@@ -29,12 +29,11 @@ class GcsResourceManager;
 
 class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
  public:
-  GcsAutoscalerStateManager(
-      const std::string &session_name,
-      GcsNodeManager &gcs_node_manager,
-      GcsActorManager &gcs_actor_manager,
-      const GcsPlacementGroupManager &gcs_placement_group_manager,
-      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
+  GcsAutoscalerStateManager(std::string session_name,
+                            GcsNodeManager &gcs_node_manager,
+                            GcsActorManager &gcs_actor_manager,
+                            const GcsPlacementGroupManager &gcs_placement_group_manager,
+                            rpc::NodeManagerClientPool &raylet_client_pool);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -63,7 +62,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
 
-  std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
+  std::string DebugString() const;
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -78,7 +77,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
  private:
   /// \brief Get the aggregated resource load from all nodes.
-  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+  absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
   GetAggregatedResourceLoad() const;
 
   /// \brief Internal method for populating the rpc::ClusterResourceState
@@ -140,7 +139,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   void GetClusterResourceConstraints(rpc::autoscaler::ClusterResourceState *state);
 
   // Ray cluster session name.
-  const std::string session_name_ = "";
+  const std::string session_name_;
 
   /// Gcs node manager that provides node status information.
   GcsNodeManager &gcs_node_manager_;
@@ -152,7 +151,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   const GcsPlacementGroupManager &gcs_placement_group_manager_;
 
   /// Raylet client pool.
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  rpc::NodeManagerClientPool &raylet_client_pool_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.

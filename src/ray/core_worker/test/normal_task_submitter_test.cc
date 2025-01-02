@@ -15,6 +15,7 @@
 #include "ray/core_worker/transport/normal_task_submitter.h"
 
 #include "gtest/gtest.h"
+#include "mock/ray/core_worker/memory_store.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
@@ -39,6 +40,14 @@ class DynamicRateLimiter : public LeaseRequestRateLimiter {
  public:
   size_t limit;
 };
+
+// Wait (and halt the thread) until object_id appears in memory_store.
+void WaitForObjectIdInMemoryStore(CoreWorkerMemoryStore &memory_store,
+                                  const ObjectID &object_id) {
+  std::promise<bool> p;
+  memory_store.GetAsync(object_id, [&p](auto) { p.set_value(true); });
+  ASSERT_TRUE(p.get_future().get());
+}
 }  // namespace
 
 // Used to prevent leases from timing out when not testing that logic. It would
@@ -53,7 +62,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
   TaskSpecBuilder builder;
   rpc::Address empty_address;
   rpc::JobConfig config;
-  builder.SetCommonTaskSpec(TaskID::Nil(),
+  builder.SetCommonTaskSpec(TaskID::FromRandom(JobID::Nil()),
                             "dummy_task",
                             Language::PYTHON,
                             function_descriptor,
@@ -71,7 +80,8 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             resources,
                             serialized_runtime_env,
                             depth,
-                            TaskID::Nil());
+                            TaskID::Nil(),
+                            "");
   return builder.Build();
 }
 // Calls BuildTaskSpec with empty resources map and empty function descriptor
@@ -91,7 +101,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     if (callbacks.size() == 0) {
       return false;
     }
-    auto callback = callbacks.front();
+    const auto &callback = callbacks.front();
     auto reply = rpc::PushTaskReply();
     if (exit) {
       reply.set_worker_exiting(true);
@@ -138,6 +148,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
                        const Status *status,
                        const rpc::RayErrorInfo *ray_error_info = nullptr) override {
     num_fail_pending_task_calls++;
+    num_tasks_failed++;
   }
 
   bool FailOrRetryPendingTask(const TaskID &task_id,
@@ -169,6 +180,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
                                    const NodeID &node_id,
                                    const WorkerID &worker_id) override {}
 
+  bool IsTaskPending(const TaskID &task_id) const override { return true; }
+
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
   int num_inlined_dependencies = 0;
@@ -184,6 +197,7 @@ class MockRayletClient : public WorkerLeaseInterface {
                       bool disconnect_worker,
                       const std::string &disconnect_worker_error_detail,
                       bool worker_exiting) override {
+    std::lock_guard<std::mutex> lock(mu_);
     if (disconnect_worker) {
       num_workers_disconnected++;
     } else {
@@ -199,6 +213,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       const TaskID &task_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override {
+    std::lock_guard<std::mutex> lock(mu_);
     ray::rpc::GetTaskFailureCauseReply reply;
     callback(Status::OK(), std::move(reply));
     num_get_task_failure_causes += 1;
@@ -207,6 +222,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   void ReportWorkerBacklog(
       const WorkerID &worker_id,
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {
+    std::lock_guard<std::mutex> lock(mu_);
     reported_backlog_size = 0;
     reported_backlogs.clear();
     for (const auto &backlog_report : backlog_reports) {
@@ -223,6 +239,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size,
       const bool is_selected_based_on_locality) override {
+    std::lock_guard<std::mutex> lock(mu_);
     num_workers_requested += 1;
     if (grant_or_reject) {
       num_grant_or_reject_leases_requested += 1;
@@ -231,6 +248,11 @@ class MockRayletClient : public WorkerLeaseInterface {
       num_is_selected_based_on_locality_leases_requested += 1;
     }
     callbacks.push_back(callback);
+  }
+  void PrestartWorkers(
+      const rpc::PrestartWorkersRequest &request,
+      const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override {
+    RAY_LOG(FATAL) << "Not implemented";
   }
 
   void ReleaseUnusedActorWorkers(
@@ -241,6 +263,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   void CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
+    std::lock_guard<std::mutex> lock(mu_);
     num_leases_canceled += 1;
     cancel_callbacks.push_back(callback);
   }
@@ -271,44 +294,60 @@ class MockRayletClient : public WorkerLeaseInterface {
       reply.mutable_worker_address()->set_raylet_id(retry_at_raylet_id.Binary());
       reply.mutable_worker_address()->set_worker_id(worker_id);
     }
-    if (callbacks.size() == 0) {
+    rpc::ClientCallback<rpc::RequestWorkerLeaseReply> callback = PopCallbackInLock();
+    if (!callback) {
       return false;
-    } else {
-      auto callback = callbacks.front();
-      callback(Status::OK(), std::move(reply));
-      callbacks.pop_front();
-      return true;
     }
+    callback(Status::OK(), std::move(reply));
+    return true;
   }
 
   bool FailWorkerLeaseDueToGrpcUnavailable() {
-    rpc::RequestWorkerLeaseReply reply;
-    if (callbacks.size() == 0) {
+    rpc::ClientCallback<rpc::RequestWorkerLeaseReply> callback = PopCallbackInLock();
+    if (!callback) {
       return false;
-    } else {
-      auto callback = callbacks.front();
-      callback(Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE),
-               std::move(reply));
-      callbacks.pop_front();
-      return true;
     }
+    rpc::RequestWorkerLeaseReply reply;
+    callback(Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE),
+             std::move(reply));
+    return true;
   }
 
   bool ReplyCancelWorkerLease(bool success = true) {
+    rpc::ClientCallback<rpc::CancelWorkerLeaseReply> callback = PopCancelCallbackInLock();
+    if (!callback) {
+      return false;
+    }
     rpc::CancelWorkerLeaseReply reply;
     reply.set_success(success);
-    if (cancel_callbacks.size() == 0) {
-      return false;
-    } else {
-      auto callback = cancel_callbacks.front();
-      callback(Status::OK(), std::move(reply));
-      cancel_callbacks.pop_front();
-      return true;
-    }
+    callback(Status::OK(), std::move(reply));
+    return true;
   }
 
-  ~MockRayletClient() {}
+  template <typename Callback>
+  Callback GenericPopCallbackInLock(std::list<Callback> &lst) {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (lst.size() == 0) {
+      return nullptr;
+    }
+    auto callback = std::move(lst.front());
+    lst.pop_front();
+    return callback;
+  }
 
+  // Pop a callback from the list and return it. If there's no callbacks, returns nullptr.
+  rpc::ClientCallback<rpc::RequestWorkerLeaseReply> PopCallbackInLock() {
+    return GenericPopCallbackInLock(callbacks);
+  }
+
+  rpc::ClientCallback<rpc::CancelWorkerLeaseReply> PopCancelCallbackInLock() {
+    return GenericPopCallbackInLock(cancel_callbacks);
+  }
+
+  ~MockRayletClient() = default;
+
+  // Protects all internal fields.
+  std::mutex mu_;
   int num_grant_or_reject_leases_requested = 0;
   int num_is_selected_based_on_locality_leases_requested = 0;
   int num_workers_requested = 0;
@@ -399,11 +438,17 @@ TaskSpecification BuildEmptyTaskSpec() {
   return BuildTaskSpec(empty_resources, empty_descriptor);
 }
 
+TaskSpecification WithRandomTaskId(const TaskSpecification &task_spec) {
+  auto copied_proto = task_spec.GetMessage();
+  *copied_proto.mutable_task_id() = TaskID::FromRandom(JobID::Nil()).Binary();
+  return TaskSpecification(std::move(copied_proto));
+}
+
 TEST(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -456,7 +501,7 @@ TEST(NormalTaskSubmitterTest, TestSubmitOneTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -508,7 +553,7 @@ TEST(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -565,7 +610,7 @@ TEST(NormalTaskSubmitterTest, TestHandleTaskFailure) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -608,7 +653,7 @@ TEST(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -678,7 +723,7 @@ TEST(NormalTaskSubmitterTest, TestHandleRuntimeEnvSetupFailed) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -748,7 +793,7 @@ TEST(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletDied) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -777,7 +822,7 @@ TEST(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -831,7 +876,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -909,7 +954,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -1013,7 +1058,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -1123,7 +1168,7 @@ TEST(NormalTaskSubmitterTest, TestSubmitMultipleTasks) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -1195,7 +1240,7 @@ TEST(NormalTaskSubmitterTest, TestReuseWorkerLease) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -1268,7 +1313,7 @@ TEST(NormalTaskSubmitterTest, TestRetryLeaseCancellation) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -1336,7 +1381,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -1401,7 +1446,7 @@ TEST(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -1457,7 +1502,7 @@ TEST(NormalTaskSubmitterTest, TestWorkerNotReturnedOnExit) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -1504,7 +1549,7 @@ TEST(NormalTaskSubmitterTest, TestSpillback) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
 
@@ -1577,7 +1622,7 @@ TEST(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
 
@@ -1688,7 +1733,10 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   ASSERT_TRUE(submitter.SubmitTask(same1).ok());
   ASSERT_TRUE(submitter.SubmitTask(same2).ok());
   ASSERT_TRUE(submitter.SubmitTask(different).ok());
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  WaitForCondition(
+      [&raylet_client]() { return raylet_client->num_workers_returned == 2; },
+      /*timeout_ms=*/1000);
 
   // same1 is pushed.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
@@ -1733,7 +1781,8 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 }
 
 TEST(NormalTaskSubmitterTest, TestSchedulingKeys) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  InstrumentedIOContextWithThread io_context("TestSchedulingKeys");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
   std::unordered_map<std::string, double> resources2({{"b", 2.0}});
@@ -1815,10 +1864,11 @@ TEST(NormalTaskSubmitterTest, TestSchedulingKeys) {
 }
 
 TEST(NormalTaskSubmitterTest, TestBacklogReport) {
+  InstrumentedIOContextWithThread io_context("TestBacklogReport");
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -1863,18 +1913,26 @@ TEST(NormalTaskSubmitterTest, TestBacklogReport) {
   TaskSpecification task3 = BuildTaskSpec(resources1, descriptor1);
   task3.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       plasma2.Binary());
-  TestSchedulingKey(store, task2, task2, task3);
+  TestSchedulingKey(store, WithRandomTaskId(task2), WithRandomTaskId(task2), task3);
 
   TaskSpecification task4 = BuildTaskSpec(resources2, descriptor2);
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   // One is requested and one is in the backlog for each SchedulingKey
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task4).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task4).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task3)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task3)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task4)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task4)).ok());
+
+  // Waits for the async callbacks in submitter.SubmitTask to finish, before we call
+  // ReportWorkerBacklog.
+  std::promise<bool> wait_for_io_ctx_empty;
+  io_context.GetIoService().post(
+      [&wait_for_io_ctx_empty]() { wait_for_io_ctx_empty.set_value(true); },
+      "wait_for_io_ctx_empty");
+  wait_for_io_ctx_empty.get_future().get();
 
   submitter.ReportWorkerBacklog();
   ASSERT_EQ(raylet_client->reported_backlogs.size(), 3);
@@ -1887,7 +1945,7 @@ TEST(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -1953,7 +2011,7 @@ TEST(NormalTaskSubmitterTest, TestKillExecutingTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
 
@@ -2016,7 +2074,7 @@ TEST(NormalTaskSubmitterTest, TestKillPendingTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -2044,7 +2102,7 @@ TEST(NormalTaskSubmitterTest, TestKillPendingTask) {
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
-  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
   ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
   ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
@@ -2061,7 +2119,7 @@ TEST(NormalTaskSubmitterTest, TestKillResolvingTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -2088,6 +2146,7 @@ TEST(NormalTaskSubmitterTest, TestKillResolvingTask) {
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   auto data = GenerateRandomObject();
   ASSERT_TRUE(store->Put(*data, obj1));
+  WaitForObjectIdInMemoryStore(*store, obj1);
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);

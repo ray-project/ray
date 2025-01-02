@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
@@ -79,7 +80,7 @@ class GroupedData:
             key=self._key,
             aggs=aggs,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self._dataset.context)
         return Dataset(
             plan,
             logical_plan,
@@ -128,6 +129,12 @@ class GroupedData:
             * It requires that each group fits in memory on a single node.
 
         In general, prefer to use aggregate() instead of map_groups().
+
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
 
         Examples:
             >>> # Return a single record per group (list of multiple records in,
@@ -183,7 +190,8 @@ class GroupedData:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
 
         Returns:
             The return type is determined by the return type of ``fn``, and the return
@@ -255,7 +263,10 @@ class GroupedData:
 
         # Change the name of the wrapped function so that users see the name of their
         # function rather than `wrapped_fn` in the progress bar.
-        wrapped_fn.__name__ = fn.__name__
+        if isinstance(fn, partial):
+            wrapped_fn.__name__ = fn.func.__name__
+        else:
+            wrapped_fn.__name__ = fn.__name__
 
         # Note we set batch_size=None here, so it will use the entire block as a batch,
         # which ensures that each group will be contained within a batch in entirety.

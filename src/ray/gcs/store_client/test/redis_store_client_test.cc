@@ -67,7 +67,7 @@ class RedisStoreClientTest : public StoreClientTestBase {
   }
 
   void InitStoreClient() override {
-    RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "");
+    RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", "");
     redis_client_ = std::make_shared<RedisClient>(options);
     RAY_CHECK_OK(redis_client_->Connect(*io_service_pool_->Get()));
 
@@ -369,11 +369,14 @@ TEST_F(RedisStoreClientTest, Random) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog,
-                                         argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      argv[0],
+      ray::RayLogLevel::INFO,
+      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

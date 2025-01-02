@@ -109,20 +109,20 @@ class RedisStoreClient : public StoreClient {
 
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
-                  const std::string &data,
+                  std::string data,
                   bool overwrite,
                   std::function<void(bool)> callback) override;
 
   Status AsyncGet(const std::string &table_name,
                   const std::string &key,
-                  const OptionalItemCallback<std::string> &callback) override;
+                  OptionalItemCallback<std::string> callback) override;
 
   Status AsyncGetAll(const std::string &table_name,
-                     const MapCallback<std::string, std::string> &callback) override;
+                     MapCallback<std::string, std::string> callback) override;
 
   Status AsyncMultiGet(const std::string &table_name,
                        const std::vector<std::string> &keys,
-                       const MapCallback<std::string, std::string> &callback) override;
+                       MapCallback<std::string, std::string> callback) override;
 
   Status AsyncDelete(const std::string &table_name,
                      const std::string &key,
@@ -264,6 +264,7 @@ class RedisStoreClient : public StoreClient {
 // Helper function used by Python to delete all redis HASHes with a given prefix.
 bool RedisDelKeyPrefixSync(const std::string &host,
                            int32_t port,
+                           const std::string &username,
                            const std::string &password,
                            bool use_ssl,
                            const std::string &external_storage_namespace);

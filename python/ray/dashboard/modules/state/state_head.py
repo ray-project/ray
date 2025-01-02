@@ -406,7 +406,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 success=False,
                 error_message=str(e),
                 result=None,
-                reason=str(e),
             )
 
         return self._reply(success=True, error_message="", result=result)

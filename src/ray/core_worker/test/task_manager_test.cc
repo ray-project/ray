@@ -104,13 +104,13 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   MOCK_METHOD(bool, Enabled, (), (const, override));
 
-  MOCK_METHOD(const std::string, DebugString, (), (override));
+  MOCK_METHOD(std::string, DebugString, (), (override));
 };
 
 class TaskManagerTest : public ::testing::Test {
  public:
-  TaskManagerTest(bool lineage_pinning_enabled = false,
-                  int64_t max_lineage_bytes = 1024 * 1024 * 1024)
+  explicit TaskManagerTest(bool lineage_pinning_enabled = false,
+                           int64_t max_lineage_bytes = 1024 * 1024 * 1024)
       : lineage_pinning_enabled_(lineage_pinning_enabled),
         addr_(GetRandomWorkerAddr()),
         publisher_(std::make_shared<pubsub::MockPublisher>()),
@@ -122,11 +122,12 @@ class TaskManagerTest : public ::testing::Test {
             subscriber_.get(),
             [this](const NodeID &node_id) { return all_nodes_alive_; },
             lineage_pinning_enabled))),
-        store_(std::shared_ptr<CoreWorkerMemoryStore>(
-            new CoreWorkerMemoryStore(reference_counter_))),
+        io_context_("TaskManagerTest"),
+        store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore(
+            io_context_.GetIoService(), reference_counter_.get()))),
         manager_(
-            store_,
-            reference_counter_,
+            *store_,
+            *reference_counter_,
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
             },
@@ -181,6 +182,7 @@ class TaskManagerTest : public ::testing::Test {
   std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
+  InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool all_nodes_alive_ = true;
   TaskManager manager_;
@@ -636,14 +638,15 @@ TEST_F(TaskManagerTest, TestLocalityDataAdded) {
   auto return_id = spec.ReturnId(0);
   auto node_id = NodeID::FromRandom();
   int object_size = 100;
-  store_->GetAsync(return_id, [&](std::shared_ptr<RayObject> obj) {
-    // By the time the return object is available to get, we should be able
-    // to get the locality data too.
-    auto locality_data = reference_counter_->GetLocalityData(return_id);
-    ASSERT_TRUE(locality_data.has_value());
-    ASSERT_EQ(locality_data->object_size, object_size);
-    ASSERT_TRUE(locality_data->nodes_containing_object.contains(node_id));
-  });
+  store_->GetAsync(
+      return_id, [return_id, object_size, node_id, this](std::shared_ptr<RayObject> obj) {
+        // By the time the return object is available to get, we should be able
+        // to get the locality data too.
+        auto locality_data = reference_counter_->GetLocalityData(return_id);
+        ASSERT_TRUE(locality_data.has_value());
+        ASSERT_EQ(locality_data->object_size, object_size);
+        ASSERT_TRUE(locality_data->nodes_containing_object.contains(node_id));
+      });
 
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -685,7 +688,8 @@ TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
       {},
       "",
       0,
-      TaskID::Nil());
+      TaskID::Nil(),
+      "");
   builder.SetActorTaskSpec(
       actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0);
   TaskSpecification spec = builder.Build();

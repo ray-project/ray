@@ -163,6 +163,8 @@ class SingleAgentEpisode:
         "t",
         "t_started",
         "_action_space",
+        "_last_added_observation",
+        "_last_added_infos",
         "_last_step_time",
         "_observation_space",
         "_start_time",
@@ -230,7 +232,7 @@ class SingleAgentEpisode:
             truncated: A boolean indicating, if the episode has been truncated.
             t_started: Optional. The starting timestep of the episode. The default
                 is zero. If data is provided, the starting point is from the last
-                observation onwards (i.e. `t_started = len(observations) - 1). If
+                observation onwards (i.e. `t_started = len(observations) - 1`). If
                 this parameter is provided the episode starts at the provided value.
             len_lookback_buffer: The size of the (optional) lookback buffers to keep in
                 front of this Episode for each type of data (observations, actions,
@@ -314,12 +316,7 @@ class SingleAgentEpisode:
         self.is_truncated = truncated
 
         # Extra model outputs, e.g. `action_dist_input` needed in the batch.
-        self.extra_model_outputs = defaultdict(
-            functools.partial(
-                InfiniteLookbackBuffer,
-                lookback=len_lookback_buffer,
-            ),
-        )
+        self.extra_model_outputs = {}
         for k, v in (extra_model_outputs or {}).items():
             if isinstance(v, InfiniteLookbackBuffer):
                 self.extra_model_outputs[k] = v
@@ -346,6 +343,9 @@ class SingleAgentEpisode:
         self._start_time = None
         self._last_step_time = None
 
+        self._last_added_observation = None
+        self._last_added_infos = None
+
         # Validate the episode data thus far.
         self.validate()
 
@@ -362,6 +362,7 @@ class SingleAgentEpisode:
             observation: The initial observation returned by `env.reset()`.
             infos: An (optional) info dict returned by `env.reset()`.
         """
+        assert not self.is_reset
         assert not self.is_done
         assert len(self.observations) == 0
         # Assume that this episode is completely empty and has not stepped yet.
@@ -378,6 +379,9 @@ class SingleAgentEpisode:
 
         self.observations.append(observation)
         self.infos.append(infos)
+
+        self._last_added_observation = observation
+        self._last_added_infos = infos
 
         # Validate our data.
         self.validate()
@@ -429,9 +433,15 @@ class SingleAgentEpisode:
         self.t += 1
         if extra_model_outputs is not None:
             for k, v in extra_model_outputs.items():
-                self.extra_model_outputs[k].append(v)
+                if k not in self.extra_model_outputs:
+                    self.extra_model_outputs[k] = InfiniteLookbackBuffer([v])
+                else:
+                    self.extra_model_outputs[k].append(v)
         self.is_terminated = terminated
         self.is_truncated = truncated
+
+        self._last_added_observation = observation
+        self._last_added_infos = infos
 
         # Only check spaces if finalized AND every n timesteps.
         if self.is_finalized and self.t % 50:
@@ -440,8 +450,6 @@ class SingleAgentEpisode:
                     f"`observation` {observation} does NOT fit SingleAgentEpisode's "
                     f"observation_space: {self.observation_space}!"
                 )
-            # TODO: This check will fail unless we add action clipping to
-            #  default module-to-env connector piece.
             if self.action_space is not None:
                 assert self.action_space.contains(action), (
                     f"`action` {action} does NOT fit SingleAgentEpisode's "
@@ -484,6 +492,11 @@ class SingleAgentEpisode:
             )
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == len(self.observations) - 1
+
+    @property
+    def is_reset(self) -> bool:
+        """Returns True if `self.add_env_reset()` has already been called."""
+        return len(self.observations) > 0
 
     @property
     def is_finalized(self) -> bool:
@@ -624,10 +637,9 @@ class SingleAgentEpisode:
         elif other.is_truncated:
             self.is_truncated = True
 
-        for model_out_key in other.extra_model_outputs.keys():
-            self.extra_model_outputs[model_out_key].extend(
-                other.get_extra_model_outputs(model_out_key)
-            )
+        for key in other.extra_model_outputs.keys():
+            assert key in self.extra_model_outputs
+            self.extra_model_outputs[key].extend(other.get_extra_model_outputs(key))
 
         # Validate.
         self.validate()
@@ -1365,20 +1377,12 @@ class SingleAgentEpisode:
                 `new_data`.
         """
         # Record already exists -> Set existing record's data to new values.
-        if key in self.extra_model_outputs:
-            self.extra_model_outputs[key].set(
-                new_data=new_data,
-                at_indices=at_indices,
-                neg_index_as_lookback=neg_index_as_lookback,
-            )
-        # Users wants to add a new record -> Create new buffer.
-        else:
-            if at_indices is not None:
-                raise AttributeError(
-                    f"Cannot set non-existing extra_model_outputs[{key}] using the "
-                    "`at_indices` arg! Try leaving `at_indices` None."
-                )
-            self.extra_model_outputs[key] = InfiniteLookbackBuffer(data=new_data)
+        assert key in self.extra_model_outputs
+        self.extra_model_outputs[key].set(
+            new_data=new_data,
+            at_indices=at_indices,
+            neg_index_as_lookback=neg_index_as_lookback,
+        )
 
     def add_temporary_timestep_data(self, key: str, data: Any) -> None:
         """Temporarily adds (until `finalized()` called) per-timestep data to self.

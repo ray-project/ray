@@ -53,10 +53,6 @@ class TestNodeFailures(unittest.TestCase):
         # with fewer EnvRunners.
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=6,
@@ -64,7 +60,7 @@ class TestNodeFailures(unittest.TestCase):
             )
             .fault_tolerance(
                 ignore_env_runner_failures=True,
-                recreate_failed_env_runners=False,
+                restart_failed_env_runners=False,
             )
         )
 
@@ -74,17 +70,13 @@ class TestNodeFailures(unittest.TestCase):
         # We recreate failed EnvRunners and continue training.
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=6,
                 validate_env_runners_after_construction=True,
             )
             .fault_tolerance(
-                recreate_failed_env_runners=True,
+                restart_failed_env_runners=True,
                 ignore_env_runner_failures=False,  # True also ok here we recreate.
             )
         )
@@ -95,10 +87,6 @@ class TestNodeFailures(unittest.TestCase):
         # We do not ignore EnvRunner failures and expect to crash upon failure.
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=6,
@@ -106,7 +94,7 @@ class TestNodeFailures(unittest.TestCase):
             )
             .fault_tolerance(
                 ignore_env_runner_failures=False,
-                recreate_failed_env_runners=False,
+                restart_failed_env_runners=False,
             )
         )
 
@@ -146,14 +134,14 @@ class TestNodeFailures(unittest.TestCase):
             # least once, we might even only see 2 EnvRunners left (the ones on the head
             # node, which are always safe from preemption).
             if (i - 1) % preempt_freq == 0:
-                if config.recreate_failed_env_runners:
+                if config.restart_failed_env_runners:
                     self.assertEqual(healthy_env_runners, 4)
                 elif config.ignore_env_runner_failures:
                     self.assertIn(healthy_env_runners, [2, 4])
             # After the 0th iteration, in which we already killed one node, if
             # we don't recreate, the number of EnvRunners should be 2 (only head
             # EnvRunners left) or 4 (one node down).
-            elif i > 0 and not config.recreate_failed_env_runners:
+            elif i > 0 and not config.restart_failed_env_runners:
                 self.assertIn(healthy_env_runners, [2, 4])
             # Otherwise, all EnvRunners should be there (but might still be in the
             # process of coming up).

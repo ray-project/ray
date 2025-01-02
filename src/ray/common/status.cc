@@ -28,9 +28,9 @@
 
 #include "ray/common/status.h"
 
-#include <assert.h>
-
 #include <boost/system/error_code.hpp>
+#include <cassert>
+#include <sstream>
 
 #include "absl/container/flat_hash_map.h"
 
@@ -53,6 +53,7 @@ namespace ray {
 #define STATUS_CODE_NOT_FOUND "NotFound"
 #define STATUS_CODE_DISCONNECTED "Disconnected"
 #define STATUS_CODE_SCHEDULING_CANCELLED "SchedulingCancelled"
+#define STATUS_CODE_ALREADY_EXISTS "AlreadyExists"
 #define STATUS_CODE_OBJECT_EXISTS "ObjectExists"
 #define STATUS_CODE_OBJECT_NOT_FOUND "ObjectNotFound"
 #define STATUS_CODE_OBJECT_ALREADY_SEALED "ObjectAlreadySealed"
@@ -93,6 +94,7 @@ const absl::flat_hash_map<StatusCode, std::string> kCodeToStr = {
     {StatusCode::NotFound, STATUS_CODE_NOT_FOUND},
     {StatusCode::Disconnected, STATUS_CODE_DISCONNECTED},
     {StatusCode::SchedulingCancelled, STATUS_CODE_SCHEDULING_CANCELLED},
+    {StatusCode::AlreadyExists, STATUS_CODE_ALREADY_EXISTS},
     {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
     {StatusCode::ObjectNotFound, STATUS_CODE_OBJECT_NOT_FOUND},
     {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_ALREADY_SEALED},
@@ -119,11 +121,18 @@ const absl::flat_hash_map<std::string, StatusCode> kStrToCode = []() {
 
 }  // namespace
 
-Status::Status(StatusCode code, const std::string &msg, int rpc_code) {
+Status::Status(StatusCode code, const std::string &msg, int rpc_code)
+    : Status(code, msg, SourceLocation{}, rpc_code) {}
+
+Status::Status(StatusCode code,
+               const std::string &msg,
+               SourceLocation loc,
+               int rpc_code) {
   assert(code != StatusCode::OK);
   state_ = new State;
   state_->code = code;
   state_->msg = msg;
+  state_->loc = loc;
   state_->rpc_code = rpc_code;
 }
 
@@ -163,8 +172,16 @@ std::string Status::ToString() const {
   if (state_ == nullptr) {
     return result;
   }
+
   result += ": ";
   result += state_->msg;
+
+  if (IsValidSourceLoc(state_->loc)) {
+    std::stringstream ss;
+    ss << state_->loc;
+    result += " at ";
+    result += ss.str();
+  }
   return result;
 }
 
