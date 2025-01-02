@@ -42,7 +42,7 @@ Status MutableObjectManager::RegisterChannel(
     const ObjectID &object_id,
     std::unique_ptr<plasma::MutableObject> mutable_object,
     bool reader) {
-  absl::MutexLock guard(&channel_lock_);
+  absl::WriterMutexLock guard(&channel_lock_);
   const auto &[channel_pair, success] =
       channels_.emplace(object_id, std::move(mutable_object));
   Channel &channel = channel_pair->second;
@@ -66,7 +66,7 @@ Status MutableObjectManager::RegisterChannel(
 
 MutableObjectManager::Channel *MutableObjectManager::GetChannel(
     const ObjectID &object_id) {
-  absl::MutexLock guard(&channel_lock_);
+  absl::ReaderMutexLock guard(&channel_lock_);
   auto entry = channels_.find(object_id);
   if (entry == channels_.end()) {
     return nullptr;
@@ -75,16 +75,18 @@ MutableObjectManager::Channel *MutableObjectManager::GetChannel(
 }
 
 MutableObjectManager::~MutableObjectManager() {
-  destructor_lock_.Lock();
+  absl::WriterMutexLock destructor_guard(&destructor_lock_);
 
   // Copy `semaphores_` into `tmp` because `DestroySemaphores()` mutates `semaphores_`.
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> tmp = semaphores_;
   for (const auto &[object_id, _] : tmp) {
-    (void)SetErrorInternal(object_id);
+    if (auto *channel = GetChannel(object_id)) {
+      (void)SetErrorInternal(object_id, *channel);
+    }
     DestroySemaphores(object_id);
   }
+  absl::WriterMutexLock channel_guard(&channel_lock_);
   channels_.clear();
-  destructor_lock_.Unlock();
 }
 
 PlasmaObjectHeader *MutableObjectManager::GetHeader(const ObjectID &object_id) {
@@ -428,33 +430,33 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
 Status MutableObjectManager::SetError(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "SetError " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
-  return SetErrorInternal(object_id);
-}
-
-Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
-  Channel *channel = GetChannel(object_id);
-  if (channel != nullptr) {
-    PlasmaObjectHeader::Semaphores sem{};
-    if (!GetSemaphores(object_id, sem)) {
-      return Status::ChannelError(
-          "Channel has not been registered (cannot get semaphores)");
-    }
-    channel->mutable_object->header->SetErrorUnlocked(sem);
-    channel->reader_registered = false;
-    channel->writer_registered = false;
-    // TODO(jhumphri): Free the channel.
+  if (auto *channel = GetChannel(object_id)) {
+    return SetErrorInternal(object_id, *channel);
   } else {
     return Status::ChannelError("Channel has not been registered");
   }
+}
+
+Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id,
+                                              Channel &channel) {
+  PlasmaObjectHeader::Semaphores sem{};
+  if (!GetSemaphores(object_id, sem)) {
+    return Status::ChannelError(
+        "Channel has not been registered (cannot get semaphores)");
+  }
+  channel.mutable_object->header->SetErrorUnlocked(sem);
+  channel.reader_registered = false;
+  channel.writer_registered = false;
+  // TODO(jhumphri): Free the channel.
   return Status::OK();
 }
 
 Status MutableObjectManager::SetErrorAll() {
-  absl::ReaderMutexLock guard(&destructor_lock_);
-
+  absl::ReaderMutexLock destructor_guard(&destructor_lock_);
+  absl::ReaderMutexLock channel_guard(&channel_lock_);
   Status ret = Status::OK();
-  for (const auto &[object_id, _] : channels_) {
-    ret = SetErrorInternal(object_id);
+  for (auto &[object_id, channel] : channels_) {
+    ret = SetErrorInternal(object_id, channel);
     if (ret.code() != StatusCode::OK) {
       break;
     }
@@ -558,7 +560,8 @@ Status MutableObjectManager::SetError(const ObjectID &object_id) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
+Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id,
+                                              Channel &channel) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
