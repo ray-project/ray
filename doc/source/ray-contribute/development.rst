@@ -140,7 +140,7 @@ To build Ray on Ubuntu, run the following commands:
 
 .. note::
   The `install-bazel.sh` script installs `bazelisk` for building Ray.
-  It's worth noticing `bazel` is installed at `$HOME/bin/bazel`, please make sure it's on the executable `PATH`.
+  Note that `bazel` is installed at `$HOME/bin/bazel`; make sure it's on the executable `PATH`.
   If you prefer to use `bazel`, only version `6.5.0` is currently supported.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
