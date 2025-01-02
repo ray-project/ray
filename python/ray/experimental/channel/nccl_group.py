@@ -120,13 +120,13 @@ class _NcclGroup(GPUCommunicator):
                 self._recv_stream = cp.cuda.ExternalStream(
                     torch.cuda.Stream().cuda_stream, device_id=device.index
                 )
-                # self._collective_stream = cp.cuda.ExternalStream(
-                #     torch.cuda.Stream().cuda_stream, device_id=device.index
-                # )
+                self._collective_stream = cp.cuda.ExternalStream(
+                    torch.cuda.Stream().cuda_stream, device_id=device.index
+                )
             else:
                 self._send_stream = self._cuda_stream
                 self._recv_stream = self._cuda_stream
-            self._collective_stream = self._cuda_stream
+                self._collective_stream = self._cuda_stream
 
         self._closed = False
 
