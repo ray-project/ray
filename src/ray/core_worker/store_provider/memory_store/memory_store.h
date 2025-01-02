@@ -51,6 +51,7 @@ class CoreWorkerMemoryStore {
       instrumented_io_context &io_context,
       ReferenceCounter *counter = nullptr,
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
+      std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
       std::function<std::shared_ptr<RayObject>(const RayObject &object,
                                                const ObjectID &object_id)>
@@ -219,6 +220,9 @@ class CoreWorkerMemoryStore {
   absl::flat_hash_map<ObjectID,
                       std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
       object_async_get_requests_ ABSL_GUARDED_BY(mu_);
+
+  /// Function passed in to be called to check for signals (e.g., Ctrl-C).
+  std::function<Status()> check_signals_;
 
   /// Function called to report unhandled exceptions.
   std::function<void(const RayObject &)> unhandled_exception_handler_;

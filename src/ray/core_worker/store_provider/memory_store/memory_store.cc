@@ -142,12 +142,14 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
     ReferenceCounter *counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
+    std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
     : io_context_(io_context),
       ref_counter_(counter),
       raylet_client_(std::move(raylet_client)),
+      check_signals_(std::move(check_signals)),
       unhandled_exception_handler_(std::move(unhandled_exception_handler)),
       object_allocator_(std::move(object_allocator)) {}
 
@@ -358,33 +360,36 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
           ? RayConfig::instance().get_timeout_milliseconds()
           : std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
 
-// Repeatedly call Wait() on a shorter timeout so we can check for signals between
-// calls. If timeout_ms == -1, this should run forever until all objects are
-// ready or a signal is received. Else it should run repeatedly until that timeout
-// is reached.
-#ifdef _WIN32
-  (void)std::signal(SIGBREAK, SignalHandler);
-#else
+  // We need to register a custom signal handler because check_signals cannot check
+  // signals if they're not on the main python thread, so we use both to check for SIGINT
+  // and SIGTERM and for python SystemExit.
+#if defined(__APPLE__) || defined(__linux__)
   struct sigaction new_action {};
   struct sigaction old_sigint {};
   struct sigaction old_sigterm {};
-  new_action.sa_handler = SignalHandler;
   sigemptyset(&new_action.sa_mask);
   new_action.sa_flags = 0;
+  new_action.sa_handler = SignalHandler;
   sigaction(SIGINT, &new_action, &old_sigint);
   sigaction(SIGTERM, &new_action, &old_sigterm);
 #endif
-  while (!timed_out && signal_received == -1 &&
-         !(done = get_request->Wait(iteration_timeout))) {
+  auto signal_status = Status::OK();
+  // Repeatedly call Wait() on a shorter timeout so we can check for signals between
+  // calls. If timeout_ms == -1, this should run forever until all objects are
+  // ready or a signal is received. Else it should run repeatedly until that timeout
+  // is reached.
+  while (!timed_out && !(done = get_request->Wait(iteration_timeout)) &&
+         (signal_status.ok() && signal_received == -1)) {
+    if (check_signals_ != nullptr) {
+      signal_status = check_signals_();
+    }
     if (remaining_timeout >= 0) {
       remaining_timeout -= iteration_timeout;
       iteration_timeout = std::min(remaining_timeout, iteration_timeout);
       timed_out = remaining_timeout <= 0;
     }
   }
-#ifdef _WIN32
-  (void)std::signal(SIGBREAK, SIG_DFL);
-#else
+#if defined(__APPLE__) || defined(__linux__)
   sigaction(SIGINT, &old_sigint, nullptr);
   sigaction(SIGTERM, &old_sigterm, nullptr);
 #endif
@@ -419,7 +424,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     }
   }
 
-  if (signal_received != -1) {
+  if (!signal_status.ok()) {
+    return signal_status;
+  } else if (signal_received != -1) {
     return Status::Interrupted("Interrupted by signal: " +
                                std::to_string(signal_received));
   } else if (done) {
