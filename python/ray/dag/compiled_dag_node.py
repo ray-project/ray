@@ -1,3 +1,4 @@
+import copy
 import weakref
 import asyncio
 from collections import defaultdict
@@ -1705,11 +1706,17 @@ class CompiledDAG:
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
                 requires_nccl = dag_node.type_hint.requires_nccl()
+                downstream_nccl_actors = (
+                    set(self.idx_to_task[task_idx].downstream_task_idxs.values())
+                    if requires_nccl
+                    else set()
+                )
                 upstream_requires_nccl = False
+                upstream_nccl_actors = set()
                 for upstream_node in dag_node._upstream_nodes:
                     if upstream_node.type_hint.requires_nccl():
                         upstream_requires_nccl = True
-                        break
+                        upstream_nccl_actors.add(upstream_node._get_actor_handle())
 
                 read_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1718,6 +1725,8 @@ class CompiledDAG:
                     task_idx,
                     actor_handle,
                     upstream_requires_nccl,
+                    upstream_nccl_actors,
+                    downstream_nccl_actors,
                 )
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1726,6 +1735,8 @@ class CompiledDAG:
                     task_idx,
                     actor_handle,
                     isinstance(dag_node, CollectiveOutputNode),
+                    upstream_nccl_actors,
+                    downstream_nccl_actors,
                 )
                 write_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1734,6 +1745,8 @@ class CompiledDAG:
                     task_idx,
                     actor_handle,
                     requires_nccl,
+                    upstream_nccl_actors,
+                    downstream_nccl_actors,
                 )
 
                 actor_to_operation_nodes[actor_handle].append(
@@ -1787,6 +1800,7 @@ class CompiledDAG:
         graph = _build_dag_node_operation_graph(
             self.idx_to_task, actor_to_operation_nodes
         )
+        graph_copy = copy.deepcopy(graph)
         # Step 2: Generate an execution schedule for each actor using topological sort
         actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
 
@@ -1794,7 +1808,7 @@ class CompiledDAG:
         actor_to_overlapped_schedule = None
         if self._overlap_gpu_communication:
             actor_to_overlapped_schedule = _generate_overlapped_execution_schedule(
-                actor_to_execution_schedule
+                graph_copy, actor_to_execution_schedule
             )
 
         if RAY_CGRAPH_VISUALIZE_SCHEDULE:
