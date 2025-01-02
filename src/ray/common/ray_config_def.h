@@ -929,3 +929,8 @@ RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
 
 // Write export API events to file if enabled
 RAY_CONFIG(bool, enable_export_api_write, false)
+
+// Number of threads used for io context in mutable object provider for compiled graphs.
+RAY_CONFIG(uint32_t,
+           mutable_object_provider_num_threads,
+           std::max(1U, std::thread::hardware_concurrency() / 4U))

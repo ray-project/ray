@@ -22,19 +22,32 @@ MutableObjectProvider::MutableObjectProvider(plasma::PlasmaClientInterface &plas
                                              RayletFactory factory)
     : plasma_(plasma),
       object_manager_(std::make_shared<ray::experimental::MutableObjectManager>()),
-      raylet_client_factory_(std::move(factory)) {}
+      raylet_client_factory_(std::move(factory)),
+      // NOLINTNEXTLINE
+      io_context_(),
+      io_work_guard_(io_context_.get_executor()),
+      io_thread_pool_(RayConfig::instance().mutable_object_provider_num_threads()) {
+  for (uint32_t i = 0; i < RayConfig::instance().mutable_object_provider_num_threads();
+       ++i) {
+    boost::asio::post(io_thread_pool_, [this]() {  // TODO(jhumphri): Decompose this.
+#ifndef _WIN32
+      // Block SIGINT and SIGTERM so they will be handled by the main thread.
+      sigset_t mask;
+      sigemptyset(&mask);
+      sigaddset(&mask, SIGINT);
+      sigaddset(&mask, SIGTERM);
+      pthread_sigmask(SIG_BLOCK, &mask, nullptr);
+#endif
+      SetThreadName("worker.channel_io");
+      io_context_.run();
+      RAY_LOG(INFO) << "Core worker channel io service stopped.";
+    });
+  }
+}
 
 MutableObjectProvider::~MutableObjectProvider() {
-  for (std::unique_ptr<boost::asio::executor_work_guard<
-           boost::asio::io_context::executor_type>> &io_work : io_works_) {
-    io_work->reset();
-  }
-  RAY_CHECK(object_manager_->SetErrorAll().code() == StatusCode::OK);
-
-  for (std::unique_ptr<std::thread> &io_thread : io_threads_) {
-    RAY_CHECK(io_thread->joinable());
-    io_thread->join();
-  }
+  io_work_guard_.reset();
+  io_thread_pool_.join();
 }
 
 void MutableObjectProvider::RegisterWriterChannel(
@@ -51,42 +64,30 @@ void MutableObjectProvider::RegisterWriterChannel(
     return;
   }
 
-  std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
-      remote_readers =
-          std::make_shared<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>();
+  auto remote_readers =
+      std::make_shared<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>();
   // TODO(sang): Currently, these attributes are not cleaned up.
   // Start a thread that repeatedly listens for values on this object and then sends
   // them via RPC to the remote reader.
-  io_contexts_.push_back(std::make_unique<instrumented_io_context>());
-  instrumented_io_context &io_context = *io_contexts_.back();
-  io_works_.push_back(
-      std::make_unique<
-          boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
-          io_context.get_executor()));
-
+  remote_readers->reserve(remote_reader_node_ids.size());
   // Find remote readers.
   for (const auto &node_id : remote_reader_node_ids) {
-    client_call_managers_.push_back(std::make_unique<rpc::ClientCallManager>(io_context));
-    std::shared_ptr<MutableObjectReaderInterface> reader =
-        raylet_client_factory_(node_id, *client_call_managers_.back());
+    client_call_managers_.push_back(
+        std::make_unique<rpc::ClientCallManager>(io_context_));
+    auto reader = raylet_client_factory_(node_id, *client_call_managers_.back());
     RAY_CHECK(reader);
-    remote_readers->push_back(reader);
+    remote_readers->push_back(std::move(reader));
   }
 
   // TODO(jhumphri): Extend this to support multiple channels. Currently, we must have
   // one thread per channel because the thread blocks on the channel semaphore.
   // TODO(sang): We currently create a thread per object id. It is not scalable.
   // We should instead just use a pool of threads.
-  io_context.post(
-      [this,
-       &io_context,
-       writer_object_id,
-       remote_readers = std::move(remote_readers)]() {
-        PollWriterClosure(io_context, writer_object_id, remote_readers);
+  io_context_.post(
+      [this, writer_object_id, remote_readers = std::move(remote_readers)]() {
+        PollWriterClosure(io_context_, writer_object_id, remote_readers);
       },
       "experimental::MutableObjectProvider.PollWriter");
-  io_threads_.push_back(std::make_unique<std::thread>(
-      &MutableObjectProvider::RunIOContext, this, std::ref(io_context)));
 }
 
 void MutableObjectProvider::RegisterReaderChannel(const ObjectID &object_id) {
@@ -257,22 +258,6 @@ void MutableObjectProvider::PollWriterClosure(
           }
         });
   }
-}
-
-void MutableObjectProvider::RunIOContext(instrumented_io_context &io_context) {
-  // TODO(jhumphri): Decompose this.
-#ifndef _WIN32
-  // Block SIGINT and SIGTERM so they will be handled by the main thread.
-  sigset_t mask;
-  sigemptyset(&mask);
-  sigaddset(&mask, SIGINT);
-  sigaddset(&mask, SIGTERM);
-  pthread_sigmask(SIG_BLOCK, &mask, nullptr);
-#endif
-
-  SetThreadName("worker.channel_io");
-  io_context.run();
-  RAY_LOG(INFO) << "Core worker channel io service stopped.";
 }
 
 }  // namespace experimental
