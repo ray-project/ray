@@ -409,8 +409,10 @@ struct GcsServerMocker {
   };
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:
-    MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
-        : GcsActorTable(store_client) {}
+    // The store_client and io_context args are NOT used.
+    MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client,
+                        instrumented_io_context &io_context)
+        : GcsActorTable(store_client, io_context) {}
 
     Status Put(const ActorID &key,
                const rpc::ActorTableData &value,
@@ -421,9 +423,8 @@ struct GcsServerMocker {
     }
 
    private:
-    instrumented_io_context main_io_service_;
     std::shared_ptr<gcs::StoreClient> store_client_ =
-        std::make_shared<gcs::InMemoryStoreClient>(main_io_service_);
+        std::make_shared<gcs::InMemoryStoreClient>();
   };
 
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {

@@ -63,7 +63,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         cluster_resource_scheduler_->GetClusterResourceManager(),
         *gcs_node_manager_,
         local_node_id);
-    store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
+    store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     raylet_client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
     scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(

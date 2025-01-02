@@ -78,7 +78,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     break;
   case StorageType::REDIS_PERSIST: {
     auto redis_client = CreateRedisClient(io_context);
-    gcs_table_storage_ = std::make_unique<gcs::RedisGcsTableStorage>(redis_client);
+    gcs_table_storage_ =
+        std::make_unique<gcs::RedisGcsTableStorage>(redis_client, io_context);
     // Init redis failure detector.
     gcs_redis_failure_detector_ =
         std::make_unique<GcsRedisFailureDetector>(io_context, redis_client, []() {
@@ -564,12 +565,12 @@ void GcsServer::InitKVManager() {
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
     instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)));
+        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)), io_context);
     break;
   case (StorageType::IN_MEMORY):
-    instance =
-        std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
-            std::make_unique<InMemoryStoreClient>(io_context)));
+    instance = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>()),
+        io_context);
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;

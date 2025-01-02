@@ -66,7 +66,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
     kv_manager_ = std::make_unique<GcsInternalKVManager>(
-        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()),
+        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>(),
+                                                io_service_),
         kRayletConfig);
     function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
     runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(

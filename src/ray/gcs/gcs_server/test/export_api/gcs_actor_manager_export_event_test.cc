@@ -147,7 +147,6 @@ class GcsActorManagerTest : public ::testing::Test {
         /*batch_size=*/100);
 
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(std::move(publisher));
-    store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>(io_service_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
@@ -239,7 +238,6 @@ class GcsActorManagerTest : public ::testing::Test {
 
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
-  std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   // Actor scheduler's ownership lies in actor manager.
   MockActorScheduler *mock_actor_scheduler_ = nullptr;

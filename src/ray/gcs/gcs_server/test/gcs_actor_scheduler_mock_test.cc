@@ -22,7 +22,9 @@
 #include "mock/ray/raylet_client/raylet_client.h"
 #include "mock/ray/pubsub/subscriber.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
+#include "ray/common/test_util.h"
 // clang-format on
+
 using namespace ::testing;
 
 namespace ray {
@@ -37,7 +39,7 @@ class GcsActorSchedulerMockTest : public Test {
  public:
   void SetUp() override {
     store_client = std::make_shared<MockStoreClient>();
-    actor_table = std::make_unique<GcsActorTable>(store_client);
+    actor_table = std::make_unique<GcsActorTable>(store_client, io_context);
     gcs_node_manager =
         std::make_unique<GcsNodeManager>(nullptr, nullptr, nullptr, ClusterID::Nil());
     raylet_client = std::make_shared<MockRayletClientInterface>();
@@ -146,10 +148,12 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   EXPECT_CALL(*raylet_client, RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&request_worker_lease_cb));
 
-  std::function<void(bool)> async_put_with_index_cb;
+  // Postable is not default constructable, so we use a unique_ptr to hold one.
+  std::unique_ptr<Postable<void(bool)>> async_put_with_index_cb;
   // Leasing successfully
   EXPECT_CALL(*store_client, AsyncPut(_, _, _, _, _))
-      .WillOnce(DoAll(SaveArg<4>(&async_put_with_index_cb), Return(Status::OK())));
+      .WillOnce(
+          DoAll(SaveArgToUniquePtr<4>(&async_put_with_index_cb), Return(Status::OK())));
   actor_scheduler->ScheduleByRaylet(actor);
   rpc::RequestWorkerLeaseReply reply;
   reply.mutable_worker_address()->set_raylet_id(node_id.Binary());
@@ -160,7 +164,9 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   // Worker start to run task
   EXPECT_CALL(*core_worker_client, PushNormalTask(_, _))
       .WillOnce(testing::SaveArg<1>(&push_normal_task_cb));
-  async_put_with_index_cb(true);
+  std::move(*async_put_with_index_cb).Post("GcsActorSchedulerMockTest", true);
+  // actually run the io_context for async_put_with_index_cb.
+  io_context.poll();
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::DEAD);
   actor_scheduler->CancelOnWorker(node_id, worker_id);
   push_normal_task_cb(Status::OK(), rpc::PushTaskReply());
