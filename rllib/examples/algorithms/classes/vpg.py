@@ -115,6 +115,22 @@ class VPG(Algorithm):
         # Merge results from n parallel sample calls into self's metrics logger.
         self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
+        # Just for demonstration purposes, log the number of time steps sampled in this
+        # `training_step` round.
+        # Mean over a window of 100:
+        self.metrics.log_value(
+            "episode_timesteps_sampled_mean_win100",
+            sum(map(len, episodes)),
+            reduce="mean",
+            window=100,
+        )
+        # Exponential Moving Average (EMA) with coeff=0.1:
+        self.metrics.log_value(
+            "episode_timesteps_sampled_ema",
+            sum(map(len, episodes)),
+            ema_coeff=0.1,  # <- weight of new value; weight of old avg=1.0-ema_coeff
+        )
+
         # Update model.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             learner_results = self.learner_group.update_from_episodes(
