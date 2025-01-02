@@ -1,5 +1,3 @@
-# For MAML on PyTorch.
-higher==0.2.1
 # For auto-generating an env-rendering Window.
 pyglet==1.5.15
 imageio-ffmpeg==0.4.5

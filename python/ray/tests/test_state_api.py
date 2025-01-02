@@ -93,7 +93,6 @@ from ray.util.state import (
     list_cluster_events,
     StateApiClient,
 )
-from ray._private.event.event_logger import get_event_id
 from ray.util.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
@@ -107,7 +106,6 @@ from ray.util.state.common import (
     SupportedFilterType,
     TaskState,
     WorkerState,
-    ClusterEventState,
     StateSchema,
     state_column,
 )
@@ -784,66 +782,6 @@ async def test_api_manager_list_pgs(state_api_manager):
             option=create_api_options(limit=1)
         )
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
-
-
-# TODO(ryw): move this to python/ray/dashboard/modules/event/tests/test_event.py
-@pytest.mark.asyncio
-async def test_api_manager_list_cluster_events(state_api_manager):
-    data_source_client = state_api_manager.data_source_client
-    event_id_1 = get_event_id()
-    event_id_2 = get_event_id()
-    data_source_client.get_all_cluster_events.return_value = {
-        "job_1": {
-            event_id_1: {
-                "timestamp": 10,
-                "severity": "DEBUG",
-                "message": "a",
-                "event_id": event_id_1,
-                "source_type": "GCS",
-            },
-            event_id_2: {
-                "timestamp": 10,
-                "severity": "INFO",
-                "message": "b",
-                "event_id": event_id_2,
-                "source_type": "GCS",
-            },
-        }
-    }
-    result = await state_api_manager.list_cluster_events(option=create_api_options())
-    data = result.result
-    data = data[0]
-    verify_schema(ClusterEventState, data)
-    assert result.total == 2
-
-    """
-    Test detail
-    """
-    # TODO(sang)
-
-    """
-    Test limit
-    """
-    assert len(result.result) == 2
-    result = await state_api_manager.list_cluster_events(
-        option=create_api_options(limit=1)
-    )
-    data = result.result
-    assert len(data) == 1
-    assert result.total == 2
-
-    """
-    Test filters
-    """
-    # If the column is not supported for filtering, it should raise an exception.
-    with pytest.raises(ValueError):
-        result = await state_api_manager.list_cluster_events(
-            option=create_api_options(filters=[("time", "=", "20")])
-        )
-    result = await state_api_manager.list_cluster_events(
-        option=create_api_options(filters=[("severity", "=", "INFO")])
-    )
-    assert len(result.result) == 1
 
 
 @pytest.mark.asyncio
