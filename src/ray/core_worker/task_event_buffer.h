@@ -27,6 +27,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/export_api/export_task_event.pb.h"

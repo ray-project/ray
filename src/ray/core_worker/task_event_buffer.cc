@@ -14,8 +14,6 @@
 
 #include "ray/core_worker/task_event_buffer.h"
 
-#include "ray/gcs/pb_util.h"
-
 namespace ray {
 namespace core {
 
