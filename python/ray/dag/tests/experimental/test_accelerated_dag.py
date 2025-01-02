@@ -2674,15 +2674,17 @@ compiled_dag = dag.experimental_compile()
 ref = compiled_dag.execute(1)
 ray.get(ref, timeout=100)
 """
-    driver_proc = run_string_as_driver_nonblocking(driver_script)
+    driver_proc = run_string_as_driver_nonblocking(
+        driver_script, env={"RAY_CGRAPH_teardown_timeout": "5"}
+    )
     pid = driver_proc.pid
     # wait for graph execution to start
     time.sleep(5)
     proc = psutil.Process(pid)
     assert proc.status() == psutil.STATUS_RUNNING
     os.kill(pid, signal.SIGINT)  # ctrl+c
-    # teardown will kill actors after standard 30 second timeout
-    wait_for_pid_to_exit(pid, 40)
+    # teardown will kill actors after 5 second timeout
+    wait_for_pid_to_exit(pid, 10)
 
 
 if __name__ == "__main__":
