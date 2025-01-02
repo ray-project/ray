@@ -280,30 +280,12 @@ Example 1: How to use MetricsLogger in EnvRunner callbacks
 To demonstrate how to use the MetricsLogger on an EnvRunner, take a look at this end-to-end example here
 that makes use of the RLlibCallback API to inject custom code into the RL environment loop.
 
-Note that this example here is identical to the one described here, but the focus of the
-comments here have shifted to only explain the MetricsLogger aspects of the code:
-
 The example computes the average "first-joint angle" of the
 `Acrobot-v1 RL environment <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/acrobot.py>`__
-environment and logs the results through the MetricsLogger API. You should be able to find these
-stats in the returned training iteration results as shown in the code below:
+environment and logs the results through the MetricsLogger API.
 
-.. figure:: images/acrobot-v1.png
-    :width: 150
-    :align: left
-
-    **The Acrobot-v1 environment**: The env's code described the angle you are about to
-    compute and log through your custom callback as:
-
-    .. code-block:: text
-        `theta1` is the angle of the first joint, where an angle of 0.0 indicates that the first
-        link is pointing directly downwards.
-
-The example utilizes RLlib's :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`
-API to log the custom computations happening in the injected code your Algorithm's main results system.
-
-.. todo: uncomment this once metrics-logger.rst page is online.
-   Read :ref:`more about the MetricsLogger API here <>`__ or also
+Note that this example is identical to the one described here, but the focus has shifted to explain
+only the MetricsLogger aspects of the code.
 
 Also take a look at this more complex example on `how to generate and log a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
 
@@ -314,25 +296,20 @@ Also take a look at this more complex example on `how to generate and log a PacM
     from ray.rllib.algorithms.ppo import PPOConfig
     from ray.rllib.callbacks.callbacks import RLlibCallback
 
+    # Define a custom RLlibCallback.
     class LogAcrobotAngle(RLlibCallback):
         def on_episode_step(self, *, episode, env, **kwargs):
-            # First get the angle from the env (note that `env` is a VectorEnv).
-            # See https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/acrobot.py
-            # for the env's source code.
-            cos_theta1, sin_theta1 = env.envs[0].unwrapped.state[0], env.envs[0].unwrapped.state[1]
-            # Convert cos/sin/tan into degree.
-            deg_theta1 = math.degrees(math.atan2(sin_theta1, cos_theta1))
-
-            # Log the theta1 degree value in the episode object, temporarily.
+            # Compute the angle at every episode step and store it temporarily in episode:
+            state = env.envs[0].unwrapped.state
+            deg_theta1 = math.degrees(math.atan2(state[1], state[0]))
             episode.add_temporary_timestep_data("theta1", deg_theta1)
 
         def on_episode_end(self, *, episode, metrics_logger, **kwargs):
-            # Get all the logged theta1 degree values and average them.
             theta1s = episode.get_temporary_timestep_data("theta1")
             avg_theta1 = np.mean(theta1s)
 
-            # Log the final result - per episode - to the MetricsLogger.
-            # Report with a sliding/smoothing window of 50.
+            # Log the resulting average angle - per episode - to the MetricsLogger.
+            # Report with a sliding window of 50.
             metrics_logger.log_value("theta1_mean", avg_theta1, reduce="mean", window=50)
 
     config = (
@@ -359,121 +336,8 @@ Also take a look at this more complex example on `how to generate and log a PacM
 Example 2: How to use MetricsLogger in custom loss functions
 ------------------------------------------------------------
 
+
+
 Example 3: How to use MetricsLogger in a custom Algorithm
 ---------------------------------------------------------
 
-
-
-### Logging Metrics in EnvRunners
-
-`MetricsLogger` is used extensively in EnvRunners to log environment-specific metrics during episode sampling.
-For example, the `MsPacmanHeatmapCallback` demonstrates how to track and log:
-
-- Pacman's positions to create 2D heatmaps.
-- Maximum and mean distance traveled by Pacman per episode.
-- An EMA-smoothed number of lives at each timestep.
-
-Example:
-
-```python
-class MsPacmanHeatmapCallback(DefaultCallbacks):
-    def on_episode_step(self, *, episode, metrics_logger, env, **kwargs):
-        # Log custom timestep data, such as Pacman’s position.
-        yx_pos = self._get_pacman_yx_pos(env)
-        episode.add_temporary_timestep_data("pacman_yx_pos", yx_pos)
-
-    def on_episode_end(self, *, episode, metrics_logger, **kwargs):
-        # Log a heatmap and summary metrics at the end of an episode.
-        metrics_logger.log_value("pacman_heatmap", heatmap_data, reduce=None)
-        metrics_logger.log_value("pacman_mean_distance", mean_distance, reduce="mean")
-```
-
-### Using MetricsLogger in Custom Loss Functions
-
-You can log custom metrics during loss computation, providing insights into intermediate training states.
-
-Example:
-
-```python
-def custom_loss(policy, model, dist_class, train_batch):
-    loss = ...  # Compute custom loss
-    policy.metrics_logger.log_value("loss/custom_loss", loss.item(), reduce="mean")
-    return loss
-```
-
-### MetricsLogger in Algorithm.training_step()
-
-The `training_step()` method is a key location to log training metrics. This is particularly useful for tracking overall progress and debugging.
-
-Example:
-
-```python
-class CustomAlgorithm(Algorithm):
-    def training_step(self):
-        metrics_logger = self.metrics_logger
-        loss = ...  # Compute loss
-        metrics_logger.log_value("training/loss", loss, reduce="mean")
-
-        return {"loss": loss}
-```
-
-Advanced Features
-------------------
-
-### Time Profiling
-
-The `MetricsLogger` can measure and log execution times of code blocks for profiling purposes. Use the `log_time()` method within a `with` block to track durations.
-
-Example:
-
-```python
-with logger.log_time("block_execution_time", reduce="mean", ema_coeff=0.1):
-    time.sleep(1)
-```
-
-### Merging Metrics
-
-Metrics from multiple components, such as parallel EnvRunners, can be aggregated using `merge_and_log_n_dicts()`. This is essential for distributed training.
-
-Example:
-
-```python
-main_logger = MetricsLogger()
-logger1 = MetricsLogger()
-logger2 = MetricsLogger()
-
-logger1.log_value("metric", 1, reduce="sum")
-logger2.log_value("metric", 2, reduce="sum")
-
-main_logger.merge_and_log_n_dicts([
-    logger1.reduce(),
-    logger2.reduce()
-])
-
-print(main_logger.peek("metric"))  # Outputs: 3
-```
-
-### Heatmap Example from MsPacman
-
-In the `MsPacmanHeatmapCallback`, a heatmap of Pacman's positions is created and logged as an image metric.
-
-Example:
-
-```python
-def _get_pacman_yx_pos(self, env):
-    image = env.render()
-    image = resize(image, 100, 100)
-    mask = (image[:, :, 0] > 200) & (image[:, :, 1] < 175)
-    coords = np.argwhere(mask)
-    return coords.mean(axis=0).astype(int) if coords.size else (-1, -1)
-```
-
-The heatmap is then visualized and logged:
-
-```python
-heatmap = np.zeros((80, 100), dtype=np.int32)
-for yx_pos in positions:
-    heatmap[yx_pos[0], yx_pos[1]] += 1
-
-metrics_logger.log_value("pacman_heatmap", heatmap, reduce=None)
-```
