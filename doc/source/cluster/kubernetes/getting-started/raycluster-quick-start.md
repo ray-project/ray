@@ -221,7 +221,7 @@ kubectl delete -k "https://github.com/ray-project/kuberay/ray-operator/config/de
 
 # Confirm that the KubeRay operator pod is gone by running
 kubectl get pods
-# No resources found in default namespace.
+# No resources found in the default namespace.
 
 # [Step 6.3]: Delete the Kubernetes cluster
 kind delete cluster
