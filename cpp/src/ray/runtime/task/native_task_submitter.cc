@@ -17,6 +17,7 @@
 #include <ray/api/ray_exception.h>
 
 #include "../abstract_ray_runtime.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace internal {
@@ -68,6 +69,13 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   options.serialized_runtime_env_info = call_options.serialized_runtime_env_info;
   options.generator_backpressure_num_objects = -1;
   std::vector<rpc::ObjectReference> return_refs;
+
+  std::string call_site;
+  if (::RayConfig::instance().record_task_actor_creation_sites()) {
+    std::stringstream ss;
+    ss << ray::StackTrace();
+    call_site = ss.str();
+  }
   if (invocation.task_type == TaskType::ACTOR_TASK) {
     // NOTE: Ray CPP doesn't support per-method max_retries and retry_exceptions
     const auto native_actor_handle = core_worker.GetActorHandle(invocation.actor_id);
@@ -80,6 +88,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
                                               max_retries,
                                               /*retry_exceptions=*/false,
                                               /*serialized_retry_exception_allowlist=*/"",
+                                              call_site,
                                               return_refs);
     if (!status.ok()) {
       return ObjectID::Nil();
@@ -103,7 +112,9 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
                                          1,
                                          false,
                                          scheduling_strategy,
-                                         "");
+                                         "",
+                                         /*serialized_retry_exception_allowlist=*/"",
+                                         call_site);
   }
   return ObjectID::FromBinary(return_refs[0].object_id());
 }
@@ -130,6 +141,12 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
         bundle_id.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
+  std::string call_site;
+  if (::RayConfig::instance().record_task_actor_creation_sites()) {
+    std::stringstream ss;
+    ss << ray::StackTrace();
+    call_site = ss.str();
+  }
   ray::core::ActorCreationOptions actor_options{
       create_options.max_restarts,
       /*max_task_retries=*/0,
@@ -144,8 +161,12 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
       scheduling_strategy,
       create_options.serialized_runtime_env_info};
   ActorID actor_id;
-  auto status = core_worker.CreateActor(
-      BuildRayFunction(invocation), invocation.args, actor_options, "", &actor_id);
+  auto status = core_worker.CreateActor(BuildRayFunction(invocation),
+                                        invocation.args,
+                                        actor_options,
+                                        /*extension_data=*/"",
+                                        call_site,
+                                        &actor_id);
   if (!status.ok()) {
     throw RayException("Create actor error");
   }

@@ -62,6 +62,7 @@ std::vector<rpc::ObjectReference> SendInternal(
       max_retries,
       retry_exceptions,
       serialized_retry_exception_allowlist,
+      /*call_site=*/"",
       return_refs);
   if (!result.ok()) {
     RAY_CHECK(false) << "Back pressure should not be enabled.";

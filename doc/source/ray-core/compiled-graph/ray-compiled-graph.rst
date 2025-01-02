@@ -7,10 +7,10 @@ Ray Compiled Graph
     The API is available from Ray 2.32.
 
 As large language models (LLM) become common, programming distributed systems with multiple GPUs is essential.
-Ray APIs facilitate using multiple GPUs but have limitations such as: 
+Ray APIs facilitate using multiple GPUs but have limitations such as:
 
 * having a high system overhead of over 1ms per task launch, which is unsuitable for high-performance tasks like LLM inference
-* lack direct GPU-to-GPU RDMA communication, requiring external tools like NCCL. 
+* lack direct GPU-to-GPU RDMA communication, requiring external tools like NCCL.
 
 Ray Compiled Graph gives you a classic Ray Core-like API but with:
 
