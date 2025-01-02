@@ -138,6 +138,8 @@ def test_log_file_exists(shutdown_only):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
+    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
+    # substring of "python-core-worker".
     log_rotating_component = [
         (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
         (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
@@ -146,10 +148,8 @@ def test_log_file_exists(shutdown_only):
         (ray_constants.PROCESS_TYPE_MONITOR, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER, [".log"]),
         (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER, [".log"]),
-        # Below components are not log rotating now.
         (ray_constants.PROCESS_TYPE_RAYLET, [".out", ".err"]),
         (ray_constants.PROCESS_TYPE_GCS_SERVER, [".out", ".err"]),
-        (ray_constants.PROCESS_TYPE_WORKER, [".out", ".err"]),
     ]
 
     # Run the basic workload.
@@ -169,22 +169,21 @@ def test_log_file_exists(shutdown_only):
             filename = path.stem
             suffix = path.suffix
             if component in filename:
-                # core-worker log also contains "worker keyword". We ignore this case.
-                if (
-                    component == ray_constants.PROCESS_TYPE_WORKER
-                    and ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER in filename
-                ):
-                    continue
-                if suffix in suffixes:
-                    return True
-                else:
-                    # unexpected suffix.
-                    return False
+                return suffix in suffixes
 
         return False
 
     for component in log_rotating_component:
         assert component_and_suffix_exists(component, paths), (component, paths)
+
+    # Special handle application log.
+    application_log_prefix = ray_constants.PROCESS_TYPE_WORKER
+    appplication_log_suffixes = [".out", ".err"]
+    for path in paths:
+        filename = path.stem
+        suffix = path.suffix
+        if filename.startswith(application_log_prefix):
+            return suffix in appplication_log_suffixes
 
 
 def test_log_rotation(shutdown_only, monkeypatch):
@@ -196,6 +195,8 @@ def test_log_rotation(shutdown_only, monkeypatch):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
+    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
+    # substring of "python-core-worker".
     log_rotating_component = [
         ray_constants.PROCESS_TYPE_DASHBOARD,
         ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
@@ -205,7 +206,6 @@ def test_log_rotation(shutdown_only, monkeypatch):
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
         ray_constants.PROCESS_TYPE_RAYLET,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
-        ray_constants.PROCESS_TYPE_WORKER,
     ]
 
     # Run the basic workload.
@@ -218,7 +218,7 @@ def test_log_rotation(shutdown_only, monkeypatch):
     ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
 
     # Filter out only paths that end in .log, .log.1, (which is produced by python
-    # rotating log handler) and 1.out and so on (which is produced by C++ spdlog
+    # rotating log handler) and .out.1 and so on (which is produced by C++ spdlog
     # rotation handler) . etc. These paths are handled by the logger; the others (.err)
     # are not.
     paths = []
@@ -226,7 +226,7 @@ def test_log_rotation(shutdown_only, monkeypatch):
         # Match all rotated files, which suffixes with `log.x` or `log.x.out`.
         if re.search(r".*\.log(\.\d+)?", str(path)):
             paths.append(path)
-        elif re.search(r".*(\.\d+)?\.out", str(path)):
+        elif re.search(r".*\.out(\.\d+)?", str(path)):
             paths.append(path)
 
     def component_exist(component, paths):
@@ -272,6 +272,26 @@ def test_log_rotation(shutdown_only, monkeypatch):
             f"{filename} has files that are more than "
             f"backup count {backup_count}, file count: {file_cnt}"
         )
+
+    # TODO(hjiang): Enable after log rotation implemented for user application.
+    #
+    # # Test application log, which starts with `worker-`.
+    # # Should be tested separately with other components since "worker" is a substring
+    # # of "python-core-worker".
+    # #
+    # # Check file count.
+    # application_stdout_paths = []
+    # for path in paths:
+    #    if path.stem.startswith("worker-") and re.search(r".*\.out(\.\d+)?", str(path))
+    # # and path.stat().st_size > 0:
+    #         application_stdout_paths.append(path)
+    # assert len(application_stdout_paths) == 4, application_stdout_paths
+
+    # # Check file content, each file should have one line.
+    # for cur_path in application_stdout_paths:
+    #     with cur_path.open() as f:
+    #         lines = f.readlines()
+    #         assert len(lines) == 1, lines
 
 
 def test_periodic_event_stats(shutdown_only):
