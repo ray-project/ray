@@ -34,8 +34,7 @@ class MutableObjectProvider {
 
   MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
                         RayletFactory factory,
-                        bool owned_by_raylet,
-                        std::function<Status(void)> check_signals = nullptr);
+                        std::function<Status(void)> check_signals);
 
   ~MutableObjectProvider();
 
@@ -209,8 +208,6 @@ class MutableObjectProvider {
   // object write.
   std::unordered_map<ObjectID, uint64_t> written_so_far_
       ABSL_GUARDED_BY(written_so_far_lock_);
-
-  bool owned_by_raylet_;
 
   friend class MutableObjectProvider_MutableObjectBufferReadRelease_Test;
 };

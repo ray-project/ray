@@ -615,7 +615,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
           *plasma_store_provider_->store_client(),
           raylet_channel_client_factory,
           false,
-          options.check_signals);
+          options_.check_signals);
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,

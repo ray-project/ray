@@ -153,7 +153,7 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
   MutableObjectProvider provider(
       *plasma,
       /*factory=*/absl::bind_front(GetTestInterface, interface),
-      false);
+      nullptr);
   provider.RegisterWriterChannel(object_id, {node_id});
 
   std::shared_ptr<Buffer> data;
@@ -180,7 +180,7 @@ TEST(MutableObjectProvider, MutableObjectBufferReadRelease) {
   auto plasma = std::make_unique<TestPlasma>();
   MutableObjectProvider provider(*plasma,
                                  /*factory=*/nullptr,
-                                 false);
+                                 nullptr);
   provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
@@ -220,7 +220,7 @@ TEST(MutableObjectProvider, HandlePushMutableObject) {
   MutableObjectProvider provider(
       *plasma,
       /*factory=*/absl::bind_front(GetTestInterface, interface),
-      false);
+      nullptr);
   provider.HandleRegisterMutableObject(object_id, /*num_readers=*/1, local_object_id);
 
   ray::rpc::PushMutableObjectRequest request;
@@ -242,7 +242,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetError) {
   auto plasma = std::make_unique<TestPlasma>();
   MutableObjectProvider provider(*plasma,
                                  /*factory=*/nullptr,
-                                 false);
+                                 nullptr);
   provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
@@ -298,7 +298,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeWriteRelease) {
   auto plasma = std::make_unique<TestPlasma>();
   MutableObjectProvider provider(*plasma,
                                  /*factory=*/nullptr,
-                                 false);
+                                 nullptr);
   provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
@@ -354,7 +354,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeReadRelease) {
   auto plasma = std::make_unique<TestPlasma>();
   MutableObjectProvider provider(*plasma,
                                  /*factory=*/nullptr,
-                                 false);
+                                 nullptr);
   provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
