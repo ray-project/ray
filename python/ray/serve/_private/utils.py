@@ -547,7 +547,7 @@ def generate_request_id() -> str:
     # request ID generation.
     # See https://bugs.python.org/issue45556 for discussion.
     # return str(uuid.uuid4())
-    return str(UUID(int=random.getrandbits(128), version=4))
+    return str(uuid.UUID(int=random.getrandbits(128), version=4))
 
 
 def inside_ray_client_context() -> bool:
