@@ -169,6 +169,10 @@ class TaskSpecBuilder {
       config.set_setup_timeout_seconds(600);
       config.set_eager_install(true);
     }
+    if (runtime_env_info != nullptr &&
+        runtime_env_info->serialized_runtime_env().find("FOO") == std::string::npos) {
+      message_->mutable_runtime_env_info()->CopyFrom(*runtime_env_info);
+    }
     // old logic
     // if (runtime_env_info) {
     //   message_->mutable_runtime_env_info()->CopyFrom(*runtime_env_info);
