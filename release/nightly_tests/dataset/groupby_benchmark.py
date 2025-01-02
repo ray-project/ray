@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
-    benchmark = Benchmark("groupby")
+    benchmark = Benchmark()
     consume_fn = get_consume_fn(args)
 
     def benchmark_fn():
@@ -41,7 +41,7 @@ def main(args):
         grouped_ds = ray.data.read_parquet(path).groupby(args.group_by)
         consume_fn(grouped_ds)
 
-    benchmark.run_fn(str(vars(args)), benchmark_fn)
+    benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
 
 

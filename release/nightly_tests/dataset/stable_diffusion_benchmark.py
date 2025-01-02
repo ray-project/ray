@@ -40,10 +40,9 @@ def main(args):
     )
     dataset_iter = dataset.iter_batches(batch_format="pyarrow", batch_size=None)
 
-    benchmark = Benchmark("stable_diffusion_benchmark")
+    benchmark = Benchmark()
     benchmark.run_iterate_ds("main", dataset_iter)
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "release_test_out.json")
-    benchmark.write_result(test_output_json)
+    benchmark.write_result()
 
 
 class GenerateImage:

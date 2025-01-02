@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace) -> None:
-    benchmark = Benchmark("map")
+    benchmark = Benchmark()
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
 
     def benchmark_fn():
@@ -62,7 +62,7 @@ def main(args: argparse.Namespace) -> None:
         for _ in ds.iter_internal_ref_bundles():
             pass
 
-    benchmark.run_fn(str(vars(args)), benchmark_fn)
+    benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
 
 
