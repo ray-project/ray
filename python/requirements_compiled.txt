@@ -367,7 +367,7 @@ dask==2022.10.2 ; python_version < "3.12"
     #   distributed
 databricks-cli==0.18.0
     # via mlflow
-datasets==2.14.0
+datasets==2.19.1
     # via
     #   -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
     #   -r /ray/ci/../python/requirements/ml/train-requirements.txt
@@ -452,7 +452,7 @@ etils==1.5.2 ; python_version < "3.12"
     #   array-record
     #   mujoco
     #   tensorflow-datasets
-evaluate==0.4.0
+evaluate==0.4.3
     # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
 everett==3.1.0
     # via comet-ml
@@ -490,6 +490,7 @@ filelock==3.13.1
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   aim
+    #   datasets
     #   huggingface-hub
     #   ray
     #   snowflake-connector-python
@@ -691,8 +692,6 @@ h5py==3.10.0
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
-higher==0.2.1
-    # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
 hjson==3.1.0
     # via deepspeed
 holidays==0.39
@@ -720,8 +719,9 @@ httpx==0.24.1
     #   gradio-client
 hudi==0.2.0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
-huggingface-hub==0.19.4
+huggingface-hub==0.27.0
     # via
+    #   -r /ray/ci/../python/requirements/ml/train-requirements.txt
     #   accelerate
     #   datasets
     #   evaluate
@@ -1537,7 +1537,9 @@ pyarrow==14.0.2
     #   raydp
     #   triad
 pyarrow-hotfix==0.6
-    # via hudi
+    # via
+    #   datasets
+    #   hudi
 pyasn1==0.5.1
     # via
     #   oauth2client
@@ -1847,7 +1849,6 @@ requests-toolbelt==1.0.0
 responses==0.13.4
     # via
     #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
-    #   evaluate
     #   moto
 restrictedpython==7.1
     # via aim
@@ -2187,7 +2188,6 @@ torch==2.3.0
     #   botorch
     #   deepspeed
     #   fairscale
-    #   higher
     #   linear-operator
     #   monai
     #   mosaicml
