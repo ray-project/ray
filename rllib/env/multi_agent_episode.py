@@ -173,9 +173,9 @@ class MultiAgentEpisode:
             agent_episode_ids: An optional dict mapping AgentIDs
                 to their corresponding `SingleAgentEpisode`. If None, each
                 `SingleAgentEpisode` in `MultiAgentEpisode.agent_episodes`
-                will generate a hexadecimal code. If a dictionary is provided
-                make sure that IDs are unique as agents' `SingleAgentEpisode`s
-                get concatenated or recreated by it.
+                will generate a hexadecimal code. If a dictionary is provided,
+                make sure that IDs are unique, because the agents' `SingleAgentEpisode`
+                instances are concatenated or recreated by it.
             agent_module_ids: An optional dict mapping AgentIDs to their respective
                 ModuleIDs (these mapping are always valid for an entire episode and
                 thus won't change during the course of this episode). If a mapping from
