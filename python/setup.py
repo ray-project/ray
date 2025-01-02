@@ -700,7 +700,7 @@ def api_main(program, *args):
         default="python",
         type=str,
         help="A list of languages to build native libraries. "
-        'Supported languages include "python" and "java". '
+        'Supported languages include "python", "cpp", and "java". '
         "If not specified, only the Python library will be built.",
     )
     parsed_args = parser.parse_args(args)
