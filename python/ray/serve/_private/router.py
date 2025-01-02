@@ -3,7 +3,6 @@ import concurrent.futures
 import logging
 import threading
 import time
-import uuid
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
@@ -31,7 +30,7 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import PendingRequest, ReplicaScheduler
-from ray.serve._private.utils import resolve_deployment_response
+from ray.serve._private.utils import resolve_deployment_response, generate_request_id
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
@@ -564,7 +563,7 @@ class AsyncioRouter:
     ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
 
-        response_id = uuid.uuid4()
+        response_id = generate_request_id()
         assign_request_task = asyncio.current_task()
         ray.serve.context._add_request_pending_assignment(
             request_meta.internal_request_id, response_id, assign_request_task
