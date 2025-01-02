@@ -5,15 +5,19 @@ import sys
 import signal
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple
+from typing import List
 from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 import pytest_asyncio
-from ray._private.state_api_test_utils import get_state_api_manager
+from ray._private.state_api_test_utils import (
+    get_state_api_manager,
+    create_api_options,
+    verify_schema,
+)
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
-from ray.util.state.common import Humanify, PredicateType
+from ray.util.state.common import Humanify
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
@@ -94,7 +98,6 @@ from ray.util.state import (
     StateApiClient,
 )
 from ray.util.state.common import (
-    DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ActorState,
     ListApiOptions,
@@ -103,7 +106,6 @@ from ray.util.state.common import (
     ObjectState,
     PlacementGroupState,
     RuntimeEnvState,
-    SupportedFilterType,
     TaskState,
     WorkerState,
     StateSchema,
@@ -159,23 +161,6 @@ async def state_api_manager_e2e(ray_start_with_dashboard):
     gcs_address = address_info["gcs_address"]
     manager = get_state_api_manager(gcs_address)
     yield manager
-
-
-def verify_schema(state, result_dict: dict, detail: bool = False):
-    state_fields_columns = set()
-    if detail:
-        state_fields_columns = state.columns()
-    else:
-        state_fields_columns = state.base_columns()
-
-    for k in state_fields_columns:
-        assert k in result_dict
-
-    for k in result_dict:
-        assert k in state_fields_columns
-
-    # Make the field values can be converted without error as well
-    state(**result_dict)
 
 
 def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="class"):
@@ -344,25 +329,6 @@ def generate_runtime_env_info(runtime_env, creation_time=None, success=True):
             )
         ],
         total=1,
-    )
-
-
-def create_api_options(
-    timeout: int = DEFAULT_RPC_TIMEOUT,
-    limit: int = DEFAULT_LIMIT,
-    filters: List[Tuple[str, PredicateType, SupportedFilterType]] = None,
-    detail: bool = False,
-    exclude_driver: bool = True,
-):
-    if not filters:
-        filters = []
-    return ListApiOptions(
-        limit=limit,
-        timeout=timeout,
-        filters=filters,
-        server_timeout_multiplier=1.0,
-        detail=detail,
-        exclude_driver=exclude_driver,
     )
 
 

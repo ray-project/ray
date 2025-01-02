@@ -41,6 +41,44 @@ RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS = env_integer(
 )
 
 
+async def _list_cluster_events_impl(
+    *, all_events, executor: ThreadPoolExecutor, option: ListApiOptions
+) -> ListApiResponse:
+    """
+    List all cluster events from the cluster. Made a free function to allow unit tests.
+
+    Returns:
+        A list of cluster events in the cluster.
+        The schema of returned "dict" is equivalent to the
+        `ClusterEventState` protobuf message.
+    """
+
+    def transform(all_events) -> ListApiResponse:
+        result = []
+        for _, events in all_events.items():
+            for _, event in events.items():
+                event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
+                result.append(event)
+
+        num_after_truncation = len(result)
+        result.sort(key=lambda entry: entry["timestamp"])
+        total = len(result)
+        result = do_filter(result, option.filters, ClusterEventState, option.detail)
+        num_filtered = len(result)
+        # Sort to make the output deterministic.
+        result = list(islice(result, option.limit))
+        return ListApiResponse(
+            result=result,
+            total=total,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
+        )
+
+    return await get_or_create_event_loop().run_in_executor(
+        executor, transform, all_events
+    )
+
+
 class EventHead(
     dashboard_utils.DashboardHeadModule,
     dashboard_utils.RateLimitedModule,
@@ -154,44 +192,13 @@ class EventHead(
         self, req: aiohttp.web.Request
     ) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
-        return await handle_list_api(self._list_cluster_events_impl, req)
 
-    async def _list_cluster_events_impl(
-        self, *, option: ListApiOptions
-    ) -> ListApiResponse:
-        """List all cluster events from the cluster.
-
-        Returns:
-            A list of cluster events in the cluster.
-            The schema of returned "dict" is equivalent to the
-            `ClusterEventState` protobuf message.
-        """
-        reply = self.events
-
-        def transform(reply) -> ListApiResponse:
-            result = []
-            for _, events in reply.items():
-                for _, event in events.items():
-                    event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
-                    result.append(event)
-
-            num_after_truncation = len(result)
-            result.sort(key=lambda entry: entry["timestamp"])
-            total = len(result)
-            result = do_filter(result, option.filters, ClusterEventState, option.detail)
-            num_filtered = len(result)
-            # Sort to make the output deterministic.
-            result = list(islice(result, option.limit))
-            return ListApiResponse(
-                result=result,
-                total=total,
-                num_after_truncation=num_after_truncation,
-                num_filtered=num_filtered,
+        async def list_api_fn(option: ListApiOptions):
+            return await _list_cluster_events_impl(
+                all_events=self.events, executor=self._executor, option=option
             )
 
-        return await get_or_create_event_loop().run_in_executor(
-            self._executor, transform, reply
-        )
+        return await handle_list_api(list_api_fn, req)
 
     async def run(self, server):
         event_pb2_grpc.add_ReportEventServiceServicer_to_server(self, server)
