@@ -384,8 +384,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   bool IsExportAPIEnabledTask() const {
     return IsExportAPIEnabledSourceType(
         "EXPORT_TASK",
-        RayConfig::instance().enable_export_api_write(),
-        RayConfig::instance().enable_export_api_write_config());
+        ::RayConfig::instance().enable_export_api_write(),
+        ::RayConfig::instance().enable_export_api_write_config());
   }
 
   /// Reset the counters during flushing data to GCS.
