@@ -15,6 +15,8 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
     Examples:
         >>> _has_file_extension("foo.csv", ["csv"])
         True
+        >>> _has_file_extension("foo.CSV", ["csv"])
+        True
         >>> _has_file_extension("foo.csv", ["json", "jsonl"])
         False
         >>> _has_file_extension("foo.csv", None)
@@ -32,7 +34,7 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
 
     # The user-specified extensions don't contain a leading dot, so we add it here.
     extensions = [f".{ext.lower()}" for ext in extensions]
-    return any(path.endswith(ext) for ext in extensions)
+    return any(path.lower().endswith(ext) for ext in extensions)
 
 
 def _resolve_paths_and_filesystem(
