@@ -28,7 +28,7 @@ from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import NULL_SENTINEL, find_partitions
+from ray.data._internal.util import NULL_SENTINEL, find_partitions, keys_equal
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -70,22 +70,6 @@ def get_concat_and_sort_transform(context: DataContext) -> Callable:
         return transform_polars.concat_and_sort
     else:
         return transform_pyarrow.concat_and_sort
-
-
-def is_nan(value):
-    try:
-        return isinstance(value, float) and np.isnan(value)
-    except TypeError:
-        return False
-
-
-def keys_equal(keys1, keys2):
-    if len(keys1) != len(keys2):
-        return False
-    for k1, k2 in zip(keys1, keys2):
-        if not ((is_nan(k1) and is_nan(k2)) or k1 == k2):
-            return False
-    return True
 
 
 class ArrowRow(TableRow):
