@@ -2363,7 +2363,9 @@ cdef CRayStatus check_signals() nogil:
         # so we have to handle it here.
         try:
             if Py_IsFinalizing() != 0:
-                return CRayStatus.IntentionalSystemExit("Python is exiting.".encode("utf-8"))
+                return CRayStatus.IntentionalSystemExit(
+                    "Python is exiting.".encode("utf-8")
+                )
             PyErr_CheckSignals()
         except KeyboardInterrupt:
             return CRayStatus.Interrupted(b"")
