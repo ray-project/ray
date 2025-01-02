@@ -355,5 +355,21 @@ def test_build_block_with_null_column(ray_start_regular_shared):
     assert np.array_equal(rows[1]["array"], np.zeros((2, 2)))
 
 
+def test_arrow_nan_element():
+    ds = ray.data.from_items(
+        [
+            1.0,
+            1.0,
+            2.0,
+            np.nan,
+            np.nan,
+        ]
+    )
+    ds = ds.groupby("item").count()
+    ds = ds.filter(lambda v: np.isnan(v["item"]))
+    result = ds.take_all()
+    assert result[0]["count()"] == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
