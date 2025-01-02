@@ -8,7 +8,7 @@ from ray.serve.handle import DeploymentHandle
 
 @serve.deployment
 class GrpcDeployment:
-    def __call__(self, user_message):
+    def __call__(self, user_message: serve_pb2.UserDefinedMessage):
         greeting = f"Hello {user_message.name} from {user_message.foo}"
         num_x2 = user_message.num * 2
         user_response = serve_pb2.UserDefinedResponse(
@@ -17,7 +17,7 @@ class GrpcDeployment:
         )
         return user_response
 
-    def Method1(self, user_message):
+    def Method1(self, user_message: serve_pb2.UserDefinedMessage):
         greeting = f"Hello {user_message.name} from method1"
         num_x2 = user_message.num * 3
         user_response = serve_pb2.UserDefinedResponse(
@@ -38,7 +38,7 @@ class GrpcDeployment:
         )
         return user_response
 
-    def Streaming(self, user_message):
+    def Streaming(self, user_message: serve_pb2.UserDefinedMessage):
         for i in range(10):
             greeting = f"{i}: Hello {user_message.name} from {user_message.foo}"
             num_x2 = user_message.num * 2 + i
@@ -64,7 +64,7 @@ class FruitMarket:
             "APPLE": _apple_stand,
         }
 
-    async def FruitStand(self, fruit_amounts_proto):
+    async def FruitStand(self, fruit_amounts_proto: serve_pb2.FruitAmounts):
         fruit_amounts = {}
         if fruit_amounts_proto.orange:
             fruit_amounts["ORANGE"] = fruit_amounts_proto.orange

@@ -35,6 +35,7 @@ class gRPCServer(Server):
         rpc_handler = generic_rpc_handlers[0]
         for service_method, method_handler in rpc_handler._method_handlers.items():
             serve_method_handler = method_handler._replace(
+                request_deserializer=None,
                 response_serializer=None,
                 unary_unary=self.service_handler_factory(
                     service_method=service_method,

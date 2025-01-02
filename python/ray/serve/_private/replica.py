@@ -1348,7 +1348,19 @@ class UserCallableWrapper:
 
         Returns (request_args, request_kwargs).
         """
-        request_args = (pickle.loads(request.grpc_user_request),)
+        # Note: We no longer deserialize requests at the gRPC server to avoid additional
+        # serialization/deserialization overhead. Instead, we pass the raw protobuf
+        # bytes from the client through proxy and to the replica. The replica then
+        # deserializes the request protobuf bytes into the user method's expected
+        # request type if passed. If not passed, the raw protobuf bytes are passed
+        # directly to the user method.
+        request_proto_def = next(iter(user_method_params.values())).annotation
+        if request_proto_def is not inspect.Parameter.empty:
+            # Deserialize the request protobuf bytes into the expected request type.
+            request_args = (request_proto_def.FromString(request.grpc_user_request),)
+        else:
+            # Pass the raw protobuf bytes directly to the user method.
+            request_args = (request.grpc_user_request,)
         if GRPC_CONTEXT_ARG_NAME in user_method_params:
             request_kwargs = {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
         else:
