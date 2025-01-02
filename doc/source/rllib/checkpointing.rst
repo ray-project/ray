@@ -231,14 +231,14 @@ RLlib obtains this state dict when saving a checkpoint through calling the objec
 .. note::
     Support for ``msgpack`` based checkpoints is experimental, but might become the default in the future.
     Unlike ``pickle``, ``msgpack`` has the advantage of being independent of the python-version, thus allowing
-    users to recover experiment and model states from old checkpoints that have been generated with older python
+    users to recover experiment and model states from old checkpoints they have generated with older python
     versions.
 
     The Ray team is working on completely separating state from architecture within checkpoints, meaning all state
     information should go into the ``state.msgpack`` file, which is python-version independent,
     whereas all architecture information should go into the ``class_and_ctor_args.pkl`` file, which still depends on
-    the python version. The latter part of the checkpoint, when restoring from it, would have to be provided by the user
-    at the time of checkpoint restoration.
+    the python version. At the time of loading from checkpoint, the user would have to provide the latter/architecture part
+    of the checkpoint.
 
     `See here for an example that illustrates this in more detail <https://github.com/ray-project/ray/tree/master/rllib/examples/checkpoints/change_config_during_training.py>`__.
 
