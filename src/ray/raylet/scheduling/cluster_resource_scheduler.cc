@@ -116,7 +116,7 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
   // It's okay if the local node's pull manager is at capacity because we
   // will eventually spill the task back from the waiting queue if its args
   // cannot be pulled.
-  return cluster_resource_manager_->HasSufficientResource(
+  return cluster_resource_manager_->HasAvailableResources(
              node_id,
              resource_request,
              /*ignore_object_store_memory_requirement*/ node_id == local_node_id_) &&
@@ -313,7 +313,12 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                            requires_object_store_memory)) {
     // Prefer waiting on the local node if possible
     // since the local node is chosen for a reason (e.g. spread).
-    if ((preferred_node_id == local_node_id_.Binary()) && NodeAvailable(local_node_id_)) {
+    if ((preferred_node_id == local_node_id_.Binary()) && NodeAvailable(local_node_id_) &&
+        cluster_resource_manager_->HasFeasibleResources(
+            local_node_id_,
+            ResourceMapToResourceRequest(
+                task_spec.GetRequiredPlacementResources().GetResourceMap(),
+                requires_object_store_memory))) {
       *is_infeasible = false;
       return local_node_id_;
     }

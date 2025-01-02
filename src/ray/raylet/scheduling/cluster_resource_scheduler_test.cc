@@ -435,15 +435,15 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
-  absl::flat_hash_map<std::string, double> resource_total({{"CPU", 10}});
   auto local_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
   instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      io_context, local_node_id, resource_total, is_node_available_fn_);
+      io_context, local_node_id, {{"CPU", 8}}, is_node_available_fn_);
   AssertPredefinedNodeResources();
   auto remote_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  absl::flat_hash_map<std::string, double> remote_resource_total({{"CPU", 10}});
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
-      remote_node_id, resource_total, resource_total);
+      remote_node_id, remote_resource_total, remote_resource_total);
 
   absl::flat_hash_map<std::string, double> resource_request({{"CPU", 5}});
   int64_t violations;
@@ -472,6 +472,42 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
                                                              &is_infeasible);
   ASSERT_EQ(node_id_2, local_node_id);
 
+  // Never prefer the infeasible node.
+  TaskSpecBuilder spec_builder_1;
+  spec_builder_1.SetCommonTaskSpec(RandomTaskId(),
+                                   "dummy_task",
+                                   Language::PYTHON,
+                                   FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+                                   RandomJobId(),
+                                   rpc::JobConfig(),
+                                   TaskID::Nil(),
+                                   0,
+                                   TaskID::Nil(),
+                                   rpc::Address(),
+                                   0,
+                                   /*returns_dynamic=*/false,
+                                   /*is_streaming_generator*/ false,
+                                   /*generator_backpressure_num_objects*/ -1,
+                                   {{"CPU", 9}},
+                                   {},
+                                   "",
+                                   0,
+                                   TaskID::Nil(),
+                                   "",
+                                   nullptr);
+  spec_builder_1.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
+  // Remote node is feasible but has no available resource.
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
+      remote_node_id, remote_resource_total, {{"CPU", 0}});
+  auto node_id_3 = resource_scheduler.GetBestSchedulableNode(
+      spec_builder_1.Build(),
+      /*preferred_node_id=*/local_node_id.Binary(),
+      false,
+      false,
+      &is_infeasible);
+  ASSERT_EQ(node_id_3, remote_node_id);
+  ASSERT_FALSE(is_infeasible);
+
   // Never prefer the draining node even if it has available resources
   // and other nodes don't.
   // Allocate some local resources so the local node is not idle and won't be drained
@@ -482,39 +518,36 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
   rpc::DrainRayletRequest drain_request;
   drain_request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
   resource_scheduler.GetLocalResourceManager().SetLocalNodeDraining(drain_request);
-  // Remote node is feasible but has no available resource.
-  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
-      remote_node_id, resource_total, {{"CPU", 0}});
-  TaskSpecBuilder spec_builder;
-  spec_builder.SetCommonTaskSpec(RandomTaskId(),
-                                 "dummy_task",
-                                 Language::PYTHON,
-                                 FunctionDescriptorBuilder::BuildPython("", "", "", ""),
-                                 RandomJobId(),
-                                 rpc::JobConfig(),
-                                 TaskID::Nil(),
-                                 0,
-                                 TaskID::Nil(),
-                                 rpc::Address(),
-                                 0,
-                                 /*returns_dynamic=*/false,
-                                 /*is_streaming_generator*/ false,
-                                 /*generator_backpressure_num_objects*/ -1,
-                                 {{"CPU", 1}},
-                                 {},
-                                 "",
-                                 0,
-                                 TaskID::Nil(),
-                                 "",
-                                 nullptr);
-  spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
-  auto node_id_3 = resource_scheduler.GetBestSchedulableNode(
-      spec_builder.Build(),
+  TaskSpecBuilder spec_builder_2;
+  spec_builder_2.SetCommonTaskSpec(RandomTaskId(),
+                                   "dummy_task",
+                                   Language::PYTHON,
+                                   FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+                                   RandomJobId(),
+                                   rpc::JobConfig(),
+                                   TaskID::Nil(),
+                                   0,
+                                   TaskID::Nil(),
+                                   rpc::Address(),
+                                   0,
+                                   /*returns_dynamic=*/false,
+                                   /*is_streaming_generator*/ false,
+                                   /*generator_backpressure_num_objects*/ -1,
+                                   {{"CPU", 1}},
+                                   {},
+                                   "",
+                                   0,
+                                   TaskID::Nil(),
+                                   "",
+                                   nullptr);
+  spec_builder_2.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
+  auto node_id_4 = resource_scheduler.GetBestSchedulableNode(
+      spec_builder_2.Build(),
       /*preferred_node_id=*/local_node_id.Binary(),
       false,
       false,
       &is_infeasible);
-  ASSERT_EQ(node_id_3, remote_node_id);
+  ASSERT_EQ(node_id_4, remote_node_id);
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
