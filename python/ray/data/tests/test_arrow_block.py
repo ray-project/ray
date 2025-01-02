@@ -14,9 +14,10 @@ import ray
 from ray._private.test_utils import run_string_as_driver
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data import DataContext
-from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
+from ray.data.block import BlockAccessor
 from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 
@@ -329,6 +330,45 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
     assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_none"].iloc[0] is None
+
+
+# Test for https://github.com/ray-project/ray/issues/49338.
+def test_build_block_with_null_column(ray_start_regular_shared):
+    # The blocks need to contain a tensor column to trigger the bug.
+    block1 = BlockAccessor.batch_to_block(
+        {"string": [None], "array": np.zeros((1, 2, 2))}
+    )
+    block2 = BlockAccessor.batch_to_block(
+        {"string": ["spam"], "array": np.zeros((1, 2, 2))}
+    )
+
+    builder = ArrowBlockBuilder()
+    builder.add_block(block1)
+    builder.add_block(block2)
+    block = builder.build()
+
+    rows = list(BlockAccessor.for_block(block).iter_rows(True))
+    assert len(rows) == 2
+    assert rows[0]["string"] is None
+    assert rows[1]["string"] == "spam"
+    assert np.array_equal(rows[0]["array"], np.zeros((2, 2)))
+    assert np.array_equal(rows[1]["array"], np.zeros((2, 2)))
+
+
+def test_arrow_nan_element():
+    ds = ray.data.from_items(
+        [
+            1.0,
+            1.0,
+            2.0,
+            np.nan,
+            np.nan,
+        ]
+    )
+    ds = ds.groupby("item").count()
+    ds = ds.filter(lambda v: np.isnan(v["item"]))
+    result = ds.take_all()
+    assert result[0]["count()"] == 2
 
 
 if __name__ == "__main__":

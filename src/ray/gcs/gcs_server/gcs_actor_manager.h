@@ -135,6 +135,9 @@ class GcsActor {
 
     actor_table_data_.set_serialized_runtime_env(
         task_spec.runtime_env_info().serialized_runtime_env());
+    if (task_spec.call_site().size() > 0) {
+      actor_table_data_.set_call_site(task_spec.call_site());
+    }
     RefreshMetrics();
   }
 
@@ -365,7 +368,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param success_callback Will be invoked after the actor is created successfully or
   /// be invoked immediately if the actor is already registered to `registered_actors_`
   /// and its state is `ALIVE`.
-  /// \return Status::Invalid if this is a named actor and an
+  /// \return Status::AlreadyExists if this is a named actor and an
   /// actor with the specified name already exists. The callback will not be called in
   /// this case.
   Status RegisterActor(const rpc::RegisterActorRequest &request,
