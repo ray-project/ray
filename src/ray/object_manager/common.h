@@ -79,7 +79,7 @@ struct PlasmaObjectHeader {
   // semaphores for this object.
   char unique_name[32];
 #else  // defined(__APPLE__) || defined(__linux__)
-  // Fake types for Windows.
+       // Fake types for Windows.
   struct sem_t {};
   struct Semaphores {};
 #endif
@@ -94,6 +94,8 @@ struct PlasmaObjectHeader {
   // has been WriteRelease'd. A reader may read the actual object value if
   // is_sealed=true and num_read_acquires_remaining != 0.
   bool is_sealed = false;
+  std::mutex version_sealed_mutex;
+  std::condition_variable version_sealed_cv;
   // Set to indicate an error was encountered computing the next version of
   // the mutable object. Lockless access allowed.
   std::atomic<bool> has_error = false;
@@ -149,6 +151,8 @@ struct PlasmaObjectHeader {
   /// \param sem The semaphores for this channel.
   Status WriteRelease(Semaphores &sem);
 
+  bool WaitForNewVersionSealed(int64_t version_to_wait_for);
+
   /// Blocks until the given version is ready to read. Returns false if the
   /// maximum number of readers have already read the requested version.
   ///
@@ -159,11 +163,10 @@ struct PlasmaObjectHeader {
   /// 0. Otherwise, the current version.
   /// \param[in] timeout_point The time point when to timeout if the semaphore is not
   /// acquired. If this is nullptr, then there is no timeout and the method will block
-  /// indefinitely until the semaphore is acquired. If timeout_point is already passed,
-  /// then the method will try once to acquire the semaphore, and return either OK or
-  /// TimedOut immediately without blocking.
-  /// \return Whether the correct version was read and there were still
-  /// reads remaining.
+  /// indefinitely until the semaphore is acquired. If timeout_point is already
+  /// passed, then the method will try once to acquire the semaphore, and return
+  /// either OK or TimedOut immediately without blocking. \return Whether the correct
+  /// version was read and there were still reads remaining.
   Status ReadAcquire(const ObjectID &object_id,
                      Semaphores &sem,
                      int64_t version_to_read,
