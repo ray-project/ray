@@ -35,23 +35,35 @@ class VPGTorchLearner(TorchLearner):
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         rl_module = self.module[module_id]
+
+        # Create the action distribution from the parameters output by the RLModule.
         action_dist_inputs = fwd_out[Columns.ACTION_DIST_INPUTS]
         action_dist_class = rl_module.get_train_action_dist_cls()
         action_dist = action_dist_class.from_logits(action_dist_inputs)
 
-        # Compute log probabilities of the actions taken
+        # Compute log probabilities of the actions taken during sampling.
         log_probs = action_dist.logp(batch[Columns.ACTIONS])
 
-        # Compute the policy gradient loss
-        # Since we're not using a baseline, we use returns directly
+        # Compute the policy gradient loss.
+        # Since we're not using a baseline, we use returns to go directly.
         loss = -torch.mean(log_probs * batch[Columns.RETURNS_TO_GO])
+
+        # Just for exercise, log the average return to go per discrete action.
+        for act, ret_to_go in zip(batch[Columns.ACTIONS], batch[Columns.RETURNS_TO_GO]):
+            self.metrics.log_value(
+                key=(module_id, f"action_{act}_return_to_go_mean"),
+                value=ret_to_go,
+                # Mean over the batch size.
+                reduce="mean",
+                window=len(batch[Columns.RETURNS_TO_GO]),
+            )
 
         return loss
 
     @override(Learner)
     def after_gradient_based_update(self, *, timesteps):
         # This is to check if in the multi-gpu case, the weights across workers are
-        # the same. It is really only needed during testing.
+        # the same. Only for testing purposes.
         if self.config.report_mean_weights:
             for module_id in self.module.keys():
                 parameters = convert_to_numpy(

@@ -461,8 +461,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 object. If unspecified, a default logger is created.
             **kwargs: Arguments passed to the Trainable base class.
         """
-        config = config  # or self.get_default_config()
-
         # Translate possible dict into an AlgorithmConfig object, as well as,
         # resolving generic config objects into specific ones (e.g. passing
         # an `AlgorithmConfig` super-class instance into a PPO constructor,
