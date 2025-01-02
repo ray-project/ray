@@ -1,7 +1,3 @@
-# Every PR into runtime needs to get approval from one the below
-
-*  @jjyao @edoakes @raulchen @matthewdeng
-
 # Have codeowner protection because runtime CI scripts are written in a quick
 # and dirty way, and works different from ray OSS upstream.
 #
@@ -9,7 +5,7 @@
 # mature
 anyscale/ci @aslonnie @can-anyscale @khluu
 anyscale/docker @aslonnie @can-anyscale @khluu
-anyscale/go @aslonnie @lanbochen-anyscale @hckuo
+anyscale/go @aslonnie @lanbochen-anyscale
 
 # Data team
 /python/ray/anyscale/data @bveeramani @scottjlee @raulchen @omatthew98 @alexeykudinkin @srinathk10
