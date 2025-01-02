@@ -31,21 +31,22 @@
 #include <boost/system/error_code.hpp>
 #include <cassert>
 #include <sstream>
+#include <string_view>
 
 #include "absl/container/flat_hash_map.h"
 
 namespace ray {
 
-const std::string STATUS_CODE_OK = "OK";
+constexpr std::string_view kStatusCodeOk = "OK";
 // not a real status (catch all for codes not known)
-const std::string STATUS_CODE_UNKNOWN = "Unknown";
+constexpr std::string_view kStatusCodeUnknown = "Unknown";
 
 namespace {
 
 // Code <-> String mappings.
 
-const absl::flat_hash_map<StatusCode, std::string> kCodeToStr = {
-    {StatusCode::OK, STATUS_CODE_OK},
+const absl::flat_hash_map<StatusCode, std::string_view> kCodeToStr = {
+    {StatusCode::OK, kStatusCodeOk},
     {StatusCode::OutOfMemory, "Out of memory"},
     {StatusCode::KeyError, "Key error"},
     {StatusCode::TypeError, "Type error"},
@@ -79,8 +80,8 @@ const absl::flat_hash_map<StatusCode, std::string> kCodeToStr = {
     {StatusCode::ChannelTimeoutError, "ChannelTimeoutError"},
 };
 
-const absl::flat_hash_map<std::string, StatusCode> kStrToCode = []() {
-  absl::flat_hash_map<std::string, StatusCode> str_to_code;
+const absl::flat_hash_map<std::string_view, StatusCode> kStrToCode = []() {
+  absl::flat_hash_map<std::string_view, StatusCode> str_to_code;
   for (const auto &pair : kCodeToStr) {
     str_to_code[pair.second] = pair.first;
   }
@@ -115,14 +116,14 @@ void Status::CopyFrom(const State *state) {
 
 std::string Status::CodeAsString() const {
   if (state_ == nullptr) {
-    return STATUS_CODE_OK;
+    return std::string(kStatusCodeOk);
   }
 
   auto it = kCodeToStr.find(code());
   if (it == kCodeToStr.end()) {
-    return STATUS_CODE_UNKNOWN;
+    return std::string(kStatusCodeUnknown);
   }
-  return it->second;
+  return std::string(it->second);
 }
 
 StatusCode Status::StringToCode(const std::string &str) {
