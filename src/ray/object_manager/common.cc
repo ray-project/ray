@@ -142,6 +142,7 @@ Status PlasmaObjectHeader::WriteAcquire(
   RAY_CHECK_EQ(num_read_acquires_remaining, 0UL);
   RAY_CHECK_EQ(num_read_releases_remaining, 0UL);
 
+  std::unique_lock<std::mutex> lock(version_sealed_mutex);
   version++;
   is_sealed = false;
   data_size = write_data_size;
@@ -149,6 +150,8 @@ Status PlasmaObjectHeader::WriteAcquire(
   num_readers = write_num_readers;
 
   RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
+  lock.unlock();
+  version_sealed_cv.notify_all();
   return Status::OK();
 }
 
@@ -166,6 +169,14 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
   return Status::OK();
 }
 
+bool PlasmaObjectHeader::WaitForNewVersionSealed(int64_t version_to_wait_for) {
+  std::unique_lock<std::mutex> lock(version_sealed_mutex);
+  return version_sealed_cv.wait_for(
+      lock, std::chrono::seconds(1), [this, version_to_wait_for] {
+        return !(version < version_to_wait_for || !is_sealed);
+      });
+}
+
 Status PlasmaObjectHeader::ReadAcquire(
     const ObjectID &object_id,
     Semaphores &sem,
@@ -178,11 +189,9 @@ Status PlasmaObjectHeader::ReadAcquire(
   // same `timeout_point`.
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
-  // TODO(jhumphri): Wouldn't a futex be better here than polling?
   // Wait for the requested version (or a more recent one) to be sealed.
-  while (version < version_to_read || !is_sealed) {
+  while (!WaitForNewVersionSealed(version_to_read)) {
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
-    sched_yield();
     // We need to get the desired version before timeout
     if (timeout_point && std::chrono::steady_clock::now() >= *timeout_point) {
       return Status::ChannelTimeoutError(absl::StrCat(
