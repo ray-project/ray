@@ -697,7 +697,7 @@ def api_main(program, *args):
     parser.add_argument(
         "-l",
         "--language",
-        default="python,cpp",
+        default="python",
         type=str,
         help="A list of languages to build native libraries. "
         'Supported languages include "python" and "java". '
