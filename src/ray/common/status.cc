@@ -37,38 +37,6 @@
 namespace ray {
 
 const std::string STATUS_CODE_OK = "OK";
-const std::string STATUS_CODE_OUT_OF_MEMORY = "Out of memory";
-const std::string STATUS_CODE_KEY_ERROR = "Key error";
-const std::string STATUS_CODE_TYPE_ERROR = "Type error";
-const std::string STATUS_CODE_INVALID = "Invalid";
-const std::string STATUS_CODE_IO_ERROR = "IOError";
-const std::string STATUS_CODE_UNKNOWN_ERROR = "Unknown error";
-const std::string STATUS_CODE_NOT_IMPLEMENTED = "NotImplemented";
-const std::string STATUS_CODE_REDIS_ERROR = "RedisError";
-const std::string STATUS_CODE_TIMED_OUT = "TimedOut";
-const std::string STATUS_CODE_INTERRUPTED = "Interrupted";
-const std::string STATUS_CODE_INTENTIONAL_SYSTEM_EXIT = "IntentionalSystemExit";
-const std::string STATUS_CODE_UNEXPECTED_SYSTEM_EXIT = "UnexpectedSystemExit";
-const std::string STATUS_CODE_CREATION_TASK_ERROR = "CreationTaskError";
-const std::string STATUS_CODE_NOT_FOUND = "NotFound";
-const std::string STATUS_CODE_DISCONNECTED = "Disconnected";
-const std::string STATUS_CODE_SCHEDULING_CANCELLED = "SchedulingCancelled";
-const std::string STATUS_CODE_ALREADY_EXISTS = "AlreadyExists";
-const std::string STATUS_CODE_OBJECT_EXISTS = "ObjectExists";
-const std::string STATUS_CODE_OBJECT_NOT_FOUND = "ObjectNotFound";
-const std::string STATUS_CODE_OBJECT_ALREADY_SEALED = "ObjectAlreadySealed";
-const std::string STATUS_CODE_OBJECT_STORE_FULL = "ObjectStoreFull";
-const std::string STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL = "TransientObjectStoreFull";
-const std::string STATUS_CODE_OUT_OF_DISK = "OutOfDisk";
-const std::string STATUS_CODE_OBJECT_UNKNOWN_OWNER = "ObjectUnknownOwner";
-const std::string STATUS_CODE_RPC_ERROR = "RpcError";
-const std::string STATUS_CODE_OUT_OF_RESOURCE = "OutOfResource";
-const std::string STATUS_CODE_OBJECT_REF_END_OF_STREAM = "ObjectRefEndOfStream";
-const std::string STATUS_CODE_AUTH_ERROR = "AuthError";
-const std::string STATUS_CODE_INVALID_ARGUMENT = "InvalidArgument";
-const std::string STATUS_CODE_CHANNEL_ERROR = "ChannelError";
-const std::string STATUS_CODE_CHANNEL_TIMEOUT_ERROR = "ChannelTimeoutError";
-
 // not a real status (catch all for codes not known)
 const std::string STATUS_CODE_UNKNOWN = "Unknown";
 
@@ -78,37 +46,37 @@ namespace {
 
 const absl::flat_hash_map<StatusCode, std::string> kCodeToStr = {
     {StatusCode::OK, STATUS_CODE_OK},
-    {StatusCode::OutOfMemory, STATUS_CODE_OUT_OF_MEMORY},
-    {StatusCode::KeyError, STATUS_CODE_KEY_ERROR},
-    {StatusCode::TypeError, STATUS_CODE_TYPE_ERROR},
-    {StatusCode::Invalid, STATUS_CODE_INVALID},
-    {StatusCode::IOError, STATUS_CODE_IO_ERROR},
-    {StatusCode::UnknownError, STATUS_CODE_UNKNOWN_ERROR},
-    {StatusCode::NotImplemented, STATUS_CODE_NOT_IMPLEMENTED},
-    {StatusCode::RedisError, STATUS_CODE_REDIS_ERROR},
-    {StatusCode::TimedOut, STATUS_CODE_TIMED_OUT},
-    {StatusCode::Interrupted, STATUS_CODE_INTERRUPTED},
-    {StatusCode::IntentionalSystemExit, STATUS_CODE_INTENTIONAL_SYSTEM_EXIT},
-    {StatusCode::UnexpectedSystemExit, STATUS_CODE_UNEXPECTED_SYSTEM_EXIT},
-    {StatusCode::CreationTaskError, STATUS_CODE_CREATION_TASK_ERROR},
-    {StatusCode::NotFound, STATUS_CODE_NOT_FOUND},
-    {StatusCode::Disconnected, STATUS_CODE_DISCONNECTED},
-    {StatusCode::SchedulingCancelled, STATUS_CODE_SCHEDULING_CANCELLED},
-    {StatusCode::AlreadyExists, STATUS_CODE_ALREADY_EXISTS},
-    {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
-    {StatusCode::ObjectNotFound, STATUS_CODE_OBJECT_NOT_FOUND},
-    {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_ALREADY_SEALED},
-    {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
-    {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
-    {StatusCode::OutOfDisk, STATUS_CODE_OUT_OF_DISK},
-    {StatusCode::ObjectUnknownOwner, STATUS_CODE_OBJECT_UNKNOWN_OWNER},
-    {StatusCode::RpcError, STATUS_CODE_RPC_ERROR},
-    {StatusCode::OutOfResource, STATUS_CODE_OUT_OF_RESOURCE},
-    {StatusCode::ObjectRefEndOfStream, STATUS_CODE_OBJECT_REF_END_OF_STREAM},
-    {StatusCode::AuthError, STATUS_CODE_AUTH_ERROR},
-    {StatusCode::InvalidArgument, STATUS_CODE_INVALID_ARGUMENT},
-    {StatusCode::ChannelError, STATUS_CODE_CHANNEL_ERROR},
-    {StatusCode::ChannelTimeoutError, STATUS_CODE_CHANNEL_TIMEOUT_ERROR},
+    {StatusCode::OutOfMemory, "Out of memory"},
+    {StatusCode::KeyError, "Key error"},
+    {StatusCode::TypeError, "Type error"},
+    {StatusCode::Invalid, "Invalid"},
+    {StatusCode::IOError, "IOError"},
+    {StatusCode::UnknownError, "Unknown error"},
+    {StatusCode::NotImplemented, "NotImplemented"},
+    {StatusCode::RedisError, "RedisError"},
+    {StatusCode::TimedOut, "TimedOut"},
+    {StatusCode::Interrupted, "Interrupted"},
+    {StatusCode::IntentionalSystemExit, "IntentionalSystemExit"},
+    {StatusCode::UnexpectedSystemExit, "UnexpectedSystemExit"},
+    {StatusCode::CreationTaskError, "CreationTaskError"},
+    {StatusCode::NotFound, "NotFound"},
+    {StatusCode::Disconnected, "Disconnected"},
+    {StatusCode::SchedulingCancelled, "SchedulingCancelled"},
+    {StatusCode::AlreadyExists, "AlreadyExists"},
+    {StatusCode::ObjectExists, "ObjectExists"},
+    {StatusCode::ObjectNotFound, "ObjectNotFound"},
+    {StatusCode::ObjectAlreadySealed, "ObjectAlreadySealed"},
+    {StatusCode::ObjectStoreFull, "ObjectStoreFull"},
+    {StatusCode::TransientObjectStoreFull, "TransientObjectStoreFull"},
+    {StatusCode::OutOfDisk, "OutOfDisk"},
+    {StatusCode::ObjectUnknownOwner, "ObjectUnknownOwner"},
+    {StatusCode::RpcError, "RpcError"},
+    {StatusCode::OutOfResource, "OutOfResource"},
+    {StatusCode::ObjectRefEndOfStream, "ObjectRefEndOfStream"},
+    {StatusCode::AuthError, "AuthError"},
+    {StatusCode::InvalidArgument, "InvalidArgument"},
+    {StatusCode::ChannelError, "ChannelError"},
+    {StatusCode::ChannelTimeoutError, "ChannelTimeoutError"},
 };
 
 const absl::flat_hash_map<std::string, StatusCode> kStrToCode = []() {
