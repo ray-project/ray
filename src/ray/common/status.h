@@ -84,6 +84,7 @@ enum class StatusCode : char {
   NotFound = 17,
   Disconnected = 18,
   SchedulingCancelled = 19,
+  AlreadyExists = 20,
   // object store status
   ObjectExists = 21,
   ObjectNotFound = 22,
@@ -204,6 +205,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::SchedulingCancelled, msg);
   }
 
+  static Status AlreadyExists(const std::string &msg) {
+    return Status(StatusCode::AlreadyExists, msg);
+  }
+
   static Status ObjectExists(const std::string &msg) {
     return Status(StatusCode::ObjectExists, msg);
   }
@@ -291,6 +296,7 @@ class RAY_EXPORT Status {
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
   bool IsDisconnected() const { return code() == StatusCode::Disconnected; }
   bool IsSchedulingCancelled() const { return code() == StatusCode::SchedulingCancelled; }
+  bool IsAlreadyExists() const { return code() == StatusCode::AlreadyExists; }
   bool IsObjectExists() const { return code() == StatusCode::ObjectExists; }
   bool IsObjectNotFound() const { return code() == StatusCode::ObjectNotFound; }
   bool IsObjectUnknownOwner() const { return code() == StatusCode::ObjectUnknownOwner; }

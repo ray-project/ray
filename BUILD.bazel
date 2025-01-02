@@ -114,8 +114,8 @@ ray_cc_library(
     srcs = [
         "src/ray/rpc/common.cc",
         "src/ray/rpc/grpc_server.cc",
-        "src/ray/rpc/rpc_chaos.cc",
         "src/ray/rpc/retryable_grpc_client.cc",
+        "src/ray/rpc/rpc_chaos.cc",
         "src/ray/rpc/server_call.cc",
     ],
     hdrs = glob([
@@ -2269,6 +2269,7 @@ ray_cc_library(
     deps = [
         ":ray_common",
         "//src/ray/util",
+        "@com_google_absl//absl/container:node_hash_map",
     ],
 )
 

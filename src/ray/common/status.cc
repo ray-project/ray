@@ -53,6 +53,7 @@ namespace ray {
 #define STATUS_CODE_NOT_FOUND "NotFound"
 #define STATUS_CODE_DISCONNECTED "Disconnected"
 #define STATUS_CODE_SCHEDULING_CANCELLED "SchedulingCancelled"
+#define STATUS_CODE_ALREADY_EXISTS "AlreadyExists"
 #define STATUS_CODE_OBJECT_EXISTS "ObjectExists"
 #define STATUS_CODE_OBJECT_NOT_FOUND "ObjectNotFound"
 #define STATUS_CODE_OBJECT_ALREADY_SEALED "ObjectAlreadySealed"
@@ -94,6 +95,7 @@ const absl::flat_hash_map<StatusCode, std::string> kCodeToStr = {
     {StatusCode::NotFound, STATUS_CODE_NOT_FOUND},
     {StatusCode::Disconnected, STATUS_CODE_DISCONNECTED},
     {StatusCode::SchedulingCancelled, STATUS_CODE_SCHEDULING_CANCELLED},
+    {StatusCode::AlreadyExists, STATUS_CODE_ALREADY_EXISTS},
     {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
     {StatusCode::ObjectNotFound, STATUS_CODE_OBJECT_NOT_FOUND},
     {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_ALREADY_SEALED},

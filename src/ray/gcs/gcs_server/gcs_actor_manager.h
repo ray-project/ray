@@ -370,7 +370,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param success_callback Will be invoked after the actor is created successfully or
   /// be invoked immediately if the actor is already registered to `registered_actors_`
   /// and its state is `ALIVE`.
-  /// \return Status::Invalid if this is a named actor and an
+  /// \return Status::AlreadyExists if this is a named actor and an
   /// actor with the specified name already exists. The callback will not be called in
   /// this case.
   Status RegisterActor(const rpc::RegisterActorRequest &request,
