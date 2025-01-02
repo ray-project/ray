@@ -9,7 +9,7 @@ import pytest
 # RAY_enable_export_api_write env var must be set before importing
 # `ray` so the correct value is set for RAY_ENABLE_EXPORT_API_WRITE
 # even outside a Ray driver.
-os.environ["RAY_enable_export_api_write"] = "true"
+os.environ["RAY_enable_export_api_write_config"] = '["EXPORT_SUBMISSION_JOB"]'
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
@@ -38,7 +38,7 @@ async def check_job_succeeded(job_manager, job_id):
     [
         {
             "env": {
-                "RAY_enable_export_api_write": "true",
+                "RAY_enable_export_api_write_config": '["EXPORT_SUBMISSION_JOB"]',
             },
             "cmd": "ray start --head",
         }

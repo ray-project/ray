@@ -535,6 +535,10 @@ RAY_BACKEND_LOG_JSON_ENV_VAR = "RAY_BACKEND_LOG_JSON"
 
 RAY_ENABLE_EXPORT_API_WRITE = env_bool("RAY_enable_export_api_write", False)
 
+RAY_ENABLE_EXPORT_API_WRITE_CONFIG = os.environ.get(
+    "RAY_enable_export_api_write_config", "[]"
+)
+
 RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
     "RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES", 100 * 1e6
 )

@@ -532,10 +532,16 @@ TEST_F(EventTest, TestExportEvent) {
 }
 
 TEST_F(EventTest, TestIsExportAPIEnabledSourceType) {
-  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", false, "[\"EXPORT_TASK\", \"EXPORT_ACTOR\"]"), true);
-  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", true, "[\"EXPORT_TASK\", \"EXPORT_ACTOR\"]"), true);
-  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", false, "[\"EXPORT_ACTOR\"]"), false);
-  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", true, "[\"EXPORT_ACTOR\"]"), true);
+  EXPECT_EQ(IsExportAPIEnabledSourceType(
+                "EXPORT_TASK", false, "[\"EXPORT_TASK\", \"EXPORT_ACTOR\"]"),
+            true);
+  EXPECT_EQ(IsExportAPIEnabledSourceType(
+                "EXPORT_TASK", true, "[\"EXPORT_TASK\", \"EXPORT_ACTOR\"]"),
+            true);
+  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", false, "[\"EXPORT_ACTOR\"]"),
+            false);
+  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", true, "[\"EXPORT_ACTOR\"]"),
+            true);
 
   // Invalid JSON
   EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", false, "EXPORT_TASK"), false);

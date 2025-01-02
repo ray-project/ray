@@ -142,3 +142,29 @@ def get_export_event_logger(
             _export_event_logger[source_name] = ExportEventLoggerAdapter(source, logger)
 
         return _export_event_logger[source_name]
+
+
+def check_export_api_enabled(
+    source: ExportEvent.SourceType,
+) -> bool:
+    """
+    Check RAY_ENABLE_EXPORT_API_WRITE and RAY_ENABLE_EXPORT_API_WRITE_CONFIG environment
+    variables to verify if export events should be written for the given source type.
+
+    Args:
+        source: The source of the export event.
+    """
+    if ray_constants.RAY_ENABLE_EXPORT_API_WRITE:
+        return True
+    source_name = ExportEvent.SourceType.Name(source)
+    try:
+        ray_export_api_config_json = json.loads(
+            ray_constants.RAY_ENABLE_EXPORT_API_WRITE_CONFIG
+        )
+    except Exception:
+        global_logger.exception(
+            "Error parsing JSON for RAY_enable_export_api_write_config. "
+            f"No export events of source {source_name} will be written."
+        )
+        return False
+    return source_name in ray_export_api_config_json
