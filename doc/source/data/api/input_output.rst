@@ -324,6 +324,8 @@ Datasink API
    datasource.RowBasedFileDatasink
    datasource.BlockBasedFileDatasink
    datasource.FileBasedDatasource
+   datasource.WriteResult
+   datasource.WriteReturnType
 
 Partitioning API
 ----------------
@@ -351,3 +353,12 @@ MetadataProvider API
    datasource.DefaultFileMetadataProvider
    datasource.ParquetMetadataProvider
    datasource.FastFileMetadataProvider
+
+Shuffling API
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   FileShuffleConfig

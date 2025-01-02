@@ -7,8 +7,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import ray
 import ray.exceptions
 from ray._raylet import SerializedObject
+from ray.experimental.channel import utils
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
+from ray.experimental.channel.utils import get_self_actor
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point
@@ -41,9 +43,10 @@ def _create_channel_ref(
     readers' buffers.
 
     Args:
-        buffer_size_bytes: The number of bytes to allocate for the object data and
-            metadata. Writes to the channel must produce serialized data and
-            metadata less than or equal to this value.
+        buffer_size_bytes: The initial buffer size in bytes for messages
+            that can be passed between tasks in the DAG. The buffers will
+            be automatically resized if larger messages are written to the
+            channel.
     Returns:
         Channel: A wrapper around ray.ObjectRef.
     """
@@ -65,18 +68,7 @@ def _create_channel_ref(
     return object_ref
 
 
-def _get_self_actor() -> Optional["ray.actor.ActorHandle"]:
-    """
-    Get the current actor handle in this worker.
-    If this is called in a driver process, it will return None.
-    """
-    try:
-        return ray.get_runtime_context().current_actor
-    except RuntimeError:
-        return None
-
-
-# aDAG maintains 1 reader object reference (also called buffer) per node.
+# Compiled Graph maintains 1 reader object reference (also called buffer) per node.
 # reader_ref: The object reference.
 # ref_owner_actor_id: The actor who created the object reference.
 # num_readers: The number of reader actors who reads this object reference.
@@ -113,9 +105,10 @@ class SharedMemoryType(ChannelOutputType):
     ):
         """
         Args:
-            buffer_size_bytes: The number of bytes to allocate for the object data and
-                metadata. Writes to the channel must produce serialized data and
-                metadata less than or equal to this value.
+            buffer_size_bytes: The initial buffer size in bytes for messages
+                that can be passed between tasks in the DAG. The buffers will
+                be automatically resized if larger messages are written to the
+                channel.
             num_shm_buffers: The number of shared memory buffer per channel.
         """
         super().__init__()
@@ -235,7 +228,7 @@ class Channel(ChannelInterface):
             # actor, so we shouldn't need to include `writer` in the
             # constructor args. Either support Channels being constructed by
             # someone other than the writer or remove it from the args.
-            self_actor = _get_self_actor()
+            self_actor = get_self_actor()
             assert writer == self_actor
 
             self._writer_node_id = (
@@ -688,15 +681,13 @@ class CompositeChannel(ChannelInterface):
             # We don't need to create channels again.
             return
 
-        remote_reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
-        for reader, node in self._reader_and_node_list:
-            if reader != self._writer:
-                remote_reader_and_node_list.append((reader, node))
+        (
+            remote_reader_and_node_list,
+            local_reader_and_node_list,
+        ) = utils.split_readers_by_locality(self._writer, self._reader_and_node_list)
         # There are some local readers which are the same worker process as the writer.
         # Create a local channel for the writer and the local readers.
-        num_local_readers = len(self._reader_and_node_list) - len(
-            remote_reader_and_node_list
-        )
+        num_local_readers = len(local_reader_and_node_list)
         if num_local_readers > 0:
             # Use num_readers = 1 when creating the local channel,
             # because we have channel cache to support reading

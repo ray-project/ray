@@ -70,7 +70,7 @@ class _DAGNodeOperation:
         """
         A string representation of the node to be used in visualization.
         """
-        return f"([{self.exec_task_idx}] {self.method_name} {self.type.viz_str()})"
+        return f"[{self.exec_task_idx}] {self.method_name} {self.type.viz_str()}"
 
     def __hash__(self):
         return hash((self.exec_task_idx, self.type))

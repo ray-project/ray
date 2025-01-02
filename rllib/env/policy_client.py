@@ -23,7 +23,7 @@ from ray.rllib.utils.typing import (
 )
 
 # Backward compatibility.
-from ray.rllib.env.utils.external_env_protocol import MessageTypes as Commands
+from ray.rllib.env.utils.external_env_protocol import RLlink as Commands
 
 logger = logging.getLogger(__name__)
 
