@@ -883,7 +883,7 @@ message CreateOrUpdateVirtualClusterReply {
   // The replica sets that gcs can fulfill at most to meet the reqest.
   // This field is only used when the request failed and serving as a suggestion
   // to adjust the requst or cluster.
-  map<string, int32> replica_sets_at_most = 4;
+  map<string, int32> replica_sets_to_recommend = 4;
 }
 
 message RemoveVirtualClusterRequest {
@@ -923,6 +923,10 @@ message CreateJobClusterReply {
   GcsStatus status = 1;
   // The job cluster id.
   string job_cluster_id = 2;
+  // The replica sets that gcs can fulfill at most to meet the reqest.
+  // This field is only used when the request failed and serving as a suggestion
+  // to adjust the requst or cluster.
+  map<string, int32> replica_sets_to_recommend = 3;
 }
 
 service VirtualClusterInfoGcsService {

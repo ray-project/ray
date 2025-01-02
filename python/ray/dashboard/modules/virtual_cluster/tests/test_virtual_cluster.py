@@ -199,7 +199,7 @@ def test_create_and_update_virtual_cluster_with_exceptions(
     )
     assert result["result"] is False
     assert "No enough nodes to add to the virtual cluster" in result["msg"]
-    replica_sets = result["data"].get("replicaSetsAtMost", {})
+    replica_sets = result["data"].get("replicaSetsToRecommend", {})
     # The primary cluster can fulfill none `16c32g` node to meet the
     # virtual cluster's requirement.
     assert replica_sets == {}
@@ -215,7 +215,7 @@ def test_create_and_update_virtual_cluster_with_exceptions(
     )
     assert result["result"] is False
     assert "No enough nodes to add to the virtual cluster" in result["msg"]
-    replica_sets = result["data"].get("replicaSetsAtMost", {})
+    replica_sets = result["data"].get("replicaSetsToRecommend", {})
     # The primary cluster can only fulfill one `4c8g` node and one `8c16g` to meet the
     # virtual cluster's requirement.
     assert replica_sets == {"4c8g": 1, "8c16g": 1}
@@ -253,7 +253,7 @@ def test_create_and_update_virtual_cluster_with_exceptions(
     )
     assert result["result"] is False
     assert "No enough nodes to add to the virtual cluster" in result["msg"]
-    replica_sets = result["data"].get("replicaSetsAtMost", {})
+    replica_sets = result["data"].get("replicaSetsToRecommend", {})
     # The primary cluster can only fulfill one `8c16g`
     # node to meet the virtual cluster's requirement.
     assert replica_sets == {"8c16g": 1}
@@ -272,7 +272,7 @@ def test_create_and_update_virtual_cluster_with_exceptions(
         )
         assert result["result"] is False
         assert "No enough nodes to remove from the virtual cluster" in result["msg"]
-        replica_sets = result["data"].get("replicaSetsAtMost", {})
+        replica_sets = result["data"].get("replicaSetsToRecommend", {})
         # The virtual cluster has one `4c8g` node in use. So we can fulfill none node.
         assert replica_sets == {}
 
@@ -287,7 +287,7 @@ def test_create_and_update_virtual_cluster_with_exceptions(
     )
     assert result["result"] is False
     assert "No enough nodes to add to the virtual cluster" in result["msg"]
-    replica_sets = result["data"].get("replicaSetsAtMost", {})
+    replica_sets = result["data"].get("replicaSetsToRecommend", {})
     # The primary cluster lacks one `4c8g` node to meet the
     # virtual cluster's requirement.
     assert replica_sets == {"8c16g": 1}

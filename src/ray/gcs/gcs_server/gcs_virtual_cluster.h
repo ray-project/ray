@@ -83,11 +83,14 @@ using CreateOrUpdateVirtualClusterCallback = std::function<void(
     const Status &, std::shared_ptr<rpc::VirtualClusterTableData>, const ReplicaSets *)>;
 
 using RemoveVirtualClusterCallback = CreateOrUpdateVirtualClusterCallback;
-using GetVirtualClustersDataCallback =
+
+using VirtualClustersDataVisitCallback =
     std::function<void(std::shared_ptr<rpc::VirtualClusterTableData>)>;
 
 using AsyncClusterDataFlusher = std::function<Status(
     std::shared_ptr<rpc::VirtualClusterTableData>, CreateOrUpdateVirtualClusterCallback)>;
+
+using NodeInstanceFilter = std::function<bool(const gcs::NodeInstance &node_instance)>;
 
 /// Calculate the difference between two replica sets.
 template <typename T1, typename T2>
@@ -117,6 +120,15 @@ ReplicaInstances toReplicaInstances(const T &node_instances) {
   }
   return result;
 }
+
+ReplicaSets buildReplicaSets(const ReplicaInstances &replica_instances);
+
+std::string DebugString(const ReplicaInstances &replica_instances, int indent = 0);
+std::string DebugString(const ReplicaSets &replica_sets, int indent = 0);
+
+using NodeInstanceReplenishCallback = std::function<std::shared_ptr<NodeInstance>(
+    std::shared_ptr<NodeInstance> node_instance_to_replenish)>;
+
 class VirtualCluster {
  public:
   VirtualCluster(const std::string &id,
@@ -154,15 +166,17 @@ class VirtualCluster {
   void UpdateNodeInstances(ReplicaInstances replica_instances_to_add,
                            ReplicaInstances replica_instances_to_remove);
 
-  /// Lookup idle node instances from `visible_node_instances_` based on the demand
-  /// final replica sets.
+  /// Lookup node instances from queue of kEmptyJobClusterId in `visible_node_instances_`
+  /// based on the desired final replica sets and node_instance_filter.
   ///
   /// \param replica_sets The demand final replica sets.
   /// \param replica_instances The node instances lookuped best effort from the visible
   /// node instances.
-  /// \return True if the lookup is successful, otherwise return false.
-  bool LookupIdleNodeInstances(const ReplicaSets &replica_sets,
-                               ReplicaInstances &replica_instances) const;
+  /// \param node_instance_filter The filter to check if the node instance is desired.
+  /// \return True if the lookup is successful, otherwise return an error.
+  bool LookupNodeInstances(const ReplicaSets &replica_sets,
+                           ReplicaInstances &replica_instances,
+                           NodeInstanceFilter node_instance_filter) const;
 
   /// Mark the node instance as dead.
   ///
@@ -176,6 +190,12 @@ class VirtualCluster {
   /// \param node_instance_id The id of the node instance to check
   /// \return True if the node instance is in this virtual cluster, false otherwise.
   bool ContainsNodeInstance(const std::string &node_instance_id);
+
+  /// Iterate all node instances of the virtual cluster.
+  ///
+  /// \param fn The callback to iterate all node instances.
+  void ForeachNodeInstance(
+      const std::function<void(const std::shared_ptr<NodeInstance> &)> &fn) const;
 
   /// Check if the virtual cluster is in use.
   ///
@@ -191,14 +211,27 @@ class VirtualCluster {
   /// Get the debug string of the virtual cluster.
   virtual std::string DebugString() const;
 
- protected:
   /// Check if the node instance is idle. If a node instance is idle, it can be
   /// removed from the virtual cluster safely.
+  ///
   /// \param node_instance The node instance to be checked.
   /// \return True if the node instance is idle, false otherwise.
-  virtual bool IsIdleNodeInstance(const std::string &job_cluster_id,
-                                  const gcs::NodeInstance &node_instance) const = 0;
+  virtual bool IsIdleNodeInstance(const gcs::NodeInstance &node_instance) const = 0;
 
+  /// Replenish the node instances of the virtual cluster.
+  ///
+  /// \param callback The callback to replenish the dead node instances.
+  /// \return True if any dead node instances are replenished, false otherwise.
+  virtual bool ReplenishNodeInstances(const NodeInstanceReplenishCallback &callback);
+
+  /// Replenish a node instance.
+  ///
+  /// \param node_instance_to_replenish The node instance to replenish.
+  /// \return True if the node instances is replenished, false otherwise.
+  std::shared_ptr<NodeInstance> ReplenishNodeInstance(
+      std::shared_ptr<NodeInstance> node_instance_to_replenish);
+
+ protected:
   /// Insert the node instances to the cluster.
   ///
   /// \param replica_instances The node instances to be inserted.
@@ -235,25 +268,30 @@ class ExclusiveCluster : public VirtualCluster {
 
   /// Load a job cluster to the exclusive cluster.
   ///
-  /// \param data The data of the job cluster.
-  void LoadJobCluster(const rpc::VirtualClusterTableData &data);
+  /// \param job_cluster_id The id of the job cluster.
+  /// \param replica_instances The replica instances of the job cluster.
+  void LoadJobCluster(const std::string &job_cluster_id,
+                      ReplicaInstances replica_instances);
 
   /// Build the job cluster id.
   ///
-  /// \param job_id The name of the job.
+  /// \param job_name The name of the job.
   /// \return The job cluster id.
-  std::string BuildJobClusterID(const std::string &job_id) {
-    return VirtualClusterID::FromBinary(GetID()).BuildJobClusterID(job_id).Binary();
+  std::string BuildJobClusterID(const std::string &job_name) {
+    return VirtualClusterID::FromBinary(GetID()).BuildJobClusterID(job_name).Binary();
   }
 
   /// Create a job cluster.
   ///
   /// \param job_cluster_id The id of the job cluster.
   /// \param replica_sets The replica sets of the job cluster.
+  /// \param[out] replica_sets_to_recommend The replica sets that we can fulfill the
+  /// request at most. It can be used as a suggestion to adjust the request if it fails.
   /// \return Status The status of the creation.
   Status CreateJobCluster(const std::string &job_cluster_id,
                           ReplicaSets replica_sets,
-                          CreateOrUpdateVirtualClusterCallback callback);
+                          CreateOrUpdateVirtualClusterCallback callback,
+                          ReplicaSets *replica_sets_to_recommend = nullptr);
 
   /// Remove a job cluster.
   ///
@@ -278,10 +316,20 @@ class ExclusiveCluster : public VirtualCluster {
   /// \return True if the virtual cluster is in use, false otherwise.
   bool InUse() const override;
 
- protected:
-  bool IsIdleNodeInstance(const std::string &job_cluster_id,
-                          const gcs::NodeInstance &node_instance) const override;
+  /// Check if the node instance is idle. If a node instance is idle, it can be
+  /// removed from the virtual cluster safely.
+  ///
+  /// \param node_instance The node instance to be checked.
+  /// \return True if the node instance is idle, false otherwise.
+  bool IsIdleNodeInstance(const gcs::NodeInstance &node_instance) const override;
 
+  /// Replenish the node instances of the virtual cluster.
+  ///
+  /// \param callback The callback to replenish the dead node instances.
+  /// \return True if any dead node instances are replenished, false otherwise.
+  bool ReplenishNodeInstances(const NodeInstanceReplenishCallback &callback) override;
+
+ protected:
   /// Create a job cluster to the exclusive cluster.
   ///
   /// \param job_cluster_id The id of the job cluster.
@@ -311,9 +359,12 @@ class MixedCluster : public VirtualCluster {
   /// \return True if the virtual cluster is in use, false otherwise.
   bool InUse() const override;
 
- protected:
-  bool IsIdleNodeInstance(const std::string &job_cluster_id,
-                          const gcs::NodeInstance &node_instance) const override;
+  /// Check if the node instance is idle. If a node instance is idle, it can be
+  /// removed from the virtual cluster safely.
+  ///
+  /// \param node_instance The node instance to be checked.
+  /// \return True if the node instance is idle, false otherwise.
+  bool IsIdleNodeInstance(const gcs::NodeInstance &node_instance) const override;
 };
 
 class JobCluster : public MixedCluster {
@@ -338,10 +389,14 @@ class PrimaryCluster : public ExclusiveCluster,
 
   /// Load a logical cluster to the primary cluster.
   ///
-  /// \param data The data of the logical cluster.
+  /// \param virtual_cluster_id The id of the logical cluster.
+  /// \param mode The allocation mode of the logical cluster.
+  /// \param replica_instances The replica instances of the logical cluster.
   /// \return The loaded logical cluster.
   std::shared_ptr<VirtualCluster> LoadLogicalCluster(
-      const rpc::VirtualClusterTableData &data);
+      const std::string &virtual_cluster_id,
+      rpc::AllocationMode mode,
+      ReplicaInstances replica_instances);
 
   const std::string &GetID() const override { return kPrimaryClusterID; }
   rpc::AllocationMode GetMode() const override { return rpc::AllocationMode::EXCLUSIVE; }
@@ -351,12 +406,12 @@ class PrimaryCluster : public ExclusiveCluster,
   /// \param request The request to create or update a virtual cluster.
   /// \param callback The callback that will be called after the virtual cluster
   /// is flushed.
-  /// \param[out] replica_sets_at_most The replica sets that we can fulfill the
+  /// \param[out] replica_sets_to_recommend The replica sets that we can fulfill the
   /// request at most. It can be used as a suggestion to adjust the request if it fails.
   /// \return Status.
   Status CreateOrUpdateVirtualCluster(rpc::CreateOrUpdateVirtualClusterRequest request,
                                       CreateOrUpdateVirtualClusterCallback callback,
-                                      ReplicaSets *replica_sets_at_most = nullptr);
+                                      ReplicaSets *replica_sets_to_recommend = nullptr);
 
   /// Get the virtual cluster by the logical cluster id.
   ///
@@ -364,19 +419,6 @@ class PrimaryCluster : public ExclusiveCluster,
   /// \return The logical cluster if it exists, otherwise return nullptr.
   std::shared_ptr<VirtualCluster> GetLogicalCluster(
       const std::string &logical_cluster_id) const;
-
-  /// Iterate all virtual clusters.
-  ///
-  /// \param fn The function to be called for each logical cluster.
-  void ForeachVirtualCluster(
-      const std::function<void(const std::shared_ptr<VirtualCluster> &)> &fn) const;
-
-  /// Get virtual cluster by virtual cluster id
-  ///
-  /// \param virtual_cluster_id The id of virtual cluster
-  /// \return the virtual cluster
-  std::shared_ptr<VirtualCluster> GetVirtualCluster(
-      const std::string &virtual_cluster_id);
 
   /// Remove logical cluster by the logical cluster id.
   ///
@@ -396,9 +438,25 @@ class PrimaryCluster : public ExclusiveCluster,
   Status RemoveVirtualCluster(const std::string &virtual_cluster_id,
                               RemoveVirtualClusterCallback callback);
 
-  /// Get virtual cluster's proto data.
-  void GetVirtualClustersData(rpc::GetVirtualClustersRequest request,
-                              GetVirtualClustersDataCallback callback);
+  /// Get virtual cluster by virtual cluster id
+  ///
+  /// \param virtual_cluster_id The id of virtual cluster
+  /// \return the virtual cluster
+  std::shared_ptr<VirtualCluster> GetVirtualCluster(
+      const std::string &virtual_cluster_id);
+
+  /// Iterate all virtual clusters.
+  ///
+  /// \param fn The function to be called for each logical cluster.
+  void ForeachVirtualCluster(
+      const std::function<void(const std::shared_ptr<VirtualCluster> &)> &fn) const;
+
+  /// Iterate virtual clusters data matching the request.
+  ///
+  /// \param request The request to get the virtual clusters data.
+  /// \param callback The callback to visit each virtual cluster data.
+  void ForeachVirtualClustersData(rpc::GetVirtualClustersRequest request,
+                                  VirtualClustersDataVisitCallback callback);
 
   /// Handle the node added event.
   ///
@@ -410,10 +468,10 @@ class PrimaryCluster : public ExclusiveCluster,
   /// \param node The node that is dead.
   void OnNodeDead(const rpc::GcsNodeInfo &node);
 
- protected:
-  bool IsIdleNodeInstance(const std::string &job_cluster_id,
-                          const gcs::NodeInstance &node_instance) const override;
+  /// Replenish dead node instances of all the virtual clusters.
+  void ReplenishAllClusterNodeInstances();
 
+ protected:
   /// Handle the node dead event.
   ///
   /// \param node_instance_id The id of the node instance that is dead.

@@ -109,7 +109,7 @@ class VirtualClusterHead(dashboard_utils.DashboardHeadModule):
                     virtual_cluster_id, reply.status.message
                 ),
                 virtual_cluster_id=virtual_cluster_id,
-                replica_sets_at_most=data.get("replicaSetsAtMost", {}),
+                replica_sets_to_recommend=data.get("replicaSetsToRecommend", {}),
             )
 
     @routes.delete("/virtual_clusters/{virtual_cluster_id}")

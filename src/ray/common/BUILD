@@ -236,6 +236,7 @@ ray_cc_library(
     hdrs = [
         "ray_config.h",
         "ray_config_def.h",
+        "ray_config_def.ant.h",
         "ray_internal_flag_def.h",
     ],
     deps = [

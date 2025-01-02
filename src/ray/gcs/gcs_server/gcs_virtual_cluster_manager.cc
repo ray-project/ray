@@ -21,6 +21,14 @@ namespace gcs {
 
 void GcsVirtualClusterManager::Initialize(const GcsInitData &gcs_init_data) {
   primary_cluster_->Initialize(gcs_init_data);
+  if (periodical_runner_ != nullptr) {
+    // Periodically check and replenish all the dead node instances of all the virtual
+    // clusters.
+    periodical_runner_->RunFnPeriodically(
+        [this]() { primary_cluster_->ReplenishAllClusterNodeInstances(); },
+        RayConfig::instance().node_instances_replenish_interval_ms(),
+        "ReplenishNodeInstances");
+  }
 }
 
 void GcsVirtualClusterManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
@@ -66,7 +74,7 @@ void GcsVirtualClusterManager::OnJobFinished(const rpc::JobTableData &job_data) 
       virtual_cluster_id,
       [this, job_cluster_id](const Status &status,
                              std::shared_ptr<rpc::VirtualClusterTableData> data,
-                             const ReplicaSets *replica_sets_at_most) {
+                             const ReplicaSets *replica_sets_to_recommend) {
         if (!status.ok() || !data->is_removed()) {
           RAY_LOG(WARNING) << "Failed to remove job cluster " << job_cluster_id.Binary()
                            << " when handling job finished event. status: "
@@ -99,7 +107,7 @@ void GcsVirtualClusterManager::HandleCreateOrUpdateVirtualCluster(
   auto on_done = [reply, virtual_cluster_id, callback = std::move(send_reply_callback)](
                      const Status &status,
                      std::shared_ptr<rpc::VirtualClusterTableData> data,
-                     const ReplicaSets *replica_sets_at_most) {
+                     const ReplicaSets *replica_sets_to_recommend) {
     if (status.ok()) {
       RAY_CHECK(data != nullptr);
       // Fill the node instances of the virtual cluster to the reply.
@@ -111,9 +119,9 @@ void GcsVirtualClusterManager::HandleCreateOrUpdateVirtualCluster(
     } else {
       RAY_LOG(WARNING) << "Failed to create or update virtual cluster "
                        << virtual_cluster_id << ", status = " << status.ToString();
-      if (replica_sets_at_most) {
-        reply->mutable_replica_sets_at_most()->insert(replica_sets_at_most->begin(),
-                                                      replica_sets_at_most->end());
+      if (replica_sets_to_recommend) {
+        reply->mutable_replica_sets_to_recommend()->insert(
+            replica_sets_to_recommend->begin(), replica_sets_to_recommend->end());
       }
     }
     GCS_RPC_SEND_REPLY(callback, reply, status);
@@ -126,11 +134,11 @@ void GcsVirtualClusterManager::HandleCreateOrUpdateVirtualCluster(
     return;
   }
 
-  ReplicaSets replica_sets_at_most;
+  ReplicaSets replica_sets_to_recommend;
   status = primary_cluster_->CreateOrUpdateVirtualCluster(
-      std::move(request), on_done, &replica_sets_at_most);
+      std::move(request), on_done, &replica_sets_to_recommend);
   if (!status.ok()) {
-    on_done(status, nullptr, &replica_sets_at_most);
+    on_done(status, nullptr, &replica_sets_to_recommend);
   }
 }
 
@@ -143,7 +151,7 @@ void GcsVirtualClusterManager::HandleRemoveVirtualCluster(
   auto on_done = [reply, virtual_cluster_id, callback = std::move(send_reply_callback)](
                      const Status &status,
                      std::shared_ptr<rpc::VirtualClusterTableData> data,
-                     const ReplicaSets *replica_sets_at_most) {
+                     const ReplicaSets *replica_sets_to_recommend) {
     if (status.ok()) {
       RAY_LOG(INFO) << "Succeed in removing virtual cluster " << virtual_cluster_id;
     } else {
@@ -168,7 +176,7 @@ void GcsVirtualClusterManager::HandleGetVirtualClusters(
     rpc::GetVirtualClustersReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting virtual clusters.";
-  primary_cluster_->GetVirtualClustersData(
+  primary_cluster_->ForeachVirtualClustersData(
       std::move(request), [reply, send_reply_callback](auto data) {
         reply->add_virtual_cluster_data_list()->CopyFrom(*data);
       });
@@ -184,8 +192,14 @@ void GcsVirtualClusterManager::HandleCreateJobCluster(
                 << virtual_cluster_id;
   auto on_done = [reply, virtual_cluster_id, callback = std::move(send_reply_callback)](
                      const Status &status,
-                     std::shared_ptr<rpc::VirtualClusterTableData> data) {
+                     std::shared_ptr<rpc::VirtualClusterTableData> data,
+                     const ReplicaSets *replica_sets_to_recommend) {
     if (status.ok()) {
+      reply->set_job_cluster_id(data->id());
+      if (replica_sets_to_recommend) {
+        reply->mutable_replica_sets_to_recommend()->insert(
+            replica_sets_to_recommend->begin(), replica_sets_to_recommend->end());
+      }
       RAY_LOG(INFO) << "Succeed in creating virtual cluster " << virtual_cluster_id;
     } else {
       RAY_LOG(ERROR) << "Failed to create virtual cluster " << virtual_cluster_id
@@ -199,14 +213,14 @@ void GcsVirtualClusterManager::HandleCreateJobCluster(
     std::ostringstream ostr;
     ostr << "virtual cluster not exists: " << virtual_cluster_id;
     std::string message = ostr.str();
-    on_done(Status::NotFound(message), nullptr);
+    on_done(Status::NotFound(message), nullptr, nullptr);
     return;
   }
   if (virtual_cluster->GetMode() != rpc::AllocationMode::EXCLUSIVE) {
     std::ostringstream ostr;
     ostr << " virtual cluster is not exclusive: " << virtual_cluster_id;
     std::string message = ostr.str();
-    on_done(Status::InvalidArgument(message), nullptr);
+    on_done(Status::InvalidArgument(message), nullptr, nullptr);
     return;
   }
   ReplicaSets replica_sets(request.replica_sets().begin(), request.replica_sets().end());
@@ -214,22 +228,11 @@ void GcsVirtualClusterManager::HandleCreateJobCluster(
   auto exclusive_cluster = dynamic_cast<ExclusiveCluster *>(virtual_cluster.get());
   std::string job_cluster_id = exclusive_cluster->BuildJobClusterID(request.job_id());
 
+  ReplicaSets replica_sets_to_recommend;
   auto status = exclusive_cluster->CreateJobCluster(
-      job_cluster_id,
-      std::move(replica_sets),
-      [reply, send_reply_callback, job_id = request.job_id(), on_done](
-          const Status &status,
-          std::shared_ptr<rpc::VirtualClusterTableData> data,
-          const ReplicaSets *replica_sets_at_most) {
-        if (status.ok()) {
-          reply->set_job_cluster_id(data->id());
-          on_done(status, data);
-        } else {
-          on_done(status, data);
-        }
-      });
+      job_cluster_id, std::move(replica_sets), on_done, &replica_sets_to_recommend);
   if (!status.ok()) {
-    on_done(status, nullptr);
+    on_done(status, nullptr, &replica_sets_to_recommend);
   }
 }
 

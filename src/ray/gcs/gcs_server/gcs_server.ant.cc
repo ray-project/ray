@@ -23,7 +23,8 @@ void GcsServer::InitGcsVirtualClusterManager(const GcsInitData &gcs_init_data) {
   gcs_virtual_cluster_manager_ = std::make_shared<gcs::GcsVirtualClusterManager>(
       *gcs_table_storage_,
       *gcs_publisher_,
-      cluster_resource_scheduler_->GetClusterResourceManager());
+      cluster_resource_scheduler_->GetClusterResourceManager(),
+      periodical_runner_);
   // Initialize by gcs tables data.
   gcs_virtual_cluster_manager_->Initialize(gcs_init_data);
   // Register service.
