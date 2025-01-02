@@ -56,17 +56,12 @@ class error_code;
     }                                  \
   } while (0)
 
-// If 'to_call' returns a bad status, CHECK immediately with a logged message
-// of 'msg' followed by the status.
-#define RAY_CHECK_OK_PREPEND(to_call, msg)                \
-  do {                                                    \
-    const ::ray::Status &_s = (to_call);                  \
-    RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
-  } while (0)
-
-// If the status is bad, CHECK immediately, appending the status to the
-// logged message.
-#define RAY_CHECK_OK(s) RAY_CHECK_OK_PREPEND((s), "Bad status")
+// If the status is not OK, CHECK-fail immediately, appending the status to the
+// logged message. The message can be appended with <<.
+#define RAY_CHECK_OK(s)                          \
+  if (const ::ray::Status &_status_ = (s); true) \
+  RAY_CHECK_WITH_DISPLAY(_status_.ok(), #s)      \
+      << "Status not OK: " << _status_.ToString() << " "
 
 namespace ray {
 

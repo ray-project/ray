@@ -23,8 +23,8 @@ import traceback
 import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
-from ray.experimental.channel.gpu_communicator import GPUCommunicator
-from ray.dag.constants import RAY_ADAG_VISUALIZE_SCHEDULE
+from ray.experimental.channel.communicator import Communicator
+from ray.dag.constants import RAY_CGRAPH_VISUALIZE_SCHEDULE
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.experimental.compiled_dag_ref import (
@@ -54,8 +54,8 @@ from ray.experimental.channel.shared_memory_channel import (
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 from ray.experimental.channel.torch_tensor_nccl_channel import (
-    _init_nccl_group,
-    _destroy_nccl_group,
+    _init_communicator,
+    _destroy_communicator,
 )
 
 from ray.dag.dag_node_operation import (
@@ -187,8 +187,8 @@ def do_profile_tasks(
         for task in tasks:
             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
-        if not hasattr(self, "__ray_adag_events"):
-            self.__ray_adag_events = []
+        if not hasattr(self, "__ray_cgraph_events"):
+            self.__ray_cgraph_events = []
 
         done = False
         while True:
@@ -202,7 +202,7 @@ def do_profile_tasks(
                 )
                 end_t = time.perf_counter()
 
-                self.__ray_adag_events.append(
+                self.__ray_cgraph_events.append(
                     _ExecutableTaskRecord(
                         actor_classname=self.__class__.__name__,
                         actor_name=ray.get_runtime_context().get_actor_name(),
@@ -254,7 +254,7 @@ def _get_nccl_group_id(type_hint: ChannelOutputType) -> Optional[str]:
     """
     if type_hint.requires_nccl():
         assert isinstance(type_hint, TorchTensorType)
-        return type_hint.nccl_group_id
+        return type_hint.communicator_id
     return None
 
 
@@ -488,14 +488,14 @@ class ExecutableTask:
         # is configured
         if self.output_type_hint.requires_nccl():
             nccl_group_id = _get_nccl_group_id(self.output_type_hint)
-            nccl_group = ChannelContext.get_current().nccl_groups.get(nccl_group_id)
+            nccl_group = ChannelContext.get_current().communicators.get(nccl_group_id)
             assert nccl_group is not None
             self._send_stream = nccl_group.send_stream
         if self.input_type_hints:
             for type_hint in self.input_type_hints:
                 if type_hint.requires_nccl():
                     nccl_group_id = _get_nccl_group_id(type_hint)
-                    nccl_group = ChannelContext.get_current().nccl_groups.get(
+                    nccl_group = ChannelContext.get_current().communicators.get(
                         nccl_group_id
                     )
                     assert nccl_group is not None
@@ -720,7 +720,7 @@ class CompiledDAG:
 
     def __init__(
         self,
-        execution_timeout: Optional[float] = None,
+        submit_timeout: Optional[float] = None,
         buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         asyncio_max_queue_size: Optional[int] = None,
@@ -730,13 +730,14 @@ class CompiledDAG:
     ):
         """
         Args:
-            execution_timeout: The maximum time in seconds to wait for execute() calls.
-                None means using default timeout (DAGContext.execution_timeout),
+            submit_timeout: The maximum time in seconds to wait for execute() calls.
+                None means using default timeout (DAGContext.submit_timeout),
                 0 means immediate timeout (immediate success or timeout without
                 blocking), -1 means infinite timeout (block indefinitely).
-            buffer_size_bytes: The number of bytes to allocate for object data and
-                metadata. Each argument passed to a task in the DAG must be
-                less than or equal to this value when serialized.
+            buffer_size_bytes: The initial buffer size in bytes for messages
+                that can be passed between tasks in the DAG. The buffers will
+                be automatically resized if larger messages are written to the
+                channel.
             enable_asyncio: Whether to enable asyncio. If enabled, caller must
                 be running in an event loop and must use `execute_async` to
                 invoke the DAG. Otherwise, the caller should use `execute` to
@@ -783,9 +784,9 @@ class CompiledDAG:
         if self._max_inflight_executions is None:
             self._max_inflight_executions = ctx.max_inflight_executions
         self._dag_id = uuid.uuid4().hex
-        self._execution_timeout: Optional[float] = execution_timeout
-        if self._execution_timeout is None:
-            self._execution_timeout = ctx.execution_timeout
+        self._submit_timeout: Optional[float] = submit_timeout
+        if self._submit_timeout is None:
+            self._submit_timeout = ctx.submit_timeout
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = ctx.buffer_size_bytes
@@ -823,6 +824,8 @@ class CompiledDAG:
         # Preprocessing identifies the input node and output node.
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
+        # List of task indices that are input attribute nodes.
+        self.input_attr_task_idxs: List[int] = []
         # Denotes whether execute/execute_async returns a list of refs/futures.
         self._returns_list: bool = False
         # Number of expected positional args and kwargs that may be passed to
@@ -857,13 +860,13 @@ class CompiledDAG:
 
         # This is set to true when type hint of `transport="nccl"` is used.
         self._use_default_nccl_group = False
-        # This is set to the specified custom nccl group
-        # if there exists a type hint of `transport=nccl_group`.
-        self._custom_nccl_group_p2p: Optional[GPUCommunicator] = None
+        # This is set to the specified custom communicator
+        # if there exists a type hint of `transport=custom_communicator`.
+        self._custom_communicator_p2p: Optional[Communicator] = None
         # The NCCL group ID for P2P send/recv operations.
-        self._nccl_group_id_p2p: Optional[str] = None
+        self._communicator_id_p2p: Optional[str] = None
         # All the NCCL group IDs for P2P send/recv and collective operations.
-        self._nccl_group_ids: Set[str] = set()
+        self._communicator_ids: Set[str] = set()
         # The index of the current execution. It is incremented each time
         # the DAG is executed.
         self._execution_index: int = 0
@@ -894,16 +897,16 @@ class CompiledDAG:
         self._is_teardown = False
 
     @property
-    def nccl_group_id_p2p(self) -> Optional[str]:
-        return self._nccl_group_id_p2p
+    def communicator_id_p2p(self) -> Optional[str]:
+        return self._communicator_id_p2p
 
     @property
     def is_teardown(self) -> bool:
         return self._is_teardown
 
     @property
-    def nccl_group_ids(self) -> Set[str]:
-        return self._nccl_group_ids
+    def communicator_ids(self) -> Set[str]:
+        return self._communicator_ids
 
     def increment_max_finished_execution_index(self) -> None:
         """Increment the max finished execution index. It is used to
@@ -947,13 +950,15 @@ class CompiledDAG:
         self.input_task_idx, self.output_task_idx = None, None
 
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
-        nccl_collective_ops: Set[_CollectiveOperation] = set()
+        collective_ops: Set[_CollectiveOperation] = set()
 
-        # Find the input node to the DAG.
+        # Find the input node and input attribute nodes in the DAG.
         for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode):
                 assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
+            elif isinstance(task.dag_node, InputAttributeNode):
+                self.input_attr_task_idxs.append(idx)
 
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -1021,7 +1026,7 @@ class CompiledDAG:
                 # Collect actors for NCCL P2P methods.
                 if dag_node.type_hint.requires_nccl():
                     nccl_actors_p2p.add(actor_handle)
-                    custom_nccl_group = dag_node.type_hint.get_custom_nccl_group()
+                    custom_communicator = dag_node.type_hint.get_custom_communicator()
                     mixed_nccl_group_error_message = (
                         "Accelerated DAGs do not support mixed usage of "
                         "type hints of default NCCL group "
@@ -1031,15 +1036,15 @@ class CompiledDAG:
                         "Please check all the TorchTensor type hints and "
                         "make sure only one type of NCCL transport is specified."
                     )
-                    if custom_nccl_group is None:
-                        if self._custom_nccl_group_p2p is not None:
+                    if custom_communicator is None:
+                        if self._custom_communicator_p2p is not None:
                             raise ValueError(mixed_nccl_group_error_message)
                         self._use_default_nccl_group = True
                     else:
                         if self._use_default_nccl_group:
                             raise ValueError(mixed_nccl_group_error_message)
-                        if self._custom_nccl_group_p2p is not None:
-                            if self._custom_nccl_group_p2p != custom_nccl_group:
+                        if self._custom_communicator_p2p is not None:
+                            if self._custom_communicator_p2p != custom_communicator:
                                 raise ValueError(
                                     "Accelerated DAGs currently only support "
                                     "a single custom NCCL group, but multiple "
@@ -1047,11 +1052,11 @@ class CompiledDAG:
                                     "TorchTensor(transport=nccl_group) type hints "
                                     "to make sure only one NCCL group is used."
                                 )
-                        self._custom_nccl_group_p2p = custom_nccl_group
+                        self._custom_communicator_p2p = custom_communicator
 
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
-                    nccl_collective_ops.add(dag_node.collective_op)
+                    collective_ops.add(dag_node.collective_op)
                     assert not self._overlap_gpu_communication, (
                         "Currently, the overlap_gpu_communication option is not "
                         "supported for NCCL collective operations. Please set "
@@ -1088,6 +1093,9 @@ class CompiledDAG:
                 ):
                     downstream_actor_handle = dag_node._get_actor_handle()
 
+                # Add the type hint of the upstream node to the task.
+                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
+
                 if isinstance(upstream_task.dag_node, InputAttributeNode):
                     # Record all of the keys used to index the InputNode.
                     # During execution, we will check that the user provides
@@ -1123,7 +1131,6 @@ class CompiledDAG:
                     direct_input = True
 
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
-                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL actors of P2P.
@@ -1156,74 +1163,74 @@ class CompiledDAG:
 
         # Initialize and cache a NCCL group for each custom NCCL group. All the
         # custom NCCL groups are initialized before the default NCCL groups.
-        custom_nccl_group_to_id: Dict[GPUCommunicator, str] = {}
+        custom_communicator_to_id: Dict[Communicator, str] = {}
         # Initialize and cache a NCCL group for each set of actors. A set of actors
         # can perform P2P send/recv and collective operations. If there are multiple
         # custom NCCL groups for a set of actors, only one is cached.
-        actors_to_nccl_group_id: Dict[FrozenSet["ray.actor.ActorHandle"], str] = {}
+        actors_to_communicator_id: Dict[FrozenSet["ray.actor.ActorHandle"], str] = {}
 
         # If a custom NCCL group is specified for P2P actors, initialize and cache
         # the NCCL group ID.
-        if nccl_actors_p2p and self._custom_nccl_group_p2p:
+        if nccl_actors_p2p and self._custom_communicator_p2p:
             if not set(nccl_actors_p2p).issubset(
-                set(self._custom_nccl_group_p2p.get_actor_handles())
+                set(self._custom_communicator_p2p.get_actor_handles())
             ):
                 raise ValueError(
                     "Expected P2P actor handles to be a subset of the custom NCCL group"
                 )
-            self._nccl_group_id_p2p = _init_nccl_group(
+            self._communicator_id_p2p = _init_communicator(
                 nccl_actors_p2p,
-                self._custom_nccl_group_p2p,
+                self._custom_communicator_p2p,
                 self._overlap_gpu_communication,
             )
-            custom_nccl_group_to_id[
-                self._custom_nccl_group_p2p
-            ] = self._nccl_group_id_p2p
+            custom_communicator_to_id[
+                self._custom_communicator_p2p
+            ] = self._communicator_id_p2p
             actors = frozenset(nccl_actors_p2p)
-            actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
+            actors_to_communicator_id[actors] = self._communicator_id_p2p
 
-        # If a custom NCCL group is specified for collective actors, initialize and
-        # cache the NCCL group ID.
-        for collective_op in nccl_collective_ops:
+        # If a custom communicator is specified for collective actors, initialize and
+        # cache the communicator ID.
+        for collective_op in collective_ops:
             type_hint = collective_op.type_hint
-            custom_nccl_group = type_hint.get_custom_nccl_group()
-            if custom_nccl_group:
-                nccl_group_id = collective_op.init_nccl_group(
-                    custom_nccl_group_to_id.get(custom_nccl_group, None)
+            custom_communicator = type_hint.get_custom_communicator()
+            if custom_communicator:
+                communicator_id = collective_op.init_communicator(
+                    custom_communicator_to_id.get(custom_communicator, None)
                 )
-                custom_nccl_group_to_id[custom_nccl_group] = nccl_group_id
+                custom_communicator_to_id[custom_communicator] = communicator_id
                 actors = frozenset(collective_op.actor_handles)
-                if actors not in actors_to_nccl_group_id:
-                    actors_to_nccl_group_id[actors] = nccl_group_id
+                if actors not in actors_to_communicator_id:
+                    actors_to_communicator_id[actors] = communicator_id
 
         # If a NCCL group for P2P actors is not initialized, initialize and cache
         # the NCCL group ID.
-        if nccl_actors_p2p and self._nccl_group_id_p2p is None:
+        if nccl_actors_p2p and self._communicator_id_p2p is None:
             actors = frozenset(nccl_actors_p2p)
-            if actors in actors_to_nccl_group_id:
-                self._nccl_group_id_p2p = actors_to_nccl_group_id[actors]
+            if actors in actors_to_communicator_id:
+                self._communicator_id_p2p = actors_to_communicator_id[actors]
             else:
-                self._nccl_group_id_p2p = _init_nccl_group(
+                self._communicator_id_p2p = _init_communicator(
                     nccl_actors_p2p,
-                    self._custom_nccl_group_p2p,
+                    self._custom_communicator_p2p,
                     self._overlap_gpu_communication,
                 )
-                actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
+                actors_to_communicator_id[actors] = self._communicator_id_p2p
 
         # If a NCCL group for collective actors is not initialized, initialize and
         # cache the NCCL group ID.
-        for collective_op in nccl_collective_ops:
-            if collective_op.type_hint.nccl_group_id is None:
+        for collective_op in collective_ops:
+            if collective_op.type_hint.communicator_id is None:
                 actors = frozenset(collective_op.actor_handles)
-                nccl_group_id = collective_op.init_nccl_group(
-                    actors_to_nccl_group_id.get(actors, None)
+                communicator_id = collective_op.init_communicator(
+                    actors_to_communicator_id.get(actors, None)
                 )
-                if actors not in actors_to_nccl_group_id:
-                    actors_to_nccl_group_id[actors] = nccl_group_id
+                if actors not in actors_to_communicator_id:
+                    actors_to_communicator_id[actors] = communicator_id
 
         # Store all the NCCL group IDs for P2P send/recv and collective operations.
-        self._nccl_group_ids = set(actors_to_nccl_group_id.values()).union(
-            set(custom_nccl_group_to_id.values())
+        self._communicator_ids = set(actors_to_communicator_id.values()).union(
+            set(custom_communicator_to_id.values())
         )
 
         if direct_input:
@@ -1299,7 +1306,7 @@ class CompiledDAG:
             task = self.idx_to_task[cur_idx]
             type_hint = task.dag_node.type_hint
             if type_hint.requires_nccl():
-                type_hint.set_nccl_group_id(self._nccl_group_id_p2p)
+                type_hint.set_communicator_id(self._communicator_id_p2p)
 
             if (
                 isinstance(task.dag_node, ClassMethodNode)
@@ -1484,20 +1491,18 @@ class CompiledDAG:
                         "Please bind the task to proper DAG nodes."
                     )
 
-        from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
+        from ray.dag.constants import RAY_CGRAPH_ENABLE_DETECT_DEADLOCK
 
-        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and self._detect_deadlock():
+        if RAY_CGRAPH_ENABLE_DETECT_DEADLOCK and self._detect_deadlock():
             raise ValueError(
                 "This DAG cannot be compiled because it will deadlock on NCCL "
                 "calls. If you believe this is a false positive, please disable "
                 "the graph verification by setting the environment variable "
-                "RAY_ADAG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
+                "RAY_CGRAPH_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
                 "https://github.com/ray-project/ray/issues/new/."
             )
 
         input_task = self.idx_to_task[self.input_task_idx]
-        # Register custom serializers for inputs provided to dag.execute().
-        input_task.dag_node.type_hint.register_custom_serializer()
         self.dag_input_channels = input_task.output_channels
         assert self.dag_input_channels is not None
 
@@ -1573,9 +1578,9 @@ class CompiledDAG:
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build an execution schedule for each actor
-        from ray.dag.constants import RAY_ADAG_ENABLE_PROFILING
+        from ray.dag.constants import RAY_CGRAPH_ENABLE_PROFILING
 
-        if RAY_ADAG_ENABLE_PROFILING:
+        if RAY_CGRAPH_ENABLE_PROFILING:
             exec_task_func = do_profile_tasks
         else:
             exec_task_func = do_exec_tasks
@@ -1599,8 +1604,9 @@ class CompiledDAG:
             task = self.idx_to_task[output_idx]
             assert len(task.output_channels) == 1
             self.dag_output_channels.append(task.output_channels[0])
-            # Register custom serializers for DAG outputs.
-            output.type_hint.register_custom_serializer()
+
+        # Register custom serializers for input, input attribute, and output nodes.
+        self._register_input_output_custom_serializer()
 
         assert self.dag_input_channels
         assert self.dag_output_channels
@@ -1774,7 +1780,7 @@ class CompiledDAG:
                 actor_to_execution_schedule
             )
 
-        if RAY_ADAG_VISUALIZE_SCHEDULE:
+        if RAY_CGRAPH_VISUALIZE_SCHEDULE:
             _visualize_execution_schedule(
                 actor_to_execution_schedule, actor_to_overlapped_schedule, graph
             )
@@ -1786,75 +1792,26 @@ class CompiledDAG:
 
     def _detect_deadlock(self) -> bool:
         """
-        Check whether the DAG will deadlock on NCCL calls.
-        There are no false positives in this deadlock detection,
-        but there may be false negatives for now. For example,
+        TODO (kevin85421): Avoid false negatives.
 
-        actor1.f1 ---> actor2.f1
-                   |
-        actor1.f2 --
+        Currently, a compiled graph may deadlock if there are NCCL channels, and the
+        readers have control dependencies on the same actor. For example:
 
-        In this case, actor1.f1 and actor1.f2 have control dependencies
-        between them. If actor2.f1 reads actor1.f2 first and then actor1.f1,
-        there will be a deadlock. However, this deadlock is not detectable
-        until we have a more granular execution schedule.
+        actor1.a ---> actor2.f1
+                 |
+                 ---> actor2.f2
 
-        TODO (kevin85421): Avoid false negatives
+        The control dependency between `actor2.f1` and `actor2.f2` is that `f1` should
+        run before `f2`. If `actor1.a` writes to `actor2.f2` before `actor2.f1`, a
+        deadlock will occur.
+
+        Currently, the execution schedule is not granular enough to detect this
+        deadlock.
 
         Returns:
-            True if deadlock is detected, otherwise False.
+            True if a deadlock is detected; otherwise, False.
         """
-        assert self.idx_to_task
-        assert self.actor_to_tasks
-
-        from ray.dag import ClassMethodNode
-
-        def _is_same_actor(idx1: int, idx2: int) -> bool:
-            """
-            Args:
-                idx1: A key in the idx_to_task dictionary.
-                idx2: A key in the idx_to_task dictionary.
-
-            Returns:
-                True if both DAG nodes are on the same actor;
-                otherwise, False.
-            """
-            task1 = self.idx_to_task[idx1]
-            task2 = self.idx_to_task[idx2]
-            if (
-                not isinstance(task1.dag_node, ClassMethodNode)
-                or task1.dag_node.is_class_method_output
-            ):
-                return False
-            if (
-                not isinstance(task2.dag_node, ClassMethodNode)
-                or task2.dag_node.is_class_method_output
-            ):
-                return False
-            actor_id_1 = task1.dag_node._get_actor_handle()._actor_id
-            actor_id_2 = task2.dag_node._get_actor_handle()._actor_id
-            return actor_id_1 == actor_id_2
-
-        for idx, task in self.idx_to_task.items():
-            for downstream_idx in task.downstream_task_idxs:
-                if task.dag_node.type_hint.requires_nccl():
-                    if _is_same_actor(idx, downstream_idx):
-                        actor_handle = self.idx_to_task[
-                            idx
-                        ].dag_node._get_actor_handle()
-                        method = self.idx_to_task[idx].dag_node.get_method_name()
-                        downstream_method = self.idx_to_task[
-                            downstream_idx
-                        ].dag_node.get_method_name()
-                        logger.error(
-                            "Detected a deadlock caused by using NCCL channels to "
-                            f"transfer data between the task `{method}` and "
-                            f"its downstream method `{downstream_method}` on the same "
-                            f"actor {actor_handle}. Please remove "
-                            '`TorchTensorType(transport="nccl")` between '
-                            "DAG nodes on the same actor."
-                        )
-                        return True
+        logger.warning("Deadlock detection has not been implemented yet.")
         return False
 
     def _monitor_failures(self):
@@ -1948,8 +1905,8 @@ class CompiledDAG:
                         logger.exception("Error cancelling worker task")
                         pass
 
-                for nccl_group_id in outer._nccl_group_ids:
-                    _destroy_nccl_group(nccl_group_id)
+                for communicator_id in outer._communicator_ids:
+                    _destroy_communicator(communicator_id)
 
                 logger.info("Waiting for worker tasks to exit")
                 self.wait_teardown()
@@ -2056,6 +2013,21 @@ class CompiledDAG:
                 del self._result_buffer[execution_index]
         return result
 
+    def release_output_channel_buffers(self, execution_index: int):
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+        timeout = ctx.get_timeout
+
+        while self._max_finished_execution_index < execution_index:
+            self.increment_max_finished_execution_index()
+            start_time = time.monotonic()
+            self._dag_output_fetcher.release_channel_buffers(timeout)
+
+            if timeout != -1:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
+
     def _execute_until(
         self,
         execution_index: int,
@@ -2074,7 +2046,7 @@ class CompiledDAG:
                 self.dag_output_channels. None means wrapping results from all output
                 channels into a single list.
             timeout: The maximum time in seconds to wait for the result.
-                None means using default timeout (DAGContext.retrieval_timeout),
+                None means using default timeout (DAGContext.get_timeout),
                 0 means immediate timeout (immediate success or timeout without
                 blocking), -1 means infinite timeout (block indefinitely).
 
@@ -2089,7 +2061,7 @@ class CompiledDAG:
 
             ctx = DAGContext.get_current()
             if timeout is None:
-                timeout = ctx.retrieval_timeout
+                timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
             if len(self._result_buffer) >= self._max_buffered_results:
@@ -2131,7 +2103,7 @@ class CompiledDAG:
 
         Raises:
             RayChannelTimeoutError: If the execution does not complete within
-                self._execution_timeout seconds.
+                self._submit_timeout seconds.
 
         NOTE: Not thread-safe due to _execution_index etc.
         """
@@ -2152,7 +2124,7 @@ class CompiledDAG:
             inp = RayDAGArgs(args=args, kwargs=kwargs)
 
         self.raise_if_too_many_inflight_requests()
-        self._dag_submitter.write(inp, self._execution_timeout)
+        self._dag_submitter.write(inp, self._submit_timeout)
 
         if self._returns_list:
             ref = [
@@ -2780,6 +2752,26 @@ class CompiledDAG:
         dot.render(filename, view=view)
         return dot.source
 
+    def _register_input_output_custom_serializer(self):
+        """
+        Register custom serializers for input, input attribute, and output nodes.
+        """
+        assert self.input_task_idx is not None
+        assert self.output_task_idx is not None
+
+        # Register custom serializers for input node.
+        input_task = self.idx_to_task[self.input_task_idx]
+        input_task.dag_node.type_hint.register_custom_serializer()
+
+        # Register custom serializers for input attribute nodes.
+        for input_attr_task_idx in self.input_attr_task_idxs:
+            input_attr_task = self.idx_to_task[input_attr_task_idx]
+            input_attr_task.dag_node.type_hint.register_custom_serializer()
+
+        # Register custom serializers for output nodes.
+        for output in self.idx_to_task[self.output_task_idx].args:
+            output.type_hint.register_custom_serializer()
+
     def teardown(self, kill_actors: bool = False):
         """Teardown and cancel all actor tasks for this DAG. After this
         function returns, the actors should be available to execute new tasks
@@ -2806,7 +2798,7 @@ class CompiledDAG:
 @DeveloperAPI
 def build_compiled_dag_from_ray_dag(
     dag: "ray.dag.DAGNode",
-    execution_timeout: Optional[float] = None,
+    submit_timeout: Optional[float] = None,
     buffer_size_bytes: Optional[int] = None,
     enable_asyncio: bool = False,
     asyncio_max_queue_size: Optional[int] = None,
@@ -2815,7 +2807,7 @@ def build_compiled_dag_from_ray_dag(
     overlap_gpu_communication: Optional[bool] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
-        execution_timeout,
+        submit_timeout,
         buffer_size_bytes,
         enable_asyncio,
         asyncio_max_queue_size,

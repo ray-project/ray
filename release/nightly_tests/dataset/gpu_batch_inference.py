@@ -31,6 +31,11 @@ def parse_args():
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--chaos-test",
+        action="store_true",
+        default=False,
+    )
     return parser.parse_args()
 
 
@@ -38,6 +43,7 @@ def main(args):
     data_directory: str = args.data_directory
     data_format: str = args.data_format
     smoke_test: bool = args.smoke_test
+    chaos_test: bool = args.chaos_test
     data_url = f"s3://anonymous@air-example-data-2/{data_directory}"
 
     print(f"Running GPU batch prediction with data from {data_url}")
@@ -124,6 +130,10 @@ def main(args):
         "Throughput w/o metadata fetching (img/sec): ",
         throughput_without_metadata_fetch,
     )
+    if chaos_test:
+        dead_nodes = [node["NodeID"] for node in ray.nodes() if not node["Alive"]]
+        assert dead_nodes
+        print(f"Total chaos killed: {dead_nodes}")
 
     # For structured output integration with internal tooling
     results = {

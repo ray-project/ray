@@ -1,5 +1,3 @@
-"""TensorFlow policy class used for DQN"""
-
 from typing import Dict
 
 import gymnasium as gym
@@ -15,6 +13,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import LearningRateSchedule, TargetNetworkMixin
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
 from ray.rllib.utils.framework import try_import_tf
@@ -36,6 +35,7 @@ Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
 
 
+@OldAPIStack
 class QLoss:
     def __init__(
         self,
@@ -116,6 +116,7 @@ class QLoss:
             }
 
 
+@OldAPIStack
 class ComputeTDErrorMixin:
     """Assign the `compute_td_error` method to the DQNTFPolicy
 
@@ -147,6 +148,7 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
+@OldAPIStack
 def build_q_model(
     policy: Policy,
     obs_space: gym.spaces.Space,
@@ -223,6 +225,7 @@ def build_q_model(
     return q_model
 
 
+@OldAPIStack
 def get_distribution_inputs_and_class(
     policy: Policy, model: ModelV2, input_dict: SampleBatch, *, explore=True, **kwargs
 ):
@@ -244,6 +247,7 @@ def get_distribution_inputs_and_class(
     )  # state-out
 
 
+@OldAPIStack
 def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     """Constructs the loss for DQNTFPolicy.
 
@@ -337,6 +341,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
     return policy.q_loss.loss
 
 
+@OldAPIStack
 def adam_optimizer(
     policy: Policy, config: AlgorithmConfigDict
 ) -> "tf.keras.optimizers.Optimizer":
@@ -350,6 +355,7 @@ def adam_optimizer(
         )
 
 
+@OldAPIStack
 def clip_gradients(
     policy: Policy, optimizer: "tf.keras.optimizers.Optimizer", loss: TensorType
 ) -> ModelGradients:
@@ -364,6 +370,7 @@ def clip_gradients(
     )
 
 
+@OldAPIStack
 def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     return dict(
         {
@@ -373,11 +380,13 @@ def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     )
 
 
+@OldAPIStack
 def setup_mid_mixins(policy: Policy, obs_space, action_space, config) -> None:
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     ComputeTDErrorMixin.__init__(policy)
 
 
+@OldAPIStack
 def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
@@ -387,6 +396,7 @@ def setup_late_mixins(
     TargetNetworkMixin.__init__(policy)
 
 
+@OldAPIStack
 def compute_q_values(
     policy: Policy,
     model: ModelV2,
@@ -441,6 +451,7 @@ def compute_q_values(
     return value, logits, dist, state
 
 
+@OldAPIStack
 def postprocess_nstep_and_prio(
     policy: Policy, batch: SampleBatch, other_agent=None, episode=None
 ) -> SampleBatch:

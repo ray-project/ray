@@ -7,14 +7,17 @@ import { DurationText } from "./DurationText";
 describe("DurationText", () => {
   it("renders", async () => {
     const { rerender } = render(
+      <DurationText startTime={new Date(100000)} endTime={new Date(100500)} />,
+    );
+    expect(await screen.findByText("500ms")).toBeInTheDocument();
+    rerender(
       <DurationText startTime={new Date(100000)} endTime={new Date(105000)} />,
     );
-
-    expect(await screen.findByText("5s")).toBeInTheDocument();
+    expect(await screen.findByText("5s 000ms")).toBeInTheDocument();
     rerender(
       <DurationText startTime={new Date(100000)} endTime={new Date(110000)} />,
     );
-    expect(await screen.findByText("10s")).toBeInTheDocument();
+    expect(await screen.findByText("10s 000ms")).toBeInTheDocument();
     rerender(
       <DurationText startTime={new Date(100000)} endTime={new Date(200000)} />,
     );
@@ -66,13 +69,13 @@ describe("DurationText", () => {
 
     MockDate.set(mockDate1);
     const { rerender } = render(<DurationText startTime={startTime} />);
-    expect(await screen.findByText("5s")).toBeInTheDocument();
+    expect(await screen.findByText("5s 000ms")).toBeInTheDocument();
 
     MockDate.set(mockDate2);
     act(() => {
       jest.advanceTimersByTime(1000);
     });
-    expect(await screen.findByText("6s")).toBeInTheDocument();
+    expect(await screen.findByText("6s 000ms")).toBeInTheDocument();
 
     MockDate.set(mockDate3);
     act(() => {

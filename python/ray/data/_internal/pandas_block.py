@@ -221,6 +221,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             )
         return self._table[columns]
 
+    def rename_columns(self, columns_rename: Dict[str, str]) -> "pandas.DataFrame":
+        return self._table.rename(columns=columns_rename, inplace=False, copy=False)
+
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
         table = self._table.sample(frac=1, random_state=random_seed)
         table.reset_index(drop=True, inplace=True)
@@ -512,6 +515,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         return find_partitions(table, boundaries, sort_key)
 
+    # TODO (srinathk) Needs to handle None types correctly.
     def combine(
         self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]
     ) -> "pandas.DataFrame":

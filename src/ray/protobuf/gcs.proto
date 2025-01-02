@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -155,6 +154,10 @@ message ActorTableData {
   bool preempted = 32;
   // Number of times this actor is restarted due to lineage reconstructions.
   uint64 num_restarts_due_to_lineage_reconstruction = 33;
+  // Human readable stacktrace of the actor creation. The exact data
+  // format depends on the language. Only populated if
+  // `RAY_record_task_actor_creation_sites` is set to `true`.
+  optional string call_site = 34;
 }
 
 message ErrorTableData {

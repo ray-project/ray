@@ -8,7 +8,7 @@ import torch
 import ray
 import ray.dag
 import ray.experimental.channel as ray_channel
-from ray.experimental.channel.gpu_communicator import TorchTensorAllocator
+from ray.experimental.channel.communicator import TorchTensorAllocator
 
 
 @ray.remote(num_cpus=0)

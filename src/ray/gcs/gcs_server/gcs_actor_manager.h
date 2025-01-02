@@ -136,6 +136,9 @@ class GcsActor {
 
     actor_table_data_.set_serialized_runtime_env(
         task_spec.runtime_env_info().serialized_runtime_env());
+    if (task_spec.call_site().size() > 0) {
+      actor_table_data_.set_call_site(task_spec.call_site());
+    }
     RefreshMetrics();
   }
 
@@ -314,7 +317,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
   GcsActorManager(
-      std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+      std::unique_ptr<GcsActorSchedulerInterface> scheduler,
       GcsTableStorage *gcs_table_storage,
       GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
@@ -687,7 +690,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, Owner>> owners_;
 
   /// The scheduler to schedule all registered actors.
-  std::shared_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
+  std::unique_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.
   GcsTableStorage *gcs_table_storage_;
   /// A publisher for publishing gcs messages.
