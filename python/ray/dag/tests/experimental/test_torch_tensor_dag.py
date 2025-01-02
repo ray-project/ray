@@ -573,7 +573,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
         dag = actor1.recv.bind(dag)
     with pytest.raises(
         ValueError,
-        match=r"Accelerated DAGs do not support mixed usage of type hints.*",
+        match=r"Compiled Graphs do not support mixed usage of type hints.*",
     ):
         dag.experimental_compile()
 
@@ -587,7 +587,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
         dag = actor1.recv.bind(dag)
     with pytest.raises(
         ValueError,
-        match=r"Accelerated DAGs do not support mixed usage of type hints.*",
+        match=r"Compiled Graphs do not support mixed usage of type hints.*",
     ):
         dag.experimental_compile()
 
@@ -604,7 +604,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
     with pytest.raises(
         ValueError,
         match=(
-            "Accelerated DAGs currently only support "
+            "Compiled Graphs currently only support "
             "a single custom NCCL group, but multiple "
             "have been specified."
         ),
@@ -1302,7 +1302,7 @@ def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
 def test_tensor_writable_warning_suppressed(ray_start_regular):
-    """When we move cpu tensor to gpu, aDAG does zero-copy with is_wriatble=False.
+    """When we move cpu tensor to gpu, Compiled Graph does zero-copy with is_writable=False.
     Torch doesn't like it, so it prints warning. We know that it is safe to do it,
     so Ray suppress the warning message. This test verifies the warning is not
     printed in this scenario.

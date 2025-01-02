@@ -342,7 +342,7 @@ NodeManager::NodeManager(
            "return values are greater than the remaining capacity.";
     max_task_args_memory = 0;
   }
-  local_task_manager_ = std::make_shared<LocalTaskManager>(
+  local_task_manager_ = std::make_unique<LocalTaskManager>(
       self_node_id_,
       *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       dependency_manager_,
@@ -413,8 +413,7 @@ std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
       rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
                                          node_info->node_manager_port(),
                                          client_call_manager);
-  return std::shared_ptr<raylet::RayletClient>(
-      new raylet::RayletClient(std::move(grpc_client)));
+  return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
 };
 
 bool NodeManager::IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const {

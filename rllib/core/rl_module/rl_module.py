@@ -373,7 +373,7 @@ class RLModule(Checkpointable, abc.ABC):
 
     framework: str = None
 
-    STATE_FILE_NAME = "module_state.pkl"
+    STATE_FILE_NAME = "module_state"
 
     def __init__(
         self,
@@ -420,7 +420,7 @@ class RLModule(Checkpointable, abc.ABC):
                     "Could not create a Catalog object for your RLModule! If you are "
                     "not using the new API stack yet, make sure to switch it off in "
                     "your config: `config.api_stack(enable_rl_module_and_learner=False"
-                    ", enable_env_runner_and_connector_v2=False)`. Some algos already "
+                    ", enable_env_runner_and_connector_v2=False)`. All algos "
                     "use the new stack by default. Ignore this message, if your "
                     "RLModule does not use a Catalog to build its sub-components."
                 )
