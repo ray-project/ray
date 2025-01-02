@@ -54,7 +54,7 @@ def convert_to_tensor(
 def get_device(
     config: "AlgorithmConfig",
     num_gpus_requested: int = 1,
-    custom_resources_requested=None,
+    custom_resources_requested: Optional[dict] = None,
 ):
     """Returns a single device (CPU or some GPU) depending on a config.
 
