@@ -6,8 +6,8 @@ import sys
 
 import pytest
 
-# RAY_enable_export_api_write env var must be set before importing
-# `ray` so the correct value is set for RAY_ENABLE_EXPORT_API_WRITE
+# RAY_enable_export_api_write_config env var must be set before importing
+# `ray` so the correct value is set for RAY_ENABLE_EXPORT_API_WRITE_CONFIG
 # even outside a Ray driver.
 os.environ["RAY_enable_export_api_write_config"] = '["EXPORT_SUBMISSION_JOB"]'
 
@@ -30,6 +30,81 @@ async def check_job_succeeded(job_manager, job_id):
     else:
         assert data.driver_exit_code is None
     return status == JobStatus.SUCCEEDED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        {
+            "env": {
+                "RAY_enable_export_api_write_config": '["EXPORT_SUBMISSION_JOB"]',
+            },
+            "cmd": "ray start --head",
+        }
+    ],
+    indirect=True,
+)
+async def test_check_export_api_enabled(call_ray_start, tmp_path):  # noqa: F811
+    """
+    Test check_export_api_enabled is True for EXPORT_SUBMISSION_JOB but
+    not for EXPORT_ACTOR because RAY_enable_export_api_write_config
+    is set to '["EXPORT_SUBMISSION_JOB"]'.
+    """
+
+    @ray.remote
+    def test_check_export_api_enabled_remote():
+        from ray._private import ray_constants
+        from ray._private.event.export_event_logger import check_export_api_enabled
+        from ray.core.generated.export_event_pb2 import ExportEvent
+
+        success = True
+        success = success and check_export_api_enabled(
+            ExportEvent.SourceType.EXPORT_SUBMISSION_JOB
+        )
+        success = success and (
+            not check_export_api_enabled(ExportEvent.SourceType.EXPORT_ACTOR)
+        )
+        return success
+
+    assert ray.get(test_check_export_api_enabled_remote.remote())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        {
+            "env": {
+                "RAY_enable_export_api_write": "true",
+            },
+            "cmd": "ray start --head",
+        }
+    ],
+    indirect=True,
+)
+async def test_check_export_api_enabled_global(call_ray_start, tmp_path):  # noqa: F811
+    """
+    Test check_export_api_enabled always returns True because RAY_enable_export_api_write
+    is set to True.
+    """
+
+    @ray.remote
+    def test_check_export_api_enabled_remote():
+        from ray._private import ray_constants
+        from ray._private.event.export_event_logger import check_export_api_enabled
+        from ray.core.generated.export_event_pb2 import ExportEvent
+
+        success = True
+        success = success and check_export_api_enabled(
+            ExportEvent.SourceType.EXPORT_SUBMISSION_JOB
+        )
+        success = success and check_export_api_enabled(
+            ExportEvent.SourceType.EXPORT_ACTOR
+        )
+        return success
+
+    assert ray.get(test_check_export_api_enabled_remote.remote())
 
 
 @pytest.mark.asyncio

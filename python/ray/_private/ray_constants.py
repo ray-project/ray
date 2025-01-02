@@ -533,8 +533,18 @@ RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
 
 RAY_BACKEND_LOG_JSON_ENV_VAR = "RAY_BACKEND_LOG_JSON"
 
+# Write export API event of all resource types to file if enabled.
+# RAY_enable_export_api_write_config will not be considered if
+# this is enabled.
 RAY_ENABLE_EXPORT_API_WRITE = env_bool("RAY_enable_export_api_write", False)
 
+# JSON configuration that lists individual resource types to write
+# export API events for. This configuration is only used if
+# RAY_enable_export_api_write is not enabled. Full list of valid
+# resource types in ExportEvent.SourceType enum in
+# src/ray/protobuf/export_api/export_event.proto
+# Example config:
+# `export RAY_enable_export_api_write_config='["EXPORT_SUBMISSION_JOB"]'`
 RAY_ENABLE_EXPORT_API_WRITE_CONFIG = os.environ.get(
     "RAY_enable_export_api_write_config", "[]"
 )
