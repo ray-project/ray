@@ -48,6 +48,7 @@ from ray.core.generated import (
 )
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.experimental.channel import ChannelContext
 
 
 logger = logging.getLogger(__name__)
@@ -2295,3 +2296,58 @@ def close_common_connections(pid):
         if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD.
             os.close(fd)
             print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")
+
+
+def retrieve_mutable_object_refs(channels, timeout_s=30):
+    """
+    Retrieves the mutable object refs from the channels and sets the data in the
+    serialization context. Raises a timeout error if an
+    `experimental_wait_and_get_mutable_objects` call cannot complete within `timeout_s`
+    seconds.
+    """
+    waitable_to_num_consumers = {}
+    skip_deserialization_waitables_to_num_consumers = {}
+    for c in channels:
+        waitables = c.get_ray_waitables()
+        for waitable, skip_deserialization in waitables:
+            target_dict = (
+                skip_deserialization_waitables_to_num_consumers
+                if skip_deserialization
+                else waitable_to_num_consumers
+            )
+            target_dict[waitable] = target_dict.get(waitable, 0) + 1
+
+    worker = ray._private.worker.global_worker
+    normal_waitables = list(waitable_to_num_consumers.keys())
+    skip_deserialization_waitables = list(
+        skip_deserialization_waitables_to_num_consumers.keys()
+    )
+    ctx = ChannelContext.get_current().serialization_context
+    for waitables, waitables_dict, skip_deserialization in [
+        (normal_waitables, waitable_to_num_consumers, False),
+        (
+            skip_deserialization_waitables,
+            skip_deserialization_waitables_to_num_consumers,
+            True,
+        ),
+    ]:
+        if len(waitables) != 0:
+            (
+                values,
+                non_complete_object_refs_set,
+            ) = worker.experimental_wait_and_get_mutable_objects(
+                waitables,
+                num_returns=len(waitables),
+                timeout_ms=timeout_s * 1000,
+                return_exceptions=True,
+                suppress_timeout_errors=False,
+                skip_deserialization=skip_deserialization,
+            )
+            for i, value in enumerate(values):
+                if waitables[i] in non_complete_object_refs_set:
+                    continue
+                ctx.set_data(
+                    waitables[i],
+                    value,
+                    waitables_dict[waitables[i]],
+                )

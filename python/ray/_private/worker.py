@@ -31,6 +31,7 @@ from typing import (
     TypeVar,
     Union,
     overload,
+    Set,
 )
 from urllib.parse import urlparse
 
@@ -871,7 +872,7 @@ class Worker:
                 returned list. If False, then the first found exception will be
                 raised.
             skip_deserialization: If true, only the buffer will be released and
-                the object associated with the buffer will not be deserailized.
+                the object associated with the buffer will not be deserialized.
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -921,6 +922,67 @@ class Worker:
                         raise value
 
         return values, debugger_breakpoint
+
+    def experimental_wait_and_get_mutable_objects(
+        self,
+        object_refs: List[ObjectRef],
+        num_returns: int,
+        timeout_ms: int = -1,
+        return_exceptions: bool = False,
+        skip_deserialization: bool = False,
+        suppress_timeout_errors: bool = False,
+    ) -> Tuple[List[Any], Set[ObjectRef]]:
+        """
+        Wait for `num_returns` experimental mutable objects in `object_refs` to
+        be ready and read them.
+
+        Args:
+            object_refs: List of object refs to read.
+            num_returns: Number of objects to read in this round.
+            timeout_ms: Timeout in milliseconds.
+            return_exceptions: If any of the objects deserialize to an
+                Exception object, whether to return them as values in the
+                returned list. If False, then the first found exception will be
+                raised.
+            skip_deserialization: If True, only the buffer will be released and
+                the object associated with the buffer will not be deserialized.
+            suppress_timeout_errors: If True, suppress timeout errors.
+        Returns:
+            A tuple containing the list of objects read and the set of
+            object refs that were not read in this round.
+        """
+        for object_ref in object_refs:
+            if not isinstance(object_ref, ObjectRef):
+                raise TypeError(
+                    "Attempting to call `experimental_wait_and_get_mutable_objects` "
+                    f"on the value {object_ref}, which is not an ray.ObjectRef."
+                )
+        data_metadata_pairs: List[
+            Tuple[ray._raylet.Buffer, bytes]
+        ] = self.core_worker.experimental_wait_and_get_mutable_objects(
+            object_refs, num_returns, timeout_ms, suppress_timeout_errors
+        )
+
+        if skip_deserialization:
+            return data_metadata_pairs, set()
+
+        non_complete_object_refs_set = set()
+        for i, (data, _) in enumerate(data_metadata_pairs):
+            if data is None:
+                non_complete_object_refs_set.add(object_refs[i])
+
+        values = self.deserialize_objects(data_metadata_pairs, object_refs)
+        if not return_exceptions:
+            # Raise exceptions instead of returning them to the user.
+            for value in values:
+                if isinstance(value, RayError):
+                    if isinstance(value, ray.exceptions.ObjectLostError):
+                        global_worker.core_worker.dump_object_store_memory_usage()
+                    if isinstance(value, RayTaskError):
+                        raise value.as_instanceof_cause()
+                    else:
+                        raise value
+        return values, non_complete_object_refs_set
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""

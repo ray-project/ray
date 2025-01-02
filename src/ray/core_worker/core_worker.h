@@ -604,6 +604,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_id The ID of the object.
   Status ExperimentalChannelSetError(const ObjectID &object_id);
 
+  /// Wait for objects to be ready and read them. This method should only be used
+  /// for experimental mutable objects.
+  ///
+  /// \param[in] ids The object IDs to wait for.
+  /// \param[in] timeout_ms The timeout in milliseconds.
+  /// \param[in] num_returns The number of objects to wait for.
+  /// \param[out] results List of resulting object data. For any object that has not been
+  /// read in this round, `results[i]` will be nullptr.
+  /// \return Status OK if successful, error otherwise.
+  Status WaitAndGetExperimentalMutableObjects(
+      const std::vector<ObjectID> &ids,
+      int64_t timeout_ms,
+      int num_returns,
+      std::vector<std::shared_ptr<RayObject>> &results);
+
   /// Experimental method for mutable objects. Registers a writer channel.
   ///
   /// The API is not idempotent.

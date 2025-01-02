@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 import ray
 import ray.util.serialization
+from ray import ObjectRef
 from ray.experimental.channel import ChannelContext, utils
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.communicator import Communicator
@@ -163,6 +164,10 @@ class TorchTensorNcclChannel(ChannelInterface):
             self._cpu_data_channel.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self):
+        reader = utils.get_self_actor()
+        if reader == self._writer:
+            self._local_channel.ensure_registered_as_reader()
+            return
         self._gpu_data_channel.ensure_registered_as_reader()
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.ensure_registered_as_reader()
@@ -193,11 +198,39 @@ class TorchTensorNcclChannel(ChannelInterface):
             # normally.
             self.serialization_ctx.set_use_external_transport(False)
 
-        # First send the extracted tensors through a GPU-specific channel.
-        self._gpu_data_channel.write(gpu_tensors)
-        # Next send the non-tensor data through a CPU-specific channel. The
+        # Throw an exception if metadata mismatch is detected. This must
+        # be called before the `write` operation of the CPU channel. If a
+        # metadata mismatch is detected in the `write` operation of the GPU
+        # channel after the CPU channel has already written data, that data
+        # needs to be consumed before the next `write` operation of the CPU
+        # channel can complete.
+        metadata_list = self._gpu_data_channel.tensors_to_metadata(gpu_tensors)
+        self._gpu_data_channel.validate_metadata_mismatch(metadata_list)
+
+        # The `write` operation of the shared memory channel must be called
+        # before the `write` operation of the GPU channel. This is because in
+        # `_read_list`, the channel's `read` operation waits for all underlying
+        # mutable objects for all input channels to be consumed.
+        #
+        # Step 1: `_cpu_data_channel.write` is called to write data into the
+        # mutable object.
+        # Step 2: `_read_list` consumes the mutable object.
+        # Step 3: After all underlying mutable objects of all input channels are
+        # consumed, `read` is called in the receiver of the NCCL channel.
+        #
+        # If we call NCCL write before the CPU channel write, then the shared
+        # memory channel's `write` operation will block because the NCCL write
+        # operation blocks forever until the NCCL read operation is called. However,
+        # the `read` operation of the NCCL channel will never be called because
+        # `_read_list` will never consume the mutable object that hasn't been
+        # written yet.
+
+        # First send the non-tensor data through a CPU-specific channel. The
         # data contains placeholders for the extracted tensors.
         self._cpu_data_channel.write(cpu_data)
+
+        # Next send the extracted tensors through a GPU-specific channel.
+        self._gpu_data_channel.write(gpu_tensors)
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
         """
@@ -274,9 +307,21 @@ class TorchTensorNcclChannel(ChannelInterface):
         # Next, read and deserialize the non-tensor data. The registered custom
         # deserializer will replace the found tensor placeholders with
         # `tensors`.
-        data = self._cpu_data_channel.read(
+        #
+        # We need to deserialize the CPU data channel first in `read` instead of
+        # `_read_list` because the deserialization of the CPU data channel relies
+        # on the out-of-band tensors in the serialization context. Therefore, the
+        # `read` method of the NCCL channel must be called first to ensure that
+        # the out-of-band tensors are ready.
+        serialized_data, metadata = self._cpu_data_channel.read(
             timeout=timeout,
         )
+        rets = self._worker.deserialize_objects(
+            [(serialized_data, metadata)], self._cpu_data_channel.get_ray_waitables()
+        )
+        assert len(rets) == 1
+        ret = rets[0]
+
         # Check that all placeholders had a corresponding tensor.
         (
             _,
@@ -284,7 +329,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         ) = self.serialization_ctx.reset_out_of_band_tensors([])
         assert deserialized_tensor_placeholders == set(range(len(tensors)))
 
-        return data
+        return ret
 
     def read(self, timeout: Optional[float] = None) -> Any:
         """
@@ -323,6 +368,23 @@ class TorchTensorNcclChannel(ChannelInterface):
             data = self._recv_cpu_and_gpu_data(tensors, timeout)
 
         return data
+
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
+        self.ensure_registered_as_reader()
+        reader = utils.get_self_actor()
+        if reader == self._writer:
+            return self._local_channel.get_ray_waitables()
+        waitables = []
+        waitables.extend(self._gpu_data_channel.get_ray_waitables())
+        if self._cpu_data_channel is not None:
+            cpu_waitables = self._cpu_data_channel.get_ray_waitables()
+            assert len(cpu_waitables) == 1
+            # Skip deserialization of the CPU data in `_read_list` and
+            # handle the deserialization in the channel's `read()` method
+            # after the out-of-band tensors are ready in the serialization
+            # context instead.
+            waitables.append((cpu_waitables[0][0], True))
+        return waitables
 
     def close(self) -> None:
         self._gpu_data_channel.close()
@@ -466,7 +528,6 @@ class _TorchTensorNcclChannel(ChannelInterface):
         Returns: The metadata to send to the reader. None means that we should
             not send any metadata message to the reader.
         """
-        ctx = ChannelContext.get_current()
 
         # TODO(swang): Currently any exceptions thrown during this method are
         # fatal for the DAG because there is no way for the receiver to receive
@@ -475,6 +536,31 @@ class _TorchTensorNcclChannel(ChannelInterface):
         # channel can send empty data alongside the exception to avoid hanging.
 
         # Get the shape and dtype of each tensor to send.
+        metadata_list = self.tensors_to_metadata(tensors)
+
+        if self._static_tensor_metadata is not None:
+            # Raise an exception if the metadata mismatch is detected.
+            self.validate_metadata_mismatch(metadata_list)
+            # The receiver has already determined the shape and dtype of the
+            # tensors from a previous send, so no need to send the metadata
+            # again.
+            return None
+
+        if self._static_shape:
+            # The shape and dtype is static. This is the first send op and
+            # afterwards, a ValueError will be thrown if the sent tensors do
+            # not match this metadata.
+            self._static_tensor_metadata = metadata_list
+        return metadata_list
+
+    def tensors_to_metadata(
+        self, tensors: List["torch.Tensor"]
+    ) -> List[_TorchTensorMetadata]:
+        """
+        Helper method to convert a list of torch tensors to a list of
+        _TorchTensorMetadata objects.
+        """
+        ctx = ChannelContext.get_current()
         metadata_list = []
         for tensor in tensors:
             # Basic type checking.
@@ -488,33 +574,29 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
             metadata = _TorchTensorMetadata(tensor.shape, tensor.dtype)
             metadata_list.append(metadata)
-
-        if self._static_tensor_metadata is not None:
-            if metadata_list != self._static_tensor_metadata:
-                metadata_str = [
-                    f"(shape={m.shape}, dtype={m.dtype})" for m in metadata_list
-                ]
-                expected_str = [
-                    f"(shape={m.shape}, dtype={m.dtype})"
-                    for m in self._static_tensor_metadata
-                ]
-                raise ValueError(
-                    "Expected torch.Tensors with shapes and dtypes: "
-                    "[" + ", ".join(expected_str) + "], "
-                    "found: [" + ", ".join(metadata_str) + "]. "
-                    "DAG will shut down."
-                )
-            # The receiver has already determined the shape and dtype of the
-            # tensors from a previous send, so no need to send the metadata
-            # again.
-            return None
-
-        if self._static_shape:
-            # The shape and dtype is static. This is the first send op and
-            # afterwards, a ValueError will be thrown if the sent tensors do
-            # not match this metadata.
-            self._static_tensor_metadata = metadata_list
         return metadata_list
+
+    def validate_metadata_mismatch(self, metadata_list: List[_TorchTensorMetadata]):
+        """
+        Validate that the metadata of the tensors matches the static metadata
+        if `static_shape=True` was set.
+        """
+        if self._static_tensor_metadata is None:
+            return
+        if metadata_list != self._static_tensor_metadata:
+            metadata_str = [
+                f"(shape={m.shape}, dtype={m.dtype})" for m in metadata_list
+            ]
+            expected_str = [
+                f"(shape={m.shape}, dtype={m.dtype})"
+                for m in self._static_tensor_metadata
+            ]
+            raise ValueError(
+                "Expected torch.Tensors with shapes and dtypes: "
+                "[" + ", ".join(expected_str) + "], "
+                "found: [" + ", ".join(metadata_str) + "]. "
+                "DAG will shut down."
+            )
 
     def write(
         self,
@@ -605,6 +687,12 @@ class _TorchTensorNcclChannel(ChannelInterface):
         # TODO: Sync CUDA stream after receiving all tensors, instead of after
         # each tensor.
         return bufs
+
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
+        self.ensure_registered_as_reader()
+        if self._static_tensor_metadata is not None:
+            return []
+        return self._meta_channel.get_ray_waitables()
 
     def close(self) -> None:
         self._meta_channel.close()

@@ -6,8 +6,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 import ray.exceptions
+from ray import ObjectRef
 from ray._raylet import SerializedObject
-from ray.experimental.channel import utils
+from ray.experimental.channel import ChannelContext, utils
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.utils import get_self_actor
@@ -475,9 +476,9 @@ class Channel(ChannelInterface):
         self.ensure_registered_as_reader()
 
         start_time = time.monotonic()
-        ret = self._worker.get_objects(
-            [self._local_reader_ref], timeout=timeout, return_exceptions=True
-        )[0][0]
+
+        ctx = ChannelContext.get_current().serialization_context
+        ret = ctx.get_data(self._local_reader_ref)
 
         if isinstance(ret, _ResizeChannel):
             self._node_id_to_reader_ref_info = ret._node_id_to_reader_ref_info
@@ -490,20 +491,28 @@ class Channel(ChannelInterface):
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
-            ret = self._worker.get_objects(
-                [self._local_reader_ref], timeout=timeout, return_exceptions=True
-            )[0][0]
-
+            rets, _ = self._worker.experimental_wait_and_get_mutable_objects(
+                [self._local_reader_ref],
+                timeout_ms=timeout * 1000 if timeout is not None else -1,
+                num_returns=1,
+                return_exceptions=True,
+            )
+            ret = rets[0]
         return ret
+
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
+        self.ensure_registered_as_reader()
+        return [(self._local_reader_ref, False)]
 
     def release_buffer(self, timeout: Optional[float] = None) -> None:
         assert (
             timeout is None or timeout >= 0 or timeout == -1
         ), "Timeout must be non-negative or -1."
         self.ensure_registered_as_reader()
-        self._worker.get_objects(
+        self._worker.experimental_wait_and_get_mutable_objects(
             [self._local_reader_ref],
-            timeout=timeout,
+            timeout_ms=timeout * 1000 if timeout is not None else -1,
+            num_returns=1,
             return_exceptions=True,
             skip_deserialization=True,
         )
@@ -608,6 +617,10 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         self._next_read_index += 1
         self._next_read_index %= self._num_shm_buffers
         return output
+
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
+        self.ensure_registered_as_reader()
+        return self._buffers[self._next_read_index].get_ray_waitables()
 
     def release_buffer(self, timeout: Optional[float] = None):
         """Release the native buffer of the channel to allow the buffer to be reused for
@@ -751,6 +764,10 @@ class CompositeChannel(ChannelInterface):
     def read(self, timeout: Optional[float] = None) -> Any:
         self.ensure_registered_as_reader()
         return self._channel_dict[self._resolve_actor_id()].read(timeout)
+
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
+        self.ensure_registered_as_reader()
+        return self._channel_dict[self._resolve_actor_id()].get_ray_waitables()
 
     def release_buffer(self, timeout: Optional[float] = None):
         self.ensure_registered_as_reader()

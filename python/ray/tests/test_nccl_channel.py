@@ -18,7 +18,7 @@ from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.torch_tensor_nccl_channel import (
     _init_communicator,
 )
-from ray._private.test_utils import get_actor_node_id
+from ray._private.test_utils import get_actor_node_id, retrieve_mutable_object_refs
 
 logger = logging.getLogger(__name__)
 
@@ -81,19 +81,13 @@ class Worker:
         self.tensor_chan.write(t)
 
     def receive(self):
+        retrieve_mutable_object_refs([self.tensor_chan])
         t = self.tensor_chan.read()
         data = (t[0].item(), t.shape, t.dtype)
         return data
 
     def send_dict(self, tensor_dict):
         self.tensor_chan.write(tensor_dict)
-
-    def receive_dict(self):
-        tensor_dict = self.tensor_chan.read()
-        vals = []
-        for key, t in tensor_dict.items():
-            vals.append((key, t[0].item(), t.shape, t.dtype))
-        return vals
 
 
 @pytest.mark.parametrize(

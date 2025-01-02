@@ -3405,6 +3405,45 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker()
                 .ExperimentalRegisterMutableObjectReader(c_object_id))
 
+    def experimental_wait_and_get_mutable_objects(
+            self,
+            object_refs,
+            int num_returns,
+            int64_t timeout_ms=-1,
+            c_bool suppress_timeout_errors=False):
+        """
+        Wait for `num_returns` experimental mutable objects in `object_refs` to
+        be ready and read them.
+
+        Args:
+            object_refs: List of object refs to read.
+            num_returns: Number of objects to read in this round.
+            timeout_ms: Timeout in milliseconds.
+            suppress_timeout_errors: If True, suppress timeout errors. The caller
+                can determine whether `timeout` was raised by checking the value
+                of `results`. At the same time, users still want to get the values
+                of some objects even if some objects are not ready. Hence, we don't
+                raise the exception if `suppress_timeout_errors` is set to True and
+                instead return `results`.
+
+        Returns:
+            data_metadata_pairs: List of (data, metadata) pairs.
+        """
+        cdef:
+            c_vector[shared_ptr[CRayObject]] results
+            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
+        with nogil:
+            op_status = (CCoreWorkerProcess.GetCoreWorker()
+                         .WaitAndGetExperimentalMutableObjects(
+                            c_object_ids, timeout_ms, num_returns, results))
+
+        try:
+            check_status(op_status)
+        except RayChannelTimeoutError:
+            if not suppress_timeout_errors:
+                raise
+        return RayObjectsToDataMetadataPairs(results)
+
     def put_serialized_object_and_increment_local_ref(
             self, serialized_object,
             ObjectRef object_ref=None,

@@ -1786,6 +1786,68 @@ Status CoreWorker::GetExperimentalMutableObjects(
   return Status::OK();
 }
 
+Status CoreWorker::WaitAndGetExperimentalMutableObjects(
+    const std::vector<ObjectID> &ids,
+    int64_t timeout_ms,
+    int num_objects,
+    std::vector<std::shared_ptr<RayObject>> &results) {
+  if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
+    return Status::Invalid(
+        "Number of objects to wait-and-get for must be between 1 and the number of ids.");
+  }
+
+  results.resize(ids.size(), nullptr);
+
+  bool timed_out = false;
+  int64_t remaining_timeout = timeout_ms == -1 ? 1e9 : timeout_ms;
+  auto timeout_point = ToTimeoutPoint(remaining_timeout);
+  int64_t iteration_timeout =
+      std::min(remaining_timeout, RayConfig::instance().get_timeout_milliseconds());
+  int num_acquired = 0;
+
+  while (!timed_out) {
+    for (size_t i = 0; i < ids.size(); i++) {
+      // Check if the channel is closed.
+      Status status = experimental_mutable_object_provider_->GetChannelStatus(
+          ids[i], /*is_reader*/ true);
+      if (status.IsChannelError()) {
+        return status;
+      }
+      // Skip if the result is already acquired.
+      if (results[i] != nullptr) {
+        continue;
+      }
+
+      // Try to acquire the object.
+      Status s = experimental_mutable_object_provider_->ReadAcquire(
+          ids[i], results[i], iteration_timeout);
+      if (s.ok()) {
+        num_acquired++;
+        if (num_acquired == num_objects) {
+          return Status::OK();
+        }
+      } else if (!s.IsChannelTimeoutError()) {
+        return s;
+      }
+
+      auto now = std::chrono::steady_clock::now();
+      timed_out = now >= *timeout_point;
+      if (!timed_out) {
+        remaining_timeout =
+            std::chrono::duration_cast<std::chrono::milliseconds>(*timeout_point - now)
+                .count();
+        iteration_timeout = std::min(remaining_timeout, iteration_timeout);
+      }
+    }
+  }
+
+  RAY_CHECK(timed_out);
+  return Status::ChannelTimeoutError(absl::StrFormat(
+      "Timed out: try to acquire %d objects, but only %d objects are acquired.",
+      num_objects,
+      num_acquired));
+}
+
 Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
                               const int64_t timeout_ms,
                               std::vector<std::shared_ptr<RayObject>> &results) {

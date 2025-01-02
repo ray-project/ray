@@ -12,12 +12,14 @@ from typing import (
     List,
     NamedTuple,
     Optional,
+    Set,
     Tuple,
     Union,
 )
 
 import ray
 import ray.exceptions
+from ray import ObjectRef
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -255,6 +257,15 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
+    def get_ray_waitables(self) -> List[Tuple[ObjectRef, bool]]:
+        """
+        Get a list of tuples containing an ObjectRef and a boolean flag.
+        The flag indicates whether the ObjectRef should skip deserialization
+        in `experimental_wait_and_get_mutable_objects` and instead be
+        deserialized in the channel's `read()` method instead.
+        """
+        raise NotImplementedError
+
     def close(self) -> None:
         """
         Close this channel. This method must not block and it must be made
@@ -278,6 +289,11 @@ class ReaderInterface:
         self._input_channels = input_channels
         self._closed = False
         self._num_reads = 0
+        # List of object refs that were not completed in the last read.
+        # The reader returns immediately when a RayTaskError is found.
+        # This list must be consumed before the next read to avoid reading
+        # stale data remaining from the last read.
+        self._non_complete_object_refs: List[ObjectRef] = []
 
     def get_num_reads(self) -> int:
         return self._num_reads
@@ -298,6 +314,59 @@ class ReaderInterface:
         """
         raise NotImplementedError
 
+    def _get_all_waitables_to_num_consumers(
+        self,
+    ) -> Tuple[Dict[ObjectRef, int], Dict[ObjectRef, int]]:
+        """
+        Returns two lists of tuples, where each tuple contains an ObjectRef and an
+        integer. The integer indicates the number of consumers for the ObjectRef.
+
+        The first list contains mutable object refs that need to be deserialized
+        when we first retrieve them (i.e., in `_read_list`). The second list
+        contains mutable object refs that do not need to be deserialized in `_read_list`
+        and instead need to be deserialized in the channel's `read()` method.
+        """
+        waitable_to_num_consumers = {}
+        skip_deserialization_waitables_to_num_consumers = {}
+        for c in self._input_channels:
+            waitables = c.get_ray_waitables()
+            for waitable, skip_deserialization in waitables:
+                target_dict = (
+                    skip_deserialization_waitables_to_num_consumers
+                    if skip_deserialization
+                    else waitable_to_num_consumers
+                )
+                target_dict[waitable] = target_dict.get(waitable, 0) + 1
+        return (
+            waitable_to_num_consumers,
+            skip_deserialization_waitables_to_num_consumers,
+        )
+
+    def _consume_non_complete_object_refs_if_needed(
+        self, timeout: Optional[float] = None
+    ) -> None:
+        timeout_point = time.monotonic() + timeout
+        worker = ray._private.worker.global_worker
+        if len(self._non_complete_object_refs) > 0:
+            # If the last read failed early, we need to consume the data from
+            # the non-complete object refs before the next read. If we don't do
+            # this, the read operation will read different versions of the
+            # object refs.
+            (
+                _,
+                non_complete_object_refs_set,
+            ) = worker.experimental_wait_and_get_mutable_objects(
+                self._non_complete_object_refs,
+                num_returns=len(self._non_complete_object_refs),
+                timeout_ms=max(0, (timeout_point - time.monotonic()) * 1000),
+                return_exceptions=True,
+                # Skip deserialization to speed up this step.
+                skip_deserialization=True,
+                suppress_timeout_errors=False,
+            )
+            assert len(non_complete_object_refs_set) == 0
+            self._non_complete_object_refs = []
+
     def read(self, timeout: Optional[float] = None) -> List[Any]:
         """
         Read from this reader.
@@ -314,6 +383,52 @@ class ReaderInterface:
         outputs = self._read_list(timeout)
         self._num_reads += 1
         return outputs
+
+    def _process_values_and_waitables(
+        self,
+        values: List[Any],
+        target_waitable_group: List[ObjectRef],
+        non_complete_object_refs_set: Set[ObjectRef],
+        target_waitable_group_num_consumers: Dict[ObjectRef, int],
+    ) -> Optional[List[Any]]:
+        """Process channel values and handle any task errors.
+
+        Args:
+            values: List of values to process
+            target_waitable_group: List of object refs being processed
+            non_complete_object_refs_set: Set of incomplete object refs
+            target_waitable_group_num_consumers: Dict mapping object refs to
+                number of consumers
+
+        Returns:
+            List[Any]: List of RayTaskError if error encountered, None otherwise
+        """
+        ctx = ChannelContext.get_current().serialization_context
+        for i, value in enumerate(values):
+            if target_waitable_group[i] in non_complete_object_refs_set:
+                continue
+            if isinstance(value, ray.exceptions.RayTaskError):
+                self._non_complete_object_refs = list(non_complete_object_refs_set)
+                for w in target_waitable_group:
+                    ctx.reset_data(w)
+                # If we raise an exception immediately, it will be considered
+                # as a system error which will cause the execution loop to
+                # exit. Hence, return immediately and let `_process_return_vals`
+                # handle the exception.
+                #
+                # Return a list of RayTaskError so that the caller will not
+                # get an undefined partial result.
+                #
+                # TODO(kevin85421): Should we consider reading channels that
+                # are ready to be read and returning them as partial results
+                # along with the RayTaskError?
+                return [value for _ in range(len(self._input_channels))]
+            ctx.set_data(
+                target_waitable_group[i],
+                value,
+                target_waitable_group_num_consumers[target_waitable_group[i]],
+            )
+        return None
 
     def close(self) -> None:
         self._closed = True
@@ -333,6 +448,68 @@ class SynchronousReader(ReaderInterface):
         pass
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+        timeout = 1e6 if timeout is None or timeout == -1 else timeout
+        self._consume_non_complete_object_refs_if_needed(timeout)
+
+        (
+            waitables_to_num_consumers,
+            skip_deserialization_waitables_to_num_consumers,
+        ) = self._get_all_waitables_to_num_consumers()
+        normal_waitables = list(waitables_to_num_consumers.keys())
+        skip_deserialization_waitables = list(
+            skip_deserialization_waitables_to_num_consumers.keys()
+        )
+
+        timeout_point = time.monotonic() + timeout
+        worker = ray._private.worker.global_worker
+        while len(normal_waitables) > 0 or len(skip_deserialization_waitables) > 0:
+            # Retrieve at most one object each time.
+            use_normal_waitables = len(normal_waitables) > 0
+            target_waitable_group = (
+                normal_waitables
+                if use_normal_waitables
+                else skip_deserialization_waitables
+            )
+            target_waitable_group_num_consumers = (
+                waitables_to_num_consumers
+                if use_normal_waitables
+                else skip_deserialization_waitables_to_num_consumers
+            )
+            # Retrieve one mutable object reference at a time so that we can fail
+            # early if one of the object's data is a `RayTaskError`.
+            (
+                values,
+                non_complete_object_refs_set,
+            ) = worker.experimental_wait_and_get_mutable_objects(
+                target_waitable_group,
+                num_returns=1,
+                timeout_ms=max(0, (timeout_point - time.monotonic()) * 1000),
+                return_exceptions=True,
+                skip_deserialization=not use_normal_waitables,
+                suppress_timeout_errors=True,
+            )
+
+            ray_task_errors = self._process_values_and_waitables(
+                values,
+                target_waitable_group,
+                non_complete_object_refs_set,
+                target_waitable_group_num_consumers,
+            )
+            if ray_task_errors is not None:
+                return ray_task_errors
+
+            target_waitable_group = list(non_complete_object_refs_set)
+            if time.monotonic() > timeout_point and len(target_waitable_group) != 0:
+                # This ensures that the reader attempts to retrieve
+                # data once even when the `timeout` is 0.
+                raise ray.exceptions.RayChannelTimeoutError(
+                    "Timed out waiting for channel data."
+                )
+            if use_normal_waitables:
+                normal_waitables = target_waitable_group
+            else:
+                skip_deserialization_waitables = target_waitable_group
+
         results = []
         for c in self._input_channels:
             start_time = time.monotonic()
@@ -377,7 +554,63 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
+        # TODO(kevin85421): What's a good timeout for this?
+        # Should we make it configurable?
+        self._consume_non_complete_object_refs_if_needed(60)
+        (
+            waitables_to_num_consumers,
+            skip_deserialization_waitables_to_num_consumers,
+        ) = self._get_all_waitables_to_num_consumers()
+        normal_waitables = list(waitables_to_num_consumers.keys())
+        skip_deserialization_waitables = list(
+            skip_deserialization_waitables_to_num_consumers.keys()
+        )
+
         results = []
+
+        worker = ray._private.worker.global_worker
+        while len(normal_waitables) > 0 or len(skip_deserialization_waitables) > 0:
+            use_normal_waitables = len(normal_waitables) > 0
+            target_waitable_group = (
+                normal_waitables
+                if use_normal_waitables
+                else skip_deserialization_waitables
+            )
+            target_waitable_group_num_consumers = (
+                waitables_to_num_consumers
+                if use_normal_waitables
+                else skip_deserialization_waitables_to_num_consumers
+            )
+
+            (
+                values,
+                non_complete_object_refs_set,
+            ) = worker.experimental_wait_and_get_mutable_objects(
+                target_waitable_group,
+                num_returns=1,
+                timeout_ms=1000,
+                return_exceptions=True,
+                skip_deserialization=not use_normal_waitables,
+                suppress_timeout_errors=True,
+            )
+
+            ray_task_errors = self._process_values_and_waitables(
+                values,
+                target_waitable_group,
+                non_complete_object_refs_set,
+                target_waitable_group_num_consumers,
+            )
+            if ray_task_errors is not None:
+                return ray_task_errors
+
+            target_waitable_group = list(non_complete_object_refs_set)
+            if use_normal_waitables:
+                normal_waitables = target_waitable_group
+            else:
+                skip_deserialization_waitables = target_waitable_group
+            if sys.is_finalizing():
+                return results
+
         for c in self._input_channels:
             exiting = retry_and_check_interpreter_exit(
                 lambda: results.append(c.read(timeout=1))

@@ -225,12 +225,6 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   Channel *GetChannel(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(channel_lock_);
 
  private:
-  /// Converts a timeout in milliseconds to a timeout point.
-  /// \param[in] timeout_ms The timeout in milliseconds.
-  /// \return The timeout point, or nullptr if the timeout_ms is -1.
-  std::unique_ptr<std::chrono::steady_clock::time_point> ToTimeoutPoint(
-      int64_t timeout_ms);
-
   // Returns the plasma object header for the object.
   PlasmaObjectHeader *GetHeader(const ObjectID &object_id);
 
