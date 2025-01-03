@@ -172,8 +172,10 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
             if os.path.exists(local_dir):
                 # Copy contents preserving permissions
                 shutil.copytree(local_dir, ray_working_dir, dirs_exist_ok=True)
-                logger.debug(f"Copied working dir contents from {local_dir} to {ray_working_dir}")
-                
+                logger.debug(
+                    f"Copied working dir contents from {local_dir} to {ray_working_dir}"
+                )
+
         return get_directory_size_bytes(local_dir)
 
     def modify_context(
