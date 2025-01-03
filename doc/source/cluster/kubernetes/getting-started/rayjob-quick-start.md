@@ -80,7 +80,7 @@ Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the lates
 
 ::::{tab-set}
 
-:::{tab-item} ARM64 (Apple Silicon)
+:::{tab-item} ARM64 (Apple silicon)
 ```sh
 curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml | sed 's/2.9.0/2.9.0-aarch64/g' | kubectl apply -f -
 ```
