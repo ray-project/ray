@@ -27,6 +27,5 @@ If you think there is anything missing, please open an issue on `Github`_.
     distributions.rst
     learner.rst
     offline.rst
-    evaluation.rst
     replay-buffers.rst
     utils.rst
