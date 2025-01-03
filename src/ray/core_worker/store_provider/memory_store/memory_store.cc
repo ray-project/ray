@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <condition_variable>
+#include <csignal>
 #include <utility>
 
 #include "ray/common/ray_config.h"
@@ -30,6 +31,14 @@ constexpr int64_t kUnhandledErrorGracePeriodNanos = static_cast<int64_t>(5e9);
 // Only scan at most this many items for unhandled errors, to avoid slowdowns
 // when there are too many local objects.
 constexpr int kMaxUnhandledErrorScanItems = 1000;
+
+namespace {
+
+std::atomic<int> signal_received = -1;
+
+void SignalHandler(int signal) { signal_received = signal; }
+
+}  // namespace
 
 /// A class that represents a `Get` request.
 class GetRequest {
@@ -345,29 +354,45 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
   bool done = false;
   bool timed_out = false;
-  Status signal_status = Status::OK();
   int64_t remaining_timeout = timeout_ms;
   int64_t iteration_timeout =
       timeout_ms == -1
           ? RayConfig::instance().get_timeout_milliseconds()
           : std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
 
+  // We need to register a custom signal handler because check_signals cannot check
+  // signals if they're not on the main python thread, so we use both to check for SIGINT
+  // and SIGTERM and for python SystemExit.
+#if defined(__APPLE__) || defined(__linux__)
+  struct sigaction new_action {};
+  struct sigaction old_sigint {};
+  struct sigaction old_sigterm {};
+  sigemptyset(&new_action.sa_mask);
+  new_action.sa_flags = 0;
+  new_action.sa_handler = SignalHandler;
+  sigaction(SIGINT, &new_action, &old_sigint);
+  sigaction(SIGTERM, &new_action, &old_sigterm);
+#endif
+  auto signal_status = Status::OK();
   // Repeatedly call Wait() on a shorter timeout so we can check for signals between
   // calls. If timeout_ms == -1, this should run forever until all objects are
   // ready or a signal is received. Else it should run repeatedly until that timeout
   // is reached.
-  while (!timed_out && signal_status.ok() &&
-         !(done = get_request->Wait(iteration_timeout))) {
-    if (check_signals_) {
+  while (!timed_out && !(done = get_request->Wait(iteration_timeout)) &&
+         (signal_status.ok() && signal_received == -1)) {
+    if (check_signals_ != nullptr) {
       signal_status = check_signals_();
     }
-
     if (remaining_timeout >= 0) {
       remaining_timeout -= iteration_timeout;
       iteration_timeout = std::min(remaining_timeout, iteration_timeout);
       timed_out = remaining_timeout <= 0;
     }
   }
+#if defined(__APPLE__) || defined(__linux__)
+  sigaction(SIGINT, &old_sigint, nullptr);
+  sigaction(SIGTERM, &old_sigterm, nullptr);
+#endif
 
   if (should_notify_raylet) {
     RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
@@ -401,6 +426,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
   if (!signal_status.ok()) {
     return signal_status;
+  } else if (signal_received != -1) {
+    return Status::Interrupted("Interrupted by signal: " +
+                               std::to_string(signal_received));
   } else if (done) {
     return Status::OK();
   } else {
