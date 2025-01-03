@@ -298,8 +298,9 @@ You can tweak the build with the following environment variables (when running `
   ``cpp``) build will not provide some ``cpp`` interfaces
 - ``SKIP_BAZEL_BUILD``: If set and equal to ``1``, no Bazel build steps will be
   executed
-- ``SKIP_THIRDPARTY_INSTALL``: If set will skip installation of third-party
-  python packages
+- ``SKIP_THIRDPARTY_INSTALL_CONDA_FORGE``: If set, setup will skip installation of
+  third-party packages required for build. This is active on conda-forge where
+  pip is not used to create a build environment.
 - ``RAY_DEBUG_BUILD``: Can be set to ``debug``, ``asan``, or ``tsan``. Any
   other value will be ignored
 - ``BAZEL_ARGS``: If set, pass a space-separated set of arguments to Bazel. This can be useful
