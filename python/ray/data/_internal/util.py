@@ -78,6 +78,9 @@ class _NullSentinel:
     def __ge__(self, other):
         return True
 
+    def __hash__(self):
+        return id(self)
+
 
 NULL_SENTINEL = _NullSentinel()
 

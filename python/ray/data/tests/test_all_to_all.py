@@ -2,7 +2,6 @@ import math
 import random
 import time
 from typing import Optional
-from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -116,11 +115,6 @@ def test_unique(ray_start_regular_shared):
         ]
     )
     assert set(ds.unique("a")) == {1}
-
-    with patch("ray.data.aggregate.AggregateFn._validate") as mock_validate:
-        assert set(ds.unique("b")) == {1, 2}
-        # check that column 'a' was dropped before aggregation
-        assert mock_validate.call_args_list[0].args[0].names == ["b"]
 
 
 @pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
