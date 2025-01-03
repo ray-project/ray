@@ -318,6 +318,9 @@ class AlgorithmConfig(_Config):
         self.env_runner_cls = None
         self.num_env_runners = 0
         self.num_envs_per_env_runner = 1
+        # TODO (sven): Once new ormsgpack system in place, reaplce the string
+        #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
+        self.gym_env_vectorize_mode = "SYNC"
         self.num_cpus_per_env_runner = 1
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
@@ -904,28 +907,18 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
-        # Check callbacks settings.
+        self._validate_env_runner_settings()
         self._validate_callbacks_settings()
-        # Check framework specific settings.
         self._validate_framework_settings()
-        # Check resources specific settings.
         self._validate_resources_settings()
-        # Check multi-agent specific settings.
         self._validate_multi_agent_settings()
-        # Check input specific settings.
         self._validate_input_settings()
-        # Check evaluation specific settings.
         self._validate_evaluation_settings()
-        # Check offline specific settings (new API stack).
         self._validate_offline_settings()
-
-        # Check new API stack specific settings.
         self._validate_new_api_stack_settings()
-
-        # Check to-be-deprecated settings (however that are still in use).
         self._validate_to_be_deprecated_settings()
 
-    def build(
+    def build_algo(
         self,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
@@ -998,7 +991,7 @@ class AlgorithmConfig(_Config):
                 )
 
         obs_space = getattr(env, "single_observation_space", env.observation_space)
-        if obs_space is None and self.is_multi_agent():
+        if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
                     aid: env.get_observation_space(aid)
@@ -1006,7 +999,7 @@ class AlgorithmConfig(_Config):
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
-        if act_space is None and self.is_multi_agent():
+        if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
                     aid: env.get_action_space(aid)
@@ -1025,7 +1018,7 @@ class AlgorithmConfig(_Config):
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
             pipeline.append(AddStatesFromEpisodesToBatch())
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
-            if self.is_multi_agent():
+            if self.is_multi_agent:
                 pipeline.append(
                     AgentToModuleMapping(
                         rl_module_specs=(
@@ -1037,7 +1030,7 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
             # Convert to Tensors.
             pipeline.append(NumpyToTensor(device=device))
 
@@ -1078,7 +1071,7 @@ class AlgorithmConfig(_Config):
                 )
 
         obs_space = getattr(env, "single_observation_space", env.observation_space)
-        if obs_space is None and self.is_multi_agent():
+        if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
                     aid: env.get_observation_space(aid)
@@ -1086,7 +1079,7 @@ class AlgorithmConfig(_Config):
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
-        if act_space is None and self.is_multi_agent():
+        if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
                     aid: env.get_action_space(aid)
@@ -1107,7 +1100,7 @@ class AlgorithmConfig(_Config):
             pipeline.prepend(RemoveSingleTsTimeRankFromBatch())
 
             # If multi-agent -> Map from ModuleID-based data to AgentID based data.
-            if self.is_multi_agent():
+            if self.is_multi_agent:
                 pipeline.prepend(ModuleToAgentUnmapping())
 
             # Unbatch all data.
@@ -1191,7 +1184,7 @@ class AlgorithmConfig(_Config):
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
             pipeline.append(AddStatesFromEpisodesToBatch(as_learner_connector=True))
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
-            if self.is_multi_agent():
+            if self.is_multi_agent:
                 pipeline.append(
                     AgentToModuleMapping(
                         rl_module_specs=(
@@ -1203,7 +1196,7 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
             # Convert to Tensors.
             pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
         return pipeline
@@ -1738,6 +1731,7 @@ class AlgorithmConfig(_Config):
         env_runner_cls: Optional[type] = NotProvided,
         num_env_runners: Optional[int] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
+        gym_env_vectorize_mode: Optional[str] = NotProvided,
         num_cpus_per_env_runner: Optional[int] = NotProvided,
         num_gpus_per_env_runner: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_env_runner: Optional[dict] = NotProvided,
@@ -1780,7 +1774,6 @@ class AlgorithmConfig(_Config):
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
         synchronize_filter=DEPRECATED_VALUE,
-        # deprecated
         enable_connectors=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
@@ -1795,6 +1788,11 @@ class AlgorithmConfig(_Config):
                 (vector-wise) per EnvRunner. This enables batching when computing
                 actions through RLModule inference, which can improve performance
                 for inference-bottlenecked workloads.
+            gym_env_vectorize_mode: The gymnasium vectorization mode for vector envs.
+                Must be a `gymnasium.envs.registration.VectorizeMode` (enum) value.
+                Default is SYNC. Set this to ASYNC to parallelize the individual sub
+                environments within the vector. This can speed up your EnvRunners
+                significantly when using heavier environments.
             num_cpus_per_env_runner: Number of CPUs to allocate per EnvRunner.
             num_gpus_per_env_runner: Number of GPUs to allocate per EnvRunner. This can
                 be fractional. This is usually needed only if your env itself requires a
@@ -1975,7 +1973,8 @@ class AlgorithmConfig(_Config):
                     "larger 0!"
                 )
             self.num_envs_per_env_runner = num_envs_per_env_runner
-
+        if gym_env_vectorize_mode is not NotProvided:
+            self.gym_env_vectorize_mode = gym_env_vectorize_mode
         if num_cpus_per_env_runner is not NotProvided:
             self.num_cpus_per_env_runner = num_cpus_per_env_runner
         if num_gpus_per_env_runner is not NotProvided:
@@ -3192,15 +3191,6 @@ class AlgorithmConfig(_Config):
 
         return self
 
-    def is_multi_agent(self) -> bool:
-        """Returns whether this config specifies a multi-agent setup.
-
-        Returns:
-            True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
-            DEFAULT_POLICY_ID.
-        """
-        return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
-
     def reporting(
         self,
         *,
@@ -3658,6 +3648,72 @@ class AlgorithmConfig(_Config):
         return self
 
     @property
+    def is_atari(self) -> bool:
+        """True if if specified env is an Atari env."""
+
+        # Not yet determined, try to figure this out.
+        if self._is_atari is None:
+            # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
+            # or "ale_py:ALE/Breakout-v5".
+            # We do NOT attempt to auto-detect Atari env for other specified types like
+            # a callable, to avoid running heavy logics in validate().
+            # For these cases, users can explicitly set `environment(atari=True)`.
+            if type(self.env) is not str:
+                return False
+            try:
+                env = gym.make(self.env)
+            # Any gymnasium error -> Cannot be an Atari env.
+            except gym.error.Error:
+                return False
+
+            self._is_atari = is_atari(env)
+            # Clean up env's resources, if any.
+            env.close()
+
+        return self._is_atari
+
+    @property
+    def is_multi_agent(self) -> bool:
+        """Returns whether this config specifies a multi-agent setup.
+
+        Returns:
+            True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
+            DEFAULT_POLICY_ID.
+        """
+        return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
+
+    @property
+    def learner_class(self) -> Type["Learner"]:
+        """Returns the Learner sub-class to use by this Algorithm.
+
+        Either
+        a) User sets a specific learner class via calling `.training(learner_class=...)`
+        b) User leaves learner class unset (None) and the AlgorithmConfig itself
+        figures out the actual learner class by calling its own
+        `.get_default_learner_class()` method.
+        """
+        return self._learner_class or self.get_default_learner_class()
+
+    @property
+    def model_config(self):
+        """Defines the model configuration used.
+
+        This method combines the auto configuration `self _model_config_auto_includes`
+        defined by an algorithm with the user-defined configuration in
+        `self._model_config`.This configuration dictionary is used to
+        configure the `RLModule` in the new stack and the `ModelV2` in the old
+        stack.
+
+        Returns:
+            A dictionary with the model configuration.
+        """
+        return self._model_config_auto_includes | (
+            self._model_config
+            if isinstance(self._model_config, dict)
+            else dataclasses.asdict(self._model_config)
+        )
+
+    @property
     def rl_module_spec(self):
         default_rl_module_spec = self.get_default_rl_module_spec()
         _check_rl_module_spec(default_rl_module_spec)
@@ -3684,43 +3740,6 @@ class AlgorithmConfig(_Config):
         # `self._rl_module_spec` has not been user defined -> return default one.
         else:
             return default_rl_module_spec
-
-    @property
-    def learner_class(self) -> Type["Learner"]:
-        """Returns the Learner sub-class to use by this Algorithm.
-
-        Either
-        a) User sets a specific learner class via calling `.training(learner_class=...)`
-        b) User leaves learner class unset (None) and the AlgorithmConfig itself
-        figures out the actual learner class by calling its own
-        `.get_default_learner_class()` method.
-        """
-        return self._learner_class or self.get_default_learner_class()
-
-    @property
-    def is_atari(self) -> bool:
-        """True if if specified env is an Atari env."""
-
-        # Not yet determined, try to figure this out.
-        if self._is_atari is None:
-            # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
-            # or "ale_py:ALE/Breakout-v5".
-            # We do NOT attempt to auto-detect Atari env for other specified types like
-            # a callable, to avoid running heavy logics in validate().
-            # For these cases, users can explicitly set `environment(atari=True)`.
-            if type(self.env) is not str:
-                return False
-            try:
-                env = gym.make(self.env)
-            # Any gymnasium error -> Cannot be an Atari env.
-            except gym.error.Error:
-                return False
-
-            self._is_atari = is_atari(env)
-            # Clean up env's resources, if any.
-            env.close()
-
-        return self._is_atari
 
     @property
     def total_train_batch_size(self):
@@ -4345,25 +4364,6 @@ class AlgorithmConfig(_Config):
         return self.to_dict().items()
 
     @property
-    def model_config(self):
-        """Defines the model configuration used.
-
-        This method combines the auto configuration `self _model_config_auto_includes`
-        defined by an algorithm with the user-defined configuration in
-        `self._model_config`.This configuration dictionary is used to
-        configure the `RLModule` in the new stack and the `ModelV2` in the old
-        stack.
-
-        Returns:
-            A dictionary with the model configuration.
-        """
-        return self._model_config_auto_includes | (
-            self._model_config
-            if isinstance(self._model_config, dict)
-            else dataclasses.asdict(self._model_config)
-        )
-
-    @property
     def _model_config_auto_includes(self) -> Dict[str, Any]:
         """Defines which `AlgorithmConfig` settings/properties should be
         auto-included into `self.model_config`.
@@ -4381,6 +4381,18 @@ class AlgorithmConfig(_Config):
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
     # -----------------------------------------------------------
+    def _validate_env_runner_settings(self) -> None:
+        allowed_vectorize_modes = set(
+            list(gym.envs.registration.VectorizeMode.__members__.keys())
+            + list(gym.envs.registration.VectorizeMode.__members__.values())
+        )
+        if self.gym_env_vectorize_mode not in allowed_vectorize_modes:
+            raise ValueError(
+                f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) must be a "
+                "member of `gym.envs.registration.VectorizeMode`! Allowed values "
+                f"are {allowed_vectorize_modes}."
+            )
+
     def _validate_callbacks_settings(self) -> None:
         """Validates callbacks settings."""
         # Old API stack:
@@ -4497,7 +4509,7 @@ class AlgorithmConfig(_Config):
         # TODO (sven): For now, vectorization is not allowed on new EnvRunners with
         #  multi-agent.
         if (
-            self.is_multi_agent()
+            self.is_multi_agent
             and self.enable_env_runner_and_connector_v2
             and self.num_envs_per_env_runner > 1
         ):
@@ -4780,7 +4792,7 @@ class AlgorithmConfig(_Config):
                 self.simple_optimizer = True
             # Multi-agent case: Try using MultiGPU optimizer (only
             # if all policies used are DynamicTFPolicies or TorchPolicies).
-            elif self.is_multi_agent():
+            elif self.is_multi_agent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
 
@@ -5345,6 +5357,10 @@ class AlgorithmConfig(_Config):
             is_policy_to_train = self.policies_to_train
 
         return policies, is_policy_to_train
+
+    @Deprecated(new="AlgorithmConfig.build_algo", error=False)
+    def build(self, *args, **kwargs):
+        return self.build_algo(*args, **kwargs)
 
     @Deprecated(new="AlgorithmConfig.get_multi_rl_module_spec()", error=True)
     def get_marl_module_spec(self, *args, **kwargs):
