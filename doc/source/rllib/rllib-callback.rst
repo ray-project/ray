@@ -142,24 +142,21 @@ Here is a high-level overview of all supported events in RLlib's callbacks syste
 
 .. currentmodule:: ray.rllib.callbacks.callbacks
 
-.. dropdown:: Click here to see all Algorithm-bound methods of ``RLlibCallback``
+.. .. dropdown:: Click here to see all Algorithm-bound methods of ``RLlibCallback``
     .. autosummary::
         :no-index:
         :nosignatures:
         :toctree: doc/
-
         RLlibCallback.on_algorithm_init
         RLlibCallback.on_evaluate_start
         RLlibCallback.on_evaluate_end
         RLlibCallback.on_env_runners_recreated
         RLlibCallback.on_checkpoint_loaded
-
-.. dropdown:: Click here to see all EnvRunner-bound methods of ``RLlibCallback``
+   .. dropdown:: Click here to see all EnvRunner-bound methods of ``RLlibCallback``
     .. autosummary::
         :no-index:
         :nosignatures:
         :toctree: doc/
-
         RLlibCallback.on_environment_created
         RLlibCallback.on_episode_created
         RLlibCallback.on_episode_start
@@ -364,9 +361,10 @@ Also take a look at this more complex example on `how to generate and log a PacM
     EnvRunner, used to collect training samples, or an evaluation EnvRunner, used to play
     through episodes for evaluation only.
     Access the ``env_runner.config.in_evaluation`` boolean flag, which is True on
-    evaluation EnvRunner actors and False on training ones.
+    evaluation ``EnvRunner`` actors and False on ``EnvRunner`` actors used to collect
+    training data.
 
 .. tip::
-   See :ref:`here for the exact call signatures and expected argument types <rllib-callback-reference-algorithm-bound>`
-   of all available callbacks.
+    See :ref:`here for the exact call signatures and expected argument types <rllib-callback-reference-algorithm-bound>`
+    of all available callbacks.
 

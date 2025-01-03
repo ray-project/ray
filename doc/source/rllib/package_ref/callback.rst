@@ -83,7 +83,7 @@ RLlibCallback
     :nosignatures:
     :toctree: doc/
 
-    RLlibCallback
+    ~RLlibCallback
 
 
 .. _rllib-callback-reference-algorithm-bound:
@@ -97,13 +97,13 @@ The following callback methods are always executed on the main Algorithm process
     :nosignatures:
     :toctree: doc/
 
-    RLlibCallback.on_algorithm_init
-    RLlibCallback.on_sample_end
-    RLlibCallback.on_train_result
-    RLlibCallback.on_evaluate_start
-    RLlibCallback.on_evaluate_end
-    RLlibCallback.on_env_runners_recreated
-    RLlibCallback.on_checkpoint_loaded
+    ~RLlibCallback.on_algorithm_init
+    ~RLlibCallback.on_sample_end
+    ~RLlibCallback.on_train_result
+    ~RLlibCallback.on_evaluate_start
+    ~RLlibCallback.on_evaluate_end
+    ~RLlibCallback.on_env_runners_recreated
+    ~RLlibCallback.on_checkpoint_loaded
 
 
 .. _rllib-callback-reference-env-runner-bound:
@@ -117,8 +117,8 @@ The following callback methods are always executed on EnvRunner actors:
     :nosignatures:
     :toctree: doc/
 
-    RLlibCallback.on_environment_created
-    RLlibCallback.on_episode_created
-    RLlibCallback.on_episode_start
-    RLlibCallback.on_episode_step
-    RLlibCallback.on_episode_end
+    ~RLlibCallback.on_environment_created
+    ~RLlibCallback.on_episode_created
+    ~RLlibCallback.on_episode_start
+    ~RLlibCallback.on_episode_step
+    ~RLlibCallback.on_episode_end
