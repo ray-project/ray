@@ -19,7 +19,7 @@ If you think there is anything missing, please open an issue on `Github`_.
     :maxdepth: 2
 
     algorithm.rst
-    rllib-callback.rst
+    callback.rst
     env.rst
     policy.rst
     models.rst
