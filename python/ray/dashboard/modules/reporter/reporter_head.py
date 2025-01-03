@@ -54,8 +54,8 @@ RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS = env_integer(
 
 
 class ReportHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
         self._stubs = {}
         self._ray_config = None
         DataSource.agents.signal.append(self._update_stubs)
@@ -63,13 +63,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # asynchronous and will lead to low performance. ray disconnect()
         # will be hang when the ray.state is connected and the GCS is exit.
         # Please refer to: https://github.com/ray-project/ray/issues/16328
-        assert dashboard_head.gcs_address or dashboard_head.redis_address
-        self._gcs_address = dashboard_head.gcs_address
-        temp_dir = dashboard_head.temp_dir
         self.service_discovery = PrometheusServiceDiscoveryWriter(
-            self._gcs_address, temp_dir
+            self.gcs_address, self.temp_dir
         )
-        self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._state_api = None
 
         self._executor = ThreadPoolExecutor(
@@ -118,7 +114,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         (legacy_status, formatted_status_string, error) = await asyncio.gather(
             *[
-                self._gcs_aio_client.internal_kv_get(
+                self.gcs_aio_client.internal_kv_get(
                     key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
                 )
                 for key in [
@@ -148,7 +144,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 success=True,
                 message="Got formatted cluster status.",
                 cluster_status=debug_status(
-                    formatted_status_string, error, address=self._gcs_address
+                    formatted_status_string, error, address=self.gcs_address
                 ),
             )
 
@@ -618,9 +614,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def run(self, server):
-        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
-            gcs_channel, self._dashboard_head.gcs_aio_client
+            self.aiogrpc_gcs_channel, self.gcs_aio_client
         )
         # Set up the state API in order to fetch task information.
         # TODO(ryw): unify the StateAPIManager in reporter_head and state_head.
@@ -632,10 +627,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # Need daemon True to avoid dashboard hangs at exit.
         self.service_discovery.daemon = True
         self.service_discovery.start()
-        gcs_addr = self._dashboard_head.gcs_address
-        subscriber = GcsAioResourceUsageSubscriber(address=gcs_addr)
+        subscriber = GcsAioResourceUsageSubscriber(address=self.gcs_address)
         await subscriber.subscribe()
-        cluster_metadata = await self._dashboard_head.gcs_aio_client.internal_kv_get(
+        cluster_metadata = await self.gcs_aio_client.internal_kv_get(
             CLUSTER_METADATA_KEY,
             namespace=KV_NAMESPACE_CLUSTER,
         )

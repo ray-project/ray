@@ -34,9 +34,9 @@ RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS = env_integer(
 class EventHead(
     dashboard_utils.DashboardHeadModule, event_pb2_grpc.ReportEventServiceServicer
 ):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
-        self._event_dir = os.path.join(self._dashboard_head.log_dir, "events")
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
+        self._event_dir = os.path.join(self.log_dir, "events")
         os.makedirs(self._event_dir, exist_ok=True)
         self._monitor: Union[asyncio.Task, None] = None
         self.total_report_events_count = 0

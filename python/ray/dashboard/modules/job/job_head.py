@@ -158,9 +158,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     # to read the logs from until then.
     WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S = 1
 
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
-        self._gcs_aio_client = dashboard_head.gcs_aio_client
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
         self._job_info_client = None
 
         # It contains all `JobAgentSubmissionClient` that
@@ -219,7 +218,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def _get_head_node_agent(self) -> Optional[JobAgentSubmissionClient]:
         """Retrieves HTTP client for `JobAgent` running on the Head node"""
 
-        head_node_id = await get_head_node_id(self._gcs_aio_client)
+        head_node_id = await get_head_node_id(self.gcs_aio_client)
 
         if not head_node_id:
             logger.warning("Head node id has not yet been persisted in GCS")
@@ -367,7 +366,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def stop_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._gcs_aio_client,
+            self.gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -402,7 +401,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def delete_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._gcs_aio_client,
+            self.gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -437,7 +436,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def get_job_info(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._gcs_aio_client,
+            self.gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -457,9 +456,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     # that).
     @routes.get("/api/jobs/")
     async def list_jobs(self, req: Request) -> Response:
-        driver_jobs, submission_job_drivers = await get_driver_jobs(
-            self._gcs_aio_client
-        )
+        driver_jobs, submission_job_drivers = await get_driver_jobs(self.gcs_aio_client)
 
         submission_jobs = await self._job_info_client.get_all_jobs()
         submission_jobs = [
@@ -488,7 +485,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._gcs_aio_client,
+            self.gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -525,7 +522,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def tail_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._gcs_aio_client,
+            self.gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -547,7 +544,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         driver_agent_http_address = None
         while driver_agent_http_address is None:
             job = await find_job_by_ids(
-                self._gcs_aio_client,
+                self.gcs_aio_client,
                 self._job_info_client,
                 job_or_submission_id,
             )
@@ -582,7 +579,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         if not self._job_info_client:
-            self._job_info_client = JobInfoStorageClient(self._gcs_aio_client)
+            self._job_info_client = JobInfoStorageClient(self.gcs_aio_client)
 
     @staticmethod
     def is_minimal_module():
