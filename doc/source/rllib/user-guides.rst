@@ -40,7 +40,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-advanced-api-doc
 
-            Advanced Features of the RLlib Python API
+            Advanced features of the RLlib python API
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -48,7 +48,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-callback
 
-            Injecting custom code into RLlib through the ``RLlibCallback`` APIs
+            Injecting custom code into RLlib through callbacks
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -56,7 +56,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-models
 
-            Working With Models, Preprocessors and Action Distributions
+            Working with models, preprocessors and action distributions
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -72,7 +72,7 @@ RLlib Feature Guides
 
         .. button-ref:: single-agent-episode
 
-            How To Use SingleAgentEpisodes (new API stack)?
+            How to process trajectories through episodes
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -80,7 +80,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-offline
 
-            Offline RL with Offline Datasets
+            Offline RL with offline datasets
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -88,7 +88,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-replay-buffers
 
-            Working with ReplayBuffers
+            Working with replay buffers
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -96,4 +96,4 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-dev
 
-            How To Contribute To RLlib?
+            How to contribute to RLlib?
