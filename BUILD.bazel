@@ -530,7 +530,6 @@ ray_cc_library(
         ":gcs_service_rpc",
         ":gcs_table_storage_lib",
         ":node_manager_rpc",
-        ":observable_store_client",
         ":pubsub_lib",
         ":raylet_client_lib",
         ":scheduler",
@@ -1848,7 +1847,6 @@ ray_cc_library(
     deps = [
         ":gcs",
         ":gcs_in_memory_store_client",
-        ":observable_store_client",
         ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
@@ -2244,22 +2242,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "observable_store_client",
-    srcs = [
-        "src/ray/gcs/store_client/observable_store_client.cc",
-    ],
-    hdrs = [
-        "src/ray/gcs/callback.h",
-        "src/ray/gcs/store_client/observable_store_client.h",
-        "src/ray/gcs/store_client/store_client.h",
-    ],
-    deps = [
-        ":ray_common",
-        "//src/ray/util",
-    ],
-)
-
-ray_cc_library(
     name = "store_client_test_lib",
     hdrs = [
         "src/ray/gcs/store_client/test/store_client_test_base.h",
@@ -2325,19 +2307,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":gcs_in_memory_store_client",
-        ":store_client_test_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "observable_store_client_test",
-    size = "small",
-    srcs = ["src/ray/gcs/store_client/test/in_memory_store_client_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_in_memory_store_client",
-        ":observable_store_client",
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
