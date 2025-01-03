@@ -11,8 +11,8 @@ RLlib's callback APIs enable you to inject code into your experiment, your Algor
 and its subcomponents.
 
 You can either subclass :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` and implement
-one or more methods, for example :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`,
-or you can pass the respective arguments to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks`
+one or more of its methods, for example :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`,
+or you can pass respective arguments to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks`
 method of your algorithm's config, for example
 ``config.callbacks(on_algorithm_init=lambda algorithm, **kw: print('algo initialized!'))``:
 
@@ -78,19 +78,31 @@ Methods you should implement for custom behavior
 
 .. currentmodule:: ray.rllib.callbacks.callbacks
 
-Callbacks invoked in Algorithm
-------------------------------
+RLlibCallback
+-------------
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    ~RLlibCallback.on_algorithm_init
-    ~RLlibCallback.on_train_result
-    ~RLlibCallback.on_evaluate_start
-    ~RLlibCallback.on_evaluate_end
-    ~RLlibCallback.on_env_runners_recreated
-    ~RLlibCallback.on_checkpoint_loaded
+    RLlibCallback
+
+Callbacks invoked in Algorithm
+------------------------------
+
+The following callback methods are always executed on the main Algorithm process:
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    RLlibCallback.on_algorithm_init
+    RLlibCallback.on_sample_end
+    RLlibCallback.on_train_result
+    RLlibCallback.on_evaluate_start
+    RLlibCallback.on_evaluate_end
+    RLlibCallback.on_env_runners_recreated
+    RLlibCallback.on_checkpoint_loaded
 
 
 .. _rllib-callback-reference-env-runner-bound:
@@ -98,13 +110,14 @@ Callbacks invoked in Algorithm
 Callbacks invoked in EnvRunner
 ------------------------------
 
+The following callback methods are always executed on EnvRunner actors:
+
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    ~RLlibCallback.on_environment_created
-    ~RLlibCallback.on_episode_created
-    ~RLlibCallback.on_episode_start
-    ~RLlibCallback.on_episode_step
-    ~RLlibCallback.on_episode_end
-    ~RLlibCallback.on_sample_end
+    RLlibCallback.on_environment_created
+    RLlibCallback.on_episode_created
+    RLlibCallback.on_episode_start
+    RLlibCallback.on_episode_step
+    RLlibCallback.on_episode_end
