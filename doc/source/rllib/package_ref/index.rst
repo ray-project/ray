@@ -24,6 +24,7 @@ If you think there is anything missing, please open an issue on `Github`_.
     algorithm.rst
     env.rst
     rl_modules.rst
+    distributions.rst
     learner.rst
     replay-buffers.rst
     utils.rst

@@ -638,9 +638,11 @@ def update_target_network(
 ) -> None:
     """Updates a torch.nn.Module target network using Polyak averaging.
 
-    new_target_net_weight = (
-        tau * main_net_weight + (1.0 - tau) * current_target_net_weight
-    )
+    .. code-block:: text
+
+        new_target_net_weight = (
+            tau * main_net_weight + (1.0 - tau) * current_target_net_weight
+        )
 
     Args:
         main_net: The nn.Module to update from.

@@ -50,33 +50,8 @@ Cleanup
 Single-agent and multi-agent EnvRunners
 ---------------------------------------
 
-By default, RLlib uses two built-in subclasses of EnvRunner, one for single-agent, one
-for multi-agent setups.
+By default, RLlib uses two built-in subclasses of EnvRunner, one for :ref:`single-agent <single-agent-env-runner-reference-docs>`, one
+for :ref:`multi-agent <multi-agent-env-runner-reference-docs>` setups. It determines based on your config, which one to use.
 
-
-rllib.env.single_agent_env_runner.SingleAgentEnvRunner
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. currentmodule:: ray.rllib.env.single_agent_env_runner
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    SingleAgentEnvRunner
-    SingleAgentEnvRunner.get_state
-    SingleAgentEnvRunner.set_state
-
-
-rllib.env.multi_agent_env_runner.MultiAgentEnvRunner
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. currentmodule:: ray.rllib.env.multi_agent_env_runner
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    MultiAgentEnvRunner
-    MultiAgentEnvRunner.get_state
-    MultiAgentEnvRunner.set_state
+Check your ``config.is_multi_agent`` property to find out, which of these setups you have configured
+and see :ref:`the docs on setting up RLlib multi-agent <rllib-multi-agent-environments-doc>` for more details.
