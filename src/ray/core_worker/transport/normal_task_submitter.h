@@ -220,7 +220,7 @@ class NormalTaskSubmitter {
   void PushNormalTask(const rpc::Address &addr,
                       std::shared_ptr<rpc::CoreWorkerClientInterface> client,
                       const SchedulingKey &task_queue_key,
-                      const TaskSpecification &task_spec,
+                      TaskSpecification task_spec,
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
 

@@ -543,7 +543,7 @@ void NormalTaskSubmitter::PushNormalTask(
     const rpc::Address &addr,
     std::shared_ptr<rpc::CoreWorkerClientInterface> client,
     const SchedulingKey &scheduling_key,
-    const TaskSpecification &task_spec,
+    TaskSpecification task_spec,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   RAY_LOG(DEBUG) << "Pushing task " << task_spec.TaskId() << " to worker "
                  << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
@@ -556,6 +556,10 @@ void NormalTaskSubmitter::PushNormalTask(
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
+
+  auto &internal_task_spec = task_spec.GetMutableMessage();  // rpc::TaskSpec
+  internal_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id());
