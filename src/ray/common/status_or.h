@@ -32,18 +32,19 @@ class StatusOr {
   // NOLINTNEXTLINE(runtime/explicit)
   StatusOr(Status status) : status_(std::move(status)) {}
   // NOLINTNEXTLINE(runtime/explicit)
-  StatusOr(const T &data) : status_(Status::OK()), data_(data) {}
+  StatusOr(const T &data) : status_(Status::OK()) { MakeValue(data); }
   // NOLINTNEXTLINE(runtime/explicit)
-  StatusOr(T &&data) : status_(Status::OK()), data_(std::move(data)) {}
+  StatusOr(T &&data) : status_(Status::OK()) { MakeValue(std::move(data)); }
 
   template <typename... Args>
-  explicit StatusOr(std::in_place_t ip, Args &&...args)
-      : data_(std::forward<Args>(args)...) {}
+  explicit StatusOr(std::in_place_t ip, Args &&...args) {
+    MakeValue(std::forward<Args>(args)...);
+  }
 
   template <typename U>
   StatusOr(const StatusOr<U> &status_or) {
     if (status_or.ok()) {
-      data_ = status_or.value();
+      MakeValue(status_or.value());
       status_ = Status::OK();
     } else {
       status_ = status_or.status();
@@ -53,7 +54,7 @@ class StatusOr {
   template <typename U>
   StatusOr(StatusOr<U> &&status_or) {
     if (status_or.ok()) {
-      data_ = std::move(status_or).value();
+      MakeValue(std::move(status_or).value());
       status_ = Status::OK();
     } else {
       status_ = std::move(status_or).status();
@@ -67,7 +68,11 @@ class StatusOr {
   StatusOr &operator=(StatusOr &&) noexcept(std::is_nothrow_move_assignable_v<T>) =
       default;
 
-  ~StatusOr() noexcept(std::is_nothrow_destructible_v<T>) = default;
+  ~StatusOr() noexcept(std::is_nothrow_destructible_v<T>) {
+    if (ok()) {
+      data_.~T();
+    }
+  }
 
   // Returns whether or not this `ray::StatusOr<T>` holds a `T` value. This
   // member function is analogous to `ray::Status::ok()` and should be used
@@ -187,11 +192,20 @@ class StatusOr {
   T &get() { return data_; }
   const T &get() const { return data_; }
 
+  template <typename... Args>
+  void MakeValue(Args &&...arg) {
+    new (&data_) T(std::forward<Args>(arg)...);
+  }
+
   Status status_;
 
-  // TODO(hjiang): Consider using union to construct `data_` as abseil implementation.
-  // https://github.com/abseil/abseil-cpp/blob/fcc8630eede5498b48b45b99e4eaa1406d6657e9/absl/status/internal/statusor_internal.h#L317-L333
-  T data_;
+  // Use union to avoid initialize when representing an error status.
+  // Constructed with placement new.
+  //
+  // `data_` is effective iff `ok() == true`.
+  union {
+    T data_;
+  };
 };
 
 template <typename T>
