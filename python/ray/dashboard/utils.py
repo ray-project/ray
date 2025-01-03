@@ -69,6 +69,57 @@ class DashboardAgentModule(abc.ABC):
         return self._dashboard_agent.gcs_address
 
 
+class DashboardHeadActorModule(abc.ABC):
+    """
+    Dashboard Head Module that is spawned as a Ray Actor.
+    For each module, dashboard.py registers each method **decorated with
+    optional_utils.DashboardHeadActorRouteTable** as a route in the head HTTP server.
+
+    NOTE: DashboardHeadActorRouteTable is not DashboardHeadRouteTable. The latter is
+    not recognized for this module type.
+
+    It creates a Ray Actor from this class with these options:
+    - lifetime: fate-share with the dashboard.py process, i.e. NON detached.
+    - resources: 0 CPU.
+    - infinite restarts,
+    - infinite task retries,
+    - strategy: on the same node as the dashboard.py process (should be the head node).
+    - namespace: RAY_INTERNAL_DASHBOARD_NAMESPACE to hide from the UI.
+
+    When a request is received, the router makes a Ray actor method call to the actor.
+    The method signature is (for now) only (self, req: bytes) -> Response.
+    TODO(ryw): if needed, add more from Request, e.g. headers.
+
+    LIMITATIONS: you can't raise a aiohttp.web_exceptions.HTTPException from the actor
+    because it is not serializable by cloudpickle. If you want to return an error,
+    return a Response with the `status` set to the error code.
+
+    The dashboard.py awaits the response in an async and non-blocking way. The actor
+    may choose to run heavy async workload in its process and they may block the actor's
+    methods, but not any other modules.
+
+    For an example, see python/ray/dashboard/modules/healthz/healthz_head.py.
+    """
+
+    def __init__(self, gcs_address):
+        self._gcs_address = gcs_address
+
+    @abc.abstractmethod
+    async def run(self):
+        """
+        Run the module in an asyncio loop.
+        """
+
+    @staticmethod
+    @abc.abstractclassmethod
+    def is_minimal_module():
+        """
+        Return True if the module is minimal, meaning it
+        should work with `pip install ray` that doesn't requires additional
+        dependencies.
+        """
+
+
 class DashboardHeadModule(abc.ABC):
     def __init__(self, dashboard_head):
         """
@@ -76,7 +127,8 @@ class DashboardHeadModule(abc.ABC):
         :param dashboard_head: The DashboardHead instance.
         """
         self._dashboard_head = dashboard_head
-        self.session_name = dashboard_head.session_name
+        if self._dashboard_head is not None:
+            self.session_name = dashboard_head.session_name
 
     @property
     def http_session(self):

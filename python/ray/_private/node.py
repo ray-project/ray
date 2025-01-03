@@ -337,6 +337,8 @@ class Node:
 
         if not connect_only:
             self.start_ray_processes()
+            if head:
+                self.start_api_server()
             # we should update the address info after the node has been started
             try:
                 ray._private.services.wait_for_node(
@@ -1136,19 +1138,15 @@ class Node:
             process_info,
         ]
 
-    def start_api_server(
-        self, *, include_dashboard: Optional[bool], raise_on_failure: bool
-    ):
-        """Start the dashboard.
+    def start_api_server(self):
+        include_dashboard = self._ray_params.include_dashboard
 
-        Args:
-            include_dashboard: If true, this will load all dashboard-related modules
-                when starting the API server. Otherwise, it will only
-                start the modules that are not relevant to the dashboard.
-            raise_on_failure: If true, this will raise an exception
-                if we fail to start the API server. Otherwise it will print
-                a warning if we fail to start the API server.
-        """
+        if self._ray_params.include_dashboard is None:
+            # Default
+            raise_on_failure = False
+        else:
+            raise_on_failure = self._ray_params.include_dashboard
+
         # Only redirect logs to .err. .err file is only useful when the
         # component has an unexpected output to stdout/stderr.
         _, stderr_file = self.get_log_file_handles(
@@ -1419,17 +1417,6 @@ class Node:
 
         if self._ray_params.ray_client_server_port:
             self.start_ray_client_server()
-
-        if self._ray_params.include_dashboard is None:
-            # Default
-            raise_on_api_server_failure = False
-        else:
-            raise_on_api_server_failure = self._ray_params.include_dashboard
-
-        self.start_api_server(
-            include_dashboard=self._ray_params.include_dashboard,
-            raise_on_failure=raise_on_api_server_failure,
-        )
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
