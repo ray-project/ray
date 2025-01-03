@@ -54,7 +54,6 @@ async def test_working_dir_cleanup(tmpdir, ray_start_regular):
     plugin = WorkingDirPlugin(tmpdir, gcs_aio_client)
     await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
 
-    print(f"tmpdir {tmpdir}")
     files = os.listdir(f"{tmpdir}/working_dir_files")
 
     # Iterate over the files and storing creation metadata.
