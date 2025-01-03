@@ -171,16 +171,6 @@ def configure_log_file(out_file, err_file):
     )
 
 
-def configure_log_file_with_pipe(out_pipe_write_fd: int, err_pipe_write_fd: int):
-    stdout_fileno = sys.stdout.fileno()
-    stderr_fileno = sys.stderr.fileno()
-    # C++ logging requires redirecting the stdout file descriptor. Note that
-    # dup2 will automatically close the old file descriptor before overriding
-    # it.
-    os.dup2(out_pipe_write_fd, stdout_fileno)
-    os.dup2(err_pipe_write_fd, stderr_fileno)
-
-
 class WorkerStandardStreamDispatcher:
     def __init__(self):
         self.handlers = []
