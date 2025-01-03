@@ -1659,7 +1659,7 @@ The preceding example illustrates the flexibility of RLlib's Offline RL API for 
     oplr = TextOfflinePreLearner(
         config=AlgorithmConfig(),
         spaces=(
-            gym.spaces.Discrete(len(vocabu)), 
+            gym.spaces.Discrete(len(vocabulary)),
             gym.spaces.Box(0.0, 1.0, (len(vocabulary), 1, 1), np.float32)),
         module_spec=module_spec,
         vocabulary=vocabulary,
