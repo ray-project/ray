@@ -1,4 +1,5 @@
 import atexit
+import datetime
 import faulthandler
 import functools
 import inspect
@@ -63,6 +64,7 @@ from ray._raylet import ObjectRefGenerator, TaskID
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private import console_file_redirect
 from ray._private.function_manager import FunctionActorManager
 
 from ray._private.inspect_util import is_cython
@@ -1467,6 +1469,24 @@ def init(
         )
         logging_config._apply()
 
+    # Redirect console log to a console_{date_str}.log under the current dir in the case
+    # where:
+    # (1) RAY_DRIVER_CONSOLE_LOG_TO_FILE is set to 1.
+    # And (2) The job is not submitted using the job API (meaning the stdout and stderr
+    # are not redirected).
+    # At the same time, spun up a thread to tail the log and output to the console.
+    driver_console_log_to_file_env_var = os.environ.get(
+        ray_constants.RAY_DRIVER_CONSOLE_LOG_TO_FILE
+    )
+    if (
+        driver_console_log_to_file_env_var == "1"
+        and sys.stdout is sys.__stdout__
+        and sys.stderr is sys.__stderr__
+    ):
+        date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
+        filepath = os.path.join(os.getcwd(), f"console_{date_str}.log")
+        console_file_redirect.setup_console_redirection_to_file(filepath)
+
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
         "_enable_object_reconstruction", False
@@ -2544,6 +2564,77 @@ def connect(
 
     # Mark the worker as connected.
     worker.set_is_connected(True)
+
+
+# def _tail_console_log():
+#     console_log_path = os.path.join("test_log.log")
+
+#     with open("test_output.log", "w") as f:
+#         for lines in file_tail_iterator(console_log_path):
+#             if lines is not None:
+#                 for line in lines:
+#                     f.write(line)
+#             else:
+#                 return
+
+# MAX_CHUNK_LINE_LENGTH = 10
+# MAX_CHUNK_CHAR_LENGTH = 20000
+
+# def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
+#     """Yield lines from a file as it's written.
+
+#     Returns lines in batches of up to 10 lines or 20000 characters,
+#     whichever comes first. If it's a chunk of 20000 characters, then
+#     the last line that is yielded could be an incomplete line.
+#     New line characters are kept in the line string.
+
+#     Returns None until the file exists or if no new line has been written.
+#     """
+#     if not isinstance(path, str):
+#         raise TypeError(f"path must be a string, got {type(path)}.")
+
+#     while not os.path.exists(path):
+#         logger.debug(f"Path {path} doesn't exist yet.")
+#         yield None
+
+#     EOF = ""
+
+#     with open(path, "r") as f:
+#         lines = []
+
+#         chunk_char_count = 0
+#         curr_line = None
+
+#         while True:
+#             # We want to flush current chunk in following cases:
+#             #   - We accumulated 10 lines
+#             #   - We accumulated at least MAX_CHUNK_CHAR_LENGTH total chars
+#             #   - We reached EOF
+#             if (
+#                 len(lines) >= 10
+#                 or chunk_char_count > MAX_CHUNK_CHAR_LENGTH
+#                 or curr_line == EOF
+#             ):
+#                 # Too many lines, return 10 lines in this chunk, and then
+#                 # continue reading the file.
+#                 yield lines or None
+
+#                 lines = []
+#                 chunk_char_count = 0
+
+#             # Read next line
+#             curr_line = f.readline()
+
+#             # `readline` will return
+#             #   - '' for EOF
+#             #   - '\n' for an empty line in the file
+#             if curr_line != EOF:
+#                 # Add line to current chunk
+#                 lines.append(curr_line)
+#                 chunk_char_count += len(curr_line)
+#             else:
+#                 # If EOF is reached sleep for 1s before continuing
+#                 time.sleep(1)
 
 
 def disconnect(exiting_interpreter=False):
