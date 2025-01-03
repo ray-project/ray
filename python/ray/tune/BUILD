@@ -11,6 +11,7 @@ doctest(
             "impl/test_utils.py",
             # Already covered by Ray Train doctests
             "context.py",
+            "trainable/trainable_fn_utils.py",
             # Deprecated
             "automl/**",
             "cluster_info.py",
