@@ -62,6 +62,9 @@ def main(args: argparse.Namespace) -> None:
         for _ in ds.iter_internal_ref_bundles():
             pass
 
+        # Report arguments for the benchmark.
+        return vars(args)
+
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
 

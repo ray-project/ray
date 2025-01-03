@@ -50,6 +50,9 @@ def main(args):
         ]
         ray.get(future)
 
+        # Report arguments for the benchmark.
+        return vars(args)
+
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
 

@@ -15,7 +15,7 @@ METADATA_PATH = "s3://anyscale-imagenet/metadata.parquet"
 
 def main():
     benchmark = Benchmark()
-    benchmark.run_fn("imagenet", benchmark_fn)
+    benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
 
 
