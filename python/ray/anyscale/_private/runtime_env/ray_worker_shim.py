@@ -42,6 +42,7 @@ async def main(working_dir: str):
         for name, value in os.environ.items()
         if name.startswith("RAY_")
         or name.startswith("ANYSCALE_")
+        or name == "PYTHONPATH"
         or name in known_args.env_var_names
     }
     data = {
