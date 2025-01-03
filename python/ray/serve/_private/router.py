@@ -418,7 +418,6 @@ class AsyncioRouter:
         return self._running_replicas_populated
 
     def update_running_replicas(self, deployment_metadata: DeploymentMetadata):
-        logger.info(f"update metadata, {deployment_metadata}")
         self._deployment_available = deployment_metadata.available
 
         running_replicas = deployment_metadata.running_replicas

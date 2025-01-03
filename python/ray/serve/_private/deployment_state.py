@@ -1397,7 +1397,7 @@ class DeploymentState:
     @property
     def is_available(self) -> bool:
         """Whether the deployment is available for handles to send requests to."""
-        return self._curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        return self._curr_status_info.status != DeploymentStatus.DEPLOY_FAILED
 
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {replica.actor_id for replica in self._replicas.get()}
@@ -1483,6 +1483,7 @@ class DeploymentState:
             }
         )
         self._last_broadcasted_running_replica_infos = running_replica_infos
+        self._last_broadcasted_availability = self.is_available
         self._multiplexed_model_ids_updated = False
 
     def broadcast_deployment_config_if_changed(self) -> None:
