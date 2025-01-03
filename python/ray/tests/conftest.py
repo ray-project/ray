@@ -44,7 +44,7 @@ from ray._private.test_utils import (
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
-logger = logging.getLogger("ray." + __name__)
+logger = logging.getLogger(__name__)
 
 START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
 
