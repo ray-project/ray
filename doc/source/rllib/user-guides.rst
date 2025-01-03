@@ -13,7 +13,7 @@ User Guides
 
     rllib-advanced-api
     rllib-models
-    rllib-checkpointing
+    checkpointing
     single-agent-episode
     rllib-replay-buffers
     rllib-offline
@@ -53,7 +53,7 @@ RLlib Feature Guides
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-checkpointing
+        .. button-ref:: checkpointing
 
             Checkpointing your experiments and models
 
