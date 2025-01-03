@@ -10,6 +10,30 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
+def _is_filters_string_safe(filters_str: str) -> bool:
+    in_string = False
+    escape_next = False
+    for c in filters_str:
+        if in_string:
+            # If we're inside a string, check if we're closing it.
+            if c == "'" and not escape_next:
+                in_string = False
+            escape_next = (c == "\\") and not escape_next
+        else:
+            # If we're not in a string, entering one if we see a single quote
+            if c == "'":
+                in_string = True
+                escape_next = False
+            # Disallow semicolon if we're not in a string
+            elif c == ";":
+                return False
+            else:
+                escape_next = False
+    # If we end inside a string, it's suspicious, but let's allow
+    # it to be further validated by the DB. Just return True here.
+    return True
+
+
 @DeveloperAPI
 class ClickHouseDatasource(Datasource):
     """
@@ -18,6 +42,8 @@ class ClickHouseDatasource(Datasource):
 
     NUM_SAMPLE_ROWS = 100
     MIN_ROWS_PER_READ_TASK = 50
+    _BASE_QUERY = "SELECT {select_clause} FROM {table}"
+    _EXPLAIN_FILTERS_QUERY = "EXPLAIN SELECT 1 FROM {table} WHERE {filters_clause}"
     _SIZE_ESTIMATE_QUERY = "SELECT SUM(byteSize(*)) AS estimate FROM ({query})"
     _COUNT_ESTIMATE_QUERY = "SELECT COUNT(*) AS estimate FROM ({query})"
     _SAMPLE_BLOCK_QUERY = "{query} LIMIT {limit_row_count}"
@@ -36,6 +62,7 @@ class ClickHouseDatasource(Datasource):
         table: str,
         dsn: str,
         columns: Optional[List[str]] = None,
+        filters: Optional[str] = None,
         order_by: Optional[Tuple[List[str], bool]] = None,
         client_settings: Optional[Dict[str, Any]] = None,
         client_kwargs: Optional[Dict[str, Any]] = None,
@@ -52,6 +79,11 @@ class ClickHouseDatasource(Datasource):
                 <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
             columns: Optional List of columns to select from the data source.
                 If no columns are specified, all columns will be selected by default.
+            filters: Optional SQL filters clause string that will be used in the
+                WHERE statement (e.g., "label = 2 AND text IS NOT NULL").
+                These filters must be valid for use in a ClickHouse WHERE clause.
+                see `ClickHouse SQL WHERE Clause doc
+                <https://clickhouse.com/docs/en/sql-reference/statements/select/where>`_.
             order_by: Optional Tuple containing a list of columns to order by
                 and a boolean indicating the order. Note: order_by is required to
                 support parallelism.
@@ -67,6 +99,7 @@ class ClickHouseDatasource(Datasource):
         self._table = table
         self._dsn = dsn
         self._columns = columns
+        self._filters = filters
         self._order_by = order_by
         self._client_settings = client_settings or {}
         self._client_kwargs = client_kwargs or {}
@@ -82,9 +115,38 @@ class ClickHouseDatasource(Datasource):
             **self._client_kwargs or {},
         )
 
+    def _validate_filters(self):
+        if not self._filters:
+            return
+        # Minimal lexical check (regex or manual approach for semicolons, etc.).
+        if not _is_filters_string_safe(self._filters):
+            raise ValueError(
+                f"invalid characters outside of "
+                f"string literals in filters: {self._filters}"
+            )
+        # Test "EXPLAIN" query to confirm parse-ability and catch expression errors.
+        client = self._init_client()
+        try:
+            test_query = self._EXPLAIN_FILTERS_QUERY.format(
+                table=self._table,
+                filters_clause=self._filters,
+            )
+            client.query(test_query)
+        except Exception as e:
+            raise ValueError(
+                f"Invalid filters expression: {self._filters}. Error: {e}",
+            )
+        finally:
+            client.close()
+
     def _generate_query(self) -> str:
-        select_clause = ", ".join(self._columns) if self._columns else "*"
-        query = f"SELECT {select_clause} FROM {self._table}"
+        query = self._BASE_QUERY.format(
+            select_clause=", ".join(self._columns) if self._columns else "*",
+            table=self._table,
+        )
+        if self._filters:
+            self._validate_filters()
+            query += f" WHERE {self._filters}"
         if self._order_by:
             columns, desc = self._order_by
             direction = " DESC" if desc else ""
@@ -191,7 +253,7 @@ class ClickHouseDatasource(Datasource):
 
         Returns:
             Estimated in-memory data size in bytes, or
-             None if the estimation cannot be performed.
+            None if the estimation cannot be performed.
         """
         return self._get_estimate_size()
 
@@ -266,9 +328,9 @@ class ClickHouseDatasource(Datasource):
         read_tasks = []
         offset = 0
         for i in range(parallelism):
-            num_rows = num_rows_per_block
+            this_block_size = num_rows_per_block
             if i < num_blocks_with_extra_row:
-                num_rows += 1
-            read_tasks.append(_get_read_task(num_rows, offset, True))
-            offset += num_rows
+                this_block_size += 1
+            read_tasks.append(_get_read_task(this_block_size, offset, True))
+            offset += this_block_size
         return read_tasks
