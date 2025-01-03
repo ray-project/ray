@@ -283,6 +283,7 @@ def start_redis_instance(
         command += ["--save", "", "--appendonly", "no"]
     if db_dir is not None:
         command += ["--dir", str(db_dir)]
+
     process_info = ray._private.services.start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REDIS_SERVER,
@@ -302,8 +303,8 @@ def start_redis_instance(
                     slots = [str(i) for i in range(16384)]
                     redis_cli.cluster("addslots", *slots)
                 else:
-                    print(redis_cli.cluster("meet", "127.0.0.1", str(replica_of)))
-                    print(redis_cli.cluster("replicate", leader_id))
+                    logger.info(redis_cli.cluster("meet", "127.0.0.1", str(replica_of)))
+                    logger.info(redis_cli.cluster("replicate", leader_id))
                 node_id = redis_cli.cluster("myid")
                 break
             except (
@@ -312,8 +313,21 @@ def start_redis_instance(
             ) as e:
                 from time import sleep
 
-                print(f"Waiting for redis to be up {e} ")
+                logger.info(
+                    f"Waiting for redis to be up. Check failed with error: {e}. "
+                    "Will retry in 0.1s"
+                )
+
+                if process_info.process.poll() is not None:
+                    raise Exception(
+                        f"Redis process exited unexpectedly: {process_info}"
+                    )
+
                 sleep(0.1)
+
+    logger.info(
+        f"Redis started with node_id {node_id} and pid {process_info.process.pid}"
+    )
 
     return node_id, process_info
 
