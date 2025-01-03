@@ -38,6 +38,7 @@ void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
     rpc::autoscaler::GetClusterResourceStateReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   RAY_CHECK(request.last_seen_cluster_resource_state_version() <=
             last_cluster_resource_state_version_);
 
@@ -53,6 +54,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     rpc::autoscaler::ReportAutoscalingStateRequest request,
     rpc::autoscaler::ReportAutoscalingStateReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   // TODO(rickyx): We should handle the infeasible requests in the future.
   // Right now, this info will only be used for observability, i.e. ray status.
 
@@ -85,6 +87,7 @@ void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
     rpc::autoscaler::RequestClusterResourceConstraintRequest request,
     rpc::autoscaler::RequestClusterResourceConstraintReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   cluster_resource_constraint_ =
       std::move(*request.mutable_cluster_resource_constraint());
 
@@ -97,6 +100,7 @@ void GcsAutoscalerStateManager::HandleGetClusterStatus(
     rpc::autoscaler::GetClusterStatusRequest request,
     rpc::autoscaler::GetClusterStatusReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   auto ray_resource_state = reply->mutable_cluster_resource_state();
   MakeClusterResourceStateInternal(ray_resource_state);
 
@@ -108,6 +112,7 @@ void GcsAutoscalerStateManager::HandleGetClusterStatus(
 
 void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
     rpc::autoscaler::ClusterResourceState *state) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   state->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
   state->set_cluster_resource_state_version(
       IncrementAndGetNextClusterResourceStateVersion());
@@ -121,6 +126,7 @@ void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
 
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   // Get the gang resource requests from the placement group load.
   auto placement_group_load = gcs_placement_group_manager_.GetPlacementGroupLoad();
   if (!placement_group_load || placement_group_load->placement_group_data_size() == 0) {
@@ -172,6 +178,7 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
 
 void GcsAutoscalerStateManager::GetClusterResourceConstraints(
     rpc::autoscaler::ClusterResourceState *state) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   if (cluster_resource_constraint_.has_value()) {
     state->add_cluster_resource_constraints()->CopyFrom(
         cluster_resource_constraint_.value());
@@ -179,6 +186,7 @@ void GcsAutoscalerStateManager::GetClusterResourceConstraints(
 }
 
 void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   NodeID node_id = NodeID::FromBinary(node.node_id());
   auto node_info =
       node_resource_info_
@@ -192,6 +200,7 @@ void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
 
 void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
     const rpc::ResourcesData &data) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   NodeID node_id = NodeID::FromBinary(data.node_id());
   auto iter = node_resource_info_.find(node_id);
   if (iter == node_resource_info_.end()) {
@@ -222,6 +231,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
 
 absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
 GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
       aggregate_load;
   for (const auto &info : node_resource_info_) {
@@ -231,6 +241,7 @@ GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
 };
 
 void GcsAutoscalerStateManager::Initialize(const GcsInitData &gcs_init_data) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   for (const auto &entry : gcs_init_data.Nodes()) {
     if (entry.second.state() == rpc::GcsNodeInfo::ALIVE) {
       OnNodeAdd(entry.second);
@@ -240,6 +251,7 @@ void GcsAutoscalerStateManager::Initialize(const GcsInitData &gcs_init_data) {
 
 void GcsAutoscalerStateManager::GetPendingResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   auto aggregate_load = GetAggregatedResourceLoad();
   for (const auto &[shape, demand] : aggregate_load) {
     auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size() +
@@ -255,6 +267,7 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
 
 void GcsAutoscalerStateManager::GetNodeStates(
     rpc::autoscaler::ClusterResourceState *state) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   auto populate_node_state = [&](const rpc::GcsNodeInfo &gcs_node_info) {
     auto node_state_proto = state->add_node_states();
     node_state_proto->set_node_id(gcs_node_info.node_id());
@@ -348,6 +361,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeRequest request,
     rpc::autoscaler::DrainNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO).WithField(node_id)
       << "HandleDrainNode, reason: " << request.reason_message()
@@ -410,6 +424,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
 }
 
 std::string GcsAutoscalerStateManager::DebugString() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   std::ostringstream stream;
   stream << "GcsAutoscalerStateManager: "
          << "\n- last_seen_autoscaler_state_version_: "
