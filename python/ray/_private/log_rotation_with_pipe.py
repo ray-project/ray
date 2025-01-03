@@ -84,7 +84,9 @@ def open_pipe_with_rotation(
                         cond.notify()
 
     # Setup logging thread, which continues read content out of log buffer and persist
-    # via logger. Two threads are used here to avoid blocking write from application.
+    # via logger.
+    # Two threads are used here to make sure continuous read from pipe thus avoid
+    # blocking write from application.
     def dump_log_content_to_buffer():
         logger = logging.getLogger()
 
