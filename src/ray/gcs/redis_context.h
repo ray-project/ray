@@ -43,7 +43,7 @@ using rpc::TablePrefix;
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
  public:
-  explicit CallbackReply(redisReply *redis_reply);
+  explicit CallbackReply(const redisReply &);
 
   /// Whether this reply is `nil` type reply.
   bool IsNil() const;
@@ -74,10 +74,10 @@ class CallbackReply {
 
  private:
   /// Parse redis reply as string array or scan array.
-  void ParseAsStringArrayOrScanArray(redisReply *redis_reply);
+  void ParseAsStringArrayOrScanArray(const redisReply &redis_reply);
 
   /// Parse redis reply as string array.
-  void ParseAsStringArray(redisReply *redis_reply);
+  void ParseAsStringArray(const redisReply &redis_reply);
 
   /// Flag indicating the type of reply this represents.
   int reply_type_;
@@ -110,10 +110,10 @@ class RedisContext;
 struct RedisRequestContext {
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
-                      RedisAsyncContext *context,
+                      RedisContext &context,
                       std::vector<std::string> args);
 
-  static void RedisResponseFn(struct redisAsyncContext *async_context,
+  static void RedisResponseFn(redisAsyncContext *async_context,
                               void *raw_reply,
                               void *privdata);
 
@@ -122,7 +122,7 @@ struct RedisRequestContext {
  private:
   ExponentialBackOff exp_back_off_;
   instrumented_io_context &io_service_;
-  RedisAsyncContext *redis_context_;
+  RedisContext &redis_context_;
   size_t pending_retries_;
   RedisCallback callback_;
   absl::Time start_time_;
@@ -144,6 +144,8 @@ class RedisContext {
                  const std::string &password,
                  bool enable_ssl = false);
 
+  Status Reconnect();
+
   /// Disconnect from the server.
   void Disconnect();
 
@@ -160,24 +162,54 @@ class RedisContext {
   void RunArgvAsync(std::vector<std::string> args,
                     RedisCallback redis_callback = nullptr);
 
+  void ResetSyncContext();
+  void ResetAsyncContext();
+
   redisContext *sync_context() {
     RAY_CHECK(context_);
     return context_.get();
   }
 
   RedisAsyncContext &async_context() {
-    RAY_CHECK(redis_async_context_);
+    // redis_async_context_ is nullptr means the connection is lost because it is reset in
+    // the disconnect callback. If the connection is lost, we need to reconnect before
+    // sending the request.
+    if (redis_async_context_ == nullptr) {
+      RAY_CHECK_OK(this->Reconnect());
+    }
     return *redis_async_context_;
   }
 
   instrumented_io_context &io_service() { return io_service_; }
 
  private:
+  bool IsRedisSentinel();
+
+  // Connect using saved arguments.
+  Status Connect();
+
+  Status ConnectToIPAddress(const std::string &ip_address, int port);
+
+  Status ConnectRedisCluster();
+
+  Status ConnectRedisSentinel();
+
   instrumented_io_context &io_service_;
 
   std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
+
+  // Remember Connect function arguments for reconnection
+  std::string address_;
+  int port_;
+  std::string username_;
+  std::string password_;
+  bool enable_ssl_;
+
+  friend void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
+                                                   void *raw_reply,
+                                                   void *privdata);
 };
 
 }  // namespace gcs
