@@ -212,11 +212,11 @@ class DAGNode(DAGNodeBase):
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
-            _max_inflight_executions: The maximum number of in-flight requests that
-                are allowed to be sent to this DAG. Before submitting more requests,
-                the caller is responsible for calling ray.get to clear finished
-                in-flight requests.
-            overlap_gpu_communication: Whether to overlap GPU communication with
+            _max_inflight_executions: The maximum number of in-flight executions that
+                can be submitted via `execute` or `execute_async` before consuming
+                the output using `ray.get()`. If the caller submits more executions,
+                `RayCgraphCapacityExceeded` is raised.
+            _overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution. If True, the communication
                 and computation can be overlapped, which can improve the
                 performance of the DAG execution. If None, the default value
