@@ -71,6 +71,15 @@ def _detect_highest_datetime_precision(datetime_list: List[datetime]) -> str:
 def _convert_datetime_list_to_array(datetime_list: List[datetime]) -> np.ndarray:
     """Convert a list of datetime objects to a NumPy array of datetime64 with proper
     precision.
+
+    Args:
+        datetime_list (List[datetime]): A list of `datetime` objects to be converted.
+        Each `datetime` object represents a specific point in time.
+
+    Returns:
+        np.ndarray: A NumPy array containing the `datetime64` values of the datetime
+        objects from the input list, with the appropriate precision (e.g., nanoseconds,
+        microseconds, milliseconds, etc.).
     """
     # Detect the highest precision for the datetime objects
     precision = _detect_highest_datetime_precision(datetime_list)
