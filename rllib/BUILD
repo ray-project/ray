@@ -2307,6 +2307,14 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters=3"]
 )
 py_test(
+    name = "examples/envs/async_gym_env_vectorization",
+    main = "examples/envs/async_gym_env_vectorization.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/async_gym_env_vectorization.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--vectorize-mode=BOTH"]
+)
+py_test(
     name = "examples/envs/custom_env_render_method",
     main = "examples/envs/custom_env_render_method.py",
     tags = ["team:rllib", "exclusive", "examples"],
