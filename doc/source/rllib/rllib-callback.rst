@@ -138,26 +138,28 @@ Here is a high-level overview of all supported events in RLlib's callbacks syste
 
 .. dropdown:: Click here to see all Algorithm-bound methods of ``RLlibCallback``
     .. autosummary::
+        :no-index:
         :nosignatures:
         :toctree: doc/
 
-        ~RLlibCallback.on_algorithm_init
-        ~RLlibCallback.on_evaluate_start
-        ~RLlibCallback.on_evaluate_end
-        ~RLlibCallback.on_env_runners_recreated
-        ~RLlibCallback.on_checkpoint_loaded
+        RLlibCallback.on_algorithm_init
+        RLlibCallback.on_evaluate_start
+        RLlibCallback.on_evaluate_end
+        RLlibCallback.on_env_runners_recreated
+        RLlibCallback.on_checkpoint_loaded
 
 .. dropdown:: Click here to see all EnvRunner-bound methods of ``RLlibCallback``
     .. autosummary::
+        :no-index:
         :nosignatures:
         :toctree: doc/
 
-        ~RLlibCallback.on_environment_created
-        ~RLlibCallback.on_episode_created
-        ~RLlibCallback.on_episode_start
-        ~RLlibCallback.on_episode_step
-        ~RLlibCallback.on_episode_end
-        ~RLlibCallback.on_sample_end
+        RLlibCallback.on_environment_created
+        RLlibCallback.on_episode_created
+        RLlibCallback.on_episode_start
+        RLlibCallback.on_episode_step
+        RLlibCallback.on_episode_end
+        RLlibCallback.on_sample_end
 
 
 Chaining callbacks
@@ -273,7 +275,7 @@ controlled fashion through a custom callback could be a good compromise.
         print(dqn.train())
 
 .. tip::
-   See :ref:`here for the exact call signatures and expected argument types <rllib-callback-reference-algo-bound>`
+   See :ref:`here for the exact call signatures and expected argument types <rllib-callback-reference-algorithm-bound>`
    of all available callbacks.
 
 
@@ -359,6 +361,6 @@ Also take a look at this more complex example on `how to generate and log a PacM
     evaluation EnvRunner actors and False on training ones.
 
 .. tip::
-   See :ref:`here for the exact call signatures and expected argument types <rllib-callback-reference-algo-bound>`
+   See :ref:`here for the exact call signatures and expected argument types <rllib-callback-reference-algorithm-bound>`
    of all available callbacks.
 

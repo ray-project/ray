@@ -74,8 +74,6 @@ Methods you should implement for custom behavior
     actors and possibly :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances as well.
 
 
-.. _rllib-callback-reference-algo-bound:
-
 .. currentmodule:: ray.rllib.callbacks.callbacks
 
 RLlibCallback
@@ -86,6 +84,9 @@ RLlibCallback
     :toctree: doc/
 
     RLlibCallback
+
+
+.. _rllib-callback-reference-algorithm-bound:
 
 Callbacks invoked in Algorithm
 ------------------------------
