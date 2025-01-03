@@ -5,7 +5,6 @@ import time
 import unittest
 
 import ray
-from ray.util.state import list_actors
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.algorithms.sac.sac import SACConfig
@@ -188,43 +187,6 @@ class ForwardHealthCheckToEnvWorkerMultiAgent(MultiAgentEnvRunner):
         return super().ping()
 
 
-def wait_for_restore(num_restarting_allowed=0):
-    """Wait for Ray actor fault tolerence to restore all failed workers.
-
-    Args:
-        num_restarting_allowed: Number of actors that are allowed to be
-            in "RESTARTING" state. This is because some actors may
-            hang in __init__().
-    """
-    time.sleep(15.0)
-    return
-    while True:
-        states = [
-            a["state"]
-            for a in list_actors(
-                filters=[("class_name", "=", "ForwardHealthCheckToEnvWorker")]
-            )
-        ]
-        finished = True
-        for s in states:
-            # Wait till all actors are either "ALIVE" (restored),
-            # or "DEAD" (cancelled. these actors are from other
-            # finished test cases) or "RESTARTING" (being restored).
-            if s not in ["ALIVE", "DEAD", "RESTARTING"]:
-                finished = False
-                break
-
-        restarting = [s for s in states if s == "RESTARTING"]
-        if len(restarting) > num_restarting_allowed:
-            finished = False
-
-        print("waiting ... ", states)
-        if finished:
-            break
-        # Otherwise, wait a bit.
-        time.sleep(0.5)
-
-
 def on_algorithm_init(algorithm, **kwargs):
     # Add a custom module to algorithm.
     spec = algorithm.config.get_default_rl_module_spec()
@@ -368,7 +330,7 @@ class TestWorkerFailures(unittest.TestCase):
         # This should also work several times.
         for _ in range(2):
             algo.train()
-            wait_for_restore()
+            time.sleep(15.0)
             algo.restore_workers(algo.env_runner_group)
             algo.restore_workers(algo.eval_env_runner_group)
 
@@ -600,7 +562,7 @@ class TestWorkerFailures(unittest.TestCase):
         self.assertEqual(algo.env_runner_group.num_remote_worker_restarts(), 0)
 
         algo.train()
-        wait_for_restore()
+        time.sleep(15.0)
         algo.restore_workers(algo.env_runner_group)
 
         # After training, still 2 healthy workers.
@@ -682,7 +644,7 @@ class TestWorkerFailures(unittest.TestCase):
         self.assertEqual(algo.eval_env_runner_group.num_remote_worker_restarts(), 0)
 
         algo.train()
-        wait_for_restore()
+        time.sleep(15.0)
         algo.restore_workers(algo.env_runner_group)
         algo.restore_workers(algo.eval_env_runner_group)
 
@@ -767,7 +729,7 @@ class TestWorkerFailures(unittest.TestCase):
         self.assertEqual(algo.eval_env_runner_group.num_remote_worker_restarts(), 0)
 
         algo.train()
-        wait_for_restore()
+        time.sleep(15.0)
         algo.restore_workers(algo.eval_env_runner_group)
 
         # Everything still healthy. And all workers are restarted.
@@ -839,7 +801,7 @@ class TestWorkerFailures(unittest.TestCase):
         self.assertEqual(algo.env_runner_group.num_remote_worker_restarts(), 0)
 
         algo.train()
-        wait_for_restore(num_restarting_allowed=1)
+        time.sleep(15.0)
         # Most importantly, training progresses fine b/c the stalling worker is
         # ignored via a timeout.
         algo.train()

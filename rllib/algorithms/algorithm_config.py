@@ -318,6 +318,9 @@ class AlgorithmConfig(_Config):
         self.env_runner_cls = None
         self.num_env_runners = 0
         self.num_envs_per_env_runner = 1
+        # TODO (sven): Once new ormsgpack system in place, reaplce the string
+        #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
+        self.gym_env_vectorize_mode = "SYNC"
         self.num_cpus_per_env_runner = 1
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
@@ -904,25 +907,15 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
-        # Check callbacks settings.
+        self._validate_env_runner_settings()
         self._validate_callbacks_settings()
-        # Check framework specific settings.
         self._validate_framework_settings()
-        # Check resources specific settings.
         self._validate_resources_settings()
-        # Check multi-agent specific settings.
         self._validate_multi_agent_settings()
-        # Check input specific settings.
         self._validate_input_settings()
-        # Check evaluation specific settings.
         self._validate_evaluation_settings()
-        # Check offline specific settings (new API stack).
         self._validate_offline_settings()
-
-        # Check new API stack specific settings.
         self._validate_new_api_stack_settings()
-
-        # Check to-be-deprecated settings (however that are still in use).
         self._validate_to_be_deprecated_settings()
 
     def build_algo(
@@ -1738,6 +1731,7 @@ class AlgorithmConfig(_Config):
         env_runner_cls: Optional[type] = NotProvided,
         num_env_runners: Optional[int] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
+        gym_env_vectorize_mode: Optional[str] = NotProvided,
         num_cpus_per_env_runner: Optional[int] = NotProvided,
         num_gpus_per_env_runner: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_env_runner: Optional[dict] = NotProvided,
@@ -1794,6 +1788,11 @@ class AlgorithmConfig(_Config):
                 (vector-wise) per EnvRunner. This enables batching when computing
                 actions through RLModule inference, which can improve performance
                 for inference-bottlenecked workloads.
+            gym_env_vectorize_mode: The gymnasium vectorization mode for vector envs.
+                Must be a `gymnasium.envs.registration.VectorizeMode` (enum) value.
+                Default is SYNC. Set this to ASYNC to parallelize the individual sub
+                environments within the vector. This can speed up your EnvRunners
+                significantly when using heavier environments.
             num_cpus_per_env_runner: Number of CPUs to allocate per EnvRunner.
             num_gpus_per_env_runner: Number of GPUs to allocate per EnvRunner. This can
                 be fractional. This is usually needed only if your env itself requires a
@@ -1974,7 +1973,8 @@ class AlgorithmConfig(_Config):
                     "larger 0!"
                 )
             self.num_envs_per_env_runner = num_envs_per_env_runner
-
+        if gym_env_vectorize_mode is not NotProvided:
+            self.gym_env_vectorize_mode = gym_env_vectorize_mode
         if num_cpus_per_env_runner is not NotProvided:
             self.num_cpus_per_env_runner = num_cpus_per_env_runner
         if num_gpus_per_env_runner is not NotProvided:
@@ -4381,6 +4381,18 @@ class AlgorithmConfig(_Config):
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
     # -----------------------------------------------------------
+    def _validate_env_runner_settings(self) -> None:
+        allowed_vectorize_modes = set(
+            list(gym.envs.registration.VectorizeMode.__members__.keys())
+            + list(gym.envs.registration.VectorizeMode.__members__.values())
+        )
+        if self.gym_env_vectorize_mode not in allowed_vectorize_modes:
+            raise ValueError(
+                f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) must be a "
+                "member of `gym.envs.registration.VectorizeMode`! Allowed values "
+                f"are {allowed_vectorize_modes}."
+            )
+
     def _validate_callbacks_settings(self) -> None:
         """Validates callbacks settings."""
         # Old API stack:

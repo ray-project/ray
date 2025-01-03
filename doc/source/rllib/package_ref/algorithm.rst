@@ -24,7 +24,7 @@ and thus fully supports distributed hyperparameter tuning for RL.
     :align: left
 
     **A typical RLlib Algorithm object:** Algorithms are normally comprised of
-    N ``RolloutWorker`` that
+    N ``RolloutWorkers`` that
     orchestrated via a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object.
     Each worker own its own a set of ``Policy`` objects and their NN models per worker, plus a :py:class:`~ray.rllib.env.base_env.BaseEnv` instance per worker.
 
