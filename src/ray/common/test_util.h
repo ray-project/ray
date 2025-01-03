@@ -130,4 +130,20 @@ class TestSetupUtil {
   static void FlushRedisServer(int port);
 };
 
+template <size_t k, typename T>
+struct SaveArgToUniquePtrAction {
+  std::unique_ptr<T> *pointer;
+
+  template <typename... Args>
+  void operator()(const Args &...args) const {
+    *pointer = std::make_unique<T>(std::get<k>(std::tie(args...)));
+  }
+};
+
+// Copies the k-th arg with make_unique(arg<k>) into ptr.
+template <size_t k, typename T>
+SaveArgToUniquePtrAction<k, T> SaveArgToUniquePtr(std::unique_ptr<T> *ptr) {
+  return {ptr};
+}
+
 }  // namespace ray

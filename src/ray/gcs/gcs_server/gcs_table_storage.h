@@ -44,8 +44,9 @@ using rpc::WorkerTableData;
 template <typename Key, typename Data>
 class GcsTable {
  public:
-  explicit GcsTable(std::shared_ptr<StoreClient> store_client)
-      : store_client_(std::move(store_client)) {}
+  explicit GcsTable(std::shared_ptr<StoreClient> store_client,
+                    instrumented_io_context &io_context)
+      : store_client_(std::move(store_client)), io_context_(io_context) {}
 
   virtual ~GcsTable() = default;
 
@@ -88,6 +89,8 @@ class GcsTable {
  protected:
   std::string table_name_;
   std::shared_ptr<StoreClient> store_client_;
+  // All callbacks will be run in this io_context.
+  instrumented_io_context &io_context_;
 };
 
 /// \class GcsTableWithJobId
@@ -102,8 +105,9 @@ class GcsTable {
 template <typename Key, typename Data>
 class GcsTableWithJobId : public GcsTable<Key, Data> {
  public:
-  explicit GcsTableWithJobId(std::shared_ptr<StoreClient> store_client)
-      : GcsTable<Key, Data>(std::move(store_client)) {}
+  explicit GcsTableWithJobId(std::shared_ptr<StoreClient> store_client,
+                             instrumented_io_context &io_context)
+      : GcsTable<Key, Data>(std::move(store_client), io_context) {}
 
   /// Write data to the table asynchronously.
   ///
@@ -155,16 +159,18 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
 
 class GcsJobTable : public GcsTable<JobID, JobTableData> {
  public:
-  explicit GcsJobTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
+  explicit GcsJobTable(std::shared_ptr<StoreClient> store_client,
+                       instrumented_io_context &io_context)
+      : GcsTable(std::move(store_client), io_context) {
     table_name_ = TablePrefix_Name(TablePrefix::JOB);
   }
 };
 
 class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
  public:
-  explicit GcsActorTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTableWithJobId(std::move(store_client)) {
+  explicit GcsActorTable(std::shared_ptr<StoreClient> store_client,
+                         instrumented_io_context &io_context)
+      : GcsTableWithJobId(std::move(store_client), io_context) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
   }
 
@@ -174,8 +180,9 @@ class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
 
 class GcsActorTaskSpecTable : public GcsTableWithJobId<ActorID, TaskSpec> {
  public:
-  explicit GcsActorTaskSpecTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
+  explicit GcsActorTaskSpecTable(std::shared_ptr<StoreClient> store_client,
+                                 instrumented_io_context &io_context)
+      : GcsTableWithJobId(std::move(store_client), io_context) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR_TASK_SPEC);
   }
 
@@ -186,24 +193,27 @@ class GcsActorTaskSpecTable : public GcsTableWithJobId<ActorID, TaskSpec> {
 class GcsPlacementGroupTable
     : public GcsTable<PlacementGroupID, PlacementGroupTableData> {
  public:
-  explicit GcsPlacementGroupTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
+  explicit GcsPlacementGroupTable(std::shared_ptr<StoreClient> store_client,
+                                  instrumented_io_context &io_context)
+      : GcsTable(std::move(store_client), io_context) {
     table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP);
   }
 };
 
 class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
  public:
-  explicit GcsNodeTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
+  explicit GcsNodeTable(std::shared_ptr<StoreClient> store_client,
+                        instrumented_io_context &io_context)
+      : GcsTable(std::move(store_client), io_context) {
     table_name_ = TablePrefix_Name(TablePrefix::NODE);
   }
 };
 
 class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
  public:
-  explicit GcsWorkerTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
+  explicit GcsWorkerTable(std::shared_ptr<StoreClient> store_client,
+                          instrumented_io_context &io_context)
+      : GcsTable(std::move(store_client), io_context) {
     table_name_ = TablePrefix_Name(TablePrefix::WORKERS);
   }
 };
@@ -214,14 +224,17 @@ class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
 /// derive from this class and override class member variables.
 class GcsTableStorage {
  public:
-  explicit GcsTableStorage(std::shared_ptr<StoreClient> store_client)
+  explicit GcsTableStorage(std::shared_ptr<StoreClient> store_client,
+                           instrumented_io_context &io_context)
       : store_client_(std::move(store_client)) {
-    job_table_ = std::make_unique<GcsJobTable>(store_client_);
-    actor_table_ = std::make_unique<GcsActorTable>(store_client_);
-    actor_task_spec_table_ = std::make_unique<GcsActorTaskSpecTable>(store_client_);
-    placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
-    node_table_ = std::make_unique<GcsNodeTable>(store_client_);
-    worker_table_ = std::make_unique<GcsWorkerTable>(store_client_);
+    job_table_ = std::make_unique<GcsJobTable>(store_client_, io_context);
+    actor_table_ = std::make_unique<GcsActorTable>(store_client_, io_context);
+    actor_task_spec_table_ =
+        std::make_unique<GcsActorTaskSpecTable>(store_client_, io_context);
+    placement_group_table_ =
+        std::make_unique<GcsPlacementGroupTable>(store_client_, io_context);
+    node_table_ = std::make_unique<GcsNodeTable>(store_client_, io_context);
+    worker_table_ = std::make_unique<GcsWorkerTable>(store_client_, io_context);
   }
 
   virtual ~GcsTableStorage() = default;
@@ -276,8 +289,10 @@ class GcsTableStorage {
 /// that uses redis as storage.
 class RedisGcsTableStorage : public GcsTableStorage {
  public:
-  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client)
-      : GcsTableStorage(std::make_shared<RedisStoreClient>(std::move(redis_client))) {}
+  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client,
+                                instrumented_io_context &io_context)
+      : GcsTableStorage(std::make_shared<RedisStoreClient>(std::move(redis_client)),
+                        io_context) {}
 };
 
 /// \class InMemoryGcsTableStorage
@@ -285,9 +300,10 @@ class RedisGcsTableStorage : public GcsTableStorage {
 /// that uses memory as storage.
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
-  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
+  explicit InMemoryGcsTableStorage(instrumented_io_context &io_context)
       : GcsTableStorage(std::make_shared<ObservableStoreClient>(
-            std::make_unique<InMemoryStoreClient>(main_io_service))) {}
+                            std::make_unique<InMemoryStoreClient>()),
+                        io_context) {}
 };
 
 }  // namespace gcs
