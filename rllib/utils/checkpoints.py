@@ -685,7 +685,7 @@ def _is_dir(file_info: pyarrow.fs.FileInfo) -> bool:
     return file_info.type == pyarrow.fs.FileType.Directory
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 def get_checkpoint_info(
     checkpoint: Union[str, Checkpoint],
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,

@@ -115,7 +115,7 @@ and
 
 .. tip::
     You can create custom logic that can run on each evaluation episode by checking
-    if the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` is in
+    if the ``RolloutWorker`` is in
     evaluation mode, through accessing ``worker.policy_config["in_evaluation"]``.
     You can then implement this check in ``on_episode_start()`` or ``on_episode_end()``
     in your subclass of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`.
