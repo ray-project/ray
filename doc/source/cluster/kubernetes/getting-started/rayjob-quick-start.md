@@ -78,9 +78,22 @@ Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the lates
 
 ## Step 3: Install a RayJob
 
+::::{tab-set}
+
+:::{tab-item} ARM64 (Apple silicon)
+```sh
+curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml | sed 's/2.9.0/2.9.0-aarch64/g' | kubectl apply -f -
+```
+:::
+
+:::{tab-item} x86-64 (Intel/Linux)
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml
 ```
+:::
+
+::::
+
 
 ## Step 4: Verify the Kubernetes cluster status
 
@@ -164,9 +177,25 @@ kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/r
 
 ## Step 7: Create a RayJob with `shutdownAfterJobFinishes` set to true
 
+::::{tab-set}
+
+:::{tab-item} ARM64 (Apple silicon)
+
+```sh
+curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.shutdown.yaml | sed 's/2.9.0/2.9.0-aarch64/g' | kubectl apply -f -
+```
+
+:::
+
+:::{tab-item} x86-64 (Intel/Linux)
+
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.shutdown.yaml
 ```
+
+:::
+
+::::
 
 The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`.
 Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job is not deleted
