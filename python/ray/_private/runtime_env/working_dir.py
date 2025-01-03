@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from contextlib import contextmanager
@@ -128,10 +129,7 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
     def __init__(
         self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
     ):
-        custom_working_dir = os.environ.get(
-            "RAY_WORKING_DIR", os.path.join(resources_dir, "working_dir_files")
-        )
-        self._resources_dir = custom_working_dir
+        self._resources_dir = os.path.join(resources_dir, "working_dir_files")
         self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
 
@@ -166,6 +164,16 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         local_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
+
+        # Copy working dir contents to RAY_WORKING_DIR if set
+        ray_working_dir = os.environ.get("RAY_WORKING_DIR")
+        if ray_working_dir and ray_working_dir != self._resources_dir:
+            try_to_create_directory(ray_working_dir)
+            if os.path.exists(local_dir):
+                # Copy contents preserving permissions
+                shutil.copytree(local_dir, ray_working_dir, dirs_exist_ok=True)
+                logger.debug(f"Copied working dir contents from {local_dir} to {ray_working_dir}")
+                
         return get_directory_size_bytes(local_dir)
 
     def modify_context(
