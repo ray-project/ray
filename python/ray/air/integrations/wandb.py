@@ -122,12 +122,12 @@ def setup_wandb(
     try:
         # Do a try-catch here if we are not in a train session
         session = get_session()
-        if session and rank_zero_only and session.get_world_rank() != 0:
+        if session and rank_zero_only and session.world_rank in (None, 0):
             return RunDisabled()
 
-        default_trial_id = session.get_trial_id()
-        default_trial_name = session.get_trial_name()
-        default_experiment_name = session.get_experiment_name()
+        default_trial_id = session.trial_id
+        default_trial_name = session.trial_name
+        default_experiment_name = session.experiment_name
 
     except RuntimeError:
         default_trial_id = None
@@ -420,7 +420,7 @@ class _WandbLoggingActor:
             except urllib.error.HTTPError as e:
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
-                logger.warn("Failed to log result to w&b: {}".format(str(e)))
+                logger.warning("Failed to log result to w&b: {}".format(str(e)))
         self._wandb.finish()
 
     def _handle_checkpoint(self, checkpoint_path: str):
