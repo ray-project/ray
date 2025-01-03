@@ -546,9 +546,16 @@ RAY_ENABLE_EXPORT_API_WRITE = env_bool("RAY_enable_export_api_write", False)
 # src/ray/protobuf/export_api/export_event.proto
 # Example config:
 # `export RAY_enable_export_api_write_config='["EXPORT_SUBMISSION_JOB"]'`
-RAY_ENABLE_EXPORT_API_WRITE_CONFIG = os.environ.get(
+RAY_ENABLE_EXPORT_API_WRITE_CONFIG_STR = os.environ.get(
     "RAY_enable_export_api_write_config", "[]"
 )
+try:
+    RAY_ENABLE_EXPORT_API_WRITE_CONFIG = json.loads(
+        RAY_ENABLE_EXPORT_API_WRITE_CONFIG_STR
+    )
+except Exception:
+    RAY_ENABLE_EXPORT_API_WRITE_CONFIG = None
+    logger.exception("Error parsing JSON for RAY_enable_export_api_write_config. ")
 
 RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
     "RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES", 100 * 1e6

@@ -157,14 +157,8 @@ def check_export_api_enabled(
     if ray_constants.RAY_ENABLE_EXPORT_API_WRITE:
         return True
     source_name = ExportEvent.SourceType.Name(source)
-    try:
-        ray_export_api_config_json = json.loads(
-            ray_constants.RAY_ENABLE_EXPORT_API_WRITE_CONFIG
-        )
-    except Exception:
-        global_logger.exception(
-            "Error parsing JSON for RAY_enable_export_api_write_config. "
-            f"No export events of source {source_name} will be written."
-        )
-        return False
-    return source_name in ray_export_api_config_json
+    return (
+        source_name in ray_constants.RAY_ENABLE_EXPORT_API_WRITE_CONFIG
+        if ray_constants.RAY_ENABLE_EXPORT_API_WRITE_CONFIG
+        else False
+    )

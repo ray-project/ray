@@ -54,7 +54,6 @@ async def test_check_export_api_enabled(call_ray_start, tmp_path):  # noqa: F811
 
     @ray.remote
     def test_check_export_api_enabled_remote():
-        from ray._private import ray_constants
         from ray._private.event.export_event_logger import check_export_api_enabled
         from ray.core.generated.export_event_pb2 import ExportEvent
 
@@ -91,7 +90,6 @@ async def test_check_export_api_enabled_global(call_ray_start, tmp_path):  # noq
 
     @ray.remote
     def test_check_export_api_enabled_remote():
-        from ray._private import ray_constants
         from ray._private.event.export_event_logger import check_export_api_enabled
         from ray.core.generated.export_event_pb2 import ExportEvent
 
@@ -101,6 +99,42 @@ async def test_check_export_api_enabled_global(call_ray_start, tmp_path):  # noq
         )
         success = success and check_export_api_enabled(
             ExportEvent.SourceType.EXPORT_ACTOR
+        )
+        return success
+
+    assert ray.get(test_check_export_api_enabled_remote.remote())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        {
+            "env": {
+                "RAY_enable_export_api_write_config": "[EXPORT_SUBMISSION_JOB]",
+            },
+            "cmd": "ray start --head",
+        }
+    ],
+    indirect=True,
+)
+async def test_check_export_api_invalid_config(call_ray_start, tmp_path):  # noqa: F811
+    """
+    Test check_export_api_enabled is False for all sources because
+    RAY_enable_export_api_write_config is not valid JSON.
+    """
+
+    @ray.remote
+    def test_check_export_api_enabled_remote():
+        from ray._private.event.export_event_logger import check_export_api_enabled
+        from ray.core.generated.export_event_pb2 import ExportEvent
+
+        success = True
+        success = success and not (
+            check_export_api_enabled(ExportEvent.SourceType.EXPORT_SUBMISSION_JOB)
+        )
+        success = success and (
+            not check_export_api_enabled(ExportEvent.SourceType.EXPORT_ACTOR)
         )
         return success
 
