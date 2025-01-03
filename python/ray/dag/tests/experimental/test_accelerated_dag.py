@@ -1578,16 +1578,13 @@ def test_dag_teardown_while_running(ray_start_regular):
     assert result == 0.1
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio(ray_start_regular, max_queue_size):
+def test_asyncio(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
         dag = a.echo.bind(i)
 
     loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
-    )
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main(i):
         # Use numpy so that the return value will be zero-copy deserialized. If
@@ -1601,16 +1598,13 @@ def test_asyncio(ray_start_regular, max_queue_size):
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio_out_of_order_get(ray_start_regular, max_queue_size):
+def test_asyncio_out_of_order_get(ray_start_regular):
     c = Collector.remote()
     with InputNode() as i:
         dag = c.collect.bind(i)
 
     loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
-    )
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main():
         fut_a = await compiled_dag.execute_async("a")
@@ -1624,18 +1618,15 @@ def test_asyncio_out_of_order_get(ray_start_regular, max_queue_size):
     loop.run_until_complete(main())
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
 @pytest.mark.parametrize("gather_futs", [True, False])
-def test_asyncio_multi_output(ray_start_regular, max_queue_size, gather_futs):
+def test_asyncio_multi_output(ray_start_regular, gather_futs):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
         dag = MultiOutputNode([a.echo.bind(i), b.echo.bind(i)])
 
     loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
-    )
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main(i):
         # Use numpy so that the return value will be zero-copy deserialized. If
@@ -1658,16 +1649,13 @@ def test_asyncio_multi_output(ray_start_regular, max_queue_size, gather_futs):
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio_exceptions(ray_start_regular, max_queue_size):
+def test_asyncio_exceptions(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
         dag = a.inc.bind(i)
 
     loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
-    )
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main():
         fut = await compiled_dag.execute_async(1)
