@@ -99,6 +99,11 @@ class SlowEnv(gym.ObservationWrapper):
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    if args.no_tune and args.vectorize_mode == "BOTH":
+        raise ValueError(
+            "Can't run this script with both --no-tune and --vectorize-mode=BOTH!"
+        )
+
     # Wrap the env with the slowness wrapper.
     def _env_creator(cfg):
         return SlowEnv(gym.make(args.env, **cfg))
@@ -125,7 +130,7 @@ if __name__ == "__main__":
     results = run_rllib_example_script_experiment(base_config, args)
 
     # Compare the throughputs and assert that ASYNC is much faster than SYNC.
-    if args.vectorize_mode == "BOTH" and args.as_test:
+    if args.vectorize_mode == "BOTH":
         throughput_sync = (
             results[0].metrics["num_env_steps_sampled_lifetime"]
             / results[0].metrics["time_total_s"]
