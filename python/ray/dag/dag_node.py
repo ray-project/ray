@@ -186,7 +186,6 @@ class DAGNode(DAGNodeBase):
         _submit_timeout: Optional[float] = None,
         _buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
-        _asyncio_max_queue_size: Optional[int] = None,
         _max_buffered_results: Optional[int] = None,
         _max_inflight_executions: Optional[int] = None,
         _overlap_gpu_communication: Optional[bool] = None,
@@ -203,8 +202,6 @@ class DAGNode(DAGNodeBase):
                 be automatically resized if larger messages are written to the
                 channel.
             enable_asyncio: Whether to enable asyncio for this DAG.
-            _asyncio_max_queue_size: The max queue size for the async execution.
-                It is only used when enable_asyncio=True.
             _max_buffered_results: The maximum number of execution results that
                 are allowed to be buffered. Setting a higher value allows more
                 DAGs to be executed before `ray.get()` must be called but also
@@ -230,8 +227,6 @@ class DAGNode(DAGNodeBase):
         ctx = DAGContext.get_current()
         if _buffer_size_bytes is None:
             _buffer_size_bytes = ctx.buffer_size_bytes
-        if _asyncio_max_queue_size is None:
-            _asyncio_max_queue_size = ctx.asyncio_max_queue_size
         if _max_buffered_results is None:
             _max_buffered_results = ctx.max_buffered_results
 
@@ -251,7 +246,6 @@ class DAGNode(DAGNodeBase):
             _submit_timeout,
             _buffer_size_bytes,
             enable_asyncio,
-            _asyncio_max_queue_size,
             _max_buffered_results,
             _max_inflight_executions,
             _overlap_gpu_communication,

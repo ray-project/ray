@@ -13,10 +13,6 @@ DEFAULT_GET_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_get_timeout", 10))
 DEFAULT_TEARDOWN_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_teardown_timeout", 30))
 # Default buffer size is 1MB.
 DEFAULT_BUFFER_SIZE_BYTES = int(os.environ.get("RAY_CGRAPH_buffer_size_bytes", 1e6))
-# Default asyncio_max_queue_size is 0, which means no limit.
-DEFAULT_ASYNCIO_MAX_QUEUE_SIZE = int(
-    os.environ.get("RAY_CGRAPH_asyncio_max_queue_size", 0)
-)
 # The default max_buffered_results is 1000, and the default buffer size is 1 MB.
 # The maximum memory usage for buffered results is 1 GB.
 DEFAULT_MAX_BUFFERED_RESULTS = int(
@@ -61,8 +57,6 @@ class DAGContext:
             that can be passed between tasks in the DAG. The buffers will
             be automatically resized if larger messages are written to the
             channel.
-        asyncio_max_queue_size: The max queue size for the async execution.
-            It is only used when enable_asyncio=True.
         max_buffered_results: The maximum number of execution results that
             are allowed to be buffered. Setting a higher value allows more
             DAGs to be executed before `ray.get()` must be called but also
@@ -82,7 +76,6 @@ class DAGContext:
     get_timeout: int = DEFAULT_GET_TIMEOUT_S
     teardown_timeout: int = DEFAULT_TEARDOWN_TIMEOUT_S
     buffer_size_bytes: int = DEFAULT_BUFFER_SIZE_BYTES
-    asyncio_max_queue_size: int = DEFAULT_ASYNCIO_MAX_QUEUE_SIZE
     max_buffered_results: int = DEFAULT_MAX_BUFFERED_RESULTS
     max_inflight_executions: int = DEFAULT_MAX_INFLIGHT_EXECUTIONS
     overlap_gpu_communication: bool = DEFAULT_OVERLAP_GPU_COMMUNICATION

@@ -740,7 +740,6 @@ class CompiledDAG:
         submit_timeout: Optional[float] = None,
         buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
-        asyncio_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
         max_inflight_executions: Optional[int] = None,
         overlap_gpu_communication: Optional[bool] = None,
@@ -759,13 +758,6 @@ class CompiledDAG:
                 be running in an event loop and must use `execute_async` to
                 invoke the DAG. Otherwise, the caller should use `execute` to
                 invoke the DAG.
-            asyncio_max_queue_size: Optional parameter to limit how many DAG
-                inputs can be queued at a time. The actual number of concurrent
-                DAG invocations may be higher than this, if there are already
-                inputs being processed by the DAG executors. If used, the
-                caller is responsible for preventing deadlock, i.e. if the
-                input queue is full, another asyncio task is reading from the
-                DAG output. It is only used when enable_asyncio=True.
             max_buffered_results: The maximum number of execution results that
                 are allowed to be buffered. Setting a higher value allows more
                 DAGs to be executed before `ray.get()` must be called but also
@@ -792,8 +784,6 @@ class CompiledDAG:
 
         self._enable_asyncio: bool = enable_asyncio
         self._fut_queue = asyncio.Queue()
-        self._asyncio_max_queue_size: Optional[int] = asyncio_max_queue_size
-        # TODO(rui): consider unify it with asyncio_max_queue_size
         self._max_buffered_results: Optional[int] = max_buffered_results
         if self._max_buffered_results is None:
             self._max_buffered_results = ctx.max_buffered_results
@@ -1643,7 +1633,6 @@ class CompiledDAG:
             self._dag_submitter = AwaitableBackgroundWriter(
                 self.dag_input_channels,
                 input_task.output_idxs,
-                self._asyncio_max_queue_size,
                 is_input=True,
             )
             self._dag_output_fetcher = AwaitableBackgroundReader(
@@ -1968,6 +1957,13 @@ class CompiledDAG:
             execution_index: The execution index corresponding to the result.
             result: The results from all channels to be cached.
         """
+        if len(self._result_buffer) >= self._max_buffered_results:
+            raise ValueError(
+                "Too many buffered results: the allowed max count for "
+                f"buffered results is {self._max_buffered_results}; call "
+                "ray.get() on previous CompiledDAGRefs to free them up "
+                "from buffer."
+            )
         if not self._has_execution_results(execution_index):
             for chan_idx, res in enumerate(result):
                 self._result_buffer[execution_index][chan_idx] = res
@@ -2063,22 +2059,15 @@ class CompiledDAG:
                 timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
-            if len(self._result_buffer) >= self._max_buffered_results:
-                raise ValueError(
-                    "Too many buffered results: the allowed max count for "
-                    f"buffered results is {self._max_buffered_results}; call "
-                    "ray.get() on previous CompiledDAGRefs to free them up "
-                    "from buffer."
-                )
-            self.increment_max_finished_execution_index()
             start_time = time.monotonic()
 
             # Fetch results from each output channel up to execution_index and cache
             # them separately to enable individual retrieval
             self._cache_execution_results(
-                self._max_finished_execution_index,
+                self._max_finished_execution_index + 1,
                 self._dag_output_fetcher.read(timeout),
             )
+            self.increment_max_finished_execution_index()
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
@@ -2800,7 +2789,6 @@ def build_compiled_dag_from_ray_dag(
     submit_timeout: Optional[float] = None,
     buffer_size_bytes: Optional[int] = None,
     enable_asyncio: bool = False,
-    asyncio_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
     max_inflight_executions: Optional[int] = None,
     overlap_gpu_communication: Optional[bool] = None,
@@ -2809,7 +2797,6 @@ def build_compiled_dag_from_ray_dag(
         submit_timeout,
         buffer_size_bytes,
         enable_asyncio,
-        asyncio_max_queue_size,
         max_buffered_results,
         max_inflight_executions,
         overlap_gpu_communication,
