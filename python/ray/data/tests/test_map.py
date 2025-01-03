@@ -330,6 +330,145 @@ def test_flat_map_generator(ray_start_regular_shared):
     ]
 
 
+# Helper function to process timestamp data in nanoseconds
+def process_timestamp_data(row):
+    # Convert numpy.datetime64 to pd.Timestamp if needed
+    if isinstance(row["timestamp"], np.datetime64):
+        row["timestamp"] = pd.Timestamp(row["timestamp"])
+
+    # Add 1ns to timestamp
+    row["timestamp"] = row["timestamp"] + pd.Timedelta(1, "ns")
+
+    # Ensure the timestamp column is in the expected dtype (datetime64[ns])
+    row["timestamp"] = pd.to_datetime(row["timestamp"], errors="raise")
+
+    return row
+
+
+def process_timestamp_data_batch_arrow(batch: pa.Table) -> pa.Table:
+    # Convert pyarrow Table to pandas DataFrame to process the timestamp column
+    df = batch.to_pandas()
+
+    # Apply the same logic as before
+    df["timestamp"] = df["timestamp"].apply(
+        lambda x: pd.Timestamp(x) if isinstance(x, np.datetime64) else x
+    )
+
+    # Add 1ns to timestamp
+    df["timestamp"] = df["timestamp"] + pd.Timedelta(1, "ns")
+
+    # Convert back to pyarrow Table
+    return pa.table(df)
+
+
+def process_timestamp_data_batch_pandas(batch: pd.DataFrame) -> pd.DataFrame:
+    # Add 1ns to timestamp column
+    batch["timestamp"] = batch["timestamp"] + pd.Timedelta(1, "ns")
+    return batch
+
+
+@pytest.mark.parametrize(
+    "df, expected_df",
+    [
+        pytest.param(
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456789",
+                            "2024-01-02 00:00:00.987654321",
+                            "2024-01-03 00:00:00.111222333",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456790",
+                            "2024-01-02 00:00:00.987654322",
+                            "2024-01-03 00:00:00.111222334",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+            id="nanoseconds_increment",
+        )
+    ],
+)
+def test_map_batches_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
+    """Verify handling timestamp with nanosecs in map_batches"""
+    ray_data = ray.data.from_pandas(df)
+
+    # Using pyarrow format
+    result_arrow = ray_data.map_batches(
+        process_timestamp_data_batch_arrow, batch_format="pyarrow"
+    )
+    processed_df_arrow = result_arrow.to_pandas()
+    processed_df_arrow["timestamp"] = processed_df_arrow["timestamp"].astype(
+        "datetime64[ns]"
+    )
+    pd.testing.assert_frame_equal(processed_df_arrow, expected_df)
+
+    # Using pandas format
+    result_pandas = ray_data.map_batches(
+        process_timestamp_data_batch_pandas, batch_format="pandas"
+    )
+    processed_df_pandas = result_pandas.to_pandas()
+    processed_df_pandas["timestamp"] = processed_df_pandas["timestamp"].astype(
+        "datetime64[ns]"
+    )
+    pd.testing.assert_frame_equal(processed_df_pandas, expected_df)
+
+
+@pytest.mark.parametrize(
+    "df, expected_df",
+    [
+        pytest.param(
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456789",
+                            "2024-01-02 00:00:00.987654321",
+                            "2024-01-03 00:00:00.111222333",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456790",
+                            "2024-01-02 00:00:00.987654322",
+                            "2024-01-03 00:00:00.111222334",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+            id="nanoseconds_increment_map",
+        )
+    ],
+)
+def test_map_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
+    """Verify handling timestamp with nanosecs in map"""
+    ray_data = ray.data.from_pandas(df)
+    result = ray_data.map(process_timestamp_data)
+    processed_df = result.to_pandas()
+    processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
+    pd.testing.assert_frame_equal(processed_df, expected_df)
+
+
 def test_add_column(ray_start_regular_shared):
     """Tests the add column API."""
 

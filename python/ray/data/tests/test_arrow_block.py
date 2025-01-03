@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from typing import Union
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 from pyarrow import parquet as pq
@@ -19,6 +20,32 @@ from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import BlockAccessor
 from ray.data.extensions.object_extension import _object_extension_type_allowed
+
+
+def test_arrow_block_timestamp_ns(ray_start_regular_shared):
+    # Input data with nanosecond precision timestamps
+    data_rows = [
+        {"col1": 1, "col2": pd.Timestamp("2023-01-01T00:00:00.123456789")},
+        {"col1": 2, "col2": pd.Timestamp("2023-01-01T01:15:30.987654321")},
+        {"col1": 3, "col2": pd.Timestamp("2023-01-01T02:30:15.111111111")},
+        {"col1": 4, "col2": pd.Timestamp("2023-01-01T03:45:45.222222222")},
+        {"col1": 5, "col2": pd.Timestamp("2023-01-01T05:00:00.333333333")},
+    ]
+
+    # Initialize ArrowBlockBuilder
+    arrow_builder = ArrowBlockBuilder()
+    for row in data_rows:
+        arrow_builder.add(row)
+    arrow_block = arrow_builder.build()
+
+    assert arrow_block.schema.field("col2").type == pa.timestamp("ns")
+    for i, row in enumerate(data_rows):
+        result_timestamp = arrow_block["col2"][i].as_py()
+        # Convert both values to pandas Timestamp to preserve nanosecond precision for
+        # comparison.
+        assert pd.Timestamp(row["col2"]) == pd.Timestamp(
+            result_timestamp
+        ), f"Timestamp mismatch at row {i} in ArrowBlockBuilder output"
 
 
 @pytest.fixture(scope="module")
