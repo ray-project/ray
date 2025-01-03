@@ -18,6 +18,7 @@ If you think there is anything missing, please open an issue on `Github`_.
 .. toctree::
     :maxdepth: 2
 
+    algorithm-config.rst
     algorithm.rst
     callback.rst
     env.rst
@@ -25,6 +26,7 @@ If you think there is anything missing, please open an issue on `Github`_.
     models.rst
     rl_modules.rst
     learner.rst
+    offline.rst
     evaluation.rst
     replay-buffers.rst
     utils.rst
