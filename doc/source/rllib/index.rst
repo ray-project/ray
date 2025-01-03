@@ -51,6 +51,7 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
     rllib-training
     key-concepts
     rllib-env
+    algorithm-config
     rllib-algorithms
     user-guides
     rllib-examples

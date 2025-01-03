@@ -3,6 +3,8 @@
 .. include:: /_includes/rllib/new_api_stack.rst
 
 
+.. _rllib-examples-overview-docs:
+
 Examples
 ========
 
@@ -58,6 +60,15 @@ Actions
    Sets up an environment with nested action spaces using custom single- or multi-agent
    configurations. This example demonstrates how RLlib manages complex action structures,
    such as multi-dimensional or hierarchical action spaces.
+
+
+Algorithms
+++++++++++
+- `Custom "vanilla policy gradient" (VPG) algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/vpg_custom_algorithm.py>`__:
+   Shows how to write a very simple policy gradient :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` from scratch,
+   including a matching :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`,
+   a matching :py:class:`~ray.rllib.core.learner.learner.Learner` which defines the loss function,
+   and the Algorithm's :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` implementation.
 
 
 Checkpoints
@@ -359,6 +370,8 @@ RLModules
    Demonstrates pretraining a single-agent model and transferring it to a multi-agent setting, useful for initializing
    multi-agent scenarios with pre-trained policies.
 
+
+.. _rllib-tuned-examples-docs:
 
 Tuned examples
 --------------
