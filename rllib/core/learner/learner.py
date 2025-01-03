@@ -1542,7 +1542,7 @@ class Learner(Checkpointable):
         # Try using our config object. Note that this would only work if the config
         # object has all the necessary space information already in it.
         else:
-            module = self.config.get_multi_agent_module_spec().build()
+            module = self.config.get_multi_rl_module_spec().build()
 
         # If not already, convert to MultiRLModule.
         module = module.as_multi_rl_module()
