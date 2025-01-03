@@ -949,9 +949,20 @@ class Worker:
             # This is meaningful only for GCS subscriber.
             last_polling_batch_size = 0
             job_id_hex = self.current_job_id.hex()
+            consecutive_low_queue_size = 0
             while True:
-                # Exit if we received a signal that we should stop.
-                if self.threads_stopped.is_set():
+                should_stop = (
+                    self.threads_stopped.is_set()
+                    or not threading.main_thread().is_alive()
+                )
+                if should_stop and subscriber.queue_size <= 1:
+                    consecutive_low_queue_size += 1
+                else:
+                    consecutive_low_queue_size = 0
+                # Exit if we received a signal that we should stop or if main thread
+                # is dead. But wait until the message queue size decreases to lower
+                # than or equal to 1 for a while to avoid missing logs.
+                if should_stop and consecutive_low_queue_size >= 3:
                     return
 
                 data = subscriber.poll()
@@ -2528,7 +2539,6 @@ def connect(
             worker.logger_thread = threading.Thread(
                 target=worker.print_logs, name="ray_print_logs"
             )
-            worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
     # Setup tracing here
