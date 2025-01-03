@@ -54,34 +54,47 @@ def _detect_highest_datetime_precision(datetime_list: List[datetime]) -> str:
         A string representing the highest precision among the datetime objects
         ('D', 's', 'ms', 'us', 'ns').
     """
-    highest_precision = "D"
+    # Define precision hierarchy
+    precision_hierarchy = ["D", "s", "ms", "us", "ns"]
+    highest_precision_index = 0  # Start with the lowest precision ("D")
 
     for dt in datetime_list:
         # Safely get the nanosecond value using getattr for backward compatibility
         nanosecond = getattr(dt, "nanosecond", 0)
         if nanosecond != 0:
-            highest_precision = "ns"
-            break
+            current_precision = "ns"
         elif dt.microsecond != 0:
+            # Check if the microsecond precision is exactly millisecond
             if dt.microsecond % 1000 == 0:
-                highest_precision = "ms"
+                current_precision = "ms"
             else:
-                highest_precision = "us"
-        elif dt.hour != 0 or dt.minute != 0 or dt.second != 0:
-            # pyarrow does not support h or m, use s for those cases too
-            highest_precision = "s"
+                current_precision = "us"
+        elif dt.second != 0 or dt.minute != 0 or dt.hour != 0:
+            # pyarrow does not support h or m, use s for those cases to
+            current_precision = "s"
+        else:
+            current_precision = "D"
 
-    return highest_precision
+        # Update highest_precision_index based on the hierarchy
+        current_index = precision_hierarchy.index(current_precision)
+        highest_precision_index = max(highest_precision_index, current_index)
+
+        # Stop early if highest possible precision is reached
+        if highest_precision_index == len(precision_hierarchy) - 1:
+            break
+
+    return precision_hierarchy[highest_precision_index]
 
 
 def _convert_to_datetime64(dt: datetime, precision: str) -> np.datetime64:
     """
-    Converts a datetime object to a numpy datetime64 object with the specified precision.
+    Converts a datetime object to a numpy datetime64 object with the specified
+    precision.
 
     Args:
-        dt (datetime): A datetime object to be converted.
-        precision (str): The desired precision for the datetime64 conversion. 
-        Possible values are 'D', 's', 'ms', 'us', 'ns'.
+        dt: A datetime object to be converted.
+        precision: The desired precision for the datetime64 conversion. Possible
+        values are 'D', 's', 'ms', 'us', 'ns'.
 
     Returns:
         np.datetime64: A numpy datetime64 object with the specified precision.
