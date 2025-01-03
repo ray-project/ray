@@ -1192,8 +1192,8 @@ def test_dashboard_module_load(tmpdir):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-def test_metrics_head_with_extra_prom_headers_validation(tmpdir):
-    """Test the MetricsHead class with extra Prometheus headers validation."""
+def test_extra_prom_headers_validation(tmpdir, monkeypatch):
+    """Test the extra Prometheus headers validation in DashboardHead."""
     head = DashboardHead(
         http_host="127.0.0.1",
         http_port=8265,
@@ -1208,33 +1208,33 @@ def test_metrics_head_with_extra_prom_headers_validation(tmpdir):
         minimal=False,
         serve_frontend=True,
     )
-    loaded_modules_expected = {"MetricsHead"}
+    loaded_modules_expected = {"MetricsHead", "DataHead"}
 
     # Test the base case.
     head._load_modules(modules_to_load=loaded_modules_expected)
 
     # Test the supported case.
-    os.environ[PROMETHEUS_HEADERS_ENV_VAR] = '{"H1": "V1", "H2": "V2"}'
+    monkeypatch.setenv(PROMETHEUS_HEADERS_ENV_VAR, '{"H1": "V1", "H2": "V2"}')
     head._load_modules(modules_to_load=loaded_modules_expected)
 
     # Test the supported case.
-    os.environ[
-        PROMETHEUS_HEADERS_ENV_VAR
-    ] = '[["H1", "V1"], ["H2", "V2"], ["H2", "V3"]]'
+    monkeypatch.setenv(
+        PROMETHEUS_HEADERS_ENV_VAR,
+        '[["H1", "V1"], ["H2", "V2"], ["H2", "V3"]]',
+    )
     head._load_modules(modules_to_load=loaded_modules_expected)
 
     # Test the unsupported case.
     with pytest.raises(ValueError):
-        os.environ[PROMETHEUS_HEADERS_ENV_VAR] = '{"H1": "V1", "H2": ["V1", "V2"]}'
+        monkeypatch.setenv(
+            PROMETHEUS_HEADERS_ENV_VAR, '{"H1": "V1", "H2": ["V1", "V2"]}'
+        )
         head._load_modules(modules_to_load=loaded_modules_expected)
 
     # Test the unsupported case.
     with pytest.raises(ValueError):
-        os.environ[PROMETHEUS_HEADERS_ENV_VAR] = "not_json"
+        monkeypatch.setenv(PROMETHEUS_HEADERS_ENV_VAR, "not_json")
         head._load_modules(modules_to_load=loaded_modules_expected)
-
-    # Cleanup.
-    del os.environ[PROMETHEUS_HEADERS_ENV_VAR]
 
 
 @pytest.mark.skipif(
