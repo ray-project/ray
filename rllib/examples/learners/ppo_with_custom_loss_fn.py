@@ -70,7 +70,7 @@ With --regularizer-coeff=0.0 and --lr=0.01
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.examples.learners.classes.custom_loss_fn_learner import (
+from ray.rllib.examples.learners.classes.custom_ppo_loss_fn_learner import (
     PPOTorchLearnerWithWeightRegularizerLoss,
 )
 from ray.rllib.utils.framework import try_import_torch

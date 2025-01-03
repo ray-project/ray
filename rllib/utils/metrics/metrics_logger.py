@@ -449,6 +449,10 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
+        assert isinstance(
+            stats_dict, dict
+        ), f"`stats_dict` ({stats_dict}) must be dict!"
+
         prefix_key = force_tuple(key)
 
         def _map(path, stat_or_value):

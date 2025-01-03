@@ -62,6 +62,8 @@ class Columns:
 
     # Intrinsic rewards (learning with curiosity).
     INTRINSIC_REWARDS = "intrinsic_rewards"
+    # Discounted sum of rewards till the end of the episode (or chunk).
+    RETURNS_TO_GO = "returns_to_go"
 
     # Loss mask. If provided in a train batch, a Learner's compute_loss_for_module
     # method should respect the False-set value in here and mask out the respective
