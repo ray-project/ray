@@ -292,6 +292,7 @@ computing the average "first-joint angle" of the
     compute and log through your custom callback as:
 
     .. code-block:: text
+
         `theta1` is the angle of the first joint, where an angle of 0.0 indicates that the first
         link is pointing directly downwards.
 
