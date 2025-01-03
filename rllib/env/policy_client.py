@@ -382,7 +382,7 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
             "action_space": config.action_space,
             "observation_space": config.observation_space,
         }
-        is_ma = config.is_multi_agent()
+        is_ma = config.is_multi_agent
         kwargs["env_creator"] = _auto_wrap_external(
             lambda _: (RandomMultiAgentEnv if is_ma else RandomEnv)(env_config)
         )
