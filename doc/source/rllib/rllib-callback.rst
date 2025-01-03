@@ -145,7 +145,6 @@ Here is a high-level overview of all supported events in RLlib's callbacks syste
 .. dropdown:: Click here to see all Algorithm-bound methods of ``RLlibCallback``
 
     .. autosummary::
-        :no-index:
 
         RLlibCallback.on_algorithm_init
         RLlibCallback.on_evaluate_start
@@ -156,7 +155,6 @@ Here is a high-level overview of all supported events in RLlib's callbacks syste
 .. dropdown:: Click here to see all EnvRunner-bound methods of ``RLlibCallback``
 
     .. autosummary::
-        :no-index:
 
         RLlibCallback.on_environment_created
         RLlibCallback.on_episode_created
