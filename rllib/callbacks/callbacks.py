@@ -155,33 +155,33 @@ class RLlibCallback(metaclass=_CallbackMeta):
                     is_evaluation,
                     **kwargs,
                 ):
-                    # Define what you would like to do on the recreated
-                    # workers:
-                    def func(w):
+                    # Define what you would like to do on the recreated EnvRunner:
+                    def func(env_runner):
                         # Here, we just set some arbitrary property to 1.
                         if is_evaluation:
-                            w._custom_property_for_evaluation = 1
+                            env_runner._custom_property_for_evaluation = 1
                         else:
-                            w._custom_property_for_training = 1
+                            env_runner._custom_property_for_training = 1
 
-                    # Use the `foreach_workers` method of the worker set and
+                    # Use the `foreach_env_runner` method of the worker set and
                     # only loop through those worker IDs that have been restarted.
                     # Note that we set `local_worker=False` to NOT include it (local
                     # workers are never recreated; if they fail, the entire Algorithm
                     # fails).
-                    worker_set.foreach_worker(
+                    env_runner_group.foreach_env_runner(
                         func,
-                        remote_worker_ids=worker_ids,
-                        local_worker=False,
+                        remote_worker_ids=env_runner_indices,
+                        local_env_runner=False,
                     )
 
         Args:
             algorithm: Reference to the Algorithm instance.
             env_runner_group: The EnvRunnerGroup object in which the workers in question
-                reside. You can use a `worker_set.foreach_worker(remote_worker_ids=...,
-                local_worker=False)` method call to execute custom
-                code on the recreated (remote) workers. Note that the local worker is
-                never recreated as a failure of this would also crash the Algorithm.
+                reside. You can use a `env_runner_group.foreach_env_runner(
+                remote_worker_ids=..., local_env_runner=False)` method call to execute
+                custom code on the recreated (remote) workers. Note that the local
+                worker is never recreated as a failure of this would also crash the
+                Algorithm.
             env_runner_indices: The list of (remote) worker IDs that have been
                 recreated.
             is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup

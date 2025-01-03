@@ -702,7 +702,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
-            "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
         }
 
         # RLModule (MultiRLModule) component.
@@ -758,12 +757,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 reduce="sum",
                 with_throughput=True,
-            )
-
-        # Update `agent_to_module_mapping_fn`.
-        if "agent_to_module_mapping_fn" in state:
-            self.config.multi_agent(
-                policy_mapping_fn=state["agent_to_module_mapping_fn"]
             )
 
     @override(Checkpointable)

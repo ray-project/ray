@@ -122,7 +122,6 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 
   auto manager = manager_.lock();
   if (manager == nullptr) {
-    RAY_CHECK(stopped_);
     delete this;
     return;
   }
@@ -168,20 +167,30 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
       context_ptr,
       &request_,
       response_ptr,
-      [this,
-       start = now,
-       context = std::move(context),
-       response = std::move(response),
-       manager = manager](::grpc::Status status) {
+      [this, start = now, context = std::move(context), response = std::move(response)](
+          ::grpc::Status status) {
+        auto manager = manager_.lock();
+        if (manager == nullptr) {
+          delete this;
+          return;
+        }
+
         // This callback is done in gRPC's thread pool.
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - start));
+
         manager->io_service_.post(
-            [this, status, response = std::move(response), manager = manager]() {
+            [this, status, response = std::move(response)]() {
               if (stopped_) {
                 delete this;
                 return;
               }
+              auto manager = manager_.lock();
+              if (manager == nullptr) {
+                delete this;
+                return;
+              }
+
               RAY_LOG(DEBUG) << "Health check status: "
                              << HealthCheckResponse_ServingStatus_Name(
                                     response->status());

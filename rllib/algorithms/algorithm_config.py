@@ -564,6 +564,7 @@ class AlgorithmConfig(_Config):
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
 
         # `self.experimental()`
+        self._use_msgpack_checkpoints = False
         self._torch_grad_scaler_class = None
         self._torch_lr_scheduler_classes = None
         self._tf_policy_handles_more_than_one_loss = False
@@ -2401,52 +2402,55 @@ class AlgorithmConfig(_Config):
                 :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`  # noqa
                 for more information.
             on_evaluate_start: A callable or a list of callables. If a list, RLlib calls
-                the items in the same sequence. `on_algorithm_init` methods overridden
+                the items in the same sequence. `on_evaluate_start` methods overridden
                 in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_evaluate_start`  # noqa
                 for more information.
             on_evaluate_end: A callable or a list of callables. If a list, RLlib calls
-                the items in the same sequence. `on_algorithm_init` methods overridden
+                the items in the same sequence. `on_evaluate_end` methods overridden
                 in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_evaluate_end`  # noqa
                 for more information.
             on_env_runners_recreated: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
-                overridden in `callbacks_class` take precedence and are called first.
+                RLlib calls the items in the same sequence. `on_env_runners_recreated`
+                methods overridden in `callbacks_class` take precedence and are called
+                first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_env_runners_recreated`  # noqa
                 for more information.
             on_checkpoint_loaded: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
-                overridden in `callbacks_class` take precedence and are called first.
+                RLlib calls the items in the same sequence. `on_checkpoint_loaded`
+                methods overridden in `callbacks_class` take precedence and are called
+                first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_checkpoint_loaded`  # noqa
                 for more information.
             on_environment_created: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
-                overridden in `callbacks_class` take precedence and are called first.
+                RLlib calls the items in the same sequence. `on_environment_created`
+                methods overridden in `callbacks_class` take precedence and are called
+                first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_environment_created`  # noqa
                 for more information.
             on_episode_created: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                RLlib calls the items in the same sequence. `on_episode_created` methods
                 overridden in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_created`  # noqa
                 for more information.
             on_episode_start: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                RLlib calls the items in the same sequence. `on_episode_start` methods
                 overridden in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_start`  # noqa
                 for more information.
             on_episode_step: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                RLlib calls the items in the same sequence. `on_episode_step` methods
                 overridden in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_step`  # noqa
                 for more information.
             on_episode_end: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                RLlib calls the items in the same sequence. `on_episode_end` methods
                 overridden in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_end`  # noqa
                 for more information.
             on_sample_end: A callable or a list of callables. If a list,
-                RLlib calls the items in the same sequence. `on_algorithm_init` methods
+                RLlib calls the items in the same sequence. `on_sample_end` methods
                 overridden in `callbacks_class` take precedence and are called first.
                 See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_sample_end`  # noqa
                 for more information.
@@ -2454,6 +2458,9 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if callbacks_class is None:
+            callbacks_class = RLlibCallback
+
         if callbacks_class is not NotProvided:
             # Check, whether given `callbacks` is a callable.
             # TODO (sven): Once the old API stack is deprecated, this can also be None
@@ -3575,6 +3582,7 @@ class AlgorithmConfig(_Config):
     def experimental(
         self,
         *,
+        _use_msgpack_checkpoints: Optional[bool] = NotProvided,
         _torch_grad_scaler_class: Optional[Type] = NotProvided,
         _torch_lr_scheduler_classes: Optional[
             Union[List[Type], Dict[ModuleID, List[Type]]]
@@ -3583,12 +3591,12 @@ class AlgorithmConfig(_Config):
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
-        # Deprecated args.
-        _enable_new_api_stack=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
         Args:
+            _use_msgpack_checkpoints: Create state files in all checkpoints through
+                msgpack rather than pickle.
             _torch_grad_scaler_class: Class to use for torch loss scaling (and gradient
                 unscaling). The class must implement the following methods to be
                 compatible with a `TorchLearner`. These methods/APIs match exactly those
@@ -3628,14 +3636,8 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if _enable_new_api_stack != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config.experimental(_enable_new_api_stack=...)",
-                new="config.api_stack(enable_rl_module_and_learner=...,"
-                "enable_env_runner_and_connector_v2=...)",
-                error=True,
-            )
-
+        if _use_msgpack_checkpoints is not NotProvided:
+            self._use_msgpack_checkpoints = _use_msgpack_checkpoints
         if _tf_policy_handles_more_than_one_loss is not NotProvided:
             self._tf_policy_handles_more_than_one_loss = (
                 _tf_policy_handles_more_than_one_loss
@@ -3804,6 +3806,12 @@ class AlgorithmConfig(_Config):
         # (set to None).
         eval_config_obj.in_evaluation = True
         eval_config_obj.evaluation_config = None
+
+        # Force-set the `num_env_runners` setting to `self.evaluation_num_env_runners`.
+        # Actually, the `self.evaluation_num_env_runners` is merely a convenience
+        # attribute and might be set instead through:
+        # `config.evaluation(evaluation_config={"num_env_runners": ...})`
+        eval_config_obj.num_env_runners = self.evaluation_num_env_runners
 
         # NOTE: The following if-block is only relevant for the old API stack.
         # For the new API stack (EnvRunners), the evaluation methods of Algorithm

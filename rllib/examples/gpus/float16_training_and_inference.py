@@ -85,11 +85,11 @@ def on_algorithm_init(
         lambda learner: learner.module.foreach_module(lambda mid, mod: mod.half())
     )
     # Switch all EnvRunner RLModules (assuming single RLModules) to float16.
-    algorithm.env_runner_group.foreach_worker(
+    algorithm.env_runner_group.foreach_env_runner(
         lambda env_runner: env_runner.module.half()
     )
     if algorithm.eval_env_runner_group:
-        algorithm.eval_env_runner_group.foreach_worker(
+        algorithm.eval_env_runner_group.foreach_env_runner(
             lambda env_runner: env_runner.module.half()
         )
 

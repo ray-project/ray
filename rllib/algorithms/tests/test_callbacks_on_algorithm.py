@@ -10,27 +10,24 @@ from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray.rllib.utils.test_utils import check
 
 
-class OnWorkersRecreatedCallbacks(RLlibCallback):
-    def on_workers_recreated(
-        self,
-        *,
-        algorithm,
-        worker_set,
-        worker_ids,
-        is_evaluation,
-        **kwargs,
-    ):
-        # Store in the algorithm object's counters the number of times, this worker
-        # (ID'd by index and whether eval or not) has been recreated/restarted.
-        for id_ in worker_ids:
-            key = f"{'eval_' if is_evaluation else ''}worker_{id_}_recreated"
-            # Increase the counter.
-            algorithm.metrics.log_value(key, 1, reduce="sum")
-            print(f"changed {key} to {algorithm._counters[key]}")
+def on_env_runners_recreated(
+    algorithm,
+    env_runner_group,
+    env_runner_indices,
+    is_evaluation,
+    **kwargs,
+):
+    # Store in the algorithm object's counters the number of times, this worker
+    # (ID'd by index and whether eval or not) has been recreated/restarted.
+    for id_ in env_runner_indices:
+        key = f"{'eval_' if is_evaluation else ''}worker_{id_}_recreated"
+        # Increase the counter.
+        algorithm.metrics.log_value(key, 1, reduce="sum")
+        print(f"changed {key} to {algorithm._counters[key]}")
 
-        # Execute some dummy code on each of the recreated workers.
-        results = worker_set.foreach_worker(lambda w: w.ping())
-        print(results)  # should print "pong" n times (one for each recreated worker).
+    # Execute some dummy code on each of the recreated workers.
+    results = env_runner_group.foreach_env_runner(lambda w: w.ping())
+    print(results)  # should print "pong" n times (one for each recreated worker).
 
 
 class InitAndCheckpointRestoredCallbacks(RLlibCallback):
@@ -56,7 +53,7 @@ class TestCallbacks(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("env", env_config={"p_crash": 1.0})
-            .callbacks(OnWorkersRecreatedCallbacks)
+            .callbacks(on_env_runners_recreated=on_env_runners_recreated)
             .env_runners(num_env_runners=3)
             .fault_tolerance(
                 restart_failed_env_runners=True,
@@ -84,7 +81,7 @@ class TestCallbacks(unittest.TestCase):
         # manager itself. This confirms that the callback is triggered correctly,
         # always.
         new_worker_ids = algo.env_runner_group.healthy_worker_ids()
-        self.assertEquals(len(new_worker_ids), 3)
+        self.assertEqual(len(new_worker_ids), 3)
         for id_ in new_worker_ids:
             # num_restored = algo.env_runner_group.restored_actors_history[id_]
             self.assertTrue(algo.metrics.peek(f"worker_{id_}_recreated") > 1)
