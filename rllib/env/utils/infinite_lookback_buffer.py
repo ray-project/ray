@@ -123,7 +123,7 @@ class InfiniteLookbackBuffer:
             #  probably rather do: `tree.map_structure(..., self.data,
             #  tree.map_structure(lambda *s: np.array(*s), *items)`)??
             self.data = tree.map_structure(
-                lambda d, i: np.concatenate([d, i], axis=0), self.data, items
+                lambda d, i: np.concatenate([d, i], axis=0), self.data, np.array(items)
             )
         else:
             for item in items:
