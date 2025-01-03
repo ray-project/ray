@@ -840,7 +840,9 @@ class ReplicaActor:
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
-        pass
+        # NOTE(edoakes): it's important to call a method on the proxy handle to
+        # initialize its state in the C++ core worker.
+        handle.pong.remote()
 
     def get_num_ongoing_requests(self) -> int:
         """Fetch the number of ongoing requests at this replica (queue length).

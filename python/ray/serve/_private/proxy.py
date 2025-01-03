@@ -1457,6 +1457,10 @@ class ProxyActor:
         Make sure the async event loop is not blocked.
         """
         logger.debug("Received health check.", extra={"log_to_stderr": False})
+    
+    def pong(self):
+        """Called by the replica to initialize its handle to the proxy."""
+        pass
 
     async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
         """Get ASGI messages for the provided `request_metadata`.
