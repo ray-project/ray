@@ -30,7 +30,7 @@ from ray.anyscale._private.constants import ANYSCALE_DATAPLANE_SERVICE_SOCKET
 # ]
 
 
-async def main():
+async def main(working_dir: str):
     parser = argparse.ArgumentParser()
     parser.add_argument("--ray-worker-image-uri")
     parser.add_argument("--env-var-names", nargs="*", type=str, default=[])
@@ -48,6 +48,7 @@ async def main():
         "image_uri": known_args.ray_worker_image_uri,
         "args": passthrough_args[1:],  # Pop default_worker.py
         "envs": env_vars,
+        "working_dir": working_dir
     }
     conn = UnixConnector(path=ANYSCALE_DATAPLANE_SERVICE_SOCKET)
     async with ClientSession(connector=conn) as session:
@@ -56,4 +57,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    working_dir = os.getcwd()
+    asyncio.run(main(working_dir))

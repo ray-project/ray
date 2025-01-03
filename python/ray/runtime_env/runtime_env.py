@@ -389,7 +389,7 @@ class RuntimeEnv(dict):
                 )
 
         if self.get("image_uri"):
-            invalid_keys = set(runtime_env.keys()) - {"image_uri", "config", "env_vars"}
+            invalid_keys = set(runtime_env.keys()) - {"image_uri", "config", "env_vars", "working_dir"}
             if len(invalid_keys):
                 raise ValueError(
                     "The 'image_uri' field currently cannot be used "
