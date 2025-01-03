@@ -11,6 +11,7 @@ from fastapi import FastAPI
 
 import ray
 from ray import serve
+from ray.serve._private.utils import generate_request_id
 
 
 def test_request_id_header_by_default(serve_instance):
@@ -154,10 +155,10 @@ def test_reuse_request_id(serve_instance):
         """Sending 20 requests in parallel all with the same request id, but with
         different request body.
         """
-        bodies = [{"app_name": f"an_{uuid.uuid4()}"} for _ in range(20)]
+        bodies = [{"app_name": f"an_{generate_request_id()}"} for _ in range(20)]
         connector = TCPConnector(ssl=False)
         async with aiohttp.ClientSession(connector=connector) as session:
-            request_id = f"rid_{uuid.uuid4()}"
+            request_id = f"rid_{generate_request_id()}"
             tasks = [
                 send_request(session, body, request_id=request_id) for body in bodies
             ]
