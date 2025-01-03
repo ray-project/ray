@@ -24,10 +24,6 @@ cdef class Config:
                 .object_timeout_milliseconds())
 
     @staticmethod
-    def get_timeout_milliseconds():
-        return RayConfig.instance().get_timeout_milliseconds()
-
-    @staticmethod
     def worker_get_request_size():
         return RayConfig.instance().worker_get_request_size()
 
