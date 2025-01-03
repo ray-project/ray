@@ -18,7 +18,6 @@ from ray.train.v2._internal.callbacks.metrics import (
     WorkerMetricsCallback,
 )
 from ray.train.v2._internal.constants import (
-    _UNSUPPORTED,
     METRICS_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
 )
@@ -29,24 +28,33 @@ from ray.train.v2._internal.execution.scaling_policy import create_scaling_polic
 from ray.train.v2._internal.util import construct_train_func
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.result import Result
+from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
 
-TRAINER_RESTORE_DEPRECATION_WARNING = """
-The `Trainer.restore` API is deprecated and will be removed in a future release.
+_TRAINER_RESTORE_DEPRECATION_WARNING = """
+The `restore` and `can_restore` APIs are deprecated and
+will be removed in a future release.
 
-This API previously accepted a Train run directory path and loaded state such as the
-training code and configurations from a pkl file, which was hard to use.
-Now, Ray Train attempts to load the snapshot of reported checkpoints if it exists
-in the run directory, which makes `ray.train.get_checkpoint` available as long as
-you're pointing to the same run directory (i.e. the same `storage_path` and `name`).
+This API previously accepted a Train run directory path and
+loaded state (including user training code) partially from .pkl file and
+partially from new arguments passed to the constructor.
+This was confusing and error-prone.
 
-If you want to start a new training run without any prior checkpoint history, please
-specify a new, unique `RunConfig(name)`.
+Now, trainers only have a single constructor codepath, which takes in
+all arguments needed to construct the trainer (with no more brittle
+serialization/deserialization logic).
+Ray Train will auto-detect if an existing run snapshot exists
+at the path configured by `RunConfig(storage_path, name)` and will populate
+`ray.train.get_checkpoint` with the latest checkpoint, accessible
+by all Train workers.
 
-Job-level restoration can still be achieved, as shown below:
+If you want to start a brand new training run without any prior checkpoint history,
+please specify a new, unique `RunConfig(storage_path, name)`.
+
+Trainer-level restoration can still be achieved, as shown below:
 
 Before
 -------
@@ -84,6 +92,8 @@ def train_fn_per_worker(config):
 storage_path = "s3://bucket/"
 name = "<unique_job_identifier>"
 
+# The second run will automatically find the snapshot saved by the first run
+# at (storage_path, name).
 trainer = TorchTrainer(
     train_fn_per_worker,
     datasets={...},
@@ -93,7 +103,7 @@ trainer = TorchTrainer(
 result = trainer.fit()
 """
 
-RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = """
+_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = """
 `resume_from_checkpoint` is deprecated and will be removed in an upcoming
 release, since it is conceptually confusing and can be replaced very easily.
 For example:
@@ -130,6 +140,7 @@ trainer = TorchTrainer(
 """
 
 
+@DeveloperAPI
 class DataParallelTrainer:
     def __init__(
         self,
@@ -139,11 +150,11 @@ class DataParallelTrainer:
         backend_config: Optional[BackendConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        # TODO: [Deprecated] Remove in future release
-        resume_from_checkpoint: Optional[Checkpoint] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         dataset_config: Optional[DataConfig] = None,
-        metadata: Optional[Dict[str, Any]] = _UNSUPPORTED,
+        # TODO: [Deprecated] Remove in future release
+        resume_from_checkpoint: Optional[Checkpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         self.run_config = run_config or RunConfig()
         self.train_run_context = TrainRunContext(self.run_config)
@@ -154,14 +165,11 @@ class DataParallelTrainer:
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
 
-        if resume_from_checkpoint:
-            logger.warning(RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
-        self.resume_from_checkpoint = resume_from_checkpoint
+        if resume_from_checkpoint is not None:
+            raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
 
-        # TODO: No support for below
-        error_msg = "The '{}' argument is not supported yet."
-        if metadata != _UNSUPPORTED:
-            raise NotImplementedError(error_msg.format("metadata"))
+        if metadata is not None:
+            raise DeprecationWarning()
 
     def fit(self) -> Result:
         train_fn = construct_train_func(
@@ -210,7 +218,6 @@ class DataParallelTrainer:
             failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
             train_run_context=self.train_run_context,
             callbacks=callbacks,
-            resume_from_checkpoint=self.resume_from_checkpoint,
         )
         ray.get(controller.run.remote())
 
@@ -225,14 +232,12 @@ class DataParallelTrainer:
 
         return result
 
+    @Deprecated
     @classmethod
     def restore(cls, *args, **kwargs):
-        raise DeprecationWarning(TRAINER_RESTORE_DEPRECATION_WARNING)
+        raise DeprecationWarning(_TRAINER_RESTORE_DEPRECATION_WARNING)
 
+    @Deprecated
     @classmethod
     def can_restore(cls, *args, **kwargs):
-        raise DeprecationWarning(
-            "This API is deprecated and will be removed in a future release. "
-            "The trainer will be always restored automatically when an existing "
-            "training snapshot is detected in the run configuration path."
-        )
+        raise DeprecationWarning(_TRAINER_RESTORE_DEPRECATION_WARNING)

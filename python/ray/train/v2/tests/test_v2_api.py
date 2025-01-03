@@ -19,7 +19,7 @@ from ray.train import FailureConfig, RunConfig, ScalingConfig
 )
 def test_api_configs(operation, raise_error):
     if raise_error:
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(DeprecationWarning):
             operation()
     else:
         try:
