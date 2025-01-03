@@ -273,8 +273,6 @@ def test_log_rotation(shutdown_only, monkeypatch):
             f"backup count {backup_count}, file count: {file_cnt}"
         )
 
-    # TODO(hjiang): Enable after log rotation implemented for user application.
-    #
     # Test application log, which starts with `worker-`.
     # Should be tested separately with other components since "worker" is a substring
     # of "python-core-worker".

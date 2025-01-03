@@ -55,7 +55,7 @@ def open_pipe_with_rotation(
     lock = threading.Lock()
     cond = threading.Condition(lock)
 
-    logger = logging.getLogger()
+    logger = logging.getLogger(name=fname)
     logger.setLevel(logging.INFO)
     handler = RotatingFileHandler(
         fname, maxBytes=rotation_max_size, backupCount=rotation_file_num
@@ -88,8 +88,6 @@ def open_pipe_with_rotation(
     # Two threads are used here to make sure continuous read from pipe thus avoid
     # blocking write from application.
     def dump_log_content_to_buffer():
-        logger = logging.getLogger()
-
         while True:
             with cond:
                 while not log_content and not stopped:
