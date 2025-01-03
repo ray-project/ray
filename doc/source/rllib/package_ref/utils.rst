@@ -29,11 +29,11 @@ For example:
     print(scheduler.get_current_value())  # <- expect 0.1
 
     # Up the timestep.
-    schedule.update(timestep=45)
+    scheduler.update(timestep=45)
     print(scheduler.get_current_value())  # <- expect 0.055
 
     # Up the timestep.
-    schedule.update(timestep=100)
+    scheduler.update(timestep=100)
     print(scheduler.get_current_value())  # <- expect 0.001 (keep final value)
 
 
