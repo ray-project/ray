@@ -3805,6 +3805,12 @@ class AlgorithmConfig(_Config):
         eval_config_obj.in_evaluation = True
         eval_config_obj.evaluation_config = None
 
+        # Force-set the `num_env_runners` setting to `self.evaluation_num_env_runners`.
+        # Actually, the `self.evaluation_num_env_runners` is merely a convenience
+        # attribute and might be set instead through:
+        # `config.evaluation(evaluation_config={"num_env_runners": ...})`
+        eval_config_obj.num_env_runners = self.evaluation_num_env_runners
+
         # NOTE: The following if-block is only relevant for the old API stack.
         # For the new API stack (EnvRunners), the evaluation methods of Algorithm
         # explicitly tell each EnvRunner on each sample call, how many timesteps
