@@ -17,10 +17,10 @@ its sub-components can speed up sample- and learning throughput.
 
     **Scalable axes in RLlib**: Three scaling axes are currently available across all RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` classes:
     The number of :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors in the :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`,
-    settable through ``config.env_runners(num_env_runners=n)``, the number of
-    :py:class:`~ray.rllib.core.learner.learner.Learner` actors in the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`,
-    settable through ``config.learners(num_learners=m)``, and the number of vectorized sub-environments on each
-    :py:class:`~ray.rllib.env.env_runner.EnvRunner` actor, settable through ``config.env_runners(num_envs_per_env_runner=p)``.
+    settable through ``config.env_runners(num_env_runners=n)``, the number of vectorized sub-environments on each
+    :py:class:`~ray.rllib.env.env_runner.EnvRunner` actor, settable through ``config.env_runners(num_envs_per_env_runner=p)``, and
+    the number of :py:class:`~ray.rllib.core.learner.learner.Learner` actors in the
+    :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`, settable through ``config.learners(num_learners=m)``.
 
 
 Scaling the number of EnvRunner actors
@@ -94,10 +94,13 @@ Doing so allows the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` on 
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` to run inference on a batch of data and
 thus compute actions for all sub-environments in parallel.
 
-By default, the individual sub-environments in a vector env step, and reset, in sequence, making only
-the action computation part of the env loop parallel. However, `gymnasium <https://gymnasium.farama.org/>`__ supports an asynchronous
+By default, the individual sub-environments in a vector ``step`` and ``reset``, in sequence, making only
+the action computation of the RL environment loop parallel, because observations can move through the model
+in a batch.
+However, `gymnasium <https://gymnasium.farama.org/>`__ supports an asynchronous
 vectorization setting, in which each sub-environment receives its own python process.
-This way, the entire vector can step, or reset, in parallel. Activate asynchronous vectorization through:
+This way, the vector environment can ``step`` or ``reset`` in parallel. Activate
+this asynchronous vectorization behavior through:
 
 .. testcode::
 
@@ -165,23 +168,24 @@ for details.
 
 
 Outlook: More RLlib elements that should scale
------------------------------------------------
+----------------------------------------------
 
 There are other components and aspects in RLlib that should be able to scale up.
+
 For example, the model size is currently limited to what ever fits on a single GPU, due to
 "distributed data parallel" (DDP) being the only way in which RLlib scales :py:class:`~ray.rllib.core.learner.learner.Learner`
 actors.
 
-The Ray team is working on closing these gaps.
-
-In particular, future areas of improvements are:
+The Ray team is working on closing these gaps. In particular, future areas of improvements are:
 
 - Enable **training very large models**, such as a "large language model" (LLM). The team is actively working on a
   "Reinforcement Learning from Human Feedback" (RLHF) prototype setup. The main problems to solve are the
   model-parallel and tensor-parallel distribution across multiple GPUs, as well as, a reasonably fast transfer of
   weights between Ray actors.
+
 - Enable training with **thousands of multi-agent policies**. A possible solution for this scaling problem
   could be to split up the :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` into
   manageable groups of individual policies across the various :py:class:`~ray.rllib.env.env_runner.EnvRunner`
   and :py:class:`~ray.rllib.core.learner.learner.Learner` actors.
+
 - Enabling **vector envs for multi-agent**.
