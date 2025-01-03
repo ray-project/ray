@@ -42,6 +42,7 @@ from ray._private.utils import get_or_create_event_loop
 from ray.core.generated import common_pb2
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
+from ray.dashboard.modules.metrics.metrics_head import PROMETHEUS_HEADERS_ENV_VAR
 from ray.dashboard.utils import DashboardHeadModule
 from ray.experimental.internal_kv import _initialize_internal_kv
 from ray.util.state import StateApiClient
@@ -1185,6 +1186,55 @@ def test_dashboard_module_load(tmpdir):
     loaded_modules = head._load_modules()
     loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
     assert loaded_modules_actual == loaded_modules_expected
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_metrics_head_with_extra_prom_headers_validation(tmpdir):
+    """Test the MetricsHead class with extra Prometheus headers validation."""
+    head = DashboardHead(
+        http_host="127.0.0.1",
+        http_port=8265,
+        http_port_retries=1,
+        node_ip_address="127.0.0.1",
+        gcs_address="127.0.0.1:6379",
+        cluster_id_hex=ray.ClusterID.from_random().hex(),
+        grpc_port=0,
+        log_dir=str(tmpdir),
+        temp_dir=str(tmpdir),
+        session_dir=str(tmpdir),
+        minimal=False,
+        serve_frontend=True,
+    )
+    loaded_modules_expected = {"MetricsHead"}
+
+    # Test the base case.
+    head._load_modules(modules_to_load=loaded_modules_expected)
+
+    # Test the supported case.
+    os.environ[PROMETHEUS_HEADERS_ENV_VAR] = '{"H1": "V1", "H2": "V2"}'
+    head._load_modules(modules_to_load=loaded_modules_expected)
+
+    # Test the supported case.
+    os.environ[
+        PROMETHEUS_HEADERS_ENV_VAR
+    ] = '[["H1", "V1"], ["H2", "V2"], ["H2", "V3"]]'
+    head._load_modules(modules_to_load=loaded_modules_expected)
+
+    # Test the unsupported case.
+    with pytest.raises(ValueError):
+        os.environ[PROMETHEUS_HEADERS_ENV_VAR] = '{"H1": "V1", "H2": ["V1", "V2"]}'
+        head._load_modules(modules_to_load=loaded_modules_expected)
+
+    # Test the unsupported case.
+    with pytest.raises(ValueError):
+        os.environ[PROMETHEUS_HEADERS_ENV_VAR] = "not_json"
+        head._load_modules(modules_to_load=loaded_modules_expected)
+
+    # Cleanup.
+    del os.environ[PROMETHEUS_HEADERS_ENV_VAR]
 
 
 @pytest.mark.skipif(
