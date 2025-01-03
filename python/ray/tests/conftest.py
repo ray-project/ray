@@ -44,7 +44,7 @@ from ray._private.test_utils import (
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ray." + __name__)
 
 START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
 
@@ -177,6 +177,25 @@ def is_process_listen_to_port(pid, port):
     return False
 
 
+def find_user_process_by_port(port):
+    for pid in psutil.pids():
+        process = psutil.Process(pid)
+        try:
+            conns = process.connections()
+            for conns in conns:
+                if conns.laddr.port == port and conns.status == psutil.CONN_LISTEN:
+                    return process
+        except (psutil.AccessDenied, psutil.ZombieProcess, psutil.NoSuchProcess):
+            continue
+
+    print(
+        f"Failed to find the process that listens to the port {port}. It could "
+        "be because the process needs higher privilege to access its "
+        "information or the port is not listened by any processes."
+    )
+    return None
+
+
 def redis_alive(port, enable_tls):
     try:
         # If there is no redis libs installed, skip the check.
@@ -239,11 +258,6 @@ def start_redis(db_dir):
     retry_num = 0
     while True:
         is_need_restart = False
-        # Setup external Redis and env var for initialization.
-        redis_ports = find_available_port(49159, 55535, redis_replicas() * 2)
-        redis_ports = list(
-            zip(redis_ports[0 : redis_replicas()], redis_ports[redis_replicas() :])
-        )
         processes = []
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ
         leader_port = None
@@ -252,22 +266,47 @@ def start_redis(db_dir):
         while len(redis_ports) != redis_replicas():
             temp_dir = ray._private.utils.get_ray_temp_dir()
             port, free_port = find_available_port(49159, 55535, 2)
-            node_id, proc = start_redis_instance(
-                temp_dir,
-                port,
-                enable_tls=enable_tls,
-                replica_of=leader_port,
-                leader_id=leader_id,
-                db_dir=db_dir,
-                free_port=free_port,
-            )
             try:
+                node_id = None
+                proc = None
+                node_id, proc = start_redis_instance(
+                    temp_dir,
+                    port,
+                    enable_tls=enable_tls,
+                    replica_of=leader_port,
+                    leader_id=leader_id,
+                    db_dir=db_dir,
+                    free_port=free_port,
+                )
                 wait_for_condition(
                     redis_alive, 3, 100, port=port, enable_tls=enable_tls
                 )
             except Exception as e:
-                print(e)
+                print(f"Fails to start redis on port {port} with exception {e}")
+                if (
+                    proc is not None
+                    and proc.process is not None
+                    and proc.process.poll() is None
+                ):
+                    proc.process.kill()
+
+                # TODO (mengjin) Here we added more debug logs here to help further
+                # troubleshoot the potential race condition where the available port
+                # we found above is taken by another process and the Redis server
+                # cannot be started. Here we won't fail the test but we can check the
+                # output log of the test to further investigate the issue if needed.
+                if "Redis process exited unexpectedly" in str(e):
+                    # Output the process that listens to the port
+                    process = find_user_process_by_port(port)
+                    if process is not None:
+                        print(
+                            f"Another process({process.pid}) with command"
+                            f"\"{' '.join(process.args)}\" is listening on the port"
+                            f"{port}"
+                        )
+
                 continue
+
             redis_ports.append(port)
             if leader_port is None:
                 leader_port = port
