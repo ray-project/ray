@@ -349,7 +349,6 @@ def process_timestamp_data_batch_arrow(batch: pa.Table) -> pa.Table:
     # Convert pyarrow Table to pandas DataFrame to process the timestamp column
     df = batch.to_pandas()
 
-    # Apply the same logic as before
     df["timestamp"] = df["timestamp"].apply(
         lambda x: pd.Timestamp(x) if isinstance(x, np.datetime64) else x
     )

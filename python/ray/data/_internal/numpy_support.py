@@ -75,7 +75,17 @@ def _detect_highest_datetime_precision(datetime_list: List[datetime]) -> str:
 
 
 def _convert_to_datetime64(dt: datetime, precision: str) -> np.datetime64:
-    """Manually handle nanoseconds if the precision is 'ns'"""
+    """
+    Converts a datetime object to a numpy datetime64 object with the specified precision.
+
+    Args:
+        dt (datetime): A datetime object to be converted.
+        precision (str): The desired precision for the datetime64 conversion. 
+        Possible values are 'D', 's', 'ms', 'us', 'ns'.
+
+    Returns:
+        np.datetime64: A numpy datetime64 object with the specified precision.
+    """
     if precision == "ns":
         # Calculate nanoseconds from microsecond and nanosecond
         microseconds_as_ns = dt.microsecond * 1000
