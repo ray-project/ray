@@ -3,6 +3,8 @@
 .. include:: /_includes/rllib/new_api_stack.rst
 
 
+.. _rllib-examples-overview-docs:
+
 Examples
 ========
 
@@ -359,6 +361,8 @@ RLModules
    Demonstrates pretraining a single-agent model and transferring it to a multi-agent setting, useful for initializing
    multi-agent scenarios with pre-trained policies.
 
+
+.. _rllib-tuned-examples-docs:
 
 Tuned examples
 --------------
