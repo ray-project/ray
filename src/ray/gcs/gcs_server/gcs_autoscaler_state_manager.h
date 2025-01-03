@@ -17,6 +17,7 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -29,7 +30,7 @@ class GcsResourceManager;
 
 class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
  public:
-  GcsAutoscalerStateManager(const std::string &session_name,
+  GcsAutoscalerStateManager(std::string session_name,
                             GcsNodeManager &gcs_node_manager,
                             GcsActorManager &gcs_actor_manager,
                             const GcsPlacementGroupManager &gcs_placement_group_manager,
@@ -77,7 +78,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
  private:
   /// \brief Get the aggregated resource load from all nodes.
-  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+  absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
   GetAggregatedResourceLoad() const;
 
   /// \brief Internal method for populating the rpc::ClusterResourceState
@@ -139,7 +140,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   void GetClusterResourceConstraints(rpc::autoscaler::ClusterResourceState *state);
 
   // Ray cluster session name.
-  const std::string session_name_ = "";
+  const std::string session_name_;
 
   /// Gcs node manager that provides node status information.
   GcsNodeManager &gcs_node_manager_;
@@ -183,6 +184,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   /// The absl::Time in the pair is the last time the item was updated.
   absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
       node_resource_info_;
+
+  ThreadChecker thread_checker_;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
 };
