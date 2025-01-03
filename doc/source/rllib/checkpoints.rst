@@ -4,7 +4,7 @@
 .. include:: /_includes/rllib/new_api_stack.rst
 
 
-.. _rllib-checkpointing-docs:
+.. _rllib-checkpoints-docs:
 
 Checkpointing
 =============
@@ -160,7 +160,7 @@ The Ray team makes sure of not breaking this guarantee ever in the future throug
 `comprehensive CI tests on checkpoints taken with previous Ray versions <https://github.com/ray-project/ray/tree/master/rllib/utils/tests/test_checkpointable.py>`__.
 
 
-.. _rllib-checkpointing-structure-of-checkpoint-dir:
+.. _rllib-checkpoints-structure-of-checkpoint-dir:
 
 Structure of a checkpoint directory
 +++++++++++++++++++++++++++++++++++
@@ -200,7 +200,7 @@ For example, an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` always als
         class_and_ctor_args.pkl
         metadata.json
 
-See :ref:`here for the complete RLlib component tree <rllib-checkpointing-components-tree>`.
+See :ref:`here for the complete RLlib component tree <rllib-checkpoints-components-tree>`.
 
 The ``metadata.json`` file exists for your convenience only and RLlib doesn't need it.
 
@@ -242,7 +242,7 @@ RLlib obtains this state dict when saving a checkpoint through calling the objec
 
     `See here for an example that illustrates this in more detail <https://github.com/ray-project/ray/tree/master/rllib/examples/checkpoints/change_config_during_training.py>`__.
 
-.. _rllib-checkpointing-components-tree:
+.. _rllib-checkpoints-components-tree:
 
 RLlib's components tree
 +++++++++++++++++++++++
@@ -270,13 +270,13 @@ is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class:
     this issue, probably through soft-linking to avoid duplicate files and unnecessary disk usage.
 
 
-.. _rllib-checkpointing-from-checkpoint:
+.. _rllib-checkpoints-from-checkpoint:
 
 Creating instances from a checkpoint with `from_checkpoint`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Once you have a checkpoint of either a trained :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or
-any of its :ref:`subcomponents <rllib-checkpointing-components-tree>`, you can now recreate new objects directly
+any of its :ref:`subcomponents <rllib-checkpoints-components-tree>`, you can now recreate new objects directly
 from this checkpoint.
 
 Here are two examples:
