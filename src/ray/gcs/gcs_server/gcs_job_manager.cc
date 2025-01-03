@@ -476,6 +476,14 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
 }
 
 void GcsJobManager::RecordMetrics() {
+  RAY_LOG(ERROR) << "running job number - " << running_job_ids_.size();
+  if (running_job_ids_.size() <= 20) {
+    for (const auto &cur_job_id : running_job_ids_) {
+      RAY_LOG(ERROR) << "cur job id - " << cur_job_id;
+    }
+    RAY_LOG(ERROR) << "----";
+  }
+
   ray::stats::STATS_running_jobs.Record(running_job_ids_.size());
   ray::stats::STATS_finished_jobs.Record(finished_jobs_count_);
 }
