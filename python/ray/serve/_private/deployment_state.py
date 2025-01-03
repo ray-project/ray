@@ -21,8 +21,8 @@ from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
+    DeploymentAvailability,
     DeploymentID,
-    DeploymentMetadata,
     DeploymentStatus,
     DeploymentStatusInfo,
     DeploymentStatusInternalTrigger,
@@ -1465,21 +1465,24 @@ class DeploymentState:
         if not running_replicas_changed and not availability_changed:
             return
 
-        deployment_metadata = DeploymentMetadata(
-            available=self.is_available,
+        deployment_metadata = DeploymentAvailability(
+            is_available=self.is_available,
             running_replicas=running_replica_infos,
         )
         self._long_poll_host.notify_changed(
             {
-                (LongPollNamespace.RUNNING_REPLICAS, self._id): deployment_metadata,
+                (
+                    LongPollNamespace.DEPLOYMENT_AVAILABILITY,
+                    self._id,
+                ): deployment_metadata,
                 # NOTE(zcin): notify changed for Java routers. Since Java only
                 # supports 1.x API, there is no concept of applications in Java,
                 # so the key should remain a string describing the deployment
                 # name. If there are no Java routers, this is a no-op.
                 (
-                    LongPollNamespace.RUNNING_REPLICAS,
+                    LongPollNamespace.DEPLOYMENT_AVAILABILITY,
                     self._id.name,
-                ): running_replica_infos,
+                ): deployment_metadata,
             }
         )
         self._last_broadcasted_running_replica_infos = running_replica_infos

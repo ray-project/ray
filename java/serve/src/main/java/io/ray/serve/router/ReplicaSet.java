@@ -10,7 +10,7 @@ import io.ray.api.call.PyActorTaskCaller;
 import io.ray.api.function.PyActorMethod;
 import io.ray.serve.common.Constants;
 import io.ray.serve.exception.RayServeException;
-import io.ray.serve.generated.ActorNameList;
+import io.ray.serve.generated.DeploymentAvailability;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.util.CollectionUtil;
 import java.util.*;
@@ -40,9 +40,9 @@ public class ReplicaSet { // TODO ReplicaScheduler
     this.allActorHandles = new ConcurrentHashMap<>();
   }
 
-  public synchronized void updateWorkerReplicas(Object actorSet) {
+  public synchronized void updateWorkerReplicas(Object deploymentAvailability) {
     if (null != actorSet) {
-      Set<String> actorNameSet = new HashSet<>(((ActorNameList) actorSet).getNamesList());
+      Set<String> actorNameSet = new HashSet<>(((DeploymentAvailability) deploymentAvailability).getReplicaNamesList());
       Set<String> added = new HashSet<>(Sets.difference(actorNameSet, inFlightQueries.keySet()));
       Set<String> removed = new HashSet<>(Sets.difference(inFlightQueries.keySet(), actorNameSet));
       added.forEach(

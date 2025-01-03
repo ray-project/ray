@@ -190,6 +190,11 @@ message ActorNameList {
   repeated string names = 1;
 }
 
+message DeploymentAvailability {
+  repeated string replica_names = 1;
+  bool is_available = 2;
+}
+
 message DeploymentVersion {
   string code_version = 1;
   DeploymentConfig deployment_config = 2;

@@ -551,8 +551,8 @@ class RunningReplicaInfo:
 
 
 @dataclass(frozen=True)
-class DeploymentMetadata:
-    available: bool
+class DeploymentAvailability:
+    is_available: bool
     running_replicas: List[RunningReplicaInfo]
 
 
