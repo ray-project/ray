@@ -2433,6 +2433,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_event*/ task_options.enable_task_events,
                       task_options.labels);
+  
+  // Likely the bottleneck happens from this point to GetOrCreate.
+  
   ActorID root_detached_actor_id;
   if (!worker_context_.GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_.GetRootDetachedActorID();
