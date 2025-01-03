@@ -103,6 +103,10 @@ class TaskSpecBuilder {
  public:
   TaskSpecBuilder() : message_(std::make_shared<rpc::TaskSpec>()) {}
 
+  /// Consume the `message_` data member and construct `TaskSpecification`.
+  /// NOTICE: Builder is invalidated after this function.
+  TaskSpecification ConsumeAndBuild() { return TaskSpecification(std::move(message_)); }
+
   /// Build the `TaskSpecification` object.
   TaskSpecification Build() { return TaskSpecification(message_); }
 
