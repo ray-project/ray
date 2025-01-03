@@ -18,6 +18,7 @@
 #include <string>
 
 #include "ray/common/asio/io_service_pool.h"
+#include "ray/common/asio/postable.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/callback.h"
@@ -48,7 +49,7 @@ class StoreClient {
                           const std::string &key,
                           std::string data,
                           bool overwrite,
-                          std::function<void(bool)> callback) = 0;
+                          Postable<void(bool)> callback) = 0;
 
   /// Get data from the given table asynchronously.
   ///
@@ -58,15 +59,16 @@ class StoreClient {
   /// \return Status
   virtual Status AsyncGet(const std::string &table_name,
                           const std::string &key,
-                          OptionalItemCallback<std::string> callback) = 0;
+                          ToPostable<OptionalItemCallback<std::string>> callback) = 0;
 
   /// Get all data from the given table asynchronously.
   ///
   /// \param table_name The name of the table to be read.
   /// \param callback returns the key value pairs in a map.
   /// \return Status
-  virtual Status AsyncGetAll(const std::string &table_name,
-                             MapCallback<std::string, std::string> callback) = 0;
+  virtual Status AsyncGetAll(
+      const std::string &table_name,
+      Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) = 0;
 
   /// Get all data from the given table asynchronously.
   ///
@@ -74,9 +76,10 @@ class StoreClient {
   /// \param keys The keys to look up from the table.
   /// \param callback returns the key value pairs in a map for those keys that exist.
   /// \return Status
-  virtual Status AsyncMultiGet(const std::string &table_name,
-                               const std::vector<std::string> &keys,
-                               MapCallback<std::string, std::string> callback) = 0;
+  virtual Status AsyncMultiGet(
+      const std::string &table_name,
+      const std::vector<std::string> &keys,
+      Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) = 0;
 
   /// Delete data from the given table asynchronously.
   ///
@@ -86,7 +89,7 @@ class StoreClient {
   /// \return Status
   virtual Status AsyncDelete(const std::string &table_name,
                              const std::string &key,
-                             std::function<void(bool)> callback) = 0;
+                             Postable<void(bool)> callback) = 0;
 
   /// Batch delete data from the given table asynchronously.
   ///
@@ -96,7 +99,7 @@ class StoreClient {
   /// \return Status
   virtual Status AsyncBatchDelete(const std::string &table_name,
                                   const std::vector<std::string> &keys,
-                                  std::function<void(int64_t)> callback) = 0;
+                                  Postable<void(int64_t)> callback) = 0;
 
   /// Get next job id by `INCR` "JobCounter" key synchronously.
   ///
@@ -111,7 +114,7 @@ class StoreClient {
   /// \return Status
   virtual Status AsyncGetKeys(const std::string &table_name,
                               const std::string &prefix,
-                              std::function<void(std::vector<std::string>)> callback) = 0;
+                              Postable<void(std::vector<std::string>)> callback) = 0;
 
   /// Check whether the key exists in the table.
   ///
@@ -120,7 +123,7 @@ class StoreClient {
   /// \param callback Returns true if such key exists.
   virtual Status AsyncExists(const std::string &table_name,
                              const std::string &key,
-                             std::function<void(bool)> callback) = 0;
+                             Postable<void(bool)> callback) = 0;
 
  protected:
   StoreClient() = default;
