@@ -2,7 +2,6 @@ from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
 from ray.rllib.connectors.learner import (
     AddObservationsFromEpisodesToBatch,
     AddOneTsToEpisodesAndTruncate,
@@ -265,10 +264,7 @@ class MARWILConfig(AlgorithmConfig):
                 PPOTorchRLModule,
             )
 
-            return RLModuleSpec(
-                module_class=PPOTorchRLModule,
-                catalog_class=MARWILCatalog,
-            )
+            return RLModuleSpec(module_class=PPOTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -532,7 +528,7 @@ class MARWIL(Algorithm):
 
         # Update weights - after learning on the local worker - on all remote
         # workers (only those policies that were actually trained).
-        if self.env_runner_group.remote_workers():
+        if self.env_runner_group.num_remote_env_runners() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.env_runner_group.sync_weights(
                     policies=list(train_results.keys()), global_vars=global_vars
