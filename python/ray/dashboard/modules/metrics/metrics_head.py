@@ -74,7 +74,9 @@ def parse_prom_headers(prometheus_headers):
     raise ValueError(
         f"{PROMETHEUS_HEADERS_ENV_VAR} should be a JSON string in one of the formats:\n"
         + "1) An object with string keys and string values.\n"
-        + "2) an array of string arrays with 2 string elements each."
+        + "2) an array of string arrays with 2 string elements each.\n"
+        + 'For example, {"H1": "V1", "H2": "V2"} and\n'
+        + '[["H1", "V1"], ["H2", "V2"], ["H2", "V3"]] are valid.'
     )
 
 
