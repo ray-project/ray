@@ -2733,11 +2733,11 @@ class AlgorithmConfig(_Config):
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
                 more info about available read methods in `ray.data`.
             input_read_method_kwargs: Keyword args for `input_read_method`. These
-                are passed into the read method without checking. If no arguments
-                are passed in the default argument
-                `{'override_num_blocks': max(num_learners * 2, 2)}` is used. Use these
+                are passed by RLlib into the read method without checking. Use these
                 keyword args together with `map_batches_kwargs` and
                 `iter_batches_kwargs` to tune the performance of the data pipeline.
+                It is strongly recommended to rely on Ray Data's automatic read
+                performance tuning.
             input_read_schema: Table schema for converting offline data to episodes.
                 This schema maps the offline data columns to
                 ray.rllib.core.columns.Columns:
@@ -2746,7 +2746,8 @@ class AlgorithmConfig(_Config):
                 episodes' `extra_model_outputs`. If no schema is passed in the default
                 schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
                 contains already the names in this schema, no `input_read_schema` is
-                needed.
+                needed. The same applies if the data is in RLlib's `EpisodeType` or its
+                old `SampleBatch` format.
             input_read_episodes: Whether offline data is already stored in RLlib's
                 `EpisodeType` format, i.e. `ray.rllib.env.SingleAgentEpisode` (multi
                 -agent is planned but not supported, yet). Reading episodes directly
@@ -2755,8 +2756,8 @@ class AlgorithmConfig(_Config):
                 inside of RLlib's schema. The other format is a columnar format and is
                 agnostic to the RL framework used. Use the latter format, if you are
                 unsure when to use the data or in which RL framework. The default is
-                to read column data, i.e. False. `input_read_episodes` and
-                `input_read_sample_batches` cannot be True at the same time. See
+                to read column data, for example, `False`. `input_read_episodes`, and
+                `input_read_sample_batches` can't be `True` at the same time. See
                 also `output_write_episodes` to define the output data format when
                 recording.
             input_read_sample_batches: Whether offline data is stored in RLlib's old
@@ -2765,21 +2766,23 @@ class AlgorithmConfig(_Config):
                 data needs extra transforms and might not concatenate episode chunks
                 contained in different `SampleBatch`es in the data. If possible avoid
                 to read `SampleBatch`es and convert them in a controlled form into
-                RLlib's `EpisodeType` (i.e. `SingleAgentEpisode` or
-                `MultiAgentEpisode`). The default is False. `input_read_episodes`
-                and `input_read_sample_batches` cannot be True at the same time.
+                RLlib's `EpisodeType` (i.e. `SingleAgentEpisode`). The default is
+                `False`. `input_read_episodes`, and `input_read_sample_batches` can't
+                be `True` at the same time.
             input_read_batch_size: Batch size to pull from the data set. This could
                 differ from the `train_batch_size_per_learner`, if a dataset holds
-                `EpisodeType` (i.e. `SingleAgentEpisode` or `MultiAgentEpisode`) or
-                `BatchType` (i.e. `SampleBatch` or `MultiAgentBatch`) or any other
-                data type that contains multiple timesteps in a single row of the
-                dataset. In such cases a single batch of size
+                `EpisodeType` (i.e., `SingleAgentEpisode`) or `SampleBatch`, or any
+                other data type that contains multiple timesteps in a single row of
+                the dataset. In such cases a single batch of size
                 `train_batch_size_per_learner` will potentially pull a multiple of
                 `train_batch_size_per_learner` timesteps from the offline dataset. The
                 default is `None` in which the `train_batch_size_per_learner` is pulled.
             input_filesystem: A cloud filesystem to handle access to cloud storage when
-                reading experiences. Should be either "gcs" for Google Cloud Storage,
-                "s3" for AWS S3 buckets, or "abs" for Azure Blob Storage.
+                reading experiences. Can be either "gcs" for Google Cloud Storage,
+                "s3" for AWS S3 buckets, "abs" for Azure Blob Storage, or any
+                filesystem supported by PyArrow. In general the file path is sufficient
+                for accessing data from public or local storage systems. See
+                https://arrow.apache.org/docs/python/filesystems.html for details.
             input_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
                 given by `input_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
@@ -2823,8 +2826,7 @@ class AlgorithmConfig(_Config):
             iter_batches_kwargs: Keyword args for the `iter_batches` method. These are
                 passed into the `ray.data.Dataset.iter_batches` method when sampling
                 without checking. If no arguments are passed in, the default argument
-                `{'prefetch_batches': 2, 'local_buffer_shuffle_size':
-                train_batch_size_per_learner x 4}` is used. Use these keyword args
+                `{'prefetch_batches': 2}` is used. Use these keyword args
                 together with `input_read_method_kwargs` and `map_batches_kwargs` to
                 tune the performance of the data pipeline.
             prelearner_class: An optional `OfflinePreLearner` class that is used to
@@ -2835,6 +2837,17 @@ class AlgorithmConfig(_Config):
                 need to make some further transformations specific for your data or
                 loss. The default is None which uses the base `OfflinePreLearner`
                 defined in `ray.rllib.offline.offline_prelearner`.
+            prelearner_buffer_class: An optional `EpisodeReplayBuffer` class that RLlib
+                uses to buffer experiences when data is in `EpisodeType` or
+                RLlib's previous `SampleBatch` type format. In this case, a single
+                data row may contain multiple timesteps and the buffer serves two
+                purposes: (a) to store intermediate data in memory, and (b) to ensure
+                that RLlib samples exactly `train_batch_size_per_learner` experiences
+                per batch. The default is RLlib's `EpisodeReplayBuffer`.
+            prelearner_buffer_kwargs: Optional keyword arguments for intializing the
+                `EpisodeReplayBuffer`. In most cases this value is simply the `capacity`
+                for the default buffer that RLlib uses (`EpisodeReplayBuffer`), but it
+                may differ if the `prelearner_buffer_class` uses a custom buffer.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
@@ -2846,6 +2859,7 @@ class AlgorithmConfig(_Config):
                 during a single training iteration. If None, each learner runs a
                 complete epoch over its data block (the dataset is partitioned into
                 at least as many blocks as there are learners). The default is `None`.
+                This value must be set to `1`, if RLlib uses a single (local) learner.
             input_config: Arguments that describe the settings for reading the input.
                 If input is "sample", this is the environment configuration, e.g.
                 `env_name` and `env_config`, etc. See `EnvContext` for more info.
@@ -2898,6 +2912,12 @@ class AlgorithmConfig(_Config):
                 given by `output_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
                 ABS filesystem arguments.
+            output_write_episodes: If RLlib should record data in its RLlib's
+                `EpisodeType` format (that is, `SingleAgentEpisode` objects). Use this
+                format, if you need RLlib to order data in time and directly group by
+                episodes for example to train stateful modules or if you plan to use
+                recordings exclusively in RLlib. Otherwise RLlib records data in tabular
+                (columnar) format. Default is `True`.
             offline_sampling: Whether sampling for the Algorithm happens via
                 reading from offline data. If True, EnvRunners don't limit the number
                 of collected batches within the same `sample()` call based on
@@ -2984,6 +3004,7 @@ class AlgorithmConfig(_Config):
             self.postprocess_inputs = postprocess_inputs
         if shuffle_buffer_size is not NotProvided:
             self.shuffle_buffer_size = shuffle_buffer_size
+        # TODO (simon): Enable storing to general log-directory.
         if output is not NotProvided:
             self.output = output
         if output_config is not NotProvided:
