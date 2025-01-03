@@ -1981,7 +1981,7 @@ py_test(
 # subdirectory: algorithms/
 # ....................................
 py_test(
-    name = "examples/algorithms/vpg_custom_algorithm.py",
+    name = "examples/algorithms/vpg_custom_algorithm",
     main = "examples/algorithms/vpg_custom_algorithm.py",
     tags = ["team:rllib", "examples"],
     size = "medium",
