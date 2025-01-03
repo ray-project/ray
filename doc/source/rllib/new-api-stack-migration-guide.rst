@@ -304,24 +304,26 @@ behavior, for example, sample an action from a distribution, inside the overridd
 Custom callbacks
 ----------------
 
-If you're using custom callbacks on the old API stack, you're subclassing the :py:class`~ray.rllib.algorithms.callbacks.DefaultCallbacks` class.
-You can continue this approach with the new API stack and also pass your custom subclass to your config like the following:
+If you're using custom callbacks on the old API stack, you're subclassing the ``DefaultCallbacks`` class,
+which has been renamed to :py:class`~ray.rllib.callbacks.callbacks.RLlibCallback`.
+You can continue this approach with the new API stack and pass your custom subclass to your config like the following:
 
 .. testcode::
 
     # config.callbacks(YourCallbacksClass)
 
-However, if you're overriding those methods that the EnvRunner side triggered, for example,`on_episode_start/stop/step/etc...`,
-you might have to do a small amount of translation, because the
-EnvRunner may have changed the arguments that RLlib passes to many of these methods.
+However, if you're overriding those methods that triggered on the :py:class:`~ray.rllib.env.env_runner.EnvRunner`
+side, for example, ``on_episode_start/stop/step/etc...``, a small amount of translation may be required, because
+the arguments that RLlib passes to many of these methods have slightly changed.
 
-The following is a one-to-one translation guide for these types of Callbacks methods:
+The following is a one-to-one translation guide for these types of :py:class`~ray.rllib.callbacks.callbacks.RLlibCallback`
+methods:
 
 .. testcode::
 
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
-    class YourCallbacksClass(DefaultCallbacks):
+    class YourCallbacksClass(RLlibCallback):
 
         def on_episode_start(
             self,
