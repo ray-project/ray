@@ -70,8 +70,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                                 io_service_),
         kRayletConfig);
     function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
-    runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
-        [](const std::string &, std::function<void(bool)>) {});
+    runtime_env_manager_ =
+        std::make_unique<RuntimeEnvManager>([](const std::string &uri) {});
     gcs_actor_manager_ =
         std::make_unique<MockGcsActorManager>(*runtime_env_manager_, *function_manager_);
     gcs_resource_manager_ =

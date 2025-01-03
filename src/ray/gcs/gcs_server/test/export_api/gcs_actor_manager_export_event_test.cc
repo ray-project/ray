@@ -135,7 +135,7 @@ class GcsActorManagerTest : public ::testing::Test {
     promise.get_future().get();
     worker_client_ = std::make_shared<MockWorkerClient>(io_service_);
     runtime_env_mgr_ =
-        std::make_unique<ray::RuntimeEnvManager>([](auto, auto f) { f(true); });
+        std::make_unique<ray::RuntimeEnvManager>([](const std::string &uri) {});
     std::vector<rpc::ChannelType> channels = {rpc::ChannelType::GCS_ACTOR_CHANNEL};
     auto publisher = std::make_unique<ray::pubsub::Publisher>(
         std::vector<rpc::ChannelType>{

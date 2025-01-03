@@ -32,8 +32,7 @@ namespace ray {
 /// a delete handler.
 class RuntimeEnvManager {
  public:
-  using DeleteFunc =
-      std::function<void(const std::string &uri, std::function<void(bool successful)>)>;
+  using DeleteFunc = std::function<void(const std::string &uri)>;
   explicit RuntimeEnvManager(DeleteFunc deleter) : deleter_(std::move(deleter)) {}
 
   /// Increase the reference count of URI by job or actor ID and runtime_env.
@@ -64,6 +63,7 @@ class RuntimeEnvManager {
  private:
   void PrintDebugString() const;
 
+  /// Reference deletion (aka, when uri reference count drops to 0) callback.
   DeleteFunc deleter_;
   /// Reference counting of a URI.
   absl::flat_hash_map<std::string, int64_t> uri_reference_;
