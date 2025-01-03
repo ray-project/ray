@@ -1,6 +1,7 @@
 from typing import Optional
 
 from ray.exceptions import TaskCancelledError
+from ray.serve._private.common import DeploymentID
 from ray.util.annotations import PublicAPI
 
 
@@ -38,3 +39,13 @@ class RequestCancelledError(RayServeException, TaskCancelledError):
             return f"Request {self._request_id} was cancelled."
         else:
             return "Request was cancelled."
+
+
+@PublicAPI(stability="alpha")
+class DeploymentUnavailableError(RayServeException):
+    def __init__(self, deployment_id: DeploymentID):
+        self._deployment_id = deployment_id
+
+    @property
+    def message(self) -> str:
+        return f"{self._deployment_id} is unavailable"

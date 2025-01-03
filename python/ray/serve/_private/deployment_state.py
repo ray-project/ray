@@ -22,6 +22,7 @@ from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
     DeploymentID,
+    DeploymentMetadata,
     DeploymentStatus,
     DeploymentStatusInfo,
     DeploymentStatusInternalTrigger,
@@ -1296,6 +1297,7 @@ class DeploymentState:
         self._multiplexed_model_ids_updated = False
 
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
+        self._last_broadcasted_availability: bool = True
         self._last_broadcasted_deployment_config = None
 
     def should_autoscale(self) -> bool:
@@ -1392,6 +1394,11 @@ class DeploymentState:
             self._target_state.target_num_replicas * 3,
         )
 
+    @property
+    def is_available(self) -> bool:
+        """Whether the deployment is available for handles to send requests to."""
+        return self._curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {replica.actor_id for replica in self._replicas.get()}
 
@@ -1448,16 +1455,23 @@ class DeploymentState:
         multiplexed model IDs.
         """
         running_replica_infos = self.get_running_replica_infos()
-        if (
+        running_replicas_changed = (
             set(self._last_broadcasted_running_replica_infos)
-            == set(running_replica_infos)
-            and not self._multiplexed_model_ids_updated
-        ):
+            != set(running_replica_infos)
+            or self._multiplexed_model_ids_updated
+        )
+        availability_changed = self.is_available != self._last_broadcasted_availability
+
+        if not running_replicas_changed and not availability_changed:
             return
 
+        deployment_metadata = DeploymentMetadata(
+            available=self.is_available,
+            running_replicas=running_replica_infos,
+        )
         self._long_poll_host.notify_changed(
             {
-                (LongPollNamespace.RUNNING_REPLICAS, self._id): running_replica_infos,
+                (LongPollNamespace.RUNNING_REPLICAS, self._id): deployment_metadata,
                 # NOTE(zcin): notify changed for Java routers. Since Java only
                 # supports 1.x API, there is no concept of applications in Java,
                 # so the key should remain a string describing the deployment
