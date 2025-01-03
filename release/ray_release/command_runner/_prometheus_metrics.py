@@ -13,27 +13,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
-DEFAULT_PROMETHEUS_HEADERS = "{}"
-PROMETHEUS_HEADERS_ENV_VAR = "RAY_PROMETHEUS_HEADERS"
 RETRIES = 3
-
-
-# parse_prom_headers will make sure the input is in one of the following formats:
-# 1. {"H1": "V1", "H2": "V2"}
-# 2. [["H1", "V1"], ["H2", "V2"], ["H2", "V3"]]
-def parse_prom_headers(prometheus_headers):
-    parsed = json.loads(prometheus_headers)
-    if isinstance(parsed, dict):
-        if all(isinstance(k, str) and isinstance(v, str) for k, v in parsed.items()):
-            return parsed
-    if isinstance(parsed, list):
-        if all(len(e) == 2 and all(isinstance(v, str) for v in e) for e in parsed):
-            return parsed
-    raise ValueError(
-        f"{PROMETHEUS_HEADERS_ENV_VAR} should be a JSON string in one of the formats:\n"
-        + "1) An object with string keys and string values.\n"
-        + "2) an array of string arrays with 2 string elements each."
-    )
 
 
 class PrometheusQueryError(Exception):
@@ -51,19 +31,13 @@ class PrometheusClient:
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
-        self.prometheus_headers = parse_prom_headers(
-            os.environ.get(
-                PROMETHEUS_HEADERS_ENV_VAR,
-                DEFAULT_PROMETHEUS_HEADERS,
-            )
-        )
 
     async def query_prometheus(self, query_type, **kwargs):
         url = f"{self.prometheus_host}/api/v1/{query_type}?" + "&".join(
             [f"{k}={quote(str(v), safe='')}" for k, v in kwargs.items()]
         )
         logger.debug(f"Running Prometheus query {url}")
-        async with self.http_session.get(url, self.prometheus_headers) as resp:
+        async with self.http_session.get(url) as resp:
             for _ in range(RETRIES):
                 if resp.status == 200:
                     prom_data = await resp.json()
