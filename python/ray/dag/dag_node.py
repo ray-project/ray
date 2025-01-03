@@ -214,9 +214,8 @@ class DAGNode(DAGNodeBase):
                 enforced when it is smaller than the DAG capacity.
             _max_inflight_executions: The maximum number of in-flight executions that
                 can be submitted via `execute` or `execute_async` before consuming
-                the output using `ray.get()`. Before calling more `execute` or
-                `execute_async`, the caller is responsible for calling `ray.get()`
-                to get the result, otherwise, `RayCgraphCapacityExceeded` is raised.
+                the output using `ray.get()`. If the caller submits more executions,
+                `RayCgraphCapacityExceeded` is raised.
             _overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution. If True, the communication
                 and computation can be overlapped, which can improve the
