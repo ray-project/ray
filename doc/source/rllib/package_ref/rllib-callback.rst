@@ -4,8 +4,6 @@
 
 .. _rllib-callback-reference-docs:
 
-.. currentmodule:: ray.rllib.callbacks.callbacks
-
 Callback APIs
 =============
 
@@ -78,6 +76,8 @@ Methods you should implement for custom behavior
 
 .. _rllib-callback-reference-algo-bound:
 
+.. currentmodule:: ray.rllib.callbacks.callbacks
+
 Callbacks invoked in Algorithm
 ------------------------------
 
@@ -86,6 +86,7 @@ Callbacks invoked in Algorithm
     :toctree: doc/
 
     ~RLlibCallback.on_algorithm_init
+    ~RLlibCallback.on_train_result
     ~RLlibCallback.on_evaluate_start
     ~RLlibCallback.on_evaluate_end
     ~RLlibCallback.on_env_runners_recreated
