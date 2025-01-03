@@ -57,7 +57,7 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           task_spec.GetRuntimeEnvHash());
       auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
       scheduling_key_entry.task_queue.push_back(task_spec);
-      scheduling_key_entry.resource_spec = task_spec;
+      scheduling_key_entry.resource_spec = std::move(task_spec);
 
       if (!scheduling_key_entry.AllWorkersBusy()) {
         // There are idle workers, so we don't need more
@@ -164,22 +164,22 @@ void NormalTaskSubmitter::OnWorkerIdle(
     auto client = client_cache_->GetOrConnect(addr);
 
     while (!current_queue.empty() && !lease_entry.is_busy) {
-      auto task_spec = current_queue.front();
+      auto task_spec = std::move(current_queue.front());
+      current_queue.pop_front();
 
       lease_entry.is_busy = true;
 
       // Increment the total number of tasks in flight to any worker associated with the
       // current scheduling_key
-
-      RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
+      RAY_CHECK_GE(scheduling_key_entry.active_workers.size(), 1);
       scheduling_key_entry.num_busy_workers++;
 
       task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
       task_spec.EmitTaskMetrics();
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
-      PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
-      current_queue.pop_front();
+      PushNormalTask(
+          addr, client, scheduling_key, std::move(task_spec), assigned_resources);
     }
 
     CancelWorkerLeaseIfNeeded(scheduling_key);
@@ -539,7 +539,7 @@ void NormalTaskSubmitter::PushNormalTask(
     const rpc::Address &addr,
     std::shared_ptr<rpc::CoreWorkerClientInterface> client,
     const SchedulingKey &scheduling_key,
-    const TaskSpecification &task_spec,
+    TaskSpecification task_spec,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   RAY_LOG(DEBUG) << "Pushing task " << task_spec.TaskId() << " to worker "
                  << WorkerID::FromBinary(addr.worker_id()) << " of raylet "
@@ -561,7 +561,7 @@ void NormalTaskSubmitter::PushNormalTask(
   client->PushNormalTask(
       std::move(request),
       [this,
-       task_spec,
+       task_spec = std::move(task_spec),
        task_id,
        is_actor,
        is_actor_creation,
