@@ -211,9 +211,10 @@ The most direct way to construct your :py:class:`~ray.rllib.core.rl_module.rl_mo
 
 
 .. note::
-    If you have a checkpoint from an `py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or an individual
+    If you have a checkpoint of an `py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or an individual
     :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`,
-    see :ref:`Checkpointing RLModules <rllib-checkpointing-rl-modules-docs>` for how to create the stored RLModule instance from disk.
+    see :ref:`creating instances with from_checkpoint <rllib-checkpointing-from-checkpoint>` for how to recreate your
+    :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` from disk.
 
 
 Construction through RLModuleSpecs

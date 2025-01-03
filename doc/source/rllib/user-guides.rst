@@ -13,7 +13,7 @@ User Guides
 
     rllib-advanced-api
     rllib-models
-    checkpointing
+    rllib-checkpointing
     single-agent-episode
     rllib-replay-buffers
     rllib-offline
@@ -55,7 +55,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-checkpointing
 
-            Checkpointing your Algorithms and Policies, and Exporting your Models
+            Checkpointing your experiments and models
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
