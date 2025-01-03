@@ -44,7 +44,7 @@ def test_pandas_block_timestamp_ns(ray_start_regular_shared):
         pandas_builder.add(row)
     pandas_block = pandas_builder.build()
 
-    # assert pd.api.types.is_datetime64_ns_dtype(pandas_block["col2"])
+    assert pd.api.types.is_datetime64_ns_dtype(pandas_block["col2"])
 
     for original_row, result_row in zip(
         data_rows, pandas_block.to_dict(orient="records")
