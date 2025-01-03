@@ -1457,7 +1457,7 @@ class ProxyActor:
         Make sure the async event loop is not blocked.
         """
         logger.debug("Received health check.", extra={"log_to_stderr": False})
-    
+
     def pong(self):
         """Called by the replica to initialize its handle to the proxy."""
         pass

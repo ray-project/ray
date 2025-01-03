@@ -651,7 +651,9 @@ class StreamingHTTPRequest:
     @property
     def receive_asgi_messages(self) -> Callable[[RequestMetadata], Awaitable[bytes]]:
         if self._receive_asgi_messages is None:
-            proxy_actor = ray.get_actor(self._proxy_actor_name, namespace=SERVE_NAMESPACE)
+            proxy_actor = ray.get_actor(
+                self._proxy_actor_name, namespace=SERVE_NAMESPACE
+            )
             self._receive_asgi_messages = proxy_actor.receive_asgi_messages.remote
 
         return self._receive_asgi_messages
