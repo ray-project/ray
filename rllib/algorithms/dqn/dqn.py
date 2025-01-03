@@ -650,6 +650,8 @@ class DQN(Algorithm):
                     episodes = self.local_replay_buffer.sample(
                         num_items=self.config.total_train_batch_size,
                         n_step=self.config.n_step,
+                        # In case an `EpisodeReplayBuffer` is used we need to provide
+                        # the sequence length.
                         batch_length_T=self.env_runner.module.is_stateful()
                         * self.config.model_config.get("max_seq_len", 0),
                         lookback=int(self.env_runner.module.is_stateful()),

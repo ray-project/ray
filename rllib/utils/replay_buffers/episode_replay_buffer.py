@@ -495,6 +495,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         # Use our default values if no sizes/lengths provided.
         batch_size_B = batch_size_B or self.batch_size_B
 
+        assert n_step is not None, (
+            "When sampling episodes, `n_step` must be "
+            "provided, but `n_step` is `None`."
+        )
         # If no sequence should be sampled, we sample n-steps.
         if not batch_length_T:
             # Sample the `n_step`` itself, if necessary.
@@ -615,7 +619,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             sampled_episodes.append(sampled_episode)
 
             # Increment counter.
-            B += actual_length or 1
+            B += (actual_length - episode_ts + 1) or 1
 
         # Update the metric.
         self.sampled_timesteps += batch_size_B
