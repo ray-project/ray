@@ -289,6 +289,7 @@ TEST(LogPerfTest, PerfTest) {
 }
 
 TEST(PrintLogTest, TestCheckOp) {
+  // Check comparison with the same type.
   int i = 1;
   RAY_CHECK_EQ(i, 1);
   ASSERT_DEATH(RAY_CHECK_EQ(i, 2), "1 vs 2");
@@ -311,6 +312,10 @@ TEST(PrintLogTest, TestCheckOp) {
   int j = 0;
   RAY_CHECK_NE(i, j);
   ASSERT_DEATH(RAY_CHECK_EQ(i, j), "1 vs 0");
+
+  // Check comparison with type conversion.
+  std::vector<int> vec;
+  RAY_CHECK_EQ(vec.size(), 0);
 }
 
 TEST(PrintLogTest, RayCheckOk) {

@@ -158,10 +158,11 @@ enum class RayLogLevel {
 
 #endif  // NDEBUG
 
-#define RAY_CHECK_OP(left, op, right)        \
-  if (const auto &_left_ = (left); true)     \
-    if (const auto &_right_ = (right); true) \
-  RAY_CHECK(RAY_PREDICT_TRUE(_left_ op _right_)) << " " << _left_ << " vs " << _right_
+#define RAY_CHECK_OP(left, op, right)                                           \
+  if (const auto &_left_ = (left); true)                                        \
+    if (const auto &_right_ = (right); true)                                    \
+  RAY_CHECK(RAY_PREDICT_TRUE(_left_ op static_cast<decltype(_left_)>(_right_))) \
+      << " " << _left_ << " vs " << _right_
 
 #define RAY_CHECK_EQ(left, right) RAY_CHECK_OP(left, ==, right)
 #define RAY_CHECK_NE(left, right) RAY_CHECK_OP(left, !=, right)
