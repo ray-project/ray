@@ -2445,7 +2445,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                             serialized_retry_exception_allowlist,
                             scheduling_strategy,
                             root_detached_actor_id);
-  TaskSpecification task_spec = builder.ConsumeAndBuild();
+  TaskSpecification task_spec = builder.ConsumeAndBuild();  /// could be time consuming
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
@@ -2455,7 +2455,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
         task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
 
     io_service_.post(
-        [this, task_spec]() {
+        [this, task_spec = std::move(task_spec)]() {
           RAY_UNUSED(normal_task_submitter_->SubmitTask(std::move(task_spec)));
         },
         "CoreWorker.SubmitTask");

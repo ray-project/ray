@@ -21,6 +21,10 @@ namespace ray {
 namespace core {
 
 Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+  /// Try blank out task spec's serialized runtime env.
+  rpc::TaskSpec &internal_msg = task_spec.GetMutableMessage();
+  internal_msg.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
@@ -168,7 +172,8 @@ void NormalTaskSubmitter::OnWorkerIdle(
     auto client = client_cache_->GetOrConnect(addr);
 
     while (!current_queue.empty() && !lease_entry.is_busy) {
-      auto task_spec = current_queue.front();
+      auto task_spec = std::move(current_queue.front());
+      current_queue.pop_front();
 
       lease_entry.is_busy = true;
 
@@ -182,8 +187,8 @@ void NormalTaskSubmitter::OnWorkerIdle(
       task_spec.EmitTaskMetrics();
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
-      PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
-      current_queue.pop_front();
+      PushNormalTask(
+          addr, client, scheduling_key, std::move(task_spec), assigned_resources);
     }
 
     CancelWorkerLeaseIfNeeded(scheduling_key);
