@@ -19,8 +19,7 @@ Worker Recovery
 ---------------
 
 RLlib supports self-recovering and elastic :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` for both
-:ref:`training and evaluation EnvRunner workers <rolloutworker-reference-docs>`.
-This provides fault tolerance at worker level.
+training and evaluation EnvRunner workers. This provides fault tolerance at worker level.
 
 This means that if you have n :py:class:`~ray.rllib.env.env_runner.EnvRunner` workers sitting on different machines and a
 machine is pre-empted, RLlib can continue training and evaluation with minimal interruption.
