@@ -1654,18 +1654,18 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> &
-GcsActorManager::GetCreatedActors() const {
+const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
+    &GcsActorManager::GetCreatedActors() const {
   return created_actors_;
 }
 
-const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &
-GcsActorManager::GetRegisteredActors() const {
+const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>
+    &GcsActorManager::GetRegisteredActors() const {
   return registered_actors_;
 }
 
-const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>> &
-GcsActorManager::GetActorRegisterCallbacks() const {
+const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
+    &GcsActorManager::GetActorRegisterCallbacks() const {
   return actor_to_register_callbacks_;
 }
 
@@ -1862,7 +1862,8 @@ std::string GcsActorManager::DebugString() const {
   }
 
   std::ostringstream stream;
-  stream << "GcsActorManager: " << "\n- RegisterActor request count: "
+  stream << "GcsActorManager: "
+         << "\n- RegisterActor request count: "
          << counts_[CountType::REGISTER_ACTOR_REQUEST]
          << "\n- CreateActor request count: " << counts_[CountType::CREATE_ACTOR_REQUEST]
          << "\n- GetActorInfo request count: "

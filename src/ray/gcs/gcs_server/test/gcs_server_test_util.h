@@ -315,7 +315,7 @@ struct GcsServerMocker {
     void ShutdownRaylet(
         const NodeID &node_id,
         bool graceful,
-        const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override {};
+        const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
 
     void DrainRaylet(
         const rpc::autoscaler::DrainNodeReason &reason,
@@ -329,10 +329,10 @@ struct GcsServerMocker {
 
     void IsLocalWorkerDead(
         const WorkerID &worker_id,
-        const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) override {};
+        const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) override{};
 
     void NotifyGCSRestart(
-        const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override {};
+        const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override{};
 
     ~MockRayletClient() {}
 

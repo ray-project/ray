@@ -376,8 +376,9 @@ TEST_F(RedisStoreClientTest, Random) {
                                          v,
                                          true,
                                          {[idx, added, k, counter](bool r) mutable {
-                                            RAY_LOG(INFO) << "m_put Finished: " << " "
-                                                          << idx << " " << k << " " << r;
+                                            RAY_LOG(INFO)
+                                                << "m_put Finished: "
+                                                << " " << idx << " " << k << " " << r;
                                             *counter -= 1;
                                             ASSERT_EQ(r, added);
                                           },

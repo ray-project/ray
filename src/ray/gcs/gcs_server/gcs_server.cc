@@ -609,8 +609,8 @@ void GcsServer::InitRuntimeEnvManager() {
         const std::string_view plugin_uri_view = plugin_uri;
         auto protocol_end_pos = plugin_uri_view.find(protocol_sep);
         if (protocol_end_pos == std::string::npos) {
-          RAY_LOG(ERROR) << "Plugin URI must be of form " << "<protocol>://<hash>, got "
-                         << plugin_uri_view;
+          RAY_LOG(ERROR) << "Plugin URI must be of form "
+                         << "<protocol>://<hash>, got " << plugin_uri_view;
           callback(/*successful=*/false);
         } else {
           const std::string_view protocol = plugin_uri_view.substr(0, protocol_end_pos);

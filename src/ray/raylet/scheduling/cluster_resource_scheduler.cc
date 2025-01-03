@@ -211,7 +211,8 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     *total_violations = 0;
   }
 
-  RAY_LOG(DEBUG) << "Scheduling decision. " << "forcing spillback: " << force_spillback
+  RAY_LOG(DEBUG) << "Scheduling decision. "
+                 << "forcing spillback: " << force_spillback
                  << ". Best node: " << best_node_id.ToInt() << " "
                  << (best_node_id.IsNil() ? NodeID::Nil()
                                           : NodeID::FromBinary(best_node_id.Binary()))

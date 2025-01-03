@@ -174,8 +174,8 @@ std::string ClusterResourceManager::GetNodeResourceViewString(
   return node.GetLocalView().DictString();
 }
 
-const absl::flat_hash_map<scheduling::NodeID, Node> &
-ClusterResourceManager::GetResourceView() const {
+const absl::flat_hash_map<scheduling::NodeID, Node>
+    &ClusterResourceManager::GetResourceView() const {
   return nodes_;
 }
 

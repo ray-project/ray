@@ -133,52 +133,51 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
 
 TaskCounter::TaskCounter() {
   counter_.SetOnChangeCallback(
-      [this](const std::tuple<std::string, TaskStatusType, bool> &key)
-          ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
-            if (std::get<1>(key) != TaskStatusType::kRunning) {
-              return;
-            }
-            const auto &func_name = std::get<0>(key);
-            const auto is_retry = std::get<2>(key);
-            const int64_t running_total = counter_.Get(key);
-            const int64_t num_in_get = running_in_get_counter_.Get({func_name, is_retry});
-            const int64_t num_in_wait =
-                running_in_wait_counter_.Get({func_name, is_retry});
-            const auto is_retry_label = is_retry ? "1" : "0";
-            // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
-            // them out to avoid double-counting.
-            ray::stats::STATS_tasks.Record(
-                running_total - num_in_get - num_in_wait,
-                {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
-                 {"Name", func_name},
-                 {"IsRetry", is_retry_label},
-                 {"JobId", job_id_},
-                 {"Source", "executor"}});
-            // Negate the metrics recorded from the submitter process for these tasks.
-            ray::stats::STATS_tasks.Record(
-                -running_total,
-                {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
-                 {"Name", func_name},
-                 {"IsRetry", is_retry_label},
-                 {"JobId", job_id_},
-                 {"Source", "executor"}});
-            // Record sub-state for get.
-            ray::stats::STATS_tasks.Record(
-                num_in_get,
-                {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
-                 {"Name", func_name},
-                 {"IsRetry", is_retry_label},
-                 {"JobId", job_id_},
-                 {"Source", "executor"}});
-            // Record sub-state for wait.
-            ray::stats::STATS_tasks.Record(
-                num_in_wait,
-                {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
-                 {"Name", func_name},
-                 {"IsRetry", is_retry_label},
-                 {"JobId", job_id_},
-                 {"Source", "executor"}});
-          });
+      [this](const std::tuple<std::string, TaskStatusType, bool>
+                 &key) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
+        if (std::get<1>(key) != TaskStatusType::kRunning) {
+          return;
+        }
+        const auto &func_name = std::get<0>(key);
+        const auto is_retry = std::get<2>(key);
+        const int64_t running_total = counter_.Get(key);
+        const int64_t num_in_get = running_in_get_counter_.Get({func_name, is_retry});
+        const int64_t num_in_wait = running_in_wait_counter_.Get({func_name, is_retry});
+        const auto is_retry_label = is_retry ? "1" : "0";
+        // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
+        // them out to avoid double-counting.
+        ray::stats::STATS_tasks.Record(
+            running_total - num_in_get - num_in_wait,
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
+        // Negate the metrics recorded from the submitter process for these tasks.
+        ray::stats::STATS_tasks.Record(
+            -running_total,
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
+        // Record sub-state for get.
+        ray::stats::STATS_tasks.Record(
+            num_in_get,
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
+        // Record sub-state for wait.
+        ray::stats::STATS_tasks.Record(
+            num_in_wait,
+            {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
+             {"Name", func_name},
+             {"IsRetry", is_retry_label},
+             {"JobId", job_id_},
+             {"Source", "executor"}});
+      });
 }
 
 void TaskCounter::RecordMetrics() {
@@ -509,8 +508,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       GetWorkerID());
   object_info_subscriber_ = std::make_unique<pubsub::Subscriber>(
-      /*subscriber_id=*/
-      GetWorkerID(),
+      /*subscriber_id=*/GetWorkerID(),
       /*channels=*/
       std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
                                     rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
@@ -1149,7 +1147,8 @@ void CoreWorker::Exit(
 
 void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                            const std::string &detail) {
-  RAY_LOG(WARNING) << "Force exit the process. " << " Details: " << detail;
+  RAY_LOG(WARNING) << "Force exit the process. "
+                   << " Details: " << detail;
 
   KillChildProcs();
   // Disconnect should be put close to Exit
