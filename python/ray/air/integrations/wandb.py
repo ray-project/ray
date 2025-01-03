@@ -119,20 +119,19 @@ def setup_wandb(
             "Wandb was not found - please install with `pip install wandb`"
         )
 
-    try:
-        # Do a try-catch here if we are not in a train session
-        session = get_session()
-        if session and rank_zero_only and session.world_rank in (None, 0):
-            return RunDisabled()
+    default_trial_id = None
+    default_trial_name = None
+    default_experiment_name = None
 
+    # Do a try-catch here if we are not in a train session
+    session = get_session()
+    if session and rank_zero_only and session.world_rank in (None, 0):
+        return RunDisabled()
+
+    if session:
         default_trial_id = session.trial_id
         default_trial_name = session.trial_name
         default_experiment_name = session.experiment_name
-
-    except RuntimeError:
-        default_trial_id = None
-        default_trial_name = None
-        default_experiment_name = None
 
     # Default init kwargs
     wandb_init_kwargs = {
