@@ -35,15 +35,19 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
-    benchmark = Benchmark("read-and-consume")
-    read_fn = get_read_fn(args)
-    consume_fn = get_consume_fn(args)
+    benchmark = Benchmark()
 
     def benchmark_fn():
+        read_fn = get_read_fn(args)
+        consume_fn = get_consume_fn(args)
+
         ds = read_fn(args.path)
         consume_fn(ds)
 
-    benchmark.run_fn(str(vars(args)), benchmark_fn)
+        # Report arguments for the benchmark.
+        return vars(args)
+
+    benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
 
 
