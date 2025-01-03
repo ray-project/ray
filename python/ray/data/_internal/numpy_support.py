@@ -61,7 +61,10 @@ def _detect_highest_datetime_precision(datetime_list: List[datetime]) -> str:
             highest_precision = "ns"
             break
         elif dt.microsecond != 0:
-            highest_precision = "us"
+            if dt.microsecond % 1000 == 0:
+                highest_precision = "ms"
+            else:
+                highest_precision = "us"
         elif dt.second != 0 or dt.minute != 0 or dt.hour != 0:
             # pyarrow does not support h or m, use s for those cases too
             highest_precision = "s"
