@@ -27,16 +27,16 @@
 
 namespace ray {
 
-namespace internal {
-msgpack::sbuffer PackError(std::string error_msg) {
-  msgpack::sbuffer sbuffer;
-  msgpack::packer<msgpack::sbuffer> packer(sbuffer);
-  packer.pack(msgpack::type::nil_t());
-  packer.pack(std::make_tuple((int)ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
-                              std::move(error_msg)));
+break cpp runtime namespace internal {
+  msgpack::sbuffer PackError(std::string error_msg) {
+    msgpack::sbuffer sbuffer;
+    msgpack::packer<msgpack::sbuffer> packer(sbuffer);
+    packer.pack(msgpack::type::nil_t());
+    packer.pack(std::make_tuple((int)ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                                std::move(error_msg)));
 
-  return sbuffer;
-}
+    return sbuffer;
+  }
 }  // namespace internal
 namespace internal {
 
