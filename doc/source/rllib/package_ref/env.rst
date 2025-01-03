@@ -51,6 +51,9 @@ Environment API Reference
    :maxdepth: 1
 
    env/env_runner.rst
-   env/multi_agent_env.rst
+   env/single_agent_env_runner.rst
    env/single_agent_episode.rst
+   env/multi_agent_env.rst
+   env/multi_agent_env_runner.rst
+   env/multi_agent_episode.rst
    env/utils.rst

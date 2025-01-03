@@ -402,7 +402,7 @@ NodeManager::NodeManager(
                                         "NodeManager.GCTaskFailureReason");
 
   mutable_object_provider_ = std::make_unique<core::experimental::MutableObjectProvider>(
-      *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this));
+      *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this), nullptr);
 }
 
 std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
@@ -638,16 +638,16 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
       // Don't kill worker processes belonging to the detached actor
       // since those are expected to outlive the job.
       RAY_LOG(INFO).WithField(worker->WorkerId())
-          << "The leased worker "
-          << " is killed because the job " << job_id << " finished.";
+          << "The leased worker " << " is killed because the job " << job_id
+          << " finished.";
       rpc::ExitRequest request;
       request.set_force_exit(true);
       worker->rpc_client()->Exit(
           request, [this, worker](const ray::Status &status, const rpc::ExitReply &r) {
             if (!status.ok()) {
               RAY_LOG(WARNING).WithField(worker->WorkerId())
-                  << "Failed to send exit request to worker "
-                  << ": " << status.ToString() << ". Killing it using SIGKILL instead.";
+                  << "Failed to send exit request to worker " << ": " << status.ToString()
+                  << ". Killing it using SIGKILL instead.";
               // Just kill-9 as a last resort.
               KillWorker(worker, /* force */ true);
             }
@@ -2439,9 +2439,8 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is no longer local.
   const auto waiting_task_ids = dependency_manager_.HandleObjectMissing(object_id);
   std::stringstream result;
-  result << "Object missing " << object_id << ", "
-         << " on " << self_node_id_ << ", " << waiting_task_ids.size()
-         << " tasks waiting";
+  result << "Object missing " << object_id << ", " << " on " << self_node_id_ << ", "
+         << waiting_task_ids.size() << " tasks waiting";
   if (waiting_task_ids.size() > 0) {
     result << ", tasks: ";
     for (const auto &task_id : waiting_task_ids) {
