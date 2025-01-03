@@ -7,7 +7,7 @@ from starlette.types import Scope
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -651,7 +651,7 @@ class StreamingHTTPRequest:
     @property
     def receive_asgi_messages(self) -> Callable[[RequestMetadata], Awaitable[bytes]]:
         if self._receive_asgi_messages is None:
-            proxy_actor = ray.get_actor(self._proxy_actor_name)
+            proxy_actor = ray.get_actor(self._proxy_actor_name, namespace=SERVE_NAMESPACE)
             self._receive_asgi_messages = proxy_actor.receive_asgi_messages.remote
 
         return self._receive_asgi_messages
