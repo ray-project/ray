@@ -121,7 +121,7 @@ class OfflinePreLearner:
         )
         # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
-        self._is_multi_agent = config.is_multi_agent()
+        self._is_multi_agent = config.is_multi_agent
         # Set the counter to zero.
         self.iter_since_last_module_update = 0
         # self._future = None

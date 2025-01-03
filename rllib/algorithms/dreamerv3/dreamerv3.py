@@ -381,7 +381,7 @@ class DreamerV3Config(AlgorithmConfig):
         super().validate()
 
         # Make sure, users are not using DreamerV3 yet for multi-agent:
-        if self.is_multi_agent():
+        if self.is_multi_agent:
             raise ValueError("DreamerV3 does NOT support multi-agent setups yet!")
 
         # Make sure, we are configure for the new API stack.
