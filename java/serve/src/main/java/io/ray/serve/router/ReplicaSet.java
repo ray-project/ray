@@ -41,7 +41,7 @@ public class ReplicaSet { // TODO ReplicaScheduler
   }
 
   public synchronized void updateWorkerReplicas(Object deploymentAvailability) {
-    if (null != actorSet) {
+    if (null != deploymentAvailability) {
       Set<String> actorNameSet = new HashSet<>(((DeploymentAvailability) deploymentAvailability).getReplicaNamesList());
       Set<String> added = new HashSet<>(Sets.difference(actorNameSet, inFlightQueries.keySet()));
       Set<String> removed = new HashSet<>(Sets.difference(inFlightQueries.keySet(), actorNameSet));
