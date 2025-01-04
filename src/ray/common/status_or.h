@@ -61,8 +61,22 @@ class StatusOr {
     }
   }
 
-  StatusOr(const StatusOr &) = default;
-  StatusOr &operator=(const StatusOr &) = default;
+  StatusOr(const StatusOr &rhs) {
+    if (rhs.ok()) {
+      status_ = Status::OK();
+      MakeValue(rhs.value());
+      return;
+    }
+    status_ = rhs.status();
+  }
+  StatusOr &operator=(const StatusOr &rhs) {
+    if (rhs.ok()) {
+      status_ = Status::OK();
+      AssignValue(rhs.value());
+      return;
+    }
+    AssignStatus(rhs.status());
+  }
 
   StatusOr(StatusOr &&) noexcept(std::is_nothrow_move_constructible_v<T>) = default;
   StatusOr &operator=(StatusOr &&) noexcept(std::is_nothrow_move_assignable_v<T>) =
@@ -196,6 +210,26 @@ class StatusOr {
   void MakeValue(Args &&...arg) {
     new (&data_) T(std::forward<Args>(arg)...);
   }
+
+  // Assign value to current status or.
+  template <typename U>
+  void AssignValue(U &&value) {
+    if (ok()) {
+      ClearValue();
+    }
+    MakeValue(std::forward<U>(value));
+  }
+
+  // Assign status to current status or.
+  void AssignStatus(Status s) {
+    if (ok()) {
+      ClearValue();
+    }
+    status_ = std::move(s);
+  }
+
+  // @precondition `ok() == true`.
+  void ClearValue() { data_.~T(); }
 
   Status status_;
 
