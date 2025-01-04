@@ -8,7 +8,6 @@ from ray.experimental.channel.communicator import Communicator, TorchTensorAlloc
 from ray.experimental.util.types import ReduceOp
 
 if TYPE_CHECKING:
-    import cupy as cp
     import torch
 
 
