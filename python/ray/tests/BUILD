@@ -759,6 +759,9 @@ py_test_module_list(
   name_suffix = "_debug_mode",
   tags = ["exclusive", "debug_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
+  env = {
+    "RAY_TEST_DEBUG_MODE" : "1",
+  }
 )
 
 py_test_module_list(
