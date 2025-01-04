@@ -10,6 +10,7 @@ import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import (
+    DeploymentAvailability,
     DeploymentID,
     EndpointInfo,
     ReplicaID,
@@ -23,11 +24,9 @@ from ray.serve._private.long_poll import (
     UpdatedObject,
 )
 from ray.serve.generated.serve_pb2 import (
-    ActorNameList,
-    EndpointSet,
-    LongPollRequest,
-    LongPollResult,
+    DeploymentAvailability as DeploymentAvailabilityProto,
 )
+from ray.serve.generated.serve_pb2 import EndpointSet, LongPollRequest, LongPollResult
 
 
 def test_notifier_events_cleared_without_update(serve_instance):
@@ -224,7 +223,9 @@ def test_listen_for_change_java(serve_instance):
     assert set(endpoint_set.endpoints.keys()) == {"deployment_name", "deployment_name1"}
     assert endpoint_set.endpoints["deployment_name"].route == "/test/xlang/poll"
 
-    request_3 = {"keys_to_snapshot_ids": {"(RUNNING_REPLICAS,deployment_name)": -1}}
+    request_3 = {
+        "keys_to_snapshot_ids": {"(DEPLOYMENT_AVAILABILITY,deployment_name)": -1}
+    }
     replicas = [
         RunningReplicaInfo(
             replica_id=ReplicaID(
@@ -240,7 +241,12 @@ def test_listen_for_change_java(serve_instance):
     ]
     ray.get(
         host.notify_changed.remote(
-            {(LongPollNamespace.RUNNING_REPLICAS, "deployment_name"): replicas}
+            {
+                (
+                    LongPollNamespace.DEPLOYMENT_AVAILABILITY,
+                    "deployment_name",
+                ): DeploymentAvailability(is_available=True, running_replicas=replicas)
+            }
         )
     )
     object_ref_3 = host.listen_for_change_java.remote(
@@ -248,12 +254,12 @@ def test_listen_for_change_java(serve_instance):
     )
     result_3: bytes = ray.get(object_ref_3)
     poll_result_3 = LongPollResult.FromString(result_3)
-    replica_name_list = ActorNameList.FromString(
+    da = DeploymentAvailabilityProto.FromString(
         poll_result_3.updated_objects[
-            "(RUNNING_REPLICAS,deployment_name)"
+            "(DEPLOYMENT_AVAILABILITY,deployment_name)"
         ].object_snapshot
     )
-    assert replica_name_list.names == [
+    assert da.replica_names == [
         "SERVE_REPLICA::default#deployment_name#0",
         "SERVE_REPLICA::default#deployment_name#1",
     ]
