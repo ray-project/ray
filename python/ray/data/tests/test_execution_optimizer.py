@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray.data._internal.aggregate import Count
+from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -1095,6 +1096,75 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
     ds.write_csv(tmp_path)
     assert "ReadRange->Write" in ds._write_ds.stats()
     _check_usage_record(["ReadRange", "WriteCSV"])
+
+
+@pytest.mark.parametrize(
+    "up_use_actor, up_concurrency, down_use_actor, down_concurrency, should_fuse",
+    [
+        # === Task->Task cases ===
+        # Same concurrency set. Should fuse.
+        (False, 1, False, 1, True),
+        # Different concurrency set. Should not fuse.
+        (False, 1, False, 2, False),
+        # If one op has concurrency set, and the other doesn't, should not fuse.
+        (False, None, False, 1, False),
+        (False, 1, False, None, False),
+        # === Task->Actor cases ===
+        # When max size matches, should fuse.
+        (False, 2, True, 2, True),
+        (False, 2, True, (1, 2), True),
+        # When max size doesn't match, should not fuse.
+        (False, 1, True, 2, False),
+        (False, 1, True, (1, 2), False),
+        (False, None, True, (1, 2), False),
+        # === Actor->Task cases ===
+        # Should not fuse whatever concurrency is set.
+        (True, 2, False, 2, False),
+        # === Actor->Actor cases ===
+        # Should not fuse whatever concurrency is set.
+        (True, 2, True, 2, False),
+    ],
+)
+def test_map_fusion_with_concurrency_arg(
+    ray_start_regular_shared,
+    up_use_actor,
+    up_concurrency,
+    down_use_actor,
+    down_concurrency,
+    should_fuse,
+):
+    """Test map operator fusion with different concurrency settings."""
+
+    class Map:
+        def __call__(self, row):
+            return row
+
+    def map(row):
+        return row
+
+    ds = ray.data.range(10, override_num_blocks=2)
+    if not up_use_actor:
+        ds = ds.map(map, num_cpus=0, concurrency=up_concurrency)
+        up_name = "Map(map)"
+    else:
+        ds = ds.map(Map, num_cpus=0, concurrency=up_concurrency)
+        up_name = "Map(Map)"
+
+    if not down_use_actor:
+        ds = ds.map(map, num_cpus=0, concurrency=down_concurrency)
+        down_name = "Map(map)"
+    else:
+        ds = ds.map(Map, num_cpus=0, concurrency=down_concurrency)
+        down_name = "Map(Map)"
+
+    assert extract_values("id", ds.take_all()) == list(range(10))
+
+    name = f"{up_name}->{down_name}"
+    stats = ds.stats()
+    if should_fuse:
+        assert name in stats, stats
+    else:
+        assert name not in stats, stats
 
 
 def test_write_operator(ray_start_regular_shared, tmp_path):

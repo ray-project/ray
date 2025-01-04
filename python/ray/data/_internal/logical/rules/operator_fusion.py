@@ -247,16 +247,10 @@ class OperatorFusionRule(Rule):
             return down_compute
         else:
             assert isinstance(down_compute, ActorPoolStrategy)
-            # For Task->Actor.
-            if up_compute.size is None:
-                # If the upstream is unbounded, we can fuse them
-                # using the downstream's compute.
-                return down_compute
-            else:
-                # Otherwise, we can only fuse if the upper bounds matches.
-                if up_compute.size != down_compute.max_size:
-                    return None
-                return down_compute
+            # For Task->Actor, Task's size must match Actor's max_size.
+            if up_compute.size != down_compute.max_size:
+                return None
+            return down_compute
 
     def _can_merge_target_max_block_size(
         self,
