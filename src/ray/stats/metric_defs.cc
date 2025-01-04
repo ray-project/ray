@@ -84,8 +84,11 @@ DEFINE_stats(finished_jobs,
              /*buckets=*/(),
              ray::stats::COUNT);
 
-DEFINE_stats(
-    duration_jobs, "Duration of jobs finished.", ("JobId"), (), ray::stats::GAUGE);
+DEFINE_stats(job_duration_s,
+             "Duration of jobs finished in seconds.",
+             ("JobId"),
+             (),
+             ray::stats::GAUGE);
 
 /// Logical resource usage reported by raylets.
 DEFINE_stats(resources,

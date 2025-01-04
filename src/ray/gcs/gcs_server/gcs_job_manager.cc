@@ -158,8 +158,8 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     RAY_CHECK(iter != running_job_ids_.end());
     running_job_ids_.erase(iter);
     running_job_start_times_.erase(job_id);
-    ray::stats::STATS_duration_jobs.Record(
-        job_table_data.end_time() - job_table_data.start_time(),
+    ray::stats::STATS_job_duration_s.Record(
+        (job_table_data.end_time() - job_table_data.start_time()) / 1000.0,
         {{"JobId", job_id.Hex()}});
     ++finished_jobs_count_;
 
@@ -485,8 +485,8 @@ void GcsJobManager::RecordMetrics() {
   ray::stats::STATS_running_jobs.Record(running_job_ids_.size());
   ray::stats::STATS_finished_jobs.Record(finished_jobs_count_);
   for (const auto &job_id : running_job_ids_) {
-    ray::stats::STATS_duration_jobs.Record(
-        current_sys_time_ms() - running_job_start_times_[job_id],
+    ray::stats::STATS_job_duration_s.Record(
+        (current_sys_time_ms() - running_job_start_times_[job_id]) / 1000.0,
         {{"JobId", job_id.Hex()}});
   }
 }
