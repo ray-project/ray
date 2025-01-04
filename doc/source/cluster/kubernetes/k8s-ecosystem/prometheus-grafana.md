@@ -189,7 +189,7 @@ spec:
 
 Similar to the head Pod, this tutorial also uses a PodMonitor to collect metrics from worker Pods. The reason for using separate PodMonitors for head Pods and worker Pods is that the head Pod exposes multiple metric endpoints, whereas a worker Pod exposes only one.
 
-**Note**: We could create a Kubernetes service with selectors a common label subset from our worker pods, however, this is not ideal because our workers are independent from each other, that is, they are not a collection of replicas spawned by replicaset controller. Due to that, we should avoid using a Kubernetes service for grouping them together.
+**Note**: You could create a Kubernetes service with selectors a common label subset from our worker pods, however, this configuration is not ideal because the workers are independent from each other, that is, they aren't a collection of replicas spawned by replicaset controller. Due to this behavior, avoid using a Kubernetes service for grouping them together.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
