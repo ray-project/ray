@@ -145,7 +145,7 @@ How to use Custom and Conditional Search Spaces in Tune?
 You'll often run into awkward search spaces (i.e., when one hyperparameter depends on another).
 Use ``tune.sample_from(func)`` to provide a **custom** callable function for generating a search space.
 
-The parameter ``func`` should take in a ``spec`` object, which has a ``config`` namespace
+The parameter ``func`` should take in a ``config`` namespace
 from which you can access other hyperparameters.
 This is useful for conditional distributions:
 
@@ -156,8 +156,8 @@ This is useful for conditional distributions:
         param_space={
             # A random function
             "alpha": tune.sample_from(lambda _: np.random.uniform(100)),
-            # Use the `spec.config` namespace to access other hyperparameters
-            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal())
+            # Use the `config` namespace to access other hyperparameters
+            "beta": tune.sample_from(lambda config: config.alpha * np.random.normal())
         }
     )
     tuner.fit()
@@ -165,7 +165,7 @@ This is useful for conditional distributions:
 Here's an example showing a grid search over two nested parameters combined with random sampling from
 two lambda functions, generating 9 different trials.
 Note that the value of ``beta`` depends on the value of ``alpha``,
-which is represented by referencing ``spec.config.alpha`` in the lambda function.
+which is represented by referencing ``config.alpha`` in the lambda function.
 This lets you specify conditional parameter distributions.
 
 .. code-block:: python
@@ -175,8 +175,8 @@ This lets you specify conditional parameter distributions.
         my_trainable,
         run_config=RunConfig(name="my_trainable"),
         param_space={
-            "alpha": tune.sample_from(lambda spec: np.random.uniform(100)),
-            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
+            "alpha": tune.sample_from(lambda config: np.random.uniform(100)),
+            "beta": tune.sample_from(lambda config: config.alpha * np.random.normal()),
             "nn_layers": [
                 tune.grid_search([16, 64, 256]),
                 tune.grid_search([16, 64, 256]),
