@@ -219,4 +219,38 @@ TEST(StatusOrTest, OrElse) {
   }
 }
 
+TEST(StatusOrTest, CopyAssignment) {
+  // Copy value.
+  {
+    StatusOr<int> val = 10;
+    StatusOr<int> copy = val;
+    EXPECT_EQ(val.value(), 10);
+    EXPECT_EQ(copy.value(), 10);
+  }
+
+  // Error status.
+  {
+    StatusOr<int> val = Status::InvalidArgument("error");
+    StatusOr<int> copy = val;
+    EXPECT_EQ(val.code(), StatusCode::InvalidArgument);
+    EXPECT_EQ(copy.code(), StatusCode::InvalidArgument);
+  }
+}
+
+TEST(StatusOrTest, MoveAssignment) {
+  // Move value.
+  {
+    StatusOr<int> val = 10;
+    StatusOr<int> moved = std::move(val);
+    EXPECT_EQ(moved.value(), 10);
+  }
+
+  // Move status.
+  {
+    StatusOr<int> val = Status::InvalidArgument("error");
+    StatusOr<int> moved = std::move(val);
+    EXPECT_EQ(moved.code(), StatusCode::InvalidArgument);
+  }
+}
+
 }  // namespace ray
