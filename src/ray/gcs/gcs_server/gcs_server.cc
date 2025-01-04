@@ -572,8 +572,7 @@ void GcsServer::InitKVManager() {
     break;
   case (StorageType::IN_MEMORY):
     instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>()),
-        io_context);
+        std::make_unique<InMemoryStoreClient>(), io_context);
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
