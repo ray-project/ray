@@ -13,10 +13,10 @@ import pyarrow.fs
 import ray
 from ray import logger
 from ray._private.storage import _load_class
-from ray.air import session
 from ray.air._internal import usage as air_usage
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.util.node import _force_on_current_node
+from ray.train._internal.session import get_session
 from ray.train._internal.syncer import DEFAULT_SYNC_TIMEOUT
 from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
@@ -119,20 +119,19 @@ def setup_wandb(
             "Wandb was not found - please install with `pip install wandb`"
         )
 
-    try:
-        # Do a try-catch here if we are not in a train session
-        _session = session._get_session(warn=False)
-        if _session and rank_zero_only and session.get_world_rank() != 0:
-            return RunDisabled()
+    default_trial_id = None
+    default_trial_name = None
+    default_experiment_name = None
 
-        default_trial_id = session.get_trial_id()
-        default_trial_name = session.get_trial_name()
-        default_experiment_name = session.get_experiment_name()
+    # Do a try-catch here if we are not in a train session
+    session = get_session()
+    if session and rank_zero_only and session.world_rank in (None, 0):
+        return RunDisabled()
 
-    except RuntimeError:
-        default_trial_id = None
-        default_trial_name = None
-        default_experiment_name = None
+    if session:
+        default_trial_id = session.trial_id
+        default_trial_name = session.trial_name
+        default_experiment_name = session.experiment_name
 
     # Default init kwargs
     wandb_init_kwargs = {
@@ -420,7 +419,7 @@ class _WandbLoggingActor:
             except urllib.error.HTTPError as e:
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
-                logger.warn("Failed to log result to w&b: {}".format(str(e)))
+                logger.warning("Failed to log result to w&b: {}".format(str(e)))
         self._wandb.finish()
 
     def _handle_checkpoint(self, checkpoint_path: str):
