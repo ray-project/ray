@@ -177,7 +177,7 @@ spec:
   # raycluster-embed-grafana-head-khfs4   1/1     Running   0          4m38s
   ```
 
-* `relabelings`: This configuration renames the label `__meta_kubernetes_pod_label_ray_io_cluster` to `ray_io_cluster` in the scraped metrics. It ensures that each metric includes the name of the RayCluster to which the Pod belongs. This is especially useful for distinguishing metrics when deploying multiple RayClusters. For example, a metric with the `ray_io_cluster` label might look like this:
+* `relabelings`: This configuration renames the label `__meta_kubernetes_pod_label_ray_io_cluster` to `ray_io_cluster` in the scraped metrics. It ensures that each metric includes the name of the RayCluster to which the Pod belongs. This configuration is especially useful for distinguishing metrics when deploying multiple RayClusters. For example, a metric with the `ray_io_cluster` label might look like this:
 
   ```
   ray_node_cpu_count{SessionName="session_2025-01-02_07-58-21_419367_11", container="ray-head", endpoint="metrics", instance="10.244.0.13:8080", ip="10.244.0.13", job="raycluster-embed-grafana-head-svc", namespace="default", pod="raycluster-embed-grafana-head-98fqt", ray_io_cluster="raycluster-embed-grafana", service="raycluster-embed-grafana-head-svc"}
