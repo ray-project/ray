@@ -3,6 +3,9 @@
 [Aa]lgos?
 (APPO|appo)
 boolean
+[Cc]heckpoints?(ing)?
+[Cc]heckpointable
+classmethods?
 coeff
 config
 (DQN|dqn)
@@ -25,5 +28,6 @@ RLModules?
 rollout
 (SAC|sac)
 SGD
+[Ss]ubcomponents?
 [Tt]ensor[Ff]low
 timesteps?
