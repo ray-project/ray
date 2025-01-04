@@ -2362,6 +2362,10 @@ cdef CRayStatus check_signals() nogil:
         # The Python exceptions are not handled if it is raised from cdef,
         # so we have to handle it here.
         try:
+            if sys.is_finalizing():
+                return CRayStatus.IntentionalSystemExit(
+                    "Python is exiting.".encode("utf-8")
+                )
             PyErr_CheckSignals()
         except KeyboardInterrupt:
             return CRayStatus.Interrupted(b"")
