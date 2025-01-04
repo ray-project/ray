@@ -70,6 +70,9 @@ class StatusOr {
     status_ = rhs.status();
   }
   StatusOr &operator=(const StatusOr &rhs) {
+    if (this == &rhs) {
+      return *this;
+    }
     if (rhs.ok()) {
       status_ = Status::OK();
       AssignValue(rhs.value());
@@ -78,9 +81,25 @@ class StatusOr {
     AssignStatus(rhs.status());
   }
 
-  StatusOr(StatusOr &&) noexcept(std::is_nothrow_move_constructible_v<T>) = default;
-  StatusOr &operator=(StatusOr &&) noexcept(std::is_nothrow_move_assignable_v<T>) =
-      default;
+  StatusOr(StatusOr &&rhs) noexcept(std::is_nothrow_move_constructible_v<T>) {
+    if (rhs.ok()) {
+      status_ = Status::OK();
+      MakeValue(std::move(rhs).value());
+      return;
+    }
+    status_ = std::move(rhs).status();
+  }
+  StatusOr &operator=(StatusOr &&rhs) noexcept(std::is_nothrow_move_assignable_v<T>) {
+    if (this == &rhs) {
+      return *this;
+    }
+    if (rhs.ok()) {
+      status_ = Status::OK();
+      AssignValue(std::move(rhs).value());
+      return;
+    }
+    AssignStatus(std::move(rhs).status());
+  }
 
   ~StatusOr() noexcept(std::is_nothrow_destructible_v<T>) {
     if (ok()) {
