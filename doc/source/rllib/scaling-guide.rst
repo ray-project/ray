@@ -2,7 +2,7 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. _rllib-scaling-guide-docs:
+.. _rllib-scaling-guide:
 
 RLlib Scaling Guide
 ===================

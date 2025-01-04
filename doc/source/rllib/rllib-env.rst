@@ -309,7 +309,7 @@ in combination.
 
 .. tip::
 
-    See the :ref:`scaling guide <rllib-scaling-guide-docs>` for more on RLlib training at scale.
+    See the :ref:`scaling guide <rllib-scaling-guide>` for more on RLlib training at scale.
 
 
 Expensive Environments

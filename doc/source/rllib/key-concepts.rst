@@ -59,7 +59,7 @@ This way, you can scale up sample collection and training, respectively, from a 
 
 .. todo: Separate out our scaling guide into its own page in new PR
 
-See this :ref:`scaling guide <rllib-scaling-guide-docs>` for more details here.
+See this :ref:`scaling guide <rllib-scaling-guide>` for more details here.
 
 You have two ways to interact with and run an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`:
 
