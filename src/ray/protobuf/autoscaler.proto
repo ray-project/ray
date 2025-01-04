@@ -317,11 +317,32 @@ message DrainNodeReply {
   string rejection_reason_message = 2;
 }
 
+message NodeGroupConfig {
+  map<string, double> resources = 1;
+  optional uint64 max_num_nodes = 2;
+}
+
+message ClusterConfig {
+  // Max resources for the entire cluster.
+  map<string, double> max_resources = 1;
+  // Configs for the node groups including head and worker nodes.
+  repeated NodeGroupConfig node_group_configs = 2;
+}
+
+message ReportClusterConfigRequest {
+  ClusterConfig cluster_config = 1;
+}
+
+message ReportClusterConfigReply {
+}
+
 service AutoscalerStateService {
   rpc GetClusterResourceState(GetClusterResourceStateRequest)
       returns (GetClusterResourceStateReply);
   rpc ReportAutoscalingState(ReportAutoscalingStateRequest)
       returns (ReportAutoscalingStateReply);
+  rpc ReportClusterConfig(ReportClusterConfigRequest)
+      returns (ReportClusterConfigReply);
   // Request additional cluster resources constraints. This is the RPC call made
   // when users call ray.autoscaler.sdk.request_resources.
   rpc RequestClusterResourceConstraint(RequestClusterResourceConstraintRequest)
