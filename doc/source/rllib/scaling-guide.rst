@@ -16,10 +16,13 @@ its sub-components can speed up sample and learning throughput.
     :align: left
 
     **Scalable axes in RLlib**: Three scaling axes are available across all RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` classes:
+
     - The number of :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors in the :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`,
       settable through ``config.env_runners(num_env_runners=n)``.
+
     - The number of vectorized sub-environments on each
       :py:class:`~ray.rllib.env.env_runner.EnvRunner` actor, settable through ``config.env_runners(num_envs_per_env_runner=p)``.
+
     - The number of :py:class:`~ray.rllib.core.learner.learner.Learner` actors in the
       :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`, settable through ``config.learners(num_learners=m)``.
 
