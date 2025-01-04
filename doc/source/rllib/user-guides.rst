@@ -23,6 +23,7 @@ User Guides
     rllib-torch2x
     rllib-fault-tolerance
     rllib-dev
+    scaling-guide
 
 
 .. _rllib-feature-guide:
@@ -97,3 +98,11 @@ RLlib Feature Guides
         .. button-ref:: rllib-dev
 
             How to contribute to RLlib?
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: scaling-guide
+
+            How to run RLlib experiments at scale

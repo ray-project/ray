@@ -318,8 +318,11 @@ evaluation (for example you have an environment that sometimes crashes or stalls
 you should use the following combination of settings, minimizing the negative effects
 of such environment behavior:
 
+.. todo (sven): Add link here to new fault-tolerance page, once done.
+    :ref:`fault tolerance settings <rllib-fault-tolerance-docs>`, such as
+
 Note that with or without parallel evaluation, all
-:ref:`fault tolerance settings <rllib-scaling-guide>`, such as
+fault tolerance settings, such as
 ``ignore_env_runner_failures`` or ``restart_failed_env_runners`` are respected and applied
 to the failed evaluation workers.
 
