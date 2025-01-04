@@ -1,6 +1,6 @@
 import logging
 from functools import partial
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 import xgboost
 from packaging.version import Version
@@ -138,7 +138,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
     def __init__(
         self,
         *,
-        datasets: Dict[str, GenDataset],
+        datasets: Mapping[str, GenDataset],
         label_column: str,
         params: Dict[str, Any],
         dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = _DEPRECATED_VALUE,
