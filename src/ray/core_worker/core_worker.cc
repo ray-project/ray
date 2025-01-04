@@ -3710,8 +3710,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::SendReplyCallback send_reply_callback) {
   /// Blank out message at push task server.
   auto &cur_task_spec = *request.mutable_task_spec();
-  auto &internal_task_spec = cur_task_spec.GetMutableMessage();  // rpc::TaskSpec
-  internal_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+  cur_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
 
   RAY_LOG(DEBUG).WithField(TaskID::FromBinary(request.task_spec().task_id()))
       << "Received Handle Push Task";
