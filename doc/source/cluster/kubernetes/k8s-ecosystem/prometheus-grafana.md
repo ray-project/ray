@@ -151,7 +151,7 @@ spec:
 ```
 
 * The YAML example above is [podMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/podMonitor.yaml#L26-L63), and it is created by **install.sh**. Hence, no need to create anything here.
-* See [PodMonitor official document](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#podmonitor) for more details about the configurations.
+* See the [PodMonitor official document](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#podmonitor) for more details about the configurations.
 * `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label. See [here](#prometheus-can-only-detect-this-label) for more details.
 
 (prometheus-can-only-detect-this-label)=
