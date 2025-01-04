@@ -18,7 +18,7 @@ from typing import (
 
 import ray
 import ray.exceptions
-from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -54,9 +54,9 @@ def retry_and_check_interpreter_exit(f: Callable[[], None]) -> bool:
     return exiting
 
 
-# Holds the input arguments for an accelerated DAG node.
+# Holds the input arguments for Compiled Graph
 @PublicAPI(stability="alpha")
-class RayDAGArgs(NamedTuple):
+class CompiledDAGArgs(NamedTuple):
     args: Tuple[Any, ...]
     kwargs: Dict[str, Any]
 
@@ -105,7 +105,7 @@ class ChannelOutputType:
         # By default, channels do not require NCCL.
         return False
 
-    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+    def get_custom_communicator(self) -> Optional[Communicator]:
         """
         Return the custom NCCL group if one is specified.
         """
@@ -113,7 +113,7 @@ class ChannelOutputType:
             return self._contains_type.get_custom_nccl_group()
         return None
 
-    def set_nccl_group_id(self, group_id: str) -> None:
+    def set_communicator_id(self, group_id: str) -> None:
         raise NotImplementedError
 
 
@@ -127,7 +127,7 @@ class ChannelContext:
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
-        self.nccl_groups: Dict[str, "GPUCommunicator"] = {}
+        self.communicators: Dict[str, "Communicator"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":
@@ -342,6 +342,14 @@ class SynchronousReader(ReaderInterface):
                 timeout = max(timeout, 0)
         return results
 
+    def release_channel_buffers(self, timeout: Optional[float] = None) -> None:
+        for c in self._input_channels:
+            start_time = time.monotonic()
+            c.release_buffer(timeout)
+            if timeout is not None:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
+
 
 @DeveloperAPI
 class AwaitableBackgroundReader(ReaderInterface):
@@ -468,7 +476,7 @@ def _adapt(raw_args: Any, key: Optional[Union[int, str]], is_input: bool):
         is_input: Whether the writer is DAG input writer or not.
     """
     if is_input:
-        if not isinstance(raw_args, RayDAGArgs):
+        if not isinstance(raw_args, CompiledDAGArgs):
             # Fast path for a single input.
             return raw_args
         else:

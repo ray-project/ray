@@ -24,12 +24,12 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-# This is the default schema used if no `input_read_schema` is set in
-# the config. If a user passes in a schema into `input_read_schema`
-# this user-defined schema has to comply with the keys of `SCHEMA`,
-# while values correspond to the columns in the user's dataset. Note
-# that only the user-defined values will be overridden while all
-# other values from SCHEMA remain as defined here.
+#: This is the default schema used if no `input_read_schema` is set in
+#: the config. If a user passes in a schema into `input_read_schema`
+#: this user-defined schema has to comply with the keys of `SCHEMA`,
+#: while values correspond to the columns in the user's dataset. Note
+#: that only the user-defined values will be overridden while all
+#: other values from SCHEMA remain as defined here.
 SCHEMA = {
     Columns.EPS_ID: Columns.EPS_ID,
     Columns.AGENT_ID: Columns.AGENT_ID,
@@ -84,9 +84,9 @@ class OfflinePreLearner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(
         self,
+        *,
         config: "AlgorithmConfig",
         learner: Union[Learner, list[ActorHandle]],
-        locality_hints: Optional[List[str]] = None,
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
@@ -121,7 +121,7 @@ class OfflinePreLearner:
         )
         # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
-        self._is_multi_agent = config.is_multi_agent()
+        self._is_multi_agent = config.is_multi_agent
         # Set the counter to zero.
         self.iter_since_last_module_update = 0
         # self._future = None
@@ -149,7 +149,7 @@ class OfflinePreLearner:
 
     @OverrideToImplementCustomLogic
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
-        """Prepares plain data batches for training with `Learner`s.
+        """Prepares plain data batches for training with `Learner`'s.
 
         Args:
             batch: A dictionary of numpy arrays containing either column data

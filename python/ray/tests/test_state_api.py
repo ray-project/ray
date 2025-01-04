@@ -6,7 +6,7 @@ import signal
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -23,7 +23,7 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
-from ray._raylet import ActorID
+from ray._raylet import ActorID, JobID, TaskID
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
@@ -42,6 +42,7 @@ from ray.core.generated.common_pb2 import (
     WorkerType,
     TaskType,
 )
+from ray.core.generated.gcs_service_pb2_grpc import TaskInfoGcsServiceStub
 from ray.core.generated.gcs_pb2 import (
     TaskEvents,
     TaskStateUpdate,
@@ -51,6 +52,7 @@ from ray.core.generated.gcs_pb2 import (
     WorkerTableData,
 )
 from ray.core.generated.gcs_service_pb2 import (
+    FilterPredicate,
     GcsStatus,
     GetTaskEventsReply,
     GetAllActorInfoReply,
@@ -68,8 +70,8 @@ from ray.dashboard.state_aggregator import (
     GCS_QUERY_FAILURE_WARNING,
     NODE_QUERY_FAILURE_WARNING,
     StateAPIManager,
-    _convert_filters_type,
 )
+from ray.dashboard.state_api_utils import convert_filters_type
 from ray.util.state import (
     get_actor,
     get_node,
@@ -278,6 +280,28 @@ def generate_task_data(events_by_task):
     )
 
 
+def generate_failure_test_data():
+    return GetTaskEventsReply(
+        status=GcsStatus(code=34, message="Unknown filter predicate"),
+        events_by_task=[],
+        num_status_task_events_dropped=0,
+        num_profile_task_events_dropped=0,
+        num_total_stored=0,
+        num_filtered_on_gcs=0,
+        num_truncated=0,
+    )
+
+
+def generate_early_return_task_data():
+    return GetTaskEventsReply(
+        num_profile_task_events_dropped=0,
+        num_status_task_events_dropped=0,
+        num_total_stored=0,
+        num_filtered_on_gcs=0,
+        num_truncated=0,
+    )
+
+
 def generate_object_info(
     obj_id,
     size_bytes=1,
@@ -342,6 +366,30 @@ def create_api_options(
         detail=detail,
         exclude_driver=exclude_driver,
     )
+
+
+def test_list_api_options_has_conflicting_filters():
+    # single filter
+    options = ListApiOptions(filters=[("name", "=", "task_name")])
+    assert not options.has_conflicting_filters()
+    # multiple filters, different keys
+    options = ListApiOptions(filters=[("name", "=", "task_name"), ("job_id", "=", "1")])
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, different value, not equal predicate
+    options = ListApiOptions(
+        filters=[("name", "!=", "task_name_1"), ("name", "!=", "task_name_2")]
+    )
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, same value, equal predicate
+    options = ListApiOptions(
+        filters=[("name", "=", "task_name_1"), ("name", "=", "task_name_1")]
+    )
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, different value, equal predicate
+    options = ListApiOptions(
+        filters=[("name", "=", "task_name_1"), ("name", "=", "task_name_2")]
+    )
+    assert options.has_conflicting_filters()
 
 
 def test_ray_address_to_api_server_url(shutdown_only):
@@ -1006,6 +1054,114 @@ async def test_api_manager_list_tasks(state_api_manager):
     )
     assert len(result.result) == 1
 
+    """
+    Test failure reply
+    """
+    data_source_client.get_all_task_info.side_effect = [generate_failure_test_data()]
+    result = await state_api_manager.list_tasks(option=create_api_options())
+    assert len(result.result) == 0
+    assert result.total == 0
+    assert result.num_filtered == 0
+    assert result.num_after_truncation == 0
+    assert len(result.warnings) > 0
+
+    """
+    Test early reply
+    """
+    data_source_client.get_all_task_info.side_effect = [
+        generate_early_return_task_data()
+    ]
+    result = await state_api_manager.list_tasks(option=create_api_options())
+    assert len(result.result) == 0
+    assert result.total == 0
+    assert result.num_filtered == 0
+    assert result.num_after_truncation == 0
+    assert result.warnings is None
+
+
+@pytest.mark.asyncio
+@patch.object(
+    StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_aio_client: None
+)
+async def test_state_data_source_client_get_all_task_info_no_early_return():
+    #  Setup
+    mock_gcs_task_info_stub = AsyncMock(TaskInfoGcsServiceStub)
+
+    client = StateDataSourceClient(None, None)
+    client._gcs_task_info_stub = mock_gcs_task_info_stub
+
+    mock_reply = MagicMock(GetTaskEventsReply)
+    mock_gcs_task_info_stub.GetTaskEvents = AsyncMock()
+    mock_gcs_task_info_stub.GetTaskEvents.side_effect = [mock_reply]
+
+    test_actor_id = ActorID.from_random()
+    test_job_id = JobID.from_int(1)
+    test_task_id_1 = TaskID.for_fake_task(test_job_id)
+    test_task_id_2 = TaskID.for_fake_task(test_job_id)
+    test_task_name = "task_name"
+    test_state = "running"
+    input_filters = []
+    input_filters.append(("actor_id", "=", test_actor_id.hex()))
+    input_filters.append(("job_id", "!=", test_job_id.hex()))
+    input_filters.append(("task_id", "=", test_task_id_1.hex()))
+    input_filters.append(("name", "=", test_task_name))
+    input_filters.append(("task_id", "!=", test_task_id_2.hex()))
+    input_filters.append(("state", "=", test_state))
+    input_timeout = 100
+    input_limit = 200
+    input_exclude_driver = True
+
+    # Execute the function
+    result = await client.get_all_task_info(
+        input_timeout, input_limit, input_filters, input_exclude_driver
+    )
+
+    # Verify
+    assert result is mock_reply
+    mock_gcs_task_info_stub.GetTaskEvents.assert_awaited_once()
+
+    input_args = mock_gcs_task_info_stub.GetTaskEvents.await_args
+    assert len(input_args.kwargs) == 1
+    assert input_args.kwargs["timeout"] == input_timeout
+
+    assert len(input_args.args) == 1
+    request_arg = input_args.args[0]
+    assert request_arg.limit == input_limit
+
+    filters_arg = request_arg.filters
+    task_filters_arg = request_arg.filters.task_filters
+    assert len(task_filters_arg) == 2
+    if task_filters_arg[0].predicate == FilterPredicate.EQUAL:
+        assert TaskID(task_filters_arg[0].task_id) == test_task_id_1
+        assert task_filters_arg[1].predicate == FilterPredicate.NOT_EQUAL
+        assert TaskID(task_filters_arg[1].task_id) == test_task_id_2
+    else:
+        assert task_filters_arg[0].task_id == test_task_id_2
+        assert task_filters_arg[1].predicate == FilterPredicate.EQUAL
+        assert TaskID(task_filters_arg[1].task_id) == test_task_id_1
+
+    actor_filters_arg = request_arg.filters.actor_filters
+    assert len(actor_filters_arg) == 1
+    assert ActorID(actor_filters_arg[0].actor_id) == test_actor_id
+    assert actor_filters_arg[0].predicate == FilterPredicate.EQUAL
+
+    job_filters_arg = request_arg.filters.job_filters
+    assert len(job_filters_arg) == 1
+    assert JobID(job_filters_arg[0].job_id) == test_job_id
+    assert job_filters_arg[0].predicate == FilterPredicate.NOT_EQUAL
+
+    task_name_filters_arg = request_arg.filters.task_name_filters
+    assert len(task_name_filters_arg) == 1
+    assert task_name_filters_arg[0].task_name == test_task_name
+    assert task_name_filters_arg[0].predicate == FilterPredicate.EQUAL
+
+    state_filters_arg = request_arg.filters.state_filters
+    assert len(state_filters_arg) == 1
+    assert state_filters_arg[0].state == test_state
+    assert state_filters_arg[0].predicate == FilterPredicate.EQUAL
+
+    assert filters_arg.exclude_driver == input_exclude_driver
+
 
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks_events(state_api_manager):
@@ -1460,39 +1616,39 @@ async def test_filter_non_existent_column(state_api_manager):
 
 def test_type_conversion():
     # Test string
-    r = _convert_filters_type([("actor_id", "=", "123")], ActorState)
+    r = convert_filters_type([("actor_id", "=", "123")], ActorState)
     assert r[0][2] == "123"
-    r = _convert_filters_type([("actor_id", "=", "abcd")], ActorState)
+    r = convert_filters_type([("actor_id", "=", "abcd")], ActorState)
     assert r[0][2] == "abcd"
-    r = _convert_filters_type([("actor_id", "=", "True")], ActorState)
+    r = convert_filters_type([("actor_id", "=", "True")], ActorState)
     assert r[0][2] == "True"
 
     # Test boolean
-    r = _convert_filters_type([("success", "=", "1")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "1")], RuntimeEnvState)
     assert r[0][2]
-    r = _convert_filters_type([("success", "=", "True")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "True")], RuntimeEnvState)
     assert r[0][2]
-    r = _convert_filters_type([("success", "=", "true")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "true")], RuntimeEnvState)
     assert r[0][2]
     with pytest.raises(ValueError):
-        r = _convert_filters_type([("success", "=", "random_string")], RuntimeEnvState)
-    r = _convert_filters_type([("success", "=", "false")], RuntimeEnvState)
+        r = convert_filters_type([("success", "=", "random_string")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "false")], RuntimeEnvState)
     assert r[0][2] is False
-    r = _convert_filters_type([("success", "=", "False")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "False")], RuntimeEnvState)
     assert r[0][2] is False
-    r = _convert_filters_type([("success", "=", "0")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "0")], RuntimeEnvState)
     assert r[0][2] is False
 
     # Test int
-    r = _convert_filters_type([("pid", "=", "0")], ObjectState)
+    r = convert_filters_type([("pid", "=", "0")], ObjectState)
     assert r[0][2] == 0
-    r = _convert_filters_type([("pid", "=", "123")], ObjectState)
+    r = convert_filters_type([("pid", "=", "123")], ObjectState)
     assert r[0][2] == 123
     # Only integer can be provided.
     with pytest.raises(ValueError):
-        r = _convert_filters_type([("pid", "=", "123.3")], ObjectState)
+        r = convert_filters_type([("pid", "=", "123.3")], ObjectState)
     with pytest.raises(ValueError):
-        r = _convert_filters_type([("pid", "=", "abc")], ObjectState)
+        r = convert_filters_type([("pid", "=", "abc")], ObjectState)
 
     # currently, there's no schema that has float column.
 
@@ -2457,6 +2613,83 @@ def test_list_get_tasks(shutdown_only):
         tasks = list_tasks(filters=[("STATE", "=", "PENDING_ARGS_AVAIL")], limit=1)
         assert len(tasks) == 1
 
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+def test_list_get_tasks_call_site(shutdown_only):
+    """
+    Call chain: Driver -> caller -> callee.
+    Verify that the call site is captured in callee, and it contains string
+    "caller".
+    """
+    ray.init(
+        num_cpus=2,
+        runtime_env={"env_vars": {"RAY_record_task_actor_creation_sites": "true"}},
+    )
+
+    @ray.remote
+    def callee():
+        import time
+
+        time.sleep(30)
+
+    @ray.remote
+    def caller():
+        return callee.remote()
+
+    caller_ref = caller.remote()
+    callee_ref = ray.get(caller_ref)
+
+    def verify():
+        callee_task = get_task(callee_ref)
+        assert callee_task["call_site"] is not None
+        assert "caller" in callee_task["call_site"]
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+def test_list_actor_tasks_call_site(shutdown_only):
+    """
+    Call chain: Driver -> create_actor -> (Actor, Actor.method).
+
+    Verify that the call sites are captured in both Actor and Actor.method,
+    and they contain string "create_actor".
+    """
+    ray.init(
+        num_cpus=2,
+        runtime_env={"env_vars": {"RAY_record_task_actor_creation_sites": "true"}},
+    )
+
+    @ray.remote
+    class Actor:
+        def method(self):
+            import time
+
+            time.sleep(30)
+
+    @ray.remote
+    def create_actor():
+        a = Actor.remote()
+        m_ref = a.method.remote()
+        return a, m_ref
+
+    actor_ref, method_ref = ray.get(create_actor.remote())
+
+    def verify():
+        method_task = get_task(method_ref)
+        assert method_task["call_site"] is not None
+        assert "create_actor" in method_task["call_site"]
+
+        actors = list_actors(detail=True)
+        assert len(actors) == 1
+        actor = actors[0]
+        assert actor["call_site"] is not None
+        assert "create_actor" in actor["call_site"]
         return True
 
     wait_for_condition(verify)

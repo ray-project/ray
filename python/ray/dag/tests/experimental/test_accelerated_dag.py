@@ -26,6 +26,12 @@ from ray._private.utils import (
 )
 from ray.dag import DAGContext
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    wait_for_pid_to_exit,
+)
+import signal
+import psutil
 
 
 logger = logging.getLogger(__name__)
@@ -43,10 +49,10 @@ pytestmark = [
 @pytest.fixture
 def temporary_change_timeout(request):
     ctx = DAGContext.get_current()
-    original = ctx.execution_timeout
-    ctx.execution_timeout = request.param
-    yield ctx.execution_timeout
-    ctx.execution_timeout = original
+    original = ctx.submit_timeout
+    ctx.submit_timeout = request.param
+    yield ctx.submit_timeout
+    ctx.submit_timeout = original
 
 
 @ray.remote
@@ -122,7 +128,7 @@ class Actor:
         return 1, 2
 
     def get_events(self):
-        return getattr(self, "__ray_adag_events", [])
+        return getattr(self, "__ray_cgraph_events", [])
 
 
 @ray.remote
@@ -168,6 +174,37 @@ def test_basic(ray_start_regular):
         assert (result == val).all()
         # Delete the buffer so that the next DAG output can be written.
         del result
+
+
+def test_basic_destruction(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.echo.bind(i)
+
+    compiled_dag = dag.experimental_compile()
+
+    try:
+        for i in range(3):
+            val = np.ones(100) * i
+            ref = compiled_dag.execute(val)
+            # Since ref.get() is not called, the destructor releases its native
+            # buffer without deserializing the value. If the destructor fails to
+            # release the buffer, the subsequent DAG execution will fail due to
+            # memory leak.
+            del ref
+    except RayChannelTimeoutError:
+        pytest.fail(
+            "The native buffer associated with the CompiledDAGRef was not "
+            "released upon destruction."
+        )
+
+    # Ensure that subsequent DAG executions do not fail due to memory leak
+    # and the results can be retrieved by ray.get().
+    val = np.ones(100)
+    ref = compiled_dag.execute(val)
+    result = ray.get(ref)
+    assert (result == val).all()
+    del ref
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -1909,7 +1946,7 @@ class TestLeafNode:
 def test_output_node(ray_start_regular):
     """
     This test is similar to the `test_output_node` in `test_output_node.py`, but
-    this test is for the accelerated DAG.
+    this test is for Compiled Graph.
     """
 
     @ray.remote
@@ -2041,7 +2078,7 @@ def test_simulate_pipeline_parallelism(ray_start_regular, single_fetch):
 
 
 def test_channel_read_after_close(ray_start_regular):
-    # Tests that read to a channel after accelerated DAG teardown raises a
+    # Tests that read to a channel after Compiled Graph teardown raises a
     # RayChannelError exception as the channel is closed (see issue #46284).
     @ray.remote
     class Actor:
@@ -2061,7 +2098,7 @@ def test_channel_read_after_close(ray_start_regular):
 
 
 def test_channel_write_after_close(ray_start_regular):
-    # Tests that write to a channel after accelerated DAG teardown raises a
+    # Tests that write to a channel after Compiled Graph teardown raises a
     # RayChannelError exception as the channel is closed.
     @ray.remote
     class Actor:
@@ -2160,7 +2197,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     output_refs = []
     for i in range(MAX_INFLIGHT_EXECUTIONS):
         output_refs.append(dag.execute(i))
-    with pytest.raises(ray.exceptions.RayAdagCapacityExceeded):
+    with pytest.raises(ray.exceptions.RayCgraphCapacityExceeded):
         dag.execute(1)
     assert len(output_refs) == MAX_INFLIGHT_EXECUTIONS
     for i, ref in enumerate(output_refs):
@@ -2196,7 +2233,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
         output_refs = []
         for i in range(MAX_INFLIGHT_EXECUTIONS):
             output_refs.append(await async_dag.execute_async(i))
-        with pytest.raises(ray.exceptions.RayAdagCapacityExceeded):
+        with pytest.raises(ray.exceptions.RayCgraphCapacityExceeded):
             await async_dag.execute_async(1)
         assert len(output_refs) == MAX_INFLIGHT_EXECUTIONS
         for i, ref in enumerate(output_refs):
@@ -2214,7 +2251,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
-    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_PROFILING", True)
+    monkeypatch.setattr(ray.dag.constants, "RAY_CGRAPH_ENABLE_PROFILING", True)
 
     a = Actor.options(name="a").remote(0)
     b = Actor.options(name="b").remote(0)
@@ -2223,8 +2260,8 @@ def test_event_profiling(ray_start_regular, monkeypatch):
         y = b.inc.bind(inp)
         z = b.inc.bind(y)
         dag = MultiOutputNode([x, z])
-    adag = dag.experimental_compile()
-    ray.get(adag.execute(1))
+    cdag = dag.experimental_compile()
+    ray.get(cdag.execute(1))
 
     a_events = ray.get(a.get_events.remote())
     b_events = ray.get(b.get_events.remote())
@@ -2260,14 +2297,14 @@ class TestWorker:
 
 
 """
-Accelerated DAGs support the following two cases for the input/output of the graph:
+Compiled Graphs support the following two cases for the input/output of the graph:
 
 1. Both the input and output of the graph are the driver process.
 2. Both the input and output of the graph are the same actor process.
 
 This test suite covers the second case. The second case is useful when we use
-Ray Serve to deploy the ADAG as a backend. In this case, the Ray Serve replica,
-which is an actor, needs to be the input and output of the graph.
+Ray Serve to deploy the Compiled Graph as a backend. In this case, the Ray Serve
+replica, which is an actor, needs to be the input and output of the graph.
 """
 
 
@@ -2471,10 +2508,10 @@ def test_torch_tensor_type(shutdown_only):
                         inp,
                     ).with_type_hint(TorchTensorType()),
                 )
-            self._adag = dag.experimental_compile()
+            self._cdag = dag.experimental_compile()
 
         def call(self, value):
-            return ray.get(self._adag.execute(value))
+            return ray.get(self._cdag.execute(value))
 
     replica = Replica.remote()
     ref = replica.call.remote(5)
@@ -2505,8 +2542,8 @@ async def main():
         y = b.f.bind(inp)
         dag =  MultiOutputNode([x, y])
 
-    adag = dag.experimental_compile(enable_asyncio=True)
-    refs = await adag.execute_async(1)
+    cdag = dag.experimental_compile(enable_asyncio=True)
+    refs = await cdag.execute_async(1)
     outputs = []
     for ref in refs:
         outputs.append(await ref)
@@ -2590,9 +2627,13 @@ def test_signature_mismatch(shutdown_only):
 
     with pytest.raises(
         TypeError,
+        # Starting from Python 3.12, the error message includes "keyword-only."
+        # Therefore, we need to match both "required keyword-only argument" and
+        # "required argument."
         match=(
-            r"missing a required argument: 'y'\. The function `f` has a signature "
-            r"`\(x, \*, y\)`, but the given arguments to `bind` doesn't match\. "
+            r"missing a required (keyword-only )?argument: 'y'\. "
+            r"The function `f` has a signature `\(x, \*, y\)`, "
+            r"but the given arguments to `bind` doesn't match\. "
             r"args:.*kwargs:.*"
         ),
     ):
@@ -2609,6 +2650,41 @@ def test_signature_mismatch(shutdown_only):
     ):
         with InputNode() as inp:
             _ = worker.g.bind(inp)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Sigint not supported on Windows")
+def test_sigint_get_dagref(ray_start_cluster):
+    driver_script = """
+import ray
+from ray.dag import InputNode
+import time
+
+ray.init()
+
+@ray.remote
+class Actor:
+    def sleep(self, x):
+        while(True):
+            time.sleep(x)
+
+a = Actor.remote()
+with InputNode() as inp:
+    dag = a.sleep.bind(inp)
+compiled_dag = dag.experimental_compile()
+ref = compiled_dag.execute(1)
+ray.get(ref, timeout=100)
+"""
+    driver_proc = run_string_as_driver_nonblocking(
+        driver_script, env={"RAY_CGRAPH_teardown_timeout": "5"}
+    )
+    pid = driver_proc.pid
+    # wait for graph execution to start
+    time.sleep(5)
+    proc = psutil.Process(pid)
+    assert proc.status() == psutil.STATUS_RUNNING
+    os.kill(pid, signal.SIGINT)  # ctrl+c
+    # teardown will kill actors after 5 second timeout
+    wait_for_pid_to_exit(pid, 10)
 
 
 if __name__ == "__main__":
