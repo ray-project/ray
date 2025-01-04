@@ -45,28 +45,94 @@ def validate_numpy_batch(batch: Union[Dict[str, np.ndarray], Dict[str, list]]) -
 
 
 def _detect_highest_datetime_precision(datetime_list: List[datetime]) -> str:
-    highest_precision = "D"
+    """Detect the highest precision for a list of datetime objects.
+
+    Args:
+        datetime_list: List of datetime objects.
+
+    Returns:
+        A string representing the highest precision among the datetime objects
+        ('D', 's', 'ms', 'us', 'ns').
+    """
+    # Define precision hierarchy
+    precision_hierarchy = ["D", "s", "ms", "us", "ns"]
+    highest_precision_index = 0  # Start with the lowest precision ("D")
 
     for dt in datetime_list:
-        if dt.microsecond != 0 and dt.microsecond % 1000 != 0:
-            highest_precision = "us"
-            break
-        elif dt.microsecond != 0 and dt.microsecond % 1000 == 0:
-            highest_precision = "ms"
-        elif dt.hour != 0 or dt.minute != 0 or dt.second != 0:
-            # pyarrow does not support h or m, use s for those cases too
-            highest_precision = "s"
+        # Safely get the nanosecond value using getattr for backward compatibility
+        nanosecond = getattr(dt, "nanosecond", 0)
+        if nanosecond != 0:
+            current_precision = "ns"
+        elif dt.microsecond != 0:
+            # Check if the microsecond precision is exactly millisecond
+            if dt.microsecond % 1000 == 0:
+                current_precision = "ms"
+            else:
+                current_precision = "us"
+        elif dt.second != 0 or dt.minute != 0 or dt.hour != 0:
+            # pyarrow does not support h or m, use s for those cases to
+            current_precision = "s"
+        else:
+            current_precision = "D"
 
-    return highest_precision
+        # Update highest_precision_index based on the hierarchy
+        current_index = precision_hierarchy.index(current_precision)
+        highest_precision_index = max(highest_precision_index, current_index)
+
+        # Stop early if highest possible precision is reached
+        if highest_precision_index == len(precision_hierarchy) - 1:
+            break
+
+    return precision_hierarchy[highest_precision_index]
+
+
+def _convert_to_datetime64(dt: datetime, precision: str) -> np.datetime64:
+    """
+    Converts a datetime object to a numpy datetime64 object with the specified
+    precision.
+
+    Args:
+        dt: A datetime object to be converted.
+        precision: The desired precision for the datetime64 conversion. Possible
+        values are 'D', 's', 'ms', 'us', 'ns'.
+
+    Returns:
+        np.datetime64: A numpy datetime64 object with the specified precision.
+    """
+    if precision == "ns":
+        # Calculate nanoseconds from microsecond and nanosecond
+        microseconds_as_ns = dt.microsecond * 1000
+        # Use getattr for backward compatibility where nanosecond attribute may not
+        # exist
+        nanoseconds = getattr(dt, "nanosecond", 0)
+        total_nanoseconds = microseconds_as_ns + nanoseconds
+        # Create datetime64 from base datetime with microsecond precision
+        base_dt = np.datetime64(dt, "us")
+        # Add remaining nanoseconds as timedelta
+        return base_dt + np.timedelta64(total_nanoseconds - microseconds_as_ns, "ns")
+    else:
+        return np.datetime64(dt).astype(f"datetime64[{precision}]")
 
 
 def _convert_datetime_list_to_array(datetime_list: List[datetime]) -> np.ndarray:
+    """Convert a list of datetime objects to a NumPy array of datetime64 with proper
+    precision.
+
+    Args:
+        datetime_list (List[datetime]): A list of `datetime` objects to be converted.
+        Each `datetime` object represents a specific point in time.
+
+    Returns:
+        np.ndarray: A NumPy array containing the `datetime64` values of the datetime
+        objects from the input list, with the appropriate precision (e.g., nanoseconds,
+        microseconds, milliseconds, etc.).
+    """
+    # Detect the highest precision for the datetime objects
     precision = _detect_highest_datetime_precision(datetime_list)
 
-    return np.array(
-        [np.datetime64(dt, precision) for dt in datetime_list],
-        dtype=f"datetime64[{precision}]",
-    )
+    # Convert each datetime to the corresponding numpy datetime64 with the appropriate
+    # precision
+    return np.array([_convert_to_datetime64(dt, precision) for dt in datetime_list])
 
 
 def convert_to_numpy(column_values: Any) -> np.ndarray:

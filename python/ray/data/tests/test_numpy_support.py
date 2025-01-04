@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import numpy as np
+import pandas as pd
 import pytest
 import torch
 
@@ -58,6 +59,7 @@ def test_list_of_objects(ray_start_regular_shared, restore_data_context):
     assert_structure_equals(output, np.array([1, 2, 3, UserObj()]))
 
 
+# Define datetime values with different precisions
 DATETIME_DAY_PRECISION = datetime(year=2024, month=1, day=1)
 DATETIME_HOUR_PRECISION = datetime(year=2024, month=1, day=1, hour=1)
 DATETIME_MIN_PRECISION = datetime(year=2024, month=1, day=1, minute=1)
@@ -65,14 +67,28 @@ DATETIME_SEC_PRECISION = datetime(year=2024, month=1, day=1, second=1)
 DATETIME_MILLISEC_PRECISION = datetime(year=2024, month=1, day=1, microsecond=1000)
 DATETIME_MICROSEC_PRECISION = datetime(year=2024, month=1, day=1, microsecond=1)
 
+# Define pandas values for different precisions
+PANDAS_DAY_PRECISION = pd.Timestamp(year=2024, month=1, day=1)
+PANDAS_HOUR_PRECISION = pd.Timestamp(year=2024, month=1, day=1, hour=1)
+PANDAS_MIN_PRECISION = pd.Timestamp(year=2024, month=1, day=1, minute=1)
+PANDAS_SEC_PRECISION = pd.Timestamp(year=2024, month=1, day=1, second=1)
+PANDAS_MILLISEC_PRECISION = pd.Timestamp(year=2024, month=1, day=1, microsecond=1000)
+PANDAS_MICROSEC_PRECISION = pd.Timestamp(year=2024, month=1, day=1, microsecond=1)
+PANDAS_NANOSEC_PRECISION = pd.Timestamp(
+    year=2024, month=1, day=1, hour=1, minute=1, second=1
+) + pd.Timedelta(nanoseconds=1)
+
+# Define numpy.datetime64 values for comparison
 DATETIME64_DAY_PRECISION = np.datetime64("2024-01-01")
 DATETIME64_HOUR_PRECISION = np.datetime64("2024-01-01T01:00", "s")
 DATETIME64_MIN_PRECISION = np.datetime64("2024-01-01T00:01", "s")
 DATETIME64_SEC_PRECISION = np.datetime64("2024-01-01T00:00:01")
 DATETIME64_MILLISEC_PRECISION = np.datetime64("2024-01-01T00:00:00.001")
 DATETIME64_MICROSEC_PRECISION = np.datetime64("2024-01-01T00:00:00.000001")
+DATETIME64_NANOSEC_PRECISION = np.datetime64("2024-01-01T01:01:01.000000001", "ns")
 
 
+# Parametrized test to validate datetime values and expected numpy.datetime64 results
 @pytest.mark.parametrize(
     "data,expected_output",
     [
@@ -85,15 +101,57 @@ DATETIME64_MICROSEC_PRECISION = np.datetime64("2024-01-01T00:00:00.000001")
         (
             [DATETIME_MICROSEC_PRECISION, DATETIME_MILLISEC_PRECISION],
             np.array(
-                [DATETIME64_MICROSEC_PRECISION, DATETIME_MILLISEC_PRECISION],
+                [DATETIME64_MICROSEC_PRECISION, DATETIME64_MILLISEC_PRECISION],
                 dtype="datetime64[us]",
             ),
         ),
         (
             [DATETIME_SEC_PRECISION, DATETIME_MILLISEC_PRECISION],
             np.array(
-                [DATETIME64_SEC_PRECISION, DATETIME_MILLISEC_PRECISION],
+                [DATETIME64_SEC_PRECISION, DATETIME64_MILLISEC_PRECISION],
                 dtype="datetime64[ms]",
+            ),
+        ),
+        (
+            [DATETIME_DAY_PRECISION, DATETIME_SEC_PRECISION],
+            np.array(
+                [DATETIME64_DAY_PRECISION, DATETIME64_SEC_PRECISION],
+                dtype="datetime64[s]",
+            ),
+        ),
+        ([PANDAS_DAY_PRECISION], np.array([DATETIME64_DAY_PRECISION])),
+        ([PANDAS_HOUR_PRECISION], np.array([DATETIME64_HOUR_PRECISION])),
+        ([PANDAS_MIN_PRECISION], np.array([DATETIME64_MIN_PRECISION])),
+        ([PANDAS_SEC_PRECISION], np.array([DATETIME64_SEC_PRECISION])),
+        ([PANDAS_MILLISEC_PRECISION], np.array([DATETIME64_MILLISEC_PRECISION])),
+        ([PANDAS_MICROSEC_PRECISION], np.array([DATETIME64_MICROSEC_PRECISION])),
+        ([PANDAS_NANOSEC_PRECISION], np.array([DATETIME64_NANOSEC_PRECISION])),
+        (
+            [PANDAS_NANOSEC_PRECISION, PANDAS_MICROSEC_PRECISION],
+            np.array(
+                [DATETIME64_NANOSEC_PRECISION, DATETIME64_MICROSEC_PRECISION],
+                dtype="datetime64[ns]",
+            ),
+        ),
+        (
+            [PANDAS_MICROSEC_PRECISION, PANDAS_MILLISEC_PRECISION],
+            np.array(
+                [DATETIME64_MICROSEC_PRECISION, DATETIME64_MILLISEC_PRECISION],
+                dtype="datetime64[us]",
+            ),
+        ),
+        (
+            [PANDAS_SEC_PRECISION, PANDAS_MILLISEC_PRECISION],
+            np.array(
+                [DATETIME64_SEC_PRECISION, DATETIME64_MILLISEC_PRECISION],
+                dtype="datetime64[ms]",
+            ),
+        ),
+        (
+            [PANDAS_DAY_PRECISION, PANDAS_SEC_PRECISION],
+            np.array(
+                [DATETIME64_DAY_PRECISION, DATETIME64_SEC_PRECISION],
+                dtype="datetime64[s]",
             ),
         ),
     ],
