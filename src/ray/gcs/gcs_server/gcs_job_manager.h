@@ -97,6 +97,14 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
 
+  // Verify if export events should be written for EXPORT_DRIVER_JOB source types
+  bool IsExportAPIEnabledDriverJob() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_DRIVER_JOB",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
+
   /// Record metrics.
   /// For job manager, (1) running jobs count gauge and (2) new finished jobs (whether
   /// succeed or fail) will be reported periodically.

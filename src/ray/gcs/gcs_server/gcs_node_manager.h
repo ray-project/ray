@@ -182,6 +182,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   void WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const;
 
+  // Verify if export events should be written for EXPORT_NODE source types
+  bool IsExportAPIEnabledNode() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_NODE",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
+
   rpc::ExportNodeData::GcsNodeState ConvertGCSNodeStateToExport(
       rpc::GcsNodeInfo::GcsNodeState node_state) const {
     switch (node_state) {

@@ -37,7 +37,7 @@ void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const 
   /// Write job_data as a export driver job event if
   /// enable_export_api_write() is enabled and if this job is
   /// not in the _ray_internal_ namespace.
-  if (!RayConfig::instance().enable_export_api_write()) {
+  if (!GcsJobManager::IsExportAPIEnabledDriverJob()) {
     return;
   }
   if (job_data.config().ray_namespace().find(kRayInternalNamespacePrefix) == 0) {
