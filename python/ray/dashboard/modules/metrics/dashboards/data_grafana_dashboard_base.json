@@ -116,7 +116,7 @@
             "includeAll": false,
             "label": null,
             "multi": false,
-            "name": "ray_io_cluster",
+            "name": "RayClusterName",
             "options": [],
             "query": {
               "query": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
