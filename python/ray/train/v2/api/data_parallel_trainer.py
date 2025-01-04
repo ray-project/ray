@@ -3,7 +3,6 @@ from typing import Any, Callable, Dict, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_bool
-from ray.actor import ActorHandle
 from ray.train import BackendConfig, Checkpoint
 from ray.train._internal.data_config import DataConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
@@ -166,10 +165,6 @@ class DataParallelTrainer:
         if metadata != _UNSUPPORTED:
             raise NotImplementedError(error_msg.format("metadata"))
 
-        self._run_controller_as_actor = env_bool(
-            RUN_CONTROLLER_AS_ACTOR_ENV_VAR, DEFAULT_RUN_CONTROLLER_AS_ACTOR
-        )
-
     def fit(self) -> Result:
         train_fn = construct_train_func(
             self.train_loop_per_worker,
@@ -202,7 +197,7 @@ class DataParallelTrainer:
 
         # TODO: Add support for user-defined callbacks
 
-        controller = self._initialize_controller(
+        result = self._initialize_and_run_controller(
             train_fn=train_fn,
             scaling_policy=create_scaling_policy(self.scaling_config),
             failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
@@ -210,7 +205,6 @@ class DataParallelTrainer:
             callbacks=callbacks,
             resume_from_checkpoint=self.resume_from_checkpoint,
         )
-        result = self._run_controller(controller)
 
         if result.error:
             # NOTE: If the training run errored out, raise an error back to the
@@ -222,10 +216,11 @@ class DataParallelTrainer:
 
         return result
 
-    def _initialize_controller(
-        self, **controller_init_kwargs
-    ) -> Union[TrainController, ActorHandle]:
-        if self._run_controller_as_actor:
+    def _initialize_and_run_controller(self, **controller_init_kwargs) -> Result:
+        run_controller_as_actor = env_bool(
+            RUN_CONTROLLER_AS_ACTOR_ENV_VAR, DEFAULT_RUN_CONTROLLER_AS_ACTOR
+        )
+        if run_controller_as_actor:
             # Attach the controller to the node running the driver script.
             controller_actor_cls = ray.remote(
                 num_cpus=0,
@@ -235,17 +230,11 @@ class DataParallelTrainer:
                 runtime_env={"env_vars": get_env_vars_to_propagate()},
             )(TrainController)
 
-            return controller_actor_cls.remote(**controller_init_kwargs)
-        else:
-            return TrainController(**controller_init_kwargs)
-
-    def _run_controller(
-        self, controller: Union[TrainController, ActorHandle]
-    ) -> Result:
-        if self._run_controller_as_actor:
+            controller = controller_actor_cls.remote(**controller_init_kwargs)
             ray.get(controller.run.remote())
             return ray.get(controller.get_result.remote())
         else:
+            controller = TrainController(**controller_init_kwargs)
             controller.run()
             return controller.get_result()
 
