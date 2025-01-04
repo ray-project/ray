@@ -470,11 +470,11 @@ class IMPALAConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule,
+            from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+                DefaultPPOTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=PPOTorchRLModule)
+            return RLModuleSpec(module_class=DefaultPPOTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -778,7 +778,7 @@ class IMPALA(Algorithm):
                 timeout_seconds=self.config.timeout_s_sampler_manager,
                 return_obj_refs=False,
             )
-            self.env_runner_group.foreach_worker_async(
+            self.env_runner_group.foreach_env_runner_async(
                 _remote_sample_get_state_and_metrics
             )
             # Get results from the n different async calls and store those EnvRunner
@@ -1084,7 +1084,7 @@ class IMPALA(Algorithm):
             # local worker. Otherwise just return an empty list.
             if self.env_runner_group.num_healthy_remote_workers() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.
-                self.env_runner_group.foreach_worker_async(
+                self.env_runner_group.foreach_env_runner_async(
                     lambda worker: worker.sample()
                 )
                 sample_batches: List[
@@ -1409,7 +1409,7 @@ class IMPALA(Algorithm):
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
-            self.env_runner_group.foreach_worker(
+            self.env_runner_group.foreach_env_runner(
                 func=lambda w: w.set_weights(ray.get(weights_ref), global_vars),
                 local_env_runner=False,
                 remote_worker_ids=list(workers_that_need_updates),

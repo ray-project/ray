@@ -19,7 +19,7 @@ def parse_args() -> argparse.Namespace:
 
 def main(args):
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
-    benchmark = Benchmark("tpch-q1")
+    benchmark = Benchmark()
 
     def benchmark_fn():
         # The TPC-H queries are a widely used set of benchmarks to measure the
@@ -49,7 +49,10 @@ def main(args):
             .materialize()
         )
 
-    benchmark.run_fn(str(vars(args)), benchmark_fn)
+        # Report arguments for the benchmark.
+        return vars(args)
+
+    benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
 
 

@@ -26,7 +26,7 @@ def on_env_runners_recreated(
         print(f"changed {key} to {algorithm._counters[key]}")
 
     # Execute some dummy code on each of the recreated workers.
-    results = env_runner_group.foreach_worker(lambda w: w.ping())
+    results = env_runner_group.foreach_env_runner(lambda w: w.ping())
     print(results)  # should print "pong" n times (one for each recreated worker).
 
 
@@ -73,7 +73,7 @@ class TestCallbacks(unittest.TestCase):
         # Train a bit (and have the envs/workers crash).
         for _ in range(3):
             print(algo.train())
-            time.sleep(5.0)
+            time.sleep(15.0)
 
         algo.restore_workers(algo.env_runner_group)
         # After training, the `on_workers_recreated` callback should have captured

@@ -59,7 +59,7 @@ If your config is set to the old API stack, use the
     )
 
 
-.. _rllib_default_rl_modules_docs:
+.. _rllib-default-rl-modules-docs:
 
 Default RLModules
 -----------------
@@ -611,8 +611,8 @@ End-to-end example
 Putting together the elements of your custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` that you implemented,
 a working end-to-end example is as follows:
 
-.. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_rlm.py
-        :language: python
+.. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_torch_rlm.py
+    :language: python
 
 
 .. _rllib-rl-module-w-custom-action-dists:
