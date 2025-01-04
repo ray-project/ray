@@ -566,8 +566,8 @@ void NormalTaskSubmitter::PushNormalTask(
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
 
-  auto &internal_task_spec = task_spec.GetMutableMessage();  // rpc::TaskSpec
-  internal_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+  // auto &internal_task_spec = task_spec.GetMutableMessage();  // rpc::TaskSpec
+  // internal_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
 
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
