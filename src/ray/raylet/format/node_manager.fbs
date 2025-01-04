@@ -74,8 +74,10 @@ enum MessageType:int {
   //
   // Send an initial connection message to the raylet with port assigned. This is sent
   // from a worker or driver to a raylet.
-  // The corresponding response type is [AnnounceWorkerPortReply].
+  // The corresponding response type is [RegisterClientWithPortResponse].
   RegisterClientWithPortRequest,
+  // Response for worker registration and port announcement.
+  RegisterClientWithPortResponse,
 }
 
 table Task {
@@ -158,10 +160,10 @@ table RegisterClientWithPortRequest {
 }
 
 table RegisterClientWithPortResponse {
-  // Response to register client.
-  request_client_request: [RegisterClientReply];
-  // Response to assign port.
-  announcement_port_request: [AnnounceWorkerPortReply];
+  // Whether the announcement and job registration succeeded.
+  success: bool;
+  // The reason of registration failure.
+  failure_reason: string;
 }
 
 table AnnounceWorkerPort {

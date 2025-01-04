@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -99,7 +101,8 @@ struct CoreWorkerOptions {
         session_name(""),
         entrypoint(""),
         worker_launch_time_ms(-1),
-        worker_launched_time_ms(-1) {}
+        worker_launched_time_ms(-1),
+        worker_avai_port(std::nullopt) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -200,6 +203,11 @@ struct CoreWorkerOptions {
   std::string entrypoint;
   int64_t worker_launch_time_ms;
   int64_t worker_launched_time_ms;
+  /// Available port number for the worker.
+  ///
+  /// TODO(hjiang): Figure out how to assign available port at core worker start, also
+  /// need to add an end-to-end integration test.
+  std::optional<int> worker_avai_port;
 };
 }  // namespace core
 }  // namespace ray

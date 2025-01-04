@@ -1512,15 +1512,37 @@ void NodeManager::ProcessRegisterClientAndAnnouncePortMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto *message =
       flatbuffers::GetRoot<protocol::RegisterClientWithPortRequest>(message_data);
-  const ray::protocol::AnnounceWorkerPort *announce_port_msg =
-      message->announcement_port_request();
+  const ray::protocol::RegisterClientRequest *register_client_request =
+      message->request_client_request();
   auto status = ProcessRegisterClientRequestMessageImpl(
-      client, message->request_client_request(), announce_port_msg->port());
+      client, register_client_request, register_client_request->port());
   if (!status.ok()) {
-    SendPortAnnouncementResponse(client, std::move(status));
+    SendRegisterClientAndAnnouncePortResponse(client, std::move(status));
     return;
   }
-  RAY_UNUSED(ProcessAnnounceWorkerPortMessageImpl(client, announce_port_msg));
+  RAY_UNUSED(
+      ProcessAnnounceWorkerPortMessageImpl(client, message->announcement_port_request()));
+}
+
+void NodeManager::SendRegisterClientAndAnnouncePortResponse(
+    const std::shared_ptr<ClientConnection> &client, Status status) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = protocol::CreateRegisterClientWithPortResponse(
+      fbb, status.ok(), fbb.CreateString(status.ToString()));
+  fbb.Finish(message);
+
+  client->WriteMessageAsync(
+      static_cast<int64_t>(protocol::MessageType::RegisterClientWithPortResponse),
+      fbb.GetSize(),
+      fbb.GetBufferPointer(),
+      [this, client](const ray::Status &status) {
+        if (!status.ok()) {
+          DisconnectClient(client,
+                           rpc::WorkerExitType::SYSTEM_ERROR,
+                           "Failed to send RegisterClientWithPortResponse to client: " +
+                               status.ToString());
+        }
+      });
 }
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
