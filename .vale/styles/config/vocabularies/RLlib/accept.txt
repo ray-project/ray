@@ -4,6 +4,7 @@
 (APPO|appo)
 [Aa]utoscal(e|ing)
 boolean
+[Cc]allables?
 coeff
 config
 (DQN|dqn)
