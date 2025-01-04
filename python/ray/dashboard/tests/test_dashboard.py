@@ -42,7 +42,6 @@ from ray._private.utils import get_or_create_event_loop
 from ray.core.generated import common_pb2
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
-from ray.dashboard.modules.metrics.metrics_head import PROMETHEUS_HEADERS_ENV_VAR
 from ray.dashboard.utils import DashboardHeadModule
 from ray.experimental.internal_kv import _initialize_internal_kv
 from ray.util.state import StateApiClient
@@ -1193,6 +1192,8 @@ def test_dashboard_module_load(tmpdir):
     reason="This test is not supposed to work for minimal installation.",
 )
 def test_extra_prom_headers_validation(tmpdir, monkeypatch):
+    from ray.dashboard.modules.metrics.metrics_head import PROMETHEUS_HEADERS_ENV_VAR
+
     """Test the extra Prometheus headers validation in DashboardHead."""
     head = DashboardHead(
         http_host="127.0.0.1",
