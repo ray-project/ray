@@ -14,7 +14,6 @@ User Guides
     rllib-advanced-api
     rllib-models
     rllib-saving-and-loading-algos-and-policies
-    rllib-concepts
     single-agent-episode
     rllib-replay-buffers
     rllib-offline
@@ -62,14 +61,6 @@ RLlib Feature Guides
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-concepts
-
-            How To Customize Your Policies?
-
-    .. grid-item-card::
-        :img-top: /rllib/images/rllib-logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
         .. button-ref:: single-agent-episode
 
             How To Use SingleAgentEpisodes (new API stack)?
@@ -80,7 +71,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-offline
 
-            Working With Offline Data
+            Offline RL with Offline Datasets
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg

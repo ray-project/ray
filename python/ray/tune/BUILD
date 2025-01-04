@@ -9,6 +9,9 @@ doctest(
             "**/tests/**",
             "suggest/**",
             "impl/test_utils.py",
+            # Already covered by Ray Train doctests
+            "context.py",
+            "trainable/trainable_fn_utils.py",
             # Deprecated
             "automl/**",
             "cluster_info.py",
@@ -64,6 +67,14 @@ py_test(
     name = "test_api_checkpoint_integration",
     size = "medium",
     srcs = ["tests/test_api_checkpoint_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
+    name = "test_api_migrations",
+    size = "small",
+    srcs = ["tests/test_api_migrations.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )

@@ -1,3 +1,5 @@
+.. _ray-oom-prevention:
+
 Out-Of-Memory Prevention
 ========================
 
