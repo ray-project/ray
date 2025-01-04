@@ -43,11 +43,9 @@ class PipeStreamWriteHandle(IO[AnyStr]):
         return False
 
 
-def open_pipe_with_rotation(
-    fname: str, rotation_max_size: int = sys.maxsize, rotation_file_num: int = 1
-) -> IO[AnyStr]:
-    """Stream content into pipe, which will be listened and dumped to [fname] with
-    rotation."""
+def open_pipe_with_file_handlers(log_name: str, handlers) -> IO[AnyStr]:
+    """Stream content into pipe, which will be listened and dumped to provided
+    handlers."""
     read_fd, write_fd = os.pipe()
 
     log_content = []
@@ -55,14 +53,10 @@ def open_pipe_with_rotation(
     lock = threading.Lock()
     cond = threading.Condition(lock)
 
-    logger = logging.getLogger(name=fname)
+    logger = logging.getLogger(name=__name__)
     logger.setLevel(logging.INFO)
-    handler = RotatingFileHandler(
-        fname, maxBytes=rotation_max_size, backupCount=rotation_file_num
-    )
-    # Only logging message with nothing else.
-    handler.setFormatter(logging.Formatter("%(message)s"))
-    logger.addHandler(handler)
+    for handler in handlers:
+        logger.addHandler(handler)
 
     # Setup read thread, which continuous read content out of pipe and append to buffer.
     def read_log_content_from_pipe():
@@ -106,7 +100,7 @@ def open_pipe_with_rotation(
     read_thread.start()
     dump_thread.start()
 
-    pipe_write_stream = PipeStreamWriteHandle(write_fd, fname)
+    pipe_write_stream = PipeStreamWriteHandle(write_fd, log_name=log_name)
 
     def cleanup():
         nonlocal stopped
@@ -117,3 +111,16 @@ def open_pipe_with_rotation(
     atexit.register(cleanup)
 
     return pipe_write_stream
+
+
+def open_pipe_with_rotation(
+    fname: str, rotation_max_size: int = sys.maxsize, rotation_file_num: int = 1
+) -> IO[AnyStr]:
+    """Stream content into pipe, which will be listened and dumped to [fname] with
+    rotation."""
+    handler = RotatingFileHandler(
+        fname, maxBytes=rotation_max_size, backupCount=rotation_file_num
+    )
+    # Only logging message with nothing else.
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    return open_pipe_with_file_handlers(fname, [handler])
