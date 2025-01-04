@@ -1315,6 +1315,8 @@ optuna==4.1.0
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 orjson==3.9.10
     # via gradio
+ormsgpack==1.7.0
+    # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
 packaging==23.0
     # via
     #   -r /ray/ci/../python/requirements.txt
