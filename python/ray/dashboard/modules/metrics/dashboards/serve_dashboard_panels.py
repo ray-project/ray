@@ -414,7 +414,7 @@ serve_dashboard_config = DashboardConfig(
     default_uid="rayServeDashboard",
     panels=SERVE_GRAFANA_PANELS,
     standard_global_filters=[
-        'ray_io_cluster=~"$ray_io_cluster"',
+        'RayClusterName=~"$RayClusterName"',
     ],
     base_json_file_name="serve_grafana_dashboard_base.json",
 )
