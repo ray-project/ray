@@ -28,7 +28,7 @@ from anyio import to_thread
 from starlette.types import ASGIApp, Message
 
 import ray
-from ray import cloudpickle
+from ray import cloudpickle, serve
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
@@ -56,7 +56,6 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.default_impl import create_replica_impl
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIArgs,
@@ -830,13 +829,15 @@ class ReplicaActor:
         if isinstance(deployment_def, str):
             deployment_def = _load_deployment_def_from_import_path(deployment_def)
 
-        self._replica_impl: ReplicaBase = create_replica_impl(
-            replica_id=replica_id,
-            deployment_def=deployment_def,
-            init_args=cloudpickle.loads(serialized_init_args),
-            init_kwargs=cloudpickle.loads(serialized_init_kwargs),
-            deployment_config=deployment_config,
-            version=version,
+        self._replica_impl: ReplicaBase = (
+            serve._private.default_impl.create_replica_impl(
+                replica_id=replica_id,
+                deployment_def=deployment_def,
+                init_args=cloudpickle.loads(serialized_init_args),
+                init_kwargs=cloudpickle.loads(serialized_init_kwargs),
+                deployment_config=deployment_config,
+                version=version,
+            )
         )
 
     def push_proxy_handle(self, handle: ActorHandle):

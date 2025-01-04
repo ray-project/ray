@@ -7,6 +7,7 @@ import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
+from ray import serve
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import run_background_task
 from ray._raylet import GcsClient
@@ -33,7 +34,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_ROOT_URL_ENV_KEY,
 )
-from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
@@ -149,7 +149,9 @@ class ServeController:
             call_function_from_import_path(RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH)
 
         # Used to read/write checkpoints.
-        self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
+        self.cluster_node_info_cache = (
+            serve._private.default_impl.create_cluster_node_info_cache(self.gcs_client)
+        )
         self.cluster_node_info_cache.update()
 
         self.proxy_state_manager = ProxyStateManager(
