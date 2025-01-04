@@ -281,7 +281,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   int64_t total_size = static_cast<int64_t>(object_ids.size());
   for (int64_t start = 0; start < total_size; start += batch_size) {
     batch_ids.clear();
-    for (int64_t i = start; i < batch_size && i < total_size; i++) {
+    auto this_batch_size = std::min(batch_size, total_size - start);
+    batch_ids.reserve(this_batch_size);
+    for (int64_t i = 0; i < this_batch_size; i++) {
       batch_ids.push_back(id_vector[start + i]);
     }
     RAY_RETURN_NOT_OK(
@@ -310,15 +312,17 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   auto fetch_start_time_ms = current_time_ms();
   while (!remaining.empty() && !should_break) {
     batch_ids.clear();
+    batch_ids.reserve(std::min(remaining.size(), static_cast<size_t>(batch_size)));
     for (const auto &id : remaining) {
-      if (int64_t(batch_ids.size()) == batch_size) {
+      if (batch_ids.size() == batch_size) {
         break;
       }
       batch_ids.push_back(id);
     }
 
-    int64_t batch_timeout = std::max(RayConfig::instance().get_timeout_milliseconds(),
-                                     int64_t(10 * batch_ids.size()));
+    int64_t batch_timeout =
+        std::max(RayConfig::instance().get_iteration_timeout_milliseconds(),
+                 static_cast<int64_t>(10 * batch_ids.size()));
     if (remaining_timeout >= 0) {
       batch_timeout = std::min(remaining_timeout, batch_timeout);
       remaining_timeout -= batch_timeout;
@@ -347,7 +351,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       }
     }
     if (RayConfig::instance().yield_plasma_lock_workaround() && !should_break &&
-        remaining.size() > 0) {
+        !remaining.empty()) {
       // Yield the plasma lock to other threads. This is a temporary workaround since we
       // are holding the lock for a long time, so it can easily starve inbound RPC
       // requests to Release() buffers which only require holding the lock for brief
@@ -383,7 +387,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
   int64_t remaining_timeout = timeout_ms;
   while (!should_break) {
     WaitResultPair result_pair;
-    int64_t call_timeout = RayConfig::instance().get_timeout_milliseconds();
+    int64_t call_timeout = RayConfig::instance().get_iteration_timeout_milliseconds();
     if (remaining_timeout >= 0) {
       call_timeout = std::min(remaining_timeout, call_timeout);
       remaining_timeout -= call_timeout;
