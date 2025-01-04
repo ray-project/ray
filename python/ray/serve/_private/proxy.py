@@ -18,6 +18,7 @@ from starlette.middleware import Middleware
 from starlette.types import Receive
 
 import ray
+from ray import serve
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
@@ -39,7 +40,6 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.default_impl import add_grpc_address, get_proxy_handle
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
     MessageQueue,
@@ -1213,7 +1213,7 @@ class ProxyActor:
             http_middlewares.extend(middlewares)
 
         is_head = node_id == get_head_node_id()
-        self.proxy_router = ProxyRouter(get_proxy_handle)
+        self.proxy_router = ProxyRouter(serve._private.default_impl.get_proxy_handle)
         self.http_proxy = HTTPProxy(
             node_id=node_id,
             node_ip_address=node_ip_address,
@@ -1406,7 +1406,9 @@ class ProxyActor:
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
 
-        add_grpc_address(grpc_server, f"[::]:{self.grpc_port}")
+        serve._private.default_impl.add_grpc_address(
+            grpc_server, f"[::]:{self.grpc_port}"
+        )
 
         # Dummy servicer is used to be callable for the gRPC server. Serve have a
         # custom gRPC server implementation to redirect calls into gRPCProxy.

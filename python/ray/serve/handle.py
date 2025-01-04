@@ -3,9 +3,10 @@ import concurrent.futures
 import logging
 import time
 import warnings
-from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Tuple, Union
 
 import ray
+from ray import serve
 from ray._raylet import ObjectRefGenerator
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -14,14 +15,9 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.default_impl import (
-    CreateRouterCallable,
-    create_dynamic_handle_options,
-    create_init_handle_options,
-    create_router,
-)
 from ray.serve._private.handle_options import (
     DynamicHandleOptionsBase,
+    InitHandleOptions,
     InitHandleOptionsBase,
 )
 from ray.serve._private.replica_result import ReplicaResult
@@ -42,6 +38,10 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+# Interface definition for create_router.
+CreateRouterCallable = Callable[[str, DeploymentID, InitHandleOptions], Router]
+
+
 class _DeploymentHandleBase:
     def __init__(
         self,
@@ -58,7 +58,8 @@ class _DeploymentHandleBase:
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         self.init_options: Optional[InitHandleOptionsBase] = init_options
         self.handle_options: DynamicHandleOptionsBase = (
-            handle_options or create_dynamic_handle_options()
+            handle_options
+            or serve._private.default_impl.create_dynamic_handle_options()
         )
 
         # Handle ID is shared among handles that are returned by
@@ -70,7 +71,7 @@ class _DeploymentHandleBase:
 
         self._router: Optional[Router] = _router
         if _create_router is None:
-            self._create_router = create_router
+            self._create_router = serve._private.default_impl.create_router
         else:
             self._create_router = _create_router
 
@@ -138,7 +139,7 @@ class _DeploymentHandleBase:
                 f"was initialized with {self.init_options}."
             )
 
-        init_options = create_init_handle_options(**kwargs)
+        init_options = serve._private.default_impl.create_init_handle_options(**kwargs)
         self._router = self._create_router(
             handle_id=self.handle_id,
             deployment_id=self.deployment_id,
