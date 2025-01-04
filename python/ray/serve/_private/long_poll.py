@@ -386,8 +386,8 @@ class LongPollHost:
                 for replica_info in object_snapshot.running_replicas
             ]
             return DeploymentAvailability(
-                object_snapshot.is_available,
                 replica_names=actor_name_list,
+                is_available=object_snapshot.is_available,
             ).SerializeToString()
         else:
             return str.encode(str(object_snapshot))
