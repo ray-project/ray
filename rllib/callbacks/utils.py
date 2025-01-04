@@ -1,16 +1,31 @@
+from typing import Any, Callable, Dict, List, Optional
+
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OldAPIStack
 
 
 def make_callback(
-    callback_name,
-    callbacks_objects=None,
-    callbacks_functions=None,
+    callback_name: str,
+    callbacks_objects: Optional[List[RLlibCallback]] = None,
+    callbacks_functions: Optional[List[Callable]] = None,
     *,
-    args=None,
-    kwargs=None,
+    args: List[Any] = None,
+    kwargs: Dict[str, Any] = None,
 ) -> None:
+    """Calls an RLlibCallback method or a registered callback callable.
+
+    Args:
+        callback_name: The name of the callback method or key, for example:
+            "on_episode_start" or "on_train_result".
+        callbacks_objects: The RLlibCallback object or list of RLlibCallback objects
+            to call the `callback_name` method on (in the order they appear in the
+            list).
+        callbacks_functions: The callable or list of callables to call
+            (in the order they appear in the list).
+        args: Call args to pass to the method/callable calls.
+        kwargs: Call kwargs to pass to the method/callable calls.
+    """
     # Loop through all available RLlibCallback objects.
     callbacks_objects = force_list(callbacks_objects)
     for callback_obj in callbacks_objects:

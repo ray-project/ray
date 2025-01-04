@@ -3,6 +3,7 @@
 [Aa]lgos?
 (APPO|appo)
 boolean
+[Cc]allables?
 coeff
 config
 (DQN|dqn)
