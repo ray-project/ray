@@ -2,7 +2,9 @@
 # Add new terms alphabetically.
 [Aa]lgos?
 (APPO|appo)
+[Aa]utoscal(e|ing)
 boolean
+[Cc]allables?
 coeff
 config
 (DQN|dqn)
@@ -27,3 +29,4 @@ rollout
 SGD
 [Tt]ensor[Ff]low
 timesteps?
+vectorizes?
