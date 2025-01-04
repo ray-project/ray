@@ -170,7 +170,7 @@ spec:
   #     release: prometheus
   ```
 
-* `namespaceSelector` and `selector` are used to select Kubernetes Pods.
+* Prometheus uses `namespaceSelector` and `selector` to select Kubernetes Pods.
   ```sh
   kubectl get pod -n default -l ray.io/node-type=head
   # NAME                                  READY   STATUS    RESTARTS   AGE
@@ -183,7 +183,7 @@ spec:
   ray_node_cpu_count{SessionName="session_2025-01-02_07-58-21_419367_11", container="ray-head", endpoint="metrics", instance="10.244.0.13:8080", ip="10.244.0.13", job="raycluster-embed-grafana-head-svc", namespace="default", pod="raycluster-embed-grafana-head-98fqt", ray_io_cluster="raycluster-embed-grafana", service="raycluster-embed-grafana-head-svc"}
   ```
 
-  In this example, `raycluster-embed-grafana` is the name of the RayCluster resource.
+  In this example, `raycluster-embed-grafana` is the name of the RayCluster.
 
 ## Step 6: Collect Worker Node metrics with PodMonitors
 
