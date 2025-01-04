@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __begin_untyped_builder__
 from typing import Dict

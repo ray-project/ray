@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __import_start__
 from starlette.requests import Request

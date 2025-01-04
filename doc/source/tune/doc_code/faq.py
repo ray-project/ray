@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __reproducible_start__
 import numpy as np

@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # __websocket_serve_app_start__
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect

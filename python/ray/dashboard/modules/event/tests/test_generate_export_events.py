@@ -1,5 +1,5 @@
 # isort: skip_file
-# flake8: noqa E402
+# ruff: noqa: E402
 import json
 import os
 import sys

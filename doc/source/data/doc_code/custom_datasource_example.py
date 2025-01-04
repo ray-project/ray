@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 # fmt: off
 
 from typing import Iterator, Union, List
