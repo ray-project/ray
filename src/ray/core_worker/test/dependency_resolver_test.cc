@@ -53,7 +53,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             depth,
                             TaskID::Nil(),
                             "");
-  return builder.Build();
+  return std::move(builder).ConsumeAndBuild();
 }
 TaskSpecification BuildEmptyTaskSpec() {
   std::unordered_map<std::string, double> empty_resources;

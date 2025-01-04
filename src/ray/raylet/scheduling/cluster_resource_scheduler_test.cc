@@ -500,7 +500,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       remote_node_id, remote_resource_total, {{"CPU", 0}});
   auto node_id_3 = resource_scheduler.GetBestSchedulableNode(
-      spec_builder_1.Build(),
+      std::move(spec_builder_1).ConsumeAndBuild(),
       /*preferred_node_id=*/local_node_id.Binary(),
       false,
       false,
@@ -542,7 +542,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
                                    nullptr);
   spec_builder_2.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
   auto node_id_4 = resource_scheduler.GetBestSchedulableNode(
-      spec_builder_2.Build(),
+      std::move(spec_builder_2).ConsumeAndBuild(),
       /*preferred_node_id=*/local_node_id.Binary(),
       false,
       false,
