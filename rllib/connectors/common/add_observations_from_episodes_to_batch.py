@@ -136,15 +136,22 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         # If "obs" already in data, early out.
         if Columns.OBS in batch:
             return batch
-
-        for sa_episode in self.single_agent_episode_iterator(
-            episodes,
-            # If Learner connector, get all episodes (for train batch).
-            # If EnvToModule, get only those ongoing episodes that just had their
-            # agent step (b/c those are the ones we need to compute actions for next).
-            agents_that_stepped_only=not self._as_learner_connector,
+        for i, sa_episode in enumerate(
+            self.single_agent_episode_iterator(
+                episodes,
+                # If Learner connector, get all episodes (for train batch).
+                # If EnvToModule, get only those ongoing episodes that just had their
+                # agent step (b/c those are the ones we need to compute actions for
+                # next).
+                agents_that_stepped_only=not self._as_learner_connector,
+            )
         ):
             if self._as_learner_connector:
+                # TODO (sven): Resolve this hack by adding a new connector piece that
+                #  performs this very task.
+                if "_" not in sa_episode.id_:
+                    sa_episode.id_ += "_" + str(i)
+
                 self.add_n_batch_items(
                     batch,
                     Columns.OBS,
@@ -160,4 +167,5 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
                     item_to_add=sa_episode.get_observations(-1),
                     single_agent_episode=sa_episode,
                 )
+
         return batch
