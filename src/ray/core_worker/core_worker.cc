@@ -691,7 +691,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
           /* attempt_number */ 0,
           rpc::TaskStatus::RUNNING,
           /* timestamp */ absl::GetCurrentTimeNanos(),
-          std::make_shared<const TaskSpecification>(std::move(spec)));
+          std::make_shared<const TaskSpecification>(spec));
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
   }
