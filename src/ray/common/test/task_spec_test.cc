@@ -157,6 +157,9 @@ TEST(TaskSpecTest, TestRootDetachedActorId) {
 }
 
 TEST(TaskSpecTest, TestTaskSpecBuilderRootDetachedActorId) {
+  ActorID actor_id =
+      ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
+
   {
     TaskSpecBuilder task_spec_builder;
     task_spec_builder.SetNormalTaskSpec(
@@ -167,8 +170,6 @@ TEST(TaskSpecTest, TestTaskSpecBuilderRootDetachedActorId) {
 
   {
     TaskSpecBuilder task_spec_builder;
-    ActorID actor_id =
-        ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
     task_spec_builder.SetNormalTaskSpec(
         0, false, "", rpc::SchedulingStrategy(), actor_id);
     ASSERT_EQ(std::move(task_spec_builder).ConsumeAndBuild().RootDetachedActorId(),
