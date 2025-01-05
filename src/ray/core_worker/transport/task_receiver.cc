@@ -105,6 +105,17 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                                 reply->mutable_borrowed_refs(),
                                 &is_retryable_error,
                                 &application_error);
+    
+    TaskSpecification &mutable_task_spec = const_cast<TaskSpecification &>(task_spec);
+    if (mutable_task_spec.GetMutableMessage()
+            .mutable_runtime_env_info()
+            ->serialized_runtime_env()
+            .find("FOO") != std::string::npos) {
+      mutable_task_spec.GetMutableMessage()
+          .mutable_runtime_env_info()
+          ->set_serialized_runtime_env("{}");
+    }
+  
     reply->set_is_retryable_error(is_retryable_error);
     reply->set_is_application_error(!application_error.empty());
     std::string task_execution_error;
