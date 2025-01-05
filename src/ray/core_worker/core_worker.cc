@@ -612,7 +612,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       };
   experimental_mutable_object_provider_ =
       std::make_shared<experimental::MutableObjectProvider>(
-          *plasma_store_provider_->store_client(), raylet_channel_client_factory);
+          *plasma_store_provider_->store_client(),
+          raylet_channel_client_factory,
+          options_.check_signals);
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,
@@ -735,11 +737,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     return addr;
   };
   auto lease_policy = RayConfig::instance().locality_aware_leasing_enabled()
-                          ? std::shared_ptr<LeasePolicyInterface>(
-                                std::make_shared<LocalityAwareLeasePolicy>(
+                          ? std::unique_ptr<LeasePolicyInterface>(
+                                std::make_unique<LocalityAwareLeasePolicy>(
                                     *reference_counter_, node_addr_factory, rpc_address_))
-                          : std::shared_ptr<LeasePolicyInterface>(
-                                std::make_shared<LocalLeasePolicy>(rpc_address_));
+                          : std::unique_ptr<LeasePolicyInterface>(
+                                std::make_unique<LocalLeasePolicy>(rpc_address_));
 
   normal_task_submitter_ = std::make_unique<NormalTaskSubmitter>(
       rpc_address_,
@@ -748,7 +750,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       raylet_client_factory,
       std::move(lease_policy),
       memory_store_,
-      task_manager_,
+      *task_manager_,
       local_raylet_id,
       GetWorkerType(),
       RayConfig::instance().worker_lease_timeout_milliseconds(),
@@ -2464,7 +2466,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 
     io_service_.post(
         [this, task_spec]() {
-          RAY_UNUSED(normal_task_submitter_->SubmitTask(task_spec));
+          RAY_UNUSED(normal_task_submitter_->SubmitTask(std::move(task_spec)));
         },
         "CoreWorker.SubmitTask");
   }

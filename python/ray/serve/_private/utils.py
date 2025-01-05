@@ -541,7 +541,6 @@ def generate_request_id() -> str:
     # significantly. This is less cryptographically secure but should be ok for
     # request ID generation.
     # See https://bugs.python.org/issue45556 for discussion.
-    # return str(uuid.uuid4())
     return str(uuid.UUID(int=random.getrandbits(128), version=4))
 
 
