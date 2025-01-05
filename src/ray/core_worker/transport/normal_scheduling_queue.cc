@@ -78,7 +78,7 @@ void NormalSchedulingQueue::ScheduleRequests() {
     {
       absl::MutexLock lock(&mu_);
       if (!pending_normal_tasks_.empty()) {
-        head = pending_normal_tasks_.front();
+        head = std::move(pending_normal_tasks_).front();
         pending_normal_tasks_.pop_front();
       } else {
         return;

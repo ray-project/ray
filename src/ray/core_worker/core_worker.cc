@@ -3709,11 +3709,11 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
   /// Blank out message at push task server.
-  auto &cur_task_spec = *request.mutable_task_spec();
-  if (cur_task_spec.mutable_runtime_env_info()->serialized_runtime_env().find("FOO") !=
-      std::string::npos) {
-    cur_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
-  }
+  // auto &cur_task_spec = *request.mutable_task_spec();
+  // if (cur_task_spec.mutable_runtime_env_info()->serialized_runtime_env().find("FOO") !=
+  //     std::string::npos) {
+  //   cur_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+  // }
 
   RAY_LOG(DEBUG).WithField(TaskID::FromBinary(request.task_spec().task_id()))
       << "Received Handle Push Task";
