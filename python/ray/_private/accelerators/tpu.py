@@ -29,7 +29,6 @@ GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
-TPU_VERSIONS_WITH_MULTIPLE_CORES_PER_CHIP = {"v2", "v3", "v4"}
 
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 
@@ -274,13 +273,10 @@ class TPUAcceleratorManager(AcceleratorManager):
     def get_num_workers_in_current_tpu_pod() -> Optional[int]:
         """Return the total number of workers in a TPU pod."""
         tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
-        if tpu_pod_type:
-            version = tpu_pod_type.split("-")[0]
+        chips_per_host = TPUAcceleratorManager.get_current_node_num_accelerators()
+        if tpu_pod_type and chips_per_host > 0:
             num_chips_or_cores = int(tpu_pod_type.split("-")[1])
-            if version in TPU_VERSIONS_WITH_MULTIPLE_CORES_PER_CHIP:
-                return num_chips_or_cores // 8
-            else:
-                return num_chips_or_cores // 4
+            return num_chips_or_cores // chips_per_host
         else:
             logging.debug("Could not get num workers in TPU pod.")
             return None
