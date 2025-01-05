@@ -7,21 +7,29 @@
 Getting Started
 ===============
 
-All RLlib experiments are run using an ``Algorithm`` class which holds a policy for environment interaction.
-Through the algorithm's interface, you can train the policy, compute actions, or store your algorithm's state (checkpointing).
-In multi-agent training, the algorithm manages the querying and optimization of multiple policies at once.
+In this tutorial, you learn how to design, customize, and run an RLlib learning experiment from scratch.
 
-In this guide, we will explain in detail RLlib's Python API for running learning experiments.
 
+.. _rllib-in-15min:
 
 RLlib in 15 minutes
 -------------------
-
 
 .. _rllib-python-api:
 
 Python API
 ~~~~~~~~~~
+
+You manage experiments in RLlib through an instance of the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class. An
+Algorithm typically holds a neural network for computing actions, called "policy", the :ref:`RL environment <rllib-key-concepts-environments>`
+you want to optimize against, a loss function, an optimizer, and some code describing the algorithm's execution logic, like determining when to
+take which particular steps.
+
+Through the algorithm's interface, you can train the policy, compute actions, or store your algorithm's state (checkpointing).
+In multi-agent training, the algorithm manages the querying and optimization of multiple policies at once.
+
+
+
 
 The Python API provides all the flexibility required for applying RLlib to any type of problem.
 
@@ -58,10 +66,6 @@ iterations (here `10`) and `save` the resulting policy periodically (here every 
             checkpoint_dir = ppo.save_to_path()
             print(f"Algorithm checkpoint saved in: {checkpoint_dir}")
 
-.. testcode::
-    :hide:
-
-    algo.stop()
 
 
 .. _rllib-with-ray-tune:
@@ -123,10 +127,72 @@ To load newer RLlib checkpoints (version >= 1.0), use the following code:
 Customizing your RL environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the preceding examples, your RL environment was always "CartPole-v1", however, you would probably like to
-run your actual experiments against a different environment or even write your own custom one.
+In the preceding examples, your :ref:`RL environment <rllib-key-concepts-environments>` was a `Farama gymnasium <gymnasium.farama.org>`__
+pre-registered one, like ``CartPole-v1``. However, if you would like to run your experiments against a different environment or even write a custom one,
+see this tab below for a less-than-50-lines example of a custom ``gym.Env`` class.
 
-See here ...blabla
+See here for an :ref:`in-depth guide on how to setup RL environments in RLlib <rllib-environments-doc>` and how to customize them.
+
+.. dropdown:: Quickstart: Custom RL environment
+    :animate: fade-in-slide-down
+
+    .. testcode::
+
+        import gymnasium as gym
+        from ray.rllib.algorithms.ppo import PPOConfig
+
+        # 1) Define your custom env class:
+
+        class ParrotEnv(gym.Env):
+            """Environment in which the agent learns to repeat the seen observations.
+
+            Observations are float numbers indicating the to-be-repeated values,
+            e.g. -1.0, 5.1, or 3.2.
+            The action space is the same as the observation space.
+            Rewards are `r=-abs([observation] - [action])`, for all steps.
+            """
+            def __init__(self, config=None):
+                # Since actions should repeat observations, their spaces must be the same.
+                self.observation_space = gym.spaces.Box(-1.0, 1.0, (1,), np.float32)
+                self.action_space = self.observation_space
+                self._cur_obs = None
+                self._episode_len = 0
+
+            def reset(self, *, seed=None, options=None):
+                """Resets the environment, starting a new episode."""
+                # Reset the episode len.
+                self._episode_len = 0
+                # Sample a random number from our observation space.
+                self._cur_obs = self.observation_space.sample()
+                # Return initial observation.
+                return self._cur_obs, {}
+
+            def step(self, action):
+                """Takes a single step in the episode given `action`."""
+                # Set `terminated` and `truncated` flags to True after 10 steps.
+                self._episode_len += 1
+                terminated = truncated = self._episode_len >= 10
+                # Compute the reward: `r = -abs([obs] - [action])`
+                reward = -sum(abs(self._cur_obs - action))
+                # Set a new observation (random sample).
+                self._cur_obs = self.observation_space.sample()
+                return self._cur_obs, reward, terminated, truncated, {}
+
+        # 2) Configure it through RLlib's algorithm configs:
+        config = (
+            PPOConfig()
+            .environment(ParrotEnv)  # add `env_config=[some Box space] to customize the env
+        )
+
+        # 3) Build the PPO and train
+        ppo_w_custom_env = config.build()
+
+    .. testcode::
+        :hide:
+
+        # Test that our setup is working.
+        ppo_w_custom_env.train()
+        ppo_w_custom_env.stop()
 
 Customizing your models
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -140,21 +206,61 @@ for a detailed guide on how to do so.
 Deploying your models and computing actions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+The simplest way to programmatically compute actions from a trained :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+is to get the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` through :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.get_module`,
+then call the module's :py:meth:`~ray.rllib.core.rl_module.rl_module.forward_inference` method.
+
+Here is an example of how to test a trained agent for one episode:
+
+.. testcode::
+
+    import gymnasium as gym
+    import numpy as np
+    import torch
+    from ray.rllib.core.rl_module import RLModule
+
+    env = gym.make("CartPole-v1")
+
+    # Get the RLModule from the up and running Algorithm instance:
+    rl_module = ppo.get_module()
+
+    episode_return = 0
+    terminated = truncated = False
+
+    obs, info = env.reset()
+
+    while not terminated and not truncated:
+        # Compute the next action from a batch (B=1) of observations.
+        obs_batch = torch.from_numpy(obs).unsqueeze(0)  # add batch B=1 dimension
+        # Extract the logits from the output and dissolve batch again.
+        action_logits = rl_module.forward_inference({"obs": obs_batch})[
+            "action_dist_inputs"
+        ][0]
+        # PPO's default RLModule produces action logits (from which
+        # you have to sample an action or use the max-likelihood one).
+        action = numpy.argmax(action_logits.numpy())
+        # Send the action to the environment for the next step.
+        obs, reward, terminated, truncated, info = env.step(action)
+        episode_return += reward
+
+    print(f"Reached episode return of {episode_return}.")
 
 
-The simplest way to programmatically compute actions from a trained agent is to
-use ``Algorithm.compute_single_action()``.
-This method preprocesses and filters the observation before passing it to the agent
-policy.
-Here is a simple example of testing a trained agent for one episode:
+If you don't have your Algorithm instance up and running anymore and would like to create the trained RLModule
+from a checkpoint, you can do the following instead.
+Note that `best_checkpoint` is the highest performing Algorithm checkpoint you created
+in the preceding experiment. To learn more about checkpoints and their structure, see this :ref:`checkpointing guide <rllib-checkpointing-docs>`.
 
-.. literalinclude:: ./doc_code/getting_started.py
-    :language: python
-    :start-after: rllib-compute-action-begin
-    :end-before: rllib-compute-action-end
+.. testcode::
 
-For more advanced usage on computing actions and other functionality,
-you can consult the :ref:`RLlib Algorithm API documentation <rllib-algorithm-api>`.
+    from pathlib import Path
+
+    # Create only the neural network (RLModule) from our checkpoint.
+    rl_module = RLModule.from_checkpoint(
+        Path(best_checkpoint.path) / "learner_group" / "learner" / "rl_module"
+    )["default_policy"]
+
+    # Do the same computations with `rl_module` as in the preceding code snippet.
 
 
 Accessing Policy State

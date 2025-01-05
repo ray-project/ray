@@ -230,32 +230,33 @@ logger = logging.getLogger(__name__)
 class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     """An RLlib algorithm responsible for optimizing one or more Policies.
 
-    Algorithms contain a EnvRunnerGroup under `self.env_runner_group`. An EnvRunnerGroup
-    is composed of a single local EnvRunner (`self.env_runner_group.local_env_runner`),
+    Algorithms contain a EnvRunnerGroup under `self.env_runner_group`, which is
+    composed of one local EnvRunner (`self.env_runner_group.local_env_runner`),
     serving as the reference copy of the NeuralNetwork(s) to be trained and optionally
-    one or more remote EnvRunners used to generate environment samples in parallel.
+    one or more remote EnvRunner actors used to generate environment samples.
     EnvRunnerGroup is fault-tolerant and elastic. It tracks health states for all
     the managed remote EnvRunner actors. As a result, Algorithm should never
     access the underlying actor handles directly. Instead, always access them
     via all the foreach APIs with assigned IDs of the underlying EnvRunners.
 
-    Each EnvRunners (remotes or local) contains a PolicyMap, which itself
-    may contain either one policy for single-agent training or one or more
-    policies for multi-agent training. Policies are synchronized
+    Each EnvRunners (remotes or local) contains an RLModule, which
+    contains either one policy network for single-agent training or one or more
+    policy networks for multi-agent training. RLModules are synchronized
     automatically from time to time using ray.remote calls. The exact
-    synchronization logic depends on the specific algorithm used,
-    but this usually happens from local worker to all remote workers and
-    after each training update.
+    synchronization logic depends on the specific algorithm used and typically
+    happens from local worker to all remote workers and after each training update.
 
     You can write your own Algorithm classes by sub-classing from `Algorithm`
     or any of its built-in sub-classes.
-    This allows you to override the `training_step` method to implement
-    your own algorithm logic. You can find the different built-in
-    algorithms' `training_step()` methods in their respective main .py files,
-    e.g. rllib.algorithms.dqn.dqn.py or rllib.algorithms.impala.impala.py.
+    Override the `training_step` method to implement your own algorithm logic. You can
+    find the different built-in algorithms' `training_step()` methods in their
+    respective [algorithm name].py files,
+    e.g. rllib.algorithms.ppo.ppo.py or rllib.algorithms.dqn.dqn.py.
 
-    The most important API methods a Algorithm exposes are `train()`,
-    `evaluate()`, `save_to_path()` and `restore_from_path()`.
+    The most important API methods an Algorithm exposes are `train()` for running a
+    single training iteration, `evaluate()` for running a single round of evaluation,
+    `save_to_path()` for creating a checkpoint, and `restore_from_path()` for loading a
+    state from an existing checkpoint.
     """
 
     # Whether to allow unknown top-level config keys.
@@ -307,7 +308,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     @override(Checkpointable)
     def from_checkpoint(
         cls,
-        path: Optional[Union[str, Checkpoint]] = None,
+        path: Union[str, Checkpoint],
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         *,
         # @OldAPIStack
@@ -349,19 +350,17 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             deprecation_warning(
                 old="Algorithm.from_checkpoint(checkpoint=...)",
                 new="Algorithm.from_checkpoint(path=...)",
-                error=False,
+                error=True,
             )
-            path = checkpoint
-        if path is None:
-            raise ValueError(
-                "`path` not provided in call to Algorithm.from_checkpoint()!"
-            )
-
         checkpoint_info = get_checkpoint_info(path)
+
+        # New API stack -> Use Checkpointable's default implementation.
+        if checkpoint_info["checkpoint_version"] >= version.Version("2.0"):
+            return super().from_checkpoint(path, filesystem=filesystem, **kwargs)
 
         # Not possible for (v0.1) (algo class and config information missing
         # or very hard to retrieve).
-        if checkpoint_info["checkpoint_version"] == version.Version("0.1"):
+        elif checkpoint_info["checkpoint_version"] == version.Version("0.1"):
             raise ValueError(
                 "Cannot restore a v0 checkpoint using `Algorithm.from_checkpoint()`!"
                 "In this case, do the following:\n"
@@ -375,9 +374,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 "()` must be 1.0 or later! You are using a checkpoint with "
                 f"version v{checkpoint_info['checkpoint_version']}."
             )
-        # New API stack -> Use Checkpointable's default implementation.
-        elif checkpoint_info["checkpoint_version"] >= version.Version("2.0"):
-            return super().from_checkpoint(path, filesystem=filesystem, **kwargs)
 
         # This is a msgpack checkpoint.
         if checkpoint_info["format"] == "msgpack":
@@ -410,40 +406,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         )
 
         return Algorithm.from_state(state)
-
-    @OldAPIStack
-    @staticmethod
-    def from_state(state: Dict) -> "Algorithm":
-        """Recovers an Algorithm from a state object.
-
-        The `state` of an instantiated Algorithm can be retrieved by calling its
-        `get_state` method. It contains all information necessary
-        to create the Algorithm from scratch. No access to the original code (e.g.
-        configs, knowledge of the Algorithm's class, etc..) is needed.
-
-        Args:
-            state: The state to recover a new Algorithm instance from.
-
-        Returns:
-            A new Algorithm instance.
-        """
-        algorithm_class: Type[Algorithm] = state.get("algorithm_class")
-        if algorithm_class is None:
-            raise ValueError(
-                "No `algorithm_class` key was found in given `state`! "
-                "Cannot create new Algorithm."
-            )
-        # algo_class = get_trainable_cls(algo_class_name)
-        # Create the new algo.
-        config = state.get("config")
-        if not config:
-            raise ValueError("No `config` found in given Algorithm state!")
-        new_algo = algorithm_class(config=config)
-        # Set the new algo's state.
-        new_algo.__setstate__(state)
-
-        # Return the new algo.
-        return new_algo
 
     @PublicAPI
     def __init__(
@@ -2278,6 +2240,40 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Update the evaluation worker set's workers, if required.
         if remove_from_eval_env_runners and self.eval_env_runner_group is not None:
             self.eval_env_runner_group.foreach_env_runner(fn, local_env_runner=True)
+
+    @OldAPIStack
+    @staticmethod
+    def from_state(state: Dict) -> "Algorithm":
+        """Recovers an Algorithm from a state object.
+
+        The `state` of an instantiated Algorithm can be retrieved by calling its
+        `get_state` method. It contains all information necessary
+        to create the Algorithm from scratch. No access to the original code (e.g.
+        configs, knowledge of the Algorithm's class, etc..) is needed.
+
+        Args:
+            state: The state to recover a new Algorithm instance from.
+
+        Returns:
+            A new Algorithm instance.
+        """
+        algorithm_class: Type[Algorithm] = state.get("algorithm_class")
+        if algorithm_class is None:
+            raise ValueError(
+                "No `algorithm_class` key was found in given `state`! "
+                "Cannot create new Algorithm."
+            )
+        # algo_class = get_trainable_cls(algo_class_name)
+        # Create the new algo.
+        config = state.get("config")
+        if not config:
+            raise ValueError("No `config` found in given Algorithm state!")
+        new_algo = algorithm_class(config=config)
+        # Set the new algo's state.
+        new_algo.__setstate__(state)
+
+        # Return the new algo.
+        return new_algo
 
     @OldAPIStack
     def export_policy_model(

@@ -49,39 +49,6 @@ best_checkpoint = best_result.checkpoint
 # __rllib-tuner-end__
 
 
-# __rllib-compute-action-begin__
-import pathlib
-import gymnasium as gym
-import numpy as np
-import torch
-from ray.rllib.core.rl_module import RLModule
-
-env = gym.make("CartPole-v1")
-
-# Create only the neural network (RLModule) from our checkpoint.
-rl_module = RLModule.from_checkpoint(
-    pathlib.Path(best_checkpoint.path) / "learner_group" / "learner" / "rl_module"
-)["default_policy"]
-
-episode_return = 0
-terminated = truncated = False
-
-obs, info = env.reset()
-
-while not terminated and not truncated:
-    # Compute the next action from a batch (B=1) of observations.
-    torch_obs_batch = torch.from_numpy(np.array([obs]))
-    action_logits = rl_module.forward_inference({"obs": torch_obs_batch})[
-        "action_dist_inputs"
-    ]
-    # The default RLModule used here produces action logits (from which
-    # we'll have to sample an action or use the max-likelihood one).
-    action = torch.argmax(action_logits[0]).numpy()
-    obs, reward, terminated, truncated, info = env.step(action)
-    episode_return += reward
-
-print(f"Reached episode return of {episode_return}.")
-# __rllib-compute-action-end__
 
 
 del rl_module
