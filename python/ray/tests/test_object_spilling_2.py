@@ -22,6 +22,7 @@ from ray._private.external_storage import (
 pytestmark = [pytest.mark.timeout(900 if platform.system() == "Darwin" else 180)]
 condition_wait_timeout = 20 if os.getenv("RAY_TEST_DEBUG_MODE") == "1" else 10
 
+
 def test_delete_objects(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
@@ -49,8 +50,10 @@ def test_delete_objects(object_spilling_config, shutdown_only):
 
     del replay_buffer
     del ref
-    wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]), 
-                       timeout=condition_wait_timeout)
+    wait_for_condition(
+        lambda: is_dir_empty(temp_folder, ray_context["node_id"]),
+        timeout=condition_wait_timeout,
+    )
     assert_no_thrashing(ray_context["address"])
 
 
@@ -89,8 +92,10 @@ def test_delete_objects_delete_while_creating(object_spilling_config, shutdown_o
     # After all, make sure all objects are killed without race condition.
     del replay_buffer
     del ref
-    wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]),
-                       timeout=condition_wait_timeout)
+    wait_for_condition(
+        lambda: is_dir_empty(temp_folder, ray_context["node_id"]),
+        timeout=condition_wait_timeout,
+    )
     print("condition_wait_timeout: ", condition_wait_timeout)
     assert_no_thrashing(ray_context["address"])
 
@@ -152,8 +157,10 @@ def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only)
     wait_for_condition(wait_until_actor_dead, timeout=condition_wait_timeout)
 
     # After all, make sure all objects are deleted upon worker failures.
-    wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]), 
-                       timeout=condition_wait_timeout)
+    wait_for_condition(
+        lambda: is_dir_empty(temp_folder, ray_context["node_id"]),
+        timeout=condition_wait_timeout,
+    )
     assert_no_thrashing(ray_context["address"])
 
 
@@ -257,13 +264,18 @@ def test_delete_objects_multi_node(
     # Kill actors to remove all references.
     for actor in actors:
         ray.kill(actor)
-        wait_for_condition(lambda: wait_until_actor_dead(actor), 
-                           timeout=condition_wait_timeout)
+        wait_for_condition(
+            lambda: wait_until_actor_dead(actor), timeout=condition_wait_timeout
+        )
     # The multi node deletion should work.
-    wait_for_condition(lambda: is_dir_empty(temp_folder, worker_node1.node_id), 
-                       timeout=condition_wait_timeout)
-    wait_for_condition(lambda: is_dir_empty(temp_folder, worker_node2.node_id), 
-                       timeout=condition_wait_timeout)
+    wait_for_condition(
+        lambda: is_dir_empty(temp_folder, worker_node1.node_id),
+        timeout=condition_wait_timeout,
+    )
+    wait_for_condition(
+        lambda: is_dir_empty(temp_folder, worker_node2.node_id),
+        timeout=condition_wait_timeout,
+    )
     assert_no_thrashing(cluster.address)
 
 
@@ -463,8 +475,8 @@ os.kill(os.getpid(), sig)
         print(run_string_as_driver(driver.format(temp_dir=str(temp_folder), signum=2)))
     # node_id is not actually used in the following check, so we pass in a dummy one
     wait_for_condition(
-        lambda: is_dir_empty(temp_folder, "dummy_node_id", append_path=False), 
-        timeout=condition_wait_timeout
+        lambda: is_dir_empty(temp_folder, "dummy_node_id", append_path=False),
+        timeout=condition_wait_timeout,
     )
 
 
