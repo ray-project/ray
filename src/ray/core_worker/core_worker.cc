@@ -3142,15 +3142,15 @@ Status CoreWorker::ExecuteTask(
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
-  TaskSpecification &mutable_task_spec = const_cast<TaskSpecification &>(task_spec);
-  if (mutable_task_spec.GetMutableMessage()
-          .mutable_runtime_env_info()
-          ->serialized_runtime_env()
-          .find("FOO") != std::string::npos) {
-    mutable_task_spec.GetMutableMessage()
-        .mutable_runtime_env_info()
-        ->set_serialized_runtime_env("{}");
-  }
+  // TaskSpecification &mutable_task_spec = const_cast<TaskSpecification &>(task_spec);
+  // if (mutable_task_spec.GetMutableMessage()
+  //         .mutable_runtime_env_info()
+  //         ->serialized_runtime_env()
+  //         .find("FOO") != std::string::npos) {
+  //   mutable_task_spec.GetMutableMessage()
+  //       .mutable_runtime_env_info()
+  //       ->set_serialized_runtime_env("{}");
+  // }
 
   // If the worker is exitted via Exit API, we shouldn't execute
   // tasks anymore.
@@ -3264,6 +3264,17 @@ Status CoreWorker::ExecuteTask(
   } else if (task_spec.IsActorTask()) {
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
+
+  TaskSpecification &mutable_task_spec = const_cast<TaskSpecification &>(task_spec);
+  if (mutable_task_spec.GetMutableMessage()
+          .mutable_runtime_env_info()
+          ->serialized_runtime_env()
+          .find("FOO") != std::string::npos) {
+    mutable_task_spec.GetMutableMessage()
+        .mutable_runtime_env_info()
+        ->set_serialized_runtime_env("{}");
+  }
+
   status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
