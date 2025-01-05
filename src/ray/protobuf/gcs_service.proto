@@ -565,7 +565,7 @@ message InternalKVPutRequest {
 
 message InternalKVPutReply {
   GcsStatus status = 1;
-  int32 added_num = 2;
+  bool added = 2;
 }
 
 message InternalKVDelRequest {
