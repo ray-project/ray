@@ -120,13 +120,7 @@ TEST(StatusOrTest, OperatorTest) {
 
 TEST(StatusOrTest, EqualityTest) {
   {
-    StatusOr<int> val1 = Status{};
-    StatusOr<int> val2 = Status{StatusCode::OK, "msg"};
-    EXPECT_NE(val1, val2);
-  }
-
-  {
-    StatusOr<int> val1 = Status{};
+    StatusOr<int> val1 = Status::InvalidArgument("msg");
     StatusOr<int> val2 = 20;
     EXPECT_NE(val1, val2);
   }

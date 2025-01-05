@@ -37,7 +37,7 @@ class StatusOr {
   StatusOr(T &&data) : status_(Status::OK()) { MakeValue(std::move(data)); }
 
   template <typename... Args>
-  explicit StatusOr(std::in_place_t ip, Args &&...args) {
+  explicit StatusOr(std::in_place_t ip, Args &&...args) : status_(Status::OK()) {
     MakeValue(std::forward<Args>(args)...);
   }
 
@@ -57,7 +57,7 @@ class StatusOr {
       MakeValue(std::move(status_or).value());
       status_ = Status::OK();
     } else {
-      status_ = std::move(status_or).status();
+      status_ = status_or.status();
     }
   }
 
@@ -76,9 +76,10 @@ class StatusOr {
     if (rhs.ok()) {
       status_ = Status::OK();
       AssignValue(rhs.value());
-      return;
+      return *this;
     }
     AssignStatus(rhs.status());
+    return *this;
   }
 
   StatusOr(StatusOr &&rhs) noexcept(std::is_nothrow_move_constructible_v<T>) {
@@ -87,7 +88,7 @@ class StatusOr {
       MakeValue(std::move(rhs).value());
       return;
     }
-    status_ = std::move(rhs).status();
+    status_ = rhs.status();
   }
   StatusOr &operator=(StatusOr &&rhs) noexcept(std::is_nothrow_move_assignable_v<T>) {
     if (this == &rhs) {
@@ -96,9 +97,10 @@ class StatusOr {
     if (rhs.ok()) {
       status_ = Status::OK();
       AssignValue(std::move(rhs).value());
-      return;
+      return *this;
     }
-    AssignStatus(std::move(rhs).status());
+    AssignStatus(rhs.status());
+    return *this;
   }
 
   ~StatusOr() noexcept(std::is_nothrow_destructible_v<T>) {
