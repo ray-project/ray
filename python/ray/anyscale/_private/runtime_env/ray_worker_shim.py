@@ -49,7 +49,7 @@ async def main(working_dir: str):
         "image_uri": known_args.ray_worker_image_uri,
         "args": passthrough_args[1:],  # Pop default_worker.py
         "envs": env_vars,
-        "working_dir": working_dir
+        "working_dir": working_dir,
     }
     conn = UnixConnector(path=ANYSCALE_DATAPLANE_SERVICE_SOCKET)
     async with ClientSession(connector=conn) as session:
