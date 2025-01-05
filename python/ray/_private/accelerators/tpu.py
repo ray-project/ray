@@ -273,10 +273,10 @@ class TPUAcceleratorManager(AcceleratorManager):
     def get_num_workers_in_current_tpu_pod() -> Optional[int]:
         """Return the total number of workers in a TPU pod."""
         tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
-        chips_per_host = TPUAcceleratorManager.get_current_node_num_accelerators()
-        if tpu_pod_type and chips_per_host > 0:
+        cores_per_host = TPUAcceleratorManager.get_current_node_num_accelerators()
+        if tpu_pod_type and cores_per_host > 0:
             num_chips_or_cores = int(tpu_pod_type.split("-")[1])
-            return num_chips_or_cores // chips_per_host
+            return num_chips_or_cores // cores_per_host
         else:
             logging.debug("Could not get num workers in TPU pod.")
             return None
