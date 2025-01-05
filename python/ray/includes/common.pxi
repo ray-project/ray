@@ -11,6 +11,9 @@ from ray.includes.common cimport (
     kResourceUnitScaling,
     kImplicitResourcePrefix,
     kStreamingGeneratorReturn,
+    kGcsAutoscalerStateNamespace,
+    kGcsAutoscalerV2EnabledKey,
+    kGcsAutoscalerClusterConfigKey,
 )
 
 from ray.exceptions import (
@@ -121,3 +124,6 @@ WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS = str(kWorkerSetupHookKeyName)
 RESOURCE_UNIT_SCALING = kResourceUnitScaling
 IMPLICIT_RESOURCE_PREFIX = kImplicitResourcePrefix.decode()
 STREAMING_GENERATOR_RETURN = kStreamingGeneratorReturn
+GCS_AUTOSCALER_STATE_NAMESPACE = kGcsAutoscalerStateNamespace
+GCS_AUTOSCALER_V2_ENABLED_KEY = kGcsAutoscalerV2EnabledKey
+GCS_AUTOSCALER_CLUSTER_CONFIG_KEY = kGcsAutoscalerClusterConfigKey

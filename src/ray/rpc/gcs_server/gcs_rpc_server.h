@@ -54,6 +54,10 @@ class AutoscalerStateServiceHandler {
   virtual void HandleDrainNode(DrainNodeRequest request,
                                DrainNodeReply *reply,
                                SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportClusterConfig(ReportClusterConfigRequest request,
+                                         ReportClusterConfigReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `AutoscalerStateService`.

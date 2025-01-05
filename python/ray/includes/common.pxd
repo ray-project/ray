@@ -738,3 +738,6 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef int kResourceUnitScaling
     cdef const char[] kImplicitResourcePrefix
     cdef int kStreamingGeneratorReturn
+    cdef const char[] kGcsAutoscalerStateNamespace
+    cdef const char[] kGcsAutoscalerV2EnabledKey
+    cdef const char[] kGcsAutoscalerClusterConfigKey

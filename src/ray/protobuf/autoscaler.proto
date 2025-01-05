@@ -318,13 +318,15 @@ message DrainNodeReply {
 }
 
 message NodeGroupConfig {
-  map<string, double> resources = 1;
-  optional uint64 max_num_nodes = 2;
+  map<string, int64> resources = 1;
+  // The maximum number of nodes to launch.
+  optional int32 max_count = 2;
+  optional string name = 3;
 }
 
 message ClusterConfig {
   // Max resources for the entire cluster.
-  map<string, double> max_resources = 1;
+  map<string, int64> max_resources = 1;
   // Configs for the node groups including head and worker nodes.
   repeated NodeGroupConfig node_group_configs = 2;
 }
