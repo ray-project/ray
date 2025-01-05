@@ -471,18 +471,6 @@ Status MutableObjectManager::SetErrorAll() {
   return ret;
 }
 
-std::optional<std::chrono::steady_clock::time_point> MutableObjectManager::ToTimeoutPoint(
-    int64_t timeout_ms) {
-  std::optional<std::chrono::steady_clock::time_point> timeout_point;
-  if (timeout_ms == -1) {
-    return timeout_point;
-  }
-  auto now = std::chrono::steady_clock::now();
-  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
-  timeout_point.emplace(now + timeout_duration);
-  return timeout_point;
-}
-
 Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {
   Channel *channel = GetChannel(object_id);
   if (channel == nullptr) {
@@ -574,11 +562,6 @@ Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id,
 
 Status MutableObjectManager::SetErrorAll() {
   return Status::NotImplemented("Not supported on Windows.");
-}
-
-std::optional<std::chrono::steady_clock::time_point> MutableObjectManager::ToTimeoutPoint(
-    int64_t timeout_ms) {
-  return std::nullopt;
 }
 
 Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {
