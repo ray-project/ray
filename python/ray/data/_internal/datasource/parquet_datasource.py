@@ -30,6 +30,7 @@ from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
+from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
     _handle_read_os_error,
@@ -306,6 +307,8 @@ class ParquetDatasource(Datasource):
         self._partitioning = partitioning
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
+        elif isinstance(shuffle, FileShuffleConfig):
+            self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
 
         sample_infos = sample_fragments(
             self._pq_fragments,
@@ -654,7 +657,7 @@ def sample_fragments(
 
     sample_fragment = cached_remote_fn(_sample_fragment)
     futures = []
-    scheduling = local_scheduling or "SPREAD"
+    scheduling = local_scheduling or DataContext.get_current().scheduling_strategy
     for sample in file_samples:
         # Sample the first rows batch in i-th file.
         # Use SPREAD scheduling strategy to avoid packing many sampling tasks on

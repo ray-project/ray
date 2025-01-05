@@ -67,7 +67,9 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                             required_placement_resources,
                             "",
                             /*depth=*/0,
-                            local_mode_ray_tuntime_.GetCurrentTaskId());
+                            local_mode_ray_tuntime_.GetCurrentTaskId(),
+                            // Stacktrace is not available in local mode.
+                            /*call_site=*/"");
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();

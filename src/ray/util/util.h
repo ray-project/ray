@@ -37,6 +37,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <string>
@@ -147,37 +148,7 @@ inline int64_t current_sys_time_us() {
   return mu_since_epoch.count();
 }
 
-inline std::string GenerateUUIDV4() {
-  thread_local std::random_device rd;
-  thread_local std::mt19937 gen(rd());
-  std::uniform_int_distribution<> dis(0, 15);
-  std::uniform_int_distribution<> dis2(8, 11);
-
-  std::stringstream ss;
-  int i;
-  ss << std::hex;
-  for (i = 0; i < 8; i++) {
-    ss << dis(gen);
-  }
-  ss << "-";
-  for (i = 0; i < 4; i++) {
-    ss << dis(gen);
-  }
-  ss << "-4";
-  for (i = 0; i < 3; i++) {
-    ss << dis(gen);
-  }
-  ss << "-";
-  ss << dis2(gen);
-  for (i = 0; i < 3; i++) {
-    ss << dis(gen);
-  }
-  ss << "-";
-  for (i = 0; i < 12; i++) {
-    ss << dis(gen);
-  };
-  return ss.str();
-}
+std::string GenerateUUIDV4();
 
 /// A helper function to parse command-line arguments in a platform-compatible manner.
 ///
@@ -407,5 +378,10 @@ void QuickExit();
 /// \param precision the precision to format the value to
 /// \return the foramtted value
 std::string FormatFloat(float value, int32_t precision);
+
+/// Converts a timeout in milliseconds to a timeout point.
+/// \param[in] timeout_ms The timeout in milliseconds.
+/// \return The timeout point, or std::nullopt if timeout_ms is -1.
+std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms);
 
 }  // namespace ray

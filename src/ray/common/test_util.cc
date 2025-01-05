@@ -52,7 +52,7 @@ int TestSetupUtil::StartUpRedisServer(int port, bool save) {
     // Use random port (in range [2000, 7000) to avoid port conflicts between UTs.
     do {
       actual_port = rand() % 5000 + 2000;
-    } while (!CheckFree(actual_port));
+    } while (!CheckPortFree(actual_port));
   }
 
   std::string program = TEST_REDIS_SERVER_EXEC_PATH;
@@ -261,7 +261,7 @@ std::shared_ptr<RayObject> GenerateRandomObject(
     ref.set_object_id(inlined_id.Binary());
     refs.push_back(ref);
   }
-  return std::shared_ptr<RayObject>(new RayObject(GenerateRandomBuffer(), nullptr, refs));
+  return std::make_shared<RayObject>(GenerateRandomBuffer(), nullptr, refs);
 }
 
 /// Path to redis server executable binary.

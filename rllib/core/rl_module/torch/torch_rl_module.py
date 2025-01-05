@@ -43,7 +43,7 @@ class TorchRLModule(nn.Module, RLModule):
     framework: str = "torch"
 
     # Stick with torch default.
-    STATE_FILE_NAME = "module_state.pt"
+    STATE_FILE_NAME = "module_state"
 
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
@@ -161,7 +161,6 @@ class TorchRLModule(nn.Module, RLModule):
     def get_train_action_dist_cls(self) -> Type[TorchDistribution]:
         return self.get_inference_action_dist_cls()
 
-    @override(nn.Module)
     def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE!
 
