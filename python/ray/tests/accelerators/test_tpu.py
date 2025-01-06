@@ -279,13 +279,15 @@ def test_empty_get_current_pod_name_returns_none():
     assert name is None
 
 
-def test_worker_count():
-    with patch(
-        "ray._private.accelerators.tpu.TPUAcceleratorManager."
-        "get_num_workers_in_current_tpu_pod",
-        return_value=4,
-    ):
-        worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()
+@patch("glob.glob")
+def test_worker_count(mock_glob):
+    mock_glob.return_value = [
+        "/dev/accel0",
+        "/dev/accel1",
+        "/dev/accel2",
+        "/dev/accel3",
+    ]
+    worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()
     assert worker_count == 4
 
 
