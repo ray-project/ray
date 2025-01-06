@@ -54,15 +54,21 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         Returns:
             The ReportEventServiceStub object.
         """
+        dashboard_rpc_address = None
+        num_failures_after_address = 0
         while True:
             try:
-                dashboard_rpc_address = await self._gcs_aio_client.internal_kv_get(
-                    dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=1,
-                )
-                dashboard_rpc_address = dashboard_rpc_address.decode()
+                # refetch address if it's not set or after 10 failures as address
+                # may have changed.
+                if not dashboard_rpc_address or num_failures_after_address > 10:
+                    dashboard_rpc_address = await self._gcs_aio_client.internal_kv_get(
+                        dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
+                        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                        timeout=1,
+                    )
+                    dashboard_rpc_address = dashboard_rpc_address.decode()
                 if dashboard_rpc_address:
+                    num_failures_after_address += 1
                     logger.info("Report events to %s", dashboard_rpc_address)
                     options = ray_constants.GLOBAL_GRPC_OPTIONS
                     channel = utils.init_grpc_channel(
