@@ -352,6 +352,7 @@ Status CoreWorker::RegisterWorkerToRayletWithPort(
     return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
   }
 
+  *raylet_id = NodeID::FromBinary(string_from_flatbuf(*reply_message->failure_reason()));
   return Status::OK();
 }
 
