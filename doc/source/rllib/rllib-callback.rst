@@ -7,9 +7,6 @@
 RLlib's callback APIs
 =====================
 
-Overview
---------
-
 RLlib's callbacks are the easiest way for you to inject code into your experiments.
 
 In a nutshell, you define the code you want to execute at certain events and pass it to your

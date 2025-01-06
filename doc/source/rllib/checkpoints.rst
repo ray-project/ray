@@ -9,10 +9,9 @@
 Checkpointing
 =============
 
-
 RLlib offers a powerful checkpointing system for all its major classes, allowing you to save the
 states of :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instances and their subcomponents
-to disk, and load previously run experiment states and individual subcomponents back from disk.
+to local disk or cloud storage, and restore previously run experiment states and individual subcomponents.
 This system allows you to continue training models from a previous state or deploy bare-bones PyTorch
 models into production.
 
@@ -20,12 +19,14 @@ models into production.
     :width: 500
     :align: left
 
-    **Saving to and restoring from disk**: Use the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path` method
-    to write the current state of any :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable` component or your entire Algorithm to disk.
-    To load a saved state back into a running component or into your Algorithm, use
+    **Saving to and restoring from disk or cloud storage**: Use the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path` method
+    to write the current state of any :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable` component or your entire Algorithm to
+    disk or cloud storage. To load a saved state back into a running component or into your Algorithm, use
     the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.restore_from_path` method.
 
-A checkpoint is a directory. It contains architecture information, such as the class and the constructor arguments for creating a new instance,
+A checkpoint is a directory on disk or some `PyArrow <https://arrow.apache.org/>`__-supported cloud location, like
+`gcs <https://cloud.google.com/storage>`__ or `S3 <https://aws.amazon.com/de/s3/>`__.
+It contains architecture information, such as the class and the constructor arguments for creating a new instance,
 a ``pickle`` or ``msgpack`` file with state information, and a human readable ``metadata.json`` file with information about the Ray version,
 git commit, and checkpoint version.
 
@@ -45,7 +46,7 @@ any of the other RLlib components, into production.
     checkpointed object, and then restores its state from the state information in the checkpoint dir.
 
 Another possibility is to load only a certain subcomponent's state into the containing
-higher-level object. For example, you may want to load from disk only the state of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`,
+higher-level object. For example, you may want to load only the state of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`,
 located inside your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, but leave all the other components
 as-is.
 
@@ -360,7 +361,7 @@ checkpoints and re-create instances from them.
 However, sometimes, you already have an instantiated object up and running and would like to "load" another
 state into it. For example, consider training two :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` networks
 through multi-agent training, playing against each other in a self-play fashion. After a while, you would like to swap out,
-without interrupting your experiment, one of the ``RLModules`` with a third one that you have saved to disk a while back.
+without interrupting your experiment, one of the ``RLModules`` with a third one that you have saved to disk or cloud storage a while back.
 
 This is where the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.restore_from_path` method comes in handy.
 It loads a state into an already running object, for example your Algorithm, or into a subcomponent of that object,
