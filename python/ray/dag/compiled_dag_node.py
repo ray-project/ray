@@ -777,10 +777,10 @@ class CompiledDAG:
                 can be submitted via `execute` or `execute_async` before consuming
                 the output using `ray.get()`. If the caller submits more executions,
                 `RayCgraphCapacityExceeded` is raised.
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution. If True, the communication
-                and computation can be overlapped, which can improve the
-                performance of the DAG execution. If None, the default value
+            overlap_gpu_communication (experimental): Whether to overlap GPU
+                communication with computation during DAG execution. If True, the
+                communication and computation can be overlapped, which can improve
+                the performance of the DAG execution. If None, the default value
                 will be used.
 
         Returns:
