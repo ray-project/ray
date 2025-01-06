@@ -14,12 +14,44 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
 
 .. sphinx_rllib_readme_end
 
+.. todo (sven): redo toctree:
+    suggestion:
+    getting-started (replaces rllib-training)
+    key-concepts
+    rllib-env (single-agent)
+        ...  <- multi-agent
+        ...  <- external
+        ...  <- hierarchical
+    algorithm-configs
+        rllib-algorithms (overview of all available algos)
+    dev-guide (replaces user-guides)
+        debugging
+        scaling-guide
+        fault-tolerance
+        checkpoints
+        callbacks
+        metrics-logger
+    rllib-advanced-api
+        algorithm (general description of how algos work)
+        rllib-rlmodule
+        rllib-offline
+        single-agent-episode
+        multi-agent-episode
+        connector-v2
+        rllib-learner
+        env-runners
+    rllib-examples
+    rllib-new-api-stack  <- remove?
+    new-api-stack-migration-guide
+    package_ref/index
+
 .. toctree::
     :hidden:
 
     rllib-training
     key-concepts
     rllib-env
+    algorithm-config
     rllib-algorithms
     user-guides
     rllib-examples

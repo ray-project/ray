@@ -758,9 +758,9 @@ class CompiledDAG:
                 invoke the DAG. Otherwise, the caller should use `execute` to
                 invoke the DAG.
             max_inflight_executions: The maximum number of in-flight executions that
-                are allowed to be sent to this DAG. Before submitting more requests,
-                the caller is responsible for calling ray.get to get the result,
-                otherwise, RayCgraphCapacityExceeded is raised.
+                can be submitted via `execute` or `execute_async` before consuming
+                the output using `ray.get()`. If the caller submits more executions,
+                `RayCgraphCapacityExceeded` is raised.
             overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution. If True, the communication
                 and computation can be overlapped, which can improve the
@@ -1888,13 +1888,18 @@ class CompiledDAG:
                         _destroy_communicator(communicator_id)
 
                     logger.info("Waiting for worker tasks to exit")
-                    self.wait_teardown()
+                    self.wait_teardown(kill_actors=kill_actors)
                     logger.info("Teardown complete")
                     self._teardown_done = True
 
             def run(self):
                 try:
                     ray.get(list(outer.worker_task_refs.values()))
+                except KeyboardInterrupt:
+                    logger.info(
+                        "Received KeyboardInterrupt, tearing down with kill_actors=True"
+                    )
+                    self.teardown(kill_actors=True)
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     self.teardown()

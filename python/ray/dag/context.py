@@ -52,8 +52,10 @@ class DAGContext:
             that can be passed between tasks in the DAG. The buffers will
             be automatically resized if larger messages are written to the
             channel.
-        max_inflight_executions: The maximum number of in-flight executions
-            that can be submitted before consuming the output.
+        max_inflight_executions: The maximum number of in-flight executions that
+            can be submitted via `execute` or `execute_async` before consuming
+            the output using `ray.get()`. If the caller submits more executions,
+            `RayCgraphCapacityExceeded` is raised.
         overlap_gpu_communication: Whether to overlap GPU communication with
             computation during DAG execution. If True, the communication
             and computation can be overlapped, which can improve the
