@@ -1491,6 +1491,18 @@ Status AutoscalerStateAccessor::ReportAutoscalingState(
       request, &reply, timeout_ms);
 }
 
+Status AutoscalerStateAccessor::ReportClusterConfig(
+    int64_t timeout_ms, const std::string &serialized_cluster_config) {
+  rpc::autoscaler::ReportClusterConfigRequest request;
+  rpc::autoscaler::ReportClusterConfigReply reply;
+
+  if (!request.mutable_cluster_config()->ParseFromString(serialized_cluster_config)) {
+    return Status::IOError("Failed to parse ClusterConfig");
+  }
+  return client_impl_->GetGcsRpcClient().SyncReportClusterConfig(
+      request, &reply, timeout_ms);
+}
+
 Status AutoscalerStateAccessor::DrainNode(const std::string &node_id,
                                           int32_t reason,
                                           const std::string &reason_message,

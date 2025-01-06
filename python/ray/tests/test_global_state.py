@@ -501,6 +501,19 @@ def test_next_job_id(ray_start_regular):
     assert job_id_1.int() + 1 == job_id_2.int()
 
 
+def test_get_cluster_config(shutdown_only):
+    ray.init(num_cpus=1)
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    cluster_config = ray._private.state.state.get_cluster_config()
+    assert cluster_config is None
+
+    cluster_config = autoscaler_pb2.ClusterConfig()
+    cluster_config.max_resources["CPU"] = 100
+    gcs_client.report_cluster_config(cluster_config.SerializeToString())
+    assert ray._private.state.state.get_cluster_config() == cluster_config
+
+
 def test_get_draining_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node()

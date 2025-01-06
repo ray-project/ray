@@ -319,24 +319,27 @@ message DrainNodeReply {
 
 message NodeGroupConfig {
   map<string, int64> resources = 1;
+  // The minium number of nodes to launch.
+  optional int32 min_count = 2;
   // The maximum number of nodes to launch.
-  optional int32 max_count = 2;
-  optional string name = 3;
+  optional int32 max_count = 3;
+  optional string name = 4;
 }
 
 message ClusterConfig {
+  // Min resources for the entire cluster.
+  map<string, int64> min_resources = 1;
   // Max resources for the entire cluster.
-  map<string, int64> max_resources = 1;
+  map<string, int64> max_resources = 2;
   // Configs for the node groups including head and worker nodes.
-  repeated NodeGroupConfig node_group_configs = 2;
+  repeated NodeGroupConfig node_group_configs = 3;
 }
 
 message ReportClusterConfigRequest {
   ClusterConfig cluster_config = 1;
 }
 
-message ReportClusterConfigReply {
-}
+message ReportClusterConfigReply {}
 
 service AutoscalerStateService {
   rpc GetClusterResourceState(GetClusterResourceStateRequest)
