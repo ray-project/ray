@@ -391,7 +391,9 @@ class RuntimeEnv(dict):
 
         if self.get("image_uri"):
             image_uri_plugin_cls = get_image_uri_plugin_cls()
-            invalid_keys = set(runtime_env.keys()) - image_uri_plugin_cls.get_compatible_keys()
+            invalid_keys = (
+                set(runtime_env.keys()) - image_uri_plugin_cls.get_compatible_keys()
+            )
             if len(invalid_keys):
                 raise ValueError(
                     "The 'image_uri' field currently cannot be used "
