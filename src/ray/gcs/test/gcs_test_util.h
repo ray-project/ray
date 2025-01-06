@@ -82,7 +82,7 @@ struct Mocker {
                                      detached,
                                      name,
                                      ray_namespace);
-    return builder.Build();
+    return std::move(builder).ConsumeAndBuild();
   }
 
   static rpc::CreateActorRequest GenCreateActorRequest(

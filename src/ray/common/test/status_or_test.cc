@@ -120,13 +120,7 @@ TEST(StatusOrTest, OperatorTest) {
 
 TEST(StatusOrTest, EqualityTest) {
   {
-    StatusOr<int> val1 = Status{};
-    StatusOr<int> val2 = Status{StatusCode::OK, "msg"};
-    EXPECT_NE(val1, val2);
-  }
-
-  {
-    StatusOr<int> val1 = Status{};
+    StatusOr<int> val1 = Status::InvalidArgument("msg");
     StatusOr<int> val2 = 20;
     EXPECT_NE(val1, val2);
   }
@@ -216,6 +210,40 @@ TEST(StatusOrTest, OrElse) {
   {
     StatusOr<int> s = 10;
     EXPECT_EQ(s.or_else(f).value(), 10);
+  }
+}
+
+TEST(StatusOrTest, CopyAssignment) {
+  // Copy value.
+  {
+    StatusOr<int> val = 10;
+    StatusOr<int> copy = val;
+    EXPECT_EQ(val.value(), 10);
+    EXPECT_EQ(copy.value(), 10);
+  }
+
+  // Error status.
+  {
+    StatusOr<int> val = Status::InvalidArgument("error");
+    StatusOr<int> copy = val;
+    EXPECT_EQ(val.code(), StatusCode::InvalidArgument);
+    EXPECT_EQ(copy.code(), StatusCode::InvalidArgument);
+  }
+}
+
+TEST(StatusOrTest, MoveAssignment) {
+  // Move value.
+  {
+    StatusOr<int> val = 10;
+    StatusOr<int> moved = std::move(val);
+    EXPECT_EQ(moved.value(), 10);
+  }
+
+  // Move status.
+  {
+    StatusOr<int> val = Status::InvalidArgument("error");
+    StatusOr<int> moved = std::move(val);
+    EXPECT_EQ(moved.code(), StatusCode::InvalidArgument);
   }
 }
 
