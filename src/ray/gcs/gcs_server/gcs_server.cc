@@ -408,12 +408,14 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
     });
   };
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_job_manager_ = std::make_unique<GcsJobManager>(*gcs_table_storage_,
-                                                     *gcs_publisher_,
-                                                     *runtime_env_manager_,
-                                                     *function_manager_,
-                                                     kv_manager_->GetInstance(),
-                                                     client_factory);
+  gcs_job_manager_ =
+      std::make_unique<GcsJobManager>(*gcs_table_storage_,
+                                      *gcs_publisher_,
+                                      *runtime_env_manager_,
+                                      *function_manager_,
+                                      kv_manager_->GetInstance(),
+                                      io_context_provider_.GetDefaultIOContext(),
+                                      client_factory);
   gcs_job_manager_->Initialize(gcs_init_data);
 
   // Register service.
@@ -549,7 +551,8 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitFunctionManager() {
-  function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
+  function_manager_ = std::make_unique<GcsFunctionManager>(
+      kv_manager_->GetInstance(), io_context_provider_.GetDefaultIOContext());
 }
 
 void GcsServer::InitUsageStatsClient() {
@@ -568,12 +571,11 @@ void GcsServer::InitKVManager() {
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
     instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)), io_context);
+        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)));
     break;
   case (StorageType::IN_MEMORY):
     instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>()),
-        io_context);
+        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>()));
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
@@ -623,9 +625,10 @@ void GcsServer::InitRuntimeEnvManager() {
                 "" /* namespace */,
                 plugin_uri /* key */,
                 false /* del_by_prefix*/,
-                [callback = std::move(callback)](int64_t) {
-                  callback(/*successful=*/false);
-                });
+                {[callback = std::move(callback)](int64_t) {
+                   callback(/*successful=*/false);
+                 },
+                 io_context_provider_.GetDefaultIOContext()});
           }
         }
       });
@@ -663,23 +666,27 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       kGcsAutoscalerV2EnabledKey,
       v2_enabled,
       /*overwrite=*/true,
-      [this, v2_enabled](bool new_value_put) {
-        if (!new_value_put) {
-          // NOTE(rickyx): We cannot know if an overwirte Put succeeds or fails (e.g. when
-          // GCS re-started), so we just try to get the value to check if it's correct.
-          // TODO(rickyx): We could probably load some system configs from internal kv
-          // when we initialize GCS from restart to avoid this.
-          kv_manager_->GetInstance().Get(
-              kGcsAutoscalerStateNamespace,
-              kGcsAutoscalerV2EnabledKey,
-              [v2_enabled](std::optional<std::string> value) {
-                RAY_CHECK(value.has_value()) << "Autoscaler v2 feature flag wasn't found "
-                                                "in GCS, this is unexpected.";
-                RAY_CHECK(*value == v2_enabled) << "Autoscaler v2 feature flag in GCS "
-                                                   "doesn't match the one we put.";
-              });
-        }
-      });
+      {[this, v2_enabled](bool new_value_put) {
+         if (!new_value_put) {
+           // NOTE(rickyx): We cannot know if an overwirte Put succeeds or fails (e.g.
+           // when GCS re-started), so we just try to get the value to check if it's
+           // correct.
+           // TODO(rickyx): We could probably load some system configs from internal kv
+           // when we initialize GCS from restart to avoid this.
+           kv_manager_->GetInstance().Get(
+               kGcsAutoscalerStateNamespace,
+               kGcsAutoscalerV2EnabledKey,
+               {[v2_enabled](std::optional<std::string> value) {
+                  RAY_CHECK(value.has_value())
+                      << "Autoscaler v2 feature flag wasn't found "
+                         "in GCS, this is unexpected.";
+                  RAY_CHECK(*value == v2_enabled) << "Autoscaler v2 feature flag in GCS "
+                                                     "doesn't match the one we put.";
+                },
+                this->io_context_provider_.GetDefaultIOContext()});
+         }
+       },
+       io_context_provider_.GetDefaultIOContext()});
 
   gcs_autoscaler_state_manager_ =
       std::make_unique<GcsAutoscalerStateManager>(config_.session_name,

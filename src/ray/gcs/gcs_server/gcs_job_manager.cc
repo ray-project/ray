@@ -312,7 +312,13 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     // do async calls to:
     //
     // - N outbound RPCs, one to each jobs' core workers on GcsServer::main_service_.
-    // - One InternalKV MultiGet call on GcsServer::kv_service_.
+    // - One InternalKV MultiGet call on GcsServer::kv_service_, posted to
+    //   GcsServer::main_service_.
+    //
+    // Since all accesses are on the same thread, we don't need to do atomic operations
+    // but we kept it for legacy reasons.
+    // TODO(ryw): Define a struct with a size_t, a ThreadChecker and auto send reply on
+    // remaining tasks == 0.
     //
     // And then we wait all by examining an atomic num_finished_tasks counter and then
     // reply. The wait counter is written from 2 different thread, which requires an
@@ -420,7 +426,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
             size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
             try_send_reply(updated_finished_tasks);
           };
-      internal_kv_.MultiGet("job", job_api_data_keys, kv_multi_get_callback);
+      internal_kv_.MultiGet(
+          "job", job_api_data_keys, {kv_multi_get_callback, io_context_});
     }
   };
   Status status = gcs_table_storage_.JobTable().GetAll(on_done);
