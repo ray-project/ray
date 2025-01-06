@@ -17,10 +17,15 @@
 #ifndef __linux__
 namespace ray {
 bool SetupCgroupsPreparation(const std::string &node_id /*unused*/) { return false; }
+namespace internal {
+bool CanCurrenUserWriteCgroupV2() { return false; }
+bool IsCgroupV2MountedAsRw() { return false; }
+}  // namespace internal
 }  // namespace ray
 #else  // __linux__
 
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <cerrno>
 #include <cstring>
@@ -29,6 +34,8 @@ bool SetupCgroupsPreparation(const std::string &node_id /*unused*/) { return fal
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/strip.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
@@ -71,12 +78,46 @@ void EnableCgroupSubtreeControl(const char *subtree_control_path) {
 
 }  // namespace
 
-bool SetupCgroupsPreparation(const std::string &node_id) {
-#ifndef __linux__
-  RAY_LOG(ERROR) << "Cgroup is not supported on non-Linux platforms.";
-  return true;
-#endif
+namespace internal {
 
+bool CanCurrenUserWriteCgroupV2() { return access("/sys/fs/cgroup", W_OK | X_OK) == 0; }
+
+bool IsCgroupV2MountedAsRw() {
+  // Checking all mountpoints directly and parse textually is the easiest way, compared
+  // with mounted filesystem attributes.
+  std::ifstream mounts("/proc/mounts");
+  if (!mounts.is_open()) {
+    return false;
+  }
+
+  // Mount information is formatted as:
+  // <fs_spec> <fs_file> <fs_vfstype> <fs_mntopts> <dump-field> <fsck-field>
+  std::string line;
+  while (std::getline(mounts, line)) {
+    std::vector<std::string_view> mount_info_tokens = absl::StrSplit(line, ' ');
+    RAY_CHECK_EQ(mount_info_tokens.size(), 6UL);
+    // For cgroupv2, `fs_spec` should be `cgroupv2` and there should be only one mount
+    // information item.
+    if (mount_info_tokens[0] != "cgroup2") {
+      continue;
+    }
+    const auto &fs_mntopts = mount_info_tokens[3];
+
+    // Mount options are formatted as: <opt1,opt2,...>.
+    std::vector<std::string_view> mount_opts = absl::StrSplit(fs_mntopts, ',');
+
+    // CgroupV2 has only one mount item, directly returns.
+    return std::any_of(mount_opts.begin(),
+                       mount_opts.end(),
+                       [](const std::string_view cur_opt) { return cur_opt == "rw"; });
+  }
+
+  return false;
+}
+
+}  // namespace internal
+
+bool SetupCgroupsPreparation(const std::string &node_id) {
   RAY_CHECK(cgroup_v2_app_folder.empty())
       << "Cgroup v2 for raylet should be only initialized once.";
 

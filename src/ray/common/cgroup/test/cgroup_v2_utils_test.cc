@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/ray/raylet/cgroup_v2_utils.h"
-
 #include <gtest/gtest.h>
 
-namespace ray {
+#include "ray/common/cgroup/cgroup_setup.h"
+
+namespace ray::internal {
 
 namespace {
 
@@ -37,4 +37,4 @@ TEST(CgroupV2UtilsTest, CgroupV2Permission) {
 
 }  // namespace
 
-}  // namespace ray
+}  // namespace ray::internal
