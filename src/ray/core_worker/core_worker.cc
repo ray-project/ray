@@ -684,14 +684,15 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     // Add the driver task info.
     if (task_event_buffer_->Enabled() &&
         !RayConfig::instance().task_events_skip_driver_for_test()) {
-      const auto spec = builder.Build();
+      auto spec = std::move(builder).ConsumeAndBuild();
+      auto job_id = spec.JobId();
       auto task_event = std::make_unique<worker::TaskStatusEvent>(
           task_id,
-          spec.JobId(),
-          /* attempt_number */ 0,
+          std::move(job_id),
+          /*attempt_number=*/0,
           rpc::TaskStatus::RUNNING,
-          /* timestamp */ absl::GetCurrentTimeNanos(),
-          std::make_shared<const TaskSpecification>(spec));
+          /*timestamp=*/absl::GetCurrentTimeNanos(),
+          std::make_shared<const TaskSpecification>(std::move(spec)));
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
   }
@@ -2455,7 +2456,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                             serialized_retry_exception_allowlist,
                             scheduling_strategy,
                             root_detached_actor_id);
-  TaskSpecification task_spec = builder.Build();
+  TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
@@ -2591,7 +2592,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       std::move(actor_handle), CurrentCallSite(), rpc_address_, /*owned=*/!is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
-  TaskSpecification task_spec = builder.Build();
+  TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor creation task " << task_spec.DebugString();
   if (options_.is_local_mode) {
     // TODO(suquark): Should we consider namespace in local mode? Currently
@@ -2806,7 +2807,7 @@ Status CoreWorker::SubmitActorTask(
                                  retry_exceptions,
                                  serialized_retry_exception_allowlist);
   // Submit task.
-  TaskSpecification task_spec = builder.Build();
+  TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
