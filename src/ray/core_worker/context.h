@@ -21,6 +21,7 @@
 #include "nlohmann/json.hpp"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
+#include "ray/util/shared_lru.h"
 
 namespace ray::core {
 
@@ -171,6 +172,10 @@ class WorkerContext {
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
+
+  /// Maps from serialized runtime env to its parsed json.
+  ::ray::utils::container::SharedLruCache<std::string, nlohmann::json>
+      parsed_runtime_env_cache_;
 };
 
 }  // namespace ray::core
