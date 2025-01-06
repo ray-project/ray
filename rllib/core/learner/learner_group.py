@@ -20,7 +20,6 @@ import ray
 from ray import ObjectRef
 from ray.rllib.core import (
     COMPONENT_LEARNER,
-    COMPONENT_MULTI_RL_MODULE_SPEC,
     COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.learner.learner import Learner
@@ -817,8 +816,6 @@ class LearnerGroup(Checkpointable):
                 )
             ]
         state = self.get_state(components)[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-        # Remove the MultiRLModuleSpec to just get the weights.
-        state.pop(COMPONENT_MULTI_RL_MODULE_SPEC, None)
         return state
 
     def set_weights(self, weights) -> None:

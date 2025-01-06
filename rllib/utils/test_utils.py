@@ -834,7 +834,7 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
     is_multi_agent = (
         AlgorithmConfig()
         .update_from_dict({"policies": train_results["config"]["policies"]})
-        .is_multi_agent()
+        .is_multi_agent
     )
 
     # Check in particular the "info" dict.
@@ -923,7 +923,7 @@ def check_train_results(train_results: ResultDict):
     is_multi_agent = (
         AlgorithmConfig()
         .update_from_dict({"policies": train_results["config"]["policies"]})
-        .is_multi_agent()
+        .is_multi_agent
     )
 
     # Check in particular the "info" dict.
@@ -1224,7 +1224,6 @@ def run_rllib_example_script_experiment(
                 **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
             )
         )
-
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
     if progress_reporter is None and args.num_agents > 0:

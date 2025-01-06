@@ -449,6 +449,10 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
+        assert isinstance(
+            stats_dict, dict
+        ), f"`stats_dict` ({stats_dict}) must be dict!"
+
         prefix_key = force_tuple(key)
 
         def _map(path, stat_or_value):
@@ -1097,7 +1101,8 @@ class MetricsLogger:
         stats_dict = {}
 
         def _map(path, stats):
-            stats_dict[force_tuple(path)] = stats.get_state()
+            # Convert keys to strings for msgpack-friendliness.
+            stats_dict["--".join(path)] = stats.get_state()
 
         with self._threading_lock:
             tree.map_structure_with_path(_map, self.stats)
@@ -1112,7 +1117,7 @@ class MetricsLogger:
         """
         with self._threading_lock:
             for flat_key, stats_state in state["stats"].items():
-                self._set_key(flat_key, Stats.from_state(stats_state))
+                self._set_key(flat_key.split("--"), Stats.from_state(stats_state))
 
     def _check_tensor(self, key: Tuple[str], value) -> None:
         # `value` is a tensor -> Log it in our keys set.
