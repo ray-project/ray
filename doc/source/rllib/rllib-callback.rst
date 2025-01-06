@@ -93,21 +93,8 @@ a subclass of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`.
 Callback events
 ---------------
 
-During a training iteration, the Algorithm normally walks through the following event tree. Note
-that some of the events in the tree happen simultaneously, on different processes through Ray actors.
-For example an EnvRunner actor may trigger its ``on_episode_start`` event while at the same time another
-EnvRunner actor may trigger its ``on_sample_end`` event and the main Algorithm process triggers
-``on_train_result``.
-
-.. note::
-
-    RLlib only invokes callbacks in :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-    and :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors.
-    The Ray team is considering expanding callbacks onto :py:class:`~ray.rllib.core.learner.learner.Learner`
-    actors and possibly :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances as well.
-
-
-Here is a high-level overview of all supported events in RLlib's callbacks system.
+During a training iteration, the Algorithm normally walks through the following event tree, 
+a high-level overview of all supported events in RLlib's callbacks system:
 
 .. code-block:: text
 
@@ -132,10 +119,21 @@ Here is a high-level overview of all supported events in RLlib's callbacks syste
             `on_episode_end` - After an episode object has terminated (or truncated).
             `on_sample_end` - At the end of the ``EnvRunner.sample()`` call.
 
+Note that some of the events in the tree happen simultaneously, on different processes through Ray actors.
+For example an EnvRunner actor may trigger its ``on_episode_start`` event while at the same time another
+EnvRunner actor may trigger its ``on_sample_end`` event and the main Algorithm process triggers
+``on_train_result``.
+
+.. note::
+
+    RLlib only invokes callbacks in :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+    and :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors.
+    The Ray team is considering expanding callbacks onto :py:class:`~ray.rllib.core.learner.learner.Learner`
+    actors and possibly :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances as well.
 
 .. currentmodule:: ray.rllib.callbacks.callbacks
 
-.. dropdown:: Click here to see all Algorithm-bound methods of ``RLlibCallback``
+.. dropdown:: Algorithm-bound methods of ``RLlibCallback``
 
     .. autosummary::
 
@@ -145,7 +143,7 @@ Here is a high-level overview of all supported events in RLlib's callbacks syste
         RLlibCallback.on_env_runners_recreated
         RLlibCallback.on_checkpoint_loaded
 
-.. dropdown:: Click here to see all EnvRunner-bound methods of ``RLlibCallback``
+.. dropdown:: EnvRunner-bound methods of ``RLlibCallback``
 
     .. autosummary::
 
@@ -165,9 +163,9 @@ You can define more than one :py:class:`~ray.rllib.callbacks.callbacks.RLlibCall
 You can also send lists of callables, instead of a single callable, to the different
 arguments of that method.
 
-For example, assume you already have a subclass of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`
-written and would like to reuse it in different experiments. However, one of your experiments
-requires some debug callback code you would like to inject only temporarily for a couple of runs.
+For example, if you already wrote a subclass of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`
+and want to reuse it in different experiments. Because one of your experiments
+requires some debug callback code, you want to inject it only temporarily for a couple of runs.
 
 Resolution order of chained callbacks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -176,16 +174,16 @@ RLlib resolves all available callback methods and callables for a given event
 as follows:
 
 Subclasses of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` take precedence
-over individual or lists of callables provided through the various arguments of
+over individual or lists of callables that you provide through the various arguments of
 the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks` method.
 
 For example, assume the callback event is ``on_train_result``, which fires at the end of
-a training iteration and inside the algorithm's process.
+a training iteration and inside the algorithm's process:
 
 - RLlib loops through the list of all given :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`
   subclasses and calls their ``on_train_result`` method. Thereby, it keeps the exact order the user
   provided in the list.
-- RLlib then loops through the list of all defined ``on_train_result`` callables. The user configured these
+- RLlib then loops through the list of all defined ``on_train_result`` callables. You configured these
   by calling the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks` method
   and defining the ``on_train_result`` argument in this call.
 
@@ -220,7 +218,7 @@ a training iteration and inside the algorithm's process.
 Examples
 --------
 
-Here are two examples showing you how to setup custom callbacks on the
+The following are two examples showing you how to setup custom callbacks on the
 :ref:`Algorithm <rllib-key-concepts-algorithms>` process as well as on the
 :ref:`EnvRunner <rllib-key-concepts-env-runners>` processes.
 
@@ -232,7 +230,7 @@ The following example demonstrates how to implement a simple custom function wri
 contents to disk from time to time.
 
 You normally don't want to write the contents of buffers along with your
-:ref:`Algorithm checkpoints <rllib-checkpointing-docs>`, so doing this less often, in a more
+:ref:`Algorithm checkpoints <rllib-checkpointing-docs>`, so writing less often, in a more
 controlled fashion through a custom callback could be a good compromise.
 
 .. testcode::
@@ -265,27 +263,25 @@ controlled fashion through a custom callback could be a good compromise.
     )
     dqn = config.build()
 
-    # Train n times. Expect buffer to be written every ith iteration.
+    # Train n times. Expect RLlib to write buffer every ith iteration.
     for _ in range(4):
         print(dqn.train())
 
-.. tip::
-   See :ref:`here for the exact call signatures and expected argument types <rllib-callback-reference-algorithm-bound>`
-   of all available callbacks.
 
+See :ref:`Callbacks invoked in Algorithm <rllib-callback-reference-algorithm-bound>` for the exact call signatures of all available callbacks and the argument types that they expect.
 
 Example 2: `on_episode_step` and `on_episode_end`
 -------------------------------------------------
 
 The following example demonstrates how to implement a custom :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` class
 computing the average "first-joint angle" of the
-`Acrobot-v1 RL environment <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/acrobot.py>`__.
+`Acrobot-v1 RL environment <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/acrobot.py>`__:
 
 .. figure:: images/acrobot-v1.png
     :width: 150
     :align: left
 
-    **The Acrobot-v1 environment**: The env's code described the angle you are about to
+    **The Acrobot-v1 environment**: The env code describes the angle you are about to
     compute and log through your custom callback as:
 
     .. code-block:: text
@@ -293,13 +289,13 @@ computing the average "first-joint angle" of the
         `theta1` is the angle of the first joint, where an angle of 0.0 indicates that the first
         link is pointing directly downwards.
 
-The example utilizes RLlib's :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`
-API to log the custom computations happening in the injected code your Algorithm's main results system.
+This example utilizes RLlib's :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`
+API to log the custom computations of the injected code of the Algorithm's main results system.
 
 .. todo: uncomment this once metrics-logger.rst page is online.
    Read :ref:`more about the MetricsLogger API here <rllib-metric-logger-doc>`__ or also ...
 
-Also take a look at this more complex example on `how to generate and log a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
+See this more complex example that `generates and logs a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
 
 .. testcode::
 
@@ -312,7 +308,7 @@ Also take a look at this more complex example on `how to generate and log a PacM
         def on_episode_step(self, *, episode, env, **kwargs):
             # First get the angle from the env (note that `env` is a VectorEnv).
             # See https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/acrobot.py
-            # for the env's source code.
+            # for the env source code.
             cos_theta1, sin_theta1 = env.envs[0].unwrapped.state[0], env.envs[0].unwrapped.state[1]
             # Convert cos/sin/tan into degree.
             deg_theta1 = math.degrees(math.atan2(sin_theta1, cos_theta1))
@@ -338,7 +334,7 @@ Also take a look at this more complex example on `how to generate and log a PacM
     )
     ppo = config.build()
 
-    # Train n times. Expect `theta1_mean` to be found in the results under:
+    # Train n times. Expect to find `theta1_mean` in the results under:
     # `env_runners/theta1_mean`
     for i in range(10):
         results = ppo.train()
@@ -356,7 +352,6 @@ Also take a look at this more complex example on `how to generate and log a PacM
     evaluation ``EnvRunner`` actors and False on ``EnvRunner`` actors used to collect
     training data.
 
-.. tip::
-    See :ref:`here for the exact call signatures and expected argument types <rllib-callback-reference-algorithm-bound>`
-    of all available callbacks.
+See :ref:`Callbacks invoked in Algorithm <rllib-callback-reference-algorithm-bound>`
+for the exact call signatures of all available callbacks and the argument types they expect.
 
