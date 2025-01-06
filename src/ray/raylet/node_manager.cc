@@ -1528,7 +1528,7 @@ void NodeManager::SendRegisterClientAndAnnouncePortResponse(
     const std::shared_ptr<ClientConnection> &client, Status status) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateRegisterClientWithPortReply(
-      fbb, status.ok(), fbb.CreateString(status.ToString()));
+      fbb, to_flatbuf(fbb, self_node_id_), status.ok(), fbb.CreateString(status.ToString()));
   fbb.Finish(message);
 
   client->WriteMessageAsync(
