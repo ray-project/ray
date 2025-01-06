@@ -72,6 +72,12 @@ class BlockType(Enum):
 # returned from batch UDFs.
 DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
 
+# User-facing data column type. This is the data type for data that is supplied to and
+# returned from column UDFs.
+DataBatchColumn = Union[
+    "pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series", np.ndarray
+]
+
 
 # A class type that implements __call__.
 CallableClass = type
@@ -270,6 +276,10 @@ class BlockAccessor:
 
     def select(self, columns: List[Optional[str]]) -> Block:
         """Return a new block containing the provided columns."""
+        raise NotImplementedError
+
+    def rename_columns(self, columns_rename: Dict[str, str]) -> Block:
+        """Return the block reflecting the renamed columns."""
         raise NotImplementedError
 
     def random_shuffle(self, random_seed: Optional[int]) -> Block:

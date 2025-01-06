@@ -4,6 +4,7 @@ import logging
 import platform
 import queue
 import random
+import time
 from typing import List, Optional, Set, Tuple, Type, Union
 
 import numpy as np
@@ -46,6 +47,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
@@ -80,12 +82,16 @@ class IMPALAConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.impala import IMPALAConfig
-        config = IMPALAConfig()
-        config = config.training(lr=0.0003, train_batch_size_per_learner=512)
-        config = config.learners(num_learners=1)
-        config = config.env_runners(num_env_runners=1)
+
+        config = (
+            IMPALAConfig()
+            .environment("CartPole-v1")
+            .env_runners(num_env_runners=1)
+            .training(lr=0.0003, train_batch_size_per_learner=512)
+            .learners(num_learners=1)
+        )
         # Build a Algorithm object from the config and run 1 training iteration.
-        algo = config.build(env="CartPole-v1")
+        algo = config.build()
         algo.train()
         del algo
 
@@ -94,27 +100,20 @@ class IMPALAConfig(AlgorithmConfig):
         from ray.rllib.algorithms.impala import IMPALAConfig
         from ray import air
         from ray import tune
-        config = IMPALAConfig()
 
-        # Update the config object.
-        config = config.training(
-            lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0
+        config = (
+            IMPALAConfig()
+            .environment("CartPole-v1")
+            .env_runners(num_env_runners=1)
+            .training(lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0)
+            .learners(num_learners=1)
         )
-        config = config.learners(num_learners=1)
-        config = config.env_runners(num_env_runners=1)
-        # Set the config object's env.
-        config = config.environment(env="CartPole-v1")
         # Run with tune.
         tune.Tuner(
             "IMPALA",
             param_space=config,
             run_config=air.RunConfig(stop={"training_iteration": 1}),
         ).fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
     """
 
     def __init__(self, algo_class=None):
@@ -146,8 +145,6 @@ class IMPALAConfig(AlgorithmConfig):
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
         self.num_gpu_loader_threads = 8
-        # IMPALA takes care of its own EnvRunner (weights, connector, metrics) synching.
-        self._dont_auto_sync_env_runner_states = True
 
         self.grad_clip = 40.0
         # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
@@ -168,6 +165,9 @@ class IMPALAConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
+        # IMPALA takes care of its own EnvRunner (weights, connector, metrics) synching.
+        self._dont_auto_sync_env_runner_states = True
+
         self.lr_schedule = None  # @OldAPIStack
         self.entropy_coeff_schedule = None  # @OldAPIStack
         self.num_multi_gpu_tower_stacks = 1  # @OldAPIstack
@@ -181,7 +181,6 @@ class IMPALAConfig(AlgorithmConfig):
         self.epsilon = 0.1  # @OldAPIstack
         self._separate_vf_optimizer = False  # @OldAPIstack
         self._lr_vf = 0.0005  # @OldAPIstack
-        self.train_batch_size = 500  # @OldAPIstack
         self.num_gpus = 1  # @OldAPIstack
         self._tf_policy_handles_more_than_one_loss = True  # @OldAPIstack
 
@@ -382,6 +381,12 @@ class IMPALAConfig(AlgorithmConfig):
                     "does NOT support a mixin replay buffer yet for "
                     f"{self} (set `config.replay_proportion` to 0.0)!"
                 )
+            # `lr_schedule` checking.
+            if self.lr_schedule is not None:
+                raise ValueError(
+                    "`lr_schedule` is deprecated and must be None! Use the "
+                    "`lr` setting to setup a schedule."
+                )
             # Entropy coeff schedule checking.
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
@@ -464,18 +469,12 @@ class IMPALAConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-
-        if self.framework_str == "tf2":
-            from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
-
-            return RLModuleSpec(module_class=PPOTfRLModule, catalog_class=PPOCatalog)
-        elif self.framework_str == "torch":
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule,
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+                DefaultPPOTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=PPOTorchRLModule, catalog_class=PPOCatalog)
+            return RLModuleSpec(module_class=DefaultPPOTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -629,10 +628,15 @@ class IMPALA(Algorithm):
             # Log the average number of sample results (list of episodes) received.
             self.metrics.log_value(MEAN_NUM_EPISODE_LISTS_RECEIVED, len(episode_refs))
 
+        time.sleep(0.01)
+
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
         # `LearnerGroup.update_from_episodes()`.
         data_packages_for_learner_group = self._pre_queue_episode_refs(episode_refs)
+
+        time.sleep(0.01)
+
         # If we do tree aggregation, we perform the LearnerConnector pass on the
         # aggregation workers.
         if self.config.num_aggregation_workers:
@@ -641,6 +645,14 @@ class IMPALA(Algorithm):
                     data_packages_for_learner_group
                 )
             )
+
+        # TODO (sven): When and how long to sleep best is an ongoing investigation.
+        #  We observe
+        # Balance the backpressures: Sampling vs training through sleeping a small
+        # amount of time. The sleep time is adjusted automatically based on trying
+        # to reach a maximum training throughput.
+        # with self.metrics.log_time((TIMERS, "_balance_backpressure")):
+        #    self.balance_backpressure()
 
         # Call the LearnerGroup's `update_from_episodes` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -659,17 +671,21 @@ class IMPALA(Algorithm):
                     )
                     >= self.config.broadcast_interval
                 )
+                timesteps = {
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                    ),
+                    NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
+                        (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+                        default=0,
+                    ),
+                }
                 if self.config.num_aggregation_workers:
                     learner_results = self.learner_group.update_from_batch(
                         batch=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
                         return_state=return_state,
-                        timesteps={
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                                default=0,
-                            ),
-                        },
+                        timesteps=timesteps,
                         num_epochs=self.config.num_epochs,
                         minibatch_size=self.config.minibatch_size,
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
@@ -679,12 +695,7 @@ class IMPALA(Algorithm):
                         episodes=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
                         return_state=return_state,
-                        timesteps={
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                                default=0,
-                            ),
-                        },
+                        timesteps=timesteps,
                         num_epochs=self.config.num_epochs,
                         minibatch_size=self.config.minibatch_size,
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
@@ -719,6 +730,8 @@ class IMPALA(Algorithm):
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
 
+        time.sleep(0.01)
+
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) Lists of m
         # (num Learner workers) ResultDicts each.
@@ -733,6 +746,8 @@ class IMPALA(Algorithm):
                     connector_states=connector_states,
                     rl_module_state=rl_module_state,
                 )
+
+        time.sleep(0.01)
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):
@@ -763,7 +778,7 @@ class IMPALA(Algorithm):
                 timeout_seconds=self.config.timeout_s_sampler_manager,
                 return_obj_refs=False,
             )
-            self.env_runner_group.foreach_worker_async(
+            self.env_runner_group.foreach_env_runner_async(
                 _remote_sample_get_state_and_metrics
             )
             # Get results from the n different async calls and store those EnvRunner
@@ -872,6 +887,34 @@ class IMPALA(Algorithm):
         )
 
         return list(waiting_processed_sample_batches.ignore_errors())
+
+    # def balance_backpressure(self):
+    #    # Sleep for n seconds to balance backpressure.
+    #    time.sleep(0.2)#self._sleep_time_controller.current)
+    #
+    #    # Adjust the sleep time once every iteration (on the first `training_step()`
+    #    # call in each iteration).
+    #    if self.metrics.peek(NUM_TRAINING_STEP_CALLS_PER_ITERATION, default=0) == 0:
+    #        train_throughput = self.metrics.peek(
+    #            (
+    #                LEARNER_RESULTS,
+    #                ALL_MODULES,
+    #                NUM_ENV_STEPS_TRAINED_LIFETIME,
+    #            ),
+    #            default=0.0,
+    #            throughput=True,
+    #        )
+    #        self.metrics.log_value(
+    #            "_measured_train_throughput",
+    #            train_throughput,
+    #            window=1,
+    #        )
+    #        self._sleep_time_controller.log_result(train_throughput)
+    #        self.metrics.log_value(
+    #            "_current_sleep_time",
+    #            self._sleep_time_controller.current,
+    #            window=1,
+    #        )
 
     @classmethod
     @override(Algorithm)
@@ -1041,7 +1084,7 @@ class IMPALA(Algorithm):
             # local worker. Otherwise just return an empty list.
             if self.env_runner_group.num_healthy_remote_workers() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.
-                self.env_runner_group.foreach_worker_async(
+                self.env_runner_group.foreach_env_runner_async(
                     lambda worker: worker.sample()
                 )
                 sample_batches: List[
@@ -1366,7 +1409,7 @@ class IMPALA(Algorithm):
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
-            self.env_runner_group.foreach_worker(
+            self.env_runner_group.foreach_env_runner(
                 func=lambda w: w.set_weights(ray.get(weights_ref), global_vars),
                 local_env_runner=False,
                 remote_worker_ids=list(workers_that_need_updates),

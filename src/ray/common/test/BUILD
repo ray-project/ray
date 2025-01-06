@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_test")
+load("//bazel:ray.bzl", "ray_cc_test", "ray_cc_library")
 
 ray_cc_test(
     name = "resource_request_test",
@@ -117,7 +117,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:task_common",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -146,6 +146,12 @@ ray_cc_test(
     ],
 )
 
+ray_cc_library(
+    name = "testing",
+    hdrs = ["testing.h"],
+    testonly = True,
+)
+
 ray_cc_test(
     name = "status_test",
     size = "small",
@@ -157,6 +163,18 @@ ray_cc_test(
         "//:grpc_common_lib",
         "//src/ray/common:grpc_util",
         "//src/ray/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "status_or_test",
+    size = "small",
+    srcs = ["status_or_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":testing",
+        "//src/ray/common:status_or",
         "@com_google_googletest//:gtest_main",
     ],
 )

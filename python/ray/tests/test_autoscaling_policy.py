@@ -372,6 +372,7 @@ class Simulator:
                 raylet_id=node.raylet_id,
                 static_resources=node.total_resources,
                 dynamic_resources=node.available_resources,
+                node_idle_duration_s=0,
                 waiting_bundles=waiting_bundles,
                 infeasible_bundles=infeasible_bundles,
                 pending_placement_groups=placement_groups,

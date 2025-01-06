@@ -53,6 +53,7 @@ class _DeploymentHandleBase:
         _router: Optional[Router] = None,
         _create_router: Optional[CreateRouterCallable] = None,
         _request_counter: Optional[metrics.Counter] = None,
+        _handle_id: Optional[str] = None,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         self.init_options: Optional[InitHandleOptionsBase] = init_options
@@ -60,7 +61,9 @@ class _DeploymentHandleBase:
             handle_options or create_dynamic_handle_options()
         )
 
-        self.handle_id = get_random_string()
+        # Handle ID is shared among handles that are returned by
+        # `handle.options` or `handle.method`
+        self.handle_id = _handle_id or get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
             app_name, deployment_name, self.handle_id
         )
@@ -70,21 +73,6 @@ class _DeploymentHandleBase:
             self._create_router = create_router
         else:
             self._create_router = _create_router
-
-        logger.info(
-            f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
-            extra={"log_to_stderr": False},
-        )
-
-    def _get_or_create_router(self) -> Router:
-        if self._router is None:
-            self._router = self._create_router(
-                handle_id=self.handle_id,
-                deployment_id=self.deployment_id,
-                handle_options=self.init_options,
-            )
-
-        return self._router
 
     @staticmethod
     def _gen_handle_tag(app_name: str, deployment_name: str, handle_id: str):
@@ -150,8 +138,18 @@ class _DeploymentHandleBase:
                 f"was initialized with {self.init_options}."
             )
 
-        self.init_options = create_init_handle_options(**kwargs)
-        self._get_or_create_router()
+        init_options = create_init_handle_options(**kwargs)
+        self._router = self._create_router(
+            handle_id=self.handle_id,
+            deployment_id=self.deployment_id,
+            handle_options=init_options,
+        )
+        self.init_options = init_options
+
+        logger.info(
+            f"Initialized DeploymentHandle {self.handle_id} for {self.deployment_id}.",
+            extra={"log_to_stderr": False},
+        )
 
         # Record handle api telemetry when not in the proxy
         if (
@@ -184,6 +182,7 @@ class _DeploymentHandleBase:
             _router=self._router,
             _create_router=self._create_router,
             _request_counter=self.request_counter,
+            _handle_id=self.handle_id,
         )
 
     def _remote(
@@ -209,7 +208,13 @@ class _DeploymentHandleBase:
 
     def shutdown(self):
         if self._router:
-            self._router.shutdown()
+            shutdown_future = self._router.shutdown()
+            shutdown_future.result()
+
+    async def shutdown_async(self):
+        if self._router:
+            shutdown_future = self._router.shutdown()
+            await asyncio.wrap_future(shutdown_future)
 
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"

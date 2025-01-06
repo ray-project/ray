@@ -259,14 +259,12 @@ class CQLConfig(SACConfig):
 
     @override(SACConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
-        from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
-
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.cql.torch.cql_torch_rl_module import (
-                CQLTorchRLModule,
+            from ray.rllib.algorithms.cql.torch.default_cql_torch_rl_module import (
+                DefaultCQLTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=CQLTorchRLModule, catalog_class=SACCatalog)
+            return RLModuleSpec(module_class=DefaultCQLTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."
@@ -331,16 +329,17 @@ class CQL(SAC):
         # removed.
         modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
 
-        # Update weights - after learning on the local worker -
-        # on all remote workers. Note, we only have the local `EnvRunner`,
-        # but from this `EnvRunner` the evaulation `EnvRunner`s get updated.
-        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-            self.env_runner_group.sync_weights(
-                # Sync weights from learner_group to all EnvRunners.
-                from_worker_or_learner_group=self.learner_group,
-                policies=modules_to_update,
-                inference_only=True,
-            )
+        if self.eval_env_runner_group:
+            # Update weights - after learning on the local worker -
+            # on all remote workers. Note, we only have the local `EnvRunner`,
+            # but from this `EnvRunner` the evaulation `EnvRunner`s get updated.
+            with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+                self.eval_env_runner_group.sync_weights(
+                    # Sync weights from learner_group to all EnvRunners.
+                    from_worker_or_learner_group=self.learner_group,
+                    policies=modules_to_update,
+                    inference_only=True,
+                )
 
     @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:

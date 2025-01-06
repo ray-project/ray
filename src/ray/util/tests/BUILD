@@ -2,6 +2,29 @@ load("@rules_cc//cc:defs.bzl", "cc_test")
 load("//bazel:ray.bzl", "COPTS")
 
 cc_test(
+    name = "array_test",
+    srcs = ["array_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+
+cc_test(
+    name = "function_traits_test",
+    srcs = ["function_traits_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "thread_checker_test",
     srcs = ["thread_checker_test.cc"],
     copts = COPTS,
@@ -102,6 +125,7 @@ cc_test(
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
+        "//src/ray/common:status",
     ],
 )
 
@@ -193,4 +217,16 @@ cc_test(
         "//src/ray/util:size_literals",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_test(
+    name = "shared_lru_test",
+    srcs = ["shared_lru_test.cc"],
+    deps = [
+        "//src/ray/util:shared_lru",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    copts = COPTS,
+    tags = ["team:core"],
 )

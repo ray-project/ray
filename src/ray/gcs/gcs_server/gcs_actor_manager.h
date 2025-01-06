@@ -135,6 +135,9 @@ class GcsActor {
 
     actor_table_data_.set_serialized_runtime_env(
         task_spec.runtime_env_info().serialized_runtime_env());
+    if (task_spec.call_site().size() > 0) {
+      actor_table_data_.set_call_site(task_spec.call_site());
+    }
     RefreshMetrics();
   }
 
@@ -313,15 +316,15 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
   GcsActorManager(
-      std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-      std::shared_ptr<GcsTableStorage> gcs_table_storage,
-      std::shared_ptr<GcsPublisher> gcs_publisher,
+      std::unique_ptr<GcsActorSchedulerInterface> scheduler,
+      GcsTableStorage *gcs_table_storage,
+      GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
       const rpc::CoreWorkerClientFactoryFn &worker_client_factory = nullptr);
 
-  ~GcsActorManager() = default;
+  ~GcsActorManager() override = default;
 
   void HandleRegisterActor(rpc::RegisterActorRequest request,
                            rpc::RegisterActorReply *reply,
@@ -365,7 +368,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param success_callback Will be invoked after the actor is created successfully or
   /// be invoked immediately if the actor is already registered to `registered_actors_`
   /// and its state is `ALIVE`.
-  /// \return Status::Invalid if this is a named actor and an
+  /// \return Status::AlreadyExists if this is a named actor and an
   /// actor with the specified name already exists. The callback will not be called in
   /// this case.
   Status RegisterActor(const rpc::RegisterActorRequest &request,
@@ -685,11 +688,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, Owner>> owners_;
 
   /// The scheduler to schedule all registered actors.
-  std::shared_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
+  std::unique_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.
-  std::shared_ptr<GcsTableStorage> gcs_table_storage_;
+  GcsTableStorage *gcs_table_storage_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  GcsPublisher *gcs_publisher_;
   /// Factory to produce clients to workers. This is used to communicate with
   /// actors and their owners.
   rpc::CoreWorkerClientFactoryFn worker_client_factory_;

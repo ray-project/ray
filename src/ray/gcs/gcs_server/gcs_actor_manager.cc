@@ -323,18 +323,19 @@ const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
 
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(
-    std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-    std::shared_ptr<GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<GcsPublisher> gcs_publisher,
+    std::unique_ptr<GcsActorSchedulerInterface> scheduler,
+    GcsTableStorage *gcs_table_storage,
+    GcsPublisher *gcs_publisher,
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     const rpc::CoreWorkerClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
-      gcs_table_storage_(std::move(gcs_table_storage)),
-      gcs_publisher_(std::move(gcs_publisher)),
+      gcs_table_storage_(gcs_table_storage),
+      gcs_publisher_(gcs_publisher),
       worker_client_factory_(worker_client_factory),
-      destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
+      destroy_owned_placement_group_if_needed_(
+          std::move(destroy_owned_placement_group_if_needed)),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
@@ -648,8 +649,7 @@ void GcsActorManager::HandleGetNamedActorInfo(
 
   Status status = Status::OK();
   auto iter = registered_actors_.find(actor_id);
-  if (actor_id.IsNil() || iter == registered_actors_.end() ||
-      iter->second->GetState() == rpc::ActorTableData::DEAD) {
+  if (actor_id.IsNil() || iter == registered_actors_.end()) {
     // The named actor was not found or the actor is already removed.
     std::stringstream stream;
     stream << "Actor with name '" << name << "' was not found.";
@@ -749,11 +749,8 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                "explicitly connect to this namespace with ray.init(namespace=\""
             << actor->GetRayNamespace() << "\", ...)";
 
-        auto error_data_ptr =
-            gcs::CreateErrorTableData("detached_actor_anonymous_namespace",
-                                      stream.str(),
-                                      absl::GetCurrentTimeNanos(),
-                                      job_id);
+        auto error_data_ptr = gcs::CreateErrorTableData(
+            "detached_actor_anonymous_namespace", stream.str(), absl::Now(), job_id);
 
         RAY_LOG(WARNING) << error_data_ptr->SerializeAsString();
         RAY_CHECK_OK(
@@ -764,7 +761,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
       std::stringstream stream;
       stream << "Actor with name '" << actor->GetName()
              << "' already exists in the namespace " << actor->GetRayNamespace();
-      return Status::NotFound(stream.str());
+      return Status::AlreadyExists(stream.str());
     }
   }
 
@@ -933,7 +930,7 @@ void GcsActorManager::RemoveActorNameFromRegistry(
     if (namespace_it != named_actors_.end()) {
       auto it = namespace_it->second.find(actor->GetName());
       if (it != namespace_it->second.end()) {
-        RAY_LOG(INFO) << "Actor name " << actor->GetName() << " is cleand up.";
+        RAY_LOG(INFO) << "Actor name " << actor->GetName() << " is cleaned up.";
         namespace_it->second.erase(it);
       }
       // If we just removed the last actor in the namespace, remove the map.
@@ -1038,7 +1035,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   const auto actor = it->second;
 
   RAY_LOG(DEBUG) << "Try to kill actor " << actor->GetActorID() << ", with status "
-                 << actor->GetState() << ", name " << actor->GetName();
+                 << rpc::ActorTableData::ActorState_Name(actor->GetState()) << ", name "
+                 << actor->GetName();
   if (actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
     // The actor creation task still has unresolved dependencies. Remove from the
     // unresolved actors map.
@@ -1649,7 +1647,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       // We could not reschedule actors in state of `DEPENDENCIES_UNREADY` because the
       // dependencies of them may not have been resolved yet.
       RAY_LOG(INFO).WithField(actor->GetActorID().JobId()).WithField(actor->GetActorID())
-          << "Rescheduling a non-alive actor, state = " << actor->GetState();
+          << "Rescheduling a non-alive actor, state = "
+          << rpc::ActorTableData::ActorState_Name(actor->GetState());
       gcs_actor_scheduler_->Reschedule(actor);
     }
   }

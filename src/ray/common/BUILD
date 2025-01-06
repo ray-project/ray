@@ -197,6 +197,7 @@ ray_cc_library(
     hdrs = [
         "asio/asio_chaos.h",
         "asio/asio_util.h",
+        "asio/postable.h",
         "asio/instrumented_io_context.h",
         "asio/io_service_pool.h",
         "asio/periodical_runner.h",
@@ -248,10 +249,18 @@ ray_cc_library(
     name = "ray_syncer",
     srcs = [
         "ray_syncer/ray_syncer.cc",
+        "ray_syncer/node_state.cc",
+        "ray_syncer/ray_syncer_client.cc",
+        "ray_syncer/ray_syncer_server.cc",
     ],
     hdrs = [
         "ray_syncer/ray_syncer.h",
-        "ray_syncer/ray_syncer-inl.h",
+        "ray_syncer/node_state.h",
+        "ray_syncer/common.h",
+        "ray_syncer/ray_syncer_bidi_reactor.h",
+        "ray_syncer/ray_syncer_bidi_reactor_base.h",
+        "ray_syncer/ray_syncer_client.h",
+        "ray_syncer/ray_syncer_server.h",
     ],
     deps = [
         ":asio",
@@ -270,6 +279,15 @@ ray_cc_library(
     deps = [
         ":source_location",
         "//src/ray/util",
+    ],
+)
+
+ray_cc_library(
+    name = "status_or",
+    hdrs = ["status_or.h"],
+    deps = [
+        ":status",
+        "@com_google_absl//absl/base:core_headers"
     ],
 )
 

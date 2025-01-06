@@ -98,6 +98,12 @@ def redis_replicas():
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
 
 
+def redis_sentinel_replicas():
+    import os
+
+    return int(os.environ.get("TEST_EXTERNAL_REDIS_SENTINEL_REPLICAS", "2"))
+
+
 def get_redis_cli(port, enable_tls):
     try:
         # If there is no redis libs installed, skip the check.
@@ -120,6 +126,63 @@ def get_redis_cli(port, enable_tls):
             params["ssl_keyfile"] = Config.REDIS_CLIENT_KEY()
 
     return redis.Redis("localhost", str(port), **params)
+
+
+def start_redis_sentinel_instance(
+    session_dir_path: str,
+    port: int,
+    redis_master_port: int,
+    password: Optional[str] = None,
+    enable_tls: bool = False,
+    db_dir=None,
+    free_port=0,
+):
+    config_file = os.path.join(
+        session_dir_path, "redis-sentinel-" + uuid.uuid4().hex + ".conf"
+    )
+    config_lines = []
+    # Port for this Sentinel instance
+    if enable_tls:
+        config_lines.append(f"port {free_port}")
+    else:
+        config_lines.append(f"port {port}")
+
+    # Monitor the Redis master
+    config_lines.append(f"sentinel monitor redis-test 127.0.0.1 {redis_master_port} 1")
+    config_lines.append(
+        "sentinel down-after-milliseconds redis-test 1000"
+    )  # failover after 1 second
+    config_lines.append("sentinel failover-timeout redis-test 5000")  #
+    config_lines.append("sentinel parallel-syncs redis-test 1")
+
+    if password:
+        config_lines.append(f"sentinel auth-pass redis-test {password}")
+
+    if enable_tls:
+        config_lines.append(f"tls-port {port}")
+        if Config.REDIS_CA_CERT():
+            config_lines.append(f"tls-ca-cert-file {Config.REDIS_CA_CERT()}")
+        # Check and add TLS client certificate file
+        if Config.REDIS_CLIENT_CERT():
+            config_lines.append(f"tls-cert-file {Config.REDIS_CLIENT_CERT()}")
+        # Check and add TLS client key file
+        if Config.REDIS_CLIENT_KEY():
+            config_lines.append(f"tls-key-file {Config.REDIS_CLIENT_KEY()}")
+        config_lines.append("tls-auth-clients no")
+        config_lines.append("sentinel tls-auth-clients redis-test no")
+    if db_dir:
+        config_lines.append(f"dir {db_dir}")
+
+    with open(config_file, "w") as f:
+        f.write("\n".join(config_lines))
+
+    command = [REDIS_EXECUTABLE, config_file, "--sentinel"]
+    process_info = ray._private.services.start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_REDIS_SERVER,
+        fate_share=False,
+    )
+    return process_info
 
 
 def start_redis_instance(
@@ -1443,6 +1506,7 @@ class ResourceKillerActor:
         head_node_id,
         kill_interval_s: float = 60,
         max_to_kill: int = 2,
+        batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
         self.kill_interval_s = kill_interval_s
@@ -1451,6 +1515,7 @@ class ResourceKillerActor:
         self.killed = set()
         self.done = ray._private.utils.get_or_create_event_loop().create_future()
         self.max_to_kill = max_to_kill
+        self.batch_size_to_kill = batch_size_to_kill
         self.kill_filter_fn = kill_filter_fn
         self.kill_immediately_after_found = False
         # -- logger. --
@@ -1462,7 +1527,7 @@ class ResourceKillerActor:
     async def run(self):
         self.is_running = True
         while self.is_running:
-            to_kill = await self._find_resource_to_kill()
+            to_kills = await self._find_resources_to_kill()
 
             if not self.is_running:
                 break
@@ -1473,14 +1538,15 @@ class ResourceKillerActor:
                 sleep_interval = random.random() * self.kill_interval_s
                 time.sleep(sleep_interval)
 
-            self._kill_resource(*to_kill)
+            for to_kill in to_kills:
+                self._kill_resource(*to_kill)
             if len(self.killed) >= self.max_to_kill:
                 break
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
         self.done.set_result(True)
 
-    async def _find_resource_to_kill(self):
+    async def _find_resources_to_kill(self):
         raise NotImplementedError
 
     def _kill_resource(self, *args):
@@ -1498,38 +1564,38 @@ class ResourceKillerActor:
 
 
 class NodeKillerBase(ResourceKillerActor):
-    async def _find_resource_to_kill(self):
-        node_to_kill_ip = None
-        node_to_kill_port = None
-        node_id = None
-        while node_to_kill_port is None and self.is_running:
-            nodes = ray.nodes()
-            alive_nodes = self._get_alive_nodes(nodes)
-            if self.kill_filter_fn is not None:
-                nodes = list(filter(self.kill_filter_fn(), nodes))
-            for node in nodes:
-                node_id = node["NodeID"]
-                # make sure at least 1 worker node is alive.
-                if (
-                    node["Alive"]
-                    and node_id != self.head_node_id
-                    and node_id not in self.killed
-                    and alive_nodes > 2
-                ):
-                    node_to_kill_ip = node["NodeManagerAddress"]
-                    node_to_kill_port = node["NodeManagerPort"]
-                    break
-            # Give the cluster some time to start.
-            await asyncio.sleep(0.1)
+    async def _find_resources_to_kill(self):
+        nodes_to_kill = []
+        while not nodes_to_kill and self.is_running:
+            worker_nodes = [
+                node
+                for node in ray.nodes()
+                if node["Alive"]
+                and (node["NodeID"] != self.head_node_id)
+                and (node["NodeID"] not in self.killed)
+            ]
+            if self.kill_filter_fn:
+                candidates = list(filter(self.kill_filter_fn(), worker_nodes))
+            else:
+                candidates = worker_nodes
 
-        return node_id, node_to_kill_ip, node_to_kill_port
+            # Ensure at least one worker node remains alive.
+            if len(worker_nodes) < self.batch_size_to_kill + 1:
+                # Give the cluster some time to start.
+                await asyncio.sleep(1)
+                continue
 
-    def _get_alive_nodes(self, nodes):
-        alive_nodes = 0
-        for node in nodes:
-            if node["Alive"]:
-                alive_nodes += 1
-        return alive_nodes
+            # Collect nodes to kill, limited by batch size.
+            for candidate in candidates[: self.batch_size_to_kill]:
+                nodes_to_kill.append(
+                    (
+                        candidate["NodeID"],
+                        candidate["NodeManagerAddress"],
+                        candidate["NodeManagerPort"],
+                    )
+                )
+
+        return nodes_to_kill
 
 
 @ray.remote(num_cpus=0)
@@ -1600,9 +1666,16 @@ class WorkerKillerActor(ResourceKillerActor):
         head_node_id,
         kill_interval_s: float = 60,
         max_to_kill: int = 2,
+        batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
-        super().__init__(head_node_id, kill_interval_s, max_to_kill, kill_filter_fn)
+        super().__init__(
+            head_node_id,
+            kill_interval_s,
+            max_to_kill,
+            batch_size_to_kill,
+            kill_filter_fn,
+        )
 
         # Kill worker immediately so that the task does
         # not finish successfully on its own.
@@ -1619,7 +1692,7 @@ class WorkerKillerActor(ResourceKillerActor):
             ]
         )
 
-    async def _find_resource_to_kill(self):
+    async def _find_resources_to_kill(self):
         from ray.util.state.common import StateResource
 
         process_to_kill_task_id = None
@@ -1644,7 +1717,7 @@ class WorkerKillerActor(ResourceKillerActor):
             # Give the cluster some time to start.
             await asyncio.sleep(0.1)
 
-        return process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id
+        return [(process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id)]
 
     def _kill_resource(
         self, process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id
@@ -1681,6 +1754,7 @@ def get_and_run_resource_killer(
     lifetime=None,
     no_start=False,
     max_to_kill=2,
+    batch_size_to_kill=1,
     kill_delay_s=0,
     kill_filter_fn=None,
 ):
@@ -1699,6 +1773,7 @@ def get_and_run_resource_killer(
         head_node_id,
         kill_interval_s=kill_interval_s,
         max_to_kill=max_to_kill,
+        batch_size_to_kill=batch_size_to_kill,
         kill_filter_fn=kill_filter_fn,
     )
     print("Waiting for ResourceKiller to be ready...")

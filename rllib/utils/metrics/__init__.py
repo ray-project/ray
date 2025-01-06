@@ -1,3 +1,6 @@
+from ray.rllib.core import ALL_MODULES  # noqa
+
+
 # Algorithm ResultDict keys.
 EVALUATION_RESULTS = "evaluation"
 ENV_RUNNER_RESULTS = "env_runners"
@@ -10,6 +13,9 @@ TIMERS = "timers"
 # RLModule metrics.
 NUM_TRAINABLE_PARAMETERS = "num_trainable_parameters"
 NUM_NON_TRAINABLE_PARAMETERS = "num_non_trainable_parameters"
+
+# Number of times `training_step()` was called in one iteration.
+NUM_TRAINING_STEP_CALLS_PER_ITERATION = "num_training_step_calls_per_iteration"
 
 # Counters for sampling, sampling (on eval workers) and
 # training steps (env- and agent steps).
@@ -108,5 +114,4 @@ TARGET_NET_UPDATE_TIMER = "target_net_update"
 
 # Learner.
 LEARNER_STATS_KEY = "learner_stats"
-ALL_MODULES = "__all_modules__"
 TD_ERROR_KEY = "td_error"

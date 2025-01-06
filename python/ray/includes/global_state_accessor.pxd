@@ -74,18 +74,22 @@ cdef extern from * namespace "ray::gcs" nogil:
 
     bool RedisGetKeySync(const std::string& host,
                          int32_t port,
+                         const std::string& username,
                          const std::string& password,
                          bool use_ssl,
                          const std::string& config,
                          const std::string& key,
                          std::string* data) {
+      // Logging default value see class `RayLog`.
       InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                              ray::RayLog::ShutDownRayLog,
                                              "ray_init",
                                              ray::RayLogLevel::WARNING,
-                                             "" /* log_dir */);
+                                             /*log_filepath=*/"",
+                                             /*log_rotation_max_size=*/1ULL << 29,
+                                             /*log_rotation_file_num=*/10);
 
-      RedisClientOptions options(host, port, password, use_ssl);
+      RedisClientOptions options(host, port, username, password, use_ssl);
 
       std::string config_list;
       RAY_CHECK(absl::Base64Unescape(config, &config_list));
@@ -95,10 +99,10 @@ cdef extern from * namespace "ray::gcs" nogil:
 
       auto redis_client = std::make_shared<RedisClient>(options);
       auto status = redis_client->Connect(io_service);
-      RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
+      RAY_CHECK_OK(status) << "Failed to connect to redis.";
 
       auto cli = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(std::move(redis_client)));
+        std::make_unique<RedisStoreClient>(std::move(redis_client)), io_service);
 
       bool ret_val = false;
       cli->Get("session", key, [&](std::optional<std::string> result) {
@@ -121,6 +125,7 @@ cdef extern from * namespace "ray::gcs" nogil:
     """
     c_bool RedisGetKeySync(const c_string& host,
                            c_int32_t port,
+                           const c_string& username,
                            const c_string& password,
                            c_bool use_ssl,
                            const c_string& config,
@@ -131,6 +136,7 @@ cdef extern from * namespace "ray::gcs" nogil:
 cdef extern from * namespace "ray::gcs" nogil:
     c_bool RedisDelKeyPrefixSync(const c_string& host,
                                  c_int32_t port,
+                                 const c_string& username,
                                  const c_string& password,
                                  c_bool use_ssl,
                                  const c_string& key_prefix)

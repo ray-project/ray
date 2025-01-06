@@ -42,7 +42,7 @@ are represented by slightly different maps that the agent has to navigate.
    :end-before: __END_curriculum_learning_example_env_options__
 
 Then, define the central piece controlling the curriculum, which is a custom callbacks class
-overriding the :py:meth:`~ray.rllib.algorithms.callbacks.DefaultCallbacks.on_train_result`.
+overriding the :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_train_result`.
 
 
 .. TODO move to doc_code and make it use algo configs.
@@ -50,9 +50,9 @@ overriding the :py:meth:`~ray.rllib.algorithms.callbacks.DefaultCallbacks.on_tra
 
     import ray
     from ray import tune
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
-    class MyCallbacks(DefaultCallbacks):
+    class MyCallbacks(RLlibCallback):
         def on_train_result(self, algorithm, result, **kwargs):
             if result["env_runners"]["episode_return_mean"] > 200:
                 task = 2
@@ -93,48 +93,6 @@ incremented by environments and read periodically from your driver program:
 
 Ray actors provide high levels of performance, so in more complex cases they can be
 used implement communication patterns such as parameter servers and all-reduce.
-
-Callbacks and Custom Metrics
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-You can provide callbacks to be called at points during policy evaluation.
-These callbacks have access to state for the current
-`episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__.
-Certain callbacks such as ``on_postprocess_trajectory``, ``on_sample_end``,
-and ``on_train_result`` are also places where custom postprocessing can be applied to
-intermediate data or results.
-
-User-defined state can be stored for the
-`episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__
-in the ``episode.user_data`` dict, and custom scalar metrics reported by saving values
-to the ``episode.custom_metrics`` dict. These custom metrics are aggregated and
-reported as part of training results. For a full example, take a look at
-`this example script here <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__
-and
-`these unit test cases here <https://github.com/ray-project/ray/blob/master/rllib/algorithms/tests/test_callbacks_old_stack.py>`__.
-
-.. tip::
-    You can create custom logic that can run on each evaluation episode by checking
-    if the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` is in
-    evaluation mode, through accessing ``worker.policy_config["in_evaluation"]``.
-    You can then implement this check in ``on_episode_start()`` or ``on_episode_end()``
-    in your subclass of :py:class:`~ray.rllib.algorithms.callbacks.DefaultCallbacks`.
-    For running callbacks before and after the evaluation
-    runs in whole we provide ``on_evaluate_start()`` and ``on_evaluate_end``.
-
-.. dropdown:: Click here to see the full API of the ``DefaultCallbacks`` class
-
-    .. autoclass:: ray.rllib.algorithms.callbacks.DefaultCallbacks
-        :members:
-
-
-Chaining Callbacks
-~~~~~~~~~~~~~~~~~~
-
-Use the :py:func:`~ray.rllib.algorithms.callbacks.make_multi_callbacks` utility to chain
-multiple callbacks together.
-
-.. autofunction:: ray.rllib.algorithms.callbacks.make_multi_callbacks
 
 
 Visualizing Custom Metrics
@@ -360,8 +318,11 @@ evaluation (for example you have an environment that sometimes crashes or stalls
 you should use the following combination of settings, minimizing the negative effects
 of such environment behavior:
 
+.. todo (sven): Add link here to new fault-tolerance page, once done.
+    :ref:`fault tolerance settings <rllib-fault-tolerance-docs>`, such as
+
 Note that with or without parallel evaluation, all
-:ref:`fault tolerance settings <rllib-scaling-guide>`, such as
+fault tolerance settings, such as
 ``ignore_env_runner_failures`` or ``restart_failed_env_runners`` are respected and applied
 to the failed evaluation workers.
 

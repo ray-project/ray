@@ -28,7 +28,7 @@ from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import NULL_SENTINEL, find_partitions
+from ray.data._internal.util import NULL_SENTINEL, find_partitions, keys_equal
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -219,7 +219,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def slice(self, start: int, end: int, copy: bool = False) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
-            view = _copy_table(view)
+            view = transform_pyarrow.combine_chunks(view)
         return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
@@ -245,11 +245,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def to_numpy(
         self, columns: Optional[Union[str, List[str]]] = None
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-        from ray.air.util.transform_pyarrow import (
-            _concatenate_extension_column,
-            _is_column_extension_type,
-        )
-
         if columns is None:
             columns = self._table.column_names
             should_be_single_ndarray = False
@@ -267,23 +262,24 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     f"{column_names_set}"
                 )
 
-        arrays = []
-        for column in columns:
-            array = self._table[column]
-            if _is_column_extension_type(array):
-                array = _concatenate_extension_column(array)
-            elif array.num_chunks == 0:
-                array = pyarrow.array([], type=array.type)
-            else:
-                array = array.combine_chunks()
-            arrays.append(array.to_numpy(zero_copy_only=False))
+        column_values_ndarrays = []
+
+        for col_name in columns:
+            col = self._table[col_name]
+
+            # Combine columnar values arrays to make these contiguous
+            # (making them compatible with numpy format)
+            combined_array = transform_pyarrow.combine_chunked_array(col)
+
+            column_values_ndarrays.append(
+                transform_pyarrow.to_numpy(combined_array, zero_copy_only=False)
+            )
 
         if should_be_single_ndarray:
             assert len(columns) == 1
-            arrays = arrays[0]
+            return column_values_ndarrays[0]
         else:
-            arrays = dict(zip(columns, arrays))
-        return arrays
+            return dict(zip(columns, column_values_ndarrays))
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table
@@ -338,6 +334,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 f"Arrow blocks, but got: {columns}."
             )
         return self._table.select(columns)
+
+    def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
+        return self._table.rename_columns(columns_rename)
 
     def _sample(self, n_samples: int, sort_key: "SortKey") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)
@@ -473,7 +472,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     if next_row is None:
                         next_row = next(iter)
                     next_keys = next_row[keys]
-                    while next_row[keys] == next_keys:
+                    while keys_equal(next_row[keys], next_keys):
                         end += 1
                         try:
                             next_row = next(iter)
@@ -514,10 +513,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
             builder.add(row)
 
         return builder.build()
-
-    @staticmethod
-    def _munge_conflict(name, count):
-        return f"{name}_{count+1}"
 
     @staticmethod
     def merge_sorted_blocks(
@@ -597,7 +592,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 def gen():
                     nonlocal iter
                     nonlocal next_row
-                    while key_fn(next_row) == next_keys:
+                    while keys_equal(key_fn(next_row), next_keys):
                         yield next_row
                         try:
                             next_row = next(iter)
@@ -652,8 +647,3 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
-
-
-def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
-    """Copy the provided Arrow table."""
-    return transform_pyarrow.combine_chunks(table)

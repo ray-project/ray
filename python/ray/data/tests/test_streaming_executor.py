@@ -7,6 +7,12 @@ import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray.data._internal.execution.execution_callback import (
+    ExecutionCallback,
+    add_execution_callback,
+    get_execution_callbacks,
+    remove_execution_callback,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -33,6 +39,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -84,12 +91,16 @@ def make_ref_bundle(x):
 )
 def test_build_streaming_topology(verbose_progress):
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        DataContext.get_current(),
     )
     topo, num_progress_bars = build_streaming_topology(
         o3, ExecutionOptions(verbose_progress=verbose_progress)
@@ -109,23 +120,34 @@ def test_build_streaming_topology(verbose_progress):
 def test_disallow_non_unique_operators():
     inputs = make_ref_bundles([[x] for x in range(20)])
     # An operator [o1] cannot used in the same DAG twice.
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
-    o4 = PhysicalOperator("test_combine", [o2, o3], target_max_block_size=None)
+    o4 = PhysicalOperator(
+        "test_combine",
+        [o2, o3],
+        DataContext.get_current(),
+        target_max_block_size=None,
+    )
     with pytest.raises(ValueError):
         build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
 
 
 def test_process_completed_tasks():
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     topo, _ = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
 
@@ -164,12 +186,16 @@ def test_process_completed_tasks():
     o1.mark_execution_completed.assert_not_called()
 
     # Test dependents completed.
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o2
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o2,
+        DataContext.get_current(),
     )
     topo, _ = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
@@ -183,12 +209,16 @@ def test_process_completed_tasks():
 def test_select_operator_to_run():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        DataContext.get_current(),
     )
     topo, _ = build_streaming_topology(o3, opt)
     resource_manager = mock_resource_manager(
@@ -233,10 +263,12 @@ def test_select_operator_to_run():
 
 def test_dispatch_next_task():
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o1_state = OpState(o1, [])
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     op_state = OpState(o2, [o1_state.outqueue])
 
@@ -258,18 +290,23 @@ def test_dispatch_next_task():
 def test_debug_dump_topology():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        DataContext.get_current(),
     )
     topo, _ = build_streaming_topology(o3, opt)
     resource_manager = ResourceManager(
         topo,
         ExecutionOptions(),
         MagicMock(return_value=ExecutionResources.zero()),
+        DataContext.get_current(),
     )
     resource_manager.update_usages()
     # Just a sanity check to ensure it doesn't crash.
@@ -278,15 +315,17 @@ def test_debug_dump_topology():
 
 def test_validate_dag():
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
+        DataContext.get_current(),
         compute_strategy=ray.data.ActorPoolStrategy(size=8),
     )
     o3 = MapOperator.create(
         make_map_transformer(lambda block: [b * 2 for b in block]),
         o2,
+        DataContext.get_current(),
         compute_strategy=ray.data.ActorPoolStrategy(size=4),
     )
     _validate_dag(o3, ExecutionResources.for_limits())
@@ -297,7 +336,7 @@ def test_validate_dag():
 
 
 def test_execution_allowed():
-    op = InputDataBuffer([])
+    op = InputDataBuffer(DataContext.get_current(), [])
 
     # CPU.
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources(cpu=1))
@@ -398,14 +437,16 @@ def test_execution_allowed():
 def test_select_ops_ensure_at_least_one_live_operator():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
         make_map_transformer(lambda block: [b * 2 for b in block]),
         o2,
+        DataContext.get_current(),
     )
     topo, _ = build_streaming_topology(o3, opt)
     topo[o2].outqueue.append(make_ref_bundle("dummy1"))
@@ -430,13 +471,16 @@ def test_select_ops_ensure_at_least_one_live_operator():
 
 def test_configure_output_locality():
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
         make_map_transformer(lambda block: [b * 2 for b in block]),
         o2,
+        DataContext.get_current(),
         compute_strategy=ray.data.ActorPoolStrategy(size=1),
     )
     # No locality.
@@ -472,7 +516,7 @@ def test_configure_output_locality():
 
 
 def test_execution_allowed_downstream_aware_memory_throttling():
-    op = InputDataBuffer([])
+    op = InputDataBuffer(DataContext.get_current(), [])
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
     # Below global.
     assert _execution_allowed(
@@ -517,7 +561,7 @@ def test_execution_allowed_downstream_aware_memory_throttling():
 
 
 def test_execution_allowed_nothrottle():
-    op = InputDataBuffer([])
+    op = InputDataBuffer(DataContext.get_current(), [])
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
     # Above global.
     assert not _execution_allowed(
@@ -600,6 +644,59 @@ def test_time_scheduling():
 
     ds_stats = ds._plan.stats()
     assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
+
+
+def test_executor_callbacks():
+    """Test ExecutionCallback."""
+
+    class CustomExecutionCallback(ExecutionCallback):
+        def __init__(self):
+            self._before_execution_starts_called = False
+            self._after_execution_succeeds_called = False
+            self._execution_error = None
+
+        def before_execution_starts(self):
+            self._before_execution_starts_called = True
+
+        def after_execution_succeeds(self):
+            self._after_execution_succeeds_called = True
+
+        def after_execution_fails(self, error: Exception):
+            self._execution_error = error
+
+    # Test the success case.
+    ds = ray.data.range(10)
+    ctx = ds.context
+    callback = CustomExecutionCallback()
+    add_execution_callback(callback, ctx)
+    assert get_execution_callbacks(ctx) == [callback]
+
+    ds.take_all()
+
+    assert callback._before_execution_starts_called
+    assert callback._after_execution_succeeds_called
+    assert callback._execution_error is None
+
+    remove_execution_callback(callback, ctx)
+    assert get_execution_callbacks(ctx) == []
+
+    # Test the failure case.
+    ds = ray.data.range(10)
+    ctx = ds.context
+    ctx.raise_original_map_exception = True
+    callback = CustomExecutionCallback()
+    add_execution_callback(callback, ctx)
+
+    def map_fn(_):
+        raise ValueError("")
+
+    with pytest.raises(ValueError):
+        ds.map(map_fn).take_all()
+
+    assert callback._before_execution_starts_called
+    assert not callback._after_execution_succeeds_called
+    error = callback._execution_error
+    assert isinstance(error, ValueError), error
 
 
 if __name__ == "__main__":

@@ -35,11 +35,12 @@
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 
+namespace {
 /// Uses sscanf() to read a token matching from the string, advancing the iterator.
 /// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())
 /// \param format The pattern. It must not produce any output. (e.g., use %*d, not %d.)
 /// \return The scanned prefix of the string, if any.
-static std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
+std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
   int i = 0;
   std::string result;
   format += "%n";
@@ -49,6 +50,7 @@ static std::string ScanToken(std::string::const_iterator &c_str, std::string for
   }
   return result;
 }
+}  // namespace
 
 std::string EndpointToUrl(
     const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
@@ -58,7 +60,7 @@ std::string EndpointToUrl(
   case AF_INET: {
     scheme = "tcp://";
     boost::asio::ip::tcp::endpoint e(boost::asio::ip::tcp::v4(), 0);
-    RAY_CHECK(e.size() == ep.size());
+    RAY_CHECK_EQ(e.size(), ep.size());
     const sockaddr *src = ep.data();
     sockaddr *dst = e.data();
     *reinterpret_cast<sockaddr_in *>(dst) = *reinterpret_cast<const sockaddr_in *>(src);
@@ -70,7 +72,7 @@ std::string EndpointToUrl(
   case AF_INET6: {
     scheme = "tcp://";
     boost::asio::ip::tcp::endpoint e(boost::asio::ip::tcp::v6(), 0);
-    RAY_CHECK(e.size() == ep.size());
+    RAY_CHECK_EQ(e.size(), ep.size());
     const sockaddr *src = ep.data();
     sockaddr *dst = e.data();
     *reinterpret_cast<sockaddr_in6 *>(dst) = *reinterpret_cast<const sockaddr_in6 *>(src);
@@ -380,6 +382,38 @@ std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::str
   return result;
 }
 
+std::string GenerateUUIDV4() {
+  thread_local std::random_device rd;
+  thread_local std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dis(0, 15);
+  std::uniform_int_distribution<> dis2(8, 11);
+
+  std::stringstream ss;
+  int i;
+  ss << std::hex;
+  for (i = 0; i < 8; i++) {
+    ss << dis(gen);
+  }
+  ss << "-";
+  for (i = 0; i < 4; i++) {
+    ss << dis(gen);
+  }
+  ss << "-4";
+  for (i = 0; i < 3; i++) {
+    ss << dis(gen);
+  }
+  ss << "-";
+  ss << dis2(gen);
+  for (i = 0; i < 3; i++) {
+    ss << dis(gen);
+  }
+  ss << "-";
+  for (i = 0; i < 12; i++) {
+    ss << dis(gen);
+  };
+  return ss.str();
+}
+
 namespace ray {
 
 bool IsRayletFailed(const std::string &raylet_pid) {
@@ -404,6 +438,17 @@ std::string FormatFloat(float value, int32_t precision) {
   std::stringstream ss;
   ss << std::fixed << std::setprecision(precision) << value;
   return ss.str();
+}
+
+std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms) {
+  std::optional<std::chrono::steady_clock::time_point> timeout_point;
+  if (timeout_ms == -1) {
+    return timeout_point;
+  }
+  auto now = std::chrono::steady_clock::now();
+  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
+  timeout_point.emplace(now + timeout_duration);
+  return timeout_point;
 }
 
 }  // namespace ray

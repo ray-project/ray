@@ -19,7 +19,6 @@ from starlette.types import Receive
 
 import ray
 from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import (
     DeploymentID,
@@ -454,9 +453,11 @@ class GenericProxy(ABC):
 
         latency_ms = (time.time() - start_time) * 1000.0
         if response_handler_info.should_record_access_log:
+            request_context = ray.serve.context._serve_request_context.get()
             logger.info(
                 access_log_msg(
                     method=proxy_request.method,
+                    route=request_context.route,
                     status=str(status.code),
                     latency_ms=latency_ms,
                 ),
@@ -706,7 +707,9 @@ class gRPCProxy(GenericProxy):
     ) -> ResponseGenerator:
         handle_arg = proxy_request.request_object()
         response_generator = ProxyResponseGenerator(
-            handle.remote(handle_arg),
+            # NOTE(edoakes): it's important that the request is sent as raw bytes to
+            # skip the Ray cloudpickle serialization codepath for performance.
+            handle.remote(pickle.dumps(handle_arg)),
             timeout_s=self.request_timeout_s,
         )
 
@@ -763,8 +766,8 @@ class HTTPProxy(GenericProxy):
         node_ip_address: str,
         is_head: bool,
         proxy_router: ProxyRouter,
+        self_actor_name: str,
         request_timeout_s: Optional[float] = None,
-        proxy_actor: Optional[ActorHandle] = None,
     ):
         super().__init__(
             node_id,
@@ -773,7 +776,7 @@ class HTTPProxy(GenericProxy):
             proxy_router,
             request_timeout_s=request_timeout_s,
         )
-        self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
+        self.self_actor_name = self_actor_name
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
 
     @property
@@ -946,13 +949,16 @@ class HTTPProxy(GenericProxy):
         the status code.
         """
         if app_is_cross_language:
-            handle_arg = await self._format_handle_arg_for_java(proxy_request)
+            handle_arg_bytes = await self._format_handle_arg_for_java(proxy_request)
             # Response is returned as raw bytes, convert it to ASGI messages.
             result_callback = convert_object_to_asgi_messages
         else:
-            self_actor_handle = self.self_actor_handle
-            handle_arg = proxy_request.request_object(
-                receive_asgi_messages=self_actor_handle.receive_asgi_messages.remote
+            # NOTE(edoakes): it's important that the request is sent as raw bytes to
+            # skip the Ray cloudpickle serialization codepath for performance.
+            handle_arg_bytes = pickle.dumps(
+                proxy_request.request_object(
+                    proxy_actor_name=self.self_actor_name,
+                )
             )
             # Messages are returned as pickled dictionaries.
             result_callback = pickle.loads
@@ -967,7 +973,7 @@ class HTTPProxy(GenericProxy):
         )
 
         response_generator = ProxyResponseGenerator(
-            handle.remote(handle_arg),
+            handle.remote(handle_arg_bytes),
             timeout_s=self.request_timeout_s,
             disconnected_task=proxy_asgi_receive_task,
             result_callback=result_callback,
@@ -988,8 +994,7 @@ class HTTPProxy(GenericProxy):
                         status_code = str(asgi_message["status"])
                         status = ResponseStatus(
                             code=status_code,
-                            # TODO(edoakes): we need a more nuanced check than this.
-                            is_error=status_code != "200",
+                            is_error=not status_code.startswith("2"),
                         )
                         expecting_trailers = asgi_message.get("trailers", False)
                     elif asgi_message["type"] == "websocket.accept":
@@ -1010,11 +1015,16 @@ class HTTPProxy(GenericProxy):
                         # the trailers message has been sent.
                         if not asgi_message.get("more_trailers", False):
                             response_generator.stop_checking_for_disconnect()
-                    elif asgi_message["type"] == "websocket.disconnect":
+                    elif asgi_message["type"] in [
+                        "websocket.close",
+                        "websocket.disconnect",
+                    ]:
+                        status_code = str(asgi_message["code"])
                         status = ResponseStatus(
-                            code=str(asgi_message["code"]),
-                            # TODO(edoakes): we need a more nuanced check than this.
-                            is_error=False,
+                            code=status_code,
+                            # All status codes are considered errors aside from:
+                            # 1000 (CLOSE_NORMAL), 1001 (CLOSE_GOING_AWAY).
+                            is_error=status_code not in ["1000", "1001"],
                         )
                         response_generator.stop_checking_for_disconnect()
 
@@ -1212,6 +1222,7 @@ class ProxyActor:
             node_id=node_id,
             node_ip_address=node_ip_address,
             is_head=is_head,
+            self_actor_name=ray.get_runtime_context().get_actor_name(),
             proxy_router=self.proxy_router,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
@@ -1452,6 +1463,10 @@ class ProxyActor:
         Make sure the async event loop is not blocked.
         """
         logger.debug("Received health check.", extra={"log_to_stderr": False})
+
+    def pong(self):
+        """Called by the replica to initialize its handle to the proxy."""
+        pass
 
     async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
         """Get ASGI messages for the provided `request_metadata`.
