@@ -19,7 +19,6 @@ from starlette.types import Receive
 
 import ray
 from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import (
     DeploymentID,
@@ -765,8 +764,8 @@ class HTTPProxy(GenericProxy):
         node_ip_address: str,
         is_head: bool,
         proxy_router: ProxyRouter,
+        self_actor_name: str,
         request_timeout_s: Optional[float] = None,
-        proxy_actor: Optional[ActorHandle] = None,
     ):
         super().__init__(
             node_id,
@@ -775,7 +774,7 @@ class HTTPProxy(GenericProxy):
             proxy_router,
             request_timeout_s=request_timeout_s,
         )
-        self.self_actor_name = ray.get_runtime_context().get_actor_name()
+        self.self_actor_name = self_actor_name
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
 
     @property
@@ -1217,6 +1216,7 @@ class ProxyActor:
             node_id=node_id,
             node_ip_address=node_ip_address,
             is_head=is_head,
+            self_actor_name=ray.get_runtime_context().get_actor_name(),
             proxy_router=self.proxy_router,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S

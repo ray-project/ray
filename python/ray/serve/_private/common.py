@@ -636,16 +636,21 @@ class StreamingHTTPRequest:
         ] = None,
     ):
         self._asgi_scope: Scope = asgi_scope
-        self._proxy_actor_name: Optional[str] = proxy_actor_name
-        self._cached_proxy_actor: Optional[ActorHandle] = None
-        self._receive_asgi_messages: Optional[
-            Callable[[RequestMetadata], Awaitable[bytes]]
-        ] = receive_asgi_messages
 
         if proxy_actor_name is None and receive_asgi_messages is None:
             raise ValueError(
                 "Either proxy_actor_name or receive_asgi_messages must be provided."
             )
+
+        # If receive_asgi_messages is passed, it'll be called directly.
+        # If proxy_actor_name is passed, the actor will be fetched and its
+        # `receive_asgi_messages` method will be called.
+        self._proxy_actor_name: Optional[str] = proxy_actor_name
+        # Need to keep the actor handle cached to avoid "lost reference to actor" error.
+        self._cached_proxy_actor: Optional[ActorHandle] = None
+        self._receive_asgi_messages: Optional[
+            Callable[[RequestMetadata], Awaitable[bytes]]
+        ] = receive_asgi_messages
 
     @property
     def asgi_scope(self) -> Scope:
