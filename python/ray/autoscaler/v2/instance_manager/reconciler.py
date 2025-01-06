@@ -1140,34 +1140,15 @@ class Reconciler:
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
         updates = {}
-        instances_by_id = {i.instance_id: i for i in im_instances}
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
-            instance = instances_by_id[instance_id]
-
-            if autoscaling_config.worker_rpc_drain():
-                # If we would need to stop/drain ray.
-                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
-                    instance_id=instance_id,
-                    new_instance_status=IMInstance.RAY_STOP_REQUESTED,
-                    termination_request=terminate_request,
-                    details=f"draining ray: {terminate_request.details}",
-                )
-            else:
-                # If we would just terminate the cloud instance.
-                assert (
-                    instance.cloud_instance_id
-                ), f"Cloud instance id is not set on {instance.instance_id}."
-                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
-                    instance_id=instance_id,
-                    new_instance_status=IMInstance.TERMINATING,
-                    cloud_instance_id=instance.cloud_instance_id,
-                    details=(
-                        "terminating cloud instance without draining ray -"
-                        f"{terminate_request.details}"
-                    ),
-                )
+            updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                instance_id=instance_id,
+                new_instance_status=IMInstance.RAY_STOP_REQUESTED,
+                termination_request=terminate_request,
+                details=f"draining ray: {terminate_request.details}",
+            )
 
         # Add new instances.
         for launch_request in to_launch:
