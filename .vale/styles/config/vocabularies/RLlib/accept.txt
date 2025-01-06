@@ -2,7 +2,9 @@
 # Add new terms alphabetically.
 [Aa]lgos?
 (APPO|appo)
+[Aa]utoscal(e|ing)
 boolean
+[Cc]allables?
 [Cc]heckpoints?(ing)?
 [Cc]heckpointable
 classmethods?
@@ -31,3 +33,4 @@ SGD
 [Ss]ubcomponents?
 [Tt]ensor[Ff]low
 timesteps?
+vectorizes?

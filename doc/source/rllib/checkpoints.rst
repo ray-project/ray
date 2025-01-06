@@ -393,10 +393,8 @@ See these following examples:
     .. tab-item:: Continue training (w/ Ray Tune)
 
         However, when running through Ray Tune, you don't have direct access to the
-        Algorithm object or any of its subcomponents. you can use a simple custom callback
-        to solve for this.
-
-        .. todo: Add link to dedicated callbacks rst page once completed.
+        Algorithm object or any of its subcomponents.
+        You can use a simple :ref:`custom callback <rllib-callback-docs>` to solve for this.
 
         Also, see `this example script here for more details <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/change_config_during_training.py>`__.
 
