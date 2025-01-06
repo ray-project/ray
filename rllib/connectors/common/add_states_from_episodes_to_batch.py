@@ -305,6 +305,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     # state.
                     convert_to_numpy(sa_module.get_initial_state())
                     if sa_episode.t_started == 0
+                    or (Columns.STATE_OUT not in sa_episode.extra_model_outputs)
                     # Episode starts somewhere in the middle (is a cut
                     # continuation chunk) -> Use previous chunk's last
                     # STATE_OUT as initial state.
@@ -314,8 +315,24 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         neg_index_as_lookback=True,
                     )
                 )
-                # state_outs.shape=(T,[state-dim])  T=episode len
-                state_outs = sa_episode.get_extra_model_outputs(key=Columns.STATE_OUT)
+                # If we have `"state_out"`s (e.g. from rollouts) use them for the
+                # `"state_in"`s.
+                if Columns.STATE_OUT in sa_episode.extra_model_outputs:
+                    # state_outs.shape=(T,[state-dim])  T=episode len
+                    state_outs = sa_episode.get_extra_model_outputs(
+                        key=Columns.STATE_OUT
+                    )
+                # Otherwise, we have no `"state_out"` (e.g. because we are sampling
+                # from offline data and the expert policy was not stateful).
+                else:
+                    # Then simply use the `look_back_state`, i.e. in this case the
+                    # initial state as `"state_in` in training.
+                    state_outs = tree.map_structure(
+                        lambda a: np.repeat(
+                            a[np.newaxis, ...], len(sa_episode), axis=0
+                        ),
+                        look_back_state,
+                    )
                 self.add_n_batch_items(
                     batch=batch,
                     column=Columns.STATE_IN,
@@ -334,6 +351,17 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
                     single_agent_episode=sa_episode,
                 )
+                if Columns.NEXT_OBS in batch:
+                    self.add_n_batch_items(
+                        batch=batch,
+                        column=Columns.NEXT_STATE_IN,
+                        items_to_add=tree.map_structure(
+                            lambda i, m=max_seq_len: i[::m],
+                            state_outs,
+                        ),
+                        num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
+                        single_agent_episode=sa_episode,
+                    )
 
                 # Also, create the loss mask (b/c of our now possibly zero-padded data)
                 # as well as the seq_lens array and add these to `data` as well.
@@ -365,13 +393,17 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 if not sa_module.is_stateful():
                     continue
 
-                # Episode just started -> Get initial state from our RLModule.
-                if sa_episode.t_started == 0 and len(sa_episode) == 0:
+                # Episode just started or has no `"state_out"` (e.g. in offline
+                # sampling) -> Get initial state from our RLModule.
+                if (sa_episode.t_started == 0 and len(sa_episode) == 0) or (
+                    Columns.STATE_OUT not in sa_episode.extra_model_outputs
+                ):
                     state = sa_module.get_initial_state()
                 # Episode is already ongoing -> Use most recent STATE_OUT.
                 else:
                     state = sa_episode.get_extra_model_outputs(
-                        key=Columns.STATE_OUT, indices=-1
+                        key=Columns.STATE_OUT,
+                        indices=-1,
                     )
                 self.add_batch_item(
                     batch,

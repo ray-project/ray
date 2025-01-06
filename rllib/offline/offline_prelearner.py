@@ -176,8 +176,13 @@ class OfflinePreLearner:
             episodes = self._validate_episodes(episodes)
             # Add the episodes to the buffer.
             self.episode_buffer.add(episodes)
+            # TODO (simon): Refactor into a single code block for both cases.
             episodes = self.episode_buffer.sample(
                 num_items=self.config.train_batch_size_per_learner,
+                batch_length_T=self.config.model_config.get("max_seq_len", 0)
+                if self._module.is_stateful()
+                else None,
+                n_step=self.config.get("n_step", 1) or 1,
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
                 sample_episodes=True,
@@ -199,6 +204,10 @@ class OfflinePreLearner:
             # Sample steps from the buffer.
             episodes = self.episode_buffer.sample(
                 num_items=self.config.train_batch_size_per_learner,
+                batch_length_T=self.config.model_config.get("max_seq_len", 0)
+                if self._module.is_stateful()
+                else None,
+                n_step=self.config.get("n_step", 1) or 1,
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
                 sample_episodes=True,
