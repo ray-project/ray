@@ -183,9 +183,6 @@ SLOW_STARTUP_WARNING_PERIOD_S = int(
     os.environ.get("SERVE_SLOW_STARTUP_WARNING_PERIOD_S", 30)
 )
 
-EXPONENTIAL_BACKOFF_FACTOR = float(os.environ.get("EXPONENTIAL_BACKOFF_FACTOR", 2.0))
-MAX_BACKOFF_TIME_S = int(os.environ.get("SERVE_MAX_BACKOFF_TIME_S", 64))
-
 ALL_REPLICA_STATES = list(ReplicaState)
 _SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
 
@@ -1271,12 +1268,11 @@ class DeploymentState:
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
         self._target_state: DeploymentTargetState = DeploymentTargetState.default()
+
         self._prev_startup_warning: float = time.time()
-        # Exponential backoff when retrying a consistently failing deployment
-        self._last_retry: float = 0.0
-        self._backoff_time_s: int = 1
         self._replica_constructor_retry_counter: int = 0
         self._replica_constructor_error_msg: Optional[str] = None
+
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._id.name,
@@ -1631,7 +1627,6 @@ class DeploymentState:
             f"(initial target replicas: {target_num_replicas})."
         )
         self._replica_constructor_retry_counter = 0
-        self._backoff_time_s = 1
         return True
 
     def autoscale(self) -> int:
@@ -1855,23 +1850,12 @@ class DeploymentState:
                 stopping_replicas = self._replicas.count(states=[ReplicaState.STOPPING])
                 to_add = max(delta_replicas - stopping_replicas, 0)
 
-            if to_add > 0:
-                # Exponential backoff
-                if (
-                    self._replica_constructor_retry_counter
-                    >= self._failed_to_start_threshold
-                ):
-                    # Wait 1, 2, 4, ... seconds before consecutive retries, with random
-                    # offset added to avoid synchronization
-                    if (
-                        time.time() - self._last_retry
-                        < self._backoff_time_s + random.uniform(0, 3)
-                    ):
-                        return upscale, downscale
-
-                self._last_retry = time.time()
-                added_replicas = f"{to_add} replica{'s' if to_add > 1 else ''}"
-                logger.info(f"Adding {added_replicas} to {self._id}.")
+            if (
+                to_add > 0
+                and self._replica_constructor_retry_counter
+                < self._failed_to_start_threshold
+            ):
+                logger.info(f"Adding {to_add} replica{'s' * (to_add>1)} to {self._id}.")
                 for _ in range(to_add):
                     replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
                     new_deployment_replica = DeploymentReplica(
@@ -1942,8 +1926,7 @@ class DeploymentState:
                         f"The deployment failed to start {failed_to_start_count} times "
                         "in a row. This may be due to a problem with its "
                         "constructor or initial health check failing. See "
-                        "controller logs for details. Retrying after "
-                        f"{self._backoff_time_s} seconds. Error:\n"
+                        "controller logs for details. Error:\n"
                         f"{self._replica_constructor_error_msg}"
                     ),
                 )
@@ -1989,7 +1972,6 @@ class DeploymentState:
                 slow to reach running state.
         """
         slow_replicas = []
-        replicas_failed = False
         for replica in self._replicas.pop(states=[original_state]):
             start_status, error_msg = replica.check_started()
             if start_status == ReplicaStartupStatus.SUCCEEDED:
@@ -2019,7 +2001,6 @@ class DeploymentState:
 
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
-                replicas_failed = True
                 self.record_replica_startup_failure(error_msg)
                 self._stop_replica(replica)
             elif start_status in [
@@ -2036,9 +2017,6 @@ class DeploymentState:
                     self._stop_replica(replica, graceful_stop=False)
                 else:
                     self._replicas.add(original_state, replica)
-
-        if replicas_failed:
-            self.update_replica_startup_backoff_time()
 
         return slow_replicas
 
@@ -2064,17 +2042,6 @@ class DeploymentState:
                 f"{error_msg}"
             )
             self._curr_status_info = self._curr_status_info.update_message(message)
-
-    def update_replica_startup_backoff_time(self):
-        """Updates the replica startup backoff time."""
-
-        # If replicas have failed enough times, execute exponential backoff
-        # Wait 1, 2, 4, ... seconds before consecutive retries (or use a custom
-        # backoff factor by setting EXPONENTIAL_BACKOFF_FACTOR)
-        if self._replica_constructor_retry_counter > self._failed_to_start_threshold:
-            self._backoff_time_s = min(
-                EXPONENTIAL_BACKOFF_FACTOR * self._backoff_time_s, MAX_BACKOFF_TIME_S
-            )
 
     def stop_replicas(self, replicas_to_stop) -> None:
         for replica in self._replicas.pop():
@@ -2800,7 +2767,6 @@ class DeploymentStateManager:
                 )
         if failed_replicas:
             self._deployment_states[deployment_id].stop_replicas(failed_replicas)
-            self._deployment_states[deployment_id].update_replica_startup_backoff_time()
 
     def _record_deployment_usage(self):
         ServeUsageTag.NUM_DEPLOYMENTS.record(str(len(self._deployment_states)))
