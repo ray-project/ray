@@ -44,7 +44,7 @@ Run on a Cluster
 ----------------
 
 This section assumes that you have a running Ray cluster. To start a Ray cluster,
-please refer to the :ref:`cluster setup <cluster-index>` instructions.
+see the :ref:`cluster setup <cluster-index>` instructions.
 
 To connect a ``Pool`` to a running Ray cluster, you can specify the address of the
 head node in one of two ways:
