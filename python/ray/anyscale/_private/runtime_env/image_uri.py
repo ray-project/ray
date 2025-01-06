@@ -16,6 +16,10 @@ class AnyscaleImageURIPlugin(RuntimeEnvPlugin):
 
     name = "image_uri"
 
+    @staticmethod
+    def get_compatible_keys():
+        return {"image_uri", "config", "env_vars", "working_dir"}
+
     async def create(
         self,
         uri: Optional[str],

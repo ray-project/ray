@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 import ray
 from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 from ray._private.runtime_env.conda import get_uri as get_conda_uri
+from ray._private.runtime_env.default_impl import get_image_uri_plugin_cls
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.runtime_env.uv import get_uri as get_uv_uri
@@ -389,12 +390,8 @@ class RuntimeEnv(dict):
                 )
 
         if self.get("image_uri"):
-            invalid_keys = set(runtime_env.keys()) - {
-                "image_uri",
-                "config",
-                "env_vars",
-                "working_dir",
-            }
+            image_uri_plugin_cls = get_image_uri_plugin_cls()
+            invalid_keys = set(runtime_env.keys()) - image_uri_plugin_cls.get_compatible_keys()
             if len(invalid_keys):
                 raise ValueError(
                     "The 'image_uri' field currently cannot be used "
