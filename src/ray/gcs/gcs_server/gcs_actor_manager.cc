@@ -718,8 +718,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   if (!virtual_cluster_id.empty()) {
     auto virtual_cluster =
         gcs_virtual_cluster_manager_.GetVirtualCluster(virtual_cluster_id);
-    if ((virtual_cluster == nullptr) ||
-        (virtual_cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE)) {
+    if (virtual_cluster == nullptr || virtual_cluster->Divisible()) {
       std::stringstream stream;
       stream << "Invalid virtual cluster, virtual cluster id: " << virtual_cluster_id;
       return Status::InvalidArgument(stream.str());

@@ -48,12 +48,12 @@ Status VirtualClusterInfoAccessor::AsyncGet(
 
 Status VirtualClusterInfoAccessor::AsyncGetAll(
     bool include_job_clusters,
-    bool only_include_mixed_clusters,
+    bool only_include_indivisible_clusters,
     const MultiItemCallback<rpc::VirtualClusterTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting all virtual cluster info.";
   rpc::GetVirtualClustersRequest request;
   request.set_include_job_clusters(true);
-  request.set_only_include_mixed_clusters(true);
+  request.set_only_include_indivisible_clusters(true);
   client_impl_->GetGcsRpcClient().GetVirtualClusters(
       request, [callback](const Status &status, rpc::GetVirtualClustersReply &&reply) {
         callback(
@@ -84,7 +84,7 @@ Status VirtualClusterInfoAccessor::AsyncSubscribeAll(
         };
     RAY_CHECK_OK(AsyncGetAll(
         /*include_job_clusters=*/true,
-        /*only_include_mixed_clusters=*/true,
+        /*only_include_indivisible_clusters=*/true,
         callback));
   };
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {

@@ -111,8 +111,9 @@ Status RayletClient::AnnounceWorkerPortForWorker(int port) {
   return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
 }
 
-Status RayletClient::AnnounceWorkerPortForDriver(
-    int port, const std::string &entrypoint, const std::string &virtual_cluster_id) {
+Status RayletClient::AnnounceWorkerPortForDriver(int port,
+                                                 const std::string &entrypoint,
+                                                 const std::string &virtual_cluster_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateAnnounceWorkerPort(
       fbb, port, fbb.CreateString(entrypoint), fbb.CreateString(virtual_cluster_id));

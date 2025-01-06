@@ -309,7 +309,7 @@ std::shared_ptr<NodeInstance> VirtualCluster::ReplenishNodeInstance(
 std::shared_ptr<rpc::VirtualClusterTableData> VirtualCluster::ToProto() const {
   auto data = std::make_shared<rpc::VirtualClusterTableData>();
   data->set_id(GetID());
-  data->set_mode(GetMode());
+  data->set_divisible(Divisible());
   data->set_revision(GetRevision());
   for (auto &[template_id, job_node_instances] : visible_node_instances_) {
     for (auto &[job_cluster_id, node_instances] : job_node_instances) {
@@ -336,8 +336,8 @@ std::string VirtualCluster::DebugString() const {
   return stream.str();
 }
 
-///////////////////////// ExclusiveCluster /////////////////////////
-void ExclusiveCluster::LoadJobCluster(const std::string &job_cluster_id,
+///////////////////////// DivisibleCluster /////////////////////////
+void DivisibleCluster::LoadJobCluster(const std::string &job_cluster_id,
                                       ReplicaInstances replica_instances) {
   RAY_CHECK(VirtualClusterID::FromBinary(job_cluster_id).IsJobClusterID());
   RAY_CHECK(job_clusters_.find(job_cluster_id) == job_clusters_.end());
@@ -345,11 +345,11 @@ void ExclusiveCluster::LoadJobCluster(const std::string &job_cluster_id,
   DoCreateJobCluster(job_cluster_id, std::move(replica_instances));
 }
 
-Status ExclusiveCluster::CreateJobCluster(const std::string &job_cluster_id,
+Status DivisibleCluster::CreateJobCluster(const std::string &job_cluster_id,
                                           ReplicaSets replica_sets,
                                           CreateOrUpdateVirtualClusterCallback callback,
                                           ReplicaSets *replica_sets_to_recommend) {
-  if (GetMode() != rpc::AllocationMode::EXCLUSIVE) {
+  if (!Divisible()) {
     std::ostringstream ostr;
     ostr << "The job cluster can only be created in exclusive mode, virtual_cluster_id: "
          << GetID();
@@ -384,7 +384,7 @@ Status ExclusiveCluster::CreateJobCluster(const std::string &job_cluster_id,
   return async_data_flusher_(job_cluster->ToProto(), std::move(callback));
 }
 
-std::shared_ptr<JobCluster> ExclusiveCluster::DoCreateJobCluster(
+std::shared_ptr<JobCluster> DivisibleCluster::DoCreateJobCluster(
     const std::string &job_cluster_id, ReplicaInstances replica_instances_to_add) {
   auto replica_instances_to_remove_from_current_cluster = replica_instances_to_add;
   auto replica_instances_to_add_to_current_cluster = replica_instances_to_add;
@@ -406,9 +406,9 @@ std::shared_ptr<JobCluster> ExclusiveCluster::DoCreateJobCluster(
   return job_cluster;
 }
 
-Status ExclusiveCluster::RemoveJobCluster(const std::string &job_cluster_id,
+Status DivisibleCluster::RemoveJobCluster(const std::string &job_cluster_id,
                                           RemoveVirtualClusterCallback callback) {
-  if (GetMode() != rpc::AllocationMode::EXCLUSIVE) {
+  if (!Divisible()) {
     std::ostringstream ostr;
     ostr << "The job cluster can only be removed in exclusive mode, virtual_cluster_id: "
          << GetID();
@@ -446,15 +446,15 @@ Status ExclusiveCluster::RemoveJobCluster(const std::string &job_cluster_id,
   return async_data_flusher_(std::move(data), std::move(callback));
 }
 
-std::shared_ptr<JobCluster> ExclusiveCluster::GetJobCluster(
+std::shared_ptr<JobCluster> DivisibleCluster::GetJobCluster(
     const std::string &job_cluster_id) const {
   auto iter = job_clusters_.find(job_cluster_id);
   return iter != job_clusters_.end() ? iter->second : nullptr;
 }
 
-bool ExclusiveCluster::InUse() const { return !job_clusters_.empty(); }
+bool DivisibleCluster::InUse() const { return !job_clusters_.empty(); }
 
-bool ExclusiveCluster::IsIdleNodeInstance(const gcs::NodeInstance &node_instance) const {
+bool DivisibleCluster::IsIdleNodeInstance(const gcs::NodeInstance &node_instance) const {
   auto template_iter = visible_node_instances_.find(node_instance.template_id());
   if (template_iter == visible_node_instances_.end()) {
     return false;
@@ -466,7 +466,7 @@ bool ExclusiveCluster::IsIdleNodeInstance(const gcs::NodeInstance &node_instance
   return job_iter->second.contains(node_instance.node_instance_id());
 }
 
-void ExclusiveCluster::ForeachJobCluster(
+void DivisibleCluster::ForeachJobCluster(
     const std::function<void(const std::shared_ptr<JobCluster> &)> &fn) const {
   if (fn == nullptr) {
     return;
@@ -476,7 +476,7 @@ void ExclusiveCluster::ForeachJobCluster(
   }
 }
 
-bool ExclusiveCluster::ReplenishNodeInstances(
+bool DivisibleCluster::ReplenishNodeInstances(
     const NodeInstanceReplenishCallback &callback) {
   RAY_CHECK(callback != nullptr);
   bool any_node_instance_replenished = false;
@@ -534,8 +534,9 @@ bool ExclusiveCluster::ReplenishNodeInstances(
   return any_node_instance_replenished;
 }
 
-///////////////////////// MixedCluster /////////////////////////
-bool MixedCluster::IsIdleNodeInstance(const gcs::NodeInstance &node_instance) const {
+///////////////////////// IndivisibleCluster /////////////////////////
+bool IndivisibleCluster::IsIdleNodeInstance(
+    const gcs::NodeInstance &node_instance) const {
   if (node_instance.is_dead()) {
     return true;
   }
@@ -550,7 +551,7 @@ bool MixedCluster::IsIdleNodeInstance(const gcs::NodeInstance &node_instance) co
   return false;
 }
 
-bool MixedCluster::InUse() const {
+bool IndivisibleCluster::InUse() const {
   for (const auto &[template_id, job_cluster_instances] : visible_node_instances_) {
     for (const auto &[job_cluster_id, node_instances] : job_cluster_instances) {
       for (const auto &[node_instance_id, node_instance] : node_instances) {
@@ -565,39 +566,39 @@ bool MixedCluster::InUse() const {
 
 ///////////////////////// PrimaryCluster /////////////////////////
 void PrimaryCluster::Initialize(const GcsInitData &gcs_init_data) {
-  // Let mixed cluster be Vm, exclusive cluster be Ve, job cluster be J, empty job cluster
-  // be E, then
+  // Let indivisible cluster be Vi, divisible cluster be Vd, job cluster be J, empty job
+  // cluster be E, then
   //
-  //   Nodes(Ve) = Σ(Nodes(J)) + Nodes(E).
+  //   Nodes(Vd) = Σ(Nodes(J)) + Nodes(E).
   //
-  // When node belongs to Vm is dead (it's a simple case):
-  // 1. Find a new replica instance from primary cluster to replace the dead one in Vm,
-  // then flush and publish Vm.
+  // When node belongs to Vi is dead (it's a simple case):
+  // 1. Find a new replica instance from primary cluster to replace the dead one in Vi,
+  // then flush and publish Vi.
   //
-  // When node belongs to J is dead(It will also be dead in Ve as both Ve and J hold the
+  // When node belongs to J is dead(It will also be dead in Vd as both Vd and J hold the
   // shared node instance).
   // 1. Find a new replica instance from E to replace the dead one in J, then flush and
   // publish J.
   // 2. If there is no enough node instances in E, then find a new replica instance from
   // primary cluster to replace the dead one in J, then:
   //   a. flush and publish J.
-  //   b. flush Ve.
+  //   b. flush Vd.
   // 3. If there is no enough node instances in primary cluster, then wait for the new
   // node to register.
   //
   // When node belongs to E is dead (it's simple case).
   // 1. Find a new replica instance from primary cluster to replace the dead one in E,
-  // then flush Ve.
+  // then flush Vd.
   // 2. If there is no enough node instances in primary cluster, then wait for the new
   // node to register.
   //
   // When failover happens, we need to load the logical clusters and job clusters from the
-  // GCS tables, and repair the Ve based on J.
-  // 1. Find the different node instances between Σ(Nodes(J)) and Nodes(Ve), let the
+  // GCS tables, and repair the Vd based on J.
+  // 1. Find the different node instances between Σ(Nodes(J)) and Nodes(Vd), let the
   // difference be D.
-  //    D = Σ(Nodes(J)) - Ve
-  // 2. Remove the dead node instances from Ve based on the replica sets of D and then
-  // flush Ve.
+  //    D = Σ(Nodes(J)) - Vd
+  // 2. Remove the dead node instances from Vd based on the replica sets of D and then
+  // flush Vd.
   const auto &nodes = gcs_init_data.Nodes();
   for (const auto &[_, node] : nodes) {
     if (node.state() == rpc::GcsNodeInfo::ALIVE) {
@@ -629,12 +630,12 @@ void PrimaryCluster::Initialize(const GcsInitData &gcs_init_data) {
     } else {
       // Load the logical cluster.
       LoadLogicalCluster(virtual_cluster_data.id(),
-                         virtual_cluster_data.mode(),
+                         virtual_cluster_data.divisible(),
                          std::move(replica_instances));
     }
   }
 
-  // Repair the exclusive cluster's node instances to ensure that the node instances in
+  // Repair the divisible cluster's node instances to ensure that the node instances in
   // the virtual clusters contains all the node instances in the job clusters. Calculate
   // the different node instances between Σ(Nodes(J)) and Nodes(Ve),
   //   D = Σ(Nodes(J)) - Ve
@@ -656,7 +657,7 @@ void PrimaryCluster::Initialize(const GcsInitData &gcs_init_data) {
         replica_sets_to_repair,
         replica_instances_to_remove,
         [](const auto &node_instance) { return node_instance.is_dead(); });
-    RAY_LOG(INFO) << "Repair the exclusive cluster " << parent_cluster_id
+    RAY_LOG(INFO) << "Repair the divisible cluster " << parent_cluster_id
                   << " based on the job cluster " << job_cluster_id
                   << "\nreplica_sets_to_repair: "
                   << ray::gcs::DebugString(replica_sets_to_repair)
@@ -674,10 +675,9 @@ void PrimaryCluster::Initialize(const GcsInitData &gcs_init_data) {
     if (parent_cluster_id == kPrimaryClusterID) {
       LoadJobCluster(job_cluster_id.Binary(), std::move(replica_instances));
     } else {
-      auto logical_cluster = std::dynamic_pointer_cast<ExclusiveCluster>(
+      auto logical_cluster = std::dynamic_pointer_cast<DivisibleCluster>(
           GetLogicalCluster(parent_cluster_id));
-      RAY_CHECK(logical_cluster != nullptr &&
-                logical_cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE);
+      RAY_CHECK(logical_cluster != nullptr && logical_cluster->Divisible());
       logical_cluster->LoadJobCluster(job_cluster_id.Binary(),
                                       std::move(replica_instances));
     }
@@ -697,10 +697,10 @@ void PrimaryCluster::ForeachVirtualCluster(
   }
   for (const auto &[_, logical_cluster] : logical_clusters_) {
     fn(logical_cluster);
-    if (logical_cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE) {
-      auto exclusive_cluster =
-          std::dynamic_pointer_cast<ExclusiveCluster>(logical_cluster);
-      exclusive_cluster->ForeachJobCluster(fn);
+    if (logical_cluster->Divisible()) {
+      auto divisible_cluster =
+          std::dynamic_pointer_cast<DivisibleCluster>(logical_cluster);
+      divisible_cluster->ForeachJobCluster(fn);
     }
   }
   ForeachJobCluster(fn);
@@ -708,15 +708,15 @@ void PrimaryCluster::ForeachVirtualCluster(
 
 std::shared_ptr<VirtualCluster> PrimaryCluster::LoadLogicalCluster(
     const std::string &virtual_cluster_id,
-    rpc::AllocationMode mode,
+    bool divisible,
     ReplicaInstances replica_instances) {
   std::shared_ptr<VirtualCluster> logical_cluster;
-  if (mode == rpc::AllocationMode::EXCLUSIVE) {
-    logical_cluster = std::make_shared<ExclusiveCluster>(
+  if (divisible) {
+    logical_cluster = std::make_shared<DivisibleCluster>(
         virtual_cluster_id, async_data_flusher_, cluster_resource_manager_);
   } else {
-    logical_cluster =
-        std::make_shared<MixedCluster>(virtual_cluster_id, cluster_resource_manager_);
+    logical_cluster = std::make_shared<IndivisibleCluster>(virtual_cluster_id,
+                                                           cluster_resource_manager_);
   }
   RAY_CHECK(logical_clusters_.emplace(virtual_cluster_id, logical_cluster).second);
 
@@ -759,12 +759,12 @@ Status PrimaryCluster::CreateOrUpdateVirtualCluster(
   if (logical_cluster == nullptr) {
     // replica_instances_to_remove must be empty as the virtual cluster is a new one.
     RAY_CHECK(replica_instances_to_remove_from_logical_cluster.empty());
-    if (request.mode() == rpc::AllocationMode::EXCLUSIVE) {
-      logical_cluster = std::make_shared<ExclusiveCluster>(
+    if (request.divisible()) {
+      logical_cluster = std::make_shared<DivisibleCluster>(
           request.virtual_cluster_id(), async_data_flusher_, cluster_resource_manager_);
     } else {
-      logical_cluster = std::make_shared<MixedCluster>(request.virtual_cluster_id(),
-                                                       cluster_resource_manager_);
+      logical_cluster = std::make_shared<IndivisibleCluster>(request.virtual_cluster_id(),
+                                                             cluster_resource_manager_);
     }
     logical_clusters_[request.virtual_cluster_id()] = logical_cluster;
   }
@@ -804,7 +804,7 @@ Status PrimaryCluster::DetermineNodeInstanceAdditionsAndRemovals(
         replica_sets_to_remove,
         replica_instances_to_remove,
         [logical_cluster](const auto &node_instance) {
-          if (logical_cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE) {
+          if (logical_cluster->Divisible()) {
             return true;
           }
           if (node_instance.is_dead()) {
@@ -886,7 +886,7 @@ Status PrimaryCluster::RemoveVirtualCluster(const std::string &virtual_cluster_i
       auto message = ostr.str();
       return Status::NotFound(message);
     }
-    if (virtual_cluster->GetMode() != rpc::AllocationMode::EXCLUSIVE) {
+    if (!virtual_cluster->Divisible()) {
       std::ostringstream ostr;
       ostr << "Failed to remove virtual cluster, parent cluster is not exclusive, "
               "virtual cluster id: "
@@ -894,9 +894,9 @@ Status PrimaryCluster::RemoveVirtualCluster(const std::string &virtual_cluster_i
       auto message = ostr.str();
       return Status::InvalidArgument(message);
     }
-    ExclusiveCluster *exclusive_cluster =
-        dynamic_cast<ExclusiveCluster *>(virtual_cluster.get());
-    return exclusive_cluster->RemoveJobCluster(virtual_cluster_id, callback);
+    DivisibleCluster *divisible_cluster =
+        dynamic_cast<DivisibleCluster *>(virtual_cluster.get());
+    return divisible_cluster->RemoveJobCluster(virtual_cluster_id, callback);
   } else {
     return RemoveLogicalCluster(virtual_cluster_id, callback);
   }
@@ -956,10 +956,10 @@ std::shared_ptr<VirtualCluster> PrimaryCluster::GetVirtualCluster(
   }
   // Check if it is a job cluster of any logical cluster
   for (auto &[cluster_id, logical_cluster] : logical_clusters_) {
-    if (logical_cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE) {
-      ExclusiveCluster *exclusive_cluster =
-          dynamic_cast<ExclusiveCluster *>(logical_cluster.get());
-      auto job_cluster = exclusive_cluster->GetJobCluster(virtual_cluster_id);
+    if (logical_cluster->Divisible()) {
+      DivisibleCluster *divisible_cluster =
+          dynamic_cast<DivisibleCluster *>(logical_cluster.get());
+      auto job_cluster = divisible_cluster->GetJobCluster(virtual_cluster_id);
       if (job_cluster != nullptr) {
         return job_cluster;
       }
@@ -973,16 +973,15 @@ void PrimaryCluster::ForeachVirtualClustersData(
   std::vector<std::shared_ptr<rpc::VirtualClusterTableData>> virtual_cluster_data_list;
   auto virtual_cluster_id = request.virtual_cluster_id();
   bool include_job_clusters = request.include_job_clusters();
-  bool only_include_mixed_cluster = request.only_include_mixed_clusters();
+  bool only_include_indivisible_cluster = request.only_include_indivisible_clusters();
 
   auto visit_proto_data = [&](const VirtualCluster *cluster) {
-    if (include_job_clusters && cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE) {
-      auto exclusive_cluster = dynamic_cast<const ExclusiveCluster *>(cluster);
-      exclusive_cluster->ForeachJobCluster(
+    if (include_job_clusters && cluster->Divisible()) {
+      auto divisible_cluster = dynamic_cast<const DivisibleCluster *>(cluster);
+      divisible_cluster->ForeachJobCluster(
           [&](const auto &job_cluster) { callback(job_cluster->ToProto()); });
     }
-    if (only_include_mixed_cluster &&
-        cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE) {
+    if (only_include_indivisible_cluster && cluster->Divisible()) {
       return;
     }
     if (cluster->GetID() != kPrimaryClusterID) {

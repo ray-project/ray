@@ -1017,7 +1017,7 @@ class VirtualClusterInfoAccessor {
   /// \return Status
   virtual Status AsyncGetAll(
       bool include_job_clusters,
-      bool only_include_mixed_clusters,
+      bool only_include_indivisible_clusters,
       const MultiItemCallback<rpc::VirtualClusterTableData> &callback);
 
   /// Subscribe to virtual cluster updates.

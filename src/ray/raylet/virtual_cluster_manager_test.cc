@@ -31,7 +31,7 @@ TEST_F(VirtualClusterManagerTest, UpdateVirtualCluster) {
 
   rpc::VirtualClusterTableData virtual_cluster_data;
   virtual_cluster_data.set_id(virtual_cluster_id_0);
-  virtual_cluster_data.set_mode(rpc::AllocationMode::EXCLUSIVE);
+  virtual_cluster_data.set_divisible(true);
   virtual_cluster_data.set_revision(100);
   for (size_t i = 0; i < 100; ++i) {
     auto node_id = NodeID::FromRandom();
@@ -41,7 +41,7 @@ TEST_F(VirtualClusterManagerTest, UpdateVirtualCluster) {
   ASSERT_FALSE(virtual_cluster_manager.UpdateVirtualCluster(virtual_cluster_data));
   ASSERT_FALSE(virtual_cluster_manager.ContainsVirtualCluster(virtual_cluster_id_0));
 
-  virtual_cluster_data.set_mode(rpc::AllocationMode::MIXED);
+  virtual_cluster_data.set_divisible(false);
   ASSERT_TRUE(virtual_cluster_manager.UpdateVirtualCluster(virtual_cluster_data));
   ASSERT_TRUE(virtual_cluster_manager.ContainsVirtualCluster(virtual_cluster_id_0));
 
@@ -62,7 +62,7 @@ TEST_F(VirtualClusterManagerTest, TestContainsNodeInstance) {
 
   rpc::VirtualClusterTableData virtual_cluster_data;
   virtual_cluster_data.set_id(virtual_cluster_id_0);
-  virtual_cluster_data.set_mode(rpc::AllocationMode::MIXED);
+  virtual_cluster_data.set_divisible(false);
   virtual_cluster_data.set_revision(100);
   absl::flat_hash_set<NodeID> node_ids;
   for (size_t i = 0; i < 100; ++i) {

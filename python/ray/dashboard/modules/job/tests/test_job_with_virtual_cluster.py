@@ -19,7 +19,6 @@ from ray._private.test_utils import (
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated.gcs_pb2 import AllocationMode
 from ray.core.generated.gcs_service_pb2 import CreateOrUpdateVirtualClusterRequest
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
@@ -110,7 +109,7 @@ async def job_sdk_client(request, make_sure_dashboard_http_port_unused, external
 
 
 async def create_virtual_cluster(
-    gcs_address, virtual_cluster_id, replica_sets, allocation_mode=AllocationMode.MIXED
+    gcs_address, virtual_cluster_id, replica_sets, divisible=False
 ):
     channel = GcsChannel(gcs_address, aio=True)
     channel.connect()
@@ -119,7 +118,7 @@ async def create_virtual_cluster(
     )
     request = CreateOrUpdateVirtualClusterRequest(
         virtual_cluster_id=virtual_cluster_id,
-        mode=allocation_mode,
+        divisible=divisible,
         replica_sets=replica_sets,
     )
     reply = await (gcs_virtual_cluster_info_stub.CreateOrUpdateVirtualCluster(request))
@@ -356,7 +355,7 @@ ray.get(a.run.remote(control))
     indirect=True,
 )
 @pytest.mark.asyncio
-async def test_exclusive_virtual_cluster(job_sdk_client):
+async def test_divisible_virtual_cluster(job_sdk_client):
     head_client, gcs_address, cluster = job_sdk_client
     virtual_cluster_id_prefix = "VIRTUAL_CLUSTER_"
     node_to_virtual_cluster = {}
@@ -367,7 +366,7 @@ async def test_exclusive_virtual_cluster(job_sdk_client):
             gcs_address,
             virtual_cluster_id,
             {TEMPLATE_ID_PREFIX + str(i): 2},
-            AllocationMode.EXCLUSIVE,
+            True,
         )
         for node_id in nodes:
             assert node_id not in node_to_virtual_cluster

@@ -714,14 +714,6 @@ message JobTableData {
 }
 ///////////////////////////////////////////////////////////////////////////////
 
-enum AllocationMode {
-  UNKNOWN = 0;
-  // A single node can carray tasks for multiple jobs.
-  MIXED = 1;
-  // A single node can only carray tasks for one job.
-  EXCLUSIVE = 2;
-}
-
 message NodeInstance {
   // The Hostname address of the node instance.
   string hostname = 1;
@@ -732,8 +724,8 @@ message NodeInstance {
 message VirtualClusterTableData {
   // The virtual cluster id.
   string id = 1;
-  // The allocation mode of the virtual cluster.
-  AllocationMode mode = 2;
+  // Whether the virtual cluster can splite into many child virtual clusters or not.
+  bool divisible = 2;
   // Mapping from node id to it's instance.
   map<string, NodeInstance> node_instances = 3;
   // Whether this virtual cluster is removed.

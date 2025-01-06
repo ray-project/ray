@@ -200,10 +200,10 @@ class VirtualClusterTest : public ::testing::Test {
       std::shared_ptr<ray::gcs::PrimaryCluster> primary_cluster,
       const std::string &virtual_cluster_id,
       const absl::flat_hash_map<std::string, size_t> &replica_sets,
-      rpc::AllocationMode allocation_mode = rpc::AllocationMode::EXCLUSIVE) {
+      bool divisible = true) {
     rpc::CreateOrUpdateVirtualClusterRequest request;
     request.set_virtual_cluster_id(virtual_cluster_id);
-    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
+    request.set_divisible(true);
     request.set_revision(0);
     request.mutable_replica_sets()->insert(replica_sets.begin(), replica_sets.end());
     auto status = primary_cluster->CreateOrUpdateVirtualCluster(
@@ -755,7 +755,7 @@ TEST_F(PrimaryClusterTest, GetVirtualClusters) {
                                      })
                   .ok());
 
-  auto virtual_cluster_0 = std::dynamic_pointer_cast<ExclusiveCluster>(
+  auto virtual_cluster_0 = std::dynamic_pointer_cast<DivisibleCluster>(
       primary_cluster->GetLogicalCluster(virtual_cluster_id_0));
   ASSERT_TRUE(virtual_cluster_0 != nullptr);
 
@@ -798,7 +798,7 @@ TEST_F(PrimaryClusterTest, GetVirtualClusters) {
 
     virtual_clusters_data_map.clear();
     request.set_include_job_clusters(true);
-    request.set_only_include_mixed_clusters(true);
+    request.set_only_include_indivisible_clusters(true);
     primary_cluster->ForeachVirtualClustersData(
         request, [this, &virtual_clusters_data_map](auto data) {
           virtual_clusters_data_map.emplace(data->id(), data);
@@ -840,7 +840,7 @@ class FailoverTest : public PrimaryClusterTest {
     RAY_CHECK_OK(CreateVirtualCluster(primary_cluster,
                                       virtual_cluster_id_2_,
                                       {{template_id_0_, 5}, {template_id_1_, 5}},
-                                      rpc::AllocationMode::MIXED));
+                                      /*divisible=*/false));
 
     job_cluster_id_0_ = primary_cluster->BuildJobClusterID("job_0");
     RAY_CHECK_OK(primary_cluster->CreateJobCluster(
@@ -850,7 +850,7 @@ class FailoverTest : public PrimaryClusterTest {
           ASSERT_TRUE(status.ok());
         }));
 
-    auto virtual_cluster_1 = std::dynamic_pointer_cast<ExclusiveCluster>(
+    auto virtual_cluster_1 = std::dynamic_pointer_cast<DivisibleCluster>(
         primary_cluster->GetLogicalCluster(virtual_cluster_id_1_));
     RAY_CHECK(virtual_cluster_1 != nullptr);
 
@@ -990,7 +990,7 @@ TEST_F(FailoverTest, FailoverWithDeadNodes) {
   }
 
   {
-    auto virtual_cluster_1 = std::dynamic_pointer_cast<ExclusiveCluster>(
+    auto virtual_cluster_1 = std::dynamic_pointer_cast<DivisibleCluster>(
         primary_cluster->GetVirtualCluster(virtual_cluster_id_1_));
     ASSERT_TRUE(virtual_cluster_1 != nullptr);
 
@@ -1063,7 +1063,7 @@ TEST_F(FailoverTest, OnlyFlushJobClusters) {
   };
 
   {
-    auto virtual_cluster_1 = std::dynamic_pointer_cast<ExclusiveCluster>(
+    auto virtual_cluster_1 = std::dynamic_pointer_cast<DivisibleCluster>(
         primary_cluster->GetVirtualCluster(virtual_cluster_id_1_));
     ASSERT_TRUE(virtual_cluster_1 != nullptr);
 

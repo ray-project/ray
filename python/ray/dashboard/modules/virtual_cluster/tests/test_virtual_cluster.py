@@ -19,14 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 def create_or_update_virtual_cluster(
-    webui_url, virtual_cluster_id, allocation_mode, replica_sets, revision
+    webui_url, virtual_cluster_id, divisible, replica_sets, revision
 ):
     try:
         resp = requests.post(
             webui_url + "/virtual_clusters",
             json={
                 "virtualClusterId": virtual_cluster_id,
-                "allocationMode": allocation_mode,
+                "divisible": divisible,
                 "replicaSets": replica_sets,
                 "revision": revision,
             },
@@ -81,14 +81,14 @@ def test_create_and_update_virtual_cluster(
     revision = 0
 
     def _check_create_or_update_virtual_cluster(
-        virtual_cluster_id, allocation_mode, replica_sets
+        virtual_cluster_id, divisible, replica_sets
     ):
         nonlocal revision
         resp = requests.post(
             webui_url + "/virtual_clusters",
             json={
                 "virtualClusterId": virtual_cluster_id,
-                "allocationMode": allocation_mode,
+                "divisible": divisible,
                 "replicaSets": replica_sets,
                 "revision": revision,
             },
@@ -111,59 +111,59 @@ def test_create_and_update_virtual_cluster(
         # The virtual cluster has the same node types and count as expected.
         assert replica_sets == virtual_cluster_replica_sets
 
-    # Create a new virtual cluster with exclusive allocation mode.
+    # Create a new divisible virtual cluster.
     _check_create_or_update_virtual_cluster(
         virtual_cluster_id="virtual_cluster_1",
-        allocation_mode="exclusive",
+        divisible=True,
         replica_sets={"4c8g": 1, "8c16g": 1},
     )
 
     # Update the virtual cluster with less nodes (scale down).
     _check_create_or_update_virtual_cluster(
         virtual_cluster_id="virtual_cluster_1",
-        allocation_mode="exclusive",
+        divisible=True,
         replica_sets={"4c8g": 1},
     )
 
     # Update the virtual cluster with more nodes (scale up).
     _check_create_or_update_virtual_cluster(
         virtual_cluster_id="virtual_cluster_1",
-        allocation_mode="exclusive",
+        divisible=True,
         replica_sets={"4c8g": 1, "8c16g": 1},
     )
 
     # Update the virtual cluster with zero node (make it empty).
     _check_create_or_update_virtual_cluster(
         virtual_cluster_id="virtual_cluster_1",
-        allocation_mode="exclusive",
+        divisible=True,
         replica_sets={},
     )
 
     # `virtual_cluster_1` has released all nodes, so we can now
-    # create a new (mixed) virtual cluster with two nodes.
+    # create a new indivisible virtual cluster with two nodes.
     _check_create_or_update_virtual_cluster(
         virtual_cluster_id="virtual_cluster_2",
-        allocation_mode="mixed",
+        divisible=False,
         replica_sets={"4c8g": 1, "8c16g": 1},
     )
 
     # Update the virtual cluster with less nodes.
     _check_create_or_update_virtual_cluster(
         virtual_cluster_id="virtual_cluster_2",
-        allocation_mode="mixed",
+        divisible=False,
         replica_sets={"4c8g": 1},
     )
 
     # Update the virtual cluster with more nodes.
     _check_create_or_update_virtual_cluster(
         virtual_cluster_id="virtual_cluster_2",
-        allocation_mode="mixed",
+        divisible=False,
         replica_sets={"4c8g": 1, "8c16g": 1},
     )
 
     # Update the virtual cluster with zero node (make it empty).
     _check_create_or_update_virtual_cluster(
-        virtual_cluster_id="virtual_cluster_2", allocation_mode="mixed", replica_sets={}
+        virtual_cluster_id="virtual_cluster_2", divisible=False, replica_sets={}
     )
 
 
@@ -176,9 +176,9 @@ def test_create_and_update_virtual_cluster(
     ],
     indirect=True,
 )
-@pytest.mark.parametrize("allocation_mode", ["exclusive", "mixed"])
+@pytest.mark.parametrize("divisible", [True, False])
 def test_create_and_update_virtual_cluster_with_exceptions(
-    disable_aiohttp_cache, ray_start_cluster_head, allocation_mode
+    disable_aiohttp_cache, ray_start_cluster_head, divisible
 ):
     cluster: Cluster = ray_start_cluster_head
     assert wait_until_server_available(cluster.webui_url) is True
@@ -193,7 +193,7 @@ def test_create_and_update_virtual_cluster_with_exceptions(
     result = create_or_update_virtual_cluster(
         webui_url=webui_url,
         virtual_cluster_id="virtual_cluster_1",
-        allocation_mode=allocation_mode,
+        divisible=divisible,
         replica_sets={"16c32g": 1},
         revision=0,
     )
@@ -202,14 +202,14 @@ def test_create_and_update_virtual_cluster_with_exceptions(
     replica_sets = result["data"].get("replicaSetsToRecommend", {})
     # The primary cluster can fulfill none `16c32g` node to meet the
     # virtual cluster's requirement.
-    assert replica_sets == {}
+    assert replica_sets == {"16c32g": 0}
 
     # Create a new virtual cluster with node count that the primary cluster
     # can not provide.
     result = create_or_update_virtual_cluster(
         webui_url=webui_url,
         virtual_cluster_id="virtual_cluster_1",
-        allocation_mode=allocation_mode,
+        divisible=divisible,
         replica_sets={"4c8g": 2, "8c16g": 1},
         revision=0,
     )
@@ -224,7 +224,7 @@ def test_create_and_update_virtual_cluster_with_exceptions(
     result = create_or_update_virtual_cluster(
         webui_url=webui_url,
         virtual_cluster_id="virtual_cluster_1",
-        allocation_mode=allocation_mode,
+        divisible=divisible,
         replica_sets={"4c8g": 1},
         revision=0,
     )
@@ -235,7 +235,7 @@ def test_create_and_update_virtual_cluster_with_exceptions(
     result = create_or_update_virtual_cluster(
         webui_url=webui_url,
         virtual_cluster_id="virtual_cluster_1",
-        allocation_mode=allocation_mode,
+        divisible=divisible,
         replica_sets={"4c8g": 2, "8c16g": 2},
         revision=0,
     )
@@ -247,7 +247,7 @@ def test_create_and_update_virtual_cluster_with_exceptions(
     result = create_or_update_virtual_cluster(
         webui_url=webui_url,
         virtual_cluster_id="virtual_cluster_1",
-        allocation_mode=allocation_mode,
+        divisible=divisible,
         replica_sets={"4c8g": 2, "8c16g": 2},
         revision=revision,
     )
@@ -256,9 +256,9 @@ def test_create_and_update_virtual_cluster_with_exceptions(
     replica_sets = result["data"].get("replicaSetsToRecommend", {})
     # The primary cluster can only fulfill one `8c16g`
     # node to meet the virtual cluster's requirement.
-    assert replica_sets == {"8c16g": 1}
+    assert replica_sets == {"4c8g": 0, "8c16g": 1}
 
-    if allocation_mode == "mixed":
+    if not divisible:
         actor = SmallActor.options(resources={"4c8g": 1}).remote()
         ray.get(actor.pid.remote(), timeout=10)
 
@@ -266,7 +266,7 @@ def test_create_and_update_virtual_cluster_with_exceptions(
         result = create_or_update_virtual_cluster(
             webui_url=webui_url,
             virtual_cluster_id="virtual_cluster_1",
-            allocation_mode=allocation_mode,
+            divisible=divisible,
             replica_sets={},
             revision=revision,
         )
@@ -274,14 +274,14 @@ def test_create_and_update_virtual_cluster_with_exceptions(
         assert "No enough nodes to remove from the virtual cluster" in result["msg"]
         replica_sets = result["data"].get("replicaSetsToRecommend", {})
         # The virtual cluster has one `4c8g` node in use. So we can fulfill none node.
-        assert replica_sets == {}
+        assert replica_sets == {"4c8g": 0}
 
     # Create a new virtual cluster that the remaining nodes in the primary cluster
     # are not enough.
     result = create_or_update_virtual_cluster(
         webui_url=webui_url,
         virtual_cluster_id="virtual_cluster_2",
-        allocation_mode=allocation_mode,
+        divisible=divisible,
         replica_sets={"4c8g": 1, "8c16g": 1},
         revision=0,
     )
@@ -290,7 +290,7 @@ def test_create_and_update_virtual_cluster_with_exceptions(
     replica_sets = result["data"].get("replicaSetsToRecommend", {})
     # The primary cluster lacks one `4c8g` node to meet the
     # virtual cluster's requirement.
-    assert replica_sets == {"8c16g": 1}
+    assert replica_sets == {"4c8g": 0, "8c16g": 1}
 
 
 @pytest.mark.parametrize(
@@ -311,11 +311,11 @@ def test_remove_virtual_cluster(disable_aiohttp_cache, ray_start_cluster_head):
     cluster.add_node(env_vars={"RAY_NODE_TYPE_NAME": "4c8g"}, resources={"4c8g": 1})
     cluster.add_node(env_vars={"RAY_NODE_TYPE_NAME": "8c16g"}, resources={"8c16g": 1})
 
-    # Create a new virtual cluster with exclusive allocation mode.
+    # Create a new divisible virtual cluster.
     result = create_or_update_virtual_cluster(
         webui_url=webui_url,
         virtual_cluster_id="virtual_cluster_1",
-        allocation_mode="exclusive",
+        divisible=True,
         replica_sets={"4c8g": 1, "8c16g": 1},
         revision=0,
     )
@@ -335,11 +335,11 @@ def test_remove_virtual_cluster(disable_aiohttp_cache, ray_start_cluster_head):
     )
     assert result["result"] is True
 
-    # Create a new virtual cluster with mixed mode.
+    # Create a new indivisible virtual cluster.
     result = create_or_update_virtual_cluster(
         webui_url=webui_url,
         virtual_cluster_id="virtual_cluster_2",
-        allocation_mode="mixed",
+        divisible=False,
         replica_sets={"4c8g": 1, "8c16g": 1},
         revision=0,
     )
@@ -392,23 +392,21 @@ def test_get_virtual_clusters(disable_aiohttp_cache, ray_start_cluster_head):
     cluster.add_node(env_vars={"RAY_NODE_TYPE_NAME": "8c16g"})
     cluster.add_node(env_vars={"RAY_NODE_TYPE_NAME": "8c16g"})
 
-    # Create a new virtual cluster with mixed allocation mode and
-    # two `4c8g` nodes.
+    # Create a new indivisible virtual cluster with two `4c8g` nodes.
     result = create_or_update_virtual_cluster(
         webui_url=webui_url,
         virtual_cluster_id="virtual_cluster_1",
-        allocation_mode="mixed",
+        divisible=False,
         replica_sets={"4c8g": 2},
         revision=0,
     )
     assert result["result"] is True
 
-    # Create a new virtual cluster with exclusive allocation mode
-    # and two `8c16g` nodes.
+    # Create a new divisible virtual cluster with two `8c16g` nodes.
     result = create_or_update_virtual_cluster(
         webui_url=webui_url,
         virtual_cluster_id="virtual_cluster_2",
-        allocation_mode="exclusive",
+        divisible=True,
         replica_sets={"8c16g": 2},
         revision=0,
     )
@@ -423,7 +421,7 @@ def test_get_virtual_clusters(disable_aiohttp_cache, ray_start_cluster_head):
             assert result["result"] is True, resp.text
             for virtual_cluster in result["data"]["virtualClusters"]:
                 if virtual_cluster["virtualClusterId"] == "virtual_cluster_1":
-                    assert virtual_cluster["allocationMode"] == "mixed"
+                    assert virtual_cluster["divisible"] == "false"
                     assert len(virtual_cluster["nodeInstances"]) == 2
                     for _, node_instance in virtual_cluster["nodeInstances"].items():
                         assert node_instance["hostname"] == hostname
@@ -431,7 +429,7 @@ def test_get_virtual_clusters(disable_aiohttp_cache, ray_start_cluster_head):
                     revision_1 = virtual_cluster["revision"]
                     assert revision_1 > 0
                 elif virtual_cluster["virtualClusterId"] == "virtual_cluster_2":
-                    assert virtual_cluster["allocationMode"] == "exclusive"
+                    assert virtual_cluster["divisible"] == "true"
                     assert len(virtual_cluster["nodeInstances"]) == 2
                     for _, node_instance in virtual_cluster["nodeInstances"].items():
                         assert node_instance["hostname"] == hostname

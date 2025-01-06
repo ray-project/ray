@@ -5,7 +5,6 @@ import aiohttp.web
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated.gcs_pb2 import AllocationMode
 from ray.core.generated.gcs_service_pb2 import (
     CreateOrUpdateVirtualClusterRequest,
     GetVirtualClustersRequest,
@@ -44,8 +43,8 @@ class VirtualClusterHead(dashboard_utils.DashboardHeadModule):
                 virtual_cluster_data["revision"] = int(
                     virtual_cluster_data.get("revision", 0)
                 )
-                virtual_cluster_data["allocationMode"] = str(
-                    virtual_cluster_data.pop("mode", "mixed")
+                virtual_cluster_data["divisible"] = str(
+                    virtual_cluster_data.pop("divisible", False)
                 ).lower()
 
             return dashboard_optional_utils.rest_response(
@@ -69,16 +68,13 @@ class VirtualClusterHead(dashboard_utils.DashboardHeadModule):
 
         virtual_cluster_info = dict(virtual_cluster_info_json)
         virtual_cluster_id = virtual_cluster_info["virtualClusterId"]
-        allocation_mode = AllocationMode.MIXED
-        if (
-            str(virtual_cluster_info.get("allocationMode", "mixed")).lower()
-            == "exclusive"
-        ):
-            allocation_mode = AllocationMode.EXCLUSIVE
+        divisible = False
+        if str(virtual_cluster_info.get("divisible", False)).lower() == "true":
+            divisible = True
 
         request = CreateOrUpdateVirtualClusterRequest(
             virtual_cluster_id=virtual_cluster_id,
-            mode=allocation_mode,
+            divisible=divisible,
             replica_sets=virtual_cluster_info.get("replicaSets", {}),
             revision=int(virtual_cluster_info.get("revision", 0)),
         )

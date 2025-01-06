@@ -22,8 +22,10 @@ namespace raylet {
 bool VirtualClusterManager::UpdateVirtualCluster(
     rpc::VirtualClusterTableData virtual_cluster_data) {
   RAY_LOG(INFO) << "Virtual cluster updated: " << virtual_cluster_data.id();
-  if (virtual_cluster_data.mode() != rpc::AllocationMode::MIXED) {
-    RAY_LOG(WARNING) << "The virtual cluster mode is not MIXED, ignore it.";
+  if (virtual_cluster_data.divisible()) {
+    RAY_LOG(WARNING) << "Virtual cluster " << virtual_cluster_data.id()
+                     << " is divisible, "
+                     << "ignore it.";
     return false;
   }
 
@@ -60,7 +62,7 @@ bool VirtualClusterManager::ContainsNodeInstance(const std::string &virtual_clus
     return false;
   }
   const auto &virtual_cluster_data = it->second;
-  RAY_CHECK(virtual_cluster_data.mode() == rpc::AllocationMode::MIXED);
+  RAY_CHECK(!virtual_cluster_data.divisible());
 
   const auto &node_instances = virtual_cluster_data.node_instances();
   return node_instances.find(node_id.Hex()) != node_instances.end();

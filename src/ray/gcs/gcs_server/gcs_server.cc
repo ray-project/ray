@@ -400,7 +400,7 @@ void GcsServer::InitClusterResourceScheduler() {
         if (virtual_cluster == nullptr) {
           return true;
         }
-        RAY_CHECK(virtual_cluster->GetMode() == rpc::AllocationMode::MIXED);
+        RAY_CHECK(!virtual_cluster->Divisible());
         // Check if the node is contained within the specified virtual cluster.
         return virtual_cluster->ContainsNodeInstance(node_instance_id);
       });

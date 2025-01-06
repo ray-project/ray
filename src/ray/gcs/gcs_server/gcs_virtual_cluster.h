@@ -139,14 +139,9 @@ class VirtualCluster {
   /// Get the id of the cluster.
   virtual const std::string &GetID() const = 0;
 
-  /// Get the allocation mode of the cluster.
-  /// There are two modes of the cluster:
-  ///  - Exclusive mode means that a signle node in the cluster can execute one or
-  ///  more tasks belongs to only one job.
-  ///  - Mixed mode means that a single node in the cluster can execute tasks
-  ///  belongs to multiple jobs.
-  /// \return The allocation mode of the cluster.
-  virtual rpc::AllocationMode GetMode() const = 0;
+  /// Whether the virtual cluster can splite into one or more child virtual clusters or
+  /// not.
+  virtual bool Divisible() const = 0;
 
   /// Get the revision number of the cluster.
   uint64_t GetRevision() const { return revision_; }
@@ -255,18 +250,18 @@ class VirtualCluster {
 };
 
 class JobCluster;
-class ExclusiveCluster : public VirtualCluster {
+class DivisibleCluster : public VirtualCluster {
  public:
-  ExclusiveCluster(const std::string &id,
+  DivisibleCluster(const std::string &id,
                    const AsyncClusterDataFlusher &async_data_flusher,
                    const ClusterResourceManager &cluster_resource_manager)
       : VirtualCluster(id, cluster_resource_manager),
         async_data_flusher_(async_data_flusher) {}
 
   const std::string &GetID() const override { return id_; }
-  rpc::AllocationMode GetMode() const override { return rpc::AllocationMode::EXCLUSIVE; }
+  bool Divisible() const override { return true; }
 
-  /// Load a job cluster to the exclusive cluster.
+  /// Load a job cluster to the divisible cluster.
   ///
   /// \param job_cluster_id The id of the job cluster.
   /// \param replica_instances The replica instances of the job cluster.
@@ -330,7 +325,7 @@ class ExclusiveCluster : public VirtualCluster {
   bool ReplenishNodeInstances(const NodeInstanceReplenishCallback &callback) override;
 
  protected:
-  /// Create a job cluster to the exclusive cluster.
+  /// Do create a job cluster from the divisible cluster.
   ///
   /// \param job_cluster_id The id of the job cluster.
   /// \param replica_instances_to_add The node instances to be added.
@@ -344,15 +339,15 @@ class ExclusiveCluster : public VirtualCluster {
   AsyncClusterDataFlusher async_data_flusher_;
 };
 
-class MixedCluster : public VirtualCluster {
+class IndivisibleCluster : public VirtualCluster {
  public:
-  MixedCluster(const std::string &id,
-               const ClusterResourceManager &cluster_resource_manager)
+  IndivisibleCluster(const std::string &id,
+                     const ClusterResourceManager &cluster_resource_manager)
       : VirtualCluster(id, cluster_resource_manager) {}
-  MixedCluster &operator=(const MixedCluster &) = delete;
+  IndivisibleCluster &operator=(const IndivisibleCluster &) = delete;
 
   const std::string &GetID() const override { return id_; }
-  rpc::AllocationMode GetMode() const override { return rpc::AllocationMode::MIXED; }
+  bool Divisible() const override { return false; }
 
   /// Check if the virtual cluster is in use.
   ///
@@ -367,17 +362,17 @@ class MixedCluster : public VirtualCluster {
   bool IsIdleNodeInstance(const gcs::NodeInstance &node_instance) const override;
 };
 
-class JobCluster : public MixedCluster {
+class JobCluster : public IndivisibleCluster {
  public:
-  using MixedCluster::MixedCluster;
+  using IndivisibleCluster::IndivisibleCluster;
 };
 
-class PrimaryCluster : public ExclusiveCluster,
+class PrimaryCluster : public DivisibleCluster,
                        public std::enable_shared_from_this<PrimaryCluster> {
  public:
   PrimaryCluster(const AsyncClusterDataFlusher &async_data_flusher,
                  const ClusterResourceManager &cluster_resource_manager)
-      : ExclusiveCluster(
+      : DivisibleCluster(
             kPrimaryClusterID, async_data_flusher, cluster_resource_manager) {}
   PrimaryCluster &operator=(const PrimaryCluster &) = delete;
 
@@ -390,16 +385,16 @@ class PrimaryCluster : public ExclusiveCluster,
   /// Load a logical cluster to the primary cluster.
   ///
   /// \param virtual_cluster_id The id of the logical cluster.
-  /// \param mode The allocation mode of the logical cluster.
+  /// \param divisible Whether the logical cluster is divisible or not.
   /// \param replica_instances The replica instances of the logical cluster.
   /// \return The loaded logical cluster.
   std::shared_ptr<VirtualCluster> LoadLogicalCluster(
       const std::string &virtual_cluster_id,
-      rpc::AllocationMode mode,
+      bool divisible,
       ReplicaInstances replica_instances);
 
   const std::string &GetID() const override { return kPrimaryClusterID; }
-  rpc::AllocationMode GetMode() const override { return rpc::AllocationMode::EXCLUSIVE; }
+  bool Divisible() const override { return true; }
 
   /// Create or update a new virtual cluster.
   ///

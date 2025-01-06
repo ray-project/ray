@@ -40,7 +40,7 @@ void GcsVirtualClusterManager::OnNodeDead(const rpc::GcsNodeInfo &node) {
 }
 
 void GcsVirtualClusterManager::OnJobFinished(const rpc::JobTableData &job_data) {
-  // exit early when job has no virtual cluster id
+  // exit early when job without a virtual cluster id.
   const auto &virtual_cluster_id = job_data.virtual_cluster_id();
   if (virtual_cluster_id.empty()) {
     return;
@@ -49,28 +49,28 @@ void GcsVirtualClusterManager::OnJobFinished(const rpc::JobTableData &job_data) 
   auto job_cluster_id = VirtualClusterID::FromBinary(virtual_cluster_id);
 
   if (!job_cluster_id.IsJobClusterID()) {
-    // exit early when this job is submitted in a mixed cluster
+    // exit early when this job does not belong to an job cluster.
     return;
   }
 
-  std::string exclusive_cluster_id = job_cluster_id.ParentID().Binary();
+  std::string divisible_cluster_id = job_cluster_id.ParentID().Binary();
 
-  auto virtual_cluster = GetVirtualCluster(exclusive_cluster_id);
+  auto virtual_cluster = GetVirtualCluster(divisible_cluster_id);
   if (virtual_cluster == nullptr) {
     RAY_LOG(WARNING) << "Failed to remove job cluster " << job_cluster_id.Binary()
                      << " when handling job finished event,  parent cluster not exists.";
     return;
   }
 
-  if (virtual_cluster->GetMode() != rpc::AllocationMode::EXCLUSIVE) {
+  if (!virtual_cluster->Divisible()) {
     // this should not happen, virtual cluster should be exclusive
     return;
   }
 
-  ExclusiveCluster *exclusive_cluster =
-      dynamic_cast<ExclusiveCluster *>(virtual_cluster.get());
+  DivisibleCluster *divisible_cluster =
+      dynamic_cast<DivisibleCluster *>(virtual_cluster.get());
 
-  auto status = exclusive_cluster->RemoveJobCluster(
+  auto status = divisible_cluster->RemoveJobCluster(
       virtual_cluster_id,
       [this, job_cluster_id](const Status &status,
                              std::shared_ptr<rpc::VirtualClusterTableData> data,
@@ -216,7 +216,7 @@ void GcsVirtualClusterManager::HandleCreateJobCluster(
     on_done(Status::NotFound(message), nullptr, nullptr);
     return;
   }
-  if (virtual_cluster->GetMode() != rpc::AllocationMode::EXCLUSIVE) {
+  if (!virtual_cluster->Divisible()) {
     std::ostringstream ostr;
     ostr << " virtual cluster is not exclusive: " << virtual_cluster_id;
     std::string message = ostr.str();
@@ -225,11 +225,11 @@ void GcsVirtualClusterManager::HandleCreateJobCluster(
   }
   ReplicaSets replica_sets(request.replica_sets().begin(), request.replica_sets().end());
 
-  auto exclusive_cluster = dynamic_cast<ExclusiveCluster *>(virtual_cluster.get());
-  std::string job_cluster_id = exclusive_cluster->BuildJobClusterID(request.job_id());
+  auto divisible_cluster = dynamic_cast<DivisibleCluster *>(virtual_cluster.get());
+  std::string job_cluster_id = divisible_cluster->BuildJobClusterID(request.job_id());
 
   ReplicaSets replica_sets_to_recommend;
-  auto status = exclusive_cluster->CreateJobCluster(
+  auto status = divisible_cluster->CreateJobCluster(
       job_cluster_id, std::move(replica_sets), on_done, &replica_sets_to_recommend);
   if (!status.ok()) {
     on_done(status, nullptr, &replica_sets_to_recommend);
@@ -290,11 +290,12 @@ Status GcsVirtualClusterManager::VerifyRequest(
     }
 
     // check if the request attributes are compatible with the virtual cluster.
-    if (request.mode() != logical_cluster->GetMode()) {
+    if (request.divisible() != logical_cluster->Divisible()) {
       std::ostringstream ostr;
       ostr << "The requested attributes are incompatible with virtual cluster "
-           << request.virtual_cluster_id() << ". expect: (" << logical_cluster->GetMode()
-           << "), actual: (" << request.mode() << ").";
+           << request.virtual_cluster_id() << ". expect: ("
+           << logical_cluster->Divisible() << "), actual: (" << request.divisible()
+           << ").";
       std::string message = ostr.str();
       RAY_LOG(ERROR) << message;
       return Status::InvalidArgument(message);
@@ -331,9 +332,9 @@ Status GcsVirtualClusterManager::FlushAndPublish(
   auto on_done = [this, data, callback = std::move(callback)](const Status &status) {
     // The backend storage is supposed to be reliable, so the status must be ok.
     RAY_CHECK_OK(status);
-    if (data->mode() != rpc::AllocationMode::MIXED) {
-      // Tasks can only be scheduled on the nodes in the mixed cluster, so we just need to
-      // publish the mixed cluster data.
+    if (data->divisible()) {
+      // Tasks can only be scheduled on the nodes in the indivisible cluster, so we just
+      // need to publish the indivisible cluster data.
       if (callback) {
         callback(status, std::move(data), nullptr);
       }
