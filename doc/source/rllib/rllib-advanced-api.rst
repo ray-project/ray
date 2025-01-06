@@ -6,7 +6,7 @@
 Advanced Python APIs
 --------------------
 
-Custom Training Workflows
+Custom training workflows
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__,
@@ -16,7 +16,7 @@ Sometimes, it's desirable to have full control over training, but still run insi
 Tune supports :ref:`custom trainable functions <trainable-docs>` that can be used to
 implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_train_function.py>`__.
 
-Curriculum Learning
+Curriculum learning
 ~~~~~~~~~~~~~~~~~~~
 
 In curriculum learning, you can set the environment to different difficulties
@@ -74,7 +74,7 @@ overriding the :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_train_r
     ).fit()
 
 
-Global Coordination
+Global coordination
 ~~~~~~~~~~~~~~~~~~~
 Sometimes, it's necessary to coordinate between pieces of code that live in different
 processes managed by RLlib.
@@ -95,7 +95,7 @@ Ray actors provide high levels of performance, so in more complex cases they can
 used implement communication patterns such as parameter servers and all-reduce.
 
 
-Visualizing Custom Metrics
+Visualizing custom metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Custom metrics can be accessed and visualized like any other training result:
@@ -104,7 +104,7 @@ Custom metrics can be accessed and visualized like any other training result:
 
 .. _exploration-api:
 
-Customizing Exploration Behavior
+Customizing exploration behavior
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib offers a unified top-level API to configure and customize an agent’s
@@ -209,7 +209,7 @@ The following are example excerpts from different Algorithms' configs
 
 .. _CustomEvaluation:
 
-Customized Evaluation During Training
+Customized evaluation during training
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib reports online training rewards, however in some cases you may want to compute
@@ -405,7 +405,7 @@ the ``evaluation`` key of normal training results:
           foo: 1
 
 
-Rewriting Trajectories
+Rewriting trajectories
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Note that in the ``on_postprocess_traj`` callback you have full access to the

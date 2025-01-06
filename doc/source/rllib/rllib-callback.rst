@@ -1,22 +1,15 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
 .. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rllib-callback-docs:
 
-RLlib's callback APIs
-=====================
+Callbacks
+=========
 
-Overview
---------
-
-RLlib's callbacks are the easiest way for you to inject code into your experiments.
-
-In a nutshell, you define the code you want to execute at certain events and pass it to your
+Callbacks are the most straightforward way to inject code into experiments. You can define the code to execute at certain events and pass it to your
 :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`.
 
-Here is an example of defining a simple lambda that prints out an episode's return after
-the episode has terminated:
+The following is an example of defining a simple lambda that prints out an episode's return after
+the episode terminates:
 
 .. testcode::
 
@@ -40,30 +33,30 @@ the episode has terminated:
     ppo.stop()
 
 
-Callback lambdas vs stateful RLlibCallback
-------------------------------------------
-There are two ways to define custom code and have it executed during the various callback events.
+Callback lambdas versus stateful RLlibCallback
+----------------------------------------------
+There are two ways to define custom code for various callback events to execute.
 
 Callback lambdas
 ~~~~~~~~~~~~~~~~
-If your injected code is rather simple and doesn't need to store temporary information
+If the injected code is rather simple and doesn't need to store temporary information
 for reuse in succeeding event calls, you can use a lambda
 and pass it to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks`
 method as previously shown.
 
-See here for a :ref:`complete list of supported callback events <rllib-callback-event-overview>`.
+See ref:`Callback events <rllib-callback-event-overview>` for a complete list.
 The names of the events always match the argument names for the
 :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks` method.
 
 
 Stateful RLlibCallback
 ~~~~~~~~~~~~~~~~~~~~~~
-If you need your code to be stateful and be able to temporarily store results for reuse
+If the injected code is stateful and temporarily stores results for reuse
 in succeeding calls triggered by the same or a different event, you
 need to subclass the :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` API and then implement
 one or more methods, for example :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`:
 
-Here is the same example, printing out a terminated episode's return, but using
+The following is the same example that prints out a terminated episode's return, but uses
 a subclass of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`.
 
 .. testcode::
@@ -97,8 +90,8 @@ a subclass of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`.
 
 .. _rllib-callback-event-overview:
 
-Overview of all callback events
--------------------------------
+Callback events
+---------------
 
 During a training iteration, the Algorithm normally walks through the following event tree. Note
 that some of the events in the tree happen simultaneously, on different processes through Ray actors.
@@ -108,7 +101,7 @@ EnvRunner actor may trigger its ``on_sample_end`` event and the main Algorithm p
 
 .. note::
 
-    Currently, RLlib only invokes callbacks in :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+    RLlib only invokes callbacks in :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
     and :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors.
     The Ray team is considering expanding callbacks onto :py:class:`~ray.rllib.core.learner.learner.Learner`
     actors and possibly :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances as well.
