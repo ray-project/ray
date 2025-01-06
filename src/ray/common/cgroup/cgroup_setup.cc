@@ -121,6 +121,14 @@ bool SetupCgroupsPreparation(const std::string &node_id) {
   RAY_CHECK(cgroup_v2_app_folder.empty())
       << "Cgroup v2 for raylet should be only initialized once.";
 
+  // Check cgroup accessibility before setup.
+  if (!internal::CanCurrenUserWriteCgroupV2()) {
+    return false;
+  }
+  if (!internal::IsCgroupV2MountedAsRw()) {
+    return false;
+  }
+
   cgroup_v2_app_folder = absl::StrFormat("/sys/fs/cgroup/ray_application_%s", node_id);
   cgroup_v2_system_folder = absl::StrFormat("/sys/fs/cgroup/ray_system_%s", node_id);
   const std::string cgroup_v2_app_procs =
