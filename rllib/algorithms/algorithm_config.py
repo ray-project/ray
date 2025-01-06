@@ -318,6 +318,9 @@ class AlgorithmConfig(_Config):
         self.env_runner_cls = None
         self.num_env_runners = 0
         self.num_envs_per_env_runner = 1
+        # TODO (sven): Once new ormsgpack system in place, reaplce the string
+        #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
+        self.gym_env_vectorize_mode = "SYNC"
         self.num_cpus_per_env_runner = 1
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
@@ -904,28 +907,18 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
-        # Check callbacks settings.
+        self._validate_env_runner_settings()
         self._validate_callbacks_settings()
-        # Check framework specific settings.
         self._validate_framework_settings()
-        # Check resources specific settings.
         self._validate_resources_settings()
-        # Check multi-agent specific settings.
         self._validate_multi_agent_settings()
-        # Check input specific settings.
         self._validate_input_settings()
-        # Check evaluation specific settings.
         self._validate_evaluation_settings()
-        # Check offline specific settings (new API stack).
         self._validate_offline_settings()
-
-        # Check new API stack specific settings.
         self._validate_new_api_stack_settings()
-
-        # Check to-be-deprecated settings (however that are still in use).
         self._validate_to_be_deprecated_settings()
 
-    def build(
+    def build_algo(
         self,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
@@ -998,7 +991,7 @@ class AlgorithmConfig(_Config):
                 )
 
         obs_space = getattr(env, "single_observation_space", env.observation_space)
-        if obs_space is None and self.is_multi_agent():
+        if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
                     aid: env.get_observation_space(aid)
@@ -1006,7 +999,7 @@ class AlgorithmConfig(_Config):
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
-        if act_space is None and self.is_multi_agent():
+        if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
                     aid: env.get_action_space(aid)
@@ -1025,7 +1018,7 @@ class AlgorithmConfig(_Config):
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
             pipeline.append(AddStatesFromEpisodesToBatch())
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
-            if self.is_multi_agent():
+            if self.is_multi_agent:
                 pipeline.append(
                     AgentToModuleMapping(
                         rl_module_specs=(
@@ -1037,7 +1030,7 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
             # Convert to Tensors.
             pipeline.append(NumpyToTensor(device=device))
 
@@ -1078,7 +1071,7 @@ class AlgorithmConfig(_Config):
                 )
 
         obs_space = getattr(env, "single_observation_space", env.observation_space)
-        if obs_space is None and self.is_multi_agent():
+        if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
                     aid: env.get_observation_space(aid)
@@ -1086,7 +1079,7 @@ class AlgorithmConfig(_Config):
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
-        if act_space is None and self.is_multi_agent():
+        if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
                     aid: env.get_action_space(aid)
@@ -1107,7 +1100,7 @@ class AlgorithmConfig(_Config):
             pipeline.prepend(RemoveSingleTsTimeRankFromBatch())
 
             # If multi-agent -> Map from ModuleID-based data to AgentID based data.
-            if self.is_multi_agent():
+            if self.is_multi_agent:
                 pipeline.prepend(ModuleToAgentUnmapping())
 
             # Unbatch all data.
@@ -1191,7 +1184,7 @@ class AlgorithmConfig(_Config):
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
             pipeline.append(AddStatesFromEpisodesToBatch(as_learner_connector=True))
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
-            if self.is_multi_agent():
+            if self.is_multi_agent:
                 pipeline.append(
                     AgentToModuleMapping(
                         rl_module_specs=(
@@ -1203,7 +1196,7 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
             # Convert to Tensors.
             pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
         return pipeline
@@ -1738,6 +1731,7 @@ class AlgorithmConfig(_Config):
         env_runner_cls: Optional[type] = NotProvided,
         num_env_runners: Optional[int] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
+        gym_env_vectorize_mode: Optional[str] = NotProvided,
         num_cpus_per_env_runner: Optional[int] = NotProvided,
         num_gpus_per_env_runner: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_env_runner: Optional[dict] = NotProvided,
@@ -1780,7 +1774,6 @@ class AlgorithmConfig(_Config):
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
         synchronize_filter=DEPRECATED_VALUE,
-        # deprecated
         enable_connectors=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
@@ -1795,6 +1788,11 @@ class AlgorithmConfig(_Config):
                 (vector-wise) per EnvRunner. This enables batching when computing
                 actions through RLModule inference, which can improve performance
                 for inference-bottlenecked workloads.
+            gym_env_vectorize_mode: The gymnasium vectorization mode for vector envs.
+                Must be a `gymnasium.envs.registration.VectorizeMode` (enum) value.
+                Default is SYNC. Set this to ASYNC to parallelize the individual sub
+                environments within the vector. This can speed up your EnvRunners
+                significantly when using heavier environments.
             num_cpus_per_env_runner: Number of CPUs to allocate per EnvRunner.
             num_gpus_per_env_runner: Number of GPUs to allocate per EnvRunner. This can
                 be fractional. This is usually needed only if your env itself requires a
@@ -1975,7 +1973,8 @@ class AlgorithmConfig(_Config):
                     "larger 0!"
                 )
             self.num_envs_per_env_runner = num_envs_per_env_runner
-
+        if gym_env_vectorize_mode is not NotProvided:
+            self.gym_env_vectorize_mode = gym_env_vectorize_mode
         if num_cpus_per_env_runner is not NotProvided:
             self.num_cpus_per_env_runner = num_cpus_per_env_runner
         if num_gpus_per_env_runner is not NotProvided:
@@ -2734,11 +2733,11 @@ class AlgorithmConfig(_Config):
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
                 more info about available read methods in `ray.data`.
             input_read_method_kwargs: Keyword args for `input_read_method`. These
-                are passed into the read method without checking. If no arguments
-                are passed in the default argument
-                `{'override_num_blocks': max(num_learners * 2, 2)}` is used. Use these
+                are passed by RLlib into the read method without checking. Use these
                 keyword args together with `map_batches_kwargs` and
                 `iter_batches_kwargs` to tune the performance of the data pipeline.
+                It is strongly recommended to rely on Ray Data's automatic read
+                performance tuning.
             input_read_schema: Table schema for converting offline data to episodes.
                 This schema maps the offline data columns to
                 ray.rllib.core.columns.Columns:
@@ -2747,7 +2746,8 @@ class AlgorithmConfig(_Config):
                 episodes' `extra_model_outputs`. If no schema is passed in the default
                 schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
                 contains already the names in this schema, no `input_read_schema` is
-                needed.
+                needed. The same applies if the data is in RLlib's `EpisodeType` or its
+                old `SampleBatch` format.
             input_read_episodes: Whether offline data is already stored in RLlib's
                 `EpisodeType` format, i.e. `ray.rllib.env.SingleAgentEpisode` (multi
                 -agent is planned but not supported, yet). Reading episodes directly
@@ -2756,8 +2756,8 @@ class AlgorithmConfig(_Config):
                 inside of RLlib's schema. The other format is a columnar format and is
                 agnostic to the RL framework used. Use the latter format, if you are
                 unsure when to use the data or in which RL framework. The default is
-                to read column data, i.e. False. `input_read_episodes` and
-                `input_read_sample_batches` cannot be True at the same time. See
+                to read column data, for example, `False`. `input_read_episodes`, and
+                `input_read_sample_batches` can't be `True` at the same time. See
                 also `output_write_episodes` to define the output data format when
                 recording.
             input_read_sample_batches: Whether offline data is stored in RLlib's old
@@ -2766,21 +2766,23 @@ class AlgorithmConfig(_Config):
                 data needs extra transforms and might not concatenate episode chunks
                 contained in different `SampleBatch`es in the data. If possible avoid
                 to read `SampleBatch`es and convert them in a controlled form into
-                RLlib's `EpisodeType` (i.e. `SingleAgentEpisode` or
-                `MultiAgentEpisode`). The default is False. `input_read_episodes`
-                and `input_read_sample_batches` cannot be True at the same time.
+                RLlib's `EpisodeType` (i.e. `SingleAgentEpisode`). The default is
+                `False`. `input_read_episodes`, and `input_read_sample_batches` can't
+                be `True` at the same time.
             input_read_batch_size: Batch size to pull from the data set. This could
                 differ from the `train_batch_size_per_learner`, if a dataset holds
-                `EpisodeType` (i.e. `SingleAgentEpisode` or `MultiAgentEpisode`) or
-                `BatchType` (i.e. `SampleBatch` or `MultiAgentBatch`) or any other
-                data type that contains multiple timesteps in a single row of the
-                dataset. In such cases a single batch of size
+                `EpisodeType` (i.e., `SingleAgentEpisode`) or `SampleBatch`, or any
+                other data type that contains multiple timesteps in a single row of
+                the dataset. In such cases a single batch of size
                 `train_batch_size_per_learner` will potentially pull a multiple of
                 `train_batch_size_per_learner` timesteps from the offline dataset. The
                 default is `None` in which the `train_batch_size_per_learner` is pulled.
             input_filesystem: A cloud filesystem to handle access to cloud storage when
-                reading experiences. Should be either "gcs" for Google Cloud Storage,
-                "s3" for AWS S3 buckets, or "abs" for Azure Blob Storage.
+                reading experiences. Can be either "gcs" for Google Cloud Storage,
+                "s3" for AWS S3 buckets, "abs" for Azure Blob Storage, or any
+                filesystem supported by PyArrow. In general the file path is sufficient
+                for accessing data from public or local storage systems. See
+                https://arrow.apache.org/docs/python/filesystems.html for details.
             input_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
                 given by `input_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
@@ -2824,8 +2826,7 @@ class AlgorithmConfig(_Config):
             iter_batches_kwargs: Keyword args for the `iter_batches` method. These are
                 passed into the `ray.data.Dataset.iter_batches` method when sampling
                 without checking. If no arguments are passed in, the default argument
-                `{'prefetch_batches': 2, 'local_buffer_shuffle_size':
-                train_batch_size_per_learner x 4}` is used. Use these keyword args
+                `{'prefetch_batches': 2}` is used. Use these keyword args
                 together with `input_read_method_kwargs` and `map_batches_kwargs` to
                 tune the performance of the data pipeline.
             prelearner_class: An optional `OfflinePreLearner` class that is used to
@@ -2836,6 +2837,17 @@ class AlgorithmConfig(_Config):
                 need to make some further transformations specific for your data or
                 loss. The default is None which uses the base `OfflinePreLearner`
                 defined in `ray.rllib.offline.offline_prelearner`.
+            prelearner_buffer_class: An optional `EpisodeReplayBuffer` class that RLlib
+                uses to buffer experiences when data is in `EpisodeType` or
+                RLlib's previous `SampleBatch` type format. In this case, a single
+                data row may contain multiple timesteps and the buffer serves two
+                purposes: (a) to store intermediate data in memory, and (b) to ensure
+                that RLlib samples exactly `train_batch_size_per_learner` experiences
+                per batch. The default is RLlib's `EpisodeReplayBuffer`.
+            prelearner_buffer_kwargs: Optional keyword arguments for intializing the
+                `EpisodeReplayBuffer`. In most cases this value is simply the `capacity`
+                for the default buffer that RLlib uses (`EpisodeReplayBuffer`), but it
+                may differ if the `prelearner_buffer_class` uses a custom buffer.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
@@ -2847,6 +2859,7 @@ class AlgorithmConfig(_Config):
                 during a single training iteration. If None, each learner runs a
                 complete epoch over its data block (the dataset is partitioned into
                 at least as many blocks as there are learners). The default is `None`.
+                This value must be set to `1`, if RLlib uses a single (local) learner.
             input_config: Arguments that describe the settings for reading the input.
                 If input is "sample", this is the environment configuration, e.g.
                 `env_name` and `env_config`, etc. See `EnvContext` for more info.
@@ -2899,6 +2912,12 @@ class AlgorithmConfig(_Config):
                 given by `output_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
                 ABS filesystem arguments.
+            output_write_episodes: If RLlib should record data in its RLlib's
+                `EpisodeType` format (that is, `SingleAgentEpisode` objects). Use this
+                format, if you need RLlib to order data in time and directly group by
+                episodes for example to train stateful modules or if you plan to use
+                recordings exclusively in RLlib. Otherwise RLlib records data in tabular
+                (columnar) format. Default is `True`.
             offline_sampling: Whether sampling for the Algorithm happens via
                 reading from offline data. If True, EnvRunners don't limit the number
                 of collected batches within the same `sample()` call based on
@@ -2985,6 +3004,7 @@ class AlgorithmConfig(_Config):
             self.postprocess_inputs = postprocess_inputs
         if shuffle_buffer_size is not NotProvided:
             self.shuffle_buffer_size = shuffle_buffer_size
+        # TODO (simon): Enable storing to general log-directory.
         if output is not NotProvided:
             self.output = output
         if output_config is not NotProvided:
@@ -3191,15 +3211,6 @@ class AlgorithmConfig(_Config):
             self.policy_states_are_swappable = policy_states_are_swappable
 
         return self
-
-    def is_multi_agent(self) -> bool:
-        """Returns whether this config specifies a multi-agent setup.
-
-        Returns:
-            True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
-            DEFAULT_POLICY_ID.
-        """
-        return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
 
     def reporting(
         self,
@@ -3658,6 +3669,72 @@ class AlgorithmConfig(_Config):
         return self
 
     @property
+    def is_atari(self) -> bool:
+        """True if if specified env is an Atari env."""
+
+        # Not yet determined, try to figure this out.
+        if self._is_atari is None:
+            # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
+            # or "ale_py:ALE/Breakout-v5".
+            # We do NOT attempt to auto-detect Atari env for other specified types like
+            # a callable, to avoid running heavy logics in validate().
+            # For these cases, users can explicitly set `environment(atari=True)`.
+            if type(self.env) is not str:
+                return False
+            try:
+                env = gym.make(self.env)
+            # Any gymnasium error -> Cannot be an Atari env.
+            except gym.error.Error:
+                return False
+
+            self._is_atari = is_atari(env)
+            # Clean up env's resources, if any.
+            env.close()
+
+        return self._is_atari
+
+    @property
+    def is_multi_agent(self) -> bool:
+        """Returns whether this config specifies a multi-agent setup.
+
+        Returns:
+            True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
+            DEFAULT_POLICY_ID.
+        """
+        return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
+
+    @property
+    def learner_class(self) -> Type["Learner"]:
+        """Returns the Learner sub-class to use by this Algorithm.
+
+        Either
+        a) User sets a specific learner class via calling `.training(learner_class=...)`
+        b) User leaves learner class unset (None) and the AlgorithmConfig itself
+        figures out the actual learner class by calling its own
+        `.get_default_learner_class()` method.
+        """
+        return self._learner_class or self.get_default_learner_class()
+
+    @property
+    def model_config(self):
+        """Defines the model configuration used.
+
+        This method combines the auto configuration `self _model_config_auto_includes`
+        defined by an algorithm with the user-defined configuration in
+        `self._model_config`.This configuration dictionary is used to
+        configure the `RLModule` in the new stack and the `ModelV2` in the old
+        stack.
+
+        Returns:
+            A dictionary with the model configuration.
+        """
+        return self._model_config_auto_includes | (
+            self._model_config
+            if isinstance(self._model_config, dict)
+            else dataclasses.asdict(self._model_config)
+        )
+
+    @property
     def rl_module_spec(self):
         default_rl_module_spec = self.get_default_rl_module_spec()
         _check_rl_module_spec(default_rl_module_spec)
@@ -3684,43 +3761,6 @@ class AlgorithmConfig(_Config):
         # `self._rl_module_spec` has not been user defined -> return default one.
         else:
             return default_rl_module_spec
-
-    @property
-    def learner_class(self) -> Type["Learner"]:
-        """Returns the Learner sub-class to use by this Algorithm.
-
-        Either
-        a) User sets a specific learner class via calling `.training(learner_class=...)`
-        b) User leaves learner class unset (None) and the AlgorithmConfig itself
-        figures out the actual learner class by calling its own
-        `.get_default_learner_class()` method.
-        """
-        return self._learner_class or self.get_default_learner_class()
-
-    @property
-    def is_atari(self) -> bool:
-        """True if if specified env is an Atari env."""
-
-        # Not yet determined, try to figure this out.
-        if self._is_atari is None:
-            # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
-            # or "ale_py:ALE/Breakout-v5".
-            # We do NOT attempt to auto-detect Atari env for other specified types like
-            # a callable, to avoid running heavy logics in validate().
-            # For these cases, users can explicitly set `environment(atari=True)`.
-            if type(self.env) is not str:
-                return False
-            try:
-                env = gym.make(self.env)
-            # Any gymnasium error -> Cannot be an Atari env.
-            except gym.error.Error:
-                return False
-
-            self._is_atari = is_atari(env)
-            # Clean up env's resources, if any.
-            env.close()
-
-        return self._is_atari
 
     @property
     def total_train_batch_size(self):
@@ -4345,25 +4385,6 @@ class AlgorithmConfig(_Config):
         return self.to_dict().items()
 
     @property
-    def model_config(self):
-        """Defines the model configuration used.
-
-        This method combines the auto configuration `self _model_config_auto_includes`
-        defined by an algorithm with the user-defined configuration in
-        `self._model_config`.This configuration dictionary is used to
-        configure the `RLModule` in the new stack and the `ModelV2` in the old
-        stack.
-
-        Returns:
-            A dictionary with the model configuration.
-        """
-        return self._model_config_auto_includes | (
-            self._model_config
-            if isinstance(self._model_config, dict)
-            else dataclasses.asdict(self._model_config)
-        )
-
-    @property
     def _model_config_auto_includes(self) -> Dict[str, Any]:
         """Defines which `AlgorithmConfig` settings/properties should be
         auto-included into `self.model_config`.
@@ -4381,6 +4402,18 @@ class AlgorithmConfig(_Config):
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
     # -----------------------------------------------------------
+    def _validate_env_runner_settings(self) -> None:
+        allowed_vectorize_modes = set(
+            list(gym.envs.registration.VectorizeMode.__members__.keys())
+            + list(gym.envs.registration.VectorizeMode.__members__.values())
+        )
+        if self.gym_env_vectorize_mode not in allowed_vectorize_modes:
+            raise ValueError(
+                f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) must be a "
+                "member of `gym.envs.registration.VectorizeMode`! Allowed values "
+                f"are {allowed_vectorize_modes}."
+            )
+
     def _validate_callbacks_settings(self) -> None:
         """Validates callbacks settings."""
         # Old API stack:
@@ -4497,7 +4530,7 @@ class AlgorithmConfig(_Config):
         # TODO (sven): For now, vectorization is not allowed on new EnvRunners with
         #  multi-agent.
         if (
-            self.is_multi_agent()
+            self.is_multi_agent
             and self.enable_env_runner_and_connector_v2
             and self.num_envs_per_env_runner > 1
         ):
@@ -4780,7 +4813,7 @@ class AlgorithmConfig(_Config):
                 self.simple_optimizer = True
             # Multi-agent case: Try using MultiGPU optimizer (only
             # if all policies used are DynamicTFPolicies or TorchPolicies).
-            elif self.is_multi_agent():
+            elif self.is_multi_agent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
 
@@ -5345,6 +5378,10 @@ class AlgorithmConfig(_Config):
             is_policy_to_train = self.policies_to_train
 
         return policies, is_policy_to_train
+
+    @Deprecated(new="AlgorithmConfig.build_algo", error=False)
+    def build(self, *args, **kwargs):
+        return self.build_algo(*args, **kwargs)
 
     @Deprecated(new="AlgorithmConfig.get_multi_rl_module_spec()", error=True)
     def get_marl_module_spec(self, *args, **kwargs):

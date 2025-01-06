@@ -95,11 +95,13 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   void TearDown() override {
+    client_io_service_->poll();
     client_io_service_->stop();
     client_io_service_thread_->join();
     gcs_client_->Disconnect();
     gcs_client_.reset();
 
+    server_io_service_->poll();
     server_io_service_->stop();
     rpc::DrainServerCallExecutor();
     server_io_service_thread_->join();
@@ -130,9 +132,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   void RestartGcsServer() {
     RAY_LOG(INFO) << "Stopping GCS service, port = " << gcs_server_->GetPort();
-    gcs_server_->Stop();
+    server_io_service_->poll();
     server_io_service_->stop();
     server_io_service_thread_->join();
+    gcs_server_->Stop();
     gcs_server_.reset();
     RAY_LOG(INFO) << "Finished stopping GCS service.";
 
