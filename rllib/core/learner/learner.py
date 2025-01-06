@@ -310,6 +310,9 @@ class Learner(Checkpointable):
         # `self.module`.
         self.configure_optimizers()
 
+        # Log the number of trainable/non-trainable parameters.
+        self._log_trainable_parameters()
+
         self._is_built = True
 
     @property
@@ -1609,6 +1612,9 @@ class Learner(Checkpointable):
                 f"`params` ({params}) must be a list of framework-specific parameters "
                 "(variables)!"
             )
+
+    def _log_trainable_parameters(self) -> None:
+        pass
 
     def _check_is_built(self, error: bool = True) -> bool:
         if self.module is None:

@@ -44,7 +44,19 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
         rl_module,
         **kwargs,
     ) -> None:
-        # Compute the win rate for this episode and log it with a window of 100.
+        num_learning_policies = (
+            (episode.module_for(0) in env_runner.config.policies_to_train)
+            + (episode.module_for(1) in env_runner.config.policies_to_train)
+        )
+        # Make sure the mapping function doesn't match two non-trainables together.
+        # This would be a waste of EnvRunner resources.
+        assert num_learning_policies > 0
+        # Ignore matches between two learning policies and don't count win-rates for
+        # these.
+        if num_learning_policies != 1:
+            return
+        # Compute the win rate for this episode (only looking at non-trained opponents,
+        # such as random or frozen policies) and log it with a window of 100.
         rewards_dict = episode.get_rewards()
         for aid, rewards in rewards_dict.items():
             mid = episode.module_for(aid)

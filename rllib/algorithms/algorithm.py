@@ -1899,7 +1899,14 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # Update the `agent_to_module_mapping_fn` on the EnvRunner.
             if new_agent_to_module_mapping_fn is not None:
                 _env_runner.config.multi_agent(
-                    policy_mapping_fn=new_agent_to_module_mapping_fn
+                    policy_mapping_fn=new_agent_to_module_mapping_fn,
+                )
+            # Update the `should_module_be_updated` on the EnvRunner. Note that
+            # even though this information is typically not needed by the EnvRunner,
+            # it's good practice to keep this setting updated everywhere either way.
+            if new_should_module_be_updated is not None:
+                _env_runner.config.multi_agent(
+                    policies_to_train=new_should_module_be_updated,
                 )
             return MultiRLModuleSpec.from_module(_env_runner.module)
 
