@@ -299,29 +299,25 @@ def test_multi_output_get_exception(ray_start_regular):
         ray.get(refs)
 
 
-# TODO(wxdeng): Fix segfault. If this test is run, the following tests
-# will segfault.
-# def test_two_from_three_returns(ray_start_regular):
-#     a = Actor.remote(0)
-#     with InputNode() as i:
-#         o1, o2 = a.return_two_from_three.bind(i)
-#         dag = MultiOutputNode([o1, o2])
+def test_two_from_three_returns(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two_from_three.bind(i)
+        dag = MultiOutputNode([o1, o2])
 
-#     compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
 
-#     # A value error is raised because the number of returns is not equal to
-#     # the number of outputs. Since the value error is raised in the writer,
-#     # the reader fails to read the outputs and raises a channel error.
+    # A value error is raised because the number of returns is not equal to
+    # the number of outputs. Since the value error is raised in the writer,
+    # the reader fails to read the outputs and raises a channel error.
 
-#     # TODO(wxdeng): Fix exception type. The value error should be catched.
-#     # However, two exceptions are raised in the writer and reader respectively.
+    # TODO(wxdeng): Fix exception type. The value error should be catched.
+    # However, two exceptions are raised in the writer and reader respectively.
 
-#     # with pytest.raises(RayChannelError, match="Channel closed."):
-#     # with pytest.raises(ValueError, match="Expected 2 outputs, but got 3 outputs"):
-#     with pytest.raises(Exception):
-#         ray.get(compiled_dag.execute(1))
-
-#     compiled_dag.teardown()
+    # with pytest.raises(RayChannelError, match="Channel closed."):
+    # with pytest.raises(ValueError, match="Expected 2 outputs, but got 3 outputs"):
+    with pytest.raises(Exception):
+        ray.get(compiled_dag.execute(1))
 
 
 def test_kwargs_not_supported(ray_start_regular):
