@@ -1801,7 +1801,8 @@ Status CoreWorker::WaitAndGetExperimentalMutableObjects(
   results.resize(ids.size(), nullptr);
 
   bool timed_out = false;
-  int64_t remaining_timeout = timeout_ms == -1 ? std::numeric_limits<int64_t>::max() : timeout_ms;
+  int64_t remaining_timeout =
+      timeout_ms == -1 ? std::numeric_limits<int64_t>::max() : timeout_ms;
   auto timeout_point = ToTimeoutPoint(remaining_timeout);
   int64_t iteration_timeout =
       std::min(remaining_timeout, RayConfig::instance().get_timeout_milliseconds());
