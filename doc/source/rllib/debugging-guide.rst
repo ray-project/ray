@@ -2,10 +2,23 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. _rllib-debugging-guide:
+.. _rllib-debugging-guide-docs:
 
-Debugging RLlib Experiments
-===========================
+
+Debugging RLlib
+===============
+
+
+.. todo (sven): Add here, how to setup RLlib to link into your pip installed ray and how to nuke the setup in case after a `git pull` weird errors unrelated to RLlib show up, b/c of other
+libraries' updates causing problems.
+- Make sure you have everything committed and pushed. Local branch should be free of any uncommitted changes.
+- pip uninstall -y ray
+- rm -rf [Anaconda ray directory] (if it's still there for some reason after the uninstall)
+- pip install -U [pick right wheel from https://docs.ray.io/en/latest/ray-overview/installation.html]
+- git stash
+- python python/ray/setup-dev.py (<- only say yes to RLlib, then get your CTRL+C out of there! :slightly_smiling_face: )
+
+
 
 Using your IDE's debugger
 -------------------------
