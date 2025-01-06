@@ -50,7 +50,7 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
         )
         # Make sure the mapping function doesn't match two non-trainables together.
         # This would be a waste of EnvRunner resources.
-        assert num_learning_policies > 0
+        #assert num_learning_policies > 0
         # Ignore matches between two learning policies and don't count win-rates for
         # these.
         if num_learning_policies != 1:

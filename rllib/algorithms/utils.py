@@ -66,7 +66,7 @@ class AggregatorActor(FaultAwareApply):
     def get_batch(self, episode_refs: List[ray.ObjectRef]):
         episodes: List[EpisodeType] = tree.flatten(ray.get(episode_refs))
 
-        env_steps = sum(len(e) for e in episodes)
+        #env_steps = sum(len(e) for e in episodes)
 
         # If we have enough episodes collected to create a single train batch, pass
         # them at once through the connector to recieve a single train batch.
@@ -77,10 +77,10 @@ class AggregatorActor(FaultAwareApply):
         # Convert to a dict into a `MultiAgentBatch`.
         # TODO (sven): Try to get rid of dependency on MultiAgentBatch (once our mini-
         #  batch iterators support splitting over a dict).
-        ma_batch_on_gpu = MultiAgentBatch(
-            policy_batches={
-                pid: SampleBatch(batch) for pid, batch in batch_on_gpu.items()
-            },
-            env_steps=env_steps,
-        )
-        return ma_batch_on_gpu
+        #ma_batch_on_gpu = MultiAgentBatch(
+        #    policy_batches={
+        #        pid: SampleBatch(batch) for pid, batch in batch_on_gpu.items()
+        #    },
+        #    env_steps=env_steps,
+        #)
+        return batch_on_gpu #ma_batch_on_gpu
