@@ -314,7 +314,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     batch_ids.clear();
     batch_ids.reserve(std::min(remaining.size(), static_cast<size_t>(batch_size)));
     for (const auto &id : remaining) {
-      if (batch_ids.size() == batch_size) {
+      if (batch_ids.size() == static_cast<size_t>(batch_size)) {
         break;
       }
       batch_ids.push_back(id);
