@@ -161,6 +161,8 @@ class IMPALAConfig(AlgorithmConfig):
         # IMPALA takes care of its own EnvRunner (weights, connector, metrics) synching.
         self._dont_auto_sync_env_runner_states = True
         # IMPALA uses aggregation actors to run episodes through the learner connector.
+        # The IMPALALearner doesn't have a connector pipeline and learns directly from
+        # pre-loaded batches already on the GPU, if applicable.
         self._dont_build_learner_connector_on_learner = True
 
         self.lr_schedule = None  # @OldAPIStack
@@ -289,7 +291,7 @@ class IMPALAConfig(AlgorithmConfig):
                 old="config.training(num_aggregation_workers=..)",
                 help="Aggregator workers are no longer supported on the old API "
                 "stack! To use aggregation (and GPU pre-loading) on the new API "
-                "stack, activate the new API stack and THEN set "
+                "stack, activate the new API stack, then set "
                 "`config.training(num_aggregator_actors_per_learner=..)`. Good "
                 "choices are normally 1 or 2, but this depends on your overall "
                 "setup, especially your `EnvRunner` throughput.",

@@ -49,15 +49,11 @@ args = parser.parse_args()
 config = (
     IMPALAConfig()
     .environment("heavy-cart")
-    .api_stack(
-        enable_env_runner_and_connector_v2=True,
-        enable_rl_module_and_learner=True,
-    )
-    .env_runners(compress_observations=True)
+    #.env_runners(compress_observations=True)
     .training(
         num_aggregator_actors_per_learner=2,
         train_batch_size_per_learner=500,
-        train_batch_size=500,
+        #train_batch_size=500,
     )
     .rl_module(
         model_config=DefaultModelConfig(
