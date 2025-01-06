@@ -21,7 +21,6 @@ py_test_module_list(
         "tests/test_deployment_scheduler.py",
         "tests/test_draining.py",
         "tests/test_az_routing.py",
-        "tests/test_centralized_scheduler.py",
         "tests/test_telemetry.py",
         "tests/test_metrics.py",
         "tests/test_tracing_utils.py",

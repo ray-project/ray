@@ -2048,6 +2048,7 @@ ray_cc_test(
     tags = [
         "no_tsan",
         "team:core",
+        "exclusive",
     ],
     deps = [
         ":gcs_client_lib",

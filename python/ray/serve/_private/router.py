@@ -569,7 +569,6 @@ class AsyncioRouter:
         **request_kwargs,
     ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
-
         trace_attributes = {
             "request_id": request_meta.request_id,
             "deployment": self.deployment_id.name,

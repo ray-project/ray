@@ -1,5 +1,7 @@
 import functools
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 from pyarrow.fs import FileSystemHandler, LocalFileSystem, PyFileSystem
 
 import ray
@@ -100,6 +102,27 @@ def test_transient_error_handling(restore_data_context, ray_start_regular_shared
     fs = PyFileSystem(FlakyFileSystemHandler(LocalFileSystem()))
 
     ray.data.read_parquet("example://iris.parquet", filesystem=fs).materialize()
+
+
+def test_read_parquet_produces_target_size_blocks(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    table = pa.Table.from_pydict({"data": ["\0" * 1024 * 1024]})  # 1 MiB of data
+    pq.write_table(table, tmp_path / "test1.parquet")
+    pq.write_table(table, tmp_path / "test2.parquet")
+    pq.write_table(table, tmp_path / "test3.parquet")
+    pq.write_table(table, tmp_path / "test4.parquet")
+    ray.data.DataContext.get_current().target_max_block_size = 2 * 1024 * 1024  # 2 MiB
+    ds = ray.data.read_parquet(tmp_path)
+    actual_block_sizes = [
+        block_metadata.size_bytes
+        for bundle in ds.iter_internal_ref_bundles()
+        for block_metadata in bundle.metadata
+    ]
+    assert all(
+        block_size == pytest.approx(2 * 1024 * 1024, rel=0.01)
+        for block_size in actual_block_sizes
+    ), actual_block_sizes
 
 
 if __name__ == "__main__":
