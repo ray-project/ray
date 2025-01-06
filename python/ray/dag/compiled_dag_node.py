@@ -1858,10 +1858,17 @@ class CompiledDAG:
                             f"{teardown_timeout}s after teardown()."
                         )
                         if kill_actors:
-                            msg += " Force-killing actor."
+                            msg += (
+                                " Force-killing actor. "
+                                "Increase RAY_CGRAPH_teardown_timeout if you want "
+                                "teardown to wait longer."
+                            )
                             ray.kill(actor)
                         else:
-                            msg += " Teardown may hang."
+                            msg += (
+                                " Teardown may hang. "
+                                "Call teardown with kill_actors=True to force kill."
+                            )
 
                         logger.warning(msg)
                         timeout = True
@@ -2080,10 +2087,16 @@ class CompiledDAG:
 
             # Fetch results from each output channel up to execution_index and cache
             # them separately to enable individual retrieval
-            self._cache_execution_results(
-                self._max_finished_execution_index,
-                self._dag_output_fetcher.read(timeout),
-            )
+            try:
+                self._cache_execution_results(
+                    self._max_finished_execution_index,
+                    self._dag_output_fetcher.read(timeout),
+                )
+            except ray.exceptions.RayChannelTimeoutError as e:
+                e.message += (
+                    " Timed out on fetching execution results. "
+                    "Update RAY_CGRAPH_get_timeout for longer get timeout."
+                )
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
@@ -2128,7 +2141,14 @@ class CompiledDAG:
             inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
         self.raise_if_too_many_inflight_requests()
-        self._dag_submitter.write(inp, self._submit_timeout)
+        try:
+            self._dag_submitter.write(inp, self._submit_timeout)
+        except ray.exceptions.RayChannelTimeoutError as e:
+            e.message += (
+                " Timed out on submitting execution. "
+                "Update RAY_CGRAPH_submit_timeout for longer submit timeout."
+            )
+            raise e
 
         if self._returns_list:
             ref = [
