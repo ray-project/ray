@@ -53,7 +53,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   bool Enabled() const override { return true; }
 
-  const std::string DebugString() override { return ""; }
+  std::string DebugString() override { return ""; }
 
   std::vector<std::unique_ptr<worker::TaskEvent>> task_events;
 };

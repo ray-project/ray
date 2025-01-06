@@ -6,6 +6,13 @@
 .. _rllib-new-api-stack-migration-guide:
 
 
+.. testcode::
+    :hide:
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+    config = PPOConfig()
+
+
 New API stack migration guide
 =============================
 
@@ -22,29 +29,21 @@ RLlib classes and code to RLlib's new API stack.
     Note, though, that the Ray team continues to  design RLlib to be framework-agnostic.
 
 
-Change your AlgorithmConfig
----------------------------
+Check your AlgorithmConfig
+--------------------------
 
-RLlib turns on the new API stack by default for all RLlib algorithms. To deactivate it, use the `api_stack()` method
-in your `AlgorithmConfig` object like so:
+RLlib turns on the new API stack by default for all RLlib algorithms.
 
-.. testcode::
+.. note::
+    To **deactivate** the new API stack and switch back to the old one, use the
+    `api_stack()` method in your `AlgorithmConfig` object like so:
 
-    from ray.rllib.algorithms.ppo import PPOConfig
+    .. testcode::
 
-    config = (
-        PPOConfig()
-        # Switch both the new API stack flags to False (both True by default).
-        # This action disables the use of
-        # a) RLModule (replaces ModelV2) and Learner (replaces Policy).
-        # b) the correct EnvRunner, which replaces RolloutWorker, and
-        #    ConnectorV2 pipelines, which replaces the old stack Connectors.
-        .api_stack(
+        config.api_stack(
             enable_rl_module_and_learner=False,
             enable_env_runner_and_connector_v2=False,
         )
-    )
-
 
 Note that there are a few other differences between configuring an old API stack algorithm
 and its new stack counterpart.
@@ -305,24 +304,26 @@ behavior, for example, sample an action from a distribution, inside the overridd
 Custom callbacks
 ----------------
 
-If you're using custom callbacks on the old API stack, you're subclassing the :py:class`~ray.rllib.algorithms.callbacks.DefaultCallbacks` class.
-You can continue this approach with the new API stack and also pass your custom subclass to your config like the following:
+If you're using custom callbacks on the old API stack, you're subclassing the ``DefaultCallbacks`` class,
+which has been renamed to :py:class`~ray.rllib.callbacks.callbacks.RLlibCallback`.
+You can continue this approach with the new API stack and pass your custom subclass to your config like the following:
 
 .. testcode::
 
     # config.callbacks(YourCallbacksClass)
 
-However, if you're overriding those methods that the EnvRunner side triggered, for example,`on_episode_start/stop/step/etc...`,
-you might have to do a small amount of translation, because the
-EnvRunner may have changed the arguments that RLlib passes to many of these methods.
+However, if you're overriding those methods that triggered on the :py:class:`~ray.rllib.env.env_runner.EnvRunner`
+side, for example, ``on_episode_start/stop/step/etc...``, a small amount of translation may be required, because
+the arguments that RLlib passes to many of these methods have slightly changed.
 
-The following is a one-to-one translation guide for these types of Callbacks methods:
+The following is a one-to-one translation guide for these types of :py:class`~ray.rllib.callbacks.callbacks.RLlibCallback`
+methods:
 
 .. testcode::
 
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
-    class YourCallbacksClass(DefaultCallbacks):
+    class YourCallbacksClass(RLlibCallback):
 
         def on_episode_start(
             self,
@@ -375,7 +376,7 @@ The following callback methods are no longer available on the new API stack:
 **`on_sub_environment_created()`**: The new API stack uses `Farama's gymnasium <https://farama.org>`__ vector Envs leaving no control for RLlib
 to call a callback on each individual env-index's creation.
 
-**`on_create_policy()`**: This method is no longer available on the new API stack because only :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` calls it.
+**`on_create_policy()`**: This method is no longer available on the new API stack because only ``RolloutWorker`` calls it.
 
 **`on_postprocess_trajectory()`**: The new API stack no longer triggers and calls this method,
 because :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pipelines handle trajectory processing entirely.
@@ -387,14 +388,14 @@ The documention for :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` d
 ModelV2 to RLModule
 -------------------
 
-If you're using a custom :py:class:`~ray.rllib.models.modelv2.ModelV2` class and want to translate
+If you're using a custom ``ModelV2`` class and want to translate
 the entire NN architecture and possibly action distribution logic to the new API stack, see
 :ref:`RL Modules <rlmodule-guide>` in addition to this section.
 
-See these example scripts on `how to write a custom CNN-containing RL Module <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__
+Also, see these example scripts on `how to write a custom CNN-containing RL Module <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__
 and `how to write a custom LSTM-containing RL Module <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__.
 
-There are various options for translating an existing, custom :py:class:`~ray.rllib.models.modelv2.ModelV2` from the old API stack,
+There are various options for translating an existing, custom ``ModelV2`` from the old API stack,
 to the new API stack's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`:
 
 #. Move your ModelV2 code to a new, custom `RLModule` class. See :ref:`RL Modules <rlmodule-guide>` for details).
@@ -402,6 +403,98 @@ to the new API stack's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`:
    training run and use this checkpoint with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py>`__.
 #. Use an existing :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
    object from an old API stack training run, with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py>`__.
+
+In more complex scenarios, you might've implemented custom policies, such that you could modify the behavior of constructing models
+and distributions.
+
+
+Translating Policy.compute_actions_from_input_dict
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This old API stack method, as well as ``compute_actions`` and ``compute_single_action``, directly translate to
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`
+and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`.
+:ref:`The RLModule guide explains how to implement this method <rlmodule-guide>`.
+
+
+Translating Policy.action_distribution_fn
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To translate ``action_distribution_fn``, write the following custom RLModule code:
+
+.. tab-set::
+
+    .. tab-item:: Same action dist. class
+
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.models.torch.torch_distributions import YOUR_DIST_CLASS
+
+
+            class MyRLModule(TorchRLModule):
+                def setup(self):
+                    ...
+                    # Set the following attribute at the end of your custom `setup()`.
+                    self.action_dist_cls = YOUR_DIST_CLASS
+
+
+    .. tab-item:: Different action dist. classes
+
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.models.torch.torch_distributions import (
+                YOUR_INFERENCE_DIST_CLASS,
+                YOUR_EXPLORATION_DIST_CLASS,
+                YOUR_TRAIN_DIST_CLASS,
+            )
+
+                def get_inference_action_dist_cls(self):
+                    return YOUR_INFERENCE_DIST_CLASS
+
+                def get_exploration_action_dist_cls(self):
+                    return YOUR_EXPLORATION_DIST_CLASS
+
+                def get_train_action_dist_cls(self):
+                    return YOUR_TRAIN_DIST_CLASS
+
+
+Translating Policy.action_sampler_fn
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To translate ``action_sampler_fn``, write the following custom RLModule code:
+
+.. testcode::
+    :skipif: True
+
+    from ray.rllib.models.torch.torch_distributions import YOUR_DIST_CLASS
+
+
+    class MyRLModule(TorchRLModule):
+
+        def _forward_exploration(self, batch):
+            computation_results = ...
+            my_dist = YOUR_DIST_CLASS(computation_results)
+            actions = my_dist.sample()
+            return {Columns.ACTIONS: actions}
+
+        # Maybe for inference, you would like to sample from the deterministic version
+        # of your distribution:
+        def _forward_inference(self, batch):
+            computation_results = ...
+            my_dist = YOUR_DIST_CLASS(computation_results)
+            greedy_actions = my_dist.to_deterministic().sample()
+            return {Columns.ACTIONS: greedy_actions}
+
+
+Policy.compute_log_likelihoods
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Implement your custom RLModule's :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_train` method and
+return the `Columns.ACTION_LOGP` key together with the corresponding action log probs in order to pass this information
+to your loss functions, which your code calls after `forward_train()`. The loss logic can then access
+`Columns.ACTION_LOGP`.
 
 
 Custom loss functions and policies
