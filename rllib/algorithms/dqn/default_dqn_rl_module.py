@@ -1,7 +1,6 @@
 import abc
 from typing import Any, Dict, List, Tuple, Union
 
-from ray.rllib.algorithms.dqn.dqn_catalog import DQNCatalog
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network
@@ -28,10 +27,6 @@ QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 
 @DeveloperAPI
 class DefaultDQNRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
-    def __init__(self, *args, **kwargs):
-        catalog_class = kwargs.pop("catalog_class", DQNCatalog)
-        super().__init__(*args, **kwargs, catalog_class=catalog_class)
-
     @override(RLModule)
     def setup(self):
         # If a dueling architecture is used.
@@ -136,6 +131,13 @@ class DefaultDQNRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
             self.encoder,
             {"af": self.af, "vf": self.vf} if self.uses_dueling else self.af,
         )
+
+    @override(RLModule)
+    def get_initial_state(self) -> dict:
+        if hasattr(self.encoder, "get_initial_state"):
+            return self.encoder.get_initial_state()
+        else:
+            return {}
 
     @override(RLModule)
     def input_specs_train(self) -> SpecType:
