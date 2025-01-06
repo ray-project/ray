@@ -68,16 +68,26 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext())),
       is_started_(false),
       is_stopped_(false) {
-  // Init GCS table storage.
+  // Init GCS table storage. Note this is on the default io context, not the one with
+  // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
+  auto &io_context = io_context_provider_.GetDefaultIOContext();
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
-    gcs_table_storage_ = std::make_unique<InMemoryGcsTableStorage>(
-        io_context_provider_.GetDefaultIOContext());
+    gcs_table_storage_ = std::make_unique<InMemoryGcsTableStorage>(io_context);
     break;
-  case StorageType::REDIS_PERSIST:
-    gcs_table_storage_ = std::make_unique<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
+  case StorageType::REDIS_PERSIST: {
+    auto redis_client = CreateRedisClient(io_context);
+    gcs_table_storage_ =
+        std::make_unique<gcs::RedisGcsTableStorage>(redis_client, io_context);
+    // Init redis failure detector.
+    gcs_redis_failure_detector_ =
+        std::make_unique<GcsRedisFailureDetector>(io_context, redis_client, []() {
+          RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
+        });
+    gcs_redis_failure_detector_->Start();
     break;
+  }
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
@@ -123,15 +133,16 @@ void GcsServer::Start() {
   // it can be used to retrieve the cluster ID.
   InitKVManager();
   gcs_init_data->AsyncLoad([this, gcs_init_data] {
-    GetOrGenerateClusterId([this, gcs_init_data](ClusterID cluster_id) {
-      rpc_server_.SetClusterId(cluster_id);
-      DoStart(*gcs_init_data);
-    });
+    GetOrGenerateClusterId({[this, gcs_init_data](ClusterID cluster_id) {
+                              rpc_server_.SetClusterId(cluster_id);
+                              DoStart(*gcs_init_data);
+                            },
+                            io_context_provider_.GetDefaultIOContext()});
   });
 }
 
 void GcsServer::GetOrGenerateClusterId(
-    std::function<void(ClusterID cluster_id)> &&continuation) {
+    Postable<void(ClusterID cluster_id)> continuation) {
   static std::string const kTokenNamespace = "cluster";
   kv_manager_->GetInstance().Get(
       kTokenNamespace,
@@ -150,12 +161,14 @@ void GcsServer::GetOrGenerateClusterId(
               [cluster_id,
                continuation = std::move(continuation)](bool added_entry) mutable {
                 RAY_CHECK(added_entry) << "Failed to persist new cluster ID!";
-                continuation(cluster_id);
+                std::move(continuation)
+                    .Post("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
               });
         } else {
           ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
           RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
-          continuation(cluster_id);
+          std::move(continuation)
+              .Post("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
         }
       });
 }
@@ -173,11 +186,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
 
-  // Init synchronization service
-  InitRaySyncer(gcs_init_data);
-
   // Init gcs health check manager.
   InitGcsHealthCheckManager(gcs_init_data);
+
+  // Init synchronization service
+  InitRaySyncer(gcs_init_data);
 
   // Init KV service.
   InitKVService();
@@ -275,8 +288,8 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
-  node_info_service_.reset(new rpc::NodeInfoGrpcService(
-      io_context_provider_.GetDefaultIOContext(), *gcs_node_manager_));
+  node_info_service_ = std::make_unique<rpc::NodeInfoGrpcService>(
+      io_context_provider_.GetDefaultIOContext(), *gcs_node_manager_);
   rpc_server_.RegisterService(*node_info_service_);
 }
 
@@ -288,7 +301,7 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
         "GcsServer.NodeDeathCallback");
   };
 
-  gcs_healthcheck_manager_ = std::make_unique<GcsHealthCheckManager>(
+  gcs_healthcheck_manager_ = GcsHealthCheckManager::Create(
       io_context_provider_.GetDefaultIOContext(), node_death_callback);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
@@ -522,7 +535,11 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   ray_syncer_ = std::make_unique<syncer::RaySyncer>(
-      io_context_provider_.GetIOContext<syncer::RaySyncer>(), kGCSNodeID.Binary());
+      io_context_provider_.GetIOContext<syncer::RaySyncer>(),
+      kGCSNodeID.Binary(),
+      [this](const NodeID &node_id) {
+        gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
+      });
   ray_syncer_->Register(
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
@@ -547,15 +564,16 @@ void GcsServer::InitUsageStatsClient() {
 void GcsServer::InitKVManager() {
   // TODO (yic): Use a factory with configs
   std::unique_ptr<InternalKVInterface> instance;
+  auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
     instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(GetOrConnectRedis()));
+        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)), io_context);
     break;
   case (StorageType::IN_MEMORY):
     instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>(
-            io_context_provider_.GetDefaultIOContext())));
+        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>()),
+        io_context);
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
@@ -568,7 +586,7 @@ void GcsServer::InitKVManager() {
 void GcsServer::InitKVService() {
   RAY_CHECK(kv_manager_);
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *kv_manager_);
+      io_context_provider_.GetIOContext<GcsInternalKVManager>(), *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_, false /* token_auth */);
 }
@@ -584,26 +602,30 @@ void GcsServer::InitPubSubHandler() {
 
 void GcsServer::InitRuntimeEnvManager() {
   runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
-      /*deleter=*/[this](const std::string &plugin_uri, auto callback) {
+      /*deleter=*/[this](const std::string &plugin_uri,
+                         std::function<void(bool)> callback) {
         // A valid runtime env URI is of the form "protocol://hash".
-        std::string protocol_sep = "://";
-        auto protocol_end_pos = plugin_uri.find(protocol_sep);
+        static constexpr std::string_view protocol_sep = "://";
+        const std::string_view plugin_uri_view = plugin_uri;
+        auto protocol_end_pos = plugin_uri_view.find(protocol_sep);
         if (protocol_end_pos == std::string::npos) {
           RAY_LOG(ERROR) << "Plugin URI must be of form "
-                         << "<protocol>://<hash>, got " << plugin_uri;
-          callback(false);
+                         << "<protocol>://<hash>, got " << plugin_uri_view;
+          callback(/*successful=*/false);
         } else {
-          auto protocol = plugin_uri.substr(0, protocol_end_pos);
+          const std::string_view protocol = plugin_uri_view.substr(0, protocol_end_pos);
           if (protocol != "gcs") {
             // Some URIs do not correspond to files in the GCS.  Skip deletion for
             // these.
-            callback(true);
+            callback(/*successful=*/true);
           } else {
             this->kv_manager_->GetInstance().Del(
                 "" /* namespace */,
                 plugin_uri /* key */,
                 false /* del_by_prefix*/,
-                [callback = std::move(callback)](int64_t) { callback(false); });
+                [callback = std::move(callback)](int64_t) {
+                  callback(/*successful=*/false);
+                });
           }
         }
       });
@@ -813,20 +835,12 @@ std::string GcsServer::GetDebugState() const {
   return stream.str();
 }
 
-std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
-  if (redis_client_ == nullptr) {
-    redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
-    auto status = redis_client_->Connect(io_context_provider_.GetDefaultIOContext());
-    RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
-
-    // Init redis failure detector.
-    gcs_redis_failure_detector_ = std::make_unique<GcsRedisFailureDetector>(
-        io_context_provider_.GetDefaultIOContext(), redis_client_, []() {
-          RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
-        });
-    gcs_redis_failure_detector_->Start();
-  }
-  return redis_client_;
+std::shared_ptr<RedisClient> GcsServer::CreateRedisClient(
+    instrumented_io_context &io_service) {
+  auto redis_client = std::make_shared<RedisClient>(GetRedisClientOptions());
+  auto status = redis_client->Connect(io_service);
+  RAY_CHECK_OK(status) << "Failed to init redis gcs client";
+  return redis_client;
 }
 
 void GcsServer::PrintAsioStats() {

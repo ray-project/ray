@@ -170,6 +170,7 @@ RayTask CreateTask(
                                  "",
                                  0,
                                  TaskID::Nil(),
+                                 "",
                                  runtime_env_info);
 
   if (!args.empty()) {
@@ -185,7 +186,7 @@ RayTask CreateTask(
 
   spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
 
-  return RayTask(spec_builder.Build());
+  return RayTask(std::move(spec_builder).ConsumeAndBuild());
 }
 
 class MockTaskDependencyManager : public TaskDependencyManagerInterface {
