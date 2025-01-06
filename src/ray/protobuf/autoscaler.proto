@@ -343,8 +343,7 @@ service AutoscalerStateService {
       returns (GetClusterResourceStateReply);
   rpc ReportAutoscalingState(ReportAutoscalingStateRequest)
       returns (ReportAutoscalingStateReply);
-  rpc ReportClusterConfig(ReportClusterConfigRequest)
-      returns (ReportClusterConfigReply);
+  rpc ReportClusterConfig(ReportClusterConfigRequest) returns (ReportClusterConfigReply);
   // Request additional cluster resources constraints. This is the RPC call made
   // when users call ray.autoscaler.sdk.request_resources.
   rpc RequestClusterResourceConstraint(RequestClusterResourceConstraintRequest)
