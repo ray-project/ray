@@ -237,8 +237,8 @@ class TrainController:
             )
         except (WorkerGroupStartupTimeoutError, WorkerGroupStartupFailedError) as e:
             logger.error(
-                "Retrying training worker group startup. "
-                f"The previous startup attempt encountered the following failure:\n{e}"
+                "Retrying the launch of the training worker group. "
+                f"The previous launch attempt encountered the following failure:\n{e}"
             )
 
             # TODO: Should this logic go through the failure policy?
