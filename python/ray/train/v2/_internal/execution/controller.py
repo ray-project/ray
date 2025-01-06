@@ -235,10 +235,10 @@ class TrainController:
                 placement_strategy=placement_strategy,
                 checkpoint=latest_checkpoint or self._resume_from_checkpoint,
             )
-        except (WorkerGroupStartupTimeoutError, WorkerGroupStartupFailedError):
-            logger.exception(
+        except (WorkerGroupStartupTimeoutError, WorkerGroupStartupFailedError) as e:
+            logger.error(
                 "Retrying training worker group startup. "
-                "The previous attempt encountered the following failure:"
+                f"The previous startup attempt encountered the following failure:\n{e}"
             )
 
             # TODO: Should this logic go through the failure policy?
