@@ -121,6 +121,10 @@ bool SetupCgroupsPreparation(const std::string &node_id) {
   RAY_CHECK(cgroup_v2_app_folder.empty())
       << "Cgroup v2 for raylet should be only initialized once.";
 
+  // Cgroup folder for the current ray node.
+  const std::string cgroup_folder =
+      absl::StrFormat("/sys/fs/cgroup/ray_node_%s", node_id);
+
   // Check cgroup accessibility before setup.
   if (!internal::CanCurrenUserWriteCgroupV2()) {
     return false;
@@ -129,8 +133,8 @@ bool SetupCgroupsPreparation(const std::string &node_id) {
     return false;
   }
 
-  cgroup_v2_app_folder = absl::StrFormat("/sys/fs/cgroup/ray_application_%s", node_id);
-  cgroup_v2_system_folder = absl::StrFormat("/sys/fs/cgroup/ray_system_%s", node_id);
+  cgroup_v2_app_folder = absl::StrFormat("%s/ray_application_%s", cgroup_folder, node_id);
+  cgroup_v2_system_folder = absl::StrFormat("%s/ray_system_%s", cgroup_folder, node_id);
   const std::string cgroup_v2_app_procs =
       ray::JoinPaths(cgroup_v2_app_folder, "cgroup.procs");
   const std::string cgroup_v2_app_subtree_control =
