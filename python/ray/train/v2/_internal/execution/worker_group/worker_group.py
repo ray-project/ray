@@ -444,7 +444,7 @@ class WorkerGroup:
                     done_refs, num_returns=len(done_refs), timeout=patience_s
                 )
                 if not_done:
-                    logger.error(
+                    logger.debug(
                         "Graceful termination failed. Falling back to force kill."
                     )
                     # If all actors are not able to die gracefully, then kill them.
