@@ -2097,6 +2097,7 @@ class CompiledDAG:
                     " Timed out on fetching execution results. "
                     "Update RAY_CGRAPH_get_timeout for longer get timeout."
                 )
+                raise e
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
