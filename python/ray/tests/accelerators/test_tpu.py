@@ -279,25 +279,37 @@ def test_empty_get_current_pod_name_returns_none():
     assert name is None
 
 
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        (4, "v4-16", 4),
+        (8, "v6e-8", 1),
+    ],
+)
 @patch("glob.glob")
-def test_worker_count(mock_glob):
+def test_worker_count(mock_glob, test_case):
+    num_devices, accelerator_type, expected_worker_count = test_case
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
+
+    with patch(
+        "ray._private.accelerators.tpu.TPUAcceleratorManager."
+        "_get_current_node_tpu_pod_type",
+        return_value=accelerator_type,
+    ):
+       worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()
+
+    assert worker_count == expected_worker_count
+
+
+@patch("glob.glob")
+def test_num_tpu_chips():
     mock_glob.return_value = [
         "/dev/accel0",
         "/dev/accel1",
         "/dev/accel2",
         "/dev/accel3",
     ]
-    worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()
-    assert worker_count == 4
-
-
-def test_num_tpu_chips():
-    with patch(
-        "ray._private.accelerators.tpu.TPUAcceleratorManager."
-        "get_current_node_num_accelerators",
-        return_value=4,
-    ):
-        num_tpu_chips = ray.util.accelerators.tpu.get_num_tpu_chips_on_node()
+    num_tpu_chips = ray.util.accelerators.tpu.get_num_tpu_chips_on_node()
     assert num_tpu_chips == 4
 
 
