@@ -1692,8 +1692,10 @@ class Learner(Checkpointable):
 
     def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
         """Logs this iteration's steps trained, based on given `batch`."""
-        for mid, module_batch in batch.policy_batches.items():
-            module_batch_size = len(module_batch)
+        #for mid, module_batch in batch.policy_batches.items():
+        env_steps = 0#hack
+        for mid, module_batch in batch.items():
+            env_steps = module_batch_size = len(module_batch["rewards"])#hack
             # Log average batch size (for each module).
             self.metrics.log_value(
                 key=(mid, MODULE_TRAIN_BATCH_SIZE_MEAN),
@@ -1726,13 +1728,13 @@ class Learner(Checkpointable):
         # Log env steps (all modules).
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
-            batch.env_steps(),
+            env_steps,
             reduce="sum",
             clear_on_reduce=True,
         )
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
-            batch.env_steps(),
+            env_steps,
             reduce="sum",
             with_throughput=True,
         )
