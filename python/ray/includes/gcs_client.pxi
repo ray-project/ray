@@ -210,8 +210,6 @@ cdef class InnerGcsClient:
         self, c_string key, c_string value, c_bool overwrite=False, namespace=None,
         timeout=None
     ) -> Future[bool]:
-        # TODO(ryw): the sync `internal_kv_put` returns bool while this async version
-        # returns int. We should make them consistent.
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
