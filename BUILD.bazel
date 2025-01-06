@@ -1159,30 +1159,6 @@ ray_cc_test(
     ],
 )
 
-ray_cc_library(
-    name = "cgroup_v2_utils",
-    srcs = ["src/ray/raylet/cgroup_v2_utils.cc"],
-    hdrs = ["src/ray/raylet/cgroup_v2_utils.h"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "//src/ray/util",
-    ],
-)
-
-ray_cc_test(
-    name = "cgroup_v2_utils_test",
-    size = "small",
-    srcs = ["src/ray/raylet/test/cgroup_v2_utils_test.cc"],
-    tags = [
-        "team:core",
-        "manual", # Expect cgroupv2 mount, not intended for unit test and CI.
-    ],
-    deps = [
-        ":cgroup_v2_utils",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 ray_cc_test(
     name = "pull_manager_test",
     size = "small",
