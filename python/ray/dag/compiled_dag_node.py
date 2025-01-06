@@ -2093,8 +2093,8 @@ class CompiledDAG:
                     self._dag_output_fetcher.read(timeout),
                 )
             except ray.exceptions.RayChannelTimeoutError as e:
-                e.message += (
-                    " Timed out on fetching execution results. "
+                logger.error(
+                    "Timed out on fetching execution results. "
                     "Update RAY_CGRAPH_get_timeout for longer get timeout."
                 )
                 raise e
@@ -2145,8 +2145,8 @@ class CompiledDAG:
         try:
             self._dag_submitter.write(inp, self._submit_timeout)
         except ray.exceptions.RayChannelTimeoutError as e:
-            e.message += (
-                " Timed out on submitting execution. "
+            logger.error(
+                "Timed out on submitting execution. "
                 "Update RAY_CGRAPH_submit_timeout for longer submit timeout."
             )
             raise e
