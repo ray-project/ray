@@ -440,20 +440,22 @@ class WorkerGroup:
             else:
                 done_refs = [w.actor.__ray_terminate__.remote() for w in self._workers]
                 # Wait for actors to die gracefully.
-                _, not_done = ray.wait(done_refs, timeout=patience_s)
+                _, not_done = ray.wait(
+                    done_refs, num_returns=len(done_refs), timeout=patience_s
+                )
                 if not_done:
-                    logger.debug(
+                    logger.error(
                         "Graceful termination failed. Falling back to force kill."
                     )
                     # If all actors are not able to die gracefully, then kill them.
                     for worker in self._workers:
                         ray.kill(worker.actor)
 
-            if self._pg:
-                remove_placement_group(self._pg)
-
             if self._sync_actor:
                 ray.kill(self._sync_actor)
+
+            if self._pg:
+                remove_placement_group(self._pg)
 
             self._clear_state()
 
