@@ -370,8 +370,8 @@ See these following examples:
 
     .. tab-item:: Continue training
 
-        When using RLlib directly (without Ray Tune), the problem of loading a state
-        into a running instance is quite simple:
+        When using RLlib directly (without Ray Tune), the loading a state into a running instance
+        is straightforward:
 
         .. testcode::
 
@@ -396,7 +396,8 @@ See these following examples:
         Algorithm object or any of its subcomponents.
         You can use a simple :ref:`custom callback <rllib-callback-docs>` to solve for this.
 
-        Also, see `this example script here for more details <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/change_config_during_training.py>`__.
+        Also, see here for an
+        `example on how to continue training with a different config <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/change_config_during_training.py>`__.
 
         .. testcode::
 
@@ -405,12 +406,12 @@ See these following examples:
             # Define a simple callback that runs right after algorithm initialization.
             from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
-            class LoadState(DefaultCallbacks):
-                def on_algorithm_init(self, *, algorithm, **kwargs):
-                    algorithm.restore_from_path(checkpoint_dir)
-
             # Add the callback to your config.
-            config.callbacks(LoadState)
+            config.callbacks(
+                on_algorithm_init=(
+                    lambda algorithm, _dir=checkpoint_dir, **kw: algorithm.restore_from_path(_dir)
+                ),
+            )
 
             # Run the experiment (continuing from the checkpoint) through Ray Tune.
             results = tune.Tuner(
@@ -425,29 +426,25 @@ See these following examples:
 
         .. testcode::
 
-            # Unzip checkpoint for that ray version into a temp directory.
-            with TemporaryDirectory() as temp_dir:
-                temp_path = Path(temp_dir)
+            # Restore the algorithm from the (old) msgpack-checkpoint, using the
+            # current Ray version's `config` object.
+            algo = PPO.from_checkpoint(path=checkpoint_dir, config=current_config)
+            print(algo.train()[LEARNER_RESULTS])
+            algo.stop()
 
-                # Restore the algorithm from the (old) msgpack-checkpoint, using the
-                # current Ray version's `config` object.
-                algo = PPO.from_checkpoint(path=temp_dir, config=current_config)
-                learner_res = algo.train()[LEARNER_RESULTS]
-                algo.stop()
-
-                # Second experiment: Add all the policies to the config again that were
-                # present when the checkpoint was taken and try `from_checkpoint` again.
-                expanded_config = current_config.copy(copy_frozen=False)
-                all_pols = {"p0", "p1", "p2", "p3"}
-                expanded_config.multi_agent(
-                    policies=all_pols,
-                    # Create some completely new mapping function (that has nothing to
-                    # do with the checkpointed one).
-                    policy_mapping_fn=(
-                        lambda aid, eps, _p=tuple(all_pols), **kw: random.choice(_p)
-                    ),
-                    policies_to_train=all_pols,
-                )
-                algo = PPO.from_checkpoint(path=temp_dir, config=expanded_config)
-                learner_res = algo.train()[LEARNER_RESULTS]
-                algo.stop()
+            # Second experiment: Add all the policies to the config again that were
+            # present when the checkpoint was taken and try `from_checkpoint` again.
+            expanded_config = current_config.copy(copy_frozen=False)
+            all_pols = {"p0", "p1", "p2", "p3"}
+            expanded_config.multi_agent(
+                policies=all_pols,
+                # Create some completely new mapping function (that has nothing to
+                # do with the checkpointed one).
+                policy_mapping_fn=(
+                    lambda aid, eps, _p=tuple(all_pols), **kw: random.choice(_p)
+                ),
+                policies_to_train=all_pols,
+            )
+            algo = PPO.from_checkpoint(path=temp_dir, config=expanded_config)
+            print(algo.train()[LEARNER_RESULTS])
+            algo.stop()
