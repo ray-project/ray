@@ -426,27 +426,32 @@ for example a particular :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule
 
         Here is how you can continue training the multi-agent experiment, but swap out ``p1`` with
         the state of the ``default_policy`` from the single-agent experiment.
-        You can use :ref:`RLlib's callbacks APIs <rllib-callback-docs>` to inject custom code and solve for this:
+        You can use :ref:`RLlib's callbacks APIs <rllib-callback-docs>` to inject custom
+        code into a Ray Tune experiment:
 
         .. testcode::
 
             # Reuse the preceding multi-agent PPOConfig (`multi_agent_config`).
 
             # But swap out ``p1`` with the state of the ``default_policy`` from the
-            # single-agent run:
-            rl_module_component_tree = "learner_group/learner/rl_module"
+            # single-agent run, using a callback and the correct path through the
+            # RLlib component tree:
+            multi_rl_module_component_tree = "learner_group/learner/rl_module"
 
             # Inject custom callback code that runs right after algorithm's initialization.
 
             def _on_algo_init(algorithm, **kwargs):
                 algorithm.restore_from_path(
-                    path=Path(checkpoint_dir) / rl_module_component_tree / "default_policy",
-                    component=rl_module_component_tree + "/p1",
+                    # Checkpoint was single-agent (has "default_policy" subdir).
+                    path=Path(checkpoint_dir) / multi_rl_module_component_tree / "default_policy",
+                    # Algo is multi-agent (has "p0" and "p1" subdirs).
+                    component=multi_rl_module_component_tree + "/p1",
                 )
 
+            # Inject callback.
             multi_agent_config.callbacks(on_algorithm_init=_on_algo_init)
 
-            # Run the experiment, continuing from the checkpoint, through Ray Tune.
+            # Run the experiment through Ray Tune.
             results = tune.Tuner(
                 multi_agent_config.algo_class,
                 param_space=multi_agent_config,
