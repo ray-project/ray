@@ -429,7 +429,7 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
-@PublicAPI(stability="beta")
+@DeveloperAPI
 @dataclass(frozen=True)
 class RunTarget:
     """Represents a Serve application to run for `serve.run_many`."""
@@ -440,7 +440,7 @@ class RunTarget:
     logging_config: Optional[Union[Dict, LoggingConfig]] = None
 
 
-@PublicAPI(stability="beta")
+@DeveloperAPI
 def _run_many(
     targets: Sequence[RunTarget],
     wait_for_ingress_deployment_creation: bool = True,
@@ -497,7 +497,7 @@ def _run_many(
     else:
         client = _private_api.serve_start(
             http_options={"location": "EveryNode"},
-            global_logging_config=t.logging_config,  # implicitly uses the last target
+            global_logging_config=None,
         )
 
         # Record after Ray has been started.
@@ -539,7 +539,7 @@ def _run(
     )[0]
 
 
-@PublicAPI(stability="beta")
+@DeveloperAPI
 def run_many(
     targets: Sequence[RunTarget],
     blocking: bool = False,
