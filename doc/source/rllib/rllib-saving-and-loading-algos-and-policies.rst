@@ -3,7 +3,7 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. _rllib-saving-and-loading-algos-and-policies-docs:
+.. _rllib-checkpointing-docs:
 
 ##################################################
 Saving and Loading your RL Algorithms and Policies
