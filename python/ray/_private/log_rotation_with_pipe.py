@@ -5,8 +5,12 @@ import sys
 import os
 import logging
 import threading
+import uuid
 import atexit
 from logging.handlers import RotatingFileHandler
+
+# Use a special token to indicate write finish.
+_EOF_TOKEN = str(uuid.uuid4()) + "\n"
 
 
 class PipeStreamWriteHandle(IO[AnyStr]):
@@ -49,11 +53,11 @@ def open_pipe_with_file_handlers(log_name: str, handlers) -> IO[AnyStr]:
     read_fd, write_fd = os.pipe()
 
     log_content = []
-    stopped = False
-    lock = threading.Lock()
-    cond = threading.Condition(lock)
+    stopped = threading.Event()
+    cond = threading.Condition()
 
-    logger = logging.getLogger(name=__name__)
+    # Have to use different logger names for different sinks.
+    logger = logging.getLogger(f"logger-{log_name}")
     logger.setLevel(logging.INFO)
     for handler in handlers:
         logger.addHandler(handler)
@@ -64,49 +68,61 @@ def open_pipe_with_file_handlers(log_name: str, handlers) -> IO[AnyStr]:
             while True:
                 line = pipe_reader.readline()
 
-                # An empty line is read over, which indicates write side has closed.
-                if line == "":
-                    with cond:
+                with cond:
+                    # An empty line is read over, which indicates write side has
+                    # closed.
+                    if line == _EOF_TOKEN:
+                        stopped.set()
                         cond.notify()
-                    return
+                        return
 
-                # Only buffer new line when not empty.
-                line = line.strip()
-                if line:
-                    with cond:
-                        log_content.append(line)
-                        cond.notify()
+                    # Only buffer new line when not empty.
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+
+                    # Append content and continue.
+                    log_content.append(stripped)
+                    cond.notify()
 
     # Setup logging thread, which continues read content out of log buffer and persist
     # via logger.
     # Two threads are used here to make sure continuous read from pipe thus avoid
     # blocking write from application.
     def dump_log_content_to_buffer():
+        # Current line to log.
+        cur_content = None
+
         while True:
             with cond:
-                while not log_content and not stopped:
+                while not log_content and not stopped.is_set():
                     cond.wait()
 
                 if log_content:
-                    content = log_content.pop(0)
-                    logger.info(content)
-                    continue
+                    cur_content = log_content.pop(0)
+                else:
+                    assert stopped.is_set()
+                    return
 
-                # Thread requested to stop
-                return
+            # Log and perform IO operation out of critical section.
+            logger.info(cur_content)
 
-    read_thread = threading.Thread(target=read_log_content_from_pipe)
-    dump_thread = threading.Thread(target=dump_log_content_to_buffer)
+    # Python `atexit` hook only invokes when no other non-daemon threads running.
+    read_thread = threading.Thread(target=read_log_content_from_pipe, daemon=True)
+    dump_thread = threading.Thread(target=dump_log_content_to_buffer, daemon=True)
     read_thread.start()
     dump_thread.start()
 
     pipe_write_stream = PipeStreamWriteHandle(write_fd, log_name=log_name)
 
     def cleanup():
-        nonlocal stopped
-        with lock:
-            stopped = True
+        pipe_write_stream.write(_EOF_TOKEN)
+        pipe_write_stream.flush()
         pipe_write_stream.close()
+
+        # Synchronize to make sure everything flushed.
+        read_thread.join()
+        dump_thread.join()
 
     atexit.register(cleanup)
 
