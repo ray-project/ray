@@ -179,6 +179,20 @@ class CPUCommunicator(Communicator):
         ]
         self.num_ops[barrier_key] += 1
 
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ):
+        all_ranks = [
+            self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()
+        ]
+        barrier_key = "barrier-collective-" + "-".join(map(str, sorted(all_ranks)))
+        barrier = CPUCommBarrier.options(name=barrier_key, get_if_exists=True).remote(
+            self._world_size
+        )
+        self.barriers.add(barrier)
+
     def destroy(self) -> None:
         for barrier in self.barriers:
             ray.kill(barrier)

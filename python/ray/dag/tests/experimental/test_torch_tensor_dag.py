@@ -1780,6 +1780,52 @@ def test_nccl_reduce_scatter_with_class_method_output_node(ray_start_regular):
             t3,
         ]
         assert all(torch.equal(r, e) for r, e in zip(result, expected_result))
+    
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_all_gather(ray_start_regular):
+    """
+    Test basic all-gather.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.allgather.bind(computes)
+        recvs = [
+            worker.recv_tensor.bind(collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        i += 1
+        shape = (i, i)
+        dtype = torch.float16
+        value = i
+        ref = compiled_dag.execute(
+            [(shape, dtype, value) for _ in range(num_workers)]
+        )
+        result = ray.get(ref)
+        for tensor in result:
+            tensor = tensor.to("cpu")
+            expected_tensor_val = torch.ones((num_workers * i, i), dtype=dtype) * value
+            assert torch.equal(tensor, expected_tensor_val)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)

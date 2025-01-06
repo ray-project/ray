@@ -39,8 +39,8 @@ class _CollectiveOperation:
     def __init__(
         self,
         input_nodes: List[DAGNode],
-        op: _CollectiveOp,
         transport: Optional[Union[str, Communicator]] = None,
+        op: Optional[_CollectiveOp] = None,
     ):
         if len(input_nodes) == 0:
             raise ValueError("Expected input nodes for a collective operation")
@@ -66,8 +66,8 @@ class _CollectiveOperation:
             )
 
         self._op = op
-        if not isinstance(self._op, ReduceOp):
-            raise NotImplementedError("Only ReduceOp is implemented")
+        if self._op is not None and not isinstance(self._op, ReduceOp):
+            raise NotImplementedError(f"Unimplemented collective operation: {self._op}")
         if transport is None:
             transport = TorchTensorType.NCCL
         self._type_hint = TorchTensorType(transport=transport, _direct_return=True)
@@ -129,7 +129,15 @@ class _CollectiveOperation:
         if not isinstance(send_buf, torch.Tensor):
             raise ValueError("Expected a torch tensor")
         communicator = self.get_communicator()
-        if isinstance(self._op, AllReduceOp):
+        if self._op is None:
+            world_size = len(self._actor_handles)
+            recv_buf = torch.empty(
+                (send_buf.shape[0] * world_size, *send_buf.shape[1:]),
+                dtype=send_buf.dtype,
+                device=send_buf.device,
+            )
+            communicator.allgather(send_buf, recv_buf)
+        elif isinstance(self._op, AllReduceOp):
             recv_buf = torch.empty_like(send_buf)
             communicator.allreduce(send_buf, recv_buf, self._op)
         elif isinstance(self._op, ReduceScatterOp):
