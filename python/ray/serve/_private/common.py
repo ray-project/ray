@@ -635,9 +635,12 @@ class StreamingHTTPRequest:
             Callable[[RequestMetadata], Awaitable[bytes]]
         ] = None,
     ):
-        self._asgi_scope = asgi_scope
-        self._proxy_actor_name = proxy_actor_name
-        self._receive_asgi_messages = receive_asgi_messages
+        self._asgi_scope: Scope = asgi_scope
+        self._proxy_actor_name: Optional[str] = proxy_actor_name
+        self._cached_proxy_actor: Optional[ActorHandle] = None
+        self._receive_asgi_messages: Optional[
+            Callable[[RequestMetadata], Awaitable[bytes]]
+        ] = receive_asgi_messages
 
         if proxy_actor_name is None and receive_asgi_messages is None:
             raise ValueError(
@@ -651,10 +654,12 @@ class StreamingHTTPRequest:
     @property
     def receive_asgi_messages(self) -> Callable[[RequestMetadata], Awaitable[bytes]]:
         if self._receive_asgi_messages is None:
-            proxy_actor = ray.get_actor(
+            self._cached_proxy_actor = ray.get_actor(
                 self._proxy_actor_name, namespace=SERVE_NAMESPACE
             )
-            self._receive_asgi_messages = proxy_actor.receive_asgi_messages.remote
+            self._receive_asgi_messages = (
+                self._cached_proxy_actor.receive_asgi_messages.remote
+            )
 
         return self._receive_asgi_messages
 
