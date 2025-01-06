@@ -440,15 +440,14 @@ std::string FormatFloat(float value, int32_t precision) {
   return ss.str();
 }
 
-std::unique_ptr<std::chrono::steady_clock::time_point> ToTimeoutPoint(
-    int64_t timeout_ms) {
+std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms) {
+  std::optional<std::chrono::steady_clock::time_point> timeout_point;
   if (timeout_ms == -1) {
-    return nullptr;
+    return timeout_point;
   }
   auto now = std::chrono::steady_clock::now();
   auto timeout_duration = std::chrono::milliseconds(timeout_ms);
-  auto timeout_point =
-      std::make_unique<std::chrono::steady_clock::time_point>(now + timeout_duration);
+  timeout_point.emplace(now + timeout_duration);
   return timeout_point;
 }
 

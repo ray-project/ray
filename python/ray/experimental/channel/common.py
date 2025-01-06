@@ -56,9 +56,9 @@ def retry_and_check_interpreter_exit(f: Callable[[], None]) -> bool:
     return exiting
 
 
-# Holds the input arguments for an accelerated DAG node.
+# Holds the input arguments for Compiled Graph
 @PublicAPI(stability="alpha")
-class RayDAGArgs(NamedTuple):
+class CompiledDAGArgs(NamedTuple):
     args: Tuple[Any, ...]
     kwargs: Dict[str, Any]
 
@@ -709,7 +709,7 @@ def _adapt(raw_args: Any, key: Optional[Union[int, str]], is_input: bool):
         is_input: Whether the writer is DAG input writer or not.
     """
     if is_input:
-        if not isinstance(raw_args, RayDAGArgs):
+        if not isinstance(raw_args, CompiledDAGArgs):
             # Fast path for a single input.
             return raw_args
         else:

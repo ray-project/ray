@@ -50,7 +50,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
  public:
   /// Buffer for a mutable object. This buffer wraps a shared memory buffer of
   /// a mutable object, and read-releases the mutable object when it is destructed.
-  /// This auto-releasing behavior enables a cleaner API for accelerated DAG so that
+  /// This auto-releasing behavior enables a cleaner API for compiled graphs so that
   /// manual calls to ReadRelease() are not needed.
   class MutableObjectBuffer : public SharedMemoryBuffer {
    public:
@@ -99,7 +99,9 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
     std::unique_ptr<plasma::MutableObject> mutable_object;
   } ABSL_CACHELINE_ALIGNED;
 
-  MutableObjectManager() = default;
+  explicit MutableObjectManager(std::function<Status()> check_signals = nullptr)
+      : check_signals_(std::move(check_signals)) {}
+
   ~MutableObjectManager();
 
   /// Registers a channel for `object_id`.
@@ -280,6 +282,9 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   // The calling threads are all readers and writers, along with the thread that calls the
   // destructor.
   absl::Mutex destructor_lock_;
+
+  // Function passed in to be called to check for signals (e.g., Ctrl-C).
+  std::function<Status(void)> check_signals_;
 };
 
 }  // namespace experimental

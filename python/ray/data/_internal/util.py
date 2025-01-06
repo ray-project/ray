@@ -78,6 +78,9 @@ class _NullSentinel:
     def __ge__(self, other):
         return True
 
+    def __hash__(self):
+        return id(self)
+
 
 NULL_SENTINEL = _NullSentinel()
 
@@ -1102,3 +1105,19 @@ def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
     else:
         num_bytes_str = f"{round(num_bytes / 1e3)}KB"
     return num_bytes_str
+
+
+def is_nan(value):
+    try:
+        return isinstance(value, float) and np.isnan(value)
+    except TypeError:
+        return False
+
+
+def keys_equal(keys1, keys2):
+    if len(keys1) != len(keys2):
+        return False
+    for k1, k2 in zip(keys1, keys2):
+        if not ((is_nan(k1) and is_nan(k2)) or k1 == k2):
+            return False
+    return True

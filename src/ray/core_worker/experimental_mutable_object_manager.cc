@@ -320,6 +320,9 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   bool expired = false;
   do {
     RAY_RETURN_NOT_OK(object->header->CheckHasError());
+    if (check_signals_) {
+      RAY_RETURN_NOT_OK(check_signals_());
+    }
     // The channel is still open. This lock ensures that there is only one reader
     // at a time. The lock is released in `ReadRelease()`.
     locked = channel->lock->try_lock();
@@ -333,8 +336,12 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
 
   channel->reading = true;
   int64_t version_read = 0;
-  Status s = object->header->ReadAcquire(
-      object_id, sem, channel->next_version_to_read, version_read, timeout_point);
+  Status s = object->header->ReadAcquire(object_id,
+                                         sem,
+                                         channel->next_version_to_read,
+                                         version_read,
+                                         check_signals_,
+                                         timeout_point);
   if (!s.ok()) {
     RAY_LOG(DEBUG) << "ReadAcquire error was set, returning " << object_id;
     // Failed because the error bit was set on the mutable object.
