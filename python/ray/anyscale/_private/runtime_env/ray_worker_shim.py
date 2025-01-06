@@ -58,9 +58,11 @@ async def main(working_dir: str):
 
 
 if __name__ == "__main__":
-    # We get the current working directory of the worker shim here, which was already populated with the
-    # right working_dir by the runtime_env and forward it to be the working directory of the container worker.
-    # NOTE: We need to make sure the directory is mounted into the worker container, which is the case on
-    # Anyscale since /tmp/ray is mounted into all worker containers.
+    # We get the current working directory of the worker shim here, which
+    # was already populated with the right working_dir by the runtime_env
+    # and forward it to be the working directory of the container worker.
+    # NOTE: We need to make sure the directory is mounted into the worker
+    # container, which is the case on Anyscale since /tmp/ray is mounted
+    # into all worker containers.
     working_dir = os.getcwd()
     asyncio.run(main(working_dir))
