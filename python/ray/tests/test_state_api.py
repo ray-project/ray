@@ -70,8 +70,8 @@ from ray.dashboard.state_aggregator import (
     GCS_QUERY_FAILURE_WARNING,
     NODE_QUERY_FAILURE_WARNING,
     StateAPIManager,
-    _convert_filters_type,
 )
+from ray.dashboard.state_api_utils import convert_filters_type
 from ray.util.state import (
     get_actor,
     get_node,
@@ -1616,39 +1616,39 @@ async def test_filter_non_existent_column(state_api_manager):
 
 def test_type_conversion():
     # Test string
-    r = _convert_filters_type([("actor_id", "=", "123")], ActorState)
+    r = convert_filters_type([("actor_id", "=", "123")], ActorState)
     assert r[0][2] == "123"
-    r = _convert_filters_type([("actor_id", "=", "abcd")], ActorState)
+    r = convert_filters_type([("actor_id", "=", "abcd")], ActorState)
     assert r[0][2] == "abcd"
-    r = _convert_filters_type([("actor_id", "=", "True")], ActorState)
+    r = convert_filters_type([("actor_id", "=", "True")], ActorState)
     assert r[0][2] == "True"
 
     # Test boolean
-    r = _convert_filters_type([("success", "=", "1")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "1")], RuntimeEnvState)
     assert r[0][2]
-    r = _convert_filters_type([("success", "=", "True")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "True")], RuntimeEnvState)
     assert r[0][2]
-    r = _convert_filters_type([("success", "=", "true")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "true")], RuntimeEnvState)
     assert r[0][2]
     with pytest.raises(ValueError):
-        r = _convert_filters_type([("success", "=", "random_string")], RuntimeEnvState)
-    r = _convert_filters_type([("success", "=", "false")], RuntimeEnvState)
+        r = convert_filters_type([("success", "=", "random_string")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "false")], RuntimeEnvState)
     assert r[0][2] is False
-    r = _convert_filters_type([("success", "=", "False")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "False")], RuntimeEnvState)
     assert r[0][2] is False
-    r = _convert_filters_type([("success", "=", "0")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "0")], RuntimeEnvState)
     assert r[0][2] is False
 
     # Test int
-    r = _convert_filters_type([("pid", "=", "0")], ObjectState)
+    r = convert_filters_type([("pid", "=", "0")], ObjectState)
     assert r[0][2] == 0
-    r = _convert_filters_type([("pid", "=", "123")], ObjectState)
+    r = convert_filters_type([("pid", "=", "123")], ObjectState)
     assert r[0][2] == 123
     # Only integer can be provided.
     with pytest.raises(ValueError):
-        r = _convert_filters_type([("pid", "=", "123.3")], ObjectState)
+        r = convert_filters_type([("pid", "=", "123.3")], ObjectState)
     with pytest.raises(ValueError):
-        r = _convert_filters_type([("pid", "=", "abc")], ObjectState)
+        r = convert_filters_type([("pid", "=", "abc")], ObjectState)
 
     # currently, there's no schema that has float column.
 
@@ -2613,6 +2613,83 @@ def test_list_get_tasks(shutdown_only):
         tasks = list_tasks(filters=[("STATE", "=", "PENDING_ARGS_AVAIL")], limit=1)
         assert len(tasks) == 1
 
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+def test_list_get_tasks_call_site(shutdown_only):
+    """
+    Call chain: Driver -> caller -> callee.
+    Verify that the call site is captured in callee, and it contains string
+    "caller".
+    """
+    ray.init(
+        num_cpus=2,
+        runtime_env={"env_vars": {"RAY_record_task_actor_creation_sites": "true"}},
+    )
+
+    @ray.remote
+    def callee():
+        import time
+
+        time.sleep(30)
+
+    @ray.remote
+    def caller():
+        return callee.remote()
+
+    caller_ref = caller.remote()
+    callee_ref = ray.get(caller_ref)
+
+    def verify():
+        callee_task = get_task(callee_ref)
+        assert callee_task["call_site"] is not None
+        assert "caller" in callee_task["call_site"]
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+def test_list_actor_tasks_call_site(shutdown_only):
+    """
+    Call chain: Driver -> create_actor -> (Actor, Actor.method).
+
+    Verify that the call sites are captured in both Actor and Actor.method,
+    and they contain string "create_actor".
+    """
+    ray.init(
+        num_cpus=2,
+        runtime_env={"env_vars": {"RAY_record_task_actor_creation_sites": "true"}},
+    )
+
+    @ray.remote
+    class Actor:
+        def method(self):
+            import time
+
+            time.sleep(30)
+
+    @ray.remote
+    def create_actor():
+        a = Actor.remote()
+        m_ref = a.method.remote()
+        return a, m_ref
+
+    actor_ref, method_ref = ray.get(create_actor.remote())
+
+    def verify():
+        method_task = get_task(method_ref)
+        assert method_task["call_site"] is not None
+        assert "create_actor" in method_task["call_site"]
+
+        actors = list_actors(detail=True)
+        assert len(actors) == 1
+        actor = actors[0]
+        assert actor["call_site"] is not None
+        assert "create_actor" in actor["call_site"]
         return True
 
     wait_for_condition(verify)

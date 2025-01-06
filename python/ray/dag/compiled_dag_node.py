@@ -23,8 +23,11 @@ import traceback
 import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
-from ray.experimental.channel.gpu_communicator import GPUCommunicator
-from ray.dag.constants import RAY_CGRAPH_VISUALIZE_SCHEDULE
+from ray.experimental.channel.communicator import Communicator
+from ray.dag.constants import (
+    RAY_CGRAPH_ENABLE_NVTX_PROFILING,
+    RAY_CGRAPH_VISUALIZE_SCHEDULE,
+)
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.experimental.compiled_dag_ref import (
@@ -42,7 +45,7 @@ from ray.experimental.channel import (
     SynchronousWriter,
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
-    RayDAGArgs,
+    CompiledDAGArgs,
     CompositeChannel,
     IntraProcessChannel,
 )
@@ -54,8 +57,8 @@ from ray.experimental.channel.shared_memory_channel import (
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 from ray.experimental.channel.torch_tensor_nccl_channel import (
-    _init_nccl_group,
-    _destroy_nccl_group,
+    _init_communicator,
+    _destroy_communicator,
 )
 
 from ray.dag.dag_node_operation import (
@@ -153,6 +156,17 @@ def do_exec_tasks(
         for task in tasks:
             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
+        if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
+            try:
+                import nvtx
+            except ImportError:
+                raise ImportError(
+                    "Please install nvtx to enable nsight profiling. "
+                    "You can install it by running `pip install nvtx`."
+                )
+            nvtx_profile = nvtx.Profile()
+            nvtx_profile.enable()
+
         done = False
         while True:
             if done:
@@ -163,6 +177,9 @@ def do_exec_tasks(
                 )
                 if done:
                     break
+
+        if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
+            nvtx_profile.disable()
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
         raise
@@ -254,7 +271,7 @@ def _get_nccl_group_id(type_hint: ChannelOutputType) -> Optional[str]:
     """
     if type_hint.requires_nccl():
         assert isinstance(type_hint, TorchTensorType)
-        return type_hint.nccl_group_id
+        return type_hint.communicator_id
     return None
 
 
@@ -488,14 +505,14 @@ class ExecutableTask:
         # is configured
         if self.output_type_hint.requires_nccl():
             nccl_group_id = _get_nccl_group_id(self.output_type_hint)
-            nccl_group = ChannelContext.get_current().nccl_groups.get(nccl_group_id)
+            nccl_group = ChannelContext.get_current().communicators.get(nccl_group_id)
             assert nccl_group is not None
             self._send_stream = nccl_group.send_stream
         if self.input_type_hints:
             for type_hint in self.input_type_hints:
                 if type_hint.requires_nccl():
                     nccl_group_id = _get_nccl_group_id(type_hint)
-                    nccl_group = ChannelContext.get_current().nccl_groups.get(
+                    nccl_group = ChannelContext.get_current().communicators.get(
                         nccl_group_id
                     )
                     assert nccl_group is not None
@@ -710,7 +727,7 @@ class CompiledDAG:
         reader ref on the driver node if the channel backing store needs to be resized.
         However, remote functions cannot be invoked on the driver.
 
-        An accelerated DAG creates an actor from this class when the DAG is intialized.
+        A Compiled Graph creates an actor from this class when the DAG is initialized.
         The actor is on the same node as the driver. This class has an empty
         implementation, though it serves as a way for the output writer to invoke remote
         functions on the driver node.
@@ -720,7 +737,7 @@ class CompiledDAG:
 
     def __init__(
         self,
-        execution_timeout: Optional[float] = None,
+        submit_timeout: Optional[float] = None,
         buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         asyncio_max_queue_size: Optional[int] = None,
@@ -730,13 +747,14 @@ class CompiledDAG:
     ):
         """
         Args:
-            execution_timeout: The maximum time in seconds to wait for execute() calls.
-                None means using default timeout (DAGContext.execution_timeout),
+            submit_timeout: The maximum time in seconds to wait for execute() calls.
+                None means using default timeout (DAGContext.submit_timeout),
                 0 means immediate timeout (immediate success or timeout without
                 blocking), -1 means infinite timeout (block indefinitely).
-            buffer_size_bytes: The number of bytes to allocate for object data and
-                metadata. Each argument passed to a task in the DAG must be
-                less than or equal to this value when serialized.
+            buffer_size_bytes: The initial buffer size in bytes for messages
+                that can be passed between tasks in the DAG. The buffers will
+                be automatically resized if larger messages are written to the
+                channel.
             enable_asyncio: Whether to enable asyncio. If enabled, caller must
                 be running in an event loop and must use `execute_async` to
                 invoke the DAG. Otherwise, the caller should use `execute` to
@@ -756,9 +774,9 @@ class CompiledDAG:
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
             max_inflight_executions: The maximum number of in-flight executions that
-                are allowed to be sent to this DAG. Before submitting more requests,
-                the caller is responsible for calling ray.get to get the result,
-                otherwise, RayAdagCapacityExceeded is raised.
+                can be submitted via `execute` or `execute_async` before consuming
+                the output using `ray.get()`. If the caller submits more executions,
+                `RayCgraphCapacityExceeded` is raised.
             overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution. If True, the communication
                 and computation can be overlapped, which can improve the
@@ -783,9 +801,9 @@ class CompiledDAG:
         if self._max_inflight_executions is None:
             self._max_inflight_executions = ctx.max_inflight_executions
         self._dag_id = uuid.uuid4().hex
-        self._execution_timeout: Optional[float] = execution_timeout
-        if self._execution_timeout is None:
-            self._execution_timeout = ctx.execution_timeout
+        self._submit_timeout: Optional[float] = submit_timeout
+        if self._submit_timeout is None:
+            self._submit_timeout = ctx.submit_timeout
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = ctx.buffer_size_bytes
@@ -859,13 +877,13 @@ class CompiledDAG:
 
         # This is set to true when type hint of `transport="nccl"` is used.
         self._use_default_nccl_group = False
-        # This is set to the specified custom nccl group
-        # if there exists a type hint of `transport=nccl_group`.
-        self._custom_nccl_group_p2p: Optional[GPUCommunicator] = None
+        # This is set to the specified custom communicator
+        # if there exists a type hint of `transport=custom_communicator`.
+        self._custom_communicator_p2p: Optional[Communicator] = None
         # The NCCL group ID for P2P send/recv operations.
-        self._nccl_group_id_p2p: Optional[str] = None
+        self._communicator_id_p2p: Optional[str] = None
         # All the NCCL group IDs for P2P send/recv and collective operations.
-        self._nccl_group_ids: Set[str] = set()
+        self._communicator_ids: Set[str] = set()
         # The index of the current execution. It is incremented each time
         # the DAG is executed.
         self._execution_index: int = 0
@@ -896,16 +914,16 @@ class CompiledDAG:
         self._is_teardown = False
 
     @property
-    def nccl_group_id_p2p(self) -> Optional[str]:
-        return self._nccl_group_id_p2p
+    def communicator_id_p2p(self) -> Optional[str]:
+        return self._communicator_id_p2p
 
     @property
     def is_teardown(self) -> bool:
         return self._is_teardown
 
     @property
-    def nccl_group_ids(self) -> Set[str]:
-        return self._nccl_group_ids
+    def communicator_ids(self) -> Set[str]:
+        return self._communicator_ids
 
     def increment_max_finished_execution_index(self) -> None:
         """Increment the max finished execution index. It is used to
@@ -949,7 +967,7 @@ class CompiledDAG:
         self.input_task_idx, self.output_task_idx = None, None
 
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
-        nccl_collective_ops: Set[_CollectiveOperation] = set()
+        collective_ops: Set[_CollectiveOperation] = set()
 
         # Find the input node and input attribute nodes in the DAG.
         for idx, task in self.idx_to_task.items():
@@ -967,7 +985,7 @@ class CompiledDAG:
                 continue
             if (
                 len(task.downstream_task_idxs) == 0
-                and task.dag_node.is_adag_output_node
+                and task.dag_node.is_cgraph_output_node
             ):
                 assert self.output_task_idx is None, "More than one output node found"
                 self.output_task_idx = idx
@@ -1025,9 +1043,9 @@ class CompiledDAG:
                 # Collect actors for NCCL P2P methods.
                 if dag_node.type_hint.requires_nccl():
                     nccl_actors_p2p.add(actor_handle)
-                    custom_nccl_group = dag_node.type_hint.get_custom_nccl_group()
+                    custom_communicator = dag_node.type_hint.get_custom_communicator()
                     mixed_nccl_group_error_message = (
-                        "Accelerated DAGs do not support mixed usage of "
+                        "Compiled Graphs do not support mixed usage of "
                         "type hints of default NCCL group "
                         '(i.e., TorchTensor(transport="nccl"))'
                         "and custom NCCL group "
@@ -1035,27 +1053,27 @@ class CompiledDAG:
                         "Please check all the TorchTensor type hints and "
                         "make sure only one type of NCCL transport is specified."
                     )
-                    if custom_nccl_group is None:
-                        if self._custom_nccl_group_p2p is not None:
+                    if custom_communicator is None:
+                        if self._custom_communicator_p2p is not None:
                             raise ValueError(mixed_nccl_group_error_message)
                         self._use_default_nccl_group = True
                     else:
                         if self._use_default_nccl_group:
                             raise ValueError(mixed_nccl_group_error_message)
-                        if self._custom_nccl_group_p2p is not None:
-                            if self._custom_nccl_group_p2p != custom_nccl_group:
+                        if self._custom_communicator_p2p is not None:
+                            if self._custom_communicator_p2p != custom_communicator:
                                 raise ValueError(
-                                    "Accelerated DAGs currently only support "
+                                    "Compiled Graphs currently only support "
                                     "a single custom NCCL group, but multiple "
                                     "have been specified. Check all the "
                                     "TorchTensor(transport=nccl_group) type hints "
                                     "to make sure only one NCCL group is used."
                                 )
-                        self._custom_nccl_group_p2p = custom_nccl_group
+                        self._custom_communicator_p2p = custom_communicator
 
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
-                    nccl_collective_ops.add(dag_node.collective_op)
+                    collective_ops.add(dag_node.collective_op)
                     assert not self._overlap_gpu_communication, (
                         "Currently, the overlap_gpu_communication option is not "
                         "supported for NCCL collective operations. Please set "
@@ -1142,7 +1160,7 @@ class CompiledDAG:
                 continue
             if (
                 len(task.downstream_task_idxs) == 0
-                and not task.dag_node.is_adag_output_node
+                and not task.dag_node.is_cgraph_output_node
             ):
                 leaf_nodes.append(task.dag_node)
         # Leaf nodes are not allowed because the exception thrown by the leaf
@@ -1162,74 +1180,74 @@ class CompiledDAG:
 
         # Initialize and cache a NCCL group for each custom NCCL group. All the
         # custom NCCL groups are initialized before the default NCCL groups.
-        custom_nccl_group_to_id: Dict[GPUCommunicator, str] = {}
+        custom_communicator_to_id: Dict[Communicator, str] = {}
         # Initialize and cache a NCCL group for each set of actors. A set of actors
         # can perform P2P send/recv and collective operations. If there are multiple
         # custom NCCL groups for a set of actors, only one is cached.
-        actors_to_nccl_group_id: Dict[FrozenSet["ray.actor.ActorHandle"], str] = {}
+        actors_to_communicator_id: Dict[FrozenSet["ray.actor.ActorHandle"], str] = {}
 
         # If a custom NCCL group is specified for P2P actors, initialize and cache
         # the NCCL group ID.
-        if nccl_actors_p2p and self._custom_nccl_group_p2p:
+        if nccl_actors_p2p and self._custom_communicator_p2p:
             if not set(nccl_actors_p2p).issubset(
-                set(self._custom_nccl_group_p2p.get_actor_handles())
+                set(self._custom_communicator_p2p.get_actor_handles())
             ):
                 raise ValueError(
                     "Expected P2P actor handles to be a subset of the custom NCCL group"
                 )
-            self._nccl_group_id_p2p = _init_nccl_group(
+            self._communicator_id_p2p = _init_communicator(
                 nccl_actors_p2p,
-                self._custom_nccl_group_p2p,
+                self._custom_communicator_p2p,
                 self._overlap_gpu_communication,
             )
-            custom_nccl_group_to_id[
-                self._custom_nccl_group_p2p
-            ] = self._nccl_group_id_p2p
+            custom_communicator_to_id[
+                self._custom_communicator_p2p
+            ] = self._communicator_id_p2p
             actors = frozenset(nccl_actors_p2p)
-            actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
+            actors_to_communicator_id[actors] = self._communicator_id_p2p
 
-        # If a custom NCCL group is specified for collective actors, initialize and
-        # cache the NCCL group ID.
-        for collective_op in nccl_collective_ops:
+        # If a custom communicator is specified for collective actors, initialize and
+        # cache the communicator ID.
+        for collective_op in collective_ops:
             type_hint = collective_op.type_hint
-            custom_nccl_group = type_hint.get_custom_nccl_group()
-            if custom_nccl_group:
-                nccl_group_id = collective_op.init_nccl_group(
-                    custom_nccl_group_to_id.get(custom_nccl_group, None)
+            custom_communicator = type_hint.get_custom_communicator()
+            if custom_communicator:
+                communicator_id = collective_op.init_communicator(
+                    custom_communicator_to_id.get(custom_communicator, None)
                 )
-                custom_nccl_group_to_id[custom_nccl_group] = nccl_group_id
+                custom_communicator_to_id[custom_communicator] = communicator_id
                 actors = frozenset(collective_op.actor_handles)
-                if actors not in actors_to_nccl_group_id:
-                    actors_to_nccl_group_id[actors] = nccl_group_id
+                if actors not in actors_to_communicator_id:
+                    actors_to_communicator_id[actors] = communicator_id
 
         # If a NCCL group for P2P actors is not initialized, initialize and cache
         # the NCCL group ID.
-        if nccl_actors_p2p and self._nccl_group_id_p2p is None:
+        if nccl_actors_p2p and self._communicator_id_p2p is None:
             actors = frozenset(nccl_actors_p2p)
-            if actors in actors_to_nccl_group_id:
-                self._nccl_group_id_p2p = actors_to_nccl_group_id[actors]
+            if actors in actors_to_communicator_id:
+                self._communicator_id_p2p = actors_to_communicator_id[actors]
             else:
-                self._nccl_group_id_p2p = _init_nccl_group(
+                self._communicator_id_p2p = _init_communicator(
                     nccl_actors_p2p,
-                    self._custom_nccl_group_p2p,
+                    self._custom_communicator_p2p,
                     self._overlap_gpu_communication,
                 )
-                actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
+                actors_to_communicator_id[actors] = self._communicator_id_p2p
 
         # If a NCCL group for collective actors is not initialized, initialize and
         # cache the NCCL group ID.
-        for collective_op in nccl_collective_ops:
-            if collective_op.type_hint.nccl_group_id is None:
+        for collective_op in collective_ops:
+            if collective_op.type_hint.communicator_id is None:
                 actors = frozenset(collective_op.actor_handles)
-                nccl_group_id = collective_op.init_nccl_group(
-                    actors_to_nccl_group_id.get(actors, None)
+                communicator_id = collective_op.init_communicator(
+                    actors_to_communicator_id.get(actors, None)
                 )
-                if actors not in actors_to_nccl_group_id:
-                    actors_to_nccl_group_id[actors] = nccl_group_id
+                if actors not in actors_to_communicator_id:
+                    actors_to_communicator_id[actors] = communicator_id
 
         # Store all the NCCL group IDs for P2P send/recv and collective operations.
-        self._nccl_group_ids = set(actors_to_nccl_group_id.values()).union(
-            set(custom_nccl_group_to_id.values())
+        self._communicator_ids = set(actors_to_communicator_id.values()).union(
+            set(custom_communicator_to_id.values())
         )
 
         if direct_input:
@@ -1305,7 +1323,7 @@ class CompiledDAG:
             task = self.idx_to_task[cur_idx]
             type_hint = task.dag_node.type_hint
             if type_hint.requires_nccl():
-                type_hint.set_nccl_group_id(self._nccl_group_id_p2p)
+                type_hint.set_communicator_id(self._communicator_id_p2p)
 
             if (
                 isinstance(task.dag_node, ClassMethodNode)
@@ -1576,7 +1594,6 @@ class CompiledDAG:
             executable_tasks.sort(key=lambda task: task.bind_index)
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
-        # Build an execution schedule for each actor
         from ray.dag.constants import RAY_CGRAPH_ENABLE_PROFILING
 
         if RAY_CGRAPH_ENABLE_PROFILING:
@@ -1584,6 +1601,7 @@ class CompiledDAG:
         else:
             exec_task_func = do_exec_tasks
 
+        # Build an execution schedule for each actor
         self.actor_to_execution_schedule = self._build_execution_schedule()
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
@@ -1819,11 +1837,10 @@ class CompiledDAG:
         class Monitor(threading.Thread):
             def __init__(self):
                 super().__init__(daemon=True)
-                self.in_teardown = False
+                self.name = "CompiledGraphMonitorThread"
                 # Lock to make sure that we only perform teardown for this DAG
                 # once.
-                self.in_teardown_lock = threading.Lock()
-                self.name = "CompiledGraphMonitorThread"
+                self._in_teardown_lock = threading.Lock()
                 self._teardown_done = False
 
             def wait_teardown(self, kill_actors: bool = False):
@@ -1831,7 +1848,6 @@ class CompiledDAG:
 
                 ctx = DAGContext.get_current()
                 teardown_timeout = ctx.teardown_timeout
-
                 for actor, ref in outer.worker_task_refs.items():
                     timeout = False
                     try:
@@ -1864,59 +1880,48 @@ class CompiledDAG:
                         pass
 
             def teardown(self, kill_actors: bool = False):
-                do_teardown = False
-                with self.in_teardown_lock:
+                with self._in_teardown_lock:
                     if self._teardown_done:
                         return
 
-                    if not self.in_teardown:
-                        do_teardown = True
-                        self.in_teardown = True
+                    logger.info("Tearing down compiled DAG")
+                    outer._dag_submitter.close()
+                    outer._dag_output_fetcher.close()
 
-                if not do_teardown:
-                    # Teardown is already being performed.
-                    while True:
-                        with self.in_teardown_lock:
-                            if self._teardown_done:
-                                return
+                    for actor in outer.actor_refs:
+                        logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    # Cancel all actor loops in parallel.
+                    cancel_refs = [
+                        actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
+                        for actor, tasks in outer.actor_to_executable_tasks.items()
+                    ]
+                    for cancel_ref in cancel_refs:
+                        try:
+                            ray.get(cancel_ref, timeout=30)
+                        except ray.exceptions.RayChannelError:
+                            # Channel error happens when a channel is closed
+                            # or timed out. In this case, do not log.
+                            pass
+                        except Exception:
+                            logger.exception("Error cancelling worker task")
+                            pass
 
-                        time.sleep(0.1)
+                    for communicator_id in outer._communicator_ids:
+                        _destroy_communicator(communicator_id)
 
-                logger.info("Tearing down compiled DAG")
-                outer._dag_submitter.close()
-                outer._dag_output_fetcher.close()
-
-                for actor in outer.actor_refs:
-                    logger.info(f"Cancelling compiled worker on actor: {actor}")
-                # Cancel all actor loops in parallel.
-                cancel_refs = [
-                    actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
-                    for actor, tasks in outer.actor_to_executable_tasks.items()
-                ]
-                for cancel_ref in cancel_refs:
-                    try:
-                        ray.get(cancel_ref, timeout=30)
-                    except ray.exceptions.RayChannelError:
-                        # Channel error happens when a channel is closed
-                        # or timed out. In this case, do not log.
-                        pass
-                    except Exception:
-                        logger.exception("Error cancelling worker task")
-                        pass
-
-                for nccl_group_id in outer._nccl_group_ids:
-                    _destroy_nccl_group(nccl_group_id)
-
-                logger.info("Waiting for worker tasks to exit")
-                self.wait_teardown()
-                logger.info("Teardown complete")
-
-                with self.in_teardown_lock:
+                    logger.info("Waiting for worker tasks to exit")
+                    self.wait_teardown(kill_actors=kill_actors)
+                    logger.info("Teardown complete")
                     self._teardown_done = True
 
             def run(self):
                 try:
                     ray.get(list(outer.worker_task_refs.values()))
+                except KeyboardInterrupt:
+                    logger.info(
+                        "Received KeyboardInterrupt, tearing down with kill_actors=True"
+                    )
+                    self.teardown(kill_actors=True)
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     self.teardown()
@@ -1930,13 +1935,13 @@ class CompiledDAG:
             self._execution_index - self._max_finished_execution_index
         )
         if num_in_flight_requests > self._max_inflight_executions:
-            raise ray.exceptions.RayAdagCapacityExceeded(
+            raise ray.exceptions.RayCgraphCapacityExceeded(
                 f"There are {num_in_flight_requests} in-flight requests which "
                 "is more than specified _max_inflight_executions of the dag: "
                 f"{self._max_inflight_executions}. Retrieve the output using "
                 "ray.get before submitting more requests or increase "
                 "`max_inflight_executions`. "
-                "`adag.experimental_compile(_max_inflight_executions=...)`"
+                "`dag.experimental_compile(_max_inflight_executions=...)`"
             )
 
     def _has_execution_results(
@@ -2016,7 +2021,7 @@ class CompiledDAG:
         from ray.dag import DAGContext
 
         ctx = DAGContext.get_current()
-        timeout = ctx.retrieval_timeout
+        timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
             self.increment_max_finished_execution_index()
@@ -2045,7 +2050,7 @@ class CompiledDAG:
                 self.dag_output_channels. None means wrapping results from all output
                 channels into a single list.
             timeout: The maximum time in seconds to wait for the result.
-                None means using default timeout (DAGContext.retrieval_timeout),
+                None means using default timeout (DAGContext.get_timeout),
                 0 means immediate timeout (immediate success or timeout without
                 blocking), -1 means infinite timeout (block indefinitely).
 
@@ -2060,7 +2065,7 @@ class CompiledDAG:
 
             ctx = DAGContext.get_current()
             if timeout is None:
-                timeout = ctx.retrieval_timeout
+                timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
             if len(self._result_buffer) >= self._max_buffered_results:
@@ -2102,7 +2107,7 @@ class CompiledDAG:
 
         Raises:
             RayChannelTimeoutError: If the execution does not complete within
-                self._execution_timeout seconds.
+                self._submit_timeout seconds.
 
         NOTE: Not thread-safe due to _execution_index etc.
         """
@@ -2114,16 +2119,16 @@ class CompiledDAG:
         self._check_inputs(args, kwargs)
         if len(args) == 1 and len(kwargs) == 0:
             # When serializing a tuple, the Ray serializer invokes pickle5, which adds
-            # several microseconds of overhead. One common case for accelerated DAGs is
+            # several microseconds of overhead. One common case for Compiled Graphs is
             # passing a single argument (oftentimes of of type `bytes`, which requires
             # no serialization). To avoid imposing this overhead on this common case, we
             # create a fast path for this case that avoids pickle5.
             inp = args[0]
         else:
-            inp = RayDAGArgs(args=args, kwargs=kwargs)
+            inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
         self.raise_if_too_many_inflight_requests()
-        self._dag_submitter.write(inp, self._execution_timeout)
+        self._dag_submitter.write(inp, self._submit_timeout)
 
         if self._returns_list:
             ref = [
@@ -2186,7 +2191,7 @@ class CompiledDAG:
                 # pickle5.
                 inp = args[0]
             else:
-                inp = RayDAGArgs(args=args, kwargs=kwargs)
+                inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
             self.raise_if_too_many_inflight_requests()
             await self._dag_submitter.write(inp)
@@ -2797,7 +2802,7 @@ class CompiledDAG:
 @DeveloperAPI
 def build_compiled_dag_from_ray_dag(
     dag: "ray.dag.DAGNode",
-    execution_timeout: Optional[float] = None,
+    submit_timeout: Optional[float] = None,
     buffer_size_bytes: Optional[int] = None,
     enable_asyncio: bool = False,
     asyncio_max_queue_size: Optional[int] = None,
@@ -2806,7 +2811,7 @@ def build_compiled_dag_from_ray_dag(
     overlap_gpu_communication: Optional[bool] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
-        execution_timeout,
+        submit_timeout,
         buffer_size_bytes,
         enable_asyncio,
         asyncio_max_queue_size,

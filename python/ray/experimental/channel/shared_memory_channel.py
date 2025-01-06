@@ -43,9 +43,10 @@ def _create_channel_ref(
     readers' buffers.
 
     Args:
-        buffer_size_bytes: The number of bytes to allocate for the object data and
-            metadata. Writes to the channel must produce serialized data and
-            metadata less than or equal to this value.
+        buffer_size_bytes: The initial buffer size in bytes for messages
+            that can be passed between tasks in the DAG. The buffers will
+            be automatically resized if larger messages are written to the
+            channel.
     Returns:
         Channel: A wrapper around ray.ObjectRef.
     """
@@ -67,7 +68,7 @@ def _create_channel_ref(
     return object_ref
 
 
-# aDAG maintains 1 reader object reference (also called buffer) per node.
+# Compiled Graph maintains 1 reader object reference (also called buffer) per node.
 # reader_ref: The object reference.
 # ref_owner_actor_id: The actor who created the object reference.
 # num_readers: The number of reader actors who reads this object reference.
@@ -104,9 +105,10 @@ class SharedMemoryType(ChannelOutputType):
     ):
         """
         Args:
-            buffer_size_bytes: The number of bytes to allocate for the object data and
-                metadata. Writes to the channel must produce serialized data and
-                metadata less than or equal to this value.
+            buffer_size_bytes: The initial buffer size in bytes for messages
+                that can be passed between tasks in the DAG. The buffers will
+                be automatically resized if larger messages are written to the
+                channel.
             num_shm_buffers: The number of shared memory buffer per channel.
         """
         super().__init__()

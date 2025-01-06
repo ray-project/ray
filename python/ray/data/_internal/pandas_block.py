@@ -23,7 +23,7 @@ from ray.air.util.tensor_extensions.utils import _is_ndarray_tensor
 from ray.data._internal.numpy_support import convert_to_numpy, validate_numpy_batch
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions
+from ray.data._internal.util import find_partitions, keys_equal
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -220,6 +220,9 @@ class PandasBlockAccessor(TableBlockAccessor):
                 f"Pandas blocks, but got: {columns}."
             )
         return self._table[columns]
+
+    def rename_columns(self, columns_rename: Dict[str, str]) -> "pandas.DataFrame":
+        return self._table.rename(columns=columns_rename, inplace=False, copy=False)
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
         table = self._table.sample(frac=1, random_state=random_seed)
@@ -512,6 +515,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         return find_partitions(table, boundaries, sort_key)
 
+    # TODO (srinathk) Needs to handle None types correctly.
     def combine(
         self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]
     ) -> "pandas.DataFrame":
@@ -549,7 +553,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     if next_row is None:
                         next_row = next(iter)
                     next_keys = next_row[keys]
-                    while np.all(next_row[keys] == next_keys):
+                    while keys_equal(next_row[keys], next_keys):
                         end += 1
                         try:
                             next_row = next(iter)
@@ -667,7 +671,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 def gen():
                     nonlocal iter
                     nonlocal next_row
-                    while key_fn(next_row) == next_keys:
+                    while keys_equal(key_fn(next_row), next_keys):
                         yield next_row
                         try:
                             next_row = next(iter)
