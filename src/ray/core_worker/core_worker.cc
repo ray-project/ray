@@ -689,7 +689,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       };
   experimental_mutable_object_provider_ =
       std::make_shared<experimental::MutableObjectProvider>(
-          *plasma_store_provider_->store_client(), raylet_channel_client_factory);
+          *plasma_store_provider_->store_client(),
+          raylet_channel_client_factory,
+          options_.check_signals);
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,
@@ -759,14 +761,15 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     // Add the driver task info.
     if (task_event_buffer_->Enabled() &&
         !RayConfig::instance().task_events_skip_driver_for_test()) {
-      const auto spec = builder.Build();
+      auto spec = std::move(builder).ConsumeAndBuild();
+      auto job_id = spec.JobId();
       auto task_event = std::make_unique<worker::TaskStatusEvent>(
           task_id,
-          spec.JobId(),
-          /* attempt_number */ 0,
+          std::move(job_id),
+          /*attempt_number=*/0,
           rpc::TaskStatus::RUNNING,
-          /* timestamp */ absl::GetCurrentTimeNanos(),
-          std::make_shared<const TaskSpecification>(spec));
+          /*timestamp=*/absl::GetCurrentTimeNanos(),
+          std::make_shared<const TaskSpecification>(std::move(spec)));
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
   }
@@ -812,11 +815,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     return addr;
   };
   auto lease_policy = RayConfig::instance().locality_aware_leasing_enabled()
-                          ? std::shared_ptr<LeasePolicyInterface>(
-                                std::make_shared<LocalityAwareLeasePolicy>(
+                          ? std::unique_ptr<LeasePolicyInterface>(
+                                std::make_unique<LocalityAwareLeasePolicy>(
                                     *reference_counter_, node_addr_factory, rpc_address_))
-                          : std::shared_ptr<LeasePolicyInterface>(
-                                std::make_shared<LocalLeasePolicy>(rpc_address_));
+                          : std::unique_ptr<LeasePolicyInterface>(
+                                std::make_unique<LocalLeasePolicy>(rpc_address_));
 
   normal_task_submitter_ = std::make_unique<NormalTaskSubmitter>(
       rpc_address_,
@@ -825,7 +828,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       raylet_client_factory,
       std::move(lease_policy),
       memory_store_,
-      task_manager_,
+      *task_manager_,
       local_raylet_id,
       GetWorkerType(),
       RayConfig::instance().worker_lease_timeout_milliseconds(),
@@ -2532,7 +2535,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                             serialized_retry_exception_allowlist,
                             scheduling_strategy,
                             root_detached_actor_id);
-  TaskSpecification task_spec = builder.Build();
+  TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
@@ -2543,7 +2546,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 
     io_service_.post(
         [this, task_spec]() {
-          RAY_UNUSED(normal_task_submitter_->SubmitTask(task_spec));
+          RAY_UNUSED(normal_task_submitter_->SubmitTask(std::move(task_spec)));
         },
         "CoreWorker.SubmitTask");
   }
@@ -2668,7 +2671,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       std::move(actor_handle), CurrentCallSite(), rpc_address_, /*owned=*/!is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
-  TaskSpecification task_spec = builder.Build();
+  TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor creation task " << task_spec.DebugString();
   if (options_.is_local_mode) {
     // TODO(suquark): Should we consider namespace in local mode? Currently
@@ -2883,7 +2886,7 @@ Status CoreWorker::SubmitActorTask(
                                  retry_exceptions,
                                  serialized_retry_exception_allowlist);
   // Submit task.
-  TaskSpecification task_spec = builder.Build();
+  TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {

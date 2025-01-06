@@ -1,16 +1,15 @@
 import asyncio
-import dataclasses
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import fields
 from datetime import datetime
 from itertools import islice
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import ray.dashboard.memory_utils as memory_utils
 from ray._private.profiling import chrome_tracing_dump
 from ray._private.ray_constants import env_integer
 from ray._private.utils import get_or_create_event_loop
+from ray.dashboard.state_api_utils import do_filter
 from ray.dashboard.utils import compose_state_message
 from ray.runtime_env import RuntimeEnv
 from ray.util.state.common import (
@@ -25,22 +24,17 @@ from ray.util.state.common import (
     ObjectState,
     ObjectSummaries,
     PlacementGroupState,
-    PredicateType,
     RuntimeEnvState,
-    StateSchema,
     StateSummary,
     SummaryApiOptions,
     SummaryApiResponse,
-    SupportedFilterType,
     TaskState,
     TaskSummaries,
     WorkerState,
-    filter_fields,
     protobuf_message_to_dict,
     protobuf_to_task_state_dict,
 )
 from ray.util.state.state_manager import DataSourceUnavailable, StateDataSourceClient
-from ray.util.state.util import convert_string_to_type
 
 logger = logging.getLogger(__name__)
 
@@ -62,76 +56,6 @@ NODE_QUERY_FAILURE_WARNING = (
 )
 
 
-def _convert_filters_type(
-    filter: List[Tuple[str, PredicateType, SupportedFilterType]],
-    schema: StateSchema,
-) -> List[Tuple[str, PredicateType, SupportedFilterType]]:
-    """Convert the given filter's type to SupportedFilterType.
-
-    This method is necessary because click can only accept a single type
-    for its tuple (which is string in this case).
-
-    Args:
-        filter: A list of filter which is a tuple of (key, val).
-        schema: The state schema. It is used to infer the type of the column for filter.
-
-    Returns:
-        A new list of filters with correct types that match the schema.
-    """
-    new_filter = []
-    if dataclasses.is_dataclass(schema):
-        schema = {field.name: field.type for field in fields(schema)}
-    else:
-        schema = schema.schema_dict()
-
-    for col, predicate, val in filter:
-        if col in schema:
-            column_type = schema[col]
-            try:
-                isinstance(val, column_type)
-            except TypeError:
-                # Calling `isinstance` to the Literal type raises a TypeError.
-                # Ignore this case.
-                pass
-            else:
-                if isinstance(val, column_type):
-                    # Do nothing.
-                    pass
-                elif column_type is int or column_type == "integer":
-                    try:
-                        val = convert_string_to_type(val, int)
-                    except ValueError:
-                        raise ValueError(
-                            f"Invalid filter `--filter {col} {val}` for a int type "
-                            "column. Please provide an integer filter "
-                            f"`--filter {col} [int]`"
-                        )
-                elif column_type is float or column_type == "number":
-                    try:
-                        val = convert_string_to_type(
-                            val,
-                            float,
-                        )
-                    except ValueError:
-                        raise ValueError(
-                            f"Invalid filter `--filter {col} {val}` for a float "
-                            "type column. Please provide an integer filter "
-                            f"`--filter {col} [float]`"
-                        )
-                elif column_type is bool or column_type == "boolean":
-                    try:
-                        val = convert_string_to_type(val, bool)
-                    except ValueError:
-                        raise ValueError(
-                            f"Invalid filter `--filter {col} {val}` for a boolean "
-                            "type column. Please provide "
-                            f"`--filter {col} [True|true|1]` for True or "
-                            f"`--filter {col} [False|false|0]` for False."
-                        )
-        new_filter.append((col, predicate, val))
-    return new_filter
-
-
 # TODO(sang): Move the class to state/state_manager.py.
 # TODO(sang): Remove *State and replaces with Pydantic or protobuf.
 # (depending on API interface standardization).
@@ -151,82 +75,6 @@ class StateAPIManager:
     @property
     def data_source_client(self):
         return self._client
-
-    def _filter(
-        self,
-        data: List[dict],
-        filters: List[Tuple[str, PredicateType, SupportedFilterType]],
-        state_dataclass: StateSchema,
-        detail: bool,
-    ) -> List[dict]:
-        """Return the filtered data given filters.
-
-        Args:
-            data: A list of state data.
-            filters: A list of KV tuple to filter data (key, val). The data is filtered
-                if data[key] != val.
-            state_dataclass: The state schema.
-
-        Returns:
-            A list of filtered state data in dictionary. Each state data's
-            unnecessary columns are filtered by the given state_dataclass schema.
-        """
-        filters = _convert_filters_type(filters, state_dataclass)
-        result = []
-        for datum in data:
-            match = True
-            for filter_column, filter_predicate, filter_value in filters:
-                filterable_columns = state_dataclass.filterable_columns()
-                filter_column = filter_column.lower()
-                if filter_column not in filterable_columns:
-                    raise ValueError(
-                        f"The given filter column {filter_column} is not supported. "
-                        "Enter filters with –-filter key=value "
-                        "or –-filter key!=value "
-                        f"Supported filter columns: {filterable_columns}"
-                    )
-
-                if filter_column not in datum:
-                    match = False
-                elif filter_predicate == "=":
-                    if isinstance(filter_value, str) and isinstance(
-                        datum[filter_column], str
-                    ):
-                        # Case insensitive match for string filter values.
-                        match = datum[filter_column].lower() == filter_value.lower()
-                    elif isinstance(filter_value, str) and isinstance(
-                        datum[filter_column], bool
-                    ):
-                        match = datum[filter_column] == convert_string_to_type(
-                            filter_value, bool
-                        )
-                    elif isinstance(filter_value, str) and isinstance(
-                        datum[filter_column], int
-                    ):
-                        match = datum[filter_column] == convert_string_to_type(
-                            filter_value, int
-                        )
-                    else:
-                        match = datum[filter_column] == filter_value
-                elif filter_predicate == "!=":
-                    if isinstance(filter_value, str) and isinstance(
-                        datum[filter_column], str
-                    ):
-                        match = datum[filter_column].lower() != filter_value.lower()
-                    else:
-                        match = datum[filter_column] != filter_value
-                else:
-                    raise ValueError(
-                        f"Unsupported filter predicate {filter_predicate} is given. "
-                        "Available predicates: =, !=."
-                    )
-
-                if not match:
-                    break
-
-            if match:
-                result.append(filter_fields(datum, state_dataclass, detail))
-        return result
 
     async def list_actors(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all actor information from the cluster.
@@ -259,7 +107,7 @@ class StateAPIManager:
                 result.append(data)
 
             num_after_truncation = len(result) + reply.num_filtered
-            result = self._filter(result, option.filters, ActorState, option.detail)
+            result = do_filter(result, option.filters, ActorState, option.detail)
             num_filtered = len(result)
 
             # Sort to make the output deterministic.
@@ -304,7 +152,7 @@ class StateAPIManager:
                 result.append(data)
             num_after_truncation = len(result)
 
-            result = self._filter(
+            result = do_filter(
                 result, option.filters, PlacementGroupState, option.detail
             )
             num_filtered = len(result)
@@ -353,7 +201,7 @@ class StateAPIManager:
                 result.append(data)
 
             num_after_truncation = len(result) + reply.num_filtered
-            result = self._filter(result, option.filters, NodeState, option.detail)
+            result = do_filter(result, option.filters, NodeState, option.detail)
             num_filtered = len(result)
 
             # Sort to make the output deterministic.
@@ -402,7 +250,7 @@ class StateAPIManager:
                 result.append(data)
 
             num_after_truncation = len(result) + reply.num_filtered
-            result = self._filter(result, option.filters, WorkerState, option.detail)
+            result = do_filter(result, option.filters, WorkerState, option.detail)
             num_filtered = len(result)
             # Sort to make the output deterministic.
             result.sort(key=lambda entry: entry["worker_id"])
@@ -427,7 +275,7 @@ class StateAPIManager:
         def transform(reply) -> ListApiResponse:
             result = [job.dict() for job in reply]
             total = len(result)
-            result = self._filter(result, option.filters, JobState, option.detail)
+            result = do_filter(result, option.filters, JobState, option.detail)
             num_filtered = len(result)
             result.sort(key=lambda entry: entry["job_id"] or "")
             result = list(islice(result, option.limit))
@@ -474,7 +322,7 @@ class StateAPIManager:
 
             # Only certain filters are done on GCS, so here the filter function is still
             # needed to apply all the filters
-            result = self._filter(result, option.filters, TaskState, option.detail)
+            result = do_filter(result, option.filters, TaskState, option.detail)
             num_filtered = len(result)
 
             result.sort(key=lambda entry: entry["task_id"])
@@ -586,7 +434,7 @@ class StateAPIManager:
                 )
 
             num_after_truncation = len(result)
-            result = self._filter(result, option.filters, ObjectState, option.detail)
+            result = do_filter(result, option.filters, ObjectState, option.detail)
             num_filtered = len(result)
             # Sort to make the output deterministic.
             result.sort(key=lambda entry: entry["object_id"])
@@ -661,9 +509,7 @@ class StateAPIManager:
                     f"The returned data may contain incomplete result. {warning_msg}"
                 )
             num_after_truncation = len(result)
-            result = self._filter(
-                result, option.filters, RuntimeEnvState, option.detail
-            )
+            result = do_filter(result, option.filters, RuntimeEnvState, option.detail)
             num_filtered = len(result)
 
             # Sort to make the output deterministic.
@@ -712,9 +558,7 @@ class StateAPIManager:
             num_after_truncation = len(result)
             result.sort(key=lambda entry: entry["timestamp"])
             total = len(result)
-            result = self._filter(
-                result, option.filters, ClusterEventState, option.detail
-            )
+            result = do_filter(result, option.filters, ClusterEventState, option.detail)
             num_filtered = len(result)
             # Sort to make the output deterministic.
             result = list(islice(result, option.limit))
