@@ -63,8 +63,8 @@ public class Router {
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
         new KeyType(LongPollNamespace.DEPLOYMENT_AVAILABILITY, deploymentId.getName()),
-        deploymentAvailability·->
-            replicaSet.updateWorkerReplicas(deploymentAvailability));·//·cross·language
+        deploymentAvailability ->
+            replicaSet.updateWorkerReplicas(deploymentAvailability)); // cross language
     this.longPollClient = new LongPollClient(controllerHandle, keyListeners);
   }
 
