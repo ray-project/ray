@@ -55,7 +55,7 @@ def _default_create_placement_group(
     request: CreatePlacementGroupRequest,
 ) -> PlacementGroup:
     return ray.util.placement_group(
-        request.placement_group_bundles,
+        request.bundles,
         request.strategy,
         _soft_target_node_id=request.target_node_id,
         name=request.name,
