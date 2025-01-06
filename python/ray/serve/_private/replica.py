@@ -840,7 +840,9 @@ class ReplicaActor:
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
-        pass
+        # NOTE(edoakes): it's important to call a method on the proxy handle to
+        # initialize its state in the C++ core worker.
+        handle.pong.remote()
 
     def get_num_ongoing_requests(self) -> int:
         """Fetch the number of ongoing requests at this replica (queue length).
@@ -896,6 +898,17 @@ class ReplicaActor:
         await self._replica_impl.reconfigure(deployment_config)
         return self._replica_impl.get_metadata()
 
+    def _preprocess_request_args(
+        self,
+        pickled_request_metadata: bytes,
+        request_args: Tuple[Any],
+    ) -> Tuple[RequestMetadata, Tuple[Any]]:
+        request_metadata = pickle.loads(pickled_request_metadata)
+        if request_metadata.is_http_request or request_metadata.is_grpc_request:
+            request_args = (pickle.loads(request_args[0]),)
+
+        return request_metadata, request_args
+
     async def handle_request(
         self,
         pickled_request_metadata: bytes,
@@ -903,7 +916,9 @@ class ReplicaActor:
         **request_kwargs,
     ) -> Tuple[bytes, Any]:
         """Entrypoint for `stream=False` calls."""
-        request_metadata = pickle.loads(pickled_request_metadata)
+        request_metadata, request_args = self._preprocess_request_args(
+            pickled_request_metadata, request_args
+        )
         return await self._replica_impl.handle_request(
             request_metadata, *request_args, **request_kwargs
         )
@@ -915,7 +930,9 @@ class ReplicaActor:
         **request_kwargs,
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
-        request_metadata = pickle.loads(pickled_request_metadata)
+        request_metadata, request_args = self._preprocess_request_args(
+            pickled_request_metadata, request_args
+        )
         async for result in self._replica_impl.handle_request_streaming(
             request_metadata, *request_args, **request_kwargs
         ):
@@ -939,7 +956,9 @@ class ReplicaActor:
         For streaming requests, the subsequent messages will be the results of the
         user request handler (which must be a generator).
         """
-        request_metadata = pickle.loads(pickled_request_metadata)
+        request_metadata, request_args = self._preprocess_request_args(
+            pickled_request_metadata, request_args
+        )
         async for result in self._replica_impl.handle_request_with_rejection(
             request_metadata, *request_args, **request_kwargs
         ):
