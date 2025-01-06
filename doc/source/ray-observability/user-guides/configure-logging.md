@@ -457,7 +457,7 @@ If you are using any of the Ray libraries, follow the instructions provided in t
 (log-rotation)=
 ## Log rotation
 
-Ray supports log rotation of log files. Note that not all components support log rotation. (Raylet, Python, and Java worker logs do not rotate).
+Ray supports log rotation of log files.
 
 By default, logs rotate when they reach 512MB (maxBytes), and have a maximum of five backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet.out.1`)
 To change the log rotation configuration, specify environment variables. For example,
