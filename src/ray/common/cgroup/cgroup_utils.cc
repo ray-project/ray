@@ -86,6 +86,10 @@ bool UpdateDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
       absl::StrFormat("%s/%s", ctx.cgroup_directory, ctx.id);
   int ret_code = mkdir(cgroup_folder.data(), kCgroupV2FilePerm);
   if (ret_code != 0) {
+    // Special handle "already exists" error, our cgroup implementation makes sure no
+    // duplicate cgroup folder will be created.
+    RAY_CHECK_NE(errno, EEXIST) << "Ray is not expected to create two same folder "
+                                << cgroup_folder << " for cgroup.";
     return false;
   }
 
