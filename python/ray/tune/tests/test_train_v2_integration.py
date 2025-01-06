@@ -36,6 +36,7 @@ def speed_up_tests(monkeypatch):
 @pytest.mark.parametrize("limit_concurrency", [True, False])
 def test_e2e(
     ray_cpu_head_gpu_worker,
+    tmp_path,
     num_trials,
     limit_concurrency,
 ):
@@ -53,6 +54,10 @@ def test_e2e(
             train_loop_config=tune_config["train_loop_config"],
             scaling_config=ray.train.ScalingConfig(
                 num_workers=num_workers_per_trial, use_gpu=True
+            ),
+            run_config=ray.tune.RunConfig(
+                storage_path=tmp_path,
+                name=f"train-{ray.tune.get_context().get_trial_id()}",
             ),
         )
         result = trainer.fit()
@@ -73,6 +78,7 @@ def test_e2e(
                 NUM_GPUS // num_workers_per_trial if limit_concurrency else None
             )
         ),
+        run_config=ray.tune.RunConfig(storage_path=tmp_path, name="tune"),
     )
     result_grid = tuner.fit()
     assert len(result_grid) == num_trials
