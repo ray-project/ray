@@ -10,7 +10,6 @@ from ray.includes.common cimport (
     kWorkerSetupHookKeyName,
     kResourceUnitScaling,
     kImplicitResourcePrefix,
-    kStreamingGeneratorReturn,
 )
 
 from ray.exceptions import (
@@ -120,4 +119,3 @@ cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) nogil excep
 WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS = str(kWorkerSetupHookKeyName)
 RESOURCE_UNIT_SCALING = kResourceUnitScaling
 IMPLICIT_RESOURCE_PREFIX = kImplicitResourcePrefix.decode()
-STREAMING_GENERATOR_RETURN = kStreamingGeneratorReturn

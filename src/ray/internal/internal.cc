@@ -35,7 +35,7 @@ std::vector<rpc::ObjectReference> SendInternal(
     std::string serialized_retry_exception_allowlist) {
   std::unordered_map<std::string, double> resources;
   std::string name = function.GetFunctionDescriptor()->DefaultTaskName();
-  TaskOptions options{name, return_num, resources};
+  TaskOptions options{name, return_num, false, resources};
 
   char meta_data[3] = {'R', 'A', 'W'};
   std::shared_ptr<LocalMemoryBuffer> meta =

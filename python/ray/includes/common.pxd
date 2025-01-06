@@ -318,15 +318,18 @@ cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CTaskOptions "ray::core::TaskOptions":
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
+                     c_bool is_streaming_generator,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects)
         CTaskOptions(c_string name, int num_returns,
+                     c_bool is_streaming_generator,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
                      c_string serialized_runtime_env)
         CTaskOptions(c_string name, int num_returns,
+                     c_bool is_streaming_generator,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
@@ -737,4 +740,3 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kWorkerSetupHookKeyName
     cdef int kResourceUnitScaling
     cdef const char[] kImplicitResourcePrefix
-    cdef int kStreamingGeneratorReturn

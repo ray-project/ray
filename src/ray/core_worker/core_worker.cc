@@ -2308,6 +2308,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args,
     int64_t num_returns,
+    bool is_streaming_generator,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const std::string &debugger_breakpoint,
@@ -2324,21 +2325,11 @@ void CoreWorker::BuildCommonTaskSpec(
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
 
-  bool returns_dynamic = num_returns == -1;
+  const bool returns_dynamic = num_returns == -1;
   if (returns_dynamic) {
     // This remote function returns 1 ObjectRef, whose value
     // is a generator of ObjectRefs.
     num_returns = 1;
-  }
-  // TODO(sang): Remove this and integrate it to
-  // nun_returns == -1 once migrating to streaming
-  // generator.
-  bool is_streaming_generator = num_returns == kStreamingGeneratorReturn;
-  if (is_streaming_generator) {
-    num_returns = 1;
-    // We are using the dynamic return if
-    // the streaming generator is used.
-    returns_dynamic = true;
   }
   RAY_CHECK(num_returns >= 0);
   builder.SetCommonTaskSpec(
@@ -2433,6 +2424,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       function,
                       args,
                       task_options.num_returns,
+                      task_options.is_streaming_generator,
                       constrained_resources,
                       constrained_resources,
                       debugger_breakpoint,
@@ -2527,7 +2519,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       rpc_address_,
                       function,
                       args,
-                      1,
+                      /*num_returns=*/1,
+                      /*is_streaming_generator=*/false,
                       new_resource,
                       new_placement_resources,
                       "" /* debugger_breakpoint */,
@@ -2785,6 +2778,7 @@ Status CoreWorker::SubmitActorTask(
                       function,
                       args,
                       task_options.num_returns,
+                      task_options.is_streaming_generator,
                       task_options.resources,
                       required_resources,
                       "",    /* debugger_breakpoint */
