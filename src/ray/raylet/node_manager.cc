@@ -1527,19 +1527,19 @@ void NodeManager::ProcessRegisterClientAndAnnouncePortMessage(
 void NodeManager::SendRegisterClientAndAnnouncePortResponse(
     const std::shared_ptr<ClientConnection> &client, Status status) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateRegisterClientWithPortResponse(
+  auto message = protocol::CreateRegisterClientWithPortReply(
       fbb, status.ok(), fbb.CreateString(status.ToString()));
   fbb.Finish(message);
 
   client->WriteMessageAsync(
-      static_cast<int64_t>(protocol::MessageType::RegisterClientWithPortResponse),
+      static_cast<int64_t>(protocol::MessageType::RegisterClientWithPortReply),
       fbb.GetSize(),
       fbb.GetBufferPointer(),
       [this, client](const ray::Status &status) {
         if (!status.ok()) {
           DisconnectClient(client,
                            rpc::WorkerExitType::SYSTEM_ERROR,
-                           "Failed to send RegisterClientWithPortResponse to client: " +
+                           "Failed to send RegisterClientWithPortReply to client: " +
                                status.ToString());
         }
       });

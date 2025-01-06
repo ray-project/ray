@@ -336,7 +336,7 @@ Status CoreWorker::RegisterWorkerToRayletWithPort(
   std::vector<uint8_t> reply;
   auto request_status =
       conn.AtomicRequestReply(MessageType::RegisterClientWithPortRequest,
-                              MessageType::RegisterClientWithPortResponse,
+                              MessageType::RegisterClientWithPortReply,
                               &reply,
                               &fbb);
   if (!request_status.ok()) {
@@ -346,7 +346,7 @@ Status CoreWorker::RegisterWorkerToRayletWithPort(
             request_status.message());
   }
   auto reply_message =
-      flatbuffers::GetRoot<protocol::RegisterClientWithPortResponse>(reply.data());
+      flatbuffers::GetRoot<protocol::RegisterClientWithPortReply>(reply.data());
   bool success = reply_message->success();
   if (!success) {
     return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
