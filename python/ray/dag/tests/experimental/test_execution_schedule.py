@@ -14,6 +14,7 @@ from ray.dag.dag_node_operation import (
     _build_dag_node_operation_graph,
     _add_edge,
     _generate_actor_to_execution_schedule,
+    _generate_overlapped_execution_schedule,
 )
 from ray.dag.compiled_dag_node import CompiledTask
 from ray.dag.nccl_operation import _NcclOperation
@@ -1085,6 +1086,65 @@ class TestGenerateActorToExecutionSchedule:
         assert actor_to_execution_schedule[fake_actor_2] == [
             graph[task_idx_2].op,
             graph[task_idx_4].op,
+        ]
+
+    def test_overlap_collective_and_compute(self, monkeypatch):
+        """
+        Simulate the case where a NCCL collective operation can be overlapped with
+        a compute operation.
+
+        driver -> fake_actor.compute ---> driver
+               |                        |
+               -> fake_actor.allreduce ->
+        """
+
+        # This hack allows the actor handle to be "deep-copied" when
+        # `actor_to_execution_schedule` is deep-copied in
+        # `_generate_overlapped_execution_schedule`.
+        class MockActorHandle(ActorHandle):
+            def __deepcopy__(self, memo):
+                return self
+
+        monkeypatch.setattr(MockActorHandle, "__init__", mock_actor_handle_init)
+
+        fake_actor = MockActorHandle("fake_actor")
+        task_idx_1, exec_task_idx_1 = 1, 0
+        task_idx_2, exec_task_idx_2 = 2, 1
+        nccl_op = MockSyncGroup([task_idx_2])
+
+        graph = {
+            task_idx_1: generate_dag_graph_nodes(
+                exec_task_idx_1,
+                task_idx_1,
+                fake_actor,
+            ),
+            task_idx_2: generate_dag_graph_nodes(
+                exec_task_idx_2,
+                task_idx_2,
+                fake_actor,
+                nccl_op,
+                ReduceOp.SUM,
+            ),
+        }
+
+        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        extracted_schedule = _extract_execution_schedule(actor_to_execution_schedule)
+        assert len(extracted_schedule) == 1
+        assert extracted_schedule[fake_actor] == [
+            graph[task_idx_1].op,
+            graph[task_idx_2].op,
+        ]
+
+        overlapped_schedule = _generate_overlapped_execution_schedule(
+            actor_to_execution_schedule
+        )
+        extracted_overlapped_schedule = _extract_execution_schedule(overlapped_schedule)
+        assert len(extracted_overlapped_schedule) == 1
+        # After overlapping, the collective operation is launched first so that the
+        # compute operation and the collective operation can occur concurrently.
+        assert extracted_overlapped_schedule[fake_actor] == [
+            graph[task_idx_2].op,
+            graph[task_idx_1].op,
         ]
 
 
