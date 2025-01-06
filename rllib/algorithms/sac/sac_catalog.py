@@ -152,7 +152,7 @@ class SACCatalog(Catalog):
 
         The default behavior is to build the head from the pi_head_config.
         This can be overridden to build a custom policy head as a means of configuring
-        the behavior of a SACRLModule implementation.
+        the behavior of the DefaultSACRLModule implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".

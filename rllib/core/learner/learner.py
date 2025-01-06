@@ -237,12 +237,7 @@ class Learner(Checkpointable):
         if self.config.seed is not None:
             update_global_seed_if_necessary(self.framework, self.config.seed)
 
-        self._distributed = self.config.num_learners > 1
-        self._use_gpu = self.config.num_gpus_per_learner > 0
-        # If we are using gpu but we are not distributed, use this gpu for training.
-        self._local_gpu_idx = self.config.local_gpu_idx
-
-        # whether self.build has already been called
+        # Whether self.build has already been called.
         self._is_built = False
 
         # These are the attributes that are set during build.
@@ -259,6 +254,7 @@ class Learner(Checkpointable):
         # Dict mapping ModuleID to a list of optimizer names. Note that the optimizer
         # name includes the ModuleID as a prefix: optimizer_name=`[ModuleID]_[.. rest]`.
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
+        self._optimizer_name_to_module: Dict[str, ModuleID] = {}
 
         # Only manage optimizer's learning rate if user has NOT overridden
         # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
@@ -276,9 +272,8 @@ class Learner(Checkpointable):
         self.iterator: DataIterator = None
 
     # TODO (sven): Do we really need this API? It seems like LearnerGroup constructs
-    #  all Learner workers and then immediately builds them any ways? Seems to make
-    #  thing more complicated. Unless there is a reason related to Train worker group
-    #  setup.
+    #  all Learner workers and then immediately builds them any ways? Unless there is
+    #  a reason related to Train worker group setup.
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def build(self) -> None:
         """Builds the Learner.
@@ -314,7 +309,7 @@ class Learner(Checkpointable):
     @property
     def distributed(self) -> bool:
         """Whether the learner is running in distributed mode."""
-        return self._distributed
+        return self.config.num_learners > 1
 
     @property
     def module(self) -> MultiRLModule:
@@ -359,6 +354,7 @@ class Learner(Checkpointable):
 
         # Store the given optimizer under the given `module_id`.
         self._module_optimizers[module_id].append(full_registration_name)
+        self._optimizer_name_to_module[full_registration_name] = module_id
 
         # Store the optimizer instance under its full `module_id`_`optimizer_name`
         # key.
@@ -418,7 +414,7 @@ class Learner(Checkpointable):
         # The default implementation simply calls `self.configure_optimizers_for_module`
         # on each RLModule within `self.module`.
         for module_id in self.module.keys():
-            if self._is_module_compatible_with_learner(self.module[module_id]):
+            if self.rl_module_is_compatible(self.module[module_id]):
                 config = self.config.get_config_for_module(module_id)
                 self.configure_optimizers_for_module(module_id=module_id, config=config)
 
@@ -811,7 +807,7 @@ class Learner(Checkpointable):
         module = self.module[module_id]
 
         # Delete the removed module's parameters and optimizers.
-        if self._is_module_compatible_with_learner(module):
+        if self.rl_module_is_compatible(module):
             parameters = self.get_parameters(module)
             for param in parameters:
                 param_ref = self.get_param_ref(param)
@@ -1524,21 +1520,6 @@ class Learner(Checkpointable):
 
         return batch
 
-    @abc.abstractmethod
-    def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
-        """Check whether the module is compatible with the learner.
-
-        For example, if there is a random RLModule, it will not be a torch or tf
-        module, but rather it is a numpy module. Therefore we should not consider it
-        during gradient based optimization.
-
-        Args:
-            module: The module to check.
-
-        Returns:
-            True if the module is compatible with the learner.
-        """
-
     def _make_module(self) -> MultiRLModule:
         """Construct the multi-agent RL module for the learner.
 
@@ -1561,12 +1542,42 @@ class Learner(Checkpointable):
         # Try using our config object. Note that this would only work if the config
         # object has all the necessary space information already in it.
         else:
-            module = self.config.get_multi_agent_module_spec().build()
+            module = self.config.get_multi_rl_module_spec().build()
 
         # If not already, convert to MultiRLModule.
         module = module.as_multi_rl_module()
 
         return module
+
+    def rl_module_is_compatible(self, module: RLModule) -> bool:
+        """Check whether the given `module` is compatible with this Learner.
+
+        The default implementation checks the Learner-required APIs and whether the
+        given `module` implements all of them (if not, returns False).
+
+        Args:
+            module: The RLModule to check.
+
+        Returns:
+            True if the module is compatible with this Learner.
+        """
+        return all(isinstance(module, api) for api in self.rl_module_required_apis())
+
+    @classmethod
+    def rl_module_required_apis(cls) -> list[type]:
+        """Returns the required APIs for an RLModule to be compatible with this Learner.
+
+        The returned values may or may not be used inside the `rl_module_is_compatible`
+        method.
+
+        Args:
+            module: The RLModule to check.
+
+        Returns:
+            A list of RLModule API classes that an RLModule must implement in order
+            to be compatible with this Learner.
+        """
+        return []
 
     def _check_registered_optimizer(
         self,

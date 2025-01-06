@@ -24,7 +24,7 @@ class OfflineData:
     def __init__(self, config: AlgorithmConfig):
 
         self.config = config
-        self.is_multi_agent = self.config.is_multi_agent()
+        self.is_multi_agent = self.config.is_multi_agent
         self.path = (
             self.config.input_
             if isinstance(config.input_, list)
@@ -69,8 +69,9 @@ class OfflineData:
             self.filesystem_object = self.filesystem
         elif self.filesystem is not None:
             raise ValueError(
-                f"Unknown filesystem: {self.filesystem}. Filesystems can be "
-                "'gcs' for GCS, 's3' for S3, or 'abs'"
+                f"Unknown `config.input_filesystem` {self.filesystem}! Filesystems "
+                "can be None for local, any instance of `pyarrow.fs.FileSystem`, "
+                "'gcs' for GCS, 's3' for S3, or 'abs' for adlfs.AzureBlobFileSystem."
             )
         # Add the filesystem object to the write method kwargs.
         if self.filesystem_object:
