@@ -565,6 +565,7 @@ message InternalKVPutRequest {
 
 message InternalKVPutReply {
   GcsStatus status = 1;
+  // Refers to whether the key / value was actually added.
   bool added = 2;
 }
 

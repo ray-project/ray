@@ -35,11 +35,11 @@ std::string MakeKey(const std::string &ns, const std::string &key) {
 
 std::string ExtractKey(const std::string &key) {
   if (absl::StartsWith(key, kNamespacePrefix)) {
-    std::vector<std::string> parts =
+    std::vector<std::string_view> parts =
         absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
     RAY_CHECK(parts.size() == 2) << "Invalid key: " << key;
 
-    return parts[1];
+    return std::string{parts[1]};
   }
   return key;
 }
