@@ -123,7 +123,7 @@ gflags = dependency('gflags', method: 'cmake')
 # === @end: gflags ===
 
 
-# === @begin: gflags ===
+# === @begin: hiredis ===
 hiredis = dependency('hiredis', method: 'cmake')
 hiredis_ssl = dependency('hiredis_ssl', method: 'cmake')
 # === @end: gflags ===
