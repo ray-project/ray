@@ -1,6 +1,7 @@
 import logging
+from copy import deepcopy
 from dataclasses import dataclass
-from typing import Callable, Dict, Generic, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -73,6 +74,7 @@ def build_app(
     name: str,
     route_prefix: Optional[str] = None,
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+    default_runtime_env: Optional[Dict[str, Any]] = None,
     make_deployment_handle: Optional[
         Callable[[Deployment, str], DeploymentHandle]
     ] = None,
@@ -97,6 +99,7 @@ def build_app(
         app_name=name,
         handles=handles,
         deployment_names=deployment_names,
+        default_runtime_env=default_runtime_env,
         make_deployment_handle=make_deployment_handle,
     )
     return BuiltApplication(
@@ -117,6 +120,7 @@ def _build_app_recursive(
     app_name: str,
     deployment_names: IDDict[Application, str],
     handles: IDDict[Application, DeploymentHandle],
+    default_runtime_env: Optional[Dict[str, Any]] = None,
     make_deployment_handle: Callable[[Deployment, str], DeploymentHandle],
 ) -> List[Deployment]:
     """Recursively traverses the graph of Application objects.
@@ -148,6 +152,7 @@ def _build_app_recursive(
                     handles=handles,
                     deployment_names=deployment_names,
                     make_deployment_handle=make_deployment_handle,
+                    default_runtime_env=default_runtime_env,
                 )
             )
 
@@ -157,6 +162,9 @@ def _build_app_recursive(
             name=_get_unique_deployment_name_memoized(app, deployment_names),
             _init_args=new_init_args,
             _init_kwargs=new_init_kwargs,
+        )
+        final_deployment = _set_default_runtime_env(
+            final_deployment, default_runtime_env
         )
 
         # Create the DeploymentHandle that will be used to replace this application
@@ -169,6 +177,31 @@ def _build_app_recursive(
         return deployments + [final_deployment]
     finally:
         scanner.clear()
+
+
+def _set_default_runtime_env(
+    d: Deployment, default_runtime_env: Optional[Dict[str, Any]]
+) -> Deployment:
+    """Configures the deployment with the provided default runtime_env.
+
+    If the deployment does not have a runtime_env configured, the default will be set.
+
+    If it does have a runtime_env configured but that runtime_env does not have a
+    working_dir, only the working_dir field will be set.
+
+    Else the deployment's runtime_env will be left untouched.
+    """
+    if not default_runtime_env:
+        return d
+
+    ray_actor_options = deepcopy(d.ray_actor_options or {})
+    default_working_dir = default_runtime_env.get("working_dir", None)
+    if "runtime_env" not in ray_actor_options:
+        ray_actor_options["runtime_env"] = default_runtime_env
+    elif default_working_dir is not None:
+        ray_actor_options["runtime_env"].setdefault("working_dir", default_working_dir)
+
+    return d.options(ray_actor_options=ray_actor_options)
 
 
 def _get_unique_deployment_name_memoized(

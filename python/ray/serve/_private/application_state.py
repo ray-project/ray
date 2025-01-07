@@ -1158,7 +1158,11 @@ def build_serve_application(
         )
 
         deploy_args_list = []
-        built_app: BuiltApplication = build_app(app, name=name)
+        built_app: BuiltApplication = build_app(
+            app,
+            name=name,
+            default_runtime_env=ray.get_runtime_context().runtime_env,
+        )
         for deployment in built_app.deployments:
             is_ingress = deployment.name == built_app.ingress_deployment_name
             deploy_args_list.append(

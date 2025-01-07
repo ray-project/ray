@@ -482,6 +482,7 @@ def _run_many(
                 make_deployment_handle=make_local_deployment_handle
                 if _local_testing_mode
                 else None,
+                default_runtime_env=ray.get_runtime_context().runtime_env,
             )
         )
 
