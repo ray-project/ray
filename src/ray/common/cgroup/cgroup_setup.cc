@@ -127,9 +127,11 @@ bool SetupCgroupsPreparation(const std::string &node_id) {
 
   // Check cgroup accessibility before setup.
   if (!internal::CanCurrenUserWriteCgroupV2()) {
+    RAY_LOG(ERROR) << "Current user doesn't have the permission to update cgroup v2.";
     return false;
   }
   if (!internal::IsCgroupV2MountedAsRw()) {
+    RAY_LOG(ERROR) << "Cgroup v2 is not mounted in read-write mode.";
     return false;
   }
 
