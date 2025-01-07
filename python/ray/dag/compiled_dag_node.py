@@ -214,7 +214,7 @@ def do_profile_tasks(
             for operation in schedule:
                 start_t = time.perf_counter()
                 task = tasks[operation.exec_task_idx]
-                done = tasks[operation.exec_task_idx].exec_operation(
+                done = task.exec_operation(
                     self, operation.type, overlap_gpu_communication
                 )
                 end_t = time.perf_counter()
@@ -1898,7 +1898,7 @@ class CompiledDAG:
                     for cancel_ref in cancel_refs:
                         try:
                             ray.get(cancel_ref, timeout=30)
-                        except ray.exceptions.RayChannelError:
+                        except RayChannelError:
                             # Channel error happens when a channel is closed
                             # or timed out. In this case, do not log.
                             pass
