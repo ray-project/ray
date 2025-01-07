@@ -7,7 +7,7 @@ import pytest
 from threading import RLock
 from unittest.mock import MagicMock, patch
 
-from python.ray.autoscaler.tags import (
+from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
     STATUS_SETTING_UP,
