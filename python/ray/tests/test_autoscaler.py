@@ -36,7 +36,6 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
-    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.monitor import Monitor
@@ -1451,7 +1450,6 @@ class AutoscalingTest(unittest.TestCase):
     ):
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         mock_gcs_client = MockGcsClient(drain_node_outcome)
-        disable_drain = drain_node_outcome == DrainNodeOutcome.DrainDisabled
 
         # Run the core of the test logic.
         self._helperDynamicScaling(
@@ -1459,7 +1457,6 @@ class AutoscalingTest(unittest.TestCase):
             mock_gcs_client,
             foreground_node_launcher=foreground_node_launcher,
             batching_node_provider=batching_node_provider,
-            disable_drain=disable_drain,
         )
 
         # Make assertions about DrainNode error handling during scale-down.
@@ -1516,7 +1513,6 @@ class AutoscalingTest(unittest.TestCase):
         mock_gcs_client,
         foreground_node_launcher=False,
         batching_node_provider=False,
-        disable_drain=False,
     ):
         if batching_node_provider:
             assert (
@@ -1530,8 +1526,6 @@ class AutoscalingTest(unittest.TestCase):
             config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
             config["provider"][DISABLE_LAUNCH_CONFIG_CHECK_KEY] = True
             config["provider"][DISABLE_NODE_UPDATERS_KEY] = True
-        if disable_drain:
-            config["provider"][WORKER_RPC_DRAIN_KEY] = False
 
         config_path = self.write_config(config)
         if batching_node_provider:
