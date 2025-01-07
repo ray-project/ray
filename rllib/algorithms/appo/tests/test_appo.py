@@ -196,10 +196,11 @@ class TestAPPO(unittest.TestCase):
 
         algo = config.build()
         state = algo.get_module(DEFAULT_POLICY_ID).get_state()
-        # Weights and Biases for the single hidden layer, the output layer
-        # of the policy and value networks. So 6 tensors in total.
-        # We should not get the tensors from the target model here.
-        self.assertEqual(len(state), 8)
+        # Weights and biases for the encoder hidden layer (2) and the output layer
+        # of the policy (2), plus the `log_std_clip` param (1), makes 5 altogether.
+        # We should not get the tensors from the target model here or any value function
+        # related parameters (inference-only).
+        self.assertEqual(len(state), 5)
 
 
 if __name__ == "__main__":
