@@ -140,16 +140,14 @@ void StoreClientInternalKV::Keys(const std::string &ns,
   RAY_CHECK_OK(delegate_->AsyncGetKeys(
       table_name_,
       MakeKey(ns, prefix),
-      std::move(callback)
-          .TransformArg<std::vector<std::string>(std::vector<std::string>)>(
-              [](std::vector<std::string> keys) {
-                std::vector<std::string> true_keys;
-                true_keys.reserve(keys.size());
-                for (auto &key : keys) {
-                  true_keys.emplace_back(ExtractKey(key));
-                }
-                return true_keys;
-              })));
+      std::move(callback).TransformArg([](std::vector<std::string> keys) {
+        std::vector<std::string> true_keys;
+        true_keys.reserve(keys.size());
+        for (auto &key : keys) {
+          true_keys.emplace_back(ExtractKey(key));
+        }
+        return true_keys;
+      })));
 }
 
 }  // namespace gcs
