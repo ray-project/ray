@@ -225,6 +225,13 @@ By default, Ray Dashboard assumes Prometheus is hosted at `localhost:9090`. You 
 Then, configure `RAY_PROMETHEUS_HOST` environment variable properly as stated above. For example, if Prometheus is hosted at port 9000 on a node with ip 55.66.77.88, set `RAY_PROMETHEUS_HOST=http://55.66.77.88:9000`.
 
 
+#### Customize headers for requests from the Ray dashboard to Prometheus
+
+If the Prometheus requires additional headers for authentication, set `RAY_PROMETHEUS_HEADERS` in one of the following JSON formats for Ray dashboard to carry them to Prometheus:
+1. `{"Header1": "Value1", "Header2": "Value2"}`
+2. `[["Header1", "Value1"], ["Header2", "Value2"], ["Header2", "Value3"]]`
+
+
 #### Alternate Grafana host location
 By default, Ray Dashboard assumes Grafana is hosted at `localhost:3000` You can choose to run Grafana on a non-default port or on a different machine as long as the head node and the browsers of dashboard users can access it.
 
