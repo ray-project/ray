@@ -150,6 +150,9 @@ def _get_ray_cr_no_cpu_error() -> dict:
     del cr["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0][
         "resources"
     ]["limits"]["cpu"]
+    del cr["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0][
+        "resources"
+    ]["requests"]["cpu"]
     return cr
 
 
@@ -222,6 +225,17 @@ def _get_ray_cr_with_no_tpus() -> dict:
     return cr
 
 
+def _get_ray_cr_with_only_requests() -> dict:
+    """CR contains only resource requests"""
+    cr = get_basic_ray_cr()
+
+    for group in [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]:
+        for container in group["template"]["spec"]["containers"]:
+            container["resources"]["requests"] = container["resources"]["limits"]
+            del container["resources"]["limits"]
+    return cr
+
+
 def _get_autoscaling_config_with_options() -> dict:
     config = _get_basic_autoscaling_config()
     config["upscaling_speed"] = 1
@@ -265,6 +279,14 @@ TEST_DATA = (
             None,
             None,
             id="basic",
+        ),
+        pytest.param(
+            _get_ray_cr_with_only_requests(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="only-requests",
         ),
         pytest.param(
             _get_ray_cr_no_cpu_error(),
@@ -516,11 +538,9 @@ def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
         custom_resources = _get_custom_resources(
             ray_start_params, worker_group["groupName"]
         )
-        k8s_resource_limits = worker_group["template"]["spec"]["containers"][0][
-            "resources"
-        ]["limits"]
+        k8s_resources = worker_group["template"]["spec"]["containers"][0]["resources"]
 
-        num_tpus = _get_num_tpus(custom_resources, k8s_resource_limits)
+        num_tpus = _get_num_tpus(custom_resources, k8s_resources)
 
         if worker_group["groupName"] == "tpu-group":
             assert num_tpus == expected_num_tpus
