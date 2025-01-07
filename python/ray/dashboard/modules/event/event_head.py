@@ -137,7 +137,6 @@ class EventHead(
         for job_id, new_job_events in all_job_events.items():
             job_events = self.events[job_id]
             job_events.update(new_job_events)
-            self.events[job_id] = job_events
 
             # Limit the # of events cached if it exceeds the threshold.
             if len(job_events) > MAX_EVENTS_TO_CACHE * 1.1:
