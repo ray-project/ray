@@ -233,7 +233,8 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
                  << ", filter_node_id = " << filter_node_id
                  << ", filter_node_name = " << filter_node_name
                  << ", filter_virtual_cluster_id = " << filter_virtual_cluster_id;
-  auto filter_fn = [this, &filter_node_id, &filter_node_name, &filter_virtual_cluster_id](const rpc::GcsNodeInfo &node) {
+  auto filter_fn = [this, &filter_node_id, &filter_node_name, &filter_virtual_cluster_id](
+                       const rpc::GcsNodeInfo &node) {
     if (!filter_node_id.IsNil() && filter_node_id != NodeID::FromBinary(node.node_id())) {
       return false;
     }
@@ -243,13 +244,15 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     if (filter_virtual_cluster_id.empty()) {
       return true;
     }
-    auto virtual_cluster = gcs_virtual_cluster_manager_.GetVirtualCluster(filter_virtual_cluster_id);
+    auto virtual_cluster =
+        gcs_virtual_cluster_manager_.GetVirtualCluster(filter_virtual_cluster_id);
     if (virtual_cluster == nullptr) {
       return false;
     }
-    bool contains = virtual_cluster->ContainsNodeInstance(NodeID::FromBinary(node.node_id()).Hex());
+    bool contains =
+        virtual_cluster->ContainsNodeInstance(NodeID::FromBinary(node.node_id()).Hex());
     RAY_LOG(DEBUG) << "Filtering node " << node.node_id() << " in virtual cluster "
-              << filter_virtual_cluster_id << " contains: " << contains;
+                   << filter_virtual_cluster_id << " contains: " << contains;
     return contains;
   };
   int64_t num_added = 0;

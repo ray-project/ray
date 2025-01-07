@@ -235,7 +235,8 @@ cdef extern from "ray/common/simple_id.h" namespace "ray" nogil:
 
 
 cdef extern from "ray/common/virtual_cluster_id.h" namespace "ray" nogil:
-    cdef cppclass CVirtualClusterID "ray::VirtualClusterID"(CSimpleID[CVirtualClusterID]):
+    cdef cppclass CVirtualClusterID "ray::VirtualClusterID" \
+                                    (CSimpleID[CVirtualClusterID]):
 
         @staticmethod
         CVirtualClusterID FromBinary(const c_string &binary)

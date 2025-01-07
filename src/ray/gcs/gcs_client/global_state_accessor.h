@@ -62,7 +62,8 @@ class GlobalStateAccessor {
   ///
   /// \return A list of `GcsNodeInfo` objects serialized in protobuf format.
   std::vector<std::string> GetAllNodeInfo(
-    const std::optional<std::string> &virtual_cluster_id = std::nullopt) ABSL_LOCKS_EXCLUDED(mutex_);
+      const std::optional<std::string> &virtual_cluster_id = std::nullopt)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get information of all task events from GCS Service.
   ///
@@ -75,7 +76,8 @@ class GlobalStateAccessor {
   /// each AvailableResources and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources(
-    const std::optional<std::string> &virtual_cluster_id = std::nullopt) ABSL_LOCKS_EXCLUDED(mutex_);
+      const std::optional<std::string> &virtual_cluster_id = std::nullopt)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get total resources of all nodes.
   ///
@@ -83,7 +85,8 @@ class GlobalStateAccessor {
   /// each TotalResources and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllTotalResources(
-    const std::optional<std::string> &virtual_cluster_id = std::nullopt) ABSL_LOCKS_EXCLUDED(mutex_);
+      const std::optional<std::string> &virtual_cluster_id = std::nullopt)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get draining nodes.
   ///

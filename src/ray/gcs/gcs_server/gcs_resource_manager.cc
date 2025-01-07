@@ -20,12 +20,13 @@
 namespace ray {
 namespace gcs {
 
-GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
-                                       ClusterResourceManager &cluster_resource_manager,
-                                       GcsNodeManager &gcs_node_manager,
-                                       NodeID local_node_id,
-                                       GcsVirtualClusterManager &gcs_virtual_cluster_manager,
-                                       ClusterTaskManager *cluster_task_manager)
+GcsResourceManager::GcsResourceManager(
+    instrumented_io_context &io_context,
+    ClusterResourceManager &cluster_resource_manager,
+    GcsNodeManager &gcs_node_manager,
+    NodeID local_node_id,
+    GcsVirtualClusterManager &gcs_virtual_cluster_manager,
+    ClusterTaskManager *cluster_task_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
@@ -85,11 +86,12 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::GetAllAvailableResourcesRequest request,
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const std::string& virtual_cluster_id = request.virtual_cluster_id();
+  const std::string &virtual_cluster_id = request.virtual_cluster_id();
   RAY_LOG(DEBUG) << "Getting all available resources, virtual_cluster_id: "
                  << virtual_cluster_id;
   auto local_scheduling_node_id = scheduling::NodeID(local_node_id_.Binary());
-  auto virtual_cluster = gcs_virtual_cluster_manager_.GetVirtualCluster(virtual_cluster_id);
+  auto virtual_cluster =
+      gcs_virtual_cluster_manager_.GetVirtualCluster(virtual_cluster_id);
   for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
     if (node_resources_entry.first == local_scheduling_node_id) {
       continue;
@@ -136,10 +138,12 @@ void GcsResourceManager::HandleGetAllTotalResources(
     rpc::GetAllTotalResourcesRequest request,
     rpc::GetAllTotalResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const std::string& virtual_cluster_id = request.virtual_cluster_id();
-  RAY_LOG(DEBUG) << "Getting all total resources, virtual_cluster_id: " << virtual_cluster_id;
+  const std::string &virtual_cluster_id = request.virtual_cluster_id();
+  RAY_LOG(DEBUG) << "Getting all total resources, virtual_cluster_id: "
+                 << virtual_cluster_id;
   auto local_scheduling_node_id = scheduling::NodeID(local_node_id_.Binary());
-  auto virtual_cluster = gcs_virtual_cluster_manager_.GetVirtualCluster(virtual_cluster_id);
+  auto virtual_cluster =
+      gcs_virtual_cluster_manager_.GetVirtualCluster(virtual_cluster_id);
   for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
     if (node_resources_entry.first == local_scheduling_node_id) {
       continue;

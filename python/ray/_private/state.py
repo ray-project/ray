@@ -737,7 +737,9 @@ class GlobalState:
 
         # Calculate total resources.
         total_resources = defaultdict(int)
-        for node_total_resources in self.total_resources_per_node(virtual_cluster_id).values():
+        for node_total_resources in self.total_resources_per_node(
+            virtual_cluster_id
+        ).values():
             for resource_id, value in node_total_resources.items():
                 total_resources[resource_id] += value
 
@@ -768,11 +770,15 @@ class GlobalState:
         return available_resources_by_id
 
     # returns a dict that maps node_id(hex string) to a dict of {resource_id: capacity}
-    def total_resources_per_node(self, virtual_cluster_id=None) -> Dict[str, Dict[str, int]]:
+    def total_resources_per_node(
+        self, virtual_cluster_id=None
+    ) -> Dict[str, Dict[str, int]]:
         self._check_connected()
         total_resources_by_node = {}
 
-        all_total_resources = self.global_state_accessor.get_all_total_resources(virtual_cluster_id)
+        all_total_resources = self.global_state_accessor.get_all_total_resources(
+            virtual_cluster_id
+        )
         for node_total_resources in all_total_resources:
             message = gcs_pb2.TotalResources.FromString(node_total_resources)
             # Calculate total resources for this node.
@@ -801,7 +807,9 @@ class GlobalState:
         """
         self._check_connected()
 
-        available_resources_by_id = self.available_resources_per_node(virtual_cluster_id)
+        available_resources_by_id = self.available_resources_per_node(
+            virtual_cluster_id
+        )
 
         # Calculate total available resources.
         total_available_resources = defaultdict(int)
@@ -876,7 +884,9 @@ def nodes(virtual_cluster_id=None):
     if not virtual_cluster_id:
         virtual_cluster_id = ray.get_runtime_context().virtual_cluster_id
     elif type(virtual_cluster_id) is not str:
-        raise TypeError(f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}")
+        raise TypeError(
+            f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}"
+        )
     return state.node_table(virtual_cluster_id)
 
 
@@ -1004,7 +1014,9 @@ def cluster_resources(virtual_cluster_id=None):
     if not virtual_cluster_id:
         virtual_cluster_id = ray.get_runtime_context().virtual_cluster_id
     elif type(virtual_cluster_id) is not str:
-        raise TypeError(f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}")                                                 
+        raise TypeError(
+            f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}"
+        )
     return state.cluster_resources(virtual_cluster_id)
 
 
@@ -1027,7 +1039,9 @@ def available_resources(virtual_cluster_id=None):
     if not virtual_cluster_id:
         virtual_cluster_id = ray.get_runtime_context().virtual_cluster_id
     elif type(virtual_cluster_id) is not str:
-        raise TypeError(f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}")  
+        raise TypeError(
+            f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}"
+        )
     return state.available_resources(virtual_cluster_id)
 
 
@@ -1057,7 +1071,9 @@ def total_resources_per_node(virtual_cluster_id=None):
     if not virtual_cluster_id:
         virtual_cluster_id = ray.get_runtime_context().virtual_cluster_id
     elif type(virtual_cluster_id) is not str:
-        raise TypeError(f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}")      
+        raise TypeError(
+            f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}"
+        )
     return state.total_resources_per_node()
 
 
