@@ -349,7 +349,12 @@ def test_reconfigure_does_not_run_while_there_are_active_queries(serve_instance)
     responses = [handle.remote() for _ in range(10)]
 
     # Give the queries time to get to the replicas before the reconfigure.
-    time.sleep(0.1)
+    for attempt in range(100):
+        if ray.get(signal.cur_num_waiters().remote()) == len(responses):
+            break
+        time.sleep(0.1)
+    else:
+        assert False, "Timed out waiting for queries to be pending on the replica."
 
     @ray.remote(num_cpus=0)
     def reconfigure():
