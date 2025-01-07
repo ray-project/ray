@@ -282,23 +282,25 @@ void WorkerContext::SetTaskDepth(int64_t depth) { task_depth_ = depth; }
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
 
-  // Place runtime env info copy outside of critical section.
+  const auto &serialized_runtime_env =
+      task_spec.GetMessage().runtime_env_info().serialized_runtime_env();
+
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info;
+  std::shared_ptr<nlohmann::json> parsed_runtime_env;
+
+  // Place runtime env info copy and json parsing for runtime env outside of critical
+  // section.
   if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
     runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
     *runtime_env_info = task_spec.RuntimeEnvInfo();
-  }
 
-  // Place json parsing for runtime env out of critical section.
-  const auto &serialized_runtime_env =
-      task_spec.GetMessage().runtime_env_info().serialized_runtime_env();
-  std::shared_ptr<nlohmann::json> parsed_runtime_env;
-  if (!serialized_runtime_env.empty()) {
-    if (parsed_runtime_env = parsed_runtime_env_cache_.Get(serialized_runtime_env);
-        parsed_runtime_env == nullptr) {
-      parsed_runtime_env = std::make_shared<nlohmann::json>();
-      *parsed_runtime_env = nlohmann::json::parse(serialized_runtime_env);
-      parsed_runtime_env_cache_.Put(serialized_runtime_env, parsed_runtime_env);
+    if (!serialized_runtime_env.empty()) {
+      if (parsed_runtime_env = parsed_runtime_env_cache_.Get(serialized_runtime_env);
+          parsed_runtime_env == nullptr) {
+        parsed_runtime_env = std::make_shared<nlohmann::json>();
+        *parsed_runtime_env = nlohmann::json::parse(serialized_runtime_env);
+        parsed_runtime_env_cache_.Put(serialized_runtime_env, parsed_runtime_env);
+      }
     }
   }
 
