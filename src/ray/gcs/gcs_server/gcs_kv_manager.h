@@ -47,7 +47,7 @@ class InternalKVInterface {
   virtual void MultiGet(
       const std::string &ns,
       const std::vector<std::string> &keys,
-      std::function<void(std::unordered_map<std::string, std::string>)> callback) = 0;
+      std::function<void(absl::flat_hash_map<std::string, std::string>)> callback) = 0;
 
   /// Associate a key with the specified value.
   ///
