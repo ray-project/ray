@@ -10,6 +10,10 @@ clang_format() {
   ./ci/lint/check-git-clang-format-output.sh
 }
 
+clang_tidy() {
+  ./ci/lint/check-git-clang-tidy-output.sh
+}
+
 code_format() {
   pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
   FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts

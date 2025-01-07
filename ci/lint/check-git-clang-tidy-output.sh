@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # TODO: integrate this script into pull request workflow.
 
 printError() {

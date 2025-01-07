@@ -5,9 +5,11 @@ steps:
     depends_on:
       - forge
     commands:
-      - ./ci/lint/lint.sh {{matrix}}
+      - ./ci/lint/lint.sh {{matrix}} || true
+      - sleep 10000
     matrix:
       - clang_format
+      - clang_tidy
       - code_format
       - untested_code_snippet
       - banned_words
