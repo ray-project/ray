@@ -3687,6 +3687,7 @@ cdef class CoreWorker:
                     args,
                     c_string name,
                     int num_returns,
+                    c_bool is_streaming_generator,
                     resources,
                     int max_retries,
                     c_bool retry_exceptions,
@@ -3733,7 +3734,8 @@ cdef class CoreWorker:
                 &incremented_put_arg_ids)
 
             task_options = CTaskOptions(
-                name, num_returns, c_resources,
+                name, num_returns, is_streaming_generator,
+                c_resources,
                 b"",
                 generator_backpressure_num_objects,
                 serialized_runtime_env_info,
@@ -3936,6 +3938,7 @@ cdef class CoreWorker:
                           args,
                           c_string name,
                           int num_returns,
+                          c_bool is_streaming_generator,
                           int max_retries,
                           c_bool retry_exceptions,
                           retry_exception_allowlist,
@@ -3984,6 +3987,7 @@ cdef class CoreWorker:
                     CTaskOptions(
                         name,
                         num_returns,
+                        is_streaming_generator,
                         c_resources,
                         concurrency_group_name,
                         generator_backpressure_num_objects,

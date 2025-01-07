@@ -63,6 +63,7 @@ struct TaskOptions {
   TaskOptions() {}
   TaskOptions(std::string name,
               int num_returns,
+              bool is_streaming_generator,
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
               int64_t generator_backpressure_num_objects = -1,
@@ -71,6 +72,7 @@ struct TaskOptions {
               const std::unordered_map<std::string, std::string> &labels = {})
       : name(name),
         num_returns(num_returns),
+        is_streaming_generator(is_streaming_generator),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
         serialized_runtime_env_info(serialized_runtime_env_info),
@@ -82,6 +84,7 @@ struct TaskOptions {
   std::string name;
   /// Number of returns of this task.
   int num_returns = 1;
+  bool is_streaming_generator;
   /// Resources required by this task.
   std::unordered_map<std::string, double> resources;
   /// The name of the concurrency group in which this task will be executed.

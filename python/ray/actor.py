@@ -24,7 +24,6 @@ from ray._private.inspect_util import (
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import (
-    STREAMING_GENERATOR_RETURN,
     ObjectRefGenerator,
     PythonFunctionDescriptor,
     raise_sys_exit_with_custom_error_message,
@@ -350,6 +349,7 @@ class ActorMethod:
                 kwargs=kwargs,
                 name=name,
                 num_returns=num_returns,
+                is_generator=self._is_generator,
                 max_task_retries=max_task_retries,
                 retry_exceptions=retry_exceptions,
                 concurrency_group_name=concurrency_group,
@@ -1422,6 +1422,7 @@ class ActorHandle:
         kwargs: Dict[str, Any] = None,
         name: str = "",
         num_returns: Optional[Union[int, Literal["streaming"]]] = None,
+        is_generator: bool = False,
         max_task_retries: int = None,
         retry_exceptions: Union[bool, list, tuple] = None,
         concurrency_group_name: Optional[str] = None,
@@ -1479,12 +1480,9 @@ class ActorHandle:
                 not self._ray_is_cross_language
             ), "Cross language remote actor method cannot be executed locally."
 
-        if num_returns == "dynamic":
+        is_streaming_generator = is_generator and num_returns != "dynamic"
+        if num_returns == "dynamic" or num_returns == "streaming":
             num_returns = -1
-        elif num_returns == "streaming":
-            # TODO(sang): This is a temporary private API.
-            # Remove it when we migrate to the streaming generator.
-            num_returns = ray._raylet.STREAMING_GENERATOR_RETURN
 
         retry_exception_allowlist = None
         if retry_exceptions is None:
@@ -1507,6 +1505,7 @@ class ActorHandle:
             list_args,
             name,
             num_returns,
+            is_streaming_generator,
             max_task_retries,
             retry_exceptions,
             retry_exception_allowlist,
@@ -1516,7 +1515,7 @@ class ActorHandle:
             enable_task_events,
         )
 
-        if num_returns == STREAMING_GENERATOR_RETURN:
+        if num_returns == -1 and is_streaming_generator:
             # Streaming generator will return a single ref
             # that is for the generator task.
             assert len(object_refs) == 1
