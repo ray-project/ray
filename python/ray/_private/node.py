@@ -896,6 +896,20 @@ class Node:
     ) -> Tuple[Optional[IO[AnyStr]], Optional[IO[AnyStr]]]:
         """Similar to `get_log_file_handles`, but enables rotation internally by
         writing to a pipe which is listened by background thread."""
+
+        # A performance optimization for rotated logging.
+        # If rotation is not enabled, we return non-rotated files to avoid writing to
+        # pipe.
+        if rotation_max_size == sys.maxsize:
+            return self.get_log_file_handles(
+                name,
+                unique=unique,
+                create_out=create_out,
+                create_err=create_err,
+                rotation_max_size=rotation_max_size,
+                rotation_file_num=rotation_file_num,
+            )
+
         log_stdout_fname, log_stderr_fname = self.get_log_file_names(
             name, unique=unique, create_out=create_out, create_err=create_err
         )
