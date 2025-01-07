@@ -16,7 +16,6 @@
 
 #include <memory>
 
-#include "ray/anyscale/gcs/gcs_server/gcs_server_io_context_policy.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/postable.h"
@@ -28,6 +27,7 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
@@ -215,7 +215,7 @@ class GcsServer {
 
   void TryGlobalGC();
 
-  IOContextProvider<AnyscaleGcsServerIOContextPolicy> io_context_provider_;
+  IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
 
   /// NOTICE: The declaration order for data members should follow dependency.
   ///
