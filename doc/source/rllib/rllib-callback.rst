@@ -363,4 +363,3 @@ Also take a look at this more complex example on `how to generate and log a PacM
 .. tip::
     See :ref:`here for the exact call signatures and expected argument types <rllib-callback-reference-algorithm-bound>`
     of all available callbacks.
-
