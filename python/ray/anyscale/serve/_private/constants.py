@@ -58,3 +58,14 @@ ANYSCALE_RAY_SERVE_GRPC_RUN_PROXY_ROUTER_SEPARATE_LOOP = (
     or os.environ.get("ANYSCALE_RAY_SERVE_GRPC_RUN_PROXY_ROUTER_SEPARATE_LOOP", "1")
     == "1"
 )
+
+# Feature flag for prestarting workers in placement groups.
+RAY_SERVE_PRESTART_PG_WORKERS = (
+    os.environ.get("RAY_SERVE_PRESTART_PG_WORKERS", "1") == "1"
+)
+
+# How long the prestarted workers for placement groups should be kept alive without
+# being used.
+RAY_SERVE_PRESTART_PG_WORKERS_KEEP_ALIVE_S = int(
+    os.environ.get("RAY_SERVE_PRESTART_PG_WORKERS_KEEP_ALIVE_S", "60")
+)

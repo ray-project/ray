@@ -9,7 +9,12 @@ from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
     DefaultClusterNodeInfoCache,
 )
-from ray.serve._private.common import DeploymentHandleSource, DeploymentID, EndpointInfo
+from ray.serve._private.common import (
+    CreatePlacementGroupRequest,
+    DeploymentHandleSource,
+    DeploymentID,
+    EndpointInfo,
+)
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
     RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
@@ -33,6 +38,7 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     resolve_deployment_response,
 )
+from ray.util.placement_group import PlacementGroup
 
 # NOTE: Please read carefully before changing!
 #
@@ -45,17 +51,33 @@ def create_cluster_node_info_cache(gcs_client: GcsClient) -> ClusterNodeInfoCach
     return DefaultClusterNodeInfoCache(gcs_client)
 
 
+CreatePlacementGroupFn = Callable[[CreatePlacementGroupRequest], PlacementGroup]
+
+
+def _default_create_placement_group(
+    request: CreatePlacementGroupRequest,
+) -> PlacementGroup:
+    return ray.util.placement_group(
+        request.bundles,
+        request.strategy,
+        _soft_target_node_id=request.target_node_id,
+        name=request.name,
+        lifetime="detached",
+    )
+
+
 def create_deployment_scheduler(
     cluster_node_info_cache: ClusterNodeInfoCache,
     head_node_id_override: Optional[str] = None,
-    create_placement_group_fn_override: Optional[Callable] = None,
+    create_placement_group_fn_override: Optional[CreatePlacementGroupFn] = None,
 ) -> DeploymentScheduler:
     head_node_id = head_node_id_override or get_head_node_id()
+
     return DefaultDeploymentScheduler(
         cluster_node_info_cache,
         head_node_id,
         create_placement_group_fn=create_placement_group_fn_override
-        or ray.util.placement_group,
+        or _default_create_placement_group,
     )
 
 
@@ -179,10 +201,32 @@ def create_cluster_node_info_cache(  # noqa: F811
     return AnyscaleClusterNodeInfoCache(gcs_client)
 
 
+def _create_placement_group_with_prestart(
+    request: CreatePlacementGroupRequest,
+) -> PlacementGroup:
+    """Create a placement group and use the proprietary prestart worker API."""
+    from ray.anyscale._private.prestart import prestart_workers_on_pg_bundles
+    from ray.anyscale.serve._private.constants import (
+        RAY_SERVE_PRESTART_PG_WORKERS,
+        RAY_SERVE_PRESTART_PG_WORKERS_KEEP_ALIVE_S,
+    )
+
+    pg = _default_create_placement_group(request)
+    if RAY_SERVE_PRESTART_PG_WORKERS:
+        prestart_workers_on_pg_bundles(
+            pg,
+            runtime_env=request.runtime_env,
+            num_workers_per_bundle=1,
+            keep_alive_s=RAY_SERVE_PRESTART_PG_WORKERS_KEEP_ALIVE_S,
+        )
+
+    return pg
+
+
 def create_deployment_scheduler(  # noqa: F811
     cluster_node_info_cache: ClusterNodeInfoCache,
     head_node_id_override: Optional[str] = None,
-    create_placement_group_fn_override: Optional[Callable] = None,
+    create_placement_group_fn_override: Optional[CreatePlacementGroupFn] = None,
 ) -> DeploymentScheduler:
     head_node_id = head_node_id_override or get_head_node_id()
     from ray.anyscale.serve._private.constants import (
@@ -197,11 +241,12 @@ def create_deployment_scheduler(  # noqa: F811
         deployment_scheduler_class = AnyscaleDeploymentScheduler
     else:
         deployment_scheduler_class = DefaultDeploymentScheduler
+
     return deployment_scheduler_class(
         cluster_node_info_cache,
         head_node_id,
         create_placement_group_fn=create_placement_group_fn_override
-        or ray.util.placement_group,
+        or _create_placement_group_with_prestart,
     )
 
 
