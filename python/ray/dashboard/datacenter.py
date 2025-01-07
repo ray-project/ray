@@ -267,18 +267,24 @@ class DataOrganizer:
                 if process_stats["pid"] == pid:
                     actor_process_stats = process_stats
                     break
-
-            for gpu_stats in node_physical_stats.get("gpus", []):
-                # gpu_stats.get("processes") can be None, an empty list or a
-                # list of dictionaries.
-                for process in gpu_stats.get("processesPids") or []:
-                    if process["pid"] == pid:
-                        actor_process_gpu_stats.append(gpu_stats)
-                        break
-
-        actor["gpus"] = actor_process_gpu_stats
-        actor["processStats"] = actor_process_stats
-        actor["mem"] = node_physical_stats.get("mem", [])
+            resources = node_physical_stats.get("resources", {})
+            for device_type in ["gpus", "npus"]:
+                for device_stats in resources.get(device_type,[]):
+                    for process in device_stats.get("processes") or []:
+                        if process["pid"] == pid:
+                            if device_type == "gpus":
+                                actor_process_gpu_stats.append(device_stats)
+                            elif device_type == "npus":
+                                actor_process_npu_stats.append(device_stats)
+                            break
+        actor = {
+            "accelerators":{
+                "gpus": actor_process_gpu_stats,
+                "npus": actor_process_npu_stats
+            },
+            "processStats": actor_process_stats,
+            "mem": node_physical_stats.get("mem", [])
+        }
 
         required_resources = parse_pg_formatted_resources_to_original(
             actor["requiredResources"]

@@ -66,6 +66,7 @@ describe("NodeRow", () => {
     render(
       <NodeRow
         node={NODE}
+        acceleratorsName={[]}
         expanded
         onExpandButtonClick={() => {
           /* purposefully empty */
@@ -93,7 +94,7 @@ describe("NodeRow", () => {
 
   it("Disable actions for Dead node", async () => {
     render(
-      <NodeRow node={DEAD_NODE} expanded={false} onExpandButtonClick={noop} />,
+      <NodeRow node={DEAD_NODE} acceleratorsName={[]} expanded={false} onExpandButtonClick={noop} />,
       { wrapper: TEST_APP_WRAPPER },
     );
     await screen.findByText("test-hostname");
@@ -106,7 +107,7 @@ describe("NodeRow", () => {
 
 describe("WorkerRow", () => {
   it("renders", async () => {
-    render(<WorkerRow node={NODE} worker={WORKER} />, {
+    render(<WorkerRow node={NODE} acceleratorsName={[]} worker={WORKER} />, {
       wrapper: TEST_APP_WRAPPER,
     });
 

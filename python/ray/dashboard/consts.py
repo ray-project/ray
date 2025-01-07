@@ -68,6 +68,7 @@ DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
 
 NODE_TAG_KEYS = ["ip", "Version", "SessionName", "IsHeadNode"]
 GPU_TAG_KEYS = NODE_TAG_KEYS + ["GpuDeviceName", "GpuIndex"]
+NPU_TAG_KEYS = ["ip", "SessionName", "NpuDeviceName", "NpuIndex"]
 CLUSTER_TAG_KEYS = ["node_type", "Version", "SessionName"]
 COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Version", "Component", "SessionName"]
 

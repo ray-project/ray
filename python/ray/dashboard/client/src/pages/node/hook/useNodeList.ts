@@ -3,6 +3,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getNodeList } from "../../../service/node";
+import { getAccelerators } from "../../../service/accelerators";
 import { useSorter } from "../../../util/hook";
 
 export const useNodeList = () => {
@@ -34,18 +35,19 @@ export const useNodeList = () => {
     async () => {
       const { data } = await getNodeList();
       const { data: rspData, msg } = data;
+      const { data: accelerators } = await getAccelerators();
       if (msg) {
         setMsg(msg);
       } else {
         setMsg("");
       }
-      return rspData;
+      return { rspData, accelerators };
     },
     { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
-  const nodeList = data?.summary ?? [];
-  const nodeLogicalResources = data?.nodeLogicalResources ?? {};
+  const nodeList = data?.rspData?.summary ?? [];
+  const nodeLogicalResources = data?.rspData?.nodeLogicalResources ?? {};
 
   const nodeListWithAdditionalInfo = nodeList.map((e) => ({
     ...e,
@@ -77,6 +79,7 @@ export const useNodeList = () => {
   });
   return {
     nodeList: filteredList,
+    accelerators: data?.accelerators,
     msg,
     isLoading,
     isRefreshing,

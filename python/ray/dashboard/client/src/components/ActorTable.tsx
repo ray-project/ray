@@ -29,8 +29,14 @@ import {
 } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
-import { getSumGpuUtilization, WorkerGpuRow } from "../pages/node/GPUColumn";
-import { getSumGRAMUsage, WorkerGRAM } from "../pages/node/GRAMColumn";
+import {
+  getSumAcceleratorMemoryUsage,
+  WorkerAcceleratorMemory,
+} from "../pages/node/AcceleratorMemoryColumn";
+import {
+  getSumAcceleratorUtilization,
+  WorkerAcceleratorUtilization,
+} from "../pages/node/AcceleratorUtilizationColumn"
 import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
@@ -45,6 +51,7 @@ import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
 
 export type ActorTableProps = {
   actors: { [actorId: string]: ActorDetail };
+  accelerators?: {columns: {label:string; helpInfo?:string|undefined}[]}[];
   workers?: Worker[];
   jobId?: string | null;
   filterToActorId?: string;
@@ -76,6 +83,7 @@ const isActorEnum = (state: unknown): state is ActorEnum => {
 
 const ActorTable = ({
   actors = {},
+  accelerators = [],
   workers = [],
   jobId = null,
   filterToActorId,
@@ -90,56 +98,83 @@ const ActorTable = ({
         : undefined,
     onFilterChange,
   });
+
+  const actorList = Object.values(actors || {}).filter(filterFunc);
+  const acceleratorsNameSet = new Set<string>();
+
+  actorList.forEach((item) => {
+    Object.keys(item.accelerators).forEach((acceleratorType) => {
+      const accelerator = item.accelerators[acceleratorType];
+      if (accelerator.length > 0) {
+        acceleratorsNameSet.add(acceleratorType);
+      }
+    });
+  });
+  const acceleratorsName: string[] = Array.from(acceleratorsNameSet);
+
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState<number | undefined>(10);
 
-  const uptimeSorterKey = "fake_uptime_attr";
-  const gpuUtilizationSorterKey = "fake_gpu_attr";
-  const gramUsageSorterKey = "fake_gram_attr";
+  const sorterKeys = ["fake_uptime_attr"].concat(
+    acceleratorsName.flatMap((name) => [
+      "fake_" + name + "tilization",
+      "fake" + name + "memory",
+    ]),
+  );
+  const options = [
+    ["processStats.memoryInfo.rss", "Used Memory"],
+    ["mem[0]", "Total Memory"],
+    ["processStats.cpuPercent", "CPU"],
+  ].concat(
+    acceleratorsName.flatMap((name) => [
+      ["fake" + name + "utilization", name + "Utilization"],
+      ["fake" + name + "_memory", name + "Memory"],
+    ]),
+  );
 
-  const defaultSorterKey = uptimeSorterKey;
+  const defaultSorterKey = "fake_uptime_attr";
   const { sorterFunc, setOrderDesc, setSortKey, sorterKey, descVal } =
     useSorter(defaultSorterKey);
 
   //We get a filtered and sorted actor list to render from prop actors
   const sortedActors = useMemo(() => {
-    const aggregateUserSortKeys = [
-      uptimeSorterKey,
-      gpuUtilizationSorterKey,
-      gramUsageSorterKey,
-    ];
     const actorList = Object.values(actors || {}).filter(filterFunc);
     let actorsSortedUserKey = actorList;
-    if (aggregateUserSortKeys.includes(sorterKey)) {
+    if (sorterKeys.includes(sorterKey)) {
       // Uptime, GPU utilization, and GRAM usage are user specified sort keys but require an aggregate function
       // over the actor attribute, so sorting with sortBy
       actorsSortedUserKey = _.sortBy(actorList, (actor) => {
         const descMultiplier = descVal ? 1 : -1;
-        switch (sorterKey) {
-          case uptimeSorterKey:
-            // Note: Sort by uptime only is re-sorted on re-render (not as uptime value changes)
-            const startTime = actor.startTime;
-            const endTime = actor.endTime;
-            // If actor doesn't have startTime, set uptime to infinity for sort so it appears at the bottom of
-            // the table by default
-            const uptime =
-              startTime && startTime > 0
-                ? getDurationVal({ startTime, endTime })
-                : Number.POSITIVE_INFINITY;
-            // Default sort for uptime should be ascending (default for all others is descending)
-            // so multiply by -1
-            return uptime * -1 * descMultiplier;
-          case gpuUtilizationSorterKey:
-            const sumGpuUtilization = getSumGpuUtilization(
-              actor.pid,
-              actor.gpus,
-            );
-            return sumGpuUtilization * descMultiplier;
-          case gramUsageSorterKey:
-            const sumGRAMUsage = getSumGRAMUsage(actor.pid, actor.gpus);
-            return sumGRAMUsage * descMultiplier;
-          default:
-            return 0;
+        if (sorterKey === "fake_uptime_attr") {
+          // Note: Sort by uptime only is re-sorted on re-render (not as uptime value changes)
+          const startTime = actor.startTime;
+          const endTime = actor.endTime;
+          // If actor doesn't have startTime, set uptime to infinity for sort so it appears at the bottom of
+          // the table by default
+          const uptime =
+            startTime && startTime > 0
+              ? getDurationVal({ startTime, endTime })
+              : Number.POSITIVE_INFINITY;
+          // Default sort for uptime should be ascending (default for all others is descending)
+          // so multiply by -1
+          return uptime * -1 * descMultiplier;
+        } else {
+          for (const name of acceleratorsName) {
+            if (sorterKey.endsWith(name + "_utilization")) {
+              const sumAcceleratorUtilization = getSumAcceleratorUtilization(
+                actor.pid,
+                actor.accelerators[name],
+              );
+              return sumAcceleratorUtilization * descMultiplier;
+            } else if (sorterKey.endsWith(name + "_memory")) {
+              const sumAcceleratorMemoryUsage = getSumAcceleratorMemoryUsage(
+                actor.pid,
+                actor.accelerators[name],
+              );
+              return sumAcceleratorMemoryUsage * descMultiplier;
+            }
+          }
+          return 0;
         }
       });
     } else {
@@ -150,7 +185,7 @@ const ActorTable = ({
       const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
       return actorOrder;
     });
-  }, [actors, sorterKey, sorterFunc, filterFunc, descVal]);
+  }, [actorList, acceleratorsName, sorterKeys, sorterKey, sorterFunc, descVal]);
 
   const {
     items: list,
@@ -261,30 +296,6 @@ const ActorTable = ({
       ),
     },
     {
-      label: "GPU",
-      helpInfo: (
-        <Typography>
-          Usage of each GPU device. If no GPU usage is detected, here are the
-          potential root causes:
-          <br />
-          1. non-GPU Ray image is used on this node. Switch to a GPU Ray image
-          and try again. <br />
-          2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are
-          not currently supported.
-          <br />
-          3. pynvml module raises an exception.
-        </Typography>
-      ),
-    },
-    {
-      label: "GRAM",
-      helpInfo: (
-        <Typography>
-          Actor's GRAM usage (from Worker Process). <br />
-        </Typography>
-      ),
-    },
-    {
       label: "Restarted",
       helpInfo: (
         <Typography>
@@ -328,7 +339,19 @@ const ActorTable = ({
       ),
     },
   ];
-
+  let memoryIndex = columns.findIndex((column) => column.label === "Memory");
+  if (memoryIndex !== -1) {
+    accelerators.forEach((item) => {
+      item.columns.forEach((newColumn) => {
+        const modifiedColumn = {
+          ...newColumn,
+          helpInfo: <Typography>{newColumn.helpInfo}</Typography>,
+        };
+        columns.splice(memoryIndex + 1, 0, modifiedColumn);
+        memoryIndex = memoryIndex + 1;
+      });
+    });
+  }
   return (
     <React.Fragment>
       <Box sx={{ display: "flex", flex: 1, alignItems: "center" }}>
@@ -478,16 +501,7 @@ const ActorTable = ({
         <div data-testid="sortByFilter" style={{ margin: 8 }}>
           <SearchSelect
             label="Sort By"
-            options={[
-              [uptimeSorterKey, "Uptime"],
-              ["processStats.memoryInfo.rss", "Used Memory"],
-              ["mem[0]", "Total Memory"],
-              ["processStats.cpuPercent", "CPU"],
-              // Fake attribute key used when sorting by GPU utilization and
-              // GRAM usage because aggregate function required on actor key before sorting.
-              [gpuUtilizationSorterKey, "GPU Utilization"],
-              [gramUsageSorterKey, "GRAM Usage"],
-            ]}
+            options={options}
             onChange={(val) => setSortKey(val)}
             showAllOption={false}
             defaultValue={defaultSorterKey}
@@ -547,7 +561,7 @@ const ActorTable = ({
                 endTime,
                 exitDetail,
                 requiredResources,
-                gpus,
+                accelerators,
                 processStats,
                 mem,
               }) => (
@@ -677,12 +691,31 @@ const ActorTable = ({
                       </PercentageBar>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <WorkerGpuRow workerPID={pid} gpus={gpus} />
-                  </TableCell>
-                  <TableCell>
-                    <WorkerGRAM workerPID={pid} gpus={gpus} />
-                  </TableCell>
+                  {Object.keys(accelerators).map((acceleratorType) => {
+                    const accelerator = accelerators[acceleratorType];
+                    if (
+                      accelerator.length === 0 &&
+                      !acceleratorsName.includes(acceleratorType)
+                    ) {
+                      return null;
+                    } // Skip if the array is empty
+                    return (
+                      <React.Fragment key={acceleratorType}>
+                        <TableCell>
+                          <WorkerAcceleratorUtilization
+                            workerPID={pid}
+                            accelerators={accelerator}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <WorkerAcceleratorMemory
+                            workerPID={pid}
+                            accelerators={accelerator}
+                          />
+                        </TableCell>
+                      </React.Fragment>
+                    );
+                  })}
                   <TableCell
                     align="center"
                     style={{

@@ -1,5 +1,6 @@
 import { Actor } from "./actor";
 import { Raylet } from "./raylet";
+import { AcceleratorStats } from "./accelerator";
 import { Worker } from "./worker";
 
 export type NodeDetail = {
@@ -9,7 +10,9 @@ export type NodeDetail = {
   cpu: number; // cpu usage
   cpus?: number[]; // Logic CPU Count, Physical CPU Count
   mem?: number[]; // total memory, free memory, memory used ratio
-  gpus?: GPUStats[]; // GPU stats fetched from node, 1 entry per GPU
+  accelerators:{
+    [key:string]: AcceleratorStats[];
+  };
   bootTime: number; // start time
   loadAvg: number[][]; // recent 1，5，15 minitues system load，load per cpu http://man7.org/linux/man-pages/man3/getloadavg.3.html
   disk: {
@@ -51,23 +54,6 @@ export type NodeListRsp = {
   };
   result: boolean;
   msg: string;
-};
-
-export type ProcessGPUUsage = {
-  // This gpu usage stats from a process
-  pid: number;
-  gpuMemoryUsage: number;
-};
-
-export type GPUStats = {
-  // This represents stats fetched from a node about a single GPU
-  uuid: string;
-  index: number;
-  name: string;
-  utilizationGpu?: number;
-  memoryUsed: number;
-  memoryTotal: number;
-  processesPids?: ProcessGPUUsage[];
 };
 
 export type NodeDetailExtend = {

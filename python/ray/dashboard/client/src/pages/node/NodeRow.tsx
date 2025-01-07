@@ -25,8 +25,11 @@ import { getNodeDetail } from "../../service/node";
 import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
-import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
-import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
+import {
+  NodeAcceleratorMemory,
+  WorkerAcceleratorMemory,
+} from "./AcceleratorMemoryColumn";
+import { NodeAcceleratorUtilization, WorkerAcceleratorUtilization } from "./AcceleratorUtilizationColumn";
 
 const TEXT_COL_MIN_WIDTH = 100;
 
@@ -34,6 +37,7 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
   /**
    * Whether the node has been expanded to show workers
    */
+  acceleratorsName: string[];
   expanded: boolean;
   /**
    * Click handler for when one clicks on the expand/unexpand button in this row.
@@ -47,6 +51,7 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
  */
 export const NodeRow = ({
   node,
+  acceleratorsName,
   expanded,
   onExpandButtonClick,
 }: NodeRowProps) => {
@@ -157,12 +162,23 @@ export const NodeRow = ({
           </PercentageBar>
         )}
       </TableCell>
-      <TableCell>
-        <NodeGPUView node={node} />
-      </TableCell>
-      <TableCell>
-        <NodeGRAM node={node} />
-      </TableCell>
+      {Object.keys(node.accelerators).map((acceleratorType) => {
+        const accelerators = node.accelerators[acceleratorType];
+        if (accelerators.length === 0 && !acceleratorsName.includes(acceleratorType)) {
+          return null;
+        } // Skip if the array is empty
+
+        return (
+          <React.Fragment key={acceleratorType}>
+            <TableCell>
+              <NodeAcceleratorUtilization accelerators={accelerators} />
+            </TableCell>
+            <TableCell>
+              <NodeAcceleratorMemory accelerators={accelerators} />
+            </TableCell>
+          </React.Fragment>
+        );
+      })}
       <TableCell>
         {raylet && objectStoreTotalMemory && (
           <PercentageBar
@@ -216,6 +232,7 @@ type WorkerRowProps = {
    * Details of the worker
    */
   worker: Worker;
+  acceleratorsName: string[];
   /**
    * Detail of the node the worker is inside.
    */
@@ -225,7 +242,7 @@ type WorkerRowProps = {
 /**
  * A single row that represents the data of a Worker
  */
-export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
+export const WorkerRow = ({ node, acceleratorsName, worker }: WorkerRowProps) => {
   const {
     ip,
     mem,
@@ -298,12 +315,23 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           </PercentageBar>
         )}
       </TableCell>
-      <TableCell>
-        <WorkerGpuRow workerPID={pid} gpus={node.gpus} />
-      </TableCell>
-      <TableCell>
-        <WorkerGRAM workerPID={pid} gpus={node.gpus} />
-      </TableCell>
+      {Object.keys(node.accelerators).map((acceleratorType) => {
+        const accelerators = node.accelerators[acceleratorType];
+        if (accelerators.length === 0 && !acceleratorsName.includes(acceleratorType)) {
+          return null;
+        } // Skip if the array is empty
+
+        return (
+          <React.Fragment key={acceleratorType}>
+            <TableCell>
+              <WorkerAcceleratorUtilization workerPID={pid} accelerators={accelerators} />
+            </TableCell>
+            <TableCell>
+              <WorkerAcceleratorMemory workerPID={pid} accelerators={accelerators} />
+            </TableCell>
+          </React.Fragment>
+        );
+      })}
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
@@ -319,6 +347,7 @@ type NodeRowsProps = {
    * Details of the node
    */
   node: NodeDetail;
+  acceleratorsName: string[];
   /**
    * Whether the node row should refresh data about its workers.
    */
@@ -334,6 +363,7 @@ type NodeRowsProps = {
  */
 export const NodeRows = ({
   node,
+  acceleratorsName,
   isRefreshing,
   startExpanded = false,
 }: NodeRowsProps) => {
@@ -370,12 +400,13 @@ export const NodeRows = ({
     <React.Fragment>
       <NodeRow
         node={node}
+        acceleratorsName={acceleratorsName}
         expanded={isExpanded}
         onExpandButtonClick={handleExpandButtonClick}
       />
       {isExpanded &&
         workers.map((worker) => (
-          <WorkerRow key={worker.pid} node={node} worker={worker} />
+          <WorkerRow key={worker.pid} node={node} acceleratorsName={acceleratorsName} worker={worker} />
         ))}
     </React.Fragment>
   );

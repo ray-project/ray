@@ -30,6 +30,7 @@ from ray.dashboard.consts import (
     COMPONENT_METRICS_TAG_KEYS,
     GCS_RPC_TIMEOUT_SECONDS,
     GPU_TAG_KEYS,
+    NPU_TAG_KEYS,
     NODE_TAG_KEYS,
 )
 from ray.dashboard.modules.reporter.profile_manager import (
@@ -42,6 +43,7 @@ import psutil
 logger = logging.getLogger(__name__)
 
 enable_gpu_usage_check = True
+enable_npu_usage_check = True
 
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
@@ -147,6 +149,31 @@ METRICS_GAUGES = {
         "Total GPU RAM available on a ray node",
         "bytes",
         GPU_TAG_KEYS,
+    ),
+    # NPU metrics
+    "node_npus_available": Gauge(
+        "node_npus_available",
+        "Total NPUs available on a ray node",
+        "percentage",
+        NPU_TAG_KEYS,
+    ),
+    "node_npus_utilization": Gauge(
+        "node_npus_utilization",
+        "Total NPUs usage on a ray node",
+        "percentage",
+        NPU_TAG_KEYS,
+    ),
+    "node_hbm_used": Gauge(
+        "node_hbm_used",
+        "Total NPU RAM usage on a ray node",
+        "bytes",
+        NPU_TAG_KEYS,
+    ),
+    "node_hbm_available": Gauge(
+        "node_hbm_available",
+        "Total NPU RAM available on a ray node",
+        "bytes",
+        NPU_TAG_KEYS,
     ),
     # Disk I/O metrics
     "node_disk_io_read": Gauge(
@@ -316,21 +343,21 @@ Percentage = int
 Megabytes = int
 
 
-# gpu utilization for nvidia gpu from a single process
-class ProcessGPUInfo(TypedDict):
+# Accelerator utilization from a single process
+class ProcessAcceleratorInfo(TypedDict):
     pid: int
-    gpu_memory_usage: Megabytes
+    memory_usage: Megabytes
 
 
-# gpu utilization for nvidia gpu
-class GpuUtilizationInfo(TypedDict):
+# Accelerator utilization
+class AcceleratorUtilizationInfo(TypedDict):
     index: int
     name: str
     uuid: str
-    utilization_gpu: Optional[Percentage]
+    utilization: Optional[Percentage]
     memory_used: Megabytes
     memory_total: Megabytes
-    processes_pids: Optional[List[ProcessGPUInfo]]
+    processes: Optional[List[ProcessAcceleratorInfo]]
 
 
 class ReporterAgent(
@@ -535,9 +562,9 @@ class ReporterAgent(
                     gpu_handle
                 )
                 processes_pids = [
-                    ProcessGPUInfo(
+                    ProcessAcceleratorInfo(
                         pid=int(nv_process.pid),
-                        gpu_memory_usage=int(nv_process.usedGpuMemory) // MB
+                        memory_usage=int(nv_process.usedGpuMemory) // MB
                         if nv_process.usedGpuMemory
                         else 0,
                     )
@@ -546,19 +573,94 @@ class ReporterAgent(
             except pynvml.NVMLError as e:
                 logger.debug(f"pynvml failed to retrieve GPU processes: {e}")
 
-            info = GpuUtilizationInfo(
+            info = AcceleratorUtilizationInfo(
                 index=i,
                 name=decode(pynvml.nvmlDeviceGetName(gpu_handle)),
                 uuid=decode(pynvml.nvmlDeviceGetUUID(gpu_handle)),
-                utilization_gpu=utilization,
+                utilization=utilization,
                 memory_used=int(memory_info.used) // MB,
                 memory_total=int(memory_info.total) // MB,
-                processes_pids=processes_pids,
+                processes=processes_pids,
             )
             gpu_utilizations.append(info)
         pynvml.nvmlShutdown()
 
         return gpu_utilizations
+
+    @staticmethod
+    def _get_npu_usage():
+        import uuid
+
+        import ray._private.thirdparty.pynpusmi as pynpusmi
+
+        global enable_npu_usage_check
+        if not enable_npu_usage_check:
+            return []
+        npu_utilizations = []
+
+        try:
+            pynpusmi.smi_initialize()
+        except Exception as e:
+            logger.error(f"pynpusmi failed to retrieve NPU information: {e}")
+
+            if isinstance(e, pynpusmi.DCMIError_DriverNotLoaded):
+                enable_npu_usage_check = False
+            return npu_utilizations
+
+        npus = []
+
+        card_num, card_list = pynpusmi.dcmi_get_card_list()
+        for i in range(card_num):
+            card_id = card_list[i]
+
+            device_count = pynpusmi.dcmi_get_device_num_in_card(card_id)
+            for device_id in range(device_count):
+
+                info = {}
+                device_type = pynpusmi.get_device_type(card_id, device_id)
+                if device_type == pynpusmi.ASCEND_310:
+                    memory_info = pynpusmi.dcmi_get_device_memory_info_310(
+                        card_id, device_id
+                    )
+                    info = {
+                        "memory_total": memory_info.memory_size,
+                        "memory_used": memory_info.memory_size
+                        - memory_info.memory_available,
+                    }
+                elif device_type == pynpusmi.ASCEND_910:
+                    memory_info = pynpusmi.dcmi_get_device_memory_info_910(
+                        card_id, device_id
+                    )
+                    info = {
+                        "memory_total": memory_info.memory_size,
+                        "memory_used": memory_info.memory_usage,
+                    }
+
+                uuid_str = str(uuid.uuid1())
+                utilization_npu = pynpusmi.dcmi_get_device_utilization_rate(
+                    card_id, device_id
+                )
+
+                npu_process_objs = pynpusmi.get_npu_process_list(card_id, device_id)
+                npu_process_stats = [
+                    ProcessAcceleratorInfo(
+                        pid=process_obj.proc_id,
+                        memory_usage=int(process_obj.proc_mem_usage // MB),
+                    )
+                    for process_obj in npu_process_objs
+                ]
+
+                info = AcceleratorUtilizationInfo(
+                    index=i,
+                    name=f"npu_{card_id}",
+                    uuid=uuid_str,
+                    utilization=utilization_npu,
+                    memory_used=info["memory_used"],
+                    memory_total=info["memory_total"],
+                    processes=npu_process_stats,
+                )
+                npus.append(info)
+        return npus
 
     @staticmethod
     def _get_boot_time():
@@ -773,11 +875,14 @@ class ReporterAgent(
             "disk": self._get_disk_usage(),
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
-            "gpus": self._get_gpu_usage(),
             "network": network_stats,
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
+            "accelerator":{
+                "gpus": self._get_gpu_usage(),
+                "npus": self._get_npu_usage(),
+            },
         }
 
     def _generate_reseted_stats_record(self, component_name: str) -> List[Record]:
@@ -1046,15 +1151,15 @@ class ReporterAgent(
         'memory_total': 22731}
         """
         # -- GPU per node --
-        gpus = stats["gpus"]
+        gpus = stats["accelerators"]["gpus"]
         gpus_available = len(gpus)
 
         if gpus_available:
             for gpu in gpus:
                 gpus_utilization, gram_used, gram_total = 0, 0, 0
                 # Consume GPU may not report its utilization.
-                if gpu["utilization_gpu"] is not None:
-                    gpus_utilization += gpu["utilization_gpu"]
+                if gpu["utilization"] is not None:
+                    gpus_utilization += gpu["utilization"]
                 gram_used += gpu["memory_used"]
                 gram_total += gpu["memory_total"]
                 gpu_index = gpu.get("index")
@@ -1094,6 +1199,58 @@ class ReporterAgent(
                             gpus_utilization_record,
                             gram_used_record,
                             gram_available_record,
+                        ]
+                    )
+                    
+        # -- NPU per node --
+        npus = stats["accelerators"]["npus"]
+        npus_available = len(npus)
+        if npus_available:
+            npu_tags = {"ip": ip}
+            for npu in npus:
+                npus_utilization, hbm_used, hbm_total = 0, 0, 0
+                # Consume NPU may not report its utilization.
+                if npu["utilization"] is not None:
+                    npus_utilization += npu["utilization"]
+                hbm_used += npu["memory_used"]
+                hbm_total += npu["memory_total"]
+                npu_index = npu.get("index")
+                npu_name = npu.get("name")
+
+                hbm_available = hbm_total - hbm_used
+
+                if npu_index is not None:
+                    npu_tags = {"ip": ip, "NpuIndex": str(npu_index)}
+                    if npu_name:
+                        npu_tags["NpuDeviceName"] = npu_name
+
+                    # There's only 1 NPU per each index, so we record 1 here.
+                    npus_available_record = Record(
+                        gauge=METRICS_GAUGES["node_npus_available"],
+                        value=1,
+                        tags=npu_tags,
+                    )
+                    npus_utilization_record = Record(
+                        gauge=METRICS_GAUGES["node_npus_utilization"],
+                        value=npus_utilization,
+                        tags=npu_tags,
+                    )
+                    hbm_used_record = Record(
+                        gauge=METRICS_GAUGES["node_hbm_used"],
+                        value=hbm_used,
+                        tags=npu_tags,
+                    )
+                    hbm_available_record = Record(
+                        gauge=METRICS_GAUGES["node_hbm_available"],
+                        value=hbm_available,
+                        tags=npu_tags,
+                    )
+                    records_reported.extend(
+                        [
+                            npus_available_record,
+                            npus_utilization_record,
+                            hbm_used_record,
+                            hbm_available_record,
                         ]
                     )
 

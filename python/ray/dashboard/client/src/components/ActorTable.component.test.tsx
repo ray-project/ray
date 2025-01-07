@@ -33,7 +33,9 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
     numInPlasma: 0,
     numLocalObjects: 0,
     numObjectRefsInScope: 0,
-    gpus: [],
+    accelerators:{
+      gpus: [],
+    },
     processStats: {
       cmdline: [],
       cpuPercent: 0,
@@ -81,7 +83,9 @@ const MOCK_ACTORS: { [actorId: string]: ActorDetail } = {
     numInPlasma: 0,
     numLocalObjects: 0,
     numObjectRefsInScope: 0,
-    gpus: [],
+    accelerators:{
+      gpus: [],
+    },
     processStats: {
       cmdline: [],
       cpuPercent: 0,

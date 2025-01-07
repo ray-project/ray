@@ -53,7 +53,7 @@ export const SearchSelect = ({
 }: {
   label: string;
   onChange?: (value: string) => void;
-  options: (string | [string, string])[];
+  options: (string | [string, string] | string[])[];
   showAllOption: boolean;
   defaultValue?: string;
 }) => {
