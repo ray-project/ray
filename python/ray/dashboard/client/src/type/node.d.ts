@@ -1,6 +1,6 @@
+import { AcceleratorStats } from "./accelerator";
 import { Actor } from "./actor";
 import { Raylet } from "./raylet";
-import { AcceleratorStats } from "./accelerator";
 import { Worker } from "./worker";
 
 export type NodeDetail = {
@@ -10,8 +10,8 @@ export type NodeDetail = {
   cpu: number; // cpu usage
   cpus?: number[]; // Logic CPU Count, Physical CPU Count
   mem?: number[]; // total memory, free memory, memory used ratio
-  accelerators:{
-    [key:string]: AcceleratorStats[];
+  accelerators: {
+    [key: string]: AcceleratorStats[];
   };
   bootTime: number; // start time
   loadAvg: number[][]; // recent 1，5，15 minitues system load，load per cpu http://man7.org/linux/man-pages/man3/getloadavg.3.html

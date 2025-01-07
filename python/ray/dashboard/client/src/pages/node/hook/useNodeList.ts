@@ -2,8 +2,8 @@ import _ from "lodash";
 import { useState } from "react";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
-import { getNodeList } from "../../../service/node";
 import { getAccelerators } from "../../../service/accelerators";
+import { getNodeList } from "../../../service/node";
 import { useSorter } from "../../../util/hook";
 
 export const useNodeList = () => {

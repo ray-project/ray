@@ -262,6 +262,7 @@ class DataOrganizer:
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None
         actor_process_gpu_stats = []
+        actor_process_npu_stats = []
         if pid:
             for process_stats in node_physical_stats.get("workers", []):
                 if process_stats["pid"] == pid:
@@ -269,7 +270,7 @@ class DataOrganizer:
                     break
             resources = node_physical_stats.get("resources", {})
             for device_type in ["gpus", "npus"]:
-                for device_stats in resources.get(device_type,[]):
+                for device_stats in resources.get(device_type, []):
                     for process in device_stats.get("processes") or []:
                         if process["pid"] == pid:
                             if device_type == "gpus":
@@ -278,12 +279,12 @@ class DataOrganizer:
                                 actor_process_npu_stats.append(device_stats)
                             break
         actor = {
-            "accelerators":{
+            "accelerators": {
                 "gpus": actor_process_gpu_stats,
-                "npus": actor_process_npu_stats
+                "npus": actor_process_npu_stats,
             },
             "processStats": actor_process_stats,
-            "mem": node_physical_stats.get("mem", [])
+            "mem": node_physical_stats.get("mem", []),
         }
 
         required_resources = parse_pg_formatted_resources_to_original(

@@ -11,16 +11,18 @@ export const NodeAcceleratorMemory = ({
 }: {
   accelerators: AcceleratorStats[];
 }) => {
-  const nodeAcceleratorMemoryEntries = (accelerators ?? []).map((accelerator, i) => {
-    const props = {
-      key: accelerator.uuid,
-      resourceName: accelerator.name,
-      utilization: accelerator.memoryUsed,
-      total: accelerator.memoryTotal,
-      slot: accelerator.index,
-    };
-    return <AcceleratorMemoryEntry {...props} />;
-  });
+  const nodeAcceleratorMemoryEntries = (accelerators ?? []).map(
+    (accelerator, i) => {
+      const props = {
+        key: accelerator.uuid,
+        resourceName: accelerator.name,
+        utilization: accelerator.memoryUsed,
+        total: accelerator.memoryTotal,
+        slot: accelerator.index,
+      };
+      return <AcceleratorMemoryEntry {...props} />;
+    },
+  );
   return (
     <div style={{ minWidth: 60 }}>
       {nodeAcceleratorMemoryEntries.length === 0 ? (

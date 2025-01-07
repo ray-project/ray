@@ -43,7 +43,7 @@ export type ActorDetail = {
   numInPlasma: number;
   numLocalObjects: number;
   numObjectRefsInScope: number;
-  accelerators:{
+  accelerators: {
     [key: string]: AcceleratorStats[];
   };
   processStats: {

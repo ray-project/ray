@@ -29,7 +29,10 @@ import {
   NodeAcceleratorMemory,
   WorkerAcceleratorMemory,
 } from "./AcceleratorMemoryColumn";
-import { NodeAcceleratorUtilization, WorkerAcceleratorUtilization } from "./AcceleratorUtilizationColumn";
+import {
+  NodeAcceleratorUtilization,
+  WorkerAcceleratorUtilization,
+} from "./AcceleratorUtilizationColumn";
 
 const TEXT_COL_MIN_WIDTH = 100;
 
@@ -164,7 +167,10 @@ export const NodeRow = ({
       </TableCell>
       {Object.keys(node.accelerators).map((acceleratorType) => {
         const accelerators = node.accelerators[acceleratorType];
-        if (accelerators.length === 0 && !acceleratorsName.includes(acceleratorType)) {
+        if (
+          accelerators.length === 0 &&
+          !acceleratorsName.includes(acceleratorType)
+        ) {
           return null;
         } // Skip if the array is empty
 
@@ -242,7 +248,11 @@ type WorkerRowProps = {
 /**
  * A single row that represents the data of a Worker
  */
-export const WorkerRow = ({ node, acceleratorsName, worker }: WorkerRowProps) => {
+export const WorkerRow = ({
+  node,
+  acceleratorsName,
+  worker,
+}: WorkerRowProps) => {
   const {
     ip,
     mem,
@@ -317,17 +327,26 @@ export const WorkerRow = ({ node, acceleratorsName, worker }: WorkerRowProps) =>
       </TableCell>
       {Object.keys(node.accelerators).map((acceleratorType) => {
         const accelerators = node.accelerators[acceleratorType];
-        if (accelerators.length === 0 && !acceleratorsName.includes(acceleratorType)) {
+        if (
+          accelerators.length === 0 &&
+          !acceleratorsName.includes(acceleratorType)
+        ) {
           return null;
         } // Skip if the array is empty
 
         return (
           <React.Fragment key={acceleratorType}>
             <TableCell>
-              <WorkerAcceleratorUtilization workerPID={pid} accelerators={accelerators} />
+              <WorkerAcceleratorUtilization
+                workerPID={pid}
+                accelerators={accelerators}
+              />
             </TableCell>
             <TableCell>
-              <WorkerAcceleratorMemory workerPID={pid} accelerators={accelerators} />
+              <WorkerAcceleratorMemory
+                workerPID={pid}
+                accelerators={accelerators}
+              />
             </TableCell>
           </React.Fragment>
         );
@@ -406,7 +425,12 @@ export const NodeRows = ({
       />
       {isExpanded &&
         workers.map((worker) => (
-          <WorkerRow key={worker.pid} node={node} acceleratorsName={acceleratorsName} worker={worker} />
+          <WorkerRow
+            key={worker.pid}
+            node={node}
+            acceleratorsName={acceleratorsName}
+            worker={worker}
+          />
         ))}
     </React.Fragment>
   );

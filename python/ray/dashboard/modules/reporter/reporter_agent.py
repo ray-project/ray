@@ -30,8 +30,8 @@ from ray.dashboard.consts import (
     COMPONENT_METRICS_TAG_KEYS,
     GCS_RPC_TIMEOUT_SECONDS,
     GPU_TAG_KEYS,
-    NPU_TAG_KEYS,
     NODE_TAG_KEYS,
+    NPU_TAG_KEYS,
 )
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
@@ -879,7 +879,7 @@ class ReporterAgent(
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
-            "accelerator":{
+            "accelerator": {
                 "gpus": self._get_gpu_usage(),
                 "npus": self._get_npu_usage(),
             },
@@ -1201,7 +1201,7 @@ class ReporterAgent(
                             gram_available_record,
                         ]
                     )
-                    
+
         # -- NPU per node --
         npus = stats["accelerators"]["npus"]
         npus_available = len(npus)

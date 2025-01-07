@@ -94,7 +94,12 @@ describe("NodeRow", () => {
 
   it("Disable actions for Dead node", async () => {
     render(
-      <NodeRow node={DEAD_NODE} acceleratorsName={[]} expanded={false} onExpandButtonClick={noop} />,
+      <NodeRow
+        node={DEAD_NODE}
+        acceleratorsName={[]}
+        expanded={false}
+        onExpandButtonClick={noop}
+      />,
       { wrapper: TEST_APP_WRAPPER },
     );
     await screen.findByText("test-hostname");

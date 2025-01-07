@@ -36,7 +36,7 @@ import {
 import {
   getSumAcceleratorUtilization,
   WorkerAcceleratorUtilization,
-} from "../pages/node/AcceleratorUtilizationColumn"
+} from "../pages/node/AcceleratorUtilizationColumn";
 import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
@@ -51,7 +51,9 @@ import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
 
 export type ActorTableProps = {
   actors: { [actorId: string]: ActorDetail };
-  accelerators?: {columns: {label:string; helpInfo?:string|undefined}[]}[];
+  accelerators?: {
+    columns: { label: string; helpInfo?: string | undefined }[];
+  }[];
   workers?: Worker[];
   jobId?: string | null;
   filterToActorId?: string;
@@ -185,7 +187,15 @@ const ActorTable = ({
       const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
       return actorOrder;
     });
-  }, [actorList, acceleratorsName, sorterKeys, sorterKey, sorterFunc, descVal]);
+  }, [
+    acceleratorsName,
+    sorterKeys,
+    sorterKey,
+    sorterFunc,
+    descVal,
+    actors,
+    filterFunc,
+  ]);
 
   const {
     items: list,

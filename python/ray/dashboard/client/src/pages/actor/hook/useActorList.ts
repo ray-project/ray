@@ -1,7 +1,7 @@
 import useSWR from "swr";
 import { PER_JOB_PAGE_REFRESH_INTERVAL_MS } from "../../../common/constants";
+import { getAccelerators } from "../../../service/accelerators";
 import { getActors } from "../../../service/actor";
-import { getAccelerators } from "../../../service/accelerators"
 export const useActorList = () => {
   const { data } = useSWR(
     "useActorList",
@@ -11,7 +11,7 @@ export const useActorList = () => {
       if (rsp?.data?.data?.actors) {
         const actors = rsp.data.data.actors;
         const accelerators = acceleratorsRsp.data.data.result;
-        return {actors,accelerators};
+        return { actors, accelerators };
       } else {
         return {};
       }
