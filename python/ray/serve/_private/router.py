@@ -13,9 +13,9 @@ import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
-    DeploymentAvailability,
     DeploymentHandleSource,
     DeploymentID,
+    DeploymentTargetInfo,
     ReplicaID,
     RequestMetadata,
     RunningReplicaInfo,
@@ -403,9 +403,9 @@ class AsyncioRouter:
             controller_handle,
             {
                 (
-                    LongPollNamespace.DEPLOYMENT_AVAILABILITY,
+                    LongPollNamespace.DEPLOYMENT_TARGETS,
                     deployment_id,
-                ): self.update_deployment_availability,
+                ): self.update_deployment_targets,
                 (
                     LongPollNamespace.DEPLOYMENT_CONFIG,
                     deployment_id,
@@ -417,12 +417,10 @@ class AsyncioRouter:
     def running_replicas_populated(self) -> bool:
         return self._running_replicas_populated
 
-    def update_deployment_availability(
-        self, deployment_availability: DeploymentAvailability
-    ):
-        self._deployment_available = deployment_availability.is_available
+    def update_deployment_targets(self, deployment_target_info: DeploymentTargetInfo):
+        self._deployment_available = deployment_target_info.is_available
 
-        running_replicas = deployment_availability.running_replicas
+        running_replicas = deployment_target_info.running_replicas
         self._replica_scheduler.update_running_replicas(running_replicas)
         self._metrics_manager.update_running_replicas(running_replicas)
 

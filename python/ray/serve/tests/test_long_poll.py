@@ -10,8 +10,8 @@ import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import (
-    DeploymentAvailability,
     DeploymentID,
+    DeploymentTargetInfo,
     EndpointInfo,
     ReplicaID,
     RunningReplicaInfo,
@@ -24,7 +24,7 @@ from ray.serve._private.long_poll import (
     UpdatedObject,
 )
 from ray.serve.generated.serve_pb2 import (
-    DeploymentAvailability as DeploymentAvailabilityProto,
+    DeploymentTargetInfo as DeploymentTargetInfoProto,
 )
 from ray.serve.generated.serve_pb2 import EndpointSet, LongPollRequest, LongPollResult
 
@@ -223,9 +223,7 @@ def test_listen_for_change_java(serve_instance):
     assert set(endpoint_set.endpoints.keys()) == {"deployment_name", "deployment_name1"}
     assert endpoint_set.endpoints["deployment_name"].route == "/test/xlang/poll"
 
-    request_3 = {
-        "keys_to_snapshot_ids": {"(DEPLOYMENT_AVAILABILITY,deployment_name)": -1}
-    }
+    request_3 = {"keys_to_snapshot_ids": {"(DEPLOYMENT_TARGETS,deployment_name)": -1}}
     replicas = [
         RunningReplicaInfo(
             replica_id=ReplicaID(
@@ -243,9 +241,9 @@ def test_listen_for_change_java(serve_instance):
         host.notify_changed.remote(
             {
                 (
-                    LongPollNamespace.DEPLOYMENT_AVAILABILITY,
+                    LongPollNamespace.DEPLOYMENT_TARGETS,
                     "deployment_name",
-                ): DeploymentAvailability(is_available=True, running_replicas=replicas)
+                ): DeploymentTargetInfo(is_available=True, running_replicas=replicas)
             }
         )
     )
@@ -254,9 +252,9 @@ def test_listen_for_change_java(serve_instance):
     )
     result_3: bytes = ray.get(object_ref_3)
     poll_result_3 = LongPollResult.FromString(result_3)
-    da = DeploymentAvailabilityProto.FromString(
+    da = DeploymentTargetInfoProto.FromString(
         poll_result_3.updated_objects[
-            "(DEPLOYMENT_AVAILABILITY,deployment_name)"
+            "(DEPLOYMENT_TARGETS,deployment_name)"
         ].object_snapshot
     )
     assert da.replica_names == [

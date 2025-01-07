@@ -12,7 +12,7 @@ from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
 import ray
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve.generated.serve_pb2 import DeploymentAvailability
+from ray.serve.generated.serve_pb2 import DeploymentTargetInfo
 from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
 from ray.serve.generated.serve_pb2 import EndpointSet, LongPollRequest, LongPollResult
 from ray.serve.generated.serve_pb2 import UpdatedObject as UpdatedObjectProto
@@ -37,7 +37,7 @@ class LongPollNamespace(Enum):
     def __repr__(self):
         return f"{self.__class__.__name__}.{self.name}"
 
-    DEPLOYMENT_AVAILABILITY = auto()
+    DEPLOYMENT_TARGETS = auto()
     ROUTE_TABLE = auto()
     GLOBAL_LOGGING_CONFIG = auto()
     DEPLOYMENT_CONFIG = auto()
@@ -337,8 +337,8 @@ class LongPollHost:
     def _parse_poll_namespace(self, name: str):
         if name == LongPollNamespace.ROUTE_TABLE.name:
             return LongPollNamespace.ROUTE_TABLE
-        elif name == LongPollNamespace.DEPLOYMENT_AVAILABILITY.name:
-            return LongPollNamespace.DEPLOYMENT_AVAILABILITY
+        elif name == LongPollNamespace.DEPLOYMENT_TARGETS.name:
+            return LongPollNamespace.DEPLOYMENT_TARGETS
         else:
             return name
 
@@ -376,16 +376,13 @@ class LongPollHost:
                 for endpoint_tag, endpoint_info in object_snapshot.items()
             }
             return EndpointSet(endpoints=xlang_endpoints).SerializeToString()
-        elif (
-            isinstance(key, tuple)
-            and key[0] == LongPollNamespace.DEPLOYMENT_AVAILABILITY
-        ):
+        elif isinstance(key, tuple) and key[0] == LongPollNamespace.DEPLOYMENT_TARGETS:
             # object_snapshot.running_replicas is List[RunningReplicaInfo]
             actor_name_list = [
                 replica_info.replica_id.to_full_id_str()
                 for replica_info in object_snapshot.running_replicas
             ]
-            return DeploymentAvailability(
+            return DeploymentTargetInfo(
                 replica_names=actor_name_list,
                 is_available=object_snapshot.is_available,
             ).SerializeToString()
