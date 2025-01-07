@@ -124,6 +124,11 @@ const ray::rpc::ActorDeathCause GenActorRefDeletedCause(const ray::gcs::GcsActor
   return death_cause;
 }
 
+}  // namespace
+
+namespace ray {
+namespace gcs {
+
 // Returns true if an actor should be loaded to registered_actors_.
 // `false` Cases:
 // 0. state is DEAD, and is not restartable
@@ -162,11 +167,6 @@ bool OnInitializeActorShouldLoad(const ray::gcs::GcsInitData &gcs_init_data,
            root_detached_actor_iter->second.state() != ray::rpc::ActorTableData::DEAD;
   }
 };
-
-}  // namespace
-
-namespace ray {
-namespace gcs {
 
 bool is_uuid(const std::string &str) {
   static const boost::regex e(
@@ -215,6 +215,10 @@ void GcsActor::UpdateState(rpc::ActorTableData::ActorState state) {
 
 rpc::ActorTableData::ActorState GcsActor::GetState() const {
   return actor_table_data_.state();
+}
+
+const std::string &GcsActor::GetVirtualClusterID() const {
+  return task_spec_->scheduling_strategy().virtual_cluster_id();
 }
 
 ActorID GcsActor::GetActorID() const {
@@ -799,6 +803,10 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                                          request.task_spec().runtime_env_info());
   }
 
+  for (auto &listener : actor_registration_listeners_) {
+    listener(actor);
+  }
+
   // The backend storage is supposed to be reliable, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Put(
       actor_id,
@@ -1115,6 +1123,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     } else {
       runtime_env_manager_.RemoveURIReference(actor_id.Hex());
     }
+  }
+
+  for (auto &listener : actor_destroy_listeners_) {
+    listener(actor);
   }
 
   auto actor_table_data =

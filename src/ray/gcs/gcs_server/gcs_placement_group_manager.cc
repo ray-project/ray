@@ -264,6 +264,10 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
                                        placement_group);
   AddToPendingQueue(placement_group);
 
+  for (auto &listener : placement_group_registration_listeners_) {
+    listener(placement_group);
+  }
+
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id,
       placement_group->GetPlacementGroupTableData(),
@@ -555,6 +559,10 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   if (pending_it != infeasible_placement_groups_.end()) {
     // The placement group is infeasible now, remove it from the queue.
     infeasible_placement_groups_.erase(pending_it);
+  }
+
+  for (auto &listener : placement_group_destroy_listeners_) {
+    listener(placement_group);
   }
 
   // Flush the status and respond to workers.

@@ -381,6 +381,39 @@ class IndivisibleCluster : public VirtualCluster {
 class JobCluster : public IndivisibleCluster {
  public:
   using IndivisibleCluster::IndivisibleCluster;
+
+  /// Handle detached actor registration.
+  void OnDetachedActorRegistration(const ActorID &actor_id);
+
+  /// Handle detached actor destroy.
+  void OnDetachedActorDestroy(const ActorID &actor_id);
+
+  /// Handle detached placement group registration.
+  void OnDetachedPlacementGroupRegistration(const PlacementGroupID &placement_group_id);
+
+  /// Handle detached placement group destroy.
+  void OnDetachedPlacementGroupDestroy(const PlacementGroupID &placement_group_id);
+
+  /// Check if job cluster is still in use
+  ///
+  /// \return True if the job is in use, false otherwise.
+  bool InUse() const override;
+
+  /// Set Job as Finished
+  void SetFinished() { finished = true; }
+
+  /// Check if job is finished
+  ///
+  /// \return True if the job is finished, false otherwise.
+  bool IsFinished() const { return finished; }
+
+ private:
+  // The references of detached actors
+  absl::flat_hash_set<ActorID> detached_actors_;
+  // The references of detached placement groups
+  absl::flat_hash_set<PlacementGroupID> detached_placement_groups_;
+  // If the job is finished
+  bool finished = false;
 };
 
 class PrimaryCluster : public DivisibleCluster,

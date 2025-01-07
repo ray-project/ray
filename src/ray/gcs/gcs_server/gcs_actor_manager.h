@@ -37,6 +37,14 @@
 namespace ray {
 namespace gcs {
 
+// Returns true if an actor should be loaded to registered_actors_.
+// `false` Cases:
+// 0. state is DEAD, and is not restartable
+// 1. root owner is job, and job is dead
+// 2. root owner is another detached actor, and that actor is dead
+bool OnInitializeActorShouldLoad(const ray::gcs::GcsInitData &gcs_init_data,
+                                 ray::ActorID actor_id);
+
 /// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to access
 /// the fields inside `ActorTableData`.
 /// This class is not thread-safe.
@@ -176,6 +184,8 @@ class GcsActor {
   void UpdateState(rpc::ActorTableData::ActorState state);
   /// Get the state of this gcs actor.
   rpc::ActorTableData::ActorState GetState() const;
+  /// Get virtual cluster id of this actor
+  const std::string &GetVirtualClusterID() const;
 
   /// Get the id of this actor.
   ActorID GetActorID() const;
@@ -263,6 +273,11 @@ using RegisterActorCallback =
 using RestartActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
 using CreateActorCallback = std::function<void(
     std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply, const Status &status)>;
+
+using ActorRegistrationListenerCallback =
+    std::function<void(const std::shared_ptr<GcsActor> &)>;
+using ActorDestroyListenerCallback =
+    std::function<void(const std::shared_ptr<GcsActor> &)>;
 
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
@@ -500,6 +515,18 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     usage_stats_client_ = usage_stats_client;
   }
 
+  /// Add actor registration event listener.
+  void AddActorRegistrationListener(ActorRegistrationListenerCallback listener) {
+    RAY_CHECK(listener);
+    actor_registration_listeners_.emplace_back(std::move(listener));
+  }
+
+  /// Add actor destroy event listener.
+  void AddActorDestroyListener(ActorDestroyListenerCallback listener) {
+    RAY_CHECK(listener);
+    actor_destroy_listeners_.emplace_back(std::move(listener));
+  }
+
  private:
   const ray::rpc::ActorDeathCause GenNodeDiedCause(
       const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node);
@@ -721,6 +748,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t liftime_num_created_actors_ = 0;
+
+  /// Listeners which monitors the registration of actor.
+  std::vector<ActorRegistrationListenerCallback> actor_registration_listeners_;
+
+  /// Listeners which monitors the destruction of actor.
+  std::vector<ActorDestroyListenerCallback> actor_destroy_listeners_;
 
   // Debug info.
   enum CountType {

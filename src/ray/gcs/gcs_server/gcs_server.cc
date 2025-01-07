@@ -507,6 +507,25 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
 
   // Initialize by gcs tables data.
   gcs_actor_manager_->Initialize(gcs_init_data);
+  // Add event listeners
+  gcs_actor_manager_->AddActorRegistrationListener(
+      [this](const std::shared_ptr<GcsActor> &actor) {
+        if (gcs_virtual_cluster_manager_ != nullptr) {
+          if (actor->IsDetached()) {
+            gcs_virtual_cluster_manager_->OnDetachedActorRegistration(
+                actor->GetVirtualClusterID(), actor->GetActorID());
+          }
+        }
+      });
+  gcs_actor_manager_->AddActorDestroyListener(
+      [this](const std::shared_ptr<GcsActor> &actor) {
+        if (gcs_virtual_cluster_manager_ != nullptr) {
+          if (actor->IsDetached()) {
+            gcs_virtual_cluster_manager_->OnDetachedActorDestroy(
+                actor->GetVirtualClusterID(), actor->GetActorID());
+          }
+        }
+      });
   // Register service.
   actor_info_service_ = std::make_unique<rpc::ActorInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(), *gcs_actor_manager_);
@@ -532,6 +551,27 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       });
   // Initialize by gcs tables data.
   gcs_placement_group_manager_->Initialize(gcs_init_data);
+  // Add event listeners
+  gcs_placement_group_manager_->AddPlacementGroupRegistrationListener(
+      [this](const std::shared_ptr<GcsPlacementGroup> &placement_group) {
+        if (gcs_virtual_cluster_manager_ != nullptr) {
+          if (placement_group->IsDetached()) {
+            gcs_virtual_cluster_manager_->OnDetachedPlacementGroupRegistration(
+                placement_group->GetVirtualClusterID(),
+                placement_group->GetPlacementGroupID());
+          }
+        }
+      });
+  gcs_placement_group_manager_->AddPlacementGroupDestroyListener(
+      [this](const std::shared_ptr<GcsPlacementGroup> &placement_group) {
+        if (gcs_virtual_cluster_manager_ != nullptr) {
+          if (placement_group->IsDetached()) {
+            gcs_virtual_cluster_manager_->OnDetachedPlacementGroupDestroy(
+                placement_group->GetVirtualClusterID(),
+                placement_group->GetPlacementGroupID());
+          }
+        }
+      });
   // Register service.
   placement_group_info_service_.reset(new rpc::PlacementGroupInfoGrpcService(
       io_context_provider_.GetDefaultIOContext(), *gcs_placement_group_manager_));

@@ -71,6 +71,22 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
   std::shared_ptr<VirtualCluster> GetVirtualCluster(
       const std::string &virtual_cluster_id);
 
+  /// Handle detached actor registration.
+  void OnDetachedActorRegistration(const std::string &virtual_cluster_id,
+                                   const ActorID &actor_id);
+
+  /// Handle detached actor destroy.
+  void OnDetachedActorDestroy(const std::string &virtual_cluster_id,
+                              const ActorID &actor_id);
+
+  /// Handle detached placement group registration.
+  void OnDetachedPlacementGroupRegistration(const std::string &virtual_cluster_id,
+                                            const PlacementGroupID &placement_group_id);
+
+  /// Handle detached placement group destroy.
+  void OnDetachedPlacementGroupDestroy(const std::string &virtual_cluster_id,
+                                       const PlacementGroupID &placement_group_id);
+
  protected:
   void HandleCreateOrUpdateVirtualCluster(
       rpc::CreateOrUpdateVirtualClusterRequest request,

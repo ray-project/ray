@@ -1,7 +1,6 @@
 import logging
 import sys
 import tempfile
-from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
 
@@ -17,17 +16,20 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
-from ray.cluster_utils import Cluster, cluster_not_supported
+from ray._private.utils import hex_to_binary
+from ray._raylet import PlacementGroupID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_service_pb2 import CreateOrUpdateVirtualClusterRequest
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
+    JobStatus,
 )
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env.runtime_env import RuntimeEnv
-from ray.tests.conftest import get_default_fixture_ray_kwargs
+from ray.tests.conftest import _ray_start_virtual_cluster
+from ray.util.placement_group import PlacementGroup
 
 TEMPLATE_ID_PREFIX = "template_id_"
 kPrimaryClusterID = "kPrimaryClusterID"
@@ -35,66 +37,16 @@ kPrimaryClusterID = "kPrimaryClusterID"
 logger = logging.getLogger(__name__)
 
 
-@contextmanager
-def _ray_start_virtual_cluster(**kwargs):
-    cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
-    if cluster_not_supported_:
-        pytest.skip("Cluster not supported")
-    init_kwargs = get_default_fixture_ray_kwargs()
-    num_nodes = 0
-    do_init = False
-    ntemplates = kwargs["ntemplates"]
-    # num_nodes & do_init are not arguments for ray.init, so delete them.
-    if "num_nodes" in kwargs:
-        num_nodes = kwargs["num_nodes"]
-        del kwargs["num_nodes"]
-    if "do_init" in kwargs:
-        do_init = kwargs["do_init"]
-        del kwargs["do_init"]
-    elif num_nodes > 0:
-        do_init = True
-
-    kwargs.pop("ntemplates")
-    init_kwargs.update(kwargs)
-    namespace = init_kwargs.pop("namespace")
-    cluster = Cluster()
-    remote_nodes = []
-    for i in range(num_nodes):
-        if i > 0 and "_system_config" in init_kwargs:
-            del init_kwargs["_system_config"]
-        env_vars = {}
-        if i > 0:
-            env_vars = {
-                "RAY_NODE_TYPE_NAME": TEMPLATE_ID_PREFIX + str((i - 1) % ntemplates)
-            }
-        remote_nodes.append(
-            cluster.add_node(
-                **init_kwargs,
-                env_vars=env_vars,
-            )
-        )
-        # We assume driver will connect to the head (first node),
-        # so ray init will be invoked if do_init is true
-        if len(remote_nodes) == 1 and do_init:
-            ray.init(address=cluster.address, namespace=namespace)
-    yield cluster
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
-
-
 @pytest_asyncio.fixture
-def is_virtual_cluster_empty(request):
-    param = getattr(request, "param", True)
-    yield param
-
-
-@pytest_asyncio.fixture
-async def job_sdk_client(request, make_sure_dashboard_http_port_unused, external_redis):
+def job_sdk_client(request):
     param = getattr(request, "param", {})
     ntemplates = param["ntemplates"]
     with _ray_start_virtual_cluster(
-        do_init=True, num_cpus=20, num_nodes=4 * ntemplates + 1, **param
+        do_init=True,
+        num_cpus=20,
+        num_nodes=4 * ntemplates + 1,
+        template_id_prefix=TEMPLATE_ID_PREFIX,
+        **param,
     ) as res:
         ip, _ = res.webui_url.split(":")
         agent_address = f"{ip}:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
@@ -141,7 +93,7 @@ async def create_virtual_cluster(
     indirect=True,
 )
 @pytest.mark.asyncio
-async def test_mixed_virtual_cluster(job_sdk_client):
+async def test_indivisible_virtual_cluster(job_sdk_client):
     head_client, gcs_address, cluster = job_sdk_client
     virtual_cluster_id_prefix = "VIRTUAL_CLUSTER_"
     node_to_virtual_cluster = {}
@@ -647,17 +599,21 @@ import os
 ray.init(address="auto")
 storage = ray.get_actor(name="{storage_actor_name}", namespace="storage")
 
+
 @ray.remote
 def access_nodes():
     return ray.nodes()
+
 
 @ray.remote
 def access_cluster_resources():
     return ray.cluster_resources()
 
+
 @ray.remote
 def access_available_resources():
     return ray.available_resources()
+
 
 @ray.remote
 class ResourceAccessor:
@@ -677,8 +633,9 @@ class ResourceAccessor:
         return self._available_resources
 
 
-accessor = ResourceAccessor.options(name="{resource_accessor_name}",
-    namespace="storage", num_cpus=0).remote()
+accessor = ResourceAccessor.options(
+    name="{resource_accessor_name}", namespace="storage", num_cpus=0
+).remote()
 ray.get(accessor.is_ready.remote())
 
 ray.get(storage.ready.remote())
@@ -688,8 +645,9 @@ driver_cluster_resources = ray.cluster_resources()
 driver_available_resources = ray.available_resources()
 ray.get(storage.set_driver_info.remote("nodes", driver_nodes))
 ray.get(storage.set_driver_info.remote("cluster_resources", driver_cluster_resources))
-ray.get(storage.set_driver_info.remote("available_resources",
-    driver_available_resources))
+ray.get(
+    storage.set_driver_info.remote("available_resources", driver_available_resources)
+)
 
 actor_nodes = ray.get(accessor.nodes.remote())
 actor_cluster_resources = ray.get(accessor.total_cluster_resources.remote())
@@ -699,15 +657,23 @@ ray.get(storage.set_actor_info.remote("cluster_resources", actor_cluster_resourc
 ray.get(storage.set_actor_info.remote("available_resources", actor_available_resources))
 
 normal_task_nodes = ray.get(access_nodes.options(num_cpus=0).remote())
-normal_task_cluster_resources =
-    ray.get(access_cluster_resources.options(num_cpus=0).remote())
-normal_task_available_resources =
-    ray.get(access_available_resources.options(num_cpus=0).remote())
+normal_task_cluster_resources = ray.get(
+    access_cluster_resources.options(num_cpus=0).remote()
+)
+normal_task_available_resources = ray.get(
+    access_available_resources.options(num_cpus=0).remote()
+)
 ray.get(storage.set_normal_task_info.remote("nodes", normal_task_nodes))
-ray.get(storage.set_normal_task_info.remote("cluster_resources",
-    normal_task_cluster_resources))
-ray.get(storage.set_normal_task_info.remote("available_resources",
-    normal_task_available_resources))
+ray.get(
+    storage.set_normal_task_info.remote(
+        "cluster_resources", normal_task_cluster_resources
+    )
+)
+ray.get(
+    storage.set_normal_task_info.remote(
+        "available_resources", normal_task_available_resources
+    )
+)
             """
             driver_script = driver_script.format(
                 resource_accessor_name=resource_accessor_name,
@@ -908,6 +874,171 @@ async def test_list_cluster_resources(job_sdk_client):
     assert len(ray.available_resources("NON_EXIST_VIRTUAL_CLUSTER")) == 0
     with pytest.raises(TypeError):
         ray.available_resources(1)
+
+
+@pytest.mark.parametrize(
+    "job_sdk_client",
+    [
+        {
+            "ntemplates": 1,
+        },
+    ],
+    indirect=True,
+)
+@pytest.mark.asyncio
+async def test_detached_job_cluster(job_sdk_client):
+    head_client, gcs_address, cluster = job_sdk_client
+    virtual_cluster_id = "VIRTUAL_CLUSTER_0"
+    await create_virtual_cluster(
+        gcs_address,
+        virtual_cluster_id,
+        {TEMPLATE_ID_PREFIX + str(0): 2},
+        True,
+    )
+    actor_name = "test_actor"
+    pg_name = "test_pg"
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        driver_script = """
+import ray
+import time
+import asyncio
+
+ray.init(address="auto")
+
+@ray.remote(max_restarts=10)
+class Actor:
+    def __init__(self):
+        pass
+
+    async def run(self):
+        pass
+
+pg = ray.util.placement_group(
+    bundles=[{{"CPU": 1}}], name="{pg_name}", lifetime="detached"
+)
+
+a = Actor.options(name="{actor_name}",
+                  namespace="test",
+                  num_cpus=1,
+                  lifetime="detached").remote()
+ray.get(a.run.remote())
+            """
+        driver_script = driver_script.format(
+            actor_name=actor_name,
+            pg_name=pg_name,
+        )
+        test_script_file = path / "test_script.py"
+        with open(test_script_file, "w+") as file:
+            file.write(driver_script)
+
+        runtime_env = {"working_dir": tmp_dir}
+        runtime_env = upload_working_dir_if_needed(runtime_env, tmp_dir, logger=logger)
+        runtime_env = RuntimeEnv(**runtime_env).to_dict()
+
+        def _successful_submit():
+            job_id = head_client.submit_job(
+                entrypoint="python test_script.py",
+                entrypoint_memory=1,
+                runtime_env=runtime_env,
+                virtual_cluster_id=virtual_cluster_id,
+                replica_sets={TEMPLATE_ID_PREFIX + str(0): 2},
+            )
+
+            def _check_job_succeeded(head_client, job_id):
+                assert head_client.get_job_status(job_id) == JobStatus.SUCCEEDED
+                return True
+
+            wait_for_condition(
+                partial(
+                    _check_job_succeeded,
+                    head_client,
+                    job_id,
+                ),
+                timeout=20,
+            )
+
+        _successful_submit()
+
+        def _failed_submit():
+            job_id = head_client.submit_job(
+                entrypoint="python test_script.py",
+                entrypoint_memory=1,
+                runtime_env=runtime_env,
+                virtual_cluster_id=virtual_cluster_id,
+                replica_sets={TEMPLATE_ID_PREFIX + str(0): 2},
+            )
+
+            def _check_job_failed(head_client, job_id):
+                assert head_client.get_job_status(job_id) == JobStatus.FAILED
+                assert (
+                    "No enough node instances to create the job cluster"
+                    in head_client.get_job_info(job_id).message
+                )
+                return True
+
+            wait_for_condition(
+                partial(
+                    _check_job_failed,
+                    head_client,
+                    job_id,
+                ),
+                timeout=20,
+            )
+
+        _failed_submit()
+
+        def _remove_pg():
+            pgs = ray.state.state.placement_group_table()
+            pg_id = None
+            for id, pg in pgs.items():
+                if pg["state"] == "CREATED":
+                    pg_id = id
+                    break
+            assert pg_id is not None
+
+            pg = PlacementGroup(PlacementGroupID(hex_to_binary(pg_id)))
+            ray.util.remove_placement_group(pg)
+
+        _remove_pg()
+
+        _failed_submit()
+
+        actor = ray.get_actor(name=actor_name, namespace="test")
+        ray.kill(actor, no_restart=False)
+
+        _failed_submit()
+
+        actor = ray.get_actor(name=actor_name, namespace="test")
+        ray.kill(actor)
+
+        _successful_submit()
+
+        _remove_pg()
+
+        actor = ray.get_actor(name=actor_name, namespace="test")
+        ray.kill(actor)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir)
+            driver_script += """
+ray.kill(a)
+ray.util.remove_placement_group(pg)
+            """
+            test_script_file = path / "test_script.py"
+            with open(test_script_file, "w") as file:
+                file.write(driver_script)
+
+            runtime_env = {"working_dir": tmp_dir}
+            runtime_env = upload_working_dir_if_needed(
+                runtime_env, tmp_dir, logger=logger
+            )
+            runtime_env = RuntimeEnv(**runtime_env).to_dict()
+
+            _successful_submit()
+            # Test that the job submission is successful if detached is
+            # early killed in job.
+            _successful_submit()
 
 
 if __name__ == "__main__":

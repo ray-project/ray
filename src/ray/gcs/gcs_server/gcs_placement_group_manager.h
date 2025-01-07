@@ -223,6 +223,11 @@ class GcsPlacementGroup {
   std::optional<rpc::PlacementGroupTableData::PlacementGroupState> last_metric_state_;
 };
 
+using PlacementGroupRegistrationListenerCallback =
+    std::function<void(const std::shared_ptr<GcsPlacementGroup> &)>;
+using PlacementGroupDestroyListenerCallback =
+    std::function<void(const std::shared_ptr<GcsPlacementGroup> &)>;
+
 /// GcsPlacementGroupManager is responsible for managing the lifecycle of all placement
 /// group. This class is not thread-safe.
 /// The placementGroup will be added into queue and set the status as pending first and
@@ -396,6 +401,19 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// the returned rpc has any placement_group_data.
   virtual std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
 
+  /// Add placement group registration event listener.
+  void AddPlacementGroupRegistrationListener(
+      PlacementGroupRegistrationListenerCallback listener) {
+    RAY_CHECK(listener);
+    placement_group_registration_listeners_.emplace_back(std::move(listener));
+  }
+
+  /// Add placement group destroy event listener.
+  void AddPlacementGroupDestroyListener(PlacementGroupDestroyListenerCallback listener) {
+    RAY_CHECK(listener);
+    placement_group_destroy_listeners_.emplace_back(std::move(listener));
+  }
+
  protected:
   /// For testing/mocking only.
   explicit GcsPlacementGroupManager(instrumented_io_context &io_context,
@@ -513,6 +531,13 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   /// Total number of successfully created placement groups in the cluster lifetime.
   int64_t lifetime_num_placement_groups_created_ = 0;
+
+  /// Listeners which monitors the registration of placement group.
+  std::vector<PlacementGroupRegistrationListenerCallback>
+      placement_group_registration_listeners_;
+
+  /// Listeners which monitors the destruction of placement group.
+  std::vector<PlacementGroupDestroyListenerCallback> placement_group_destroy_listeners_;
 
   // Debug info.
   enum CountType {
