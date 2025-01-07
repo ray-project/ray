@@ -64,7 +64,6 @@ int main(int argc, char *argv[]) {
       ray::RayLog::ShutDownRayLog,
       argv[0],
       ray::RayLogLevel::INFO,
-      /*log_dir=*/"",
       /*log_filepath=*/FLAGS_ray_log_filepath,
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());

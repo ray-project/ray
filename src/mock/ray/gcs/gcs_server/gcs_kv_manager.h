@@ -33,13 +33,13 @@ class MockInternalKVInterface : public ray::gcs::InternalKVInterface {
       MultiGet,
       (const std::string &ns,
        const std::vector<std::string> &keys,
-       std::function<void(std::unordered_map<std::string, std::string>)> callback),
+       std::function<void(absl::flat_hash_map<std::string, std::string>)> callback),
       (override));
   MOCK_METHOD(void,
               Put,
               (const std::string &ns,
                const std::string &key,
-               const std::string &value,
+               std::string value,
                bool overwrite,
                std::function<void(bool)> callback),
               (override));
@@ -90,9 +90,9 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
 
   void MultiGet(const std::string &ns,
                 const std::vector<std::string> &keys,
-                std::function<void(std::unordered_map<std::string, std::string>)>
+                std::function<void(absl::flat_hash_map<std::string, std::string>)>
                     callback) override {
-    std::unordered_map<std::string, std::string> result;
+    absl::flat_hash_map<std::string, std::string> result;
     for (const auto &key : keys) {
       std::string full_key = ns + key;
       auto it = kv_store_.find(full_key);
@@ -105,7 +105,7 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
 
   void Put(const std::string &ns,
            const std::string &key,
-           const std::string &value,
+           std::string value,
            bool overwrite,
            std::function<void(bool)> callback) override {
     std::string full_key = ns + key;

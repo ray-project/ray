@@ -140,9 +140,8 @@ int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(
       ray::RayLog::StartRayLog,
       ray::RayLog::ShutDownRayLog,
-      argv[0],
+      /*app_name=*/argv[0],
       ray::RayLogLevel::INFO,
-      /*log_dir=*/"",
       /*ray_log_filepath=*/FLAGS_ray_log_filepath,
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());

@@ -104,7 +104,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   MOCK_METHOD(bool, Enabled, (), (const, override));
 
-  MOCK_METHOD(const std::string, DebugString, (), (override));
+  MOCK_METHOD(std::string, DebugString, (), (override));
 };
 
 class TaskManagerTest : public ::testing::Test {
@@ -692,7 +692,7 @@ TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
       "");
   builder.SetActorTaskSpec(
       actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0);
-  TaskSpecification spec = builder.Build();
+  TaskSpecification spec = std::move(builder).ConsumeAndBuild();
 
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
   manager_.AddPendingTask(caller_address, spec, "", num_retries);

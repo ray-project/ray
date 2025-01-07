@@ -309,24 +309,6 @@ void RayLog::InitLogFormat() {
   }
 }
 
-/*static*/ std::string RayLog::GetLogOutputFilename(const std::string &log_dir,
-                                                    const std::string &log_file,
-                                                    const std::string &app_name) {
-  if (!log_file.empty()) {
-    return log_file;
-  }
-  if (!log_dir.empty()) {
-#ifdef _WIN32
-    int pid = _getpid();
-#else
-    pid_t pid = getpid();
-#endif
-
-    return JoinPaths(log_dir, absl::StrFormat("%s_%d.log", app_name, pid));
-  }
-  return "";
-}
-
 /*static*/ size_t RayLog::GetRayLogRotationMaxBytesOrDefault() {
   if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
       ray_rotation_max_bytes != nullptr) {
@@ -351,20 +333,25 @@ void RayLog::InitLogFormat() {
   return kDefaultLogRotationFileNum;
 }
 
-void RayLog::StartRayLog(const std::string &app_name,
-                         RayLogLevel severity_threshold,
-                         const std::string &log_dir,
-                         const std::string &log_filepath,
-                         size_t log_rotation_max_size,
-                         size_t log_rotation_file_num) {
-  // TODO(hjiang): As a temporary workaround decide output log filename on [log_dir] or
-  // [log_filepath]. But they cannot be non empty at the same time. Cleanup
-  // `log_dir`.
-  const bool log_dir_empty = log_dir.empty();
-  const bool log_filepath_empty = log_filepath.empty();
-  RAY_CHECK(log_dir_empty || log_filepath_empty)
-      << "Log directory and log filename cannot be set at the same time.";
+/*static*/ std::string RayLog::GetLogFilepathFromDirectory(const std::string &log_dir,
+                                                           const std::string &app_name) {
+  if (log_dir.empty()) {
+    return "";
+  }
 
+#ifdef _WIN32
+  int pid = _getpid();
+#else
+  pid_t pid = getpid();
+#endif
+  return JoinPaths(log_dir, absl::StrFormat("%s_%d.log", app_name, pid));
+}
+
+/*static*/ void RayLog::StartRayLog(const std::string &app_name,
+                                    RayLogLevel severity_threshold,
+                                    const std::string &log_filepath,
+                                    size_t log_rotation_max_size,
+                                    size_t log_rotation_file_num) {
   InitSeverityThreshold(severity_threshold);
   InitLogFormat();
 
@@ -388,10 +375,7 @@ void RayLog::StartRayLog(const std::string &app_name,
     }
   }
 
-  // Reset log pattern and level and we assume a log file can be rotated with
-  // 10 files in max size 512M by default.
-  const auto log_fname =
-      GetLogOutputFilename(log_dir, log_filepath, app_name_without_path);
+  const auto log_fname = log_filepath;
 
   // Set sink for stdout.
   if (!log_fname.empty()) {

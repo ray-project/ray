@@ -6,12 +6,12 @@ import warnings
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
+from ray import serve
 from ray._raylet import ObjectRefGenerator
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     RequestMetadata,
-    RequestProtocol,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
@@ -30,7 +30,6 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     calculate_remaining_timeout,
-    generate_request_id,
     get_random_string,
     inside_ray_client_context,
     is_running_in_asyncio_loop,
@@ -53,6 +52,7 @@ class _DeploymentHandleBase:
         _router: Optional[Router] = None,
         _create_router: Optional[CreateRouterCallable] = None,
         _request_counter: Optional[metrics.Counter] = None,
+        _handle_id: Optional[str] = None,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         self.init_options: Optional[InitHandleOptionsBase] = init_options
@@ -60,7 +60,9 @@ class _DeploymentHandleBase:
             handle_options or create_dynamic_handle_options()
         )
 
-        self.handle_id = get_random_string()
+        # Handle ID is shared among handles that are returned by
+        # `handle.options` or `handle.method`
+        self.handle_id = _handle_id or get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
             app_name, deployment_name, self.handle_id
         )
@@ -70,11 +72,6 @@ class _DeploymentHandleBase:
             self._create_router = create_router
         else:
             self._create_router = _create_router
-
-        logger.info(
-            f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
-            extra={"log_to_stderr": False},
-        )
 
     @staticmethod
     def _gen_handle_tag(app_name: str, deployment_name: str, handle_id: str):
@@ -148,6 +145,11 @@ class _DeploymentHandleBase:
         )
         self.init_options = init_options
 
+        logger.info(
+            f"Initialized DeploymentHandle {self.handle_id} for {self.deployment_id}.",
+            extra={"log_to_stderr": False},
+        )
+
         # Record handle api telemetry when not in the proxy
         if (
             self.init_options._source != DeploymentHandleSource.PROXY
@@ -179,6 +181,7 @@ class _DeploymentHandleBase:
             _router=self._router,
             _create_router=self._create_router,
             _request_counter=self.request_counter,
+            _handle_id=self.handle_id,
         )
 
     def _remote(
@@ -722,32 +725,8 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
-        _request_context = ray.serve.context._serve_request_context.get()
-
-        request_protocol = RequestProtocol.UNDEFINED
-        if (
-            self.init_options
-            and self.init_options._source == DeploymentHandleSource.PROXY
-        ):
-            if _request_context.is_http_request:
-                request_protocol = RequestProtocol.HTTP
-            elif _request_context.grpc_context:
-                request_protocol = RequestProtocol.GRPC
-
-        request_metadata = RequestMetadata(
-            request_id=_request_context.request_id
-            if _request_context.request_id
-            else generate_request_id(),
-            internal_request_id=_request_context._internal_request_id
-            if _request_context._internal_request_id
-            else generate_request_id(),
-            call_method=self.handle_options.method_name,
-            route=_request_context.route,
-            app_name=self.app_name,
-            multiplexed_model_id=self.handle_options.multiplexed_model_id,
-            is_streaming=self.handle_options.stream,
-            _request_protocol=request_protocol,
-            grpc_context=_request_context.grpc_context,
+        request_metadata = serve._private.default_impl.get_request_metadata(
+            self.init_options, self.handle_options
         )
 
         future = self._remote(request_metadata, args, kwargs)
