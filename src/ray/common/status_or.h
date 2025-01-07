@@ -20,11 +20,29 @@
 #include <utility>
 
 #include "absl/base/attributes.h"
+#include "ray/common/macros.h"
 #include "ray/common/status.h"
+
+#define __RAY_ASSIGN_OR_RETURN_IMPL(var, expr, statusor_name) \
+  auto statusor_name = (expr);                                \
+  RAY_RETURN_NOT_OK(statusor_name.status());                  \
+  var = std::move(statusor_name).value()
+
+// Use `RAY_UNIQUE_VARIABLE` to add line number into variable name, since we could have
+// multiple macros used in one code block.
+#define RAY_ASSIGN_OR_RETURN(var, expr) \
+  __RAY_ASSIGN_OR_RETURN_IMPL(var, expr, RAY_UNIQUE_VARIABLE(statusor))
+
+#define __RAY_ASSIGN_OR_CHECK_IMPL(var, expr, statusor_name) \
+  auto statusor_name = (expr);                               \
+  RAY_CHECK_OK(statusor_name.status());                      \
+  var = std::move(statusor_name).value()
+
+#define RAY_ASSIGN_OR_CHECK(var, expr) \
+  __RAY_ASSIGN_OR_CHECK_IMPL(var, expr, RAY_UNIQUE_VARIABLE(statusor))
 
 namespace ray {
 
-// TODO(hjiang): Introduce statusor related macros.
 template <typename T>
 class StatusOr {
  public:
