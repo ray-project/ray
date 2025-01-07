@@ -109,6 +109,7 @@ class DashboardHead:
         self.http_port_retries = http_port_retries
         self._modules_to_load = modules_to_load
         self._modules_loaded = False
+        self.metrics = None
 
         self._executor = ThreadPoolExecutor(
             max_workers=RAY_DASHBOARD_DASHBOARD_HEAD_TPE_MAX_WORKERS,
@@ -267,7 +268,6 @@ class DashboardHead:
         )
         internal_kv._initialize_internal_kv(gcs_client)
 
-        self.metrics = None
         if not self.minimal:
             self.metrics = await self._setup_metrics(gcs_aio_client)
 
