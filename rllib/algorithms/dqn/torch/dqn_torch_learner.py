@@ -52,9 +52,9 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
         if Columns.LOSS_MASK in batch:
             mask = batch[Columns.LOSS_MASK].clone()
             # Check, if a burn-in should be used to recover from a poor state.
-            if self.config.burnin > 0:
+            if self.config.burn_in_len > 0:
                 # Train only on the timesteps after the burn-in period.
-                mask[:, : self.config.burnin] = False
+                mask[:, : self.config.burn_in_len] = False
             num_valid = torch.sum(mask)
 
             def possibly_masked_mean(data_):

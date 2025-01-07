@@ -34,7 +34,7 @@ config = (
         dueling=True,
         num_atoms=1,
         epsilon=[(0, 1.0), (20000, 0.02)],
-        burnin=8,
+        burn_in_len=8,
     )
     .rl_module(
         # Settings identical to old stack.

@@ -397,7 +397,6 @@ class AlgorithmConfig(_Config):
         self._learner_connector = None
         self.add_default_connectors_to_learner_pipeline = True
         self.learner_config_dict = {}
-        self.burnin = 0
         self.optimizer = {}  # @OldAPIStack
         self._learner_class = None
 
@@ -2195,7 +2194,6 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
-        burnin: Optional[int] = NotProvided,
         # Deprecated args.
         num_sgd_iter=DEPRECATED_VALUE,
         max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
@@ -2287,14 +2285,6 @@ class AlgorithmConfig(_Config):
                 Learner subclasses and in case the user doesn't want to write an extra
                 `AlgorithmConfig` subclass just to add a few settings to the base Algo's
                 own config class.
-            burnin: The burn-in period for a stateful RLModule. It allows the Learner
-                to utilize the initial `burnin` steps in a replay sequence solely for
-                unrolling the network and establishing a typical starting state. The
-                network is then updated on the remaining steps of the sequence. This
-                process helps mitigate issues stemming from a poor initial state - zero
-                or an outdated recorded state. Consider setting this parameter to a
-                positive integer if your stateful RLModule faces convergence challenges
-                or exhibits signs of catastrophic forgetting.
         Returns:
             This updated AlgorithmConfig object.
         """
@@ -2371,8 +2361,6 @@ class AlgorithmConfig(_Config):
             )
         if learner_config_dict is not NotProvided:
             self.learner_config_dict.update(learner_config_dict)
-        if burnin is not NotProvided:
-            self.burnin = burnin
 
         return self
 
@@ -4408,9 +4396,7 @@ class AlgorithmConfig(_Config):
             A dictionary with the automatically included properties/settings of this
             `AlgorithmConfig` object into `self.model_config`.
         """
-        # Note, we need the burn-in period in the learner connectors to
-        # add it to the sequence length, if necessary.
-        return {"burnin": self.burnin}
+        return {}
 
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
