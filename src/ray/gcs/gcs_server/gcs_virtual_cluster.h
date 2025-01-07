@@ -63,7 +63,7 @@ struct NodeInstance {
   bool is_dead_ = false;
 };
 
-static const std::string kEmptyJobClusterId = "NIL";
+static const std::string kUndividedClusterId = "NIL";
 
 /// <template_id, _>
 ///               |
@@ -116,7 +116,7 @@ ReplicaInstances toReplicaInstances(const T &node_instances) {
     auto inst = std::make_shared<NodeInstance>(id);
     inst->set_hostname(node_instance.hostname());
     inst->set_template_id(node_instance.template_id());
-    result[node_instance.template_id()][kEmptyJobClusterId].emplace(id, std::move(inst));
+    result[node_instance.template_id()][kUndividedClusterId].emplace(id, std::move(inst));
   }
   return result;
 }
@@ -161,7 +161,7 @@ class VirtualCluster {
   void UpdateNodeInstances(ReplicaInstances replica_instances_to_add,
                            ReplicaInstances replica_instances_to_remove);
 
-  /// Lookup node instances from queue of kEmptyJobClusterId in `visible_node_instances_`
+  /// Lookup undivided node instances from `visible_node_instances_`
   /// based on the desired final replica sets and node_instance_filter.
   ///
   /// \param replica_sets The demand final replica sets.
@@ -169,9 +169,9 @@ class VirtualCluster {
   /// node instances.
   /// \param node_instance_filter The filter to check if the node instance is desired.
   /// \return True if the lookup is successful, otherwise return an error.
-  bool LookupNodeInstances(const ReplicaSets &replica_sets,
-                           ReplicaInstances &replica_instances,
-                           NodeInstanceFilter node_instance_filter) const;
+  bool LookupUndividedNodeInstances(const ReplicaSets &replica_sets,
+                                    ReplicaInstances &replica_instances,
+                                    NodeInstanceFilter node_instance_filter) const;
 
   /// Mark the node instance as dead.
   ///
@@ -211,19 +211,26 @@ class VirtualCluster {
   ///
   /// \param node_instance The node instance to be checked.
   /// \return True if the node instance is idle, false otherwise.
-  virtual bool IsIdleNodeInstance(const gcs::NodeInstance &node_instance) const = 0;
+  virtual bool IsUndividedNodeInstanceIdle(
+      const gcs::NodeInstance &node_instance) const = 0;
 
   /// Replenish the node instances of the virtual cluster.
   ///
   /// \param callback The callback to replenish the dead node instances.
   /// \return True if any dead node instances are replenished, false otherwise.
-  virtual bool ReplenishNodeInstances(const NodeInstanceReplenishCallback &callback);
+  virtual bool ReplenishNodeInstances(const NodeInstanceReplenishCallback &callback) = 0;
+
+  /// Replenish the undivided node instances of the virtual cluster.
+  ///
+  /// \param callback The callback to replenish the dead node instances.
+  /// \return True if any dead node instances are replenished, false otherwise.
+  bool ReplenishUndividedNodeInstances(const NodeInstanceReplenishCallback &callback);
 
   /// Replenish a node instance.
   ///
   /// \param node_instance_to_replenish The node instance to replenish.
   /// \return True if the node instances is replenished, false otherwise.
-  std::shared_ptr<NodeInstance> ReplenishNodeInstance(
+  std::shared_ptr<NodeInstance> ReplenishUndividedNodeInstance(
       std::shared_ptr<NodeInstance> node_instance_to_replenish);
 
  protected:
@@ -319,7 +326,7 @@ class DivisibleCluster : public VirtualCluster {
   ///
   /// \param node_instance The node instance to be checked.
   /// \return True if the node instance is idle, false otherwise.
-  bool IsIdleNodeInstance(const gcs::NodeInstance &node_instance) const override;
+  bool IsUndividedNodeInstanceIdle(const gcs::NodeInstance &node_instance) const override;
 
   /// Replenish the node instances of the virtual cluster.
   ///
@@ -362,7 +369,13 @@ class IndivisibleCluster : public VirtualCluster {
   ///
   /// \param node_instance The node instance to be checked.
   /// \return True if the node instance is idle, false otherwise.
-  bool IsIdleNodeInstance(const gcs::NodeInstance &node_instance) const override;
+  bool IsUndividedNodeInstanceIdle(const gcs::NodeInstance &node_instance) const override;
+
+  /// Replenish the node instances of the virtual cluster.
+  ///
+  /// \param callback The callback to replenish the dead node instances.
+  /// \return True if any dead node instances are replenished, false otherwise.
+  bool ReplenishNodeInstances(const NodeInstanceReplenishCallback &callback) override;
 };
 
 class JobCluster : public IndivisibleCluster {

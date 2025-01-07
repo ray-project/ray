@@ -63,7 +63,7 @@ void GcsVirtualClusterManager::OnJobFinished(const rpc::JobTableData &job_data) 
   }
 
   if (!virtual_cluster->Divisible()) {
-    // this should not happen, virtual cluster should be exclusive
+    // this should not happen, virtual cluster should be divisible.
     return;
   }
 

@@ -242,7 +242,7 @@ TEST_F(PrimaryClusterTest, NodeAddAndRemove) {
   EXPECT_EQ(visiable_node_instances.size(), template_count);
   for (auto &[template_id, job_node_instances] : visiable_node_instances) {
     EXPECT_EQ(job_node_instances.size(), 1);
-    EXPECT_EQ(job_node_instances.begin()->first, ray::gcs::kEmptyJobClusterId);
+    EXPECT_EQ(job_node_instances.begin()->first, ray::gcs::kUndividedClusterId);
     EXPECT_EQ(job_node_instances.begin()->second.size(), node_count / template_count);
   }
 
@@ -261,7 +261,7 @@ TEST_F(PrimaryClusterTest, NodeAddAndRemove) {
   }
   for (auto &[template_id, job_node_instances] : visiable_node_instances) {
     EXPECT_EQ(job_node_instances.size(), 1);
-    EXPECT_EQ(job_node_instances.begin()->first, ray::gcs::kEmptyJobClusterId);
+    EXPECT_EQ(job_node_instances.begin()->first, ray::gcs::kUndividedClusterId);
     EXPECT_EQ(job_node_instances.begin()->second.size(), node_count / template_count);
 
     size_t alive_count = 0;
@@ -288,7 +288,7 @@ TEST_F(PrimaryClusterTest, NodeAddAndRemove) {
   EXPECT_EQ(visiable_node_instances.size(), template_count);
   for (auto &[template_id, job_node_instances] : visiable_node_instances) {
     EXPECT_EQ(job_node_instances.size(), 1);
-    EXPECT_EQ(job_node_instances.begin()->first, ray::gcs::kEmptyJobClusterId);
+    EXPECT_EQ(job_node_instances.begin()->first, ray::gcs::kUndividedClusterId);
     EXPECT_EQ(job_node_instances.begin()->second.size(), node_count / template_count);
 
     size_t alive_count = 0;
@@ -324,10 +324,11 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
     // Check that template_id_0 has 5 nodes, template_id_1 has 10 nodes.
     EXPECT_EQ(visiable_node_instances.size(), 2);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(), 5);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
+              5);
 
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
               10);
 
     // Check that the revision changed.
@@ -341,11 +342,11 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
     // template_count - 10 nodes.
     EXPECT_EQ(visiable_node_instances.size(), template_count);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
               node_count_per_template - 5);
 
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
               node_count_per_template - 10);
 
     // Check that the revision unchanged.
@@ -368,11 +369,11 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
     // Check that template_id_0 has 5 nodes, template_id_1 has 10 nodes.
     EXPECT_EQ(visiable_node_instances.size(), 2);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
               node_count_per_template - 5);
 
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
               node_count_per_template - 10);
 
     // Check that the revision changed.
@@ -453,29 +454,30 @@ TEST_F(PrimaryClusterTest, CreateJobCluster) {
     // Check that template_id_0 has 5 nodes, template_id_1 has 10 nodes.
     EXPECT_EQ(visiable_node_instances.size(), 2);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(), 5);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
+              5);
 
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
               10);
   }
 
   {
     // Check the primary cluster visible node instances.
     const auto &visiable_node_instances = primary_cluster->GetVisibleNodeInstances();
-    // Check that job_cluster_id_0 in template_id_0 has 5 nodes, kEmptyJobClusterId in
+    // Check that job_cluster_id_0 in template_id_0 has 5 nodes, kUndividedClusterId in
     // template_id_0 has template_count - 5 nodes.
     EXPECT_EQ(visiable_node_instances.size(), template_count);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 2);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).at(job_cluster_id_0).size(), 5);
-    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
               node_count_per_template - 5);
 
-    // Check that job_cluster_id_0 in template_id_1 has 10 nodes, kEmptyJobClusterId in
+    // Check that job_cluster_id_0 in template_id_1 has 10 nodes, kUndividedClusterId in
     // template_id_1 has template_count - 10 nodes.
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 2);
     EXPECT_EQ(visiable_node_instances.at(template_id_1).at(job_cluster_id_0).size(), 10);
-    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
               node_count_per_template - 10);
   }
 
@@ -503,11 +505,11 @@ TEST_F(PrimaryClusterTest, CreateJobCluster) {
     // node_count_per_template - 10 nodes.
     EXPECT_EQ(visiable_node_instances.size(), 2);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
               node_count_per_template - 5);
 
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
               node_count_per_template - 10);
   }
 
@@ -515,23 +517,23 @@ TEST_F(PrimaryClusterTest, CreateJobCluster) {
     // Check the primary cluster visible node instances.
     const auto &visiable_node_instances = primary_cluster->GetVisibleNodeInstances();
     // Check that job_cluster_id_0 in template_id_0 has 5 nodes,
-    // job_cluster_id_1 in template_id_0 has template_count - 5 nodes, kEmptyJobClusterId
+    // job_cluster_id_1 in template_id_0 has template_count - 5 nodes, kUndividedClusterId
     // does not exist in template_id_0.
     EXPECT_EQ(visiable_node_instances.size(), template_count);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 2);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).at(job_cluster_id_0).size(), 5);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).at(job_cluster_id_1).size(),
               node_count_per_template - 5);
-    ASSERT_FALSE(visiable_node_instances.at(template_id_0).contains(kEmptyJobClusterId));
+    ASSERT_FALSE(visiable_node_instances.at(template_id_0).contains(kUndividedClusterId));
 
     // Check that job_cluster_id_0 in template_id_1 has 10 nodes,
-    // job_cluster_id_1 in template_id_0 has template_count - 10 nodes, kEmptyJobClusterId
-    // does not exist in template_id_1.
+    // job_cluster_id_1 in template_id_0 has template_count - 10 nodes,
+    // kUndividedClusterId does not exist in template_id_1.
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 2);
     EXPECT_EQ(visiable_node_instances.at(template_id_1).at(job_cluster_id_0).size(), 10);
     EXPECT_EQ(visiable_node_instances.at(template_id_1).at(job_cluster_id_1).size(),
               node_count_per_template - 10);
-    ASSERT_FALSE(visiable_node_instances.at(template_id_0).contains(kEmptyJobClusterId));
+    ASSERT_FALSE(visiable_node_instances.at(template_id_0).contains(kUndividedClusterId));
   }
 }
 
@@ -566,29 +568,30 @@ TEST_F(PrimaryClusterTest, RemoveJobCluster) {
     // Check that template_id_0 has 5 nodes, template_id_1 has 10 nodes.
     EXPECT_EQ(visiable_node_instances.size(), 2);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(), 5);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
+              5);
 
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
               10);
   }
 
   {
     // Check the primary cluster visible node instances.
     const auto &visiable_node_instances = primary_cluster->GetVisibleNodeInstances();
-    // Check that job_cluster_id_0 in template_id_0 has 5 nodes, kEmptyJobClusterId in
+    // Check that job_cluster_id_0 in template_id_0 has 5 nodes, kUndividedClusterId in
     // template_id_0 has template_count - 5 nodes.
     EXPECT_EQ(visiable_node_instances.size(), template_count);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 2);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).at(job_cluster_id_0).size(), 5);
-    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
               node_count_per_template - 5);
 
-    // Check that job_cluster_id_0 in template_id_1 has 10 nodes, kEmptyJobClusterId in
+    // Check that job_cluster_id_0 in template_id_1 has 10 nodes, kUndividedClusterId in
     // template_id_1 has template_count - 10 nodes.
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 2);
     EXPECT_EQ(visiable_node_instances.at(template_id_1).at(job_cluster_id_0).size(), 10);
-    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
               node_count_per_template - 10);
   }
 
@@ -611,12 +614,12 @@ TEST_F(PrimaryClusterTest, RemoveJobCluster) {
     // Check that template_id_0 has node_count_per_template nodes.
     EXPECT_EQ(visiable_node_instances.size(), template_count);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
               node_count_per_template);
 
     // Check that template_id_1 has node_count_per_template nodes.
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
               node_count_per_template);
   }
 
@@ -656,10 +659,11 @@ TEST_F(PrimaryClusterTest, RemoveVirtualCluster) {
     // Check that template_id_0 has 5 nodes, template_id_1 has 10 nodes.
     EXPECT_EQ(visiable_node_instances.size(), 2);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(), 5);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
+              5);
 
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
               10);
 
     // Check that the revision changed.
@@ -673,11 +677,11 @@ TEST_F(PrimaryClusterTest, RemoveVirtualCluster) {
     // template_count - 10 nodes.
     EXPECT_EQ(visiable_node_instances.size(), template_count);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
               node_count_per_template - 5);
 
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
               node_count_per_template - 10);
 
     // Check that the revision unchanged.
@@ -703,12 +707,12 @@ TEST_F(PrimaryClusterTest, RemoveVirtualCluster) {
     // Check that template_id_0 has node_count_per_template nodes.
     EXPECT_EQ(visiable_node_instances.size(), template_count);
     EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kUndividedClusterId).size(),
               node_count_per_template);
 
     // Check that template_id_1 has node_count_per_template nodes.
     EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
-    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kUndividedClusterId).size(),
               node_count_per_template);
   }
 
@@ -870,10 +874,10 @@ class FailoverTest : public PrimaryClusterTest {
     if (auto virtual_cluster = primary_cluster_->GetVirtualCluster(virtual_cluster_id)) {
       ReplicaSets replica_sets{{template_id, 1}};
       ReplicaInstances replica_instances;
-      if (virtual_cluster->LookupNodeInstances(
+      if (virtual_cluster->LookupUndividedNodeInstances(
               replica_sets, replica_instances, nullptr)) {
         return NodeID::FromHex(
-            replica_instances.at(template_id).at(kEmptyJobClusterId).begin()->first);
+            replica_instances.at(template_id).at(kUndividedClusterId).begin()->first);
       }
     }
     return NodeID::Nil();
@@ -997,7 +1001,7 @@ TEST_F(FailoverTest, FailoverWithDeadNodes) {
     // Assume that the dead nodes in job cluster 1 is replaced by a new alive one from
     // primary cluster.
     auto node_instance_replenish_callback = [primary_cluster](auto node_instance) {
-      return primary_cluster->ReplenishNodeInstance(std::move(node_instance));
+      return primary_cluster->ReplenishUndividedNodeInstance(std::move(node_instance));
     };
     ASSERT_TRUE(
         virtual_cluster_1->ReplenishNodeInstances(node_instance_replenish_callback));
@@ -1070,7 +1074,7 @@ TEST_F(FailoverTest, OnlyFlushJobClusters) {
     // Assume that the dead nodes in job cluster 1 is replaced by a new alive one from
     // primary cluster.
     auto node_instance_replenish_callback = [primary_cluster](auto node_instance) {
-      return primary_cluster->ReplenishNodeInstance(std::move(node_instance));
+      return primary_cluster->ReplenishUndividedNodeInstance(std::move(node_instance));
     };
     ASSERT_TRUE(
         virtual_cluster_1->ReplenishNodeInstances(node_instance_replenish_callback));
