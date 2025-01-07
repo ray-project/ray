@@ -358,16 +358,16 @@ def _get_num_gpus(
     if "num-gpus" in ray_start_params:
         return int(ray_start_params["num-gpus"])
     else:
-        for key, gpu_resource_quantity in chain(
+        for key, resource_quantity in chain(
             k8s_resources.get("limits", {}).items(),
             k8s_resources.get("requests", {}).items(),
         ):
             # e.g. nvidia.com/gpu
             if key.endswith("gpu"):
                 # Typically, this is a string representing an interger, e.g. "1".
-                # Convert to int, making no assumptions on the gpu_resource_quantity,
+                # Convert to int, making no assumptions on the resource_quantity,
                 # besides that it's valid as a K8s resource quantity.
-                num_gpus = _round_up_k8s_quantity(gpu_resource_quantity)
+                num_gpus = _round_up_k8s_quantity(resource_quantity)
                 if num_gpus > 0:
                     # Only one GPU type supported for now, break out on first
                     # "/gpu" match.
