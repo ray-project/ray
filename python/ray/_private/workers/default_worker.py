@@ -3,6 +3,7 @@ import argparse
 import base64
 import json
 import time
+import sys
 
 import ray
 import ray._private.node
@@ -135,18 +136,16 @@ parser.add_argument(
     "--logging-rotate-bytes",
     required=False,
     type=int,
-    default=ray_constants.LOGGING_ROTATE_BYTES,
-    help="Specify the max bytes for rotating "
-    "log file, default is "
-    f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
+    default=sys.maxsize,
+    help="Specify the max bytes for rotating " "log file, default no rotation.",
 )
 parser.add_argument(
     "--logging-rotate-backup-count",
     required=False,
     type=int,
-    default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-    help="Specify the backup count of rotated log file, default is "
-    f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
+    default=1,
+    help="Specify the backup count of rotated log file, default is no rotation and only"
+    "one logging file.",
 )
 parser.add_argument(
     "--runtime-env-hash",
