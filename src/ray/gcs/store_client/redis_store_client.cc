@@ -459,15 +459,17 @@ Status RedisStoreClient::AsyncGetKeys(const std::string &table_name,
       redis_client_,
       RedisKey{external_storage_namespace_, table_name},
       RedisMatchPattern::Prefix(prefix),
-      std::move(callback).TransformArg(
-          [](absl::flat_hash_map<std::string, std::string> result) {
-            std::vector<std::string> keys;
-            keys.reserve(result.size());
-            for (const auto &[k, v] : result) {
-              keys.push_back(k);
-            }
-            return keys;
-          }));
+      std::move(callback)
+          .TransformArg<std::vector<std::string>(
+              absl::flat_hash_map<std::string, std::string>)>(
+              [](absl::flat_hash_map<std::string, std::string> result) {
+                std::vector<std::string> keys;
+                keys.reserve(result.size());
+                for (const auto &[k, v] : result) {
+                  keys.push_back(k);
+                }
+                return keys;
+              }));
   return Status::OK();
 }
 

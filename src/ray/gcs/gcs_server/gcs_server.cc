@@ -556,7 +556,8 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitUsageStatsClient() {
-  usage_stats_client_ = std::make_unique<UsageStatsClient>(kv_manager_->GetInstance());
+  usage_stats_client_ = std::make_unique<UsageStatsClient>(
+      kv_manager_->GetInstance(), io_context_provider_.GetDefaultIOContext());
 
   gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
@@ -581,8 +582,8 @@ void GcsServer::InitKVManager() {
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
   }
 
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance),
-                                                       config_.raylet_config_list);
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(
+      std::move(instance), config_.raylet_config_list, io_context);
 }
 
 void GcsServer::InitKVService() {

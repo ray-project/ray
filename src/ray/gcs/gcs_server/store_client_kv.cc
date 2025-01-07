@@ -95,14 +95,7 @@ void StoreClientInternalKV::Put(const std::string &ns,
                                 bool overwrite,
                                 Postable<void(bool)> callback) {
   RAY_CHECK_OK(delegate_->AsyncPut(
-      table_name_,
-      MakeKey(ns, key),
-      std::move(value),
-      overwrite,
-      std::move(callback).TransformArg([](Status status, bool result) {
-        RAY_CHECK(status.ok()) << "Fails to put key to storage " << status;
-        return result;
-      })));
+      table_name_, MakeKey(ns, key), std::move(value), overwrite, std::move(callback)));
 }
 
 void StoreClientInternalKV::Del(const std::string &ns,
@@ -147,14 +140,16 @@ void StoreClientInternalKV::Keys(const std::string &ns,
   RAY_CHECK_OK(delegate_->AsyncGetKeys(
       table_name_,
       MakeKey(ns, prefix),
-      std::move(callback).TransformArg([](std::vector<std::string> keys) {
-        std::vector<std::string> true_keys;
-        true_keys.reserve(keys.size());
-        for (auto &key : keys) {
-          true_keys.emplace_back(ExtractKey(key));
-        }
-        return true_keys;
-      })));
+      std::move(callback)
+          .TransformArg<std::vector<std::string>(std::vector<std::string>)>(
+              [](std::vector<std::string> keys) {
+                std::vector<std::string> true_keys;
+                true_keys.reserve(keys.size());
+                for (auto &key : keys) {
+                  true_keys.emplace_back(ExtractKey(key));
+                }
+                return true_keys;
+              })));
 }
 
 }  // namespace gcs

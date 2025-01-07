@@ -103,31 +103,36 @@ class Postable {
   //
   // Result:
   // `this` is Postable<ret(OldInputType)>
-  // `arg_mapper` is lambda or std::function: NewInputTypes... -> OldInputType
+  // `arg_mapper` is a std::function<OldInputType(NewInputTypes...)>
   // The result is Postable<ret(NewInputTypes...)>
+  //
+  // Example:
+  // Postable<void(int)> p = ...;
+  // Postable<void(char, float)> p2 = p.TransformArg<int(char, float)>([](char a, float b) -> int { return a + b; });
   template <typename ArgMapper>
   auto TransformArg(ArgMapper arg_mapper) && {
     // Ensure that func_ takes exactly one argument.
     static_assert(function_traits<FuncType>::arity == 1,
-                  "TransformArg requires function taking exactly one argument");
+                  "TransformArg requires `this` taking exactly one argument");
 
     // Define type aliases for clarity.
     using OldResultType = typename function_traits<FuncType>::result_type;
     using OldInputType = typename function_traits<FuncType>::arg1_type;
-    // using NewInputType = typename function_traits<ArgMapper>::type;
-    using ArgMapperResultType = typename function_traits<ArgMapper>::result_type;
 
+  using ArgMapperFuncType = typename function_traits<ArgMapper>::type;
+    // using NewInputType = typename function_traits<ArgMapper>::type;
+    using ArgMapperResultType = typename function_traits<ArgMapperFuncType>::result_type;
     static_assert(std::is_same_v<ArgMapperResultType, OldInputType>,
                   "ArgMapper's return value must == func_'s argument");
+
 
     auto mapped_func = [func = std::move(func_), arg_mapper = std::move(arg_mapper)](
                            auto &&...args) -> OldResultType {
       return func(arg_mapper(std::forward<decltype(args)>(args)...));
     };
 
-    using NewFuncType = typename function_traits<decltype(mapped_func)>::type;
 
-    return Postable<NewFuncType>(std::move(mapped_func), io_context_);
+    return Postable<rebind_result_t<OldResultType, ArgMapperFuncType>>(std::move(mapped_func), io_context_);
   }
 
   // Rebind the function.

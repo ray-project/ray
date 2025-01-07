@@ -101,8 +101,9 @@ class InternalKVInterface {
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
   explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance,
-                                const std::string &raylet_config_list)
-      : kv_instance_(std::move(kv_instance)), raylet_config_list_(raylet_config_list) {}
+                                std::string raylet_config_list,
+                                instrumented_io_context& io_context)
+      : kv_instance_(std::move(kv_instance)), raylet_config_list_(std::move(raylet_config_list)), io_context_(io_context) {}
 
   void HandleInternalKVGet(rpc::InternalKVGetRequest request,
                            rpc::InternalKVGetReply *reply,
@@ -138,6 +139,7 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
  private:
   std::unique_ptr<InternalKVInterface> kv_instance_;
   const std::string raylet_config_list_;
+  instrumented_io_context& io_context_;
   Status ValidateKey(const std::string &key) const;
 };
 
