@@ -472,7 +472,7 @@ default_dashboard_config = DashboardConfig(
     panels=DEFAULT_GRAFANA_PANELS,
     standard_global_filters=[
         'SessionName=~"$SessionName"',
-        'RayClusterName=~"$RayClusterName"',
+        'ray_io_cluster=~"$Cluster"',
     ],
     base_json_file_name="default_grafana_dashboard_base.json",
 )

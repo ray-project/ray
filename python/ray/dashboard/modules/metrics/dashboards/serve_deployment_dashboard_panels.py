@@ -253,7 +253,7 @@ serve_deployment_dashboard_config = DashboardConfig(
         'application=~"$Application"',
         'deployment=~"$Deployment"',
         'replica=~"$Replica"',
-        'RayClusterName=~"$RayClusterName"',
+        'ray_io_cluster=~"$Cluster"',
     ],
     base_json_file_name="serve_deployment_grafana_dashboard_base.json",
 )
