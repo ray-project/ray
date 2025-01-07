@@ -304,6 +304,7 @@ py_test(
     srcs = ["tests/test_train_v2_integration.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
 py_test(
