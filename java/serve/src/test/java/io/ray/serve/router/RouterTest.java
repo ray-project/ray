@@ -12,7 +12,7 @@ import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.deployment.DeploymentId;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
-import io.ray.serve.generated.ActorNameList;
+import io.ray.serve.generated.DeploymentAvailability;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.replica.RayServeWrappedReplica;
