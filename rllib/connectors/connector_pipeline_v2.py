@@ -1,4 +1,3 @@
-from collections import defaultdict
 import logging
 from typing import Any, Collection, Dict, List, Optional, Tuple, Type, Union
 
