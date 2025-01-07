@@ -70,8 +70,8 @@ public class RouterTest {
 
       // Router
       Router router = new Router(controllerHandle, new DeploymentId(deploymentName, appName));
-      ActorNameList.Builder builder = ActorNameList.newBuilder();
-      builder.addNames(actorName);
+      DeploymentAvailability.Builder builder = DeploymentAvailability.newBuilder();
+      builder.addReplicaNames(actorName).setIsAvailable(true);
       router.getReplicaSet().updateWorkerReplicas(builder.build());
 
       // assign

@@ -29,7 +29,7 @@ public class ReplicaSetTest {
     try {
       BaseServeTest.initRay();
       ReplicaSet replicaSet = new ReplicaSet(deploymentName);
-      ActorNameList.Builder builder = ActorNameList.newBuilder();
+      DeploymentAvailability.Builder builder = DeploymentAvailability.newBuilder();
 
       replicaSet.updateWorkerReplicas(builder.build());
       Map<String, Set<ObjectRef<Object>>> inFlightQueries = replicaSet.getInFlightQueries();
@@ -78,8 +78,8 @@ public class ReplicaSetTest {
 
       // ReplicaSet
       ReplicaSet replicaSet = new ReplicaSet(deploymentName);
-      ActorNameList.Builder builder = ActorNameList.newBuilder();
-      builder.addNames(actorName);
+      DeploymentAvailability.Builder builder = DeploymentAvailability.newBuilder();
+      builder.addReplicaNames(actorName).setIsAvailable(true);
       replicaSet.updateWorkerReplicas(builder.build());
 
       // assign
