@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Awaitable, Callable, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
 
 from starlette.types import Scope
 
@@ -613,6 +613,8 @@ class RequestMetadata:
 
     # Serve's gRPC context associated with this request for getting and setting metadata
     grpc_context: Optional[RayServegRPCContext] = None
+
+    _by_reference: bool = True
 
     @property
     def is_http_request(self) -> bool:
