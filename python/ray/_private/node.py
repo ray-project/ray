@@ -906,8 +906,6 @@ class Node:
                 unique=unique,
                 create_out=create_out,
                 create_err=create_err,
-                rotation_max_size=rotation_max_size,
-                rotation_file_num=rotation_file_num,
             )
 
         log_stdout_fname, log_stderr_fname = self.get_log_file_names(
