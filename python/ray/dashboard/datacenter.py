@@ -278,14 +278,12 @@ class DataOrganizer:
                             elif device_type == "npus":
                                 actor_process_npu_stats.append(device_stats)
                             break
-        actor = {
-            "accelerators": {
-                "gpus": actor_process_gpu_stats,
-                "npus": actor_process_npu_stats,
-            },
-            "processStats": actor_process_stats,
-            "mem": node_physical_stats.get("mem", []),
+        actor["accelerators"] = {
+            "gpus": actor_process_gpu_stats,
+            "npus": actor_process_npu_stats,
         }
+        actor["processStats"] = actor_process_stats
+        actor["mem"] =node_physical_stats.get("mem", [])
 
         required_resources = parse_pg_formatted_resources_to_original(
             actor["requiredResources"]
