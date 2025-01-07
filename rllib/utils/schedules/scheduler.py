@@ -19,8 +19,8 @@ class Scheduler:
 
     def __init__(
         self,
-        *,
         fixed_value_or_schedule: LearningRateOrSchedule,
+        *,
         framework: str = "torch",
         device: Optional[str] = None,
     ):

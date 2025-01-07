@@ -117,30 +117,37 @@ class SimpleImputer(Preprocessor):
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
-        if self.strategy == "mean":
-            new_values = {
-                column: self.stats_[f"mean({column})"] for column in self.columns
-            }
-        elif self.strategy == "most_frequent":
-            new_values = {
-                column: self.stats_[f"most_frequent({column})"]
-                for column in self.columns
-            }
-        elif self.strategy == "constant":
-            new_values = {column: self.fill_value for column in self.columns}
-            for column, value in new_values.items():
-                if is_categorical_dtype(df.dtypes[column]):
-                    df[column] = df[column].cat.add_categories(value)
+        for column in self.columns:
+            value = self._get_fill_value(column)
 
-        for column_name in new_values:
-            if column_name not in df.columns:
+            if value is None:
+                raise ValueError(
+                    f"Column {column} has no fill value. "
+                    "Check the data used to fit the SimpleImputer."
+                )
+
+            if column not in df.columns:
                 # Create the column with the fill_value if it doesn't exist
-                df[column_name] = new_values[column_name]
+                df[column] = value
             else:
-                # Fill NaN (empty) values in the existing column with the fill_value
-                df[column_name].fillna(new_values[column_name], inplace=True)
+                if is_categorical_dtype(df.dtypes[column]):
+                    df[column] = df[column].cat.add_categories([value])
+                df[column].fillna(value, inplace=True)
 
         return df
+
+    def _get_fill_value(self, column):
+        if self.strategy == "mean":
+            return self.stats_[f"mean({column})"]
+        elif self.strategy == "most_frequent":
+            return self.stats_[f"most_frequent({column})"]
+        elif self.strategy == "constant":
+            return self.fill_value
+        else:
+            raise ValueError(
+                f"Strategy {self.strategy} is not supported. "
+                "Supported values are: {self._valid_strategies}"
+            )
 
     def __repr__(self):
         return (

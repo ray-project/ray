@@ -37,6 +37,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <string>
@@ -384,5 +385,10 @@ void QuickExit();
 /// \param precision the precision to format the value to
 /// \return the foramtted value
 std::string FormatFloat(float value, int32_t precision);
+
+/// Converts a timeout in milliseconds to a timeout point.
+/// \param[in] timeout_ms The timeout in milliseconds.
+/// \return The timeout point, or std::nullopt if timeout_ms is -1.
+std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms);
 
 }  // namespace ray

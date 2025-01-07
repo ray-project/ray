@@ -655,8 +655,7 @@ void GcsActorManager::HandleGetNamedActorInfo(
 
   Status status = Status::OK();
   auto iter = registered_actors_.find(actor_id);
-  if (actor_id.IsNil() || iter == registered_actors_.end() ||
-      iter->second->GetState() == rpc::ActorTableData::DEAD) {
+  if (actor_id.IsNil() || iter == registered_actors_.end()) {
     // The named actor was not found or the actor is already removed.
     std::stringstream stream;
     stream << "Actor with name '" << name << "' was not found.";
@@ -953,7 +952,7 @@ void GcsActorManager::RemoveActorNameFromRegistry(
     if (namespace_it != named_actors_.end()) {
       auto it = namespace_it->second.find(actor->GetName());
       if (it != namespace_it->second.end()) {
-        RAY_LOG(INFO) << "Actor name " << actor->GetName() << " is cleand up.";
+        RAY_LOG(INFO) << "Actor name " << actor->GetName() << " is cleaned up.";
         namespace_it->second.erase(it);
       }
       // If we just removed the last actor in the namespace, remove the map.
