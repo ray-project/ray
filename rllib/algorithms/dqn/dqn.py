@@ -676,7 +676,11 @@ class DQN(Algorithm):
                         batch_length_T=self.env_runner.module.is_stateful()
                         * self.config.model_config.get("max_seq_len", 0),
                         lookback=int(self.env_runner.module.is_stateful()),
-                        burn_in_len=self.config.burn_in_len,
+                        # TODO (simon): Implement `burn_in_len` in SAC and remove this
+                        # if-else clause.
+                        min_batch_length_T=self.config.burn_in_len
+                        if self.config.burn_in_len
+                        else 0,
                         gamma=self.config.gamma,
                         beta=self.config.replay_buffer_config.get("beta"),
                         sample_episodes=True,

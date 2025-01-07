@@ -222,7 +222,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         finalize: bool = False,
         # TODO (simon): Check, if we need here 1 as default.
         lookback: int = 0,
-        burn_in_len: int = 0,
+        min_batch_length_T: int = 0,
         **kwargs,
     ) -> Union[SampleBatchType, SingleAgentEpisode]:
         """Samples from a buffer in a randomized way.
@@ -269,11 +269,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 timestep at which the action is computed).
             finalize: If episodes should be finalized.
             lookback: A desired lookback. Any non-negative integer is valid.
-            burn_in_len: An optional burn-in length added to the `batch_length_T`
-                when sampling. To prevent empty sequences during learning, sampled
-                sequences must exceed the burn-in period. In rare cases, such as
-                when episodes are very short early in training, this may result in
-                longer sampling times.
+            min_batch_length_T: An optional minimal length when sampling sequences. It
+                ensures that sampled sequences are at least `min_batch_length_T` time
+                steps long. This can be used to prevent empty sequences during
+                learning, when using a burn-in period for stateful `RLModule`s. In rare
+                cases, such as when episodes are very short early in training, this may
+                result in longer sampling times.
 
         Returns:
             Either a batch with transitions in each row or (if `return_episodes=True`)
@@ -293,7 +294,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 include_extra_model_outputs=include_extra_model_outputs,
                 finalize=finalize,
                 lookback=lookback,
-                burn_in_len=burn_in_len,
+                min_batch_length_T=min_batch_length_T,
             )
         else:
             return self._sample_batch(
@@ -441,7 +442,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         include_extra_model_outputs: bool = False,
         finalize: bool = False,
         lookback: int = 1,
-        burn_in_len: int = 0,
+        min_batch_length_T: int = 0,
         **kwargs,
     ) -> List[SingleAgentEpisode]:
         """Samples episodes from a buffer in a randomized way.
@@ -488,11 +489,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 timestep at which the action is computed).
             finalize: If episodes should be finalized.
             lookback: A desired lookback. Any non-negative integer is valid.
-            burn_in_len: An optional burn-in length added to the `batch_length_T`
-                when sampling. To prevent empty sequences during learning, sampled
-                sequences must exceed the burn-in period. In rare cases, such as
-                when episodes are very short early in training, this may result in
-                longer sampling times.
+            min_batch_length_T: An optional minimal length when sampling sequences. It
+                ensures that sampled sequences are at least `min_batch_length_T` time
+                steps long. This can be used to prevent empty sequences during
+                learning, when using a burn-in period for stateful `RLModule`s. In rare
+                cases, such as when episodes are very short early in training, this may
+                result in longer sampling times.
 
         Returns:
             A list of 1-step long episodes containing all basic episode data and if
@@ -550,7 +552,9 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
             # Skip, if we are too far to the end and `episode_ts` + n_step would go
             # beyond the episode's end.
-            if burn_in_len > 0 and episode_ts + burn_in_len >= len(episode):
+            if min_batch_length_T > 0 and episode_ts + min_batch_length_T >= len(
+                episode
+            ):
                 continue
             if episode_ts + (batch_length_T or 0) + (actual_n_step - 1) > len(episode):
                 actual_length = len(episode)
