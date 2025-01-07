@@ -65,6 +65,21 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
 
 
 def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
+
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = ray_start_with_dashboard["node_id"]
+
+    # Get initial actors before any user workload.
+    response = requests.get(webui_url + f"/nodes/{node_id}")
+    response.raise_for_status()
+    detail = response.json()
+    assert detail["result"] is True, detail["msg"]
+    detail = detail["data"]["detail"]
+    initial_actors = detail["actors"]
+    print(f"initial_actors={initial_actors}")
+
     @ray.remote
     class Actor:
         def getpid(self):
@@ -74,11 +89,6 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
     actors = [Actor.remote(), Actor.remote()]
     actor_pids = [actor.getpid.remote() for actor in actors]
     actor_pids = set(ray.get(actor_pids))
-
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
-    webui_url = ray_start_with_dashboard["webui_url"]
-    webui_url = format_web_url(webui_url)
-    node_id = ray_start_with_dashboard["node_id"]
 
     # NOTE: Leaving sum buffer time for data to get refreshed
     timeout_seconds = RAY_DASHBOARD_STATS_UPDATING_INTERVAL * 1.5
@@ -106,7 +116,7 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             assert detail["raylet"]["isHeadNode"] is True
             assert "raylet" in detail["cmdline"][0]
             assert len(detail["workers"]) >= 2
-            assert len(detail["actors"]) == 2, detail["actors"]
+            assert len(detail["actors"]) == len(initial_actors) + 2, detail["actors"]
 
             actor_worker_pids = set()
             for worker in detail["workers"]:

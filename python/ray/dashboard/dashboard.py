@@ -202,6 +202,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    ray.init(
+        address=args.gcs_address,
+        log_to_driver=False,
+        configure_logging=False,
+        namespace=ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE,
+        _skip_env_hook=True,
+    )
+
     try:
         setup_component_logger(
             logging_level=args.logging_level,
@@ -211,6 +219,8 @@ if __name__ == "__main__":
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count,
         )
+
+        logger.error(" ".join(sys.argv))
 
         if args.modules_to_load:
             modules_to_load = set(args.modules_to_load.strip(" ,").split(","))
