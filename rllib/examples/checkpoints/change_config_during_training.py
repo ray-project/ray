@@ -174,7 +174,7 @@ if __name__ == "__main__":
 
     # Rebuild the algorithm (just for testing purposes).
     test_algo = base_config.build()
-    # Load algo's state from best checkpoint.
+    # Load algo's state from the best checkpoint.
     test_algo.restore_from_path(best_checkpoint_path)
     # Perform some checks on the restored state.
     assert test_algo.training_iteration > 0
