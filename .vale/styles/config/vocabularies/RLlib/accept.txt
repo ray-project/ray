@@ -3,7 +3,7 @@
 [Aa]lgos?
 (APPO|appo)
 [Aa]utoscal(e|ing)
-boolean
+[Bb]oolean
 [Cc]allables?
 coeff
 config

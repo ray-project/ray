@@ -14,7 +14,7 @@ and from the command line. Take a look at the ``ray.init`` `documentation
 
 .. _cluster-resources:
 
-Cluster Resources
+Cluster resources
 -----------------
 
 Ray by default detects available resources.
@@ -77,7 +77,7 @@ If using the command line, connect to the Ray cluster as follow:
 
 .. _temp-dir-log-files:
 
-Logging and Debugging
+Logging and debugging
 ---------------------
 
 Each Ray session has a unique name. By default, the name is
@@ -120,18 +120,19 @@ The following options specify the ports used by dashboard agent process.
 
 The following options specify the range of ports used by worker processes across machines. All ports in the range should be open.
 
-- ``--min-worker-port``: Minimum port number worker can be bound to. Default: 10002.
-- ``--max-worker-port``: Maximum port number worker can be bound to. Default: 19999.
+- ``--min-worker-port``: Minimum port number for the worker to bind to. Default: 10002.
+- ``--max-worker-port``: Maximum port number for the worker to bind to. Default: 19999.
 
-Port numbers are how Ray disambiguates input and output to and from multiple workers on a single node. Each worker takes input and gives output on a single port number. Thus, for example, by default, there is a maximum of 10,000 workers on each node, irrespective of number of CPUs.
+Port numbers are how Ray differentiates input and output to and from multiple workers on a single node. Each worker takes input and gives output on a single port number. Thus, for example, by default, there is a maximum of 10,000 workers on each node, irrespective of number of CPUs.
 
-In general, it's recommended to give Ray a wide range of possible worker ports, in case any of those ports happen to be in use by some other program on your machine. However, when debugging it's useful to explicitly specify a short list of worker ports such as ``--worker-port-list=10000,10001,10002,10003,10004`` (note that this will limit the number of workers, just like specifying a narrow range).
+In general, it's recommended to give Ray a wide range of possible worker ports, in case any of those ports happen to be in use by some other program on your machine. However, when debugging it's useful to explicitly specify a short list of worker ports such as ``--worker-port-list=10000,10001,10002,10003,10004``
+Note that this limits the number of workers, just like specifying a narrow range.
 
-Head Node
+Head node
 ~~~~~~~~~
 In addition to ports specified in the preceding section, the head node needs to open several more ports.
 
-- ``--port``: Port of Ray (GCS server). The head node starts a GCS server listening on this port. Default: 6379.
+- ``--port``: Port of the Ray GCS server. The head node starts a GCS server listening on this port. Default: 6379.
 - ``--ray-client-server-port``: Listening port for Ray Client Server. Default: 10001.
 - ``--redis-shard-ports``: Comma-separated list of ports for non-primary Redis shards. Default: Random values.
 - ``--dashboard-grpc-port``: The gRPC port used by the dashboard. Default: Random value.
@@ -174,16 +175,16 @@ restarting.
 
 If you don't want the dashboard, set ``--include-dashboard=false``.
 
-TLS Authentication
+TLS authentication
 ------------------
 
-Ray can be configured to use TLS on it's gRPC channels.
+You can configure Ray to use TLS on its gRPC channels.
 This means that connecting to the Ray head requires
 an appropriate set of credentials and also that data exchanged between
 various processes (client, head, workers) is encrypted.
 
-In TLS, the private key and public key are used for encryption and decryption. The
-former is kept secret by the owner and the latter is shared with the other party.
+TLS uses the private key and public key for encryption and decryption. The owner
+keeps the private key secret and TLS shares the public key with the other party.
 This pattern ensures that only the intended recipient can read the message.
 
 A Certificate Authority (CA) is a trusted third party that certifies the identity of the
@@ -194,7 +195,7 @@ they can generate a self-signed certificate with tools like OpenSSL.
 
 To obtain a digital certificate, the owner of the public key must generate a Certificate Signing
 Request (CSR). The CSR contains information about the owner of the public
-key and the public key itself. For Ray, additional steps are required for achieving
+key and the public key itself. Ray requires additional steps for achieving
 a successful TLS encryption.
 
 Here is a step-by-step guide for adding TLS Authentication to a static Kubernetes Ray cluster using
@@ -234,7 +235,7 @@ includes two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scr
 and self-signed certificate files (`tls.key` and `tls.crt`) for both head and worker Pods in the initContainer
 of each deployment. By using the initContainer, we can dynamically retrieve the `POD_IP` to the `[alt_names]` section.
 
-The scripts perform the following steps: first, a 2048-bit RSA private key is generated and saved as
+The scripts perform the following steps: first, it generates a 2048-bit RSA private key and saves the key as
 `/etc/ray/tls/tls.key`. Then, a Certificate Signing Request (CSR) is generated using the `tls.key` file
 and the `csr.conf` configuration file. Finally, a self-signed certificate (`tls.crt`) is created using
 the Certificate Authority's (`ca.key and ca.crt`) keypair and the CSR (`ca.csr`).
@@ -242,12 +243,12 @@ the Certificate Authority's (`ca.key and ca.crt`) keypair and the CSR (`ca.csr`)
 Step 3: Set the environment variables for both Ray head and worker to enable TLS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-TLS is enabled by setting environment variables.
+You enable TLS by setting environment variables.
 
-- ``RAY_USE_TLS``: Either 1 or 0 to use/not-use TLS. If this is set to 1 then all of the environment variables below must be set. Default: 0.
-- ``RAY_TLS_SERVER_CERT``: Location of a `certificate file (tls.crt)`, which is presented to other endpoints to achieve mutual authentication.
+- ``RAY_USE_TLS``: Either 1 or 0 to use/not-use TLS. If you set it to 1, you must set the environment variables below. Default: 0.
+- ``RAY_TLS_SERVER_CERT``: Location of a `certificate file (tls.crt)`, which Ray presents to other endpoints to achieve mutual authentication.
 - ``RAY_TLS_SERVER_KEY``: Location of a `private key file (tls.key)`, which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate.
-- ``RAY_TLS_CA_CERT``: Location of a `CA certificate file (ca.crt)`, which allows TLS to decide whether an endpoint's certificate has been signed by the correct authority.
+- ``RAY_TLS_CA_CERT``: Location of a `CA certificate file (ca.crt)`, which allows TLS to decide whether an the correct authority signed the endpoint's certificate.
 
 Step 4: Verify TLS authentication
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -274,17 +275,17 @@ Testing has shown that this overhead is large for small workloads and becomes
 relatively smaller for large workloads.
 The exact overhead depends on the nature of your workload.
 
-Java Applications
+Java applications
 -----------------
 
-.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``Ray.init()`` in Java to connect to the cluster services. On a single machine, you can run ``Ray.init()`` without ``ray start``, which will both start the Ray cluster services and connect to them.
+.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``Ray.init()`` in Java to connect to the cluster services. On a single machine, you can run ``Ray.init()`` without ``ray start``. It both starts the Ray cluster services and connects to them.
 
 .. _code_search_path:
 
-Code Search Path
+Code search path
 ~~~~~~~~~~~~~~~~
 
-If you want to run a Java application in a multi-node cluster, you must specify the code search path in your driver. The code search path is to tell Ray where to load jars when starting Java workers. Your jar files must be distributed to the same path(s) on all nodes of the Ray cluster before running your code.
+If you want to run a Java application in a multi-node cluster, you must specify the code search path in your driver. The code search path is to tell Ray where to load jars when starting Java workers. You must distribute your jar files to the same paths on all nodes of the Ray cluster before running your code.
 
 .. code-block:: bash
 
@@ -293,7 +294,7 @@ If you want to run a Java application in a multi-node cluster, you must specify 
       -Dray.job.code-search-path=/path/to/jars/ \
       <classname> <args>
 
-The ``/path/to/jars/`` here points to a directory which contains jars. All jars in the directory are loaded by workers. You can also provide multiple directories for this parameter.
+The ``/path/to/jars/`` here points to a directory which contains jars. Workers load all jars in the directory. You can also provide multiple directories for this parameter.
 
 .. code-block:: bash
 
@@ -310,7 +311,7 @@ See ``ray.job.code-search-path`` under :ref:`Driver Options <java-driver-options
 
 .. _java-driver-options:
 
-Driver Options
+Driver options
 ~~~~~~~~~~~~~~
 
 There is a limited set of options for Java drivers. they're not for configuring the Ray cluster, but only for configuring the driver.
@@ -326,20 +327,20 @@ The list of available driver options:
 
 - ``ray.address``
 
-  - The cluster address if the driver connects to an existing Ray cluster. If it's empty, a new Ray cluster is created.
+  - The cluster address if the driver connects to an existing Ray cluster. If it's empty, Ray creates a new Ray cluster.
   - Type: ``String``
   - Default: empty string.
 
 - ``ray.job.code-search-path``
 
-  - The paths for Java workers to load code from. Currently only directories are supported. You can specify one or more directories split by a ``:``. You don't need to configure code search path if you run a Java application in single machine mode or local mode. Code search path is also used for loading Python code if it's specified. This is required for :ref:`cross_language`. If code search path is specified, you can only run Python remote functions which can be found in the code search path.
+  - The paths for Java workers to load code from. Currently, Ray only supports directories. You can specify one or more directories split by a ``:``. You don't need to configure code search path if you run a Java application in single machine mode or local mode. Code search path is also used for loading Python code if it's specified. This is required for :ref:`cross_language`. If you specify a code search path, you can only run Python remote functions which you can find in the code search path.
   - Type: ``String``
   - Default: empty string.
   - Example: ``/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2``
 
 - ``ray.job.namespace``
 
-  - The namespace of this job. It's used for isolation between jobs. Jobs in different namespaces can't access each other. If it's not specified, a randomized value is used instead.
+  - The namespace of this job. It's used for isolation between jobs. Jobs in different namespaces can't access each other. If it's not specified, Ray uses a randomized value.
   - Type: ``String``
   - Default: A random UUID string value.
 

@@ -5,9 +5,9 @@ Actors
 ======
 
 Actors extend the Ray API from functions (tasks) to classes.
-An actor is essentially a stateful worker (or a service). When a new actor is
-instantiated, a new worker is created, and methods of the actor are scheduled on
-that specific worker and can access and mutate the state of that worker.
+An actor is essentially a stateful worker (or a service).
+When you instantiate a new actor, Ray creates a new worker and schedules methods of the actor on
+that specific worker. The methods can access and mutate the state of that worker.
 
 .. tab-set::
 
@@ -116,7 +116,7 @@ Specifying required resources
 
 .. _actor-resource-guide:
 
-You can specify resource requirements in actors too (see :ref:`resource-requirements` for more details.)
+Specify resource requirements in actors too. See :ref:`resource-requirements` for more details.
 
 .. tab-set::
 
@@ -453,16 +453,16 @@ What's the difference between a worker and an actor?
 
 Each "Ray worker" is a python process.
 
-Workers are treated differently for tasks and actors. Any "Ray worker" is either 1. used to execute multiple Ray tasks or 2. is started as a dedicated Ray actor.
+Ray treats a worker differently for tasks and actors. Any "Ray worker" is either 1. used to execute multiple Ray tasks or 2. started as a dedicated Ray actor.
 
 * **Tasks**: When Ray starts on a machine, a number of Ray workers start automatically (1 per CPU by default). They're used to execute tasks (like a process pool). If you execute 8 tasks with `num_cpus=2`, and total number of CPUs is 16 (`ray.cluster_resources()["CPU"] == 16`), you end up with 8 of your 16 workers idling.
 
-* **Actor**: A Ray Actor is also a "Ray worker" but is instantiated at runtime (upon `actor_cls.remote()`). All of its methods run on the same process, using the same resources (designated when defining the Actor). Note that unlike tasks, the python processes that runs Ray Actors aren't reused and are terminated when the Actor is deleted.
+* **Actor**: A Ray Actor is also a "Ray worker" but you instantiate it at runtime (upon `actor_cls.remote()`). All of its methods run on the same process, using the same resources (designated when defining the Actor). Note that unlike tasks, the python processes that runs Ray Actors aren't reused. Ray terminates them when you delete the Actor.
 
 To maximally utilize your resources, you want to maximize the time that
 your workers are working. You also want to allocate enough cluster resources
-so that both all of your needed actors can run and any other tasks you
-define can run. This also implies that tasks are scheduled more flexibly,
+so that all of your needed actors and any other tasks you
+define can run. This also implies that Ray schedules tasks more flexibly,
 and that if you don't need the stateful part of an actor, you're mostly
 better off using tasks.
 
@@ -472,9 +472,9 @@ Task Events
 By default, Ray traces the execution of actor tasks, reporting task status events and profiling events
 that Ray Dashboard and :ref:`State API <state-api-overview-ref>` use.
 
-You can disable task events for the actor by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`, which reduces the overhead of task execution, and the amount of data sent to the Ray Dashboard.
+You can disable task event reporting for the actor by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`, which reduces the overhead of task execution, and the amount of data sent to the Ray Dashboard.
 
-You can also disable task events for some actor methods by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>` on the actor method.
+You can also disable task event reporting for some actor methods by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>` on the actor method.
 Method settings override the actor setting:
 
 .. literalinclude:: doc_code/actors.py
