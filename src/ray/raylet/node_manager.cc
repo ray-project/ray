@@ -1251,7 +1251,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::AnnounceWorkerPort: {
     ProcessAnnounceWorkerPortMessage(client, message_data);
   } break;
-  case protocol::MessageType::RegisterClientWithPortRequest: {
+  case protocol::MessageType::RegisterWorkerWithPortRequest: {
     ProcessRegisterClientAndAnnouncePortMessage(client, message_data);
   } break;
   case protocol::MessageType::ActorCreationTaskDone: {
@@ -1511,7 +1511,7 @@ void NodeManager::SendPortAnnouncementResponse(
 void NodeManager::ProcessRegisterClientAndAnnouncePortMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto *message =
-      flatbuffers::GetRoot<protocol::RegisterClientWithPortRequest>(message_data);
+      flatbuffers::GetRoot<protocol::RegisterWorkerWithPortRequest>(message_data);
   const ray::protocol::RegisterClientRequest *register_client_request =
       message->request_client_request();
   auto status = ProcessRegisterClientRequestMessageImpl(
@@ -1528,21 +1528,21 @@ void NodeManager::SendRegisterClientAndAnnouncePortResponse(
     const std::shared_ptr<ClientConnection> &client, Status status) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
-      protocol::CreateRegisterClientWithPortReply(fbb,
+      protocol::CreateRegisterWorkerWithPortReply(fbb,
                                                   to_flatbuf(fbb, self_node_id_),
                                                   status.ok(),
                                                   fbb.CreateString(status.ToString()));
   fbb.Finish(message);
 
   client->WriteMessageAsync(
-      static_cast<int64_t>(protocol::MessageType::RegisterClientWithPortReply),
+      static_cast<int64_t>(protocol::MessageType::RegisterWorkerWithPortReply),
       fbb.GetSize(),
       fbb.GetBufferPointer(),
       [this, client](const ray::Status &status) {
         if (!status.ok()) {
           DisconnectClient(client,
                            rpc::WorkerExitType::SYSTEM_ERROR,
-                           "Failed to send RegisterClientWithPortReply to client: " +
+                           "Failed to send RegisterWorkerWithPortReply to client: " +
                                status.ToString());
         }
       });

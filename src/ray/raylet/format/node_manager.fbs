@@ -73,11 +73,11 @@ enum MessageType:int {
   // [RegisterClientWithPort] series is the combination for [RegisterClient] and [AnnounceWorkerPort].
   //
   // Send an initial connection message to the raylet with port assigned. This is sent
-  // from a worker or driver to a raylet.
-  // The corresponding response type is [RegisterClientWithPortReply].
-  RegisterClientWithPortRequest,
+  // from a worker to a raylet.
+  // The corresponding response type is [RegisterWorkerWithPortReply].
+  RegisterWorkerWithPortRequest,
   // Response for worker registration and port announcement.
-  RegisterClientWithPortReply,
+  RegisterWorkerWithPortReply,
 }
 
 table Task {
@@ -152,14 +152,14 @@ table RegisterClientReply {
   port: int;
 }
 
-table RegisterClientWithPortRequest {
+table RegisterWorkerWithPortRequest {
   // Request to register client.
   request_client_request: RegisterClientRequest;
   // Request to assign port.
   announcement_port_request: AnnounceWorkerPort;
 }
 
-table RegisterClientWithPortReply {
+table RegisterWorkerWithPortReply {
   // GCS NodeID of the local node manager.
   raylet_id: string;
   // Whether the announcement and job registration succeeded.

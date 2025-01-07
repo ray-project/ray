@@ -327,7 +327,7 @@ Status CoreWorker::RegisterWorkerToRayletWithPort(
                                             fbb.CreateString(serialized_job_config));
   auto announce_port_message =
       protocol::CreateAnnounceWorkerPort(fbb, port, fbb.CreateString(""));
-  auto message_with_port = protocol::CreateRegisterClientWithPortRequest(
+  auto message_with_port = protocol::CreateRegisterWorkerWithPortRequest(
       fbb, std::move(register_client_request), std::move(announce_port_message));
   fbb.Finish(message_with_port);
 
@@ -335,8 +335,8 @@ Status CoreWorker::RegisterWorkerToRayletWithPort(
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
   std::vector<uint8_t> reply;
   auto request_status =
-      conn.AtomicRequestReply(MessageType::RegisterClientWithPortRequest,
-                              MessageType::RegisterClientWithPortReply,
+      conn.AtomicRequestReply(MessageType::RegisterWorkerWithPortRequest,
+                              MessageType::RegisterWorkerWithPortReply,
                               &reply,
                               &fbb);
   if (!request_status.ok()) {
@@ -346,7 +346,7 @@ Status CoreWorker::RegisterWorkerToRayletWithPort(
             request_status.message());
   }
   auto reply_message =
-      flatbuffers::GetRoot<protocol::RegisterClientWithPortReply>(reply.data());
+      flatbuffers::GetRoot<protocol::RegisterWorkerWithPortReply>(reply.data());
   bool success = reply_message->success();
   if (!success) {
     return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
