@@ -247,8 +247,7 @@ def _get_ray_resources_from_group_spec(
     For now, we take the rayStartParams as the primary source of truth.
     """
     ray_start_params = group_spec["rayStartParams"]
-    # This assumes the Ray container is the first.
-    # TODO. Clearly warn users to put the Ray container first when using sidecars.
+    # In KubeRay, Ray container is always the first application container of a Ray Pod.
     k8s_resources = group_spec["template"]["spec"]["containers"][0].get("resources", {})
     group_name = _HEAD_GROUP_NAME if is_head else group_spec["groupName"]
 
@@ -385,8 +384,8 @@ def _get_num_tpus(
     if "TPU" in custom_resource_dict:
         return int(custom_resource_dict["TPU"])
     else:
-        for tpy in ["limits", "requests"]:
-            tpu_resource_quantity = k8s_resources.get(tpy, {}).get("google.com/tpu")
+        for typ in ["limits", "requests"]:
+            tpu_resource_quantity = k8s_resources.get(typ, {}).get("google.com/tpu")
             if tpu_resource_quantity is not None:
                 # Typically, this is a string representing an integer, e.g. "1".
                 # Convert to int, making no assumptions on the tpu_resource_quantity,

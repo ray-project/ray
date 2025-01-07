@@ -229,13 +229,10 @@ def _get_ray_cr_with_only_requests() -> dict:
     """CR contains only resource requests"""
     cr = get_basic_ray_cr()
 
-    for container in [
-        container
-        for group in [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]
-        for container in group["template"]["spec"]["containers"]
-    ]:
-        container["resources"]["requests"] = container["resources"]["limits"]
-        del container["resources"]["limits"]
+    for group in [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]:
+        for container in group["template"]["spec"]["containers"]:
+            container["resources"]["requests"] = container["resources"]["limits"]
+            del container["resources"]["limits"]
     return cr
 
 
