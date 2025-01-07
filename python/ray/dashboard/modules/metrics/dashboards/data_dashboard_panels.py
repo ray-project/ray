@@ -41,6 +41,20 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
+        id=39,
+        title="Bytes Spilled (by Node)",
+        description="Amount spilled by dataset operators, grouped by node. DataContext.enable_get_object_locations_for_metrics must be set to True to report this metric",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_spilled_bytes{{{global_filters}}}) by (dataset, operator, instance)",
+                legend="Bytes Spilled: {{dataset}}, {{operator}}, {{instance}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
         id=2,
         title="Bytes Allocated",
         description="Amount allocated by dataset operators.",
@@ -49,6 +63,20 @@ DATA_GRAFANA_PANELS = [
             Target(
                 expr="sum(ray_data_allocated_bytes{{{global_filters}}}) by (dataset, operator)",
                 legend="Bytes Allocated: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=40,
+        title="Bytes Allocated (by Node)",
+        description="Amount allocated by dataset operators, grouped by node.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_allocated_bytes{{{global_filters}}}) by (dataset, operator, instance)",
+                legend="Bytes Allocated: {{dataset}}, {{operator}}, {{instance}}",
             )
         ],
         fill=0,
@@ -69,6 +97,20 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
+        id=41,
+        title="Bytes Freed (by Node)",
+        description="Amount freed by dataset operators, grouped by node.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_freed_bytes{{{global_filters}}}) by (dataset, operator, instance)",
+                legend="Bytes Freed: {{dataset}}, {{operator}}, {{instance}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
         id=4,
         title="Object Store Memory",
         description="Amount of memory store used by dataset operators.",
@@ -77,6 +119,20 @@ DATA_GRAFANA_PANELS = [
             Target(
                 expr="sum(ray_data_current_bytes{{{global_filters}}}) by (dataset, operator)",
                 legend="Current Usage: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=42,
+        title="Object Store Memory (by Node)",
+        description="Amount of memory store used by dataset operators, grouped by node.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr="sum(ray_data_current_bytes{{{global_filters}}}) by (dataset, operator, instance)",
+                legend="Current Usage: {{dataset}}, {{operator}}, {{instance}}",
             )
         ],
         fill=0,
@@ -285,6 +341,22 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    Panel(
+        id=43,
+        title="Output Bytes from Finished Tasks / Second (by Node)",
+        description=(
+            "Byte size of output blocks from finished tasks per second, grouped by node."
+        ),
+        unit="Bps",
+        targets=[
+            Target(
+                expr="rate(ray_data_bytes_outputs_of_finished_tasks{{{global_filters}}}[1m])) by (dataset, operator, instance)",
+                legend="Bytes Taken / Second: {{dataset}}, {{operator}}, {{instance}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
     # Ray Data Metrics (Tasks)
     Panel(
         id=29,
@@ -301,6 +373,20 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
+        id=44,
+        title="Submitted Tasks (by Node)",
+        description="Number of submitted tasks, grouped by node.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_tasks_submitted{{{global_filters}}}) by (dataset, operator, instance)",
+                legend="Submitted Tasks: {{dataset}}, {{operator}}, {{instance}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
         id=30,
         title="Running Tasks",
         description="Number of running tasks.",
@@ -309,6 +395,20 @@ DATA_GRAFANA_PANELS = [
             Target(
                 expr="sum(ray_data_num_tasks_running{{{global_filters}}}) by (dataset, operator)",
                 legend="Running Tasks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=45,
+        title="Running Tasks (by Node)",
+        description="Number of running tasks, grouped by node.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr="sum(ray_data_num_tasks_running{{{global_filters}}}) by (dataset, operator, instance)",
+                legend="Running Tasks: {{dataset}}, {{operator}}, {{instance}}",
             )
         ],
         fill=0,
@@ -337,6 +437,20 @@ DATA_GRAFANA_PANELS = [
             Target(
                 expr="sum(ray_data_num_tasks_finished{{{global_filters}}}) by (dataset, operator)",
                 legend="Finished Tasks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=46,
+        title="Task Throughput (by Node)",
+        description="Number of finished tasks, grouped by node.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr="sum(rate(ray_data_num_tasks_finished{{{global_filters}}}[1m])) by (dataset, operator, instance)",
+                legend="Finished Tasks: {{dataset}}, {{operator}}, {{instance}}",
             )
         ],
         fill=0,
