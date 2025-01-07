@@ -229,6 +229,7 @@ message GetAllNodeInfoRequest {
     optional bytes node_id = 1;
     optional GcsNodeInfo.GcsNodeState state = 2;
     optional string node_name = 3;
+    optional string virtual_cluster_id = 4;
   }
 
   // Maximum number to return.
@@ -270,14 +271,18 @@ message DeleteResourcesReply {
   GcsStatus status = 1;
 }
 
-message GetAllAvailableResourcesRequest {}
+message GetAllAvailableResourcesRequest {
+  string virtual_cluster_id = 1;
+}
 
 message GetAllAvailableResourcesReply {
   GcsStatus status = 1;
   repeated AvailableResources resources_list = 2;
 }
 
-message GetAllTotalResourcesRequest {}
+message GetAllTotalResourcesRequest {
+  string virtual_cluster_id = 1;
+}
 
 message GetAllTotalResourcesReply {
   GcsStatus status = 1;

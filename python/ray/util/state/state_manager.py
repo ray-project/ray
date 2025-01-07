@@ -382,6 +382,8 @@ class StateDataSourceClient:
                 req_filters.state = GcsNodeInfo.GcsNodeState.Value(value)
             elif key == "node_name":
                 req_filters.node_name = value
+            elif key == "virtual_cluster_id":
+                req_filters.virtual_cluster_id = value
             else:
                 continue
 

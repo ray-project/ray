@@ -175,14 +175,14 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init cluster resource scheduler.
   InitClusterResourceScheduler();
 
+  // Init gcs virtual cluster manager.
+  InitGcsVirtualClusterManager(gcs_init_data);
+
   // Init gcs node manager.
   InitGcsNodeManager(gcs_init_data);
 
   // Init cluster task manager.
   InitClusterTaskManager();
-
-  // Init gcs virtual cluster manager.
-  InitGcsVirtualClusterManager(gcs_init_data);
 
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
@@ -285,7 +285,8 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   gcs_node_manager_ = std::make_unique<GcsNodeManager>(gcs_publisher_.get(),
                                                        gcs_table_storage_.get(),
                                                        raylet_client_pool_.get(),
-                                                       rpc_server_.GetClusterId());
+                                                       rpc_server_.GetClusterId(),
+                                                       *gcs_virtual_cluster_manager_);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -323,6 +324,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
       kGCSNodeID,
+      *gcs_virtual_cluster_manager_,
       cluster_task_manager_.get());
 
   // Initialize by gcs tables data.

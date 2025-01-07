@@ -216,3 +216,29 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CPlacementGroupID Of(CJobID job_id)
 
     ctypedef uint32_t ObjectIDIndexType
+
+
+cdef extern from "ray/common/simple_id.h" namespace "ray" nogil:
+    cdef cppclass CSimpleID[T]:
+        @staticmethod
+        T FromBinary(const c_string &binary)
+
+        @staticmethod
+        const T Nil()
+
+        size_t Hash() const
+        c_bool IsNil() const
+        c_bool operator==(const CBaseID &rhs) const
+        c_bool operator!=(const CBaseID &rhs) const
+
+        c_string Binary() const
+
+
+cdef extern from "ray/common/virtual_cluster_id.h" namespace "ray" nogil:
+    cdef cppclass CVirtualClusterID "ray::VirtualClusterID"(CSimpleID[CVirtualClusterID]):
+
+        @staticmethod
+        CVirtualClusterID FromBinary(const c_string &binary)
+
+        @staticmethod
+        const CVirtualClusterID Nil()

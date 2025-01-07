@@ -187,7 +187,8 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
  public:
   MOCK_METHOD(Status,
               AsyncGetAllAvailableResources,
-              (const MultiItemCallback<rpc::AvailableResources> &callback),
+              (std::optional<std::string> &virtual_cluster_id,
+              const MultiItemCallback<rpc::AvailableResources> &callback),
               (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(Status,

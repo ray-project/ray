@@ -364,6 +364,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     std::promise<bool> promise;
     std::vector<rpc::AvailableResources> resources;
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllAvailableResources(
+        std::nullopt,
         [&resources, &promise](Status status,
                                const std::vector<rpc::AvailableResources> &result) {
           EXPECT_TRUE(!result.empty());
