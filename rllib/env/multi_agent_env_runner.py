@@ -1,6 +1,7 @@
 from collections import defaultdict
 from functools import partial
 import logging
+import time
 from typing import Collection, DefaultDict, Dict, List, Optional, Union
 
 import gymnasium as gym
@@ -40,6 +41,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -128,6 +130,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         self._weights_seq_no: int = 0
 
+        self._time_after_sampling = None
+
     @override(EnvRunner)
     def sample(
         self,
@@ -163,6 +167,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             A list of `MultiAgentEpisode` instances, carrying the sampled data.
         """
         assert not (num_timesteps is not None and num_episodes is not None)
+
+        if self._time_after_sampling is not None:
+            self.metrics.log_value(
+                key=TIME_BETWEEN_SAMPLING,
+                value=time.perf_counter() - self._time_after_sampling,
+            )
 
         # If no execution details are provided, use the config to try to infer the
         # desired timesteps/episodes to sample and the exploration behavior.
@@ -203,6 +213,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 samples=samples,
             ),
         )
+
+        self._time_after_sampling = time.perf_counter()
 
         return samples
 
