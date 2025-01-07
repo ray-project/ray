@@ -12,6 +12,18 @@ cc_test(
     ],
 )
 
+
+cc_test(
+    name = "function_traits_test",
+    srcs = ["function_traits_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "thread_checker_test",
     srcs = ["thread_checker_test.cc"],
@@ -113,6 +125,7 @@ cc_test(
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
+        "//src/ray/common:status",
     ],
 )
 

@@ -21,52 +21,52 @@ class MockStoreClient : public StoreClient {
               AsyncPut,
               (const std::string &table_name,
                const std::string &key,
-               const std::string &data,
+               std::string data,
                bool overwrite,
-               std::function<void(bool)> callback),
+               Postable<void(bool)> callback),
               (override));
   MOCK_METHOD(Status,
               AsyncGet,
               (const std::string &table_name,
                const std::string &key,
-               const OptionalItemCallback<std::string> &callback),
+               ToPostable<OptionalItemCallback<std::string>> callback),
               (override));
   MOCK_METHOD(Status,
               AsyncGetAll,
               (const std::string &table_name,
-               (const MapCallback<std::string, std::string> &callback)),
+               Postable<void(absl::flat_hash_map<std::string, std::string>)> callback),
               (override));
   MOCK_METHOD(Status,
               AsyncMultiGet,
               (const std::string &table_name,
                const std::vector<std::string> &key,
-               (const MapCallback<std::string, std::string> &callback)),
+               Postable<void(absl::flat_hash_map<std::string, std::string>)> callback),
               (override));
   MOCK_METHOD(Status,
               AsyncDelete,
               (const std::string &table_name,
                const std::string &key,
-               std::function<void(bool)> callback),
+               Postable<void(bool)> callback),
               (override));
   MOCK_METHOD(Status,
               AsyncBatchDelete,
               (const std::string &table_name,
                const std::vector<std::string> &keys,
-               std::function<void(int64_t)> callback),
+               Postable<void(int64_t)> callback),
               (override));
   MOCK_METHOD(int, GetNextJobID, (), (override));
   MOCK_METHOD(Status,
               AsyncGetKeys,
               (const std::string &table_name,
                const std::string &prefix,
-               std::function<void(std::vector<std::string>)> callback),
+               Postable<void(std::vector<std::string>)> callback),
               (override));
 
   MOCK_METHOD(Status,
               AsyncExists,
               (const std::string &table_name,
                const std::string &key,
-               std::function<void(bool)> callback),
+               Postable<void(bool)> callback),
               (override));
 };
 

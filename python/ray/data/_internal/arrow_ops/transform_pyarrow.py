@@ -186,21 +186,33 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
 
     tensor_types = get_arrow_extension_tensor_types()
 
-    # Single flat list of chunks across all chunked arrays.
-    chunks = []
+    # Infer the type as the first non-null type.
     type_ = None
     for arr in arrs:
-        if type_ is None:
+        assert not isinstance(arr.type, tensor_types), (
+            "'_concatenate_chunked_arrays' should only be used on non-tensor "
+            f"extension types, but got a chunked array of type {type_}."
+        )
+        if type_ is None and not pyarrow.types.is_null(arr.type):
             type_ = arr.type
-        else:
-            if isinstance(type_, tensor_types):
-                raise ValueError(
-                    "_concatenate_chunked_arrays should only be used on non-tensor "
-                    f"extension types, but got a chunked array of type {type_}."
-                )
-            assert type_ == arr.type, f"Types mismatch: {type_} != {arr.type}"
+            break
+
+    if type_ is None:
+        # All arrays are null, so the inferred type is null.
+        type_ = pyarrow.null()
+
+    # Single flat list of chunks across all chunked arrays.
+    chunks = []
+    for arr in arrs:
+        if pyarrow.types.is_null(arr.type) and not pyarrow.types.is_null(type_):
+            # If the type is null, we need to cast the array to the inferred type.
+            arr = arr.cast(type_)
+        elif not pyarrow.types.is_null(arr.type) and type_ != arr.type:
+            raise RuntimeError(f"Types mismatch: {type_} != {arr.type}")
+
         # Add chunks for this chunked array to flat chunk list.
         chunks.extend(arr.chunks)
+
     # Construct chunked array on flat list of chunks.
     return pyarrow.chunked_array(chunks, type=type_)
 
