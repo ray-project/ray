@@ -19,7 +19,7 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t object_timeout_milliseconds() const
 
-        int64_t get_timeout_milliseconds() const
+        int64_t get_iteration_timeout_milliseconds() const
 
         int64_t worker_get_request_size() const
 
