@@ -8,6 +8,7 @@ builder_queues:
 runner_queues:
   release: release_queue_small
   release-medium: release_queue_medium
+  release-large: release_queue_large
 buildkite_dirs:
   - .buildkite/release
 env:
