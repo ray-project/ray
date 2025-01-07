@@ -243,9 +243,12 @@ class VirtualCluster {
   ReplicaInstances visible_node_instances_;
   /// Replica sets to express the visible node instances.
   ReplicaSets replica_sets_;
-  // Version number of the last modification to the cluster.
+  /// Version number of the last modification to the cluster.
   uint64_t revision_{0};
-
+  /// The mapping from node instance id to `NodeInstance` instance.
+  /// `node_instances_map_` and `visible_node_instances_` are two views of the same node
+  /// instance.
+  absl::flat_hash_map<std::string, std::shared_ptr<NodeInstance>> node_instances_map_;
   const ClusterResourceManager &cluster_resource_manager_;
 };
 

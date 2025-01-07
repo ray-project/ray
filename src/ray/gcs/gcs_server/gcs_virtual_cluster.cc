@@ -88,10 +88,10 @@ std::string DebugString(const ReplicaSets &replica_sets, int indent /* = 0*/) {
 ///////////////////////// VirtualCluster /////////////////////////
 void VirtualCluster::UpdateNodeInstances(ReplicaInstances replica_instances_to_add,
                                          ReplicaInstances replica_instances_to_remove) {
-  // Insert node instances to the virtual cluster.
-  InsertNodeInstances(std::move(replica_instances_to_add));
   // Remove node instances from the virtual cluster.
   RemoveNodeInstances(std::move(replica_instances_to_remove));
+  // Insert node instances to the virtual cluster.
+  InsertNodeInstances(std::move(replica_instances_to_add));
   // Update the revision of the cluster.
   revision_ = current_sys_time_ns();
 }
@@ -103,6 +103,7 @@ void VirtualCluster::InsertNodeInstances(ReplicaInstances replica_instances) {
     for (auto &[job_cluster_id, node_instances] : job_node_instances) {
       auto &cached_node_instances = cached_job_node_instances[job_cluster_id];
       for (auto &[id, node_instance] : node_instances) {
+        node_instances_map_[id] = node_instance;
         cached_node_instances[id] = std::move(node_instance);
         ++replicas;
       }
@@ -131,6 +132,7 @@ void VirtualCluster::RemoveNodeInstances(ReplicaInstances replica_instances) {
           RAY_LOG(WARNING) << "The node instance " << id << " is not found in cluster "
                            << GetID();
         } else {
+          node_instances_map_.erase(id);
           RAY_CHECK(--(replica_set_iter->second) >= 0);
         }
       }
@@ -191,33 +193,16 @@ bool VirtualCluster::LookupNodeInstances(const ReplicaSets &replica_sets,
 
 bool VirtualCluster::MarkNodeInstanceAsDead(const std::string &template_id,
                                             const std::string &node_instance_id) {
-  auto iter = visible_node_instances_.find(template_id);
-  if (iter == visible_node_instances_.end()) {
-    return false;
+  auto iter = node_instances_map_.find(node_instance_id);
+  if (iter != node_instances_map_.end() && iter->second->template_id() == template_id) {
+    iter->second->set_is_dead(true);
+    return true;
   }
-
-  for (auto &[job_cluster_id, node_instances] : iter->second) {
-    auto iter = node_instances.find(node_instance_id);
-    if (iter != node_instances.end()) {
-      iter->second->set_is_dead(true);
-      return true;
-    }
-  }
-
   return false;
 }
 
 bool VirtualCluster::ContainsNodeInstance(const std::string &node_instance_id) {
-  // TODO(sule): Use the index from node instance id to cluster id to optimize this code.
-  // Iterate through visible node instances to find a matching node instance ID.
-  for (auto &[template_id, job_node_instances] : visible_node_instances_) {
-    for (auto &[job_cluster_id, node_instances] : job_node_instances) {
-      if (node_instances.find(node_instance_id) != node_instances.end()) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return node_instances_map_.contains(node_instance_id);
 }
 
 void VirtualCluster::ForeachNodeInstance(
@@ -264,9 +249,11 @@ bool VirtualCluster::ReplenishNodeInstances(
     }
     for (auto &[node_instance_id, node_instance] : node_instances_to_remove) {
       iter->second.erase(node_instance_id);
+      node_instances_map_.erase(node_instance_id);
     }
     for (auto &[node_instance_id, node_instance] : node_instances_to_add) {
       iter->second.emplace(node_instance_id, node_instance);
+      node_instances_map_[node_instance_id] = node_instance;
     }
   }
 
@@ -301,6 +288,10 @@ std::shared_ptr<NodeInstance> VirtualCluster::ReplenishNodeInstance(
     job_iter->second.erase(replenished_node_instance->node_instance_id());
     job_iter->second.emplace(node_instance_to_replenish->node_instance_id(),
                              node_instance_to_replenish);
+
+    node_instances_map_.erase(replenished_node_instance->node_instance_id());
+    node_instances_map_[node_instance_to_replenish->node_instance_id()] =
+        node_instance_to_replenish;
   }
 
   return replenished_node_instance;
@@ -351,8 +342,7 @@ Status DivisibleCluster::CreateJobCluster(const std::string &job_cluster_id,
                                           ReplicaSets *replica_sets_to_recommend) {
   if (!Divisible()) {
     std::ostringstream ostr;
-    ostr << "The job cluster can only be created in exclusive mode, virtual_cluster_id: "
-         << GetID();
+    ostr << "The job cluster can not be created in indivisible cluster " << GetID();
     return Status::InvalidArgument(ostr.str());
   }
 
@@ -410,8 +400,8 @@ Status DivisibleCluster::RemoveJobCluster(const std::string &job_cluster_id,
                                           RemoveVirtualClusterCallback callback) {
   if (!Divisible()) {
     std::ostringstream ostr;
-    ostr << "The job cluster can only be removed in exclusive mode, virtual_cluster_id: "
-         << GetID();
+    ostr << "The job cluster " << job_cluster_id
+         << " can not be removed from indivisible cluster " << GetID();
     return Status::InvalidArgument(ostr.str());
   }
 
@@ -648,8 +638,7 @@ void PrimaryCluster::Initialize(const GcsInitData &gcs_init_data) {
     if (replica_instances_to_repair.empty()) {
       continue;
     }
-    // TODO(Shanly): Lookup dead node instances from the virtual cluster based on
-    // `replica_sets_to_repair`.
+
     ReplicaInstances replica_instances_to_remove;
     auto replica_sets_to_repair = buildReplicaSets(replica_instances_to_repair);
     // Lookup unassigned dead node instances best effort.
@@ -860,7 +849,6 @@ void PrimaryCluster::OnNodeDead(const rpc::GcsNodeInfo &node) {
 
 void PrimaryCluster::OnNodeInstanceDead(const std::string &node_instance_id,
                                         const std::string &node_type_name) {
-  // TODO(Shanly): Build an index from node instance id to cluster id.
   if (MarkNodeInstanceAsDead(node_type_name, node_instance_id)) {
     return;
   }
