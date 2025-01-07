@@ -22,9 +22,6 @@ namespace ray {
 namespace core {
 namespace {
 const rpc::JobConfig kDefaultJobConfig{};
-
-// Default capacity for serialization caches.
-constexpr size_t kDefaultSerializedRuntimeEnvCacheCap = 500;
 }  // namespace
 
 /// per-thread context for core worker.
@@ -162,8 +159,7 @@ WorkerContext::WorkerContext(WorkerType worker_type,
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(false),
       main_thread_id_(boost::this_thread::get_id()),
-      root_detached_actor_id_(ActorID::Nil()),
-      parsed_runtime_env_cache_(kDefaultSerializedRuntimeEnvCacheCap) {
+      root_detached_actor_id_(ActorID::Nil()) {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
@@ -285,23 +281,11 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   const auto &serialized_runtime_env =
       task_spec.GetMessage().runtime_env_info().serialized_runtime_env();
 
+  // Place runtime env info copy outside of critical section.
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info;
-  std::shared_ptr<nlohmann::json> parsed_runtime_env;
-
-  // Place runtime env info copy and json parsing for runtime env outside of critical
-  // section.
   if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
     runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
     *runtime_env_info = task_spec.RuntimeEnvInfo();
-
-    if (!serialized_runtime_env.empty()) {
-      if (parsed_runtime_env = parsed_runtime_env_cache_.Get(serialized_runtime_env);
-          parsed_runtime_env == nullptr) {
-        parsed_runtime_env = std::make_shared<nlohmann::json>();
-        *parsed_runtime_env = nlohmann::json::parse(serialized_runtime_env);
-        parsed_runtime_env_cache_.Put(serialized_runtime_env, parsed_runtime_env);
-      }
-    }
   }
 
   absl::WriterMutexLock lock(&mutex_);
@@ -336,8 +320,17 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     runtime_env_info_ = std::move(runtime_env_info);
 
     if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
-      RAY_CHECK(parsed_runtime_env != nullptr);
-      runtime_env_ = std::move(parsed_runtime_env);
+      // All threads are requesting for the same parsed json result, so ok to place in
+      // critical section.
+      if (!serialized_runtime_env.empty()) {
+        RAY_CHECK_EQ(cached_serialized_runtime_env_, serialized_runtime_env)
+            << "One worker context is expected to take only one serialized runtime env.";
+        RAY_CHECK(runtime_env_ != nullptr) << "Runtime env should be parsed already.";
+      } else {
+        cached_serialized_runtime_env_ = serialized_runtime_env;
+        runtime_env_ = std::make_shared<nlohmann::json>();
+        *runtime_env_ = nlohmann::json::parse(serialized_runtime_env);
+      }
     }
   }
 }

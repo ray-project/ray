@@ -15,13 +15,13 @@
 #pragma once
 
 #include <boost/thread.hpp>
+#include <memory>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
-#include "ray/util/shared_lru.h"
 
 namespace ray::core {
 
@@ -151,6 +151,9 @@ class WorkerContext {
   // Whether or not we should implicitly capture parent's placement group.
   bool placement_group_capture_child_tasks_ ABSL_GUARDED_BY(mutex_);
   // The runtime env for the current actor or task.
+  // For one worker context, it should have exactly one serialized runtime env; cache the
+  // parsed json and string for reuse.
+  std::string cached_serialized_runtime_env_ ABSL_GUARDED_BY(mutex_);
   std::shared_ptr<nlohmann::json> runtime_env_ ABSL_GUARDED_BY(mutex_);
   // The runtime env info.
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_ ABSL_GUARDED_BY(mutex_);
@@ -172,10 +175,6 @@ class WorkerContext {
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
-
-  /// Maps from serialized runtime env to its parsed json.
-  ::ray::utils::container::SharedLruCache<std::string, nlohmann::json>
-      parsed_runtime_env_cache_;
 };
 
 }  // namespace ray::core
