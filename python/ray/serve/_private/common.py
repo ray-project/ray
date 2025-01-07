@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Awaitable, Callable, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
 
 from starlette.types import Scope
 
@@ -680,3 +680,12 @@ class TargetCapacityDirection(str, Enum):
 class ReplicaQueueLengthInfo:
     accepted: bool
     num_ongoing_requests: int
+
+
+@dataclass(frozen=True)
+class CreatePlacementGroupRequest:
+    bundles: List[Dict[str, float]]
+    strategy: str
+    target_node_id: str
+    name: str
+    runtime_env: Optional[str] = None
