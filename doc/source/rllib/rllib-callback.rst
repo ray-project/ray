@@ -354,4 +354,3 @@ See this more complex example that `generates and logs a PacMan heatmap (image) 
 
 See :ref:`Callbacks invoked in Algorithm <rllib-callback-reference-algorithm-bound>`
 for the exact call signatures of all available callbacks and the argument types they expect.
-
