@@ -1,13 +1,13 @@
 import json
-import pickle
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Awaitable, Callable, List, Optional
 
 from starlette.types import Scope
 
+import ray
 from ray.actor import ActorHandle
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -623,33 +623,50 @@ class RequestMetadata:
         return self._request_protocol == RequestProtocol.GRPC
 
 
-@dataclass
 class StreamingHTTPRequest:
     """Sent from the HTTP proxy to replicas on the streaming codepath."""
 
-    asgi_scope: Scope
-    # Takes request metadata, returns a pickled list of ASGI messages.
-    receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]]
+    def __init__(
+        self,
+        asgi_scope: Scope,
+        *,
+        proxy_actor_name: Optional[str] = None,
+        receive_asgi_messages: Optional[
+            Callable[[RequestMetadata], Awaitable[bytes]]
+        ] = None,
+    ):
+        self._asgi_scope: Scope = asgi_scope
 
-    def __getstate__(self) -> Dict[str, Any]:
-        """Custom serializer to use vanilla `pickle` for the ASGI scope.
+        if proxy_actor_name is None and receive_asgi_messages is None:
+            raise ValueError(
+                "Either proxy_actor_name or receive_asgi_messages must be provided."
+            )
 
-        This is possible because we know the scope is a dictionary containing
-        only Python primitive types. Vanilla `pickle` is much faster than cloudpickle.
-        """
-        return {
-            "pickled_asgi_scope": pickle.dumps(self.asgi_scope),
-            "receive_asgi_messages": self.receive_asgi_messages,
-        }
+        # If receive_asgi_messages is passed, it'll be called directly.
+        # If proxy_actor_name is passed, the actor will be fetched and its
+        # `receive_asgi_messages` method will be called.
+        self._proxy_actor_name: Optional[str] = proxy_actor_name
+        # Need to keep the actor handle cached to avoid "lost reference to actor" error.
+        self._cached_proxy_actor: Optional[ActorHandle] = None
+        self._receive_asgi_messages: Optional[
+            Callable[[RequestMetadata], Awaitable[bytes]]
+        ] = receive_asgi_messages
 
-    def __setstate__(self, state: Dict[str, Any]):
-        """Custom deserializer to use vanilla `pickle` for the ASGI scope.
+    @property
+    def asgi_scope(self) -> Scope:
+        return self._asgi_scope
 
-        This is possible because we know the scope is a dictionary containing
-        only Python primitive types. Vanilla `pickle` is much faster than cloudpickle.
-        """
-        self.asgi_scope = pickle.loads(state["pickled_asgi_scope"])
-        self.receive_asgi_messages = state["receive_asgi_messages"]
+    @property
+    def receive_asgi_messages(self) -> Callable[[RequestMetadata], Awaitable[bytes]]:
+        if self._receive_asgi_messages is None:
+            self._cached_proxy_actor = ray.get_actor(
+                self._proxy_actor_name, namespace=SERVE_NAMESPACE
+            )
+            self._receive_asgi_messages = (
+                self._cached_proxy_actor.receive_asgi_messages.remote
+            )
+
+        return self._receive_asgi_messages
 
 
 class TargetCapacityDirection(str, Enum):
@@ -663,3 +680,12 @@ class TargetCapacityDirection(str, Enum):
 class ReplicaQueueLengthInfo:
     accepted: bool
     num_ongoing_requests: int
+
+
+@dataclass(frozen=True)
+class CreatePlacementGroupRequest:
+    bundles: List[Dict[str, float]]
+    strategy: str
+    target_node_id: str
+    name: str
+    runtime_env: Optional[str] = None

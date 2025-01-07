@@ -834,7 +834,7 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
     is_multi_agent = (
         AlgorithmConfig()
         .update_from_dict({"policies": train_results["config"]["policies"]})
-        .is_multi_agent()
+        .is_multi_agent
     )
 
     # Check in particular the "info" dict.
@@ -923,7 +923,7 @@ def check_train_results(train_results: ResultDict):
     is_multi_agent = (
         AlgorithmConfig()
         .update_from_dict({"policies": train_results["config"]["policies"]})
-        .is_multi_agent()
+        .is_multi_agent
     )
 
     # Check in particular the "info" dict.
@@ -1087,9 +1087,11 @@ def run_rllib_example_script_experiment(
                 enable_env_runner_and_connector_v2=False,
             )
 
-        # Define EnvRunner/RolloutWorker scaling and behavior.
+        # Define EnvRunner scaling and behavior.
         if args.num_env_runners is not None:
             config.env_runners(num_env_runners=args.num_env_runners)
+        if args.num_envs_per_env_runner is not None:
+            config.env_runners(num_envs_per_env_runner=args.num_envs_per_env_runner)
 
         # Define compute resources used automatically (only using the --num-learners
         # and --num-gpus-per-learner args).
