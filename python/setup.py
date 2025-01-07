@@ -239,7 +239,7 @@ if setup_spec.type == SetupType.RAY:
             # The Ray client needs a specific range of gRPC to work:
             # Tracking issues: https://github.com/grpc/grpc/issues/33714
             "grpcio != 1.56.0; sys_platform == 'darwin'",
-            "grpcio; sys_platform != 'darwin'",
+            "grpcio",
         ],
         "data": [
             numpy_dep,
