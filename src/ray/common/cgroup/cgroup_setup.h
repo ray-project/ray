@@ -18,6 +18,16 @@
 
 namespace ray {
 
+namespace internal {
+
+// Return whether current user could write to cgroupv2.
+bool CanCurrenUserWriteCgroupV2();
+
+// Return whether cgroup V2 is mounted in read and write mode.
+bool IsCgroupV2MountedAsRw();
+
+}  // namespace internal
+
 // Util function to setup cgroups preparation for resource constraints.
 // It's expected to call from raylet to setup node level cgroup configurations.
 //
