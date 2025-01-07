@@ -247,8 +247,8 @@ class OperatorFusionRule(Rule):
             return down_compute
         else:
             assert isinstance(down_compute, ActorPoolStrategy)
-            # For Task->Actor, Task's size must match Actor's max_size.
-            if up_compute.size != down_compute.max_size:
+            # For Task->Actor, if Task's size is set, it must match Actor's max_size.
+            if up_compute.size is not None and up_compute.size != down_compute.max_size:
                 return None
             return down_compute
 

@@ -1109,13 +1109,15 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
         (False, None, False, 1, False),
         (False, 1, False, None, False),
         # === Task->Actor cases ===
+        # When Task's concurrency is not set, should fuse.
+        (False, None, True, 2, True),
+        (False, None, True, (1, 2), True),
         # When max size matches, should fuse.
         (False, 2, True, 2, True),
         (False, 2, True, (1, 2), True),
         # When max size doesn't match, should not fuse.
         (False, 1, True, 2, False),
         (False, 1, True, (1, 2), False),
-        (False, None, True, (1, 2), False),
         # === Actor->Task cases ===
         # Should not fuse whatever concurrency is set.
         (True, 2, False, 2, False),
