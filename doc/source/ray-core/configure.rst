@@ -3,13 +3,13 @@
 Configuring Ray
 ===============
 
-.. note:: For running Java applications, please see `Java Applications`_.
+.. note:: For running Java applications, see `Java Applications`_.
 
 This page discusses the various way to configure Ray, both from the Python API
 and from the command line. Take a look at the ``ray.init`` `documentation
 <package-ref.html#ray.init>`__ for a complete overview of the configurations.
 
-.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``ray.init`` in Python to connect to the cluster services. On a single machine, you can run ``ray.init()`` without ``ray start``, which will both start the Ray cluster services and connect to them.
+.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``ray.init`` in Python to connect to the cluster services. On a single machine, you can run ``ray.init()`` without ``ray start``, which both start the Ray cluster services and connect to them.
 
 
 .. _cluster-resources:
@@ -80,13 +80,13 @@ If using the command line, connect to the Ray cluster as follow:
 Logging and Debugging
 ---------------------
 
-Each Ray session will have a unique name. By default, the name is
+Each Ray session has a unique name. By default, the name is
 ``session_{timestamp}_{pid}``. The format of ``timestamp`` is
 ``%Y-%m-%d_%H-%M-%S_%f`` (See `Python time format <strftime.org>`__ for details);
 the pid belongs to the startup process (the process calling ``ray.init()`` or
 the Ray process executed by a shell in ``ray start``).
 
-For each session, Ray will place all its temporary files under the
+For each session, Ray places all its temporary files under the
 *session directory*. A *session directory* is a subdirectory of the
 *root temporary path* (``/tmp/ray`` by default),
 so the default session directory is ``/tmp/ray/{ray_session_name}``.
@@ -94,7 +94,7 @@ You can sort by their names to find the latest session.
 
 Change the *root temporary directory* by passing ``--temp-dir={your temp path}`` to ``ray start``.
 
-(There is not currently a stable way to change the root temporary directory when calling ``ray.init()``, but if you need to, you can provide the ``_temp_dir`` argument to ``ray.init()``.)
+There currently isn't a stable way to change the root temporary directory when calling ``ray.init()``, but if you need to, you can provide the ``_temp_dir`` argument to ``ray.init()``.
 
 Look :ref:`Logging Directory Structure <logging-directory-structure>` for more details.
 
@@ -123,23 +123,23 @@ The following options specify the range of ports used by worker processes across
 - ``--min-worker-port``: Minimum port number worker can be bound to. Default: 10002.
 - ``--max-worker-port``: Maximum port number worker can be bound to. Default: 19999.
 
-Port numbers are how Ray disambiguates input and output to and from multiple workers on a single node. Each worker will take input and give output on a single port number. Thus, for example, by default, there is a maximum of 10,000 workers on each node, irrespective of number of CPUs.
+Port numbers are how Ray disambiguates input and output to and from multiple workers on a single node. Each worker takes input and gives output on a single port number. Thus, for example, by default, there is a maximum of 10,000 workers on each node, irrespective of number of CPUs.
 
-In general, it is recommended to give Ray a wide range of possible worker ports, in case any of those ports happen to be in use by some other program on your machine. However, when debugging it is useful to explicitly specify a short list of worker ports such as ``--worker-port-list=10000,10001,10002,10003,10004`` (note that this will limit the number of workers, just like specifying a narrow range).
+In general, it's recommended to give Ray a wide range of possible worker ports, in case any of those ports happen to be in use by some other program on your machine. However, when debugging it's useful to explicitly specify a short list of worker ports such as ``--worker-port-list=10000,10001,10002,10003,10004`` (note that this will limit the number of workers, just like specifying a narrow range).
 
 Head Node
 ~~~~~~~~~
-In addition to ports specified above, the head node needs to open several more ports.
+In addition to ports specified in the preceding section, the head node needs to open several more ports.
 
-- ``--port``: Port of Ray (GCS server). The head node will start a GCS server listening on this port. Default: 6379.
+- ``--port``: Port of Ray (GCS server). The head node starts a GCS server listening on this port. Default: 6379.
 - ``--ray-client-server-port``: Listening port for Ray Client Server. Default: 10001.
 - ``--redis-shard-ports``: Comma-separated list of ports for non-primary Redis shards. Default: Random values.
 - ``--dashboard-grpc-port``: The gRPC port used by the dashboard. Default: Random value.
 
 - If ``--include-dashboard`` is true (the default), then the head node must open ``--dashboard-port``. Default: 8265.
 
-If ``--include-dashboard`` is true but the ``--dashboard-port`` is not open on
-the head node, you will repeatedly get
+If ``--include-dashboard`` is true but the ``--dashboard-port`` isn't open on
+the head node, you won't be able to access the dashboard, and you repeatedly get
 
 .. code-block:: bash
 
@@ -152,10 +152,8 @@ the head node, you will repeatedly get
     details = "failed to connect to all addresses"
     debug_error_string = "{"description":"Failed to pick subchannel","file":"src/core/ext/filters/client_channel/client_channel.cc","file_line":4165,"referenced_errors":[{"description":"failed to connect to all addresses","file":"src/core/ext/filters/client_channel/lb_policy/pick_first/pick_first.cc","file_line":397,"grpc_status":14}]}"
 
-(Also, you will not be able to access the dashboard.)
-
 If you see that error, check whether the ``--dashboard-port`` is accessible
-with ``nc`` or ``nmap`` (or your browser).
+through ``nc``, ``nmap``, or your browser.
 
 .. code-block:: bash
 
@@ -191,12 +189,12 @@ This pattern ensures that only the intended recipient can read the message.
 A Certificate Authority (CA) is a trusted third party that certifies the identity of the
 public key owner. The digital certificate issued by the CA contains the public key itself,
 the identity of the public key owner, and the expiration date of the certificate. Note that
-if the owner of the public key does not want to obtain a digital certificate from a CA,
-they can generate a self-signed certificate with some tools like OpenSSL.
+if the owner of the public key doesn't want to obtain a digital certificate from a CA,
+they can generate a self-signed certificate with tools like OpenSSL.
 
 To obtain a digital certificate, the owner of the public key must generate a Certificate Signing
 Request (CSR). The CSR contains information about the owner of the public
-key and the public key itself. For Ray, some additional steps are required for achieving
+key and the public key itself. For Ray, additional steps are required for achieving
 a successful TLS encryption.
 
 Here is a step-by-step guide for adding TLS Authentication to a static Kubernetes Ray cluster using
@@ -222,8 +220,10 @@ then paste encoded strings to the secret.yaml.
   cat ca.key | base64
   cat ca.crt | base64
 
-# Alternatively, the command automatically encode and create the secret for the CA keypair.
-kubectl create secret generic ca-tls --from-file=ca.crt=<path-to-ca.crt> --from-file=ca.key=<path-to-ca.key>
+# Alternatively, this command automatically encode and create the secret for the CA key pair.
+.. code-block:: bash
+
+  kubectl create secret generic ca-tls --from-file=ca.crt=<path-to-ca.crt> --from-file=ca.key=<path-to-ca.key>
 
 Step 2: Generate individual private keys and self-signed certificates for the Ray head and workers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -293,7 +293,7 @@ If you want to run a Java application in a multi-node cluster, you must specify 
       -Dray.job.code-search-path=/path/to/jars/ \
       <classname> <args>
 
-The ``/path/to/jars/`` here points to a directory which contains jars. All jars in the directory will be loaded by workers. You can also provide multiple directories for this parameter.
+The ``/path/to/jars/`` here points to a directory which contains jars. All jars in the directory are loaded by workers. You can also provide multiple directories for this parameter.
 
 .. code-block:: bash
 
@@ -306,14 +306,14 @@ You don't need to configure code search path if you run a Java application in a 
 
 See ``ray.job.code-search-path`` under :ref:`Driver Options <java-driver-options>` for more information.
 
-.. note:: Currently we don't provide a way to configure Ray when running a Java application in single machine mode. If you need to configure Ray, run ``ray start`` to start the Ray cluster first.
+.. note:: Currently there's no way to configure Ray when running a Java application in single machine mode. If you need to configure Ray, run ``ray start`` to start the Ray cluster first.
 
 .. _java-driver-options:
 
 Driver Options
 ~~~~~~~~~~~~~~
 
-There is a limited set of options for Java drivers. They are not for configuring the Ray cluster, but only for configuring the driver.
+There is a limited set of options for Java drivers. they're not for configuring the Ray cluster, but only for configuring the driver.
 
 Ray uses `Typesafe Config <https://lightbend.github.io/config/>`__ to read options. There are several ways to set options:
 
@@ -326,7 +326,7 @@ The list of available driver options:
 
 - ``ray.address``
 
-  - The cluster address if the driver connects to an existing Ray cluster. If it is empty, a new Ray cluster will be created.
+  - The cluster address if the driver connects to an existing Ray cluster. If it's empty, a new Ray cluster is created.
   - Type: ``String``
   - Default: empty string.
 
@@ -339,7 +339,7 @@ The list of available driver options:
 
 - ``ray.job.namespace``
 
-  - The namespace of this job. It's used for isolation between jobs. Jobs in different namespaces cannot access each other. If it's not specified, a randomized value will be used instead.
+  - The namespace of this job. It's used for isolation between jobs. Jobs in different namespaces can't access each other. If it's not specified, a randomized value is used instead.
   - Type: ``String``
   - Default: A random UUID string value.
 

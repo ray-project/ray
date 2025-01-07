@@ -1,4 +1,4 @@
-Advanced Topics
+Advanced topics
 ===============
 
 This section covers extended topics on how to use Ray.

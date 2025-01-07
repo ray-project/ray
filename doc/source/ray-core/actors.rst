@@ -13,7 +13,7 @@ that specific worker and can access and mutate the state of that worker.
 
     .. tab-item:: Python
 
-        The ``ray.remote`` decorator indicates that instances of the ``Counter`` class will be actors. Each actor runs in its own Python process.
+        The ``ray.remote`` decorator indicates that instances of the ``Counter`` class are be actors. Each actor runs in its own Python process.
 
         .. testcode::
 
@@ -147,8 +147,8 @@ You can specify resource requirements in actors too (see :ref:`resource-requirem
 Calling the actor
 -----------------
 
-We can interact with the actor by calling its methods with the ``remote``
-operator. We can then call ``get`` on the object ref to retrieve the actual
+You can interact with the actor by calling its methods with the ``remote``
+operator. You can then call ``get`` on the object ref to retrieve the actual
 value.
 
 .. tab-set::
@@ -181,7 +181,7 @@ value.
             auto object_ref = counter.Task(&Counter::increment).Remote();
             assert(*object_ref.Get() == 1);
 
-Methods called on different actors can execute in parallel, and methods called on the same actor are executed serially in the order that they are called. Methods on the same actor will share state with one another, as shown below.
+Methods called on different actors can execute in parallel, and methods called on the same actor are executed serially in the order that they're called. Methods on the same actor share state with one another, as shown below.
 
 .. tab-set::
 
@@ -269,10 +269,10 @@ Methods called on different actors can execute in parallel, and methods called o
                 std::cout << *result;
             }
 
-Passing Around Actor Handles
+Passing around actor handles
 ----------------------------
 
-Actor handles can be passed into other tasks. We can define remote functions (or actor methods) that use actor handles.
+Actor handles can be passed into other tasks. You can define remote functions (or actor methods) that use actor handles.
 
 .. tab-set::
 
@@ -313,7 +313,7 @@ Actor handles can be passed into other tasks. We can define remote functions (or
                 }
             }
 
-If we instantiate an actor, we can pass the handle around to various tasks.
+If you instantiate an actor, you can pass the handle around to various tasks.
 
 .. tab-set::
 
@@ -385,7 +385,7 @@ Generators
 ----------
 Ray is compatible with Python generator syntax. See :ref:`Ray Generators <generators>` for more details.
 
-Cancelling Actor Tasks
+Cancelling actor tasks
 ----------------------
 
 Cancel Actor Tasks by calling :func:`ray.cancel() <ray.cancel>` on the returned `ObjectRef`.
@@ -402,35 +402,35 @@ Cancel Actor Tasks by calling :func:`ray.cancel() <ray.cancel>` on the returned 
 
 In Ray, Task cancellation behavior is contingent on the Task's current state:
 
-**Unscheduled Tasks**:
+**Unscheduled tasks**:
 If the Actor Task hasn't been scheduled yet, Ray attempts to cancel the scheduling.
 When successfully cancelled at this stage, invoking ``ray.get(actor_task_ref)``
 produce a :class:`TaskCancelledError <ray.exceptions.TaskCancelledError>`.
 
-**Running Actor Tasks (Regular Actor, Threaded Actor)**:
+**Running actor tasks (regular actor, threaded actor)**:
 For tasks classified as a single-threaded Actor or a multi-threaded Actor,
 Ray offers no mechanism for interruption.
 
-**Running Async Actor Tasks**:
+**Running async actor tasks**:
 For Tasks classified as `async Actors <_async-actors>`, Ray seeks to cancel the associated `asyncio.Task`.
 This cancellation approach aligns with the standards presented in
 `asyncio task cancellation <https://docs.python.org/3/library/asyncio-task.html#task-cancellation>`__.
 Note that `asyncio.Task` won't be interrupted in the middle of execution if you don't `await` within the async function.
 
-**Cancellation Guarantee**:
+**Cancellation guarantee**:
 Ray attempts to cancel Tasks on a *best-effort* basis, meaning cancellation isn't always guaranteed.
 For example, if the cancellation request doesn't get through to the executor,
 the Task might not be cancelled.
 You can check if a Task was successfully cancelled using ``ray.get(actor_task_ref)``.
 
-**Recursive Cancellation**:
+**Recursive cancellation**:
 Ray tracks all child and Actor Tasks. When the ``recursive=True`` argument is given,
 it cancels all child and Actor Tasks.
 
 Scheduling
 ----------
 
-For each actor, Ray will choose a node to run it
+For each actor, Ray chooses a node to run it,
 and the scheduling decision is based on a few factors like
 :ref:`the actor's resource requirements <ray-scheduling-resources>`
 and :ref:`the specified scheduling strategy <ray-scheduling-strategies>`.
@@ -455,9 +455,9 @@ Each "Ray worker" is a python process.
 
 Workers are treated differently for tasks and actors. Any "Ray worker" is either 1. used to execute multiple Ray tasks or 2. is started as a dedicated Ray actor.
 
-* **Tasks**: When Ray starts on a machine, a number of Ray workers will be started automatically (1 per CPU by default). They will be used to execute tasks (like a process pool). If you execute 8 tasks with `num_cpus=2`, and total number of CPUs is 16 (`ray.cluster_resources()["CPU"] == 16`), you will end up with 8 of your 16 workers idling.
+* **Tasks**: When Ray starts on a machine, a number of Ray workers start automatically (1 per CPU by default). They're used to execute tasks (like a process pool). If you execute 8 tasks with `num_cpus=2`, and total number of CPUs is 16 (`ray.cluster_resources()["CPU"] == 16`), you end up with 8 of your 16 workers idling.
 
-* **Actor**: A Ray Actor is also a "Ray worker" but is instantiated at runtime (upon `actor_cls.remote()`). All of its methods will run on the same process, using the same resources (designated when defining the Actor). Note that unlike tasks, the python processes that runs Ray Actors are not reused and will be terminated when the Actor is deleted.
+* **Actor**: A Ray Actor is also a "Ray worker" but is instantiated at runtime (upon `actor_cls.remote()`). All of its methods run on the same process, using the same resources (designated when defining the Actor). Note that unlike tasks, the python processes that runs Ray Actors aren't reused and are terminated when the Actor is deleted.
 
 To maximally utilize your resources, you want to maximize the time that
 your workers are working. You also want to allocate enough cluster resources
@@ -472,7 +472,7 @@ Task Events
 By default, Ray traces the execution of actor tasks, reporting task status events and profiling events
 that Ray Dashboard and :ref:`State API <state-api-overview-ref>` use.
 
-You can disable task events for the actor by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`, which reduces the overhead of task execution, and the amount of data the being sent to the Ray Dashboard.
+You can disable task events for the actor by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`, which reduces the overhead of task execution, and the amount of data sent to the Ray Dashboard.
 
 You can also disable task events for some actor methods by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>` on the actor method.
 Method settings override the actor setting:

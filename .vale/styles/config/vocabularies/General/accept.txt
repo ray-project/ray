@@ -19,3 +19,8 @@ ARM
 breakpoint
 deduplicate[s]
 deduplication
+[Aa]sync
+Raylet
+g[Rr][Pp][Cc]
+http
+kubectl
