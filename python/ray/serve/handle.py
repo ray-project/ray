@@ -12,7 +12,6 @@ from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     RequestMetadata,
-    RequestProtocol,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
@@ -31,7 +30,6 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     calculate_remaining_timeout,
-    generate_request_id,
     get_random_string,
     inside_ray_client_context,
     is_running_in_asyncio_loop,
