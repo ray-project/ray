@@ -1716,7 +1716,6 @@ def start_raylet(
             f"--temp-dir={temp_dir}",
             f"--webui={webui}",
             f"--cluster-id={cluster_id}",
-            f"--enable_physical_mode={enable_physical_mode}",
         ]
     )
 
