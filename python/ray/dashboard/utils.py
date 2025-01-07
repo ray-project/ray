@@ -11,6 +11,7 @@ from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections import namedtuple
 from collections.abc import Mapping, MutableMapping, Sequence
+from dataclasses import dataclass
 from typing import Optional
 
 import aiosignal  # noqa: F401
@@ -75,38 +76,22 @@ class DashboardAgentModule(abc.ABC):
         return self._dashboard_agent.gcs_address
 
 
+@dataclass
 class DashboardHeadModuleConfig:
-    def __init__(
-        self,
-        minimal: bool,
-        cluster_id_hex: str,
-        session_name: str,
-        gcs_address: str,
-        log_dir: str,
-        temp_dir: str,
-        session_dir: str,
-        ip: str,
-        http_host: str,
-        http_port: int,
-        metrics: DashboardPrometheusMetrics,
-    ):
-        # TODO(ryw): remove gcs_address once we do ray.init() on dashboard start up.
-        # We can just use the gcs_address from
-        # ray._private.worker.global_worker.gcs_client.gcs_address
-        # also remove the gcs_client DashboardHeadModule.
-        self.minimal = minimal
-        self.cluster_id_hex = cluster_id_hex
-        self.session_name = session_name
-        self.gcs_address = gcs_address
-        self.log_dir = log_dir
-        self.temp_dir = temp_dir
-        self.session_dir = session_dir
-        self.ip = ip
-        self.http_host = http_host
-        self.http_port = http_port
-        # Note: this thing is NOT serializable, hence it can only be used in in-process
-        # modules, not Actor modules.
-        self.metrics = metrics
+    minimal: bool
+    cluster_id_hex: str
+    session_name: str
+    gcs_address: str
+    log_dir: str
+    temp_dir: str
+    session_dir: str
+    ip: str
+    http_host: str
+    http_port: int
+    # We can't put this to ctor of DashboardHeadModule because ServeRestApiImpl requires
+    # DashboardHeadModule and DashboardAgentModule have the same shape of ctor, that
+    # is, single argument.
+    metrics: DashboardPrometheusMetrics
 
 
 class DashboardHeadModule(abc.ABC):
@@ -114,7 +99,6 @@ class DashboardHeadModule(abc.ABC):
         """
         Initialize current module when DashboardHead loading modules.
         :param config: The DashboardHeadModuleConfig instance.
-        :param metric: DashboardPrometheusMetrics.
         """
         self._config = config
         self._gcs_client = None
@@ -195,8 +179,6 @@ class DashboardHeadModule(abc.ABC):
                 nums_reconnect_retry=0,
                 cluster_id=self._config.cluster_id_hex,
             )
-            # No need to initialize internal_kv here, because ray.init() will do it.
-            # TODO(ryw): remove this once we do ray.init() on dashboard start up.
             if not internal_kv._internal_kv_initialized():
                 internal_kv._initialize_internal_kv(self.gcs_client)
         return self._gcs_aio_client
