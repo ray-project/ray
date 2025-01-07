@@ -281,13 +281,6 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   const auto &serialized_runtime_env =
       task_spec.GetMessage().runtime_env_info().serialized_runtime_env();
 
-  // Place runtime env info copy outside of critical section.
-  std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info;
-  if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
-    runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
-    *runtime_env_info = task_spec.RuntimeEnvInfo();
-  }
-
   absl::WriterMutexLock lock(&mutex_);
   SetTaskDepth(task_spec.GetDepth());
   if (CurrentThreadIsMain()) {
@@ -316,18 +309,20 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   }
 
   if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
-    RAY_CHECK(runtime_env_info != nullptr);
-    runtime_env_info_ = std::move(runtime_env_info);
+    if (runtime_env_info_ == nullptr) {
+      runtime_env_info_ = std::make_shared<rpc::RuntimeEnvInfo>();
+      *runtime_env_info_ = task_spec.RuntimeEnvInfo();
+    }
 
     if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
       // All threads are requesting for the same parsed json result, so ok to place in
       // critical section.
-      if (!serialized_runtime_env.empty()) {
-        RAY_CHECK_EQ(cached_serialized_runtime_env_, serialized_runtime_env)
+      if (!serialized_runtime_env_.empty()) {
+        RAY_CHECK_EQ(serialized_runtime_env_, serialized_runtime_env)
             << "One worker context is expected to take only one serialized runtime env.";
         RAY_CHECK(runtime_env_ != nullptr) << "Runtime env should be parsed already.";
       } else {
-        cached_serialized_runtime_env_ = serialized_runtime_env;
+        serialized_runtime_env_ = serialized_runtime_env;
         runtime_env_ = std::make_shared<nlohmann::json>();
         *runtime_env_ = nlohmann::json::parse(serialized_runtime_env);
       }
