@@ -80,7 +80,6 @@ And if you are using the `--as-test` option, you should see a finel message:
 `env_runners/episode_return_mean` of 450.0 reached! ok
 ```
 """
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
@@ -130,7 +129,10 @@ if __name__ == "__main__":
         PPOConfig()
         .environment("CartPole-v1" if args.num_agents == 0 else "ma_cart")
         .training(lr=0.0001)
-        .experimental(_use_msgpack_checkpoints=True)
+        # TODO (sven): Tune throws a weird error inside the "log json" callback
+        #  when running with this option. The `perf` key in the result dict contains
+        #  binary data (instead of just 2 float values for mem and cpu usage).
+        # .experimental(_use_msgpack_checkpoints=True)
     )
 
     # Setup multi-agent, if required.
@@ -195,20 +197,21 @@ if __name__ == "__main__":
     # Make sure the algorithm gets restored from a checkpoint right after
     # initialization. Note that this includes all subcomponents of the algorithm,
     # including the optimizer states in the LearnerGroup/Learner actors.
-    class _RestoreCheckpointCallback(DefaultCallbacks):
-        def on_algorithm_init(self, *, algorithm, **kwargs):
-            module_p0 = algorithm.get_module("p0")
-            weight_before = convert_to_numpy(next(iter(module_p0.parameters())))
-            algorithm.restore_from_path(best_checkpoint_path)
-            # Make sure weights were updated.
-            weight_after = convert_to_numpy(next(iter(module_p0.parameters())))
-            check(weight_before, weight_after, false=True)
+    def on_algorithm_init(algorithm, **kwargs):
+        module_p0 = algorithm.get_module("p0")
+        weight_before = convert_to_numpy(next(iter(module_p0.parameters())))
+
+        algorithm.restore_from_path(best_checkpoint_path)
+
+        # Make sure weights were restored (changed).
+        weight_after = convert_to_numpy(next(iter(module_p0.parameters())))
+        check(weight_before, weight_after, false=True)
 
     # Change the config.
     (
         base_config
         # Make sure the algorithm gets restored upon initialization.
-        .callbacks(_RestoreCheckpointCallback)
+        .callbacks(on_algorithm_init=on_algorithm_init)
         # Change training parameters considerably.
         .training(
             lr=0.0003,
@@ -223,6 +226,7 @@ if __name__ == "__main__":
         # Use more env runners and more envs per env runner.
         .env_runners(num_env_runners=3, num_envs_per_env_runner=5)
     )
+
     # Update the stopping criterium to the final target return per episode.
     stop = {metric: args.stop_reward}
 
@@ -232,7 +236,7 @@ if __name__ == "__main__":
     # use `tune.Tuner.restore()` after a crash or interrupted trial).
     tuner_results = run_rllib_example_script_experiment(base_config, args, stop=stop)
 
-    # Confirm we have continued training with a different learning rate.
+    # Assert that we have continued training with a different learning rate.
     assert (
         tuner_results[0].metrics[LEARNER_RESULTS][DEFAULT_MODULE_ID][
             "default_optimizer_learning_rate"
