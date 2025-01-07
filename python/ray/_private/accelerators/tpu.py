@@ -179,18 +179,18 @@ class TPUAcceleratorManager(AcceleratorManager):
             os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
             os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
             return
-        os.environ[TPUAcceleratorManager.get_visible_accelerator_ids_env_var()] = (
-            ",".join([str(i) for i in visible_tpu_chips])
-        )
+        os.environ[
+            TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
+        ] = ",".join([str(i) for i in visible_tpu_chips])
         if num_visible_tpu_chips == 1:
-            os.environ[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = (
-                TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
-            )
+            os.environ[
+                TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
+            ] = TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
         elif num_visible_tpu_chips == 2:
-            os.environ[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = (
-                TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
-            )
+            os.environ[
+                TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
+            ] = TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
 
     @staticmethod
