@@ -94,5 +94,20 @@ Status VirtualClusterInfoAccessor::AsyncSubscribeAll(
       [this, done](const Status &status) { fetch_all_data_operation_(done); });
 }
 
+void VirtualClusterInfoAccessor::AsyncResubscribe() {
+  RAY_LOG(DEBUG) << "Reestablishing subscription for virtual cluster info.";
+  auto fetch_all_done = [](const Status &status) {
+    RAY_LOG(INFO)
+        << "Finished fetching all virtual cluster information from gcs server after gcs "
+           "server or pub-sub server is restarted.";
+  };
+
+  if (subscribe_operation_ != nullptr) {
+    RAY_CHECK_OK(subscribe_operation_([this, fetch_all_done](const Status &status) {
+      fetch_all_data_operation_(fetch_all_done);
+    }));
+  }
+}
+
 }  // namespace gcs
 }  // namespace ray

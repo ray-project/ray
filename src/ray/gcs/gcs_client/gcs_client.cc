@@ -119,6 +119,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
     node_accessor_->AsyncResubscribe();
     node_resource_accessor_->AsyncResubscribe();
     worker_accessor_->AsyncResubscribe();
+    virtual_cluster_accessor_->AsyncResubscribe();
   };
 
   rpc::Address gcs_address;
