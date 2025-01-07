@@ -2,6 +2,7 @@ from typing import List, Optional
 from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
     LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_IN,
     LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_OUT,
 )
@@ -23,7 +24,7 @@ class LearnerConnectorPipeline(ConnectorPipelineV2):
         # Log the sum of lengths of all episodes incoming.
         if metrics:
             metrics.log_value(
-                LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_IN,
+                (ALL_MODULES, LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_IN),
                 sum(map(len, episodes)),
             )
 
@@ -34,7 +35,7 @@ class LearnerConnectorPipeline(ConnectorPipelineV2):
         # Log the sum of lengths of all episodes outgoing.
         if metrics:
             metrics.log_value(
-                LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_OUT,
+                (ALL_MODULES, LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_OUT),
                 sum(map(len, episodes)),
             )
 
