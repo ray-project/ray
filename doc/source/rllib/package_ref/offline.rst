@@ -27,7 +27,7 @@ Configuring Offline Recording EnvRunners
 .. autosummary::
     :nosignatures:
     :toctree: doc/
-    
+
     AlgorithmConfig.env_runners
 
 Constructing a Recording EnvRunner
