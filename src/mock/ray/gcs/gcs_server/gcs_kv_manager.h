@@ -109,10 +109,10 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
            Postable<void(bool)> callback) override {
     std::string full_key = ns + key;
     if (kv_store_.find(full_key) != kv_store_.end() && !overwrite) {
-      callback(false);
+      std::move(callback).Post(false);
     } else {
       kv_store_[full_key] = value;
-      callback(true);
+      std::move(callback).Post(true);
     }
   }
 

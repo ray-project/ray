@@ -52,11 +52,18 @@ using ToPostable = typename internal::ToPostableHelper<FuncType>::type;
 /// a next invocation will fail.
 template <typename FuncType>
 class Postable {
+  static_assert(std::is_void_v<typename function_traits<FuncType>::result_type>,
+                "Postable return type must be void");
+
  public:
   Postable(std::function<FuncType> func, instrumented_io_context &io_context)
       : func_(std::move(func)), io_context_(io_context) {
     RAY_CHECK(func_ != nullptr)
         << "Postable must be constructed with a non-null function.";
+  }
+
+  static Postable Empty(instrumented_io_context &io_context) {
+    return Postable([](auto &&...) {}, io_context);
   }
 
   template <typename... Args>
@@ -97,42 +104,56 @@ class Postable {
   // Basically, adds a arg_mapper and becomes io_context.Post(func(arg_mapper(input...))).
   //
   // Constraints in template arguments:
-  // - `this->func_` must take exactly one argument.
+  // - `this->func_` must take exactly 0 or 1 argument.
   // - `arg_mapper` may take multiple arguments.
   // - `arg_mapper` must return the same type as `this->func_`'s argument.
   //
   // Result:
-  // `this` is Postable<ret(OldInputType)>
+  // `this` is Postable<void(OldInputType)>
   // `arg_mapper` is a std::function<OldInputType(NewInputTypes...)>
-  // The result is Postable<ret(NewInputTypes...)>
+  // The result is Postable<void(NewInputTypes...)>
   //
   // Example:
   // Postable<void(int)> p = ...;
-  // Postable<void(char, float)> p2 = p.TransformArg<int(char, float)>([](char a, float b) -> int { return a + b; });
+  // Postable<void(char, float)> p2 = p.TransformArg([](char a, float b) -> int {
+  //     return a + b;
+  // });
   template <typename ArgMapper>
   auto TransformArg(ArgMapper arg_mapper) && {
-    // Ensure that func_ takes exactly one argument.
-    static_assert(function_traits<FuncType>::arity == 1,
-                  "TransformArg requires `this` taking exactly one argument");
+    using ArgMapperFuncType = typename function_traits<ArgMapper>::type;
 
-    // Define type aliases for clarity.
-    using OldResultType = typename function_traits<FuncType>::result_type;
-    using OldInputType = typename function_traits<FuncType>::arg1_type;
+    if constexpr (function_traits<FuncType>::arity == 0) {
+      static_assert(
+          std::is_same_v<typename function_traits<ArgMapperFuncType>::result_type, void>,
+          "ArgMapper's return value must == void because func_ takes no argument");
 
-  using ArgMapperFuncType = typename function_traits<ArgMapper>::type;
-    // using NewInputType = typename function_traits<ArgMapper>::type;
-    using ArgMapperResultType = typename function_traits<ArgMapperFuncType>::result_type;
-    static_assert(std::is_same_v<ArgMapperResultType, OldInputType>,
-                  "ArgMapper's return value must == func_'s argument");
+      return Postable<rebind_result_t<void, ArgMapperFuncType>>(
+          // Use mutable to allow func and arg_mapper to have mutable captures.
+          [func = std::move(func_),
+           arg_mapper = std::move(arg_mapper)](auto &&...args) mutable -> void {
+            arg_mapper(std::forward<decltype(args)>(args)...);  // returns void
+            return func();
+          },
+          io_context_);
 
+    } else if constexpr (function_traits<FuncType>::arity == 1) {
+      static_assert(
+          std::is_same_v<typename function_traits<ArgMapperFuncType>::result_type,
+                         typename function_traits<FuncType>::arg1_type>,
+          "ArgMapper's return value must == func_'s argument");
 
-    auto mapped_func = [func = std::move(func_), arg_mapper = std::move(arg_mapper)](
-                           auto &&...args) -> OldResultType {
-      return func(arg_mapper(std::forward<decltype(args)>(args)...));
-    };
-
-
-    return Postable<rebind_result_t<OldResultType, ArgMapperFuncType>>(std::move(mapped_func), io_context_);
+      return Postable<rebind_result_t<void, ArgMapperFuncType>>(
+          // Use mutable to allow func and arg_mapper to have mutable captures.
+          [func = std::move(func_),
+           arg_mapper = std::move(arg_mapper)](auto &&...args) mutable -> void {
+            return func(arg_mapper(std::forward<decltype(args)>(args)...));
+          },
+          io_context_);
+    } else {
+      static_assert(
+          function_traits<FuncType>::arity <= 1,
+          "TransformArg requires `this` taking exactly one argument or no argument");
+    }
   }
 
   // Rebind the function.

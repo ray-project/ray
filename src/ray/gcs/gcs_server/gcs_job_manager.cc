@@ -121,8 +121,8 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status =
-      gcs_table_storage_.JobTable().Put(job_id, mutable_job_table_data, on_done);
+  Status status = gcs_table_storage_.JobTable().Put(
+      job_id, mutable_job_table_data, {on_done, io_context_});
   if (!status.ok()) {
     on_done(status);
   }
@@ -160,7 +160,8 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     done_callback(status);
   };
 
-  Status status = gcs_table_storage_.JobTable().Put(job_id, job_table_data, on_done);
+  Status status =
+      gcs_table_storage_.JobTable().Put(job_id, job_table_data, {on_done, io_context_});
   if (!status.ok()) {
     on_done(status);
   }
@@ -178,24 +179,25 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
 
   Status status = gcs_table_storage_.JobTable().Get(
       job_id,
-      [this, job_id, send_reply](const Status &status,
-                                 const std::optional<rpc::JobTableData> &result) {
-        RAY_CHECK(thread_checker_.IsOnSameThread());
+      {[this, job_id, send_reply](Status status,
+                                  std::optional<rpc::JobTableData> result) {
+         RAY_CHECK(thread_checker_.IsOnSameThread());
 
-        if (status.ok() && result) {
-          MarkJobAsFinished(*result, send_reply);
-          return;
-        }
+         if (status.ok() && result) {
+           MarkJobAsFinished(*result, send_reply);
+           return;
+         }
 
-        if (!result.has_value()) {
-          RAY_LOG(ERROR) << "Tried to mark job " << job_id
-                         << " as finished, but there was no record of it starting!";
-        } else if (!status.ok()) {
-          RAY_LOG(ERROR) << "Fails to mark job " << job_id << " as finished due to "
-                         << status;
-        }
-        send_reply(status);
-      });
+         if (!result.has_value()) {
+           RAY_LOG(ERROR) << "Tried to mark job " << job_id
+                          << " as finished, but there was no record of it starting!";
+         } else if (!status.ok()) {
+           RAY_LOG(ERROR) << "Fails to mark job " << job_id << " as finished due to "
+                          << status;
+         }
+         send_reply(status);
+       },
+       io_context_});
   if (!status.ok()) {
     send_reply(status);
   }
@@ -430,7 +432,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
           "job", job_api_data_keys, {kv_multi_get_callback, io_context_});
     }
   };
-  Status status = gcs_table_storage_.JobTable().GetAll(on_done);
+  Status status = gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
   if (!status.ok()) {
     on_done(absl::flat_hash_map<JobID, JobTableData>());
   }
@@ -479,7 +481,7 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
   };
 
   // make all jobs in current node to finished
-  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll(on_done));
+  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll({on_done, io_context_}));
 }
 
 void GcsJobManager::RecordMetrics() {

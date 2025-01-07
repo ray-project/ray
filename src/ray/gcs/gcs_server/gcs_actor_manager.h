@@ -318,6 +318,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   GcsActorManager(
       std::unique_ptr<GcsActorSchedulerInterface> scheduler,
       GcsTableStorage *gcs_table_storage,
+      instrumented_io_context &io_context,
       GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
@@ -691,6 +692,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::unique_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.
   GcsTableStorage *gcs_table_storage_;
+  instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   GcsPublisher *gcs_publisher_;
   /// Factory to produce clients to workers. This is used to communicate with

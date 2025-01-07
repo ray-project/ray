@@ -56,20 +56,18 @@ void StoreClientInternalKV::Get(const std::string &ns,
   RAY_CHECK_OK(delegate_->AsyncGet(
       table_name_,
       MakeKey(ns, key),
-      {[callback = std::move(callback)](auto status, auto result) {
-         RAY_CHECK(status.ok()) << "Fails to get key from storage " << status;
-         callback(std::move(result));
-       },
-       io_context_}));
+      std::move(callback).TransformArg(
+          [](ray::Status status,
+             std::optional<std::string> &&result) -> std::optional<std::string> {
+            RAY_CHECK(status.ok()) << "Fails to get key from storage " << status;
+            return std::move(result);
+          })));
 }
 
 void StoreClientInternalKV::MultiGet(
     const std::string &ns,
     const std::vector<std::string> &keys,
-    std::function<void(absl::flat_hash_map<std::string, std::string>)> callback) {
-  if (!callback) {
-    callback = [](auto) {};
-  }
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   std::vector<std::string> prefixed_keys;
   prefixed_keys.reserve(keys.size());
   for (const auto &key : keys) {
@@ -78,15 +76,17 @@ void StoreClientInternalKV::MultiGet(
   RAY_CHECK_OK(delegate_->AsyncMultiGet(
       table_name_,
       prefixed_keys,
-      {[callback = std::move(callback)](auto result) {
-         absl::flat_hash_map<std::string, std::string> ret;
-         ret.reserve(result.size());
-         for (auto &&item : std::move(result)) {
-           ret.emplace(ExtractKey(item.first), std::move(item.second));
-         }
-         callback(std::move(ret));
-       },
-       io_context_}));
+      std::move(callback).TransformArg  // <
+      // absl::flat_hash_map<std::string, std::string>(
+      //     absl::flat_hash_map<std::string, std::string>)>
+      ([](absl::flat_hash_map<std::string, std::string> before_extract) {
+        absl::flat_hash_map<std::string, std::string> ret;
+        ret.reserve(before_extract.size());
+        for (auto &&item : std::move(before_extract)) {
+          ret.emplace(ExtractKey(item.first), std::move(item.second));
+        }
+        return ret;
+      })));
 }
 
 void StoreClientInternalKV::Put(const std::string &ns,
