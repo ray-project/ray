@@ -51,7 +51,6 @@ class CompiledDAGRef:
         self,
         dag: "ray.experimental.CompiledDAG",
         execution_index: int,
-        actor_execution_loop_refs: List[ray.ObjectRef],
         channel_index: Optional[int] = None,
     ):
         """
@@ -72,7 +71,6 @@ class CompiledDAGRef:
         """
         self._dag = dag
         self._execution_index = execution_index
-        self._actor_execution_loop_refs = actor_execution_loop_refs
         self._channel_index = channel_index
         # Whether ray.get() was called on this CompiledDAGRef.
         self._ray_get_called = False
@@ -117,7 +115,6 @@ class CompiledDAGRef:
             return_vals = self._dag._execute_until(
                 self._execution_index, self._channel_index, timeout
             )
-            return _process_return_vals(return_vals, True)
         except RayChannelTimeoutError:
             raise
         except RayChannelError as channel_error:
@@ -131,8 +128,9 @@ class CompiledDAGRef:
             # of the channel error itself.
             # TODO(rui): determine which error to raise if multiple
             # actor task refs have errors.
+            actor_execution_loop_refs = list(self._dag.worker_task_refs.values())
             try:
-                ray.get(self._actor_execution_loop_refs, timeout=10)
+                ray.get(actor_execution_loop_refs, timeout=10)
             except GetTimeoutError as timeout_error:
                 raise Exception(
                     "Timed out when getting the actor execution loop exception. "
@@ -146,6 +144,7 @@ class CompiledDAGRef:
                 raise channel_error
         except Exception:
             raise
+        return _process_return_vals(return_vals, True)
 
 
 @PublicAPI(stability="alpha")

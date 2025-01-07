@@ -229,6 +229,9 @@ class TorchTensorNcclChannel(ChannelInterface):
                 # Raise a fatal error to teardown the DAG.
                 # This error will also be caught from `CompiledDAGRef.get()`
                 # and raised to the user
+                # TODO(swang): Write exceptions to the tensor metadata or
+                # non-tensor data channel if it is available to make these
+                # exceptions recoverable.
                 raise value
 
         if self._cpu_data_channel is None:
