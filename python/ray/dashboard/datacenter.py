@@ -283,7 +283,7 @@ class DataOrganizer:
             "npus": actor_process_npu_stats,
         }
         actor["processStats"] = actor_process_stats
-        actor["mem"] =node_physical_stats.get("mem", [])
+        actor["mem"] = node_physical_stats.get("mem", [])
 
         required_resources = parse_pg_formatted_resources_to_original(
             actor["requiredResources"]
