@@ -1425,6 +1425,19 @@ def test_seed_file_shuffle(restore_data_context, tmp_path):
     assert ds1.take_all() == ds2.take_all()
 
 
+def test_read_file_with_partition_values(ray_start_regular_shared, tmp_path):
+    # Typically, partition values are excluded from the Parquet file and are instead
+    # encoded in the directory structure. However, in some cases, partition values
+    # are also included in the Parquet file. This test verifies that case.
+    table = pa.Table.from_pydict({"data": [0], "year": [2024]})
+    os.makedirs(tmp_path / "year=2024")
+    pq.write_table(table, tmp_path / "year=2024" / "data.parquet")
+
+    ds = ray.data.read_parquet(tmp_path)
+
+    assert ds.take_all() == [{"data": 0, "year": 2024}]
+
+
 if __name__ == "__main__":
     import sys
 

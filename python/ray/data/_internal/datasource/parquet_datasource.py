@@ -689,9 +689,7 @@ def _add_partitions_to_table(
     for field_name, value in partitions.items():
         column = pa.array([value] * len(table))
         field_index = table.schema.get_field_index(field_name)
-        if field_index != -1:
-            table = table.set_column(field_index, field_name, column)
-        else:
+        if field_index == -1:
             table = table.append_column(field_name, column)
 
     return table
