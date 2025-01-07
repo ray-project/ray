@@ -90,8 +90,6 @@ class DrainNodeOutcome(str, Enum):
     GenericException = "GenericException"
     # Tell the autoscaler to fail finding ips during drain
     FailedToFindIp = "FailedToFindIp"
-    # Represents the situation in which draining nodes before termination is disabled.
-    DrainDisabled = "DrainDisabled"
 
 
 class MockGcsClient:
@@ -1429,9 +1427,6 @@ class AutoscalingTest(unittest.TestCase):
     def testDynamicScaling6(self):
         self.helperDynamicScaling(DrainNodeOutcome.FailedToFindIp)
 
-    def testDynamicScaling7(self):
-        self.helperDynamicScaling(DrainNodeOutcome.DrainDisabled)
-
     def testDynamicScalingForegroundLauncher(self):
         """Test autoscaling with node launcher in the foreground."""
         self.helperDynamicScaling(foreground_node_launcher=True)
@@ -1499,13 +1494,6 @@ class AutoscalingTest(unittest.TestCase):
             assert mock_gcs_client.drain_node_call_count == 0
             # We encountered an exception fetching ip.
             assert mock_metrics.drain_node_exceptions.inc.call_count > 0
-        elif drain_node_outcome == DrainNodeOutcome.DrainDisabled:
-            # We never called this API.
-            assert mock_gcs_client.drain_node_call_count == 0
-            # There were no failed calls.
-            assert mock_metrics.drain_node_exceptions.inc.call_count == 0
-            # There were no successful calls either.
-            assert mock_gcs_client.drain_node_reply_success == 0
 
     def _helperDynamicScaling(
         self,
