@@ -297,7 +297,7 @@ def test_worker_count(mock_glob, test_case):
         "_get_current_node_tpu_pod_type",
         return_value=accelerator_type,
     ):
-       worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()
+        worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()
 
     assert worker_count == expected_worker_count
 
