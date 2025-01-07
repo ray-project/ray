@@ -339,7 +339,7 @@ class DQNConfig(AlgorithmConfig):
                 of [0, 1]. Note that this mostly affects evaluation since TD error uses
                 argmax for return calculation.
             burn_in_len: The burn-in period for a stateful RLModule. It allows the
-                Learner to utilize the initial `burnin` steps in a replay sequence
+                Learner to utilize the initial `burn_in_len` steps in a replay sequence
                 solely for unrolling the network and establishing a typical starting
                 state. The network is then updated on the remaining steps of the
                 sequence. This process helps mitigate issues stemming from a poor
@@ -463,10 +463,10 @@ class DQNConfig(AlgorithmConfig):
             )
 
         # Check, if the `max_seq_len` is longer then the burn-in.
-        if self.model_config["max_seq_len"] < self.burn_in_len + 1:
+        if self.model_config["max_seq_len"] <= self.burn_in_len:
             raise ValueError(
-                f"Your defined `burn_in_len`={self.burn_in_len} is larger than the "
-                f"`max_seq_len`={self.model_config['max_seq_len']}. Either decrease "
+                f"Your defined `burn_in_len`={self.burn_in_len} is larger or equal "
+                f"`max_seq_len`={self.model_config['max_seq_len']}! Either decrease "
                 "the `burn_in_len` or increase your `max_seq_len`."
             )
 
