@@ -442,15 +442,11 @@ doctest(
 
 doctest(
     name = "doctest[rllib]",
-    size = "enormous",
+    size = "large",
     files = glob(
         include = [
             "source/rllib/**/*.rst",
             "source/rllib/**/*.md",
-        ],
-        exclude = [
-            "source/rllib/rllib-env.rst",
-            "source/rllib/rllib-sample-collection.rst",
         ],
     ),
     data = ["//rllib:cartpole-v1_large"],
