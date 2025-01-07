@@ -34,15 +34,14 @@ std::string MakeKey(const std::string &ns, const std::string &key) {
 }
 
 std::string ExtractKey(const std::string &key) {
-  auto view = std::string_view(key);
-  if (absl::StartsWith(view, kNamespacePrefix)) {
-    std::vector<std::string> parts =
+  if (absl::StartsWith(key, kNamespacePrefix)) {
+    std::vector<std::string_view> parts =
         absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
     RAY_CHECK(parts.size() == 2) << "Invalid key: " << key;
 
-    return parts[1];
+    return std::string{parts[1]};
   }
-  return std::string(view.begin(), view.end());
+  return key;
 }
 
 }  // namespace
@@ -65,8 +64,7 @@ void StoreClientInternalKV::Get(
       MakeKey(ns, key),
       {[callback = std::move(callback)](auto status, auto result) {
          RAY_CHECK(status.ok()) << "Fails to get key from storage " << status;
-         callback(result.has_value() ? std::optional<std::string>(result.value())
-                                     : std::optional<std::string>());
+         callback(std::move(result));
        },
        io_context_}));
 }
@@ -74,7 +72,7 @@ void StoreClientInternalKV::Get(
 void StoreClientInternalKV::MultiGet(
     const std::string &ns,
     const std::vector<std::string> &keys,
-    std::function<void(std::unordered_map<std::string, std::string>)> callback) {
+    std::function<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   if (!callback) {
     callback = [](auto) {};
   }
@@ -83,17 +81,18 @@ void StoreClientInternalKV::MultiGet(
   for (const auto &key : keys) {
     prefixed_keys.emplace_back(MakeKey(ns, key));
   }
-  RAY_CHECK_OK(
-      delegate_->AsyncMultiGet(table_name_,
-                               prefixed_keys,
-                               {[callback = std::move(callback)](auto result) {
-                                  std::unordered_map<std::string, std::string> ret;
-                                  for (const auto &item : result) {
-                                    ret.emplace(ExtractKey(item.first), item.second);
-                                  }
-                                  callback(std::move(ret));
-                                },
-                                io_context_}));
+  RAY_CHECK_OK(delegate_->AsyncMultiGet(
+      table_name_,
+      prefixed_keys,
+      {[callback = std::move(callback)](auto result) {
+         absl::flat_hash_map<std::string, std::string> ret;
+         ret.reserve(result.size());
+         for (auto &&item : std::move(result)) {
+           ret.emplace(ExtractKey(item.first), std::move(item.second));
+         }
+         callback(std::move(ret));
+       },
+       io_context_}));
 }
 
 void StoreClientInternalKV::Put(const std::string &ns,

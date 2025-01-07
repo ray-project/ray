@@ -395,7 +395,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
            send_reply_callback,
            job_data_key_to_indices,
            num_finished_tasks,
-           try_send_reply](std::unordered_map<std::string, std::string> &&result) {
+           try_send_reply](auto result) {
             for (const auto &data : result) {
               const std::string &job_data_key = data.first;
               // The JobInfo stored by the Ray Job API.

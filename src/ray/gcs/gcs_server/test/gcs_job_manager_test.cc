@@ -89,7 +89,7 @@ TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
 
   fake_kv_->MultiGet("ns",
                      {"key", "key2"},
-                     [](const std::unordered_map<std::string, std::string> &result) {
+                     [](const absl::flat_hash_map<std::string, std::string> &result) {
                        ASSERT_EQ(result.size(), 2);
                        ASSERT_EQ(result.at("key"), "value");
                        ASSERT_EQ(result.at("key2"), "value2");
