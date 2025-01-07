@@ -680,3 +680,12 @@ class TargetCapacityDirection(str, Enum):
 class ReplicaQueueLengthInfo:
     accepted: bool
     num_ongoing_requests: int
+
+
+@dataclass(frozen=True)
+class CreatePlacementGroupRequest:
+    bundles: List[Dict[str, float]]
+    strategy: str
+    target_node_id: str
+    name: str
+    runtime_env: Optional[str] = None
