@@ -302,7 +302,7 @@ def test_worker_count(mock_glob, test_case):
 
 
 @patch("glob.glob")
-def test_num_tpu_chips():
+def test_num_tpu_chips(mock_glob):
     mock_glob.return_value = [
         "/dev/accel0",
         "/dev/accel1",
