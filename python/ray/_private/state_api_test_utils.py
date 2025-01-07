@@ -21,6 +21,13 @@ from ray.util.state.state_manager import StateDataSourceClient
 from ray.dashboard.state_aggregator import (
     StateAPIManager,
 )
+from ray.util.state.common import (
+    DEFAULT_LIMIT,
+    DEFAULT_RPC_TIMEOUT,
+    ListApiOptions,
+    PredicateType,
+    SupportedFilterType,
+)
 
 
 @dataclass
@@ -451,3 +458,42 @@ def verify_tasks_running_or_terminated(
                 ), f"expect {expected_state} but {task['state']} for {task}"
 
     return True
+
+
+def verify_schema(state, result_dict: dict, detail: bool = False):
+    """
+    Verify the schema of the result_dict is the same as the state.
+    """
+    state_fields_columns = set()
+    if detail:
+        state_fields_columns = state.columns()
+    else:
+        state_fields_columns = state.base_columns()
+
+    for k in state_fields_columns:
+        assert k in result_dict
+
+    for k in result_dict:
+        assert k in state_fields_columns
+
+    # Make the field values can be converted without error as well
+    state(**result_dict)
+
+
+def create_api_options(
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    limit: int = DEFAULT_LIMIT,
+    filters: List[Tuple[str, PredicateType, SupportedFilterType]] = None,
+    detail: bool = False,
+    exclude_driver: bool = True,
+):
+    if not filters:
+        filters = []
+    return ListApiOptions(
+        limit=limit,
+        timeout=timeout,
+        filters=filters,
+        server_timeout_multiplier=1.0,
+        detail=detail,
+        exclude_driver=exclude_driver,
+    )
