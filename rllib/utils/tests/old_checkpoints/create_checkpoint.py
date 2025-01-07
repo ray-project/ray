@@ -1,13 +1,13 @@
-"""This script should be used to create a msgpack-checkpoint in the same directory.
+"""Use this script to create "legacy" msgpack-checkpoints in the same directory.
 
-Use it to create "legacy" msgpack checkpoints for backward compatibility testing vs
-future Ray and RLlib versions.
+Backward compatibility tests of future Ray and RLlib versions check for compatibility
+with these legacy msgpack checkpoints.
 
-This script should be roughly run once per Ray release and the resulting checkpoint
-.zip file should be saved into a newly created `ray_[major]_[minor]` subdirectory.
+Run this script roughly once per Ray release and save the resulting checkpoint
+.zip file into a newly created `ray_[major]_[minor]` subdirectory.
 
-The CI test in `test_checkpointable.py` loops through all these Ray version
-subdirectories trying to restore the original Algo's state and continue training.
+The CI test in `test_checkpointable.py` can then loop through all the Ray version
+subdirectories and try to restore the original Algo's state and continue training.
 """
 
 import argparse
