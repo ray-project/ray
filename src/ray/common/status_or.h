@@ -32,18 +32,19 @@ class StatusOr {
   // NOLINTNEXTLINE(runtime/explicit)
   StatusOr(Status status) : status_(std::move(status)) {}
   // NOLINTNEXTLINE(runtime/explicit)
-  StatusOr(const T &data) : status_(Status::OK()), data_(data) {}
+  StatusOr(const T &data) : status_(Status::OK()) { MakeValue(data); }
   // NOLINTNEXTLINE(runtime/explicit)
-  StatusOr(T &&data) : status_(Status::OK()), data_(std::move(data)) {}
+  StatusOr(T &&data) : status_(Status::OK()) { MakeValue(std::move(data)); }
 
   template <typename... Args>
-  explicit StatusOr(std::in_place_t ip, Args &&...args)
-      : data_(std::forward<Args>(args)...) {}
+  explicit StatusOr(std::in_place_t ip, Args &&...args) : status_(Status::OK()) {
+    MakeValue(std::forward<Args>(args)...);
+  }
 
   template <typename U>
   StatusOr(const StatusOr<U> &status_or) {
     if (status_or.ok()) {
-      data_ = status_or.value();
+      MakeValue(status_or.value());
       status_ = Status::OK();
     } else {
       status_ = status_or.status();
@@ -53,21 +54,60 @@ class StatusOr {
   template <typename U>
   StatusOr(StatusOr<U> &&status_or) {
     if (status_or.ok()) {
-      data_ = std::move(status_or).value();
+      MakeValue(std::move(status_or).value());
       status_ = Status::OK();
     } else {
-      status_ = std::move(status_or).status();
+      status_ = status_or.status();
     }
   }
 
-  StatusOr(const StatusOr &) = default;
-  StatusOr &operator=(const StatusOr &) = default;
+  StatusOr(const StatusOr &rhs) {
+    if (rhs.ok()) {
+      status_ = Status::OK();
+      MakeValue(rhs.value());
+      return;
+    }
+    status_ = rhs.status();
+  }
+  StatusOr &operator=(const StatusOr &rhs) {
+    if (this == &rhs) {
+      return *this;
+    }
+    if (rhs.ok()) {
+      status_ = Status::OK();
+      AssignValue(rhs.value());
+      return *this;
+    }
+    AssignStatus(rhs.status());
+    return *this;
+  }
 
-  StatusOr(StatusOr &&) noexcept(std::is_nothrow_move_constructible_v<T>) = default;
-  StatusOr &operator=(StatusOr &&) noexcept(std::is_nothrow_move_assignable_v<T>) =
-      default;
+  StatusOr(StatusOr &&rhs) noexcept(std::is_nothrow_move_constructible_v<T>) {
+    if (rhs.ok()) {
+      status_ = Status::OK();
+      MakeValue(std::move(rhs).value());
+      return;
+    }
+    status_ = rhs.status();
+  }
+  StatusOr &operator=(StatusOr &&rhs) noexcept(std::is_nothrow_move_assignable_v<T>) {
+    if (this == &rhs) {
+      return *this;
+    }
+    if (rhs.ok()) {
+      status_ = Status::OK();
+      AssignValue(std::move(rhs).value());
+      return *this;
+    }
+    AssignStatus(rhs.status());
+    return *this;
+  }
 
-  ~StatusOr() noexcept(std::is_nothrow_destructible_v<T>) = default;
+  ~StatusOr() noexcept(std::is_nothrow_destructible_v<T>) {
+    if (ok()) {
+      data_.~T();
+    }
+  }
 
   // Returns whether or not this `ray::StatusOr<T>` holds a `T` value. This
   // member function is analogous to `ray::Status::ok()` and should be used
@@ -187,11 +227,40 @@ class StatusOr {
   T &get() { return data_; }
   const T &get() const { return data_; }
 
+  template <typename... Args>
+  void MakeValue(Args &&...arg) {
+    new (&data_) T(std::forward<Args>(arg)...);
+  }
+
+  // Assign value to current status or.
+  template <typename U>
+  void AssignValue(U &&value) {
+    if (ok()) {
+      ClearValue();
+    }
+    MakeValue(std::forward<U>(value));
+  }
+
+  // Assign status to current status or.
+  void AssignStatus(Status s) {
+    if (ok()) {
+      ClearValue();
+    }
+    status_ = std::move(s);
+  }
+
+  // @precondition `ok() == true`.
+  void ClearValue() { data_.~T(); }
+
   Status status_;
 
-  // TODO(hjiang): Consider using union to construct `data_` as abseil implementation.
-  // https://github.com/abseil/abseil-cpp/blob/fcc8630eede5498b48b45b99e4eaa1406d6657e9/absl/status/internal/statusor_internal.h#L317-L333
-  T data_;
+  // Use union to avoid initialize when representing an error status.
+  // Constructed with placement new.
+  //
+  // `data_` is effective iff `ok() == true`.
+  union {
+    T data_;
+  };
 };
 
 template <typename T>
