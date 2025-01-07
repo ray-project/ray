@@ -459,13 +459,13 @@ If you are using any of the Ray libraries, follow the instructions provided in t
 
 Ray supports log rotation of log files.
 
-By default, logs rotate when they reach 512MB (maxBytes), and have a maximum of five backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet.out.1`)
-To change the log rotation configuration, specify environment variables. For example,
+By default, ray doesn't rotate for internal components. To change the log rotation configuration, specify environment variables. For example,
 
 ```bash
 RAY_ROTATION_MAX_BYTES=1024; ray start --head # Start a ray instance with maxBytes 1KB.
 RAY_ROTATION_BACKUP_COUNT=1; ray start --head # Start a ray instance with backupCount 1.
 ```
+Indexes are appended to all backup files (e.g., `raylet.out.1`)
 
 The max size of a log file, including its backup, is `RAY_ROTATION_MAX_BYTES * RAY_ROTATION_BACKUP_COUNT + RAY_ROTATION_MAX_BYTES`
 
