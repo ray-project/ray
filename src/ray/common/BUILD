@@ -199,6 +199,7 @@ ray_cc_library(
     hdrs = [
         "asio/asio_chaos.h",
         "asio/asio_util.h",
+        "asio/postable.h",
         "asio/instrumented_io_context.h",
         "asio/io_service_pool.h",
         "asio/periodical_runner.h",
@@ -281,6 +282,15 @@ ray_cc_library(
     deps = [
         ":source_location",
         "//src/ray/util",
+    ],
+)
+
+ray_cc_library(
+    name = "status_or",
+    hdrs = ["status_or.h"],
+    deps = [
+        ":status",
+        "@com_google_absl//absl/base:core_headers"
     ],
 )
 
