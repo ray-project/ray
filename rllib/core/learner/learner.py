@@ -1356,28 +1356,27 @@ class Learner(Checkpointable):
                 )
                 # Convert to a batch.
                 # TODO (sven): Try to not require MultiAgentBatch anymore.
-                #batch = MultiAgentBatch(
-                #    {
-                #        module_id: (
-                #            SampleBatch(module_data, _zero_padded=True)
-                #            if shared_data.get(f"_zero_padded_for_mid={module_id}")
-                #            else SampleBatch(module_data)
-                #        )
-                #        for module_id, module_data in batch.items()
-                #    },
-                #    env_steps=sum(len(e) for e in episodes),
-                #)
+                batch = MultiAgentBatch(
+                    {
+                        module_id: (
+                            SampleBatch(module_data, _zero_padded=True)
+                            if shared_data.get(f"_zero_padded_for_mid={module_id}")
+                            else SampleBatch(module_data)
+                        )
+                        for module_id, module_data in batch.items()
+                    },
+                    env_steps=sum(len(e) for e in episodes),
+                )
         # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
-        #elif isinstance(batch, SampleBatch):
-        #    assert len(self.module) == 1
-        #    batch = MultiAgentBatch(
-        #        {next(iter(self.module.keys())): batch}, env_steps=len(batch)
-        #    )
+        elif isinstance(batch, SampleBatch):
+            assert len(self.module) == 1
+            batch = MultiAgentBatch(
+                {next(iter(self.module.keys())): batch}, env_steps=len(batch)
+            )
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.
-        #unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
-        unknown_module_ids = set(batch.keys()) - set(self.module.keys())
+        unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
         if len(unknown_module_ids) > 0:
             raise ValueError(
                 "Batch contains one or more ModuleIDs that are not in this Learner! "
@@ -1387,70 +1386,66 @@ class Learner(Checkpointable):
         # TODO: Move this into LearnerConnector pipeline?
         # Filter out those RLModules from the final train batch that should not be
         # updated.
-        #for module_id in list(batch.policy_batches.keys()):
-        for module_id in list(batch.keys()):
+        for module_id in list(batch.policy_batches.keys()):
             if not self.should_module_be_updated(module_id, batch):
-                #del batch.policy_batches[module_id]
-                del batch[module_id]
+                del batch.policy_batches[module_id]
 
         # Log all timesteps (env, agent, modules) based on given episodes/batch.
         self._log_steps_trained_metrics(batch)
 
-        #if minibatch_size:
-        #    batch_iter = MiniBatchCyclicIterator
-        #elif num_epochs > 1:
-        #    # `minibatch_size` was not set but `num_epochs` > 1.
-        #    # Under the old training stack, users could do multiple epochs
-        #    # over a batch without specifying a minibatch size. We enable
-        #    # this behavior here by setting the minibatch size to be the size
-        #    # of the batch (e.g. 1 minibatch of size batch.count)
-        #    minibatch_size = batch.count
-        #    # Note that there is no need to shuffle here, b/c we don't have minibatches.
-        #    batch_iter = MiniBatchCyclicIterator
-        #else:
-        #    # `minibatch_size` and `num_epochs` are not set by the user.
-        batch_iter = MiniBatchDummyIterator
+        if minibatch_size:
+            batch_iter = MiniBatchCyclicIterator
+        elif num_epochs > 1:
+            # `minibatch_size` was not set but `num_epochs` > 1.
+            # Under the old training stack, users could do multiple epochs
+            # over a batch without specifying a minibatch size. We enable
+            # this behavior here by setting the minibatch size to be the size
+            # of the batch (e.g. 1 minibatch of size batch.count)
+            minibatch_size = batch.count
+            # Note that there is no need to shuffle here, b/c we don't have minibatches.
+            batch_iter = MiniBatchCyclicIterator
+        else:
+            # `minibatch_size` and `num_epochs` are not set by the user.
+            batch_iter = MiniBatchDummyIterator
 
-        #batch = self._set_slicing_by_batch_id(batch, value=True)
+        batch = self._set_slicing_by_batch_id(batch, value=True)
 
-        #for tensor_minibatch in batch_iter(
-        #    batch,
-        #    num_epochs=num_epochs,
-        #    minibatch_size=minibatch_size,
-        #    shuffle_batch_per_epoch=shuffle_batch_per_epoch and (num_epochs > 1),
-        #    num_total_minibatches=num_total_minibatches,
-        #):
-        # Make the actual in-graph/traced `_update` call. This should return
-        # all tensor values (no numpy).
-        fwd_out, loss_per_module, tensor_metrics = self._update(
-            #tensor_minibatch.policy_batches
-            batch
-        )
-
-        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-        # to actual (numpy) values.
-        self.metrics.tensors_to_numpy(tensor_metrics)
-
-        # Log all individual RLModules' loss terms and its registered optimizers'
-        # current learning rates.
-        for mid, loss in convert_to_numpy(loss_per_module).items():
-            self.metrics.log_value(
-                key=(mid, self.TOTAL_LOSS_KEY),
-                value=loss,
-                window=1,
+        for tensor_minibatch in batch_iter(
+            batch,
+            num_epochs=num_epochs,
+            minibatch_size=minibatch_size,
+            shuffle_batch_per_epoch=shuffle_batch_per_epoch and (num_epochs > 1),
+            num_total_minibatches=num_total_minibatches,
+        ):
+            # Make the actual in-graph/traced `_update` call. This should return
+            # all tensor values (no numpy).
+            fwd_out, loss_per_module, tensor_metrics = self._update(
+                tensor_minibatch.policy_batches
             )
+
+            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+            # to actual (numpy) values.
+            self.metrics.tensors_to_numpy(tensor_metrics)
+
+            # Log all individual RLModules' loss terms and its registered optimizers'
+            # current learning rates.
+            for mid, loss in convert_to_numpy(loss_per_module).items():
+                self.metrics.log_value(
+                    key=(mid, self.TOTAL_LOSS_KEY),
+                    value=loss,
+                    window=1,
+                )
 
         self._weights_seq_no += 1
         self.metrics.log_dict(
             {
                 (mid, WEIGHTS_SEQ_NO): self._weights_seq_no
-                #for mid in batch.policy_batches.keys()
-                for mid in batch.keys()
+                for mid in batch.policy_batches.keys()
             },
             window=1,
         )
 
-        #self._set_slicing_by_batch_id(batch, value=False)
+        self._set_slicing_by_batch_id(batch, value=False)
 
         # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
@@ -1692,10 +1687,8 @@ class Learner(Checkpointable):
 
     def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
         """Logs this iteration's steps trained, based on given `batch`."""
-        #for mid, module_batch in batch.policy_batches.items():
-        env_steps = 0#hack
-        for mid, module_batch in batch.items():
-            env_steps = module_batch_size = len(module_batch["rewards"])#hack
+        for mid, module_batch in batch.policy_batches.items():
+            module_batch_size = len(module_batch)
             # Log average batch size (for each module).
             self.metrics.log_value(
                 key=(mid, MODULE_TRAIN_BATCH_SIZE_MEAN),
@@ -1728,13 +1721,13 @@ class Learner(Checkpointable):
         # Log env steps (all modules).
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
-            env_steps,
+            batch.env_steps(),
             reduce="sum",
             clear_on_reduce=True,
         )
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
-            env_steps,
+            batch.env_steps(),
             reduce="sum",
             with_throughput=True,
         )

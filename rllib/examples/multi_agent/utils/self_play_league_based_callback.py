@@ -53,19 +53,23 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
         #assert num_learning_policies > 0
         # Ignore matches between two learning policies and don't count win-rates for
         # these.
-        if num_learning_policies != 1:
-            return
-        # Compute the win rate for this episode (only looking at non-trained opponents,
-        # such as random or frozen policies) and log it with a window of 100.
-        rewards_dict = episode.get_rewards()
-        for aid, rewards in rewards_dict.items():
-            mid = episode.module_for(aid)
-            won = rewards[-1] == 1.0
-            metrics_logger.log_value(
-                f"win_rate_{mid}",
-                won,
-                window=100,
-            )
+        assert num_learning_policies > 0, (
+            f"agent=0 -> mod={episode.module_for(0)}; "
+            f"agent=1 -> mod={episode.module_for(1)}; "
+            f"EnvRunner.config.policies_to_train={env_runner.config.policies_to_train}"
+        )
+        if num_learning_policies == 1:
+            # Compute the win rate for this episode (only looking at non-trained
+            # opponents, such as random or frozen policies) and log it with some window.
+            rewards_dict = episode.get_rewards()
+            for aid, rewards in rewards_dict.items():
+                mid = episode.module_for(aid)
+                won = rewards[-1] == 1.0
+                metrics_logger.log_value(
+                    f"win_rate_{mid}",
+                    won,
+                    window=100,
+                )
 
     def on_train_result(self, *, algorithm, metrics_logger=None, result, **kwargs):
         local_worker = algorithm.env_runner
