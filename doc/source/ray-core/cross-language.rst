@@ -269,7 +269,7 @@ Then, run the following code:
   :start-after: __raise_exception_demo_start__
   :end-before: __raise_exception_demo_end__
 
-Then, the exception stack will be:
+The exception stack will be:
 
 .. code-block:: text
 

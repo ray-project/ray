@@ -13,7 +13,7 @@ that specific worker. The methods can access and mutate the state of that worker
 
     .. tab-item:: Python
 
-        The ``ray.remote`` decorator indicates that instances of the ``Counter`` class are be actors. Each actor runs in its own Python process.
+        The ``ray.remote`` decorator indicates that instances of the ``Counter`` class are actors. Each actor runs in its own Python process.
 
         .. testcode::
 
@@ -116,7 +116,7 @@ Specifying required resources
 
 .. _actor-resource-guide:
 
-Specify resource requirements in actors too. See :ref:`resource-requirements` for more details.
+Specify resource requirements in actors. See :ref:`resource-requirements` for more details.
 
 .. tab-set::
 
@@ -430,8 +430,8 @@ it cancels all child and Actor Tasks.
 Scheduling
 ----------
 
-For each actor, Ray chooses a node to run it,
-and the scheduling decision is based on a few factors like
+For each actor, Ray chooses a node to run it on,
+and bases the scheduling decision on a few factors like
 :ref:`the actor's resource requirements <ray-scheduling-resources>`
 and :ref:`the specified scheduling strategy <ray-scheduling-strategies>`.
 See :ref:`Ray scheduling <ray-scheduling>` for more details.
