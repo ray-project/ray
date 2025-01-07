@@ -28,6 +28,7 @@ from ray._private.test_utils import (
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
 from ray.experimental.util.types import ReduceOp
+from ray.cluster_utils import Cluster
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +222,62 @@ def test_torch_tensor_nccl(
     monkeypatch.setattr(
         ray.dag.constants, "RAY_CGRAPH_ENABLE_PROFILING", enable_profiling
     )
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    shape = (10,)
+    dtype = torch.float16
+
+    # Test normal execution.
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
+
+    # Test that we can pass different shapes and data.
+    for i in range(3):
+        shape = (10 * (i + 1),)
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
+
+    # Test that actors can be reused for a new DAG.
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    # Test that we can pass different shapes and data.
+    for i in range(3):
+        shape = (10 * (i + 1),)
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
+
+
+@pytest.mark.parametrize("overlap_gpu_communication", [True, False])
+def test_torch_tensor_nccl_multi_node(
+    ray_start_cluster_head, overlap_gpu_communication
+):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    cluster: Cluster = ray_start_cluster_head
+    cluster.add_node(num_gpus=1)
+    cluster.add_node(num_gpus=1)
+    cluster.wait_for_nodes()
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+    assert len(ray.nodes()) > 1, "This test requires at least 3 nodes"
 
     actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
