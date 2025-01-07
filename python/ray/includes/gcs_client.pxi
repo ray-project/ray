@@ -209,9 +209,7 @@ cdef class InnerGcsClient:
     def async_internal_kv_put(
         self, c_string key, c_string value, c_bool overwrite=False, namespace=None,
         timeout=None
-    ) -> Future[int]:
-        # TODO(ryw): the sync `internal_kv_put` returns bool while this async version
-        # returns int. We should make them consistent.
+    ) -> Future[bool]:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -220,8 +218,8 @@ cdef class InnerGcsClient:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVPut(
                     ns, key, value, overwrite, timeout_ms,
-                    OptionalItemPyCallback[int](
-                        &convert_optional_int,
+                    OptionalItemPyCallback[c_bool](
+                        &convert_optional_bool,
                         assign_and_decrement_fut,
                         fut)))
         return asyncio.wrap_future(fut)

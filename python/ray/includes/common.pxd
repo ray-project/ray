@@ -515,7 +515,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const c_string &value,
             c_bool overwrite,
             int64_t timeout_ms,
-            const OptionalItemPyCallback[int] &callback)
+            const OptionalItemPyCallback[c_bool] &callback)
 
         CRayStatus AsyncInternalKVExists(
             const c_string &ns,
