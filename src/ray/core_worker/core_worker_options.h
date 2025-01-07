@@ -102,7 +102,7 @@ struct CoreWorkerOptions {
         entrypoint(""),
         worker_launch_time_ms(-1),
         worker_launched_time_ms(-1),
-        worker_available_port(std::nullopt) {}
+        assigned_worker_port(std::nullopt) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -210,7 +210,7 @@ struct CoreWorkerOptions {
   /// On the next end-to-end integrartion PR, we should check
   /// - non-empty for worker
   /// - and empty for driver
-  std::optional<int> worker_available_port;
+  std::optional<int> assigned_worker_port;
 };
 }  // namespace core
 }  // namespace ray

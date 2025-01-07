@@ -471,8 +471,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   // If worker port already assigned, directly use it, otherwise get an available port
   // from node manager.
-  if (options_.worker_available_port.has_value()) {
-    assigned_port = options_.worker_available_port.value();
+  if (options_.assigned_worker_port.has_value()) {
+    assigned_port = options_.assigned_worker_port.value();
     raylet_client_status =
         RegisterWorkerToRayletWithPort(*raylet_conn,
                                        GetWorkerID(),
@@ -990,7 +990,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   // Tell the raylet the port that we are listening on, only do when port hasn't been
   // announced. NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
-  if (!options_.worker_available_port.has_value()) {
+  if (!options_.assigned_worker_port.has_value()) {
     ConnectToRayletInternal();
   }
 }
