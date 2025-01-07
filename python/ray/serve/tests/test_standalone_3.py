@@ -567,7 +567,7 @@ def test_serve_shut_down_without_duplicated_logs(
     assert all_serve_logs.count("Deleting app 'default'") == 1
 
 
-def test_job_runtime_env_not_leaked(shutdown_ray, call_ray_stop_only):  # noqa: F811
+def test_job_runtime_env_not_leaked(shutdown_ray):  # noqa: F811
     """https://github.com/ray-project/ray/issues/49074"""
 
     @serve.deployment
