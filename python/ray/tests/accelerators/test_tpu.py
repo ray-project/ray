@@ -290,6 +290,7 @@ def test_empty_get_current_pod_name_returns_none():
 def test_worker_count(mock_glob, test_case):
     num_devices, accelerator_type, expected_worker_count = test_case
     mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
 
     with patch(
         "ray._private.accelerators.tpu.TPUAcceleratorManager."
@@ -309,6 +310,7 @@ def test_num_tpu_chips(mock_glob):
         "/dev/accel2",
         "/dev/accel3",
     ]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     num_tpu_chips = ray.util.accelerators.tpu.get_num_tpu_chips_on_node()
     assert num_tpu_chips == 4
 
