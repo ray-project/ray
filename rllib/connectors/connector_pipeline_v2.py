@@ -98,27 +98,37 @@ class ConnectorPipelineV2(ConnectorV2):
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
         for connector in self.connectors:
-            with metrics.log_time(
-                (TIMERS, CONNECTOR_TIMERS, connector.__class__.__name__)
-            ):
-                batch = connector(
-                    rl_module=rl_module,
-                    batch=batch,
-                    episodes=episodes,
-                    explore=explore,
-                    shared_data=shared_data,
-                    metrics=metrics,
-                    # Deprecated arg.
-                    data=batch,
-                    **kwargs,
+            # TODO (sven): Add MetricsLogger to non-Learner components that have a
+            #  LearnerConnector pipeline.
+            stats = None
+            if metrics:
+                stats = metrics.log_time(
+                    (TIMERS, CONNECTOR_TIMERS, connector.__class__.__name__)
                 )
-                if not isinstance(batch, dict):
-                    raise ValueError(
-                        f"`data` returned by ConnectorV2 {connector} must be a dict! "
-                        f"You returned {batch}. Check your (custom) connectors' "
-                        f"`__call__()` method's return value and make sure you return "
-                        f"the `data` arg passed in (either altered or unchanged)."
-                    )
+                stats.__enter__()
+
+            batch = connector(
+                rl_module=rl_module,
+                batch=batch,
+                episodes=episodes,
+                explore=explore,
+                shared_data=shared_data,
+                metrics=metrics,
+                # Deprecated arg.
+                data=batch,
+                **kwargs,
+            )
+
+            if metrics:
+                stats.__exit__(None, None, None)
+
+            if not isinstance(batch, dict):
+                raise ValueError(
+                    f"`data` returned by ConnectorV2 {connector} must be a dict! "
+                    f"You returned {batch}. Check your (custom) connectors' "
+                    f"`__call__()` method's return value and make sure you return "
+                    f"the `data` arg passed in (either altered or unchanged)."
+                )
 
         return batch
 
