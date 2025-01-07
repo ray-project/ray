@@ -1395,9 +1395,9 @@ class DeploymentState:
         )
 
     @property
-    def is_available(self) -> bool:
-        """Whether the deployment is available for handles to send requests to."""
-        return self._curr_status_info.status != DeploymentStatus.DEPLOY_FAILED
+    def is_failed(self) -> bool:
+        """Whether the deployment failed to deploy."""
+        return self._curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
 
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {replica.actor_id for replica in self._replicas.get()}
@@ -1455,18 +1455,19 @@ class DeploymentState:
         multiplexed model IDs.
         """
         running_replica_infos = self.get_running_replica_infos()
+        is_available = not self.is_failed
+
         running_replicas_changed = (
             set(self._last_broadcasted_running_replica_infos)
             != set(running_replica_infos)
             or self._multiplexed_model_ids_updated
         )
-        availability_changed = self.is_available != self._last_broadcasted_availability
-
+        availability_changed = is_available != self._last_broadcasted_availability
         if not running_replicas_changed and not availability_changed:
             return
 
         deployment_metadata = DeploymentTargetInfo(
-            is_available=self.is_available,
+            is_available=is_available,
             running_replicas=running_replica_infos,
         )
         self._long_poll_host.notify_changed(
@@ -1486,7 +1487,7 @@ class DeploymentState:
             }
         )
         self._last_broadcasted_running_replica_infos = running_replica_infos
-        self._last_broadcasted_availability = self.is_available
+        self._last_broadcasted_availability = is_available
         self._multiplexed_model_ids_updated = False
 
     def broadcast_deployment_config_if_changed(self) -> None:

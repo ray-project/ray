@@ -45,7 +45,7 @@ class RequestCancelledError(RayServeException, TaskCancelledError):
 class DeploymentUnavailableError(RayServeException):
     """Raised when a Serve deployment is unavailable to receive requests.
 
-    This can be because the deployment failed to deploy.
+    Currently this happens because the deployment failed to deploy.
     """
 
     def __init__(self, deployment_id: DeploymentID):
@@ -53,4 +53,4 @@ class DeploymentUnavailableError(RayServeException):
 
     @property
     def message(self) -> str:
-        return f"{self._deployment_id} is unavailable"
+        return f"{self._deployment_id} is unavailable because it failed to deploy."
