@@ -655,6 +655,7 @@ class DQN(Algorithm):
                         batch_length_T=self.env_runner.module.is_stateful()
                         * self.config.model_config.get("max_seq_len", 0),
                         lookback=int(self.env_runner.module.is_stateful()),
+                        burnin=self.config.burnin,
                         gamma=self.config.gamma,
                         beta=self.config.replay_buffer_config.get("beta"),
                         sample_episodes=True,

@@ -297,7 +297,11 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 if not sa_module.is_stateful():
                     continue
 
-                max_seq_len = sa_module.model_config["max_seq_len"]
+                # Add the burn-in period here. Note, the default is zero.
+                max_seq_len = (
+                    sa_module.model_config["max_seq_len"]
+                    + sa_module.model_config["burnin"]
+                )
 
                 # look_back_state.shape=([state-dim],)
                 look_back_state = (
@@ -426,4 +430,5 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 "dict and/or override keys in it via `config.rl_module("
                 "model_config={'max_seq_len': [some int]})`."
             )
-        return mod.model_config["max_seq_len"]
+        # Add the burn-in if necessary. Note, the default is zero.
+        return mod.model_config["max_seq_len"] + mod.model_config["burnin"]

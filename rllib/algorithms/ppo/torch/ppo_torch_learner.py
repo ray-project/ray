@@ -49,6 +49,9 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # simplify the actual computation.
         if Columns.LOSS_MASK in batch:
             mask = batch[Columns.LOSS_MASK]
+            # Mask the the part of the sequence used for burn-in.
+            if self.config.burnin > 0:
+                mask[:, : self.config.burnin] = False
             num_valid = torch.sum(mask)
 
             def possibly_masked_mean(data_):

@@ -155,7 +155,8 @@ class GeneralAdvantageEstimation(ConnectorV2):
                     split_and_zero_pad_n_episodes(
                         module_advantages,
                         episode_lens=episode_lens,
-                        max_seq_len=module.model_config["max_seq_len"],
+                        max_seq_len=module.model_config["max_seq_len"]
+                        + module.model_config["burnin"],
                     ),
                     axis=0,
                 )
@@ -163,7 +164,8 @@ class GeneralAdvantageEstimation(ConnectorV2):
                     split_and_zero_pad_n_episodes(
                         module_value_targets,
                         episode_lens=episode_lens,
-                        max_seq_len=module.model_config["max_seq_len"],
+                        max_seq_len=module.model_config["max_seq_len"]
+                        + module.model_config["burnin"],
                     ),
                     axis=0,
                 )

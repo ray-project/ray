@@ -23,17 +23,17 @@ config = (
         env_to_module_connector=lambda env: MeanStdFilter(),
     )
     .training(
-        lr=0.0003,
+        lr=0.0005,
         train_batch_size_per_learner=32,
         replay_buffer_config={
             "type": "EpisodeReplayBuffer",
-            "capacity": 50000,
+            "capacity": 100000,
         },
         n_step=1,
         double_q=True,
         dueling=True,
         num_atoms=1,
-        epsilon=[(0, 1.0), (10000, 0.02)],
+        epsilon=[(0, 1.0), (20000, 0.02)],
         burnin=8,
     )
     .rl_module(
@@ -41,8 +41,8 @@ config = (
         model_config=DefaultModelConfig(
             fcnet_hiddens=[256],
             fcnet_activation="tanh",
-            fcnet_bias_initializer="uniform_",
-            head_fcnet_bias_initializer="uniform_",
+            fcnet_bias_initializer="zeros_",
+            head_fcnet_bias_initializer="zeros_",
             head_fcnet_hiddens=[256],
             head_fcnet_activation="tanh",
             lstm_kernel_initializer="xavier_uniform_",
@@ -51,7 +51,6 @@ config = (
         ),
     )
 )
-
 
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
