@@ -567,5 +567,29 @@ def test_serve_shut_down_without_duplicated_logs(
     assert all_serve_logs.count("Deleting app 'default'") == 1
 
 
+def test_job_runtime_env_not_leaked(shutdown_ray, call_ray_stop_only):  # noqa: F811
+    """https://github.com/ray-project/ray/issues/49074"""
+
+    @serve.deployment
+    class D:
+        async def __call__(self) -> str:
+            return os.environ["KEY"]
+
+    app = D.bind()
+
+    # Initialize Ray with a runtime_env, should get picked up by the app.
+    ray.init(runtime_env={"env_vars": {"KEY": "VAL1"}})
+    h = serve.run(app)
+    assert h.remote().result() == "VAL1"
+    serve.shutdown()
+    ray.shutdown()
+
+    # Re-initialize Ray with a different runtime_env, check that the updated one
+    # is picked up by the app.
+    ray.init(runtime_env={"env_vars": {"KEY": "VAL2"}})
+    h = serve.run(app)
+    assert h.remote().result() == "VAL2"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
