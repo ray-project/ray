@@ -1329,27 +1329,27 @@ class Learner(Checkpointable):
         # Call the learner connector.
         if episodes is not None:
             # Call the learner connector pipeline.
-            with self.metrics.log_time((ALL_MODULES, LEARNER_CONNECTOR_TIMER)):
-                shared_data = {}
-                batch = self._learner_connector(
-                    rl_module=self.module,
-                    batch=batch if batch is not None else {},
-                    episodes=episodes,
-                    shared_data=shared_data,
-                )
-                # Convert to a batch.
-                # TODO (sven): Try to not require MultiAgentBatch anymore.
-                batch = MultiAgentBatch(
-                    {
-                        module_id: (
-                            SampleBatch(module_data, _zero_padded=True)
-                            if shared_data.get(f"_zero_padded_for_mid={module_id}")
-                            else SampleBatch(module_data)
-                        )
-                        for module_id, module_data in batch.items()
-                    },
-                    env_steps=sum(len(e) for e in episodes),
-                )
+            shared_data = {}
+            batch = self._learner_connector(
+                rl_module=self.module,
+                batch=batch if batch is not None else {},
+                episodes=episodes,
+                shared_data=shared_data,
+                metrics=self.metrics,
+            )
+            # Convert to a batch.
+            # TODO (sven): Try to not require MultiAgentBatch anymore.
+            batch = MultiAgentBatch(
+                {
+                    module_id: (
+                        SampleBatch(module_data, _zero_padded=True)
+                        if shared_data.get(f"_zero_padded_for_mid={module_id}")
+                        else SampleBatch(module_data)
+                    )
+                    for module_id, module_data in batch.items()
+                },
+                env_steps=sum(len(e) for e in episodes),
+            )
         # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
         elif isinstance(batch, SampleBatch):
             assert len(self.module) == 1

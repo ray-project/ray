@@ -8,9 +8,10 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.metrics import TIMERS, CONNECTOR_TIMERS
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.typing import EpisodeType, StateDict
 from ray.util.annotations import PublicAPI
-from ray.util.timer import _Timer
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +75,6 @@ class ConnectorPipelineV2(ConnectorV2):
 
         super().__init__(input_observation_space, input_action_space, **kwargs)
 
-        self.timers = defaultdict(_Timer)
-
     def __len__(self):
         return len(self.connectors)
 
@@ -88,6 +87,7 @@ class ConnectorPipelineV2(ConnectorV2):
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
+        metrics: Optional[MetricsLogger] = None,
         **kwargs,
     ) -> Any:
         """In a pipeline, we simply call each of our connector pieces after each other.
@@ -99,14 +99,16 @@ class ConnectorPipelineV2(ConnectorV2):
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
         for connector in self.connectors:
-            timer = self.timers[str(connector)]
-            with timer:
+            with metrics.log_time(
+                (TIMERS, CONNECTOR_TIMERS, connector.__class__.__name__)
+            ):
                 batch = connector(
                     rl_module=rl_module,
                     batch=batch,
                     episodes=episodes,
                     explore=explore,
                     shared_data=shared_data,
+                    metrics=metrics,
                     # Deprecated arg.
                     data=batch,
                     **kwargs,
@@ -118,6 +120,7 @@ class ConnectorPipelineV2(ConnectorV2):
                         f"`__call__()` method's return value and make sure you return "
                         f"the `data` arg passed in (either altered or unchanged)."
                     )
+
         return batch
 
     def remove(self, name_or_class: Union[str, Type]):
