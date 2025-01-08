@@ -465,11 +465,18 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   auto raylet_conn = std::make_unique<raylet::RayletConnection>(
       io_service_, options_.raylet_socket, /*num_retries=*/-1, /*timeout=*/-1);
-  NodeID local_raylet_id =
-      options_.assigned_raylet_id.has_value() ? *options_.assigned_raylet_id : NodeID{};
-  int assigned_port =
-      options_.assigned_worker_port.has_value() ? *options_.assigned_worker_port : 0;
 
+  const bool raylet_id_assigned = options_.assigned_raylet_id.has_value();
+  const bool worker_port_assigned = options_.assigned_worker_port.has_value();
+  NodeID local_raylet_id = raylet_id_assigned ? *options_.assigned_raylet_id : NodeID{};
+  int assigned_port = worker_port_assigned ? *options_.assigned_worker_port : 0;
+  // Sanity check invariant: both should be assigned for worker, neither assigned for
+  // driver.
+  RAY_CHECK((raylet_id_assigned && worker_port_assigned) ||
+            (!raylet_id_assigned && !worker_port_assigned));
+
+  // TODO(hjiang): Use `is_worker` / `is_driver` boolean to replace repeated `has_value`
+  // check.
   if (!options_.assigned_worker_port.has_value()) {
     // TODO(hjiang): In the next PR we will pass down port number and raylet id and use
     // them directly. Then we need to rename `RegisterWorkerToRaylet` to
