@@ -280,7 +280,7 @@ Status PlasmaObjectHeader::ReadAcquire(
     int64_t version_to_read,
     int64_t &version_read,
     const std::function<Status()> &check_signals,
-    const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) {
+    const std::optional<std::chrono::steady_clock::time_point> &timeout_point) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
