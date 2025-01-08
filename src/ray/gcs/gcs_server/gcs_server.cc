@@ -78,7 +78,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     break;
   case StorageType::REDIS_PERSIST: {
     auto redis_client = CreateRedisClient(io_context);
-    gcs_table_storage_ = std::make_unique<gcs::RedisGcsTableStorage>(redis_client);
+    gcs_table_storage_ =
+        std::make_unique<gcs::RedisGcsTableStorage>(redis_client, io_context);
     // Init redis failure detector.
     gcs_redis_failure_detector_ =
         std::make_unique<GcsRedisFailureDetector>(io_context, redis_client, []() {
@@ -132,18 +133,19 @@ void GcsServer::Start() {
   // it can be used to retrieve the cluster ID.
   InitKVManager();
   gcs_init_data->AsyncLoad([this, gcs_init_data] {
-    GetOrGenerateClusterId([this, gcs_init_data](ClusterID cluster_id) {
-      rpc_server_.SetClusterId(cluster_id);
-      DoStart(*gcs_init_data);
-    });
+    GetOrGenerateClusterId({[this, gcs_init_data](ClusterID cluster_id) {
+                              rpc_server_.SetClusterId(cluster_id);
+                              DoStart(*gcs_init_data);
+                            },
+                            io_context_provider_.GetDefaultIOContext()});
   });
 }
 
 void GcsServer::GetOrGenerateClusterId(
-    std::function<void(ClusterID cluster_id)> &&continuation) {
-  static std::string const kTokenNamespace = "cluster";
+    Postable<void(ClusterID cluster_id)> continuation) {
+  static std::string const kClusterIdNamespace = "cluster";
   kv_manager_->GetInstance().Get(
-      kTokenNamespace,
+      kClusterIdNamespace,
       kClusterIdKey,
       [this, continuation = std::move(continuation)](
           std::optional<std::string> provided_cluster_id) mutable {
@@ -152,19 +154,21 @@ void GcsServer::GetOrGenerateClusterId(
           RAY_LOG(INFO) << "No existing server cluster ID found. Generating new ID: "
                         << cluster_id.Hex();
           kv_manager_->GetInstance().Put(
-              kTokenNamespace,
+              kClusterIdNamespace,
               kClusterIdKey,
               cluster_id.Binary(),
               false,
               [cluster_id,
                continuation = std::move(continuation)](bool added_entry) mutable {
                 RAY_CHECK(added_entry) << "Failed to persist new cluster ID!";
-                continuation(cluster_id);
+                std::move(continuation)
+                    .Post("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
               });
         } else {
           ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
           RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
-          continuation(cluster_id);
+          std::move(continuation)
+              .Post("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
         }
       });
 }
@@ -564,12 +568,12 @@ void GcsServer::InitKVManager() {
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
     instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)));
+        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)), io_context);
     break;
   case (StorageType::IN_MEMORY):
-    instance =
-        std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
-            std::make_unique<InMemoryStoreClient>(io_context)));
+    instance = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>()),
+        io_context);
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
@@ -682,7 +686,8 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
                                                   *gcs_node_manager_,
                                                   *gcs_actor_manager_,
                                                   *gcs_placement_group_manager_,
-                                                  *raylet_client_pool_);
+                                                  *raylet_client_pool_,
+                                                  kv_manager_->GetInstance());
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
 
   autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(
