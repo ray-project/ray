@@ -486,6 +486,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                                        &local_raylet_id,
                                        assigned_port);
   } else {
+    // TODO(hjiang): In the next PR we will pass down port number and raylet id and use
+    // them directly. Then we need to rename `RegisterWorkerToRaylet` to
+    // `RegisterDriverToRaylet`.
     raylet_client_status = RegisterWorkerToRaylet(*raylet_conn,
                                                   GetWorkerID(),
                                                   options_.worker_type,

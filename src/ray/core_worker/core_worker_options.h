@@ -211,6 +211,9 @@ struct CoreWorkerOptions {
   /// - non-empty for worker
   /// - and empty for driver
   std::optional<int> assigned_worker_port;
+  /// Same as [assigned_worker_port], will be assigned for worker, and left empty for
+  /// driver.
+  std::optional<NodeID> assigned_raylet_id;
 };
 }  // namespace core
 }  // namespace ray
