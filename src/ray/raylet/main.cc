@@ -82,6 +82,10 @@ DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.")
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
 DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
+DEFINE_bool(enable_physical_mode,
+            false,
+            "Whether physical mode is enaled, which applies constraint to tasks' "
+            "resource consumption.");
 
 #ifdef __linux__
 DEFINE_string(plasma_directory,
@@ -199,7 +203,11 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
-  // TODO(hjiang): Before we do any actual work, setup cgroup.
+  // Setup cgroup preparation if specified.
+  // TODO(hjiang): Depends on
+  // - https://github.com/ray-project/ray/pull/48833, which checks cgroup V2 availability.
+  // - https://github.com/ray-project/ray/pull/48828, which sets up cgroup preparation for
+  // cgroup related operations.
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
