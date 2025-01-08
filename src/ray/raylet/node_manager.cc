@@ -1396,9 +1396,10 @@ Status NodeManager::RegisterForNewWorker(
     std::function<void(Status, int)> send_reply_callback) {
   Status status = Status::OK();
   if (send_reply_callback) {
-    worker_pool_.RegisterWorker(worker, pid, worker_startup_token, send_reply_callback);
+    status = worker_pool_.RegisterWorker(
+        worker, pid, worker_startup_token, send_reply_callback);
   } else {
-    worker_pool_.RegisterWorker(worker, pid, worker_startup_token);
+    status = worker_pool_.RegisterWorker(worker, pid, worker_startup_token);
   }
 
   if (!status.ok()) {
@@ -1519,8 +1520,11 @@ void NodeManager::ProcessRegisterClientAndAnnouncePortMessage(
     SendRegisterClientAndAnnouncePortResponse(client, std::move(status));
     return;
   }
-  RAY_UNUSED(
-      ProcessAnnounceWorkerPortMessageImpl(client, message->announcement_port_request()));
+  ProcessAnnounceWorkerPortMessageImpl(client, message->announcement_port_request());
+
+  // TODO(hjiang): In the next PR, `ProcessAnnounceWorkerPortMessageImpl` should split
+  // into two parts, one for worker, another for driver.
+  SendRegisterClientAndAnnouncePortResponse(client, Status::OK());
 }
 
 void NodeManager::SendRegisterClientAndAnnouncePortResponse(
