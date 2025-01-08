@@ -56,7 +56,7 @@ Execution Schedule
 Compiled Graph generates an execution schedule for each of the participating actors. This is very useful information
 to understand how the graph is executed at runtime.
 
-To visualize the execution schedule, users can set the environment variable ``RAY_CGRAPH_VISUALIZE_SCHEDULE=1``.
+To visualize the execution schedule, set the environment variable ``RAY_CGRAPH_VISUALIZE_SCHEDULE=1``.
 And when ``experimental_compile`` is called, a PNG image named ``compiled_graph_schedule.png`` is generated and
 saved in the current working directory. The example visualization of the same code is shown below:
 
