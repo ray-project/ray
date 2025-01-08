@@ -54,15 +54,15 @@ void GcsInternalKVManager::HandleInternalKVMultiGet(
       return;
     }
   }
-  auto callback =
-      [reply, send_reply_callback](std::unordered_map<std::string, std::string> results) {
-        for (auto &result : results) {
-          auto entry = reply->add_results();
-          entry->set_key(result.first);
-          entry->set_value(result.second);
-        }
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-      };
+  auto callback = [reply, send_reply_callback](
+                      absl::flat_hash_map<std::string, std::string> results) {
+    for (auto &&result : std::move(results)) {
+      auto entry = reply->add_results();
+      entry->set_key(result.first);
+      entry->set_value(std::move(result.second));
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
   std::vector<std::string> keys(request.keys().begin(), request.keys().end());
   kv_instance_->MultiGet(request.namespace_(), keys, std::move(callback));
 }
@@ -77,7 +77,7 @@ void GcsInternalKVManager::HandleInternalKVPut(
   } else {
     auto callback =
         [reply, send_reply_callback = std::move(send_reply_callback)](bool newly_added) {
-          reply->set_added_num(newly_added ? 1 : 0);
+          reply->set_added(newly_added);
           GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
         };
     kv_instance_->Put(request.namespace_(),

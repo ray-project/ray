@@ -15,7 +15,7 @@ import pytest
 
 
 from ray._private.test_utils import run_string_as_driver
-from ray.exceptions import RayChannelError, RayChannelTimeoutError
+from ray.exceptions import ActorDiedError, RayChannelError, RayChannelTimeoutError
 import ray
 import ray._private
 import ray.cluster_utils
@@ -1464,7 +1464,9 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular, single_fetch):
         else:
             assert ray.get(refs) == [i + 1] * len(actors)
 
-    with pytest.raises(RayChannelError, match="Channel closed."):
+    with pytest.raises(
+        ActorDiedError, match="The actor died unexpectedly before finishing this task."
+    ):
         for i in range(99):
             refs = compiled_dag.execute(1)
             if single_fetch:

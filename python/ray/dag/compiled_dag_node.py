@@ -214,7 +214,7 @@ def do_profile_tasks(
             for operation in schedule:
                 start_t = time.perf_counter()
                 task = tasks[operation.exec_task_idx]
-                done = tasks[operation.exec_task_idx].exec_operation(
+                done = task.exec_operation(
                     self, operation.type, overlap_gpu_communication
                 )
                 end_t = time.perf_counter()
@@ -761,10 +761,10 @@ class CompiledDAG:
                 can be submitted via `execute` or `execute_async` before consuming
                 the output using `ray.get()`. If the caller submits more executions,
                 `RayCgraphCapacityExceeded` is raised.
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution. If True, the communication
-                and computation can be overlapped, which can improve the
-                performance of the DAG execution. If None, the default value
+            overlap_gpu_communication: (experimental) Whether to overlap GPU
+                communication with computation during DAG execution. If True, the
+                communication and computation can be overlapped, which can improve
+                the performance of the DAG execution. If None, the default value
                 will be used.
 
         Returns:
@@ -1876,7 +1876,7 @@ class CompiledDAG:
                     for cancel_ref in cancel_refs:
                         try:
                             ray.get(cancel_ref, timeout=30)
-                        except ray.exceptions.RayChannelError:
+                        except RayChannelError:
                             # Channel error happens when a channel is closed
                             # or timed out. In this case, do not log.
                             pass

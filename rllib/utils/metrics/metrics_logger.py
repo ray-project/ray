@@ -697,7 +697,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         key_for_throughput: Optional[Union[str, Tuple[str, ...]]] = None,
         key_for_unit_count: Optional[Union[str, Tuple[str, ...]]] = None,
-    ) -> None:
+    ) -> Stats:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
         Additionally, measures and logs the throughput for the timed code, iff
