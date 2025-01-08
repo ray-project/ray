@@ -1,7 +1,6 @@
 import copy
 import dataclasses
 from enum import Enum
-import inspect
 import logging
 import math
 import sys
@@ -23,7 +22,7 @@ import tree
 from packaging import version
 
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module import validate_module_id
@@ -31,7 +30,6 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
-from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -71,7 +69,6 @@ from ray.rllib.utils.typing import (
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
-    ResultDict,
     RLModuleSpecType,
     SampleBatchType,
 )
@@ -314,7 +311,6 @@ class AlgorithmConfig(_Config):
         self._is_atari = None
         self.disable_env_checking = False
         # Deprecated settings:
-        self.env_task_fn = None
         self.render_env = False
         self.action_mask_key = "action_mask"
 
@@ -322,6 +318,9 @@ class AlgorithmConfig(_Config):
         self.env_runner_cls = None
         self.num_env_runners = 0
         self.num_envs_per_env_runner = 1
+        # TODO (sven): Once new ormsgpack system in place, reaplce the string
+        #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
+        self.gym_env_vectorize_mode = "SYNC"
         self.num_cpus_per_env_runner = 1
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
@@ -402,7 +401,21 @@ class AlgorithmConfig(_Config):
         self._learner_class = None
 
         # `self.callbacks()`
-        self.callbacks_class = DefaultCallbacks
+        # TODO (sven): Set this default to None, once the old API stack has been
+        #  deprecated.
+        self.callbacks_class = RLlibCallback
+        self.callbacks_on_algorithm_init = None
+        self.callbacks_on_env_runners_recreated = None
+        self.callbacks_on_checkpoint_loaded = None
+        self.callbacks_on_environment_created = None
+        self.callbacks_on_episode_created = None
+        self.callbacks_on_episode_start = None
+        self.callbacks_on_episode_step = None
+        self.callbacks_on_episode_end = None
+        self.callbacks_on_evaluate_start = None
+        self.callbacks_on_evaluate_end = None
+        self.callbacks_on_sample_end = None
+        self.callbacks_on_train_result = None
 
         # `self.explore()`
         self.explore = True
@@ -554,6 +567,7 @@ class AlgorithmConfig(_Config):
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
 
         # `self.experimental()`
+        self._use_msgpack_checkpoints = False
         self._torch_grad_scaler_class = None
         self._torch_lr_scheduler_classes = None
         self._tf_policy_handles_more_than_one_loss = False
@@ -568,6 +582,7 @@ class AlgorithmConfig(_Config):
         # TODO: Remove, once all deprecation_warning calls upon using these keys
         #  have been removed.
         # === Deprecated keys ===
+        self.env_task_fn = DEPRECATED_VALUE
         self.enable_connectors = DEPRECATED_VALUE
         self.simple_optimizer = DEPRECATED_VALUE
         self.monitor = DEPRECATED_VALUE
@@ -639,7 +654,7 @@ class AlgorithmConfig(_Config):
             config["policies"] = policies_dict
 
         # Switch out deprecated vs new config keys.
-        config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
+        config["callbacks"] = config.pop("callbacks_class", None)
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
@@ -699,11 +714,8 @@ class AlgorithmConfig(_Config):
         # inside `self.experimental()` before potentially overwriting it in the
         # following.
         enable_new_api_stack = config_dict.get(
-            "_enable_new_api_stack",
-            config_dict.get(
-                "enable_rl_module_and_learner",
-                config_dict.get("enable_env_runner_and_connector_v2"),
-            ),
+            "enable_rl_module_and_learner",
+            config_dict.get("enable_env_runner_and_connector_v2"),
         )
         if enable_new_api_stack is not None:
             self.api_stack(
@@ -842,7 +854,7 @@ class AlgorithmConfig(_Config):
 
         The resulting values don't have any code in them.
         Classes (such as `callbacks_class`) are converted to their full
-        classpath, e.g. `ray.rllib.algorithms.callbacks.DefaultCallbacks`.
+        classpath, e.g. `ray.rllib.callbacks.callbacks.RLlibCallback`.
         Actual code such as lambda functions ware written as their source
         code (str) plus any closure information for properly restoring the
         code inside the AlgorithmConfig object made from the returned dict data.
@@ -895,26 +907,18 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
-        # Check framework specific settings.
+        self._validate_env_runner_settings()
+        self._validate_callbacks_settings()
         self._validate_framework_settings()
-        # Check resources specific settings.
         self._validate_resources_settings()
-        # Check multi-agent specific settings.
         self._validate_multi_agent_settings()
-        # Check input specific settings.
         self._validate_input_settings()
-        # Check evaluation specific settings.
         self._validate_evaluation_settings()
-        # Check offline specific settings (new API stack).
         self._validate_offline_settings()
-
-        # Check new API stack specific settings.
         self._validate_new_api_stack_settings()
-
-        # Check to-be-deprecated settings (however that are still in use).
         self._validate_to_be_deprecated_settings()
 
-    def build(
+    def build_algo(
         self,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
@@ -954,7 +958,7 @@ class AlgorithmConfig(_Config):
             logger_creator=self.logger_creator,
         )
 
-    def build_env_to_module_connector(self, env):
+    def build_env_to_module_connector(self, env, device=None):
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
@@ -987,7 +991,7 @@ class AlgorithmConfig(_Config):
                 )
 
         obs_space = getattr(env, "single_observation_space", env.observation_space)
-        if obs_space is None and self.is_multi_agent():
+        if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
                     aid: env.get_observation_space(aid)
@@ -995,7 +999,7 @@ class AlgorithmConfig(_Config):
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
-        if act_space is None and self.is_multi_agent():
+        if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
                     aid: env.get_action_space(aid)
@@ -1014,7 +1018,7 @@ class AlgorithmConfig(_Config):
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
             pipeline.append(AddStatesFromEpisodesToBatch())
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
-            if self.is_multi_agent():
+            if self.is_multi_agent:
                 pipeline.append(
                     AgentToModuleMapping(
                         rl_module_specs=(
@@ -1026,9 +1030,9 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
             # Convert to Tensors.
-            pipeline.append(NumpyToTensor())
+            pipeline.append(NumpyToTensor(device=device))
 
         return pipeline
 
@@ -1067,7 +1071,7 @@ class AlgorithmConfig(_Config):
                 )
 
         obs_space = getattr(env, "single_observation_space", env.observation_space)
-        if obs_space is None and self.is_multi_agent():
+        if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
                     aid: env.get_observation_space(aid)
@@ -1075,7 +1079,7 @@ class AlgorithmConfig(_Config):
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
-        if act_space is None and self.is_multi_agent():
+        if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
                     aid: env.get_action_space(aid)
@@ -1096,7 +1100,7 @@ class AlgorithmConfig(_Config):
             pipeline.prepend(RemoveSingleTsTimeRankFromBatch())
 
             # If multi-agent -> Map from ModuleID-based data to AgentID based data.
-            if self.is_multi_agent():
+            if self.is_multi_agent:
                 pipeline.prepend(ModuleToAgentUnmapping())
 
             # Unbatch all data.
@@ -1180,7 +1184,7 @@ class AlgorithmConfig(_Config):
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
             pipeline.append(AddStatesFromEpisodesToBatch(as_learner_connector=True))
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
-            if self.is_multi_agent():
+            if self.is_multi_agent:
                 pipeline.append(
                     AgentToModuleMapping(
                         rl_module_specs=(
@@ -1192,7 +1196,7 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
             # Convert to Tensors.
             pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
         return pipeline
@@ -1632,9 +1636,6 @@ class AlgorithmConfig(_Config):
         env_config: Optional[EnvConfigDict] = NotProvided,
         observation_space: Optional[gym.spaces.Space] = NotProvided,
         action_space: Optional[gym.spaces.Space] = NotProvided,
-        env_task_fn: Optional[
-            Callable[[ResultDict, EnvType, EnvContext], Any]
-        ] = NotProvided,
         render_env: Optional[bool] = NotProvided,
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
@@ -1643,7 +1644,7 @@ class AlgorithmConfig(_Config):
         is_atari: Optional[bool] = NotProvided,
         action_mask_key: Optional[str] = NotProvided,
         # Deprecated args.
-        auto_wrap_old_gym_envs=DEPRECATED_VALUE,
+        env_task_fn=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1659,10 +1660,6 @@ class AlgorithmConfig(_Config):
                 `worker_index`, `vector_index`, and `remote`).
             observation_space: The observation space for the Policies of this Algorithm.
             action_space: The action space for the Policies of this Algorithm.
-            env_task_fn: A callable taking the last train results, the base env and the
-                env context as args and returning a new task to set the env to.
-                The env must be a `TaskSettableEnv` sub-class for this to work.
-                See `examples/curriculum_learning.py` for an example.
             render_env: If True, try to render the environment on the local worker or on
                 worker 1 (if num_env_runners > 0). For vectorized envs, this usually
                 means that only the first sub-environment is rendered.
@@ -1698,9 +1695,9 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if auto_wrap_old_gym_envs != DEPRECATED_VALUE:
+        if env_task_fn != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.environment(auto_wrap_old_gym_envs=..)",
+                old="AlgorithmConfig.environment(env_task_fn=..)",
                 error=True,
             )
         if env is not NotProvided:
@@ -1711,8 +1708,6 @@ class AlgorithmConfig(_Config):
             self.observation_space = observation_space
         if action_space is not NotProvided:
             self.action_space = action_space
-        if env_task_fn is not NotProvided:
-            self.env_task_fn = env_task_fn
         if render_env is not NotProvided:
             self.render_env = render_env
         if clip_rewards is not NotProvided:
@@ -1736,6 +1731,7 @@ class AlgorithmConfig(_Config):
         env_runner_cls: Optional[type] = NotProvided,
         num_env_runners: Optional[int] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
+        gym_env_vectorize_mode: Optional[str] = NotProvided,
         num_cpus_per_env_runner: Optional[int] = NotProvided,
         num_gpus_per_env_runner: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_env_runner: Optional[dict] = NotProvided,
@@ -1778,7 +1774,6 @@ class AlgorithmConfig(_Config):
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
         synchronize_filter=DEPRECATED_VALUE,
-        # deprecated
         enable_connectors=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
@@ -1793,6 +1788,11 @@ class AlgorithmConfig(_Config):
                 (vector-wise) per EnvRunner. This enables batching when computing
                 actions through RLModule inference, which can improve performance
                 for inference-bottlenecked workloads.
+            gym_env_vectorize_mode: The gymnasium vectorization mode for vector envs.
+                Must be a `gymnasium.envs.registration.VectorizeMode` (enum) value.
+                Default is SYNC. Set this to ASYNC to parallelize the individual sub
+                environments within the vector. This can speed up your EnvRunners
+                significantly when using heavier environments.
             num_cpus_per_env_runner: Number of CPUs to allocate per EnvRunner.
             num_gpus_per_env_runner: Number of GPUs to allocate per EnvRunner. This can
                 be fractional. This is usually needed only if your env itself requires a
@@ -1973,7 +1973,8 @@ class AlgorithmConfig(_Config):
                     "larger 0!"
                 )
             self.num_envs_per_env_runner = num_envs_per_env_runner
-
+        if gym_env_vectorize_mode is not NotProvided:
+            self.gym_env_vectorize_mode = gym_env_vectorize_mode
         if num_cpus_per_env_runner is not NotProvided:
             self.num_cpus_per_env_runner = num_cpus_per_env_runner
         if num_gpus_per_env_runner is not NotProvided:
@@ -2364,29 +2365,136 @@ class AlgorithmConfig(_Config):
 
         return self
 
-    def callbacks(self, callbacks_class) -> "AlgorithmConfig":
+    def callbacks(
+        self,
+        callbacks_class: Optional[
+            Union[Type[RLlibCallback], List[Type[RLlibCallback]]]
+        ] = NotProvided,
+        *,
+        on_algorithm_init: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_train_result: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_evaluate_start: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_evaluate_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_env_runners_recreated: Optional[
+            Union[Callable, List[Callable]]
+        ] = NotProvided,
+        on_checkpoint_loaded: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_environment_created: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_episode_created: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_episode_start: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_episode_step: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_episode_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_sample_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
+    ) -> "AlgorithmConfig":
         """Sets the callbacks configuration.
 
         Args:
-            callbacks_class: Callbacks class, whose methods are called during
-                various phases of training and environment sample collection.
-                See the `DefaultCallbacks` class and
-                `examples/metrics/custom_metrics_and_callbacks.py` for more usage
-                information.
+            callbacks_class: RLlibCallback class, whose methods are called during
+                various phases of training and RL environment sample collection.
+                TODO (sven): Change the link to new rst callbacks page.
+                See the `RLlibCallback` class and
+                `examples/metrics/custom_metrics_and_callbacks.py` for more information.
+            on_algorithm_init: A callable or a list of callables. If a list, RLlib calls
+                the items in the same sequence. `on_algorithm_init` methods overridden
+                in `callbacks_class` take precedence and are called first.
+                See
+                :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`  # noqa
+                for more information.
+            on_evaluate_start: A callable or a list of callables. If a list, RLlib calls
+                the items in the same sequence. `on_evaluate_start` methods overridden
+                in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_evaluate_start`  # noqa
+                for more information.
+            on_evaluate_end: A callable or a list of callables. If a list, RLlib calls
+                the items in the same sequence. `on_evaluate_end` methods overridden
+                in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_evaluate_end`  # noqa
+                for more information.
+            on_env_runners_recreated: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_env_runners_recreated`
+                methods overridden in `callbacks_class` take precedence and are called
+                first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_env_runners_recreated`  # noqa
+                for more information.
+            on_checkpoint_loaded: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_checkpoint_loaded`
+                methods overridden in `callbacks_class` take precedence and are called
+                first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_checkpoint_loaded`  # noqa
+                for more information.
+            on_environment_created: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_environment_created`
+                methods overridden in `callbacks_class` take precedence and are called
+                first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_environment_created`  # noqa
+                for more information.
+            on_episode_created: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_episode_created` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_created`  # noqa
+                for more information.
+            on_episode_start: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_episode_start` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_start`  # noqa
+                for more information.
+            on_episode_step: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_episode_step` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_step`  # noqa
+                for more information.
+            on_episode_end: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_episode_end` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_end`  # noqa
+                for more information.
+            on_sample_end: A callable or a list of callables. If a list,
+                RLlib calls the items in the same sequence. `on_sample_end` methods
+                overridden in `callbacks_class` take precedence and are called first.
+                See :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_sample_end`  # noqa
+                for more information.
 
         Returns:
             This updated AlgorithmConfig object.
         """
         if callbacks_class is None:
-            callbacks_class = DefaultCallbacks
-        # Check, whether given `callbacks` is a callable.
-        if not callable(callbacks_class):
-            raise ValueError(
-                "`config.callbacks_class` must be a callable method that "
-                "returns a subclass of DefaultCallbacks, got "
-                f"{callbacks_class}!"
-            )
-        self.callbacks_class = callbacks_class
+            callbacks_class = RLlibCallback
+
+        if callbacks_class is not NotProvided:
+            # Check, whether given `callbacks` is a callable.
+            # TODO (sven): Once the old API stack is deprecated, this can also be None
+            #  (which should then become the default value for this attribute).
+            if not callable(callbacks_class):
+                raise ValueError(
+                    "`config.callbacks_class` must be a callable method that "
+                    "returns a subclass of DefaultCallbacks, got "
+                    f"{callbacks_class}!"
+                )
+            self.callbacks_class = callbacks_class
+        if on_algorithm_init is not NotProvided:
+            self.callbacks_on_algorithm_init = on_algorithm_init
+        if on_train_result is not NotProvided:
+            self.callbacks_on_train_result = on_train_result
+        if on_evaluate_start is not NotProvided:
+            self.callbacks_on_evaluate_start = on_evaluate_start
+        if on_evaluate_end is not NotProvided:
+            self.callbacks_on_evaluate_end = on_evaluate_end
+        if on_env_runners_recreated is not NotProvided:
+            self.callbacks_on_env_runners_recreated = on_env_runners_recreated
+        if on_checkpoint_loaded is not NotProvided:
+            self.callbacks_on_checkpoint_loaded = on_checkpoint_loaded
+        if on_environment_created is not NotProvided:
+            self.callbacks_on_environment_created = on_environment_created
+        if on_episode_created is not NotProvided:
+            self.callbacks_on_episode_created = on_episode_created
+        if on_episode_start is not NotProvided:
+            self.callbacks_on_episode_start = on_episode_start
+        if on_episode_step is not NotProvided:
+            self.callbacks_on_episode_step = on_episode_step
+        if on_episode_end is not NotProvided:
+            self.callbacks_on_episode_end = on_episode_end
+        if on_sample_end is not NotProvided:
+            self.callbacks_on_sample_end = on_sample_end
 
         return self
 
@@ -2625,11 +2733,11 @@ class AlgorithmConfig(_Config):
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
                 more info about available read methods in `ray.data`.
             input_read_method_kwargs: Keyword args for `input_read_method`. These
-                are passed into the read method without checking. If no arguments
-                are passed in the default argument
-                `{'override_num_blocks': max(num_learners * 2, 2)}` is used. Use these
+                are passed by RLlib into the read method without checking. Use these
                 keyword args together with `map_batches_kwargs` and
                 `iter_batches_kwargs` to tune the performance of the data pipeline.
+                It is strongly recommended to rely on Ray Data's automatic read
+                performance tuning.
             input_read_schema: Table schema for converting offline data to episodes.
                 This schema maps the offline data columns to
                 ray.rllib.core.columns.Columns:
@@ -2638,7 +2746,8 @@ class AlgorithmConfig(_Config):
                 episodes' `extra_model_outputs`. If no schema is passed in the default
                 schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
                 contains already the names in this schema, no `input_read_schema` is
-                needed.
+                needed. The same applies if the data is in RLlib's `EpisodeType` or its
+                old `SampleBatch` format.
             input_read_episodes: Whether offline data is already stored in RLlib's
                 `EpisodeType` format, i.e. `ray.rllib.env.SingleAgentEpisode` (multi
                 -agent is planned but not supported, yet). Reading episodes directly
@@ -2647,8 +2756,8 @@ class AlgorithmConfig(_Config):
                 inside of RLlib's schema. The other format is a columnar format and is
                 agnostic to the RL framework used. Use the latter format, if you are
                 unsure when to use the data or in which RL framework. The default is
-                to read column data, i.e. False. `input_read_episodes` and
-                `input_read_sample_batches` cannot be True at the same time. See
+                to read column data, for example, `False`. `input_read_episodes`, and
+                `input_read_sample_batches` can't be `True` at the same time. See
                 also `output_write_episodes` to define the output data format when
                 recording.
             input_read_sample_batches: Whether offline data is stored in RLlib's old
@@ -2657,21 +2766,23 @@ class AlgorithmConfig(_Config):
                 data needs extra transforms and might not concatenate episode chunks
                 contained in different `SampleBatch`es in the data. If possible avoid
                 to read `SampleBatch`es and convert them in a controlled form into
-                RLlib's `EpisodeType` (i.e. `SingleAgentEpisode` or
-                `MultiAgentEpisode`). The default is False. `input_read_episodes`
-                and `input_read_sample_batches` cannot be True at the same time.
+                RLlib's `EpisodeType` (i.e. `SingleAgentEpisode`). The default is
+                `False`. `input_read_episodes`, and `input_read_sample_batches` can't
+                be `True` at the same time.
             input_read_batch_size: Batch size to pull from the data set. This could
                 differ from the `train_batch_size_per_learner`, if a dataset holds
-                `EpisodeType` (i.e. `SingleAgentEpisode` or `MultiAgentEpisode`) or
-                `BatchType` (i.e. `SampleBatch` or `MultiAgentBatch`) or any other
-                data type that contains multiple timesteps in a single row of the
-                dataset. In such cases a single batch of size
+                `EpisodeType` (i.e., `SingleAgentEpisode`) or `SampleBatch`, or any
+                other data type that contains multiple timesteps in a single row of
+                the dataset. In such cases a single batch of size
                 `train_batch_size_per_learner` will potentially pull a multiple of
                 `train_batch_size_per_learner` timesteps from the offline dataset. The
                 default is `None` in which the `train_batch_size_per_learner` is pulled.
             input_filesystem: A cloud filesystem to handle access to cloud storage when
-                reading experiences. Should be either "gcs" for Google Cloud Storage,
-                "s3" for AWS S3 buckets, or "abs" for Azure Blob Storage.
+                reading experiences. Can be either "gcs" for Google Cloud Storage,
+                "s3" for AWS S3 buckets, "abs" for Azure Blob Storage, or any
+                filesystem supported by PyArrow. In general the file path is sufficient
+                for accessing data from public or local storage systems. See
+                https://arrow.apache.org/docs/python/filesystems.html for details.
             input_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
                 given by `input_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
@@ -2715,8 +2826,7 @@ class AlgorithmConfig(_Config):
             iter_batches_kwargs: Keyword args for the `iter_batches` method. These are
                 passed into the `ray.data.Dataset.iter_batches` method when sampling
                 without checking. If no arguments are passed in, the default argument
-                `{'prefetch_batches': 2, 'local_buffer_shuffle_size':
-                train_batch_size_per_learner x 4}` is used. Use these keyword args
+                `{'prefetch_batches': 2}` is used. Use these keyword args
                 together with `input_read_method_kwargs` and `map_batches_kwargs` to
                 tune the performance of the data pipeline.
             prelearner_class: An optional `OfflinePreLearner` class that is used to
@@ -2727,6 +2837,17 @@ class AlgorithmConfig(_Config):
                 need to make some further transformations specific for your data or
                 loss. The default is None which uses the base `OfflinePreLearner`
                 defined in `ray.rllib.offline.offline_prelearner`.
+            prelearner_buffer_class: An optional `EpisodeReplayBuffer` class that RLlib
+                uses to buffer experiences when data is in `EpisodeType` or
+                RLlib's previous `SampleBatch` type format. In this case, a single
+                data row may contain multiple timesteps and the buffer serves two
+                purposes: (a) to store intermediate data in memory, and (b) to ensure
+                that RLlib samples exactly `train_batch_size_per_learner` experiences
+                per batch. The default is RLlib's `EpisodeReplayBuffer`.
+            prelearner_buffer_kwargs: Optional keyword arguments for intializing the
+                `EpisodeReplayBuffer`. In most cases this value is simply the `capacity`
+                for the default buffer that RLlib uses (`EpisodeReplayBuffer`), but it
+                may differ if the `prelearner_buffer_class` uses a custom buffer.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
@@ -2738,6 +2859,7 @@ class AlgorithmConfig(_Config):
                 during a single training iteration. If None, each learner runs a
                 complete epoch over its data block (the dataset is partitioned into
                 at least as many blocks as there are learners). The default is `None`.
+                This value must be set to `1`, if RLlib uses a single (local) learner.
             input_config: Arguments that describe the settings for reading the input.
                 If input is "sample", this is the environment configuration, e.g.
                 `env_name` and `env_config`, etc. See `EnvContext` for more info.
@@ -2790,6 +2912,12 @@ class AlgorithmConfig(_Config):
                 given by `output_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
                 ABS filesystem arguments.
+            output_write_episodes: If RLlib should record data in its RLlib's
+                `EpisodeType` format (that is, `SingleAgentEpisode` objects). Use this
+                format, if you need RLlib to order data in time and directly group by
+                episodes for example to train stateful modules or if you plan to use
+                recordings exclusively in RLlib. Otherwise RLlib records data in tabular
+                (columnar) format. Default is `True`.
             offline_sampling: Whether sampling for the Algorithm happens via
                 reading from offline data. If True, EnvRunners don't limit the number
                 of collected batches within the same `sample()` call based on
@@ -2876,6 +3004,7 @@ class AlgorithmConfig(_Config):
             self.postprocess_inputs = postprocess_inputs
         if shuffle_buffer_size is not NotProvided:
             self.shuffle_buffer_size = shuffle_buffer_size
+        # TODO (simon): Enable storing to general log-directory.
         if output is not NotProvided:
             self.output = output
         if output_config is not NotProvided:
@@ -3082,15 +3211,6 @@ class AlgorithmConfig(_Config):
             self.policy_states_are_swappable = policy_states_are_swappable
 
         return self
-
-    def is_multi_agent(self) -> bool:
-        """Returns whether this config specifies a multi-agent setup.
-
-        Returns:
-            True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
-            DEFAULT_POLICY_ID.
-        """
-        return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
 
     def reporting(
         self,
@@ -3473,6 +3593,7 @@ class AlgorithmConfig(_Config):
     def experimental(
         self,
         *,
+        _use_msgpack_checkpoints: Optional[bool] = NotProvided,
         _torch_grad_scaler_class: Optional[Type] = NotProvided,
         _torch_lr_scheduler_classes: Optional[
             Union[List[Type], Dict[ModuleID, List[Type]]]
@@ -3481,12 +3602,12 @@ class AlgorithmConfig(_Config):
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
-        # Deprecated args.
-        _enable_new_api_stack=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's experimental settings.
 
         Args:
+            _use_msgpack_checkpoints: Create state files in all checkpoints through
+                msgpack rather than pickle.
             _torch_grad_scaler_class: Class to use for torch loss scaling (and gradient
                 unscaling). The class must implement the following methods to be
                 compatible with a `TorchLearner`. These methods/APIs match exactly those
@@ -3526,13 +3647,8 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if _enable_new_api_stack != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config.experimental(_enable_new_api_stack=...)",
-                new="config.api_stack(enable_rl_module_and_learner=...)",
-                error=True,
-            )
-
+        if _use_msgpack_checkpoints is not NotProvided:
+            self._use_msgpack_checkpoints = _use_msgpack_checkpoints
         if _tf_policy_handles_more_than_one_loss is not NotProvided:
             self._tf_policy_handles_more_than_one_loss = (
                 _tf_policy_handles_more_than_one_loss
@@ -3551,6 +3667,72 @@ class AlgorithmConfig(_Config):
             self._torch_lr_scheduler_classes = _torch_lr_scheduler_classes
 
         return self
+
+    @property
+    def is_atari(self) -> bool:
+        """True if if specified env is an Atari env."""
+
+        # Not yet determined, try to figure this out.
+        if self._is_atari is None:
+            # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
+            # or "ale_py:ALE/Breakout-v5".
+            # We do NOT attempt to auto-detect Atari env for other specified types like
+            # a callable, to avoid running heavy logics in validate().
+            # For these cases, users can explicitly set `environment(atari=True)`.
+            if type(self.env) is not str:
+                return False
+            try:
+                env = gym.make(self.env)
+            # Any gymnasium error -> Cannot be an Atari env.
+            except gym.error.Error:
+                return False
+
+            self._is_atari = is_atari(env)
+            # Clean up env's resources, if any.
+            env.close()
+
+        return self._is_atari
+
+    @property
+    def is_multi_agent(self) -> bool:
+        """Returns whether this config specifies a multi-agent setup.
+
+        Returns:
+            True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
+            DEFAULT_POLICY_ID.
+        """
+        return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
+
+    @property
+    def learner_class(self) -> Type["Learner"]:
+        """Returns the Learner sub-class to use by this Algorithm.
+
+        Either
+        a) User sets a specific learner class via calling `.training(learner_class=...)`
+        b) User leaves learner class unset (None) and the AlgorithmConfig itself
+        figures out the actual learner class by calling its own
+        `.get_default_learner_class()` method.
+        """
+        return self._learner_class or self.get_default_learner_class()
+
+    @property
+    def model_config(self):
+        """Defines the model configuration used.
+
+        This method combines the auto configuration `self _model_config_auto_includes`
+        defined by an algorithm with the user-defined configuration in
+        `self._model_config`.This configuration dictionary is used to
+        configure the `RLModule` in the new stack and the `ModelV2` in the old
+        stack.
+
+        Returns:
+            A dictionary with the model configuration.
+        """
+        return self._model_config_auto_includes | (
+            self._model_config
+            if isinstance(self._model_config, dict)
+            else dataclasses.asdict(self._model_config)
+        )
 
     @property
     def rl_module_spec(self):
@@ -3579,43 +3761,6 @@ class AlgorithmConfig(_Config):
         # `self._rl_module_spec` has not been user defined -> return default one.
         else:
             return default_rl_module_spec
-
-    @property
-    def learner_class(self) -> Type["Learner"]:
-        """Returns the Learner sub-class to use by this Algorithm.
-
-        Either
-        a) User sets a specific learner class via calling `.training(learner_class=...)`
-        b) User leaves learner class unset (None) and the AlgorithmConfig itself
-        figures out the actual learner class by calling its own
-        `.get_default_learner_class()` method.
-        """
-        return self._learner_class or self.get_default_learner_class()
-
-    @property
-    def is_atari(self) -> bool:
-        """True if if specified env is an Atari env."""
-
-        # Not yet determined, try to figure this out.
-        if self._is_atari is None:
-            # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
-            # or "ale_py:ALE/Breakout-v5".
-            # We do NOT attempt to auto-detect Atari env for other specified types like
-            # a callable, to avoid running heavy logics in validate().
-            # For these cases, users can explicitly set `environment(atari=True)`.
-            if type(self.env) is not str:
-                return False
-            try:
-                env = gym.make(self.env)
-            # Any gymnasium error -> Cannot be an Atari env.
-            except gym.error.Error:
-                return False
-
-            self._is_atari = is_atari(env)
-            # Clean up env's resources, if any.
-            env.close()
-
-        return self._is_atari
 
     @property
     def total_train_batch_size(self):
@@ -3701,6 +3846,12 @@ class AlgorithmConfig(_Config):
         # (set to None).
         eval_config_obj.in_evaluation = True
         eval_config_obj.evaluation_config = None
+
+        # Force-set the `num_env_runners` setting to `self.evaluation_num_env_runners`.
+        # Actually, the `self.evaluation_num_env_runners` is merely a convenience
+        # attribute and might be set instead through:
+        # `config.evaluation(evaluation_config={"num_env_runners": ...})`
+        eval_config_obj.num_env_runners = self.evaluation_num_env_runners
 
         # NOTE: The following if-block is only relevant for the old API stack.
         # For the new API stack (EnvRunners), the evaluation methods of Algorithm
@@ -3826,7 +3977,7 @@ class AlgorithmConfig(_Config):
 
         Returns:
             The Learner class to use for this algorithm either as a class type or as
-            a string (e.g. ray.rllib.core.learner.testing.torch.BC).
+            a string (e.g. "ray.rllib.algorithms.ppo.ppo_learner.PPOLearner").
         """
         raise NotImplementedError
 
@@ -4234,25 +4385,6 @@ class AlgorithmConfig(_Config):
         return self.to_dict().items()
 
     @property
-    def model_config(self):
-        """Defines the model configuration used.
-
-        This method combines the auto configuration `self _model_config_auto_includes`
-        defined by an algorithm with the user-defined configuration in
-        `self._model_config`.This configuration dictionary is used to
-        configure the `RLModule` in the new stack and the `ModelV2` in the old
-        stack.
-
-        Returns:
-            A dictionary with the model configuration.
-        """
-        return self._model_config_auto_includes | (
-            self._model_config
-            if isinstance(self._model_config, dict)
-            else dataclasses.asdict(self._model_config)
-        )
-
-    @property
     def _model_config_auto_includes(self) -> Dict[str, Any]:
         """Defines which `AlgorithmConfig` settings/properties should be
         auto-included into `self.model_config`.
@@ -4270,6 +4402,46 @@ class AlgorithmConfig(_Config):
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
     # -----------------------------------------------------------
+    def _validate_env_runner_settings(self) -> None:
+        allowed_vectorize_modes = set(
+            list(gym.envs.registration.VectorizeMode.__members__.keys())
+            + list(gym.envs.registration.VectorizeMode.__members__.values())
+        )
+        if self.gym_env_vectorize_mode not in allowed_vectorize_modes:
+            raise ValueError(
+                f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) must be a "
+                "member of `gym.envs.registration.VectorizeMode`! Allowed values "
+                f"are {allowed_vectorize_modes}."
+            )
+
+    def _validate_callbacks_settings(self) -> None:
+        """Validates callbacks settings."""
+        # Old API stack:
+        # - self.callbacks_cls must be a subclass of RLlibCallback.
+        # - All self.callbacks_... attributes must be None.
+        if not self.enable_env_runner_and_connector_v2:
+            if (
+                self.callbacks_on_environment_created is not None
+                or self.callbacks_on_algorithm_init is not None
+                or self.callbacks_on_train_result is not None
+                or self.callbacks_on_evaluate_start is not None
+                or self.callbacks_on_evaluate_end is not None
+                or self.callbacks_on_sample_end is not None
+                or self.callbacks_on_environment_created is not None
+                or self.callbacks_on_episode_created is not None
+                or self.callbacks_on_episode_start is not None
+                or self.callbacks_on_episode_step is not None
+                or self.callbacks_on_episode_end is not None
+                or self.callbacks_on_checkpoint_loaded is not None
+                or self.callbacks_on_env_runners_recreated is not None
+            ):
+                raise ValueError(
+                    "Config settings `config.callbacks(on_....=lambda ..)` aren't "
+                    "supported on the old API stack! Switch to the new API stack "
+                    "through `config.api_stack(enable_env_runner_and_connector_v2=True,"
+                    " enable_rl_module_and_learner=True)`."
+                )
+
     def _validate_framework_settings(self) -> None:
         """Validates framework settings and checks whether framework is installed."""
         _tf1, _tf, _tfv = None, None, None
@@ -4358,7 +4530,7 @@ class AlgorithmConfig(_Config):
         # TODO (sven): For now, vectorization is not allowed on new EnvRunners with
         #  multi-agent.
         if (
-            self.is_multi_agent()
+            self.is_multi_agent
             and self.enable_env_runner_and_connector_v2
             and self.num_envs_per_env_runner > 1
         ):
@@ -4494,6 +4666,16 @@ class AlgorithmConfig(_Config):
             # `enable_rl_module_and_learner=True`.
             return
 
+        # Warn about new API stack on by default.
+        logger.warning(
+            f"You are running {self.algo_class.__name__} on the new API stack! "
+            "This is the new default behavior for this algorithm. If you don't "
+            "want to use the new API stack, set `config.api_stack("
+            "enable_rl_module_and_learner=False,"
+            "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
+            "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+        )
+
         # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
         # `enable_env_runner_and_connector_v2` must be True or both False.
         if not self.enable_env_runner_and_connector_v2:
@@ -4530,28 +4712,6 @@ class AlgorithmConfig(_Config):
             setting_name="lr",
             description="learning rate",
         )
-
-        # Check and error if `on_episode_created` callback has been overridden on the
-        # new API stack AND this is a single-agent setup (multi-agent does not use
-        # gym.vector.Env yet and therefore the reset call is still made manually,
-        # allowing for the callback to be fired).
-        if not self.is_multi_agent() and self.callbacks_class is not DefaultCallbacks:
-            default_src = inspect.getsource(DefaultCallbacks.on_episode_created)
-            try:
-                user_src = inspect.getsource(self.callbacks_class.on_episode_created)
-            # In case user has setup a `partial` instead of an actual Callbacks class.
-            except AttributeError:
-                user_src = default_src
-            if default_src != user_src:
-                raise ValueError(
-                    "When using the new API stack in single-agent and with EnvRunners, "
-                    "you cannot override the `DefaultCallbacks.on_episode_created()` "
-                    "method anymore! This particular callback is no longer supported "
-                    "b/c we are using `gym.vector.Env`, which automatically resets "
-                    "individual sub-environments when they are terminated. Instead, "
-                    "override the `on_episode_start` method, which gets fired right "
-                    "after the `env.reset()` call."
-                )
 
         # This is not compatible with RLModules, which all have a method
         # `forward_exploration` to specify custom exploration behavior.
@@ -4590,16 +4750,6 @@ class AlgorithmConfig(_Config):
     # TODO (sven): Once everything is on the new API stack, we won't need this method
     #  anymore.
     def _validate_to_be_deprecated_settings(self):
-        # Env task fn is about to be deprecated.
-        if self.enable_rl_module_and_learner and self.env_task_fn is not None:
-            deprecation_warning(
-                old="AlgorithmConfig.env_task_fn",
-                help="The `env_task_fn` API is not supported on the new API stack! "
-                "Curriculum learning should instead be implemented solely via "
-                "custom callbacks. Check out our curriculum learning example "
-                "script for more information: "
-                "https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py",  # noqa
-            )
         # `render_env` is deprecated on new API stack.
         if self.enable_env_runner_and_connector_v2 and self.render_env is not False:
             deprecation_warning(
@@ -4663,7 +4813,7 @@ class AlgorithmConfig(_Config):
                 self.simple_optimizer = True
             # Multi-agent case: Try using MultiGPU optimizer (only
             # if all policies used are DynamicTFPolicies or TorchPolicies).
-            elif self.is_multi_agent():
+            elif self.is_multi_agent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
 
@@ -5229,25 +5379,29 @@ class AlgorithmConfig(_Config):
 
         return policies, is_policy_to_train
 
-    @Deprecated(new="AlgorithmConfig.get_multi_rl_module_spec()", error=False)
+    @Deprecated(new="AlgorithmConfig.build_algo", error=False)
+    def build(self, *args, **kwargs):
+        return self.build_algo(*args, **kwargs)
+
+    @Deprecated(new="AlgorithmConfig.get_multi_rl_module_spec()", error=True)
     def get_marl_module_spec(self, *args, **kwargs):
-        return self.get_multi_rl_module_spec(*args, **kwargs)
+        pass
 
-    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=False)
+    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=True)
     def rollouts(self, *args, **kwargs):
-        return self.env_runners(*args, **kwargs)
+        pass
 
-    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=False)
+    @Deprecated(new="AlgorithmConfig.env_runners(..)", error=True)
     def exploration(self, *args, **kwargs):
-        return self.env_runners(*args, **kwargs)
+        pass
 
     @property
     @Deprecated(
         new="AlgorithmConfig.fault_tolerance(restart_failed_env_runners=..)",
-        error=False,
+        error=True,
     )
     def recreate_failed_env_runners(self):
-        return self.restart_failed_env_runners
+        pass
 
     @recreate_failed_env_runners.setter
     def recreate_failed_env_runners(self, value):
@@ -5258,9 +5412,9 @@ class AlgorithmConfig(_Config):
         )
 
     @property
-    @Deprecated(new="AlgorithmConfig._enable_new_api_stack", error=False)
+    @Deprecated(new="AlgorithmConfig._enable_new_api_stack", error=True)
     def _enable_new_api_stack(self):
-        return self.enable_rl_module_and_learner
+        pass
 
     @_enable_new_api_stack.setter
     def _enable_new_api_stack(self, value):
@@ -5276,262 +5430,261 @@ class AlgorithmConfig(_Config):
         pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_env_runners", error=False)
+    @Deprecated(new="AlgorithmConfig.num_env_runners", error=True)
     def num_rollout_workers(self):
-        return self.num_env_runners
+        pass
 
     @num_rollout_workers.setter
     def num_rollout_workers(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_rollout_workers",
             new="AlgorithmConfig.num_env_runners",
-            error=False,
+            error=True,
         )
-        self.num_env_runners = value
 
     @property
-    @Deprecated(new="AlgorithmConfig.evaluation_num_workers", error=False)
+    @Deprecated(new="AlgorithmConfig.evaluation_num_workers", error=True)
     def evaluation_num_workers(self):
-        return self.evaluation_num_env_runners
+        pass
 
     @evaluation_num_workers.setter
     def evaluation_num_workers(self, value):
         deprecation_warning(
             old="AlgorithmConfig.evaluation_num_workers",
             new="AlgorithmConfig.evaluation_num_env_runners",
-            error=False,
+            error=True,
         )
-        self.evaluation_num_env_runners = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_envs_per_env_runner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_envs_per_env_runner", error=True)
     def num_envs_per_worker(self):
-        return self.num_envs_per_env_runner
+        pass
 
     @num_envs_per_worker.setter
     def num_envs_per_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_envs_per_worker",
             new="AlgorithmConfig.num_envs_per_env_runner",
-            error=False,
+            error=True,
         )
-        self.num_envs_per_env_runner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.ignore_env_runner_failures", error=False)
+    @Deprecated(new="AlgorithmConfig.ignore_env_runner_failures", error=True)
     def ignore_worker_failures(self):
-        return self.ignore_env_runner_failures
+        pass
 
     @ignore_worker_failures.setter
     def ignore_worker_failures(self, value):
         deprecation_warning(
             old="AlgorithmConfig.ignore_worker_failures",
             new="AlgorithmConfig.ignore_env_runner_failures",
-            error=False,
+            error=True,
         )
-        self.ignore_env_runner_failures = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.restart_failed_env_runners", error=False)
+    @Deprecated(new="AlgorithmConfig.restart_failed_env_runners", error=True)
     def recreate_failed_workers(self):
-        return self.restart_failed_env_runners
+        pass
 
     @recreate_failed_workers.setter
     def recreate_failed_workers(self, value):
         deprecation_warning(
             old="AlgorithmConfig.recreate_failed_workers",
             new="AlgorithmConfig.restart_failed_env_runners",
-            error=False,
+            error=True,
         )
-        self.restart_failed_env_runners = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.max_num_env_runner_restarts", error=False)
+    @Deprecated(new="AlgorithmConfig.max_num_env_runner_restarts", error=True)
     def max_num_worker_restarts(self):
-        return self.max_num_env_runner_restarts
+        pass
 
     @max_num_worker_restarts.setter
     def max_num_worker_restarts(self, value):
         deprecation_warning(
             old="AlgorithmConfig.max_num_worker_restarts",
             new="AlgorithmConfig.max_num_env_runner_restarts",
-            error=False,
+            error=True,
         )
-        self.max_num_env_runner_restarts = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.delay_between_env_runner_restarts_s", error=False)
+    @Deprecated(new="AlgorithmConfig.delay_between_env_runner_restarts_s", error=True)
     def delay_between_worker_restarts_s(self):
-        return self.delay_between_env_runner_restarts_s
+        pass
 
     @delay_between_worker_restarts_s.setter
     def delay_between_worker_restarts_s(self, value):
         deprecation_warning(
             old="AlgorithmConfig.delay_between_worker_restarts_s",
             new="AlgorithmConfig.delay_between_env_runner_restarts_s",
-            error=False,
+            error=True,
         )
-        self.delay_between_env_runner_restarts_s = value
+        pass
 
     @property
     @Deprecated(
-        new="AlgorithmConfig.num_consecutive_env_runner_failures_tolerance", error=False
+        new="AlgorithmConfig.num_consecutive_env_runner_failures_tolerance", error=True
     )
     def num_consecutive_worker_failures_tolerance(self):
-        return self.num_consecutive_env_runner_failures_tolerance
+        pass
 
     @num_consecutive_worker_failures_tolerance.setter
     def num_consecutive_worker_failures_tolerance(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_consecutive_worker_failures_tolerance",
             new="AlgorithmConfig.num_consecutive_env_runner_failures_tolerance",
-            error=False,
+            error=True,
         )
-        self.num_consecutive_env_runner_failures_tolerance = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.env_runner_health_probe_timeout_s", error=False)
+    @Deprecated(new="AlgorithmConfig.env_runner_health_probe_timeout_s", error=True)
     def worker_health_probe_timeout_s(self):
-        return self.env_runner_health_probe_timeout_s
+        pass
 
     @worker_health_probe_timeout_s.setter
     def worker_health_probe_timeout_s(self, value):
         deprecation_warning(
             old="AlgorithmConfig.worker_health_probe_timeout_s",
             new="AlgorithmConfig.env_runner_health_probe_timeout_s",
-            error=False,
+            error=True,
         )
-        self.env_runner_health_probe_timeout_s = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.env_runner_restore_timeout_s", error=False)
+    @Deprecated(new="AlgorithmConfig.env_runner_restore_timeout_s", error=True)
     def worker_restore_timeout_s(self):
-        return self.env_runner_restore_timeout_s
+        pass
 
     @worker_restore_timeout_s.setter
     def worker_restore_timeout_s(self, value):
         deprecation_warning(
             old="AlgorithmConfig.worker_restore_timeout_s",
             new="AlgorithmConfig.env_runner_restore_timeout_s",
-            error=False,
+            error=True,
         )
-        self.env_runner_restore_timeout_s = value
+        pass
 
     @property
     @Deprecated(
         new="AlgorithmConfig.validate_env_runners_after_construction",
-        error=False,
+        error=True,
     )
     def validate_workers_after_construction(self):
-        return self.validate_env_runners_after_construction
+        pass
 
     @validate_workers_after_construction.setter
     def validate_workers_after_construction(self, value):
         deprecation_warning(
             old="AlgorithmConfig.validate_workers_after_construction",
             new="AlgorithmConfig.validate_env_runners_after_construction",
-            error=False,
+            error=True,
         )
-        self.validate_env_runners_after_construction = value
+        pass
 
     # Cleanups from `resources()`.
     @property
-    @Deprecated(new="AlgorithmConfig.num_cpus_per_env_runner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_cpus_per_env_runner", error=True)
     def num_cpus_per_worker(self):
-        return self.num_cpus_per_env_runner
+        pass
 
     @num_cpus_per_worker.setter
     def num_cpus_per_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_cpus_per_worker",
             new="AlgorithmConfig.num_cpus_per_env_runner",
-            error=False,
+            error=True,
         )
-        self.num_cpus_per_env_runner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_gpus_per_env_runner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_gpus_per_env_runner", error=True)
     def num_gpus_per_worker(self):
-        return self.num_gpus_per_env_runner
+        pass
 
     @num_gpus_per_worker.setter
     def num_gpus_per_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_gpus_per_worker",
             new="AlgorithmConfig.num_gpus_per_env_runner",
-            error=False,
+            error=True,
         )
-        self.num_gpus_per_env_runner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.custom_resources_per_env_runner", error=False)
+    @Deprecated(new="AlgorithmConfig.custom_resources_per_env_runner", error=True)
     def custom_resources_per_worker(self):
-        return self.custom_resources_per_env_runner
+        pass
 
     @custom_resources_per_worker.setter
     def custom_resources_per_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.custom_resources_per_worker",
             new="AlgorithmConfig.custom_resources_per_env_runner",
-            error=False,
+            error=True,
         )
-        self.custom_resources_per_env_runner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_learners", error=False)
+    @Deprecated(new="AlgorithmConfig.num_learners", error=True)
     def num_learner_workers(self):
-        return self.num_learners
+        pass
 
     @num_learner_workers.setter
     def num_learner_workers(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_learner_workers",
             new="AlgorithmConfig.num_learners",
-            error=False,
+            error=True,
         )
-        self.num_learners = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_cpus_per_learner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_cpus_per_learner", error=True)
     def num_cpus_per_learner_worker(self):
-        return self.num_cpus_per_learner
+        pass
 
     @num_cpus_per_learner_worker.setter
     def num_cpus_per_learner_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_cpus_per_learner_worker",
             new="AlgorithmConfig.num_cpus_per_learner",
-            error=False,
+            error=True,
         )
-        self.num_cpus_per_learner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_gpus_per_learner", error=False)
+    @Deprecated(new="AlgorithmConfig.num_gpus_per_learner", error=True)
     def num_gpus_per_learner_worker(self):
-        return self.num_gpus_per_learner
+        pass
 
     @num_gpus_per_learner_worker.setter
     def num_gpus_per_learner_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_gpus_per_learner_worker",
             new="AlgorithmConfig.num_gpus_per_learner",
-            error=False,
+            error=True,
         )
-        self.num_gpus_per_learner = value
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.num_cpus_for_local_worker", error=False)
+    @Deprecated(new="AlgorithmConfig.num_cpus_for_local_worker", error=True)
     def num_cpus_for_local_worker(self):
-        return self.num_cpus_for_main_process
+        pass
 
     @num_cpus_for_local_worker.setter
     def num_cpus_for_local_worker(self, value):
         deprecation_warning(
             old="AlgorithmConfig.num_cpus_for_local_worker",
             new="AlgorithmConfig.num_cpus_for_main_process",
-            error=False,
+            error=True,
         )
-        self.num_cpus_for_main_process = value
+        pass
 
 
 class TorchCompileWhatToCompile(str, Enum):

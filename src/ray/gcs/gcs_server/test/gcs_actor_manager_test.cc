@@ -113,8 +113,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
 class GcsActorManagerTest : public ::testing::Test {
  public:
-  GcsActorManagerTest()
-      : mock_actor_scheduler_(new MockActorScheduler()), periodical_runner_(io_service_) {
+  GcsActorManagerTest() : periodical_runner_(PeriodicalRunner::Create(io_service_)) {
     RayConfig::instance().initialize(
         R"(
 {
@@ -137,18 +136,20 @@ class GcsActorManagerTest : public ::testing::Test {
         std::vector<rpc::ChannelType>{
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
-        /*periodic_runner=*/&periodical_runner_,
+        /*periodical_runner=*/*periodical_runner_,
         /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
 
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(std::move(publisher));
-    store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
+    store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>(io_service_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
+    auto scheduler = std::make_unique<MockActorScheduler>();
+    mock_actor_scheduler_ = scheduler.get();
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
-        mock_actor_scheduler_,
+        std::move(scheduler),
         gcs_table_storage_.get(),
         gcs_publisher_.get(),
         *runtime_env_mgr_,
@@ -276,7 +277,8 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<MockActorScheduler> mock_actor_scheduler_;
+  // Actor scheduler's ownership lies in actor manager.
+  MockActorScheduler *mock_actor_scheduler_ = nullptr;
   std::shared_ptr<MockWorkerClient> worker_client_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
@@ -286,7 +288,7 @@ class GcsActorManagerTest : public ::testing::Test {
   absl::Mutex mutex_;
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {
@@ -694,7 +696,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor3", "test_named_actor"),
             ActorID::Nil());
 
-  // Check that naming collisions return Status::Invalid.
+  // Check that naming collisions return Status::AlreadyExists.
   auto request3 = Mocker::GenRegisterActorRequest(job_id_1,
                                                   /*max_restarts=*/0,
                                                   /*detached=*/true,
@@ -702,7 +704,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*ray_namesapce=*/"test_named_actor");
   status = gcs_actor_manager_->RegisterActor(
       request3, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
-  ASSERT_TRUE(status.IsNotFound());
+  ASSERT_TRUE(status.IsAlreadyExists());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2", "test_named_actor").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
 
@@ -714,7 +716,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*ray_namesapce=*/"test_named_actor");
   status = gcs_actor_manager_->RegisterActor(
       request4, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
-  ASSERT_TRUE(status.IsNotFound());
+  ASSERT_TRUE(status.IsAlreadyExists());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2", "test_named_actor").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
 }
@@ -881,7 +883,7 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
                                                   /*name=*/"actor");
   status = gcs_actor_manager_->RegisterActor(
       request2, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
-  ASSERT_TRUE(status.IsNotFound());
+  ASSERT_TRUE(status.IsAlreadyExists());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
 }
@@ -1163,7 +1165,7 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
   {  // Actors from different jobs, in the same namespace should still collide.
     Status status = gcs_actor_manager_->RegisterActor(
         request3, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
-    ASSERT_TRUE(status.IsNotFound());
+    ASSERT_TRUE(status.IsAlreadyExists());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
               request1.task_spec().actor_creation_task_spec().actor_id());
   }

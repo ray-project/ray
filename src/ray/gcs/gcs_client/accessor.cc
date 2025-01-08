@@ -1202,12 +1202,13 @@ Status InternalKVAccessor::AsyncInternalKVMultiGet(
   return Status::OK();
 }
 
-Status InternalKVAccessor::AsyncInternalKVPut(const std::string &ns,
-                                              const std::string &key,
-                                              const std::string &value,
-                                              bool overwrite,
-                                              const int64_t timeout_ms,
-                                              const OptionalItemCallback<int> &callback) {
+Status InternalKVAccessor::AsyncInternalKVPut(
+    const std::string &ns,
+    const std::string &key,
+    const std::string &value,
+    bool overwrite,
+    const int64_t timeout_ms,
+    const OptionalItemCallback<bool> &callback) {
   rpc::InternalKVPutRequest req;
   req.set_namespace_(ns);
   req.set_key(key);
@@ -1216,7 +1217,7 @@ Status InternalKVAccessor::AsyncInternalKVPut(const std::string &ns,
   client_impl_->GetGcsRpcClient().InternalKVPut(
       req,
       [callback](const Status &status, rpc::InternalKVPutReply &&reply) {
-        callback(status, reply.added_num());
+        callback(status, reply.added());
       },
       timeout_ms);
   return Status::OK();
@@ -1291,8 +1292,8 @@ Status InternalKVAccessor::Put(const std::string &ns,
       value,
       overwrite,
       timeout_ms,
-      [&ret_promise, &added](Status status, std::optional<int> added_num) {
-        added = static_cast<bool>(added_num.value_or(0));
+      [&ret_promise, &added](Status status, std::optional<bool> was_added) {
+        added = was_added.value_or(false);
         ret_promise.set_value(status);
       }));
   return ret_promise.get_future().get();
@@ -1440,7 +1441,7 @@ Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
     auto count = count_array[i];
 
     auto new_resource_requests_by_count =
-        request.mutable_cluster_resource_constraint()->add_min_bundles();
+        request.mutable_cluster_resource_constraint()->add_resource_requests();
 
     new_resource_requests_by_count->mutable_request()->mutable_resources_bundle()->insert(
         bundle.begin(), bundle.end());

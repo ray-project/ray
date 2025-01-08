@@ -310,6 +310,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                         StartupToken worker_startup_token,
                         std::function<void(Status, int)> send_reply_callback);
 
+  // Similar to the above function overload, but the port has been assigned, but directly
+  // returns registration status without taking a callback.
+  Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
+                        pid_t pid,
+                        StartupToken worker_startup_token);
+
   /// To be invoked when a worker is started. This method should be called when the worker
   /// announces its port.
   ///
@@ -327,6 +333,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
                         const rpc::JobConfig &job_config,
                         std::function<void(Status, int)> send_reply_callback);
+
+  // Similar to the above function overload, but the port has been assigned, but directly
+  // returns registration status without taking a callback.
+  Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
+                        const rpc::JobConfig &job_config);
 
   /// Get the client connection's registered worker.
   ///
@@ -825,7 +836,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       pending_exit_idle_workers_;
 
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// A callback to get the current time.
   const std::function<absl::Time()> get_time_;

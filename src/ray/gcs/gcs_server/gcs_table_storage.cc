@@ -14,12 +14,27 @@
 
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 
+#include "ray/common/asio/postable.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/callback.h"
 
 namespace ray {
 namespace gcs {
+
+namespace {
+
+template <typename T>
+auto JustOk(const StatusCallback &callback, instrumented_io_context &io_context) {
+  return Postable<void(T)>(
+      [callback](T) {
+        if (callback) {
+          callback(Status::OK());
+        }
+      },
+      io_context);
+}
+}  // namespace
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Put(const Key &key,
@@ -29,11 +44,7 @@ Status GcsTable<Key, Data>::Put(const Key &key,
                                  key.Binary(),
                                  value.SerializeAsString(),
                                  /*overwrite*/ true,
-                                 [callback](auto) {
-                                   if (callback) {
-                                     callback(Status::OK());
-                                   }
-                                 });
+                                 JustOk<bool>(callback, io_context_));
 }
 
 template <typename Key, typename Data>
@@ -52,7 +63,7 @@ Status GcsTable<Key, Data>::Get(const Key &key,
     }
     callback(status, std::move(value));
   };
-  return store_client_->AsyncGet(table_name_, key.Binary(), on_done);
+  return store_client_->AsyncGet(table_name_, key.Binary(), {on_done, io_context_});
 }
 
 template <typename Key, typename Data>
@@ -70,16 +81,13 @@ Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
     }
     callback(std::move(values));
   };
-  return store_client_->AsyncGetAll(table_name_, on_done);
+  return store_client_->AsyncGetAll(table_name_, {on_done, io_context_});
 }
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Delete(const Key &key, const StatusCallback &callback) {
-  return store_client_->AsyncDelete(table_name_, key.Binary(), [callback](auto) {
-    if (callback) {
-      callback(Status::OK());
-    }
-  });
+  return store_client_->AsyncDelete(
+      table_name_, key.Binary(), JustOk<bool>(callback, io_context_));
 }
 
 template <typename Key, typename Data>
@@ -91,11 +99,7 @@ Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
     keys_to_delete.emplace_back(std::move(key.Binary()));
   }
   return this->store_client_->AsyncBatchDelete(
-      this->table_name_, keys_to_delete, [callback](auto) {
-        if (callback) {
-          callback(Status::OK());
-        }
-      });
+      this->table_name_, keys_to_delete, JustOk<int64_t>(callback, io_context_));
 }
 
 template <typename Key, typename Data>
@@ -110,12 +114,7 @@ Status GcsTableWithJobId<Key, Data>::Put(const Key &key,
                                        key.Binary(),
                                        value.SerializeAsString(),
                                        /*overwrite*/ true,
-                                       [callback](auto) {
-                                         if (!callback) {
-                                           return;
-                                         }
-                                         callback(Status::OK());
-                                       });
+                                       JustOk<bool>(callback, this->io_context_));
 }
 
 template <typename Key, typename Data>
@@ -141,7 +140,8 @@ Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
     }
     callback(std::move(values));
   };
-  return this->store_client_->AsyncMultiGet(this->table_name_, keys, on_done);
+  return this->store_client_->AsyncMultiGet(
+      this->table_name_, keys, {on_done, this->io_context_});
 }
 
 template <typename Key, typename Data>
@@ -173,17 +173,20 @@ Status GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
     keys_to_delete.push_back(key.Binary());
   }
   return this->store_client_->AsyncBatchDelete(
-      this->table_name_, keys_to_delete, [this, callback, keys](auto) {
-        {
-          absl::MutexLock lock(&mutex_);
-          for (auto &key : keys) {
-            index_[GetJobIdFromKey(key)].erase(key);
-          }
-        }
-        if (callback) {
-          callback(Status::OK());
-        }
-      });
+      this->table_name_,
+      keys_to_delete,
+      {[this, callback, keys](auto) {
+         {
+           absl::MutexLock lock(&mutex_);
+           for (auto &key : keys) {
+             index_[GetJobIdFromKey(key)].erase(key);
+           }
+         }
+         if (callback) {
+           callback(Status::OK());
+         }
+       },
+       this->io_context_});
 }
 
 template <typename Key, typename Data>
@@ -210,7 +213,6 @@ template class GcsTable<JobID, ErrorTableData>;
 template class GcsTable<WorkerID, WorkerTableData>;
 template class GcsTable<ActorID, ActorTableData>;
 template class GcsTable<ActorID, TaskSpec>;
-template class GcsTable<UniqueID, StoredConfig>;
 template class GcsTableWithJobId<ActorID, ActorTableData>;
 template class GcsTableWithJobId<ActorID, TaskSpec>;
 template class GcsTable<PlacementGroupID, PlacementGroupTableData>;

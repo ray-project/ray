@@ -237,6 +237,7 @@ cachetools==5.3.2
 certifi==2023.11.17
     # via
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
+    #   clickhouse-connect
     #   httpcore
     #   httpx
     #   kubernetes
@@ -281,6 +282,8 @@ click==8.1.7
     #   wandb
 click-option-group==0.5.6
     # via semgrep
+clickhouse-connect==0.8.10
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 cloudpickle==2.2.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -295,8 +298,6 @@ cloudpickle==2.2.0
     #   tensorflow-probability
 cma==3.2.2
     # via nevergrad
-cmaes==0.10.0
-    # via optuna
 cmdstanpy==1.2.0
     # via prophet
 colorama==0.4.6
@@ -366,7 +367,7 @@ dask==2022.10.2 ; python_version < "3.12"
     #   distributed
 databricks-cli==0.18.0
     # via mlflow
-datasets==2.14.0
+datasets==2.19.1
     # via
     #   -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
     #   -r /ray/ci/../python/requirements/ml/train-requirements.txt
@@ -451,7 +452,7 @@ etils==1.5.2 ; python_version < "3.12"
     #   array-record
     #   mujoco
     #   tensorflow-datasets
-evaluate==0.4.0
+evaluate==0.4.3
     # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
 everett==3.1.0
     # via comet-ml
@@ -489,6 +490,7 @@ filelock==3.13.1
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   aim
+    #   datasets
     #   huggingface-hub
     #   ray
     #   snowflake-connector-python
@@ -690,8 +692,6 @@ h5py==3.10.0
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
-higher==0.2.1
-    # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
 hjson==3.1.0
     # via deepspeed
 holidays==0.39
@@ -717,10 +717,11 @@ httpx==0.24.1
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gradio
     #   gradio-client
-hudi==0.2.0rc1
+hudi==0.2.0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
-huggingface-hub==0.19.4
+huggingface-hub==0.27.0
     # via
+    #   -r /ray/ci/../python/requirements/ml/train-requirements.txt
     #   accelerate
     #   datasets
     #   evaluate
@@ -961,7 +962,9 @@ lxml==4.9.4
     #   nbconvert
     #   vsphere-automation-sdk
 lz4==4.3.3
-    # via -r /ray/ci/../python/requirements.txt
+    # via
+    #   -r /ray/ci/../python/requirements.txt
+    #   clickhouse-connect
 mako==1.3.0
     # via alembic
 markdown==3.5.1
@@ -1166,7 +1169,6 @@ numpy==1.26.4
     #   bayesian-optimization
     #   bokeh
     #   cma
-    #   cmaes
     #   cmdstanpy
     #   configspace
     #   contourpy
@@ -1309,10 +1311,12 @@ opt-einsum==3.3.0
     # via
     #   pyro-ppl
     #   tensorflow
-optuna==3.2.0
+optuna==4.1.0
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 orjson==3.9.10
     # via gradio
+ormsgpack==1.7.0
+    # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
 packaging==23.0
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -1535,7 +1539,9 @@ pyarrow==14.0.2
     #   raydp
     #   triad
 pyarrow-hotfix==0.6
-    # via hudi
+    # via
+    #   datasets
+    #   hudi
 pyasn1==0.5.1
     # via
     #   oauth2client
@@ -1725,6 +1731,7 @@ pytz==2022.7.1
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
+    #   clickhouse-connect
     #   mlflow
     #   pandas
     #   snowflake-connector-python
@@ -1844,7 +1851,6 @@ requests-toolbelt==1.0.0
 responses==0.13.4
     # via
     #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
-    #   evaluate
     #   moto
 restrictedpython==7.1
     # via aim
@@ -2184,7 +2190,6 @@ torch==2.3.0
     #   botorch
     #   deepspeed
     #   fairscale
-    #   higher
     #   linear-operator
     #   monai
     #   mosaicml
@@ -2335,6 +2340,7 @@ uritemplate==4.1.1
 urllib3==1.26.19
     # via
     #   botocore
+    #   clickhouse-connect
     #   comet-ml
     #   databricks-cli
     #   distributed
@@ -2470,6 +2476,8 @@ zipp==3.19.2
     #   importlib-metadata
 zoopt==0.4.1
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
+zstandard==0.23.0
+    # via clickhouse-connect
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip

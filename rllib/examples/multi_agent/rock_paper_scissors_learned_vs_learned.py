@@ -45,7 +45,7 @@ parser.add_argument(
 
 
 register_env(
-    "RockPaperScissors",
+    "pettingzoo_rps",
     lambda _: ParallelPettingZooEnv(rps_v2.parallel_env()),
 )
 
@@ -58,7 +58,7 @@ if __name__ == "__main__":
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .environment("RockPaperScissors")
+        .environment("pettingzoo_rps")
         .env_runners(
             env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
         )

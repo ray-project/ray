@@ -7,9 +7,6 @@
 Algorithms
 ==========
 
-Overview
-~~~~~~~~
-
 The following table is an overview of all available algorithms in RLlib. Note that all of them support
 multi-GPU training on a single (GPU) node in `Ray (open-source) <https://docs.ray.io/en/latest/index.html>`__ (|multi_gpu|)
 as well as multi-GPU training on multi-node (GPU) clusters when using the `Anyscale platform <https://www.anyscale.com/platform>`__

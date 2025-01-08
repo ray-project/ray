@@ -74,8 +74,7 @@ LocalTaskManager::LocalTaskManager(
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
   // If the local node is draining, the cluster task manager will
   // guarantee that the local node is not selected for scheduling.
-  ASSERT_FALSE(
-      cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining());
+  RAY_CHECK(!cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining());
   WaitForTaskArgsRequests(std::move(work));
   ScheduleAndDispatchTasks();
 }
@@ -1054,20 +1053,6 @@ void LocalTaskManager::SetWorkerBacklog(SchedulingClass scheduling_class,
   } else {
     backlog_tracker_[scheduling_class][worker_id] = backlog_size;
   }
-}
-
-int64_t LocalTaskManager::TotalBacklogSize(SchedulingClass scheduling_class) {
-  auto backlog_it = backlog_tracker_.find(scheduling_class);
-  if (backlog_it == backlog_tracker_.end()) {
-    return 0;
-  }
-
-  int64_t sum = 0;
-  for (const auto &worker_id_and_backlog_size : backlog_it->second) {
-    sum += worker_id_and_backlog_size.second;
-  }
-
-  return sum;
 }
 
 void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {

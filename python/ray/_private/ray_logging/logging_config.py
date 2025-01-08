@@ -9,7 +9,6 @@ from ray.util.annotations import PublicAPI
 from dataclasses import dataclass
 
 import logging
-import time
 
 
 class LoggingConfigurator(ABC):
@@ -58,7 +57,6 @@ _logging_configurator: LoggingConfigurator = default_impl.get_logging_configurat
 @PublicAPI(stability="alpha")
 @dataclass
 class LoggingConfig:
-
     encoding: str = "TEXT"
     log_level: str = "INFO"
 
@@ -74,29 +72,8 @@ class LoggingConfig:
         """Set up the logging configuration for the current process."""
         _logging_configurator.configure_logging(self.encoding, self.log_level)
 
-    def _setup_log_record_factory(self):
-        old_factory = logging.getLogRecordFactory()
-
-        def record_factory(*args, **kwargs):
-            record = old_factory(*args, **kwargs)
-            # Python logging module starts to use `time.time_ns()` to generate `created`
-            # from Python 3.13 to avoid the precision loss caused by the float type.
-            # Here, we generate the `created` for the LogRecord to support older Python
-            # versions.
-            ct = time.time_ns()
-            record.created = ct / 1e9
-
-            from ray._private.ray_logging.constants import LogKey
-
-            record.__dict__[LogKey.TIMESTAMP_NS.value] = ct
-
-            return record
-
-        logging.setLogRecordFactory(record_factory)
-
     def _apply(self):
-        """Set up both the LogRecord factory and the logging configuration."""
-        self._setup_log_record_factory()
+        """Set up the logging configuration."""
         self._configure_logging()
 
 

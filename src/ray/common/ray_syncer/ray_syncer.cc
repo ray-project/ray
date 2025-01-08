@@ -25,18 +25,20 @@
 namespace ray::syncer {
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
-                     const std::string &local_node_id)
+                     const std::string &local_node_id,
+                     RpcCompletionCallback on_rpc_completion)
     : io_context_(io_context),
       local_node_id_(local_node_id),
       node_state_(std::make_unique<NodeState>()),
-      timer_(io_context) {
+      timer_(PeriodicalRunner::Create(io_context)),
+      on_rpc_completion_(std::move(on_rpc_completion)) {
   stopped_ = std::make_shared<bool>(false);
 }
 
 RaySyncer::~RaySyncer() {
   *stopped_ = true;
   boost::asio::dispatch(io_context_.get_executor(), [reactors = sync_reactors_]() {
-    for (auto [_, reactor] : reactors) {
+    for (auto &[_, reactor] : reactors) {
       reactor->Disconnect();
     }
   });
@@ -59,8 +61,9 @@ std::shared_ptr<const RaySyncMessage> RaySyncer::GetSyncMessage(
 std::vector<std::string> RaySyncer::GetAllConnectedNodeIDs() const {
   auto task = std::packaged_task<std::vector<std::string>()>([&]() {
     std::vector<std::string> nodes;
+    nodes.reserve(sync_reactors_.size());
     for (auto [node_id, _] : sync_reactors_) {
-      nodes.push_back(node_id);
+      nodes.emplace_back(std::move(node_id));
     }
     return nodes;
   });
@@ -72,7 +75,7 @@ void RaySyncer::Connect(const std::string &node_id,
   boost::asio::dispatch(
       io_context_.get_executor(), std::packaged_task<void()>([=]() {
         auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
-        auto reactor = new RayClientBidiReactor(
+        auto *reactor = new RayClientBidiReactor(
             /* remote_node_id */ node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
@@ -81,12 +84,14 @@ void RaySyncer::Connect(const std::string &node_id,
             /* cleanup_cb */
             [this, channel](RaySyncerBidiReactor *reactor, bool restart) {
               const std::string &node_id = reactor->GetRemoteNodeID();
-              if (sync_reactors_.contains(node_id) &&
-                  sync_reactors_.at(node_id) != reactor) {
-                // The client is already reconnected.
-                return;
+              auto iter = sync_reactors_.find(node_id);
+              if (iter != sync_reactors_.end()) {
+                if (iter->second != reactor) {
+                  // The client is already reconnected.
+                  return;
+                }
+                sync_reactors_.erase(iter);
               }
-              sync_reactors_.erase(node_id);
               if (restart) {
                 execute_after(
                     io_context_,
@@ -108,11 +113,16 @@ void RaySyncer::Connect(const std::string &node_id,
 }
 
 void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
+  // Bind rpc completion callback.
+  if (on_rpc_completion_) {
+    reactor->SetRpcCompletionCallbackForOnce(on_rpc_completion_);
+  }
+
   boost::asio::dispatch(
       io_context_.get_executor(), std::packaged_task<void()>([this, reactor]() {
-        RAY_CHECK(sync_reactors_.find(reactor->GetRemoteNodeID()) == sync_reactors_.end())
-            << NodeID::FromBinary(reactor->GetRemoteNodeID());
-        sync_reactors_[reactor->GetRemoteNodeID()] = reactor;
+        auto [_, is_new] = sync_reactors_.emplace(reactor->GetRemoteNodeID(), reactor);
+        RAY_CHECK(is_new) << NodeID::FromBinary(reactor->GetRemoteNodeID())
+                          << " has already registered.";
         // Send the view for new connections.
         for (const auto &[_, messages] : node_state_->GetClusterView()) {
           for (const auto &message : messages) {
@@ -156,7 +166,7 @@ void RaySyncer::Register(MessageType message_type,
 
         // Set job to pull from reporter periodically
         if (reporter != nullptr && pull_from_reporter_interval_ms > 0) {
-          timer_.RunFnPeriodically(
+          timer_->RunFnPeriodically(
               [this, stopped = stopped_, message_type]() {
                 if (*stopped) {
                   return;
@@ -207,25 +217,28 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
       context,
       syncer_.GetIOContext(),
       syncer_.GetLocalNodeID(),
-      [this](auto msg) mutable { syncer_.BroadcastMessage(msg); },
+      /*message_processor=*/[this](auto msg) mutable { syncer_.BroadcastMessage(msg); },
+      /*cleanup_cb=*/
       [this](RaySyncerBidiReactor *reactor, bool reconnect) mutable {
         // No need to reconnect for server side.
         RAY_CHECK(!reconnect);
         const auto &node_id = reactor->GetRemoteNodeID();
-        if (syncer_.sync_reactors_.contains(node_id) &&
-            syncer_.sync_reactors_.at(node_id) != reactor) {
-          // There is a new connection to the node, no need to clean up.
-          // This can happen when there is transient network error and the client
-          // reconnects. The sequence of events are:
-          // 1. Client reconnects, StartSync is called
-          // 2. syncer_.Disconnect is called and the old reactor is removed from
-          // sync_reactors_
-          // 3. syncer_.Connect is called and the new reactor is added to sync_reactors_
-          // 4. OnDone method of the old reactor is called which calls this cleanup_cb_
-          return;
+        auto iter = syncer_.sync_reactors_.find(node_id);
+        if (iter != syncer_.sync_reactors_.end()) {
+          if (iter->second != reactor) {
+            // There is a new connection to the node, no need to clean up.
+            // This can happen when there is transient network error and the client
+            // reconnects. The sequence of events are:
+            // 1. Client reconnects, StartSync is called
+            // 2. syncer_.Disconnect is called and the old reactor is removed from
+            // sync_reactors_
+            // 3. syncer_.Connect is called and the new reactor is added to sync_reactors_
+            // 4. OnDone method of the old reactor is called which calls this cleanup_cb_
+            return;
+          }
+          syncer_.sync_reactors_.erase(iter);
         }
         RAY_LOG(INFO).WithField(NodeID::FromBinary(node_id)) << "Connection is broken.";
-        syncer_.sync_reactors_.erase(node_id);
         syncer_.node_state_->RemoveNode(node_id);
       });
   RAY_LOG(INFO).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))

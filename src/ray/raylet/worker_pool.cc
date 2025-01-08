@@ -114,7 +114,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       first_job_driver_wait_num_python_workers_(
           std::min(num_prestarted_python_workers, maximum_startup_concurrency_)),
       num_prestart_python_workers(num_prestarted_python_workers),
-      periodical_runner_(io_service),
+      periodical_runner_(PeriodicalRunner::Create(io_service)),
       get_time_(std::move(get_time)) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
@@ -170,7 +170,7 @@ WorkerPool::~WorkerPool() {
 
 void WorkerPool::Start() {
   if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] { TryKillingIdleWorkers(); },
         RayConfig::instance().kill_idle_workers_interval_ms(),
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
@@ -670,7 +670,7 @@ Status WorkerPool::GetNextFreePort(int *port) {
   for (int i = 0; i < current_size; i++) {
     *port = free_ports_->front();
     free_ports_->pop();
-    if (CheckFree(*port)) {
+    if (CheckPortFree(*port)) {
       return Status::OK();
     }
     // Return to pool to check later.
@@ -796,6 +796,37 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   return Status::OK();
 }
 
+Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
+                                  pid_t pid,
+                                  StartupToken worker_startup_token) {
+  RAY_CHECK(worker);
+  auto &state = GetStateForLanguage(worker->GetLanguage());
+  auto it = state.worker_processes.find(worker_startup_token);
+  if (it == state.worker_processes.end()) {
+    RAY_LOG(WARNING) << "Received a register request from an unknown token: "
+                     << worker_startup_token;
+    return Status::Invalid("Unknown worker");
+  }
+
+  auto process = Process::FromPid(pid);
+  worker->SetProcess(process);
+
+  auto &starting_process_info = it->second;
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      end - starting_process_info.start_time);
+
+  // TODO(hjiang): Add tag to indicate whether port has been assigned beforehand.
+  STATS_worker_register_time_ms.Record(duration.count());
+  RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
+                 << ", register cost: " << duration.count()
+                 << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType())
+                 << ", startup token: " << worker_startup_token;
+
+  state.registered_workers.insert(worker);
+  return Status::OK();
+}
+
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const StartupToken worker_startup_token = worker->GetStartupToken();
@@ -876,6 +907,26 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
           send_reply_callback(Status::OK(), port);
         });
   }
+  return Status::OK();
+}
+
+Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
+                                  const rpc::JobConfig &job_config) {
+  auto &state = GetStateForLanguage(driver->GetLanguage());
+  state.registered_drivers.insert(std::move(driver));
+  const auto job_id = driver->GetAssignedJobId();
+  HandleJobStarted(job_id, job_config);
+
+  if (driver->GetLanguage() == Language::JAVA) {
+    return Status::OK();
+  }
+
+  if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
+      !RayConfig::instance().enable_worker_prestart()) {
+    RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
+    PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+  }
+  first_job_registered_ = true;
   return Status::OK();
 }
 
