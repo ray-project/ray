@@ -78,10 +78,10 @@ class DAGContext:
             can be submitted via `execute` or `execute_async` before consuming
             the output using `ray.get()`. If the caller submits more executions,
             `RayCgraphCapacityExceeded` is raised.
-        overlap_gpu_communication: Whether to overlap GPU communication with
-            computation during DAG execution. If True, the communication
-            and computation can be overlapped, which can improve the
-            performance of the DAG execution.
+        overlap_gpu_communication: (experimental) Whether to overlap GPU
+            communication with computation during DAG execution. If True, the
+            communication and computation can be overlapped, which can improve
+            the performance of the DAG execution.
         read_iteration_timeout_s: The timeout for each read iteration in seconds.
             If the timeout is reached, the read operation will be interrupted and
             then try to read the next input channel.
