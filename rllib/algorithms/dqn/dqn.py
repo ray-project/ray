@@ -463,7 +463,10 @@ class DQNConfig(AlgorithmConfig):
             )
 
         # Check, if the `max_seq_len` is longer then the burn-in.
-        if self.model_config["max_seq_len"] <= self.burn_in_len:
+        if (
+            "max_seq_len" in self.model_config
+            and 0 < self.model_config["max_seq_len"] <= self.burn_in_len
+        ):
             raise ValueError(
                 f"Your defined `burn_in_len`={self.burn_in_len} is larger or equal "
                 f"`max_seq_len`={self.model_config['max_seq_len']}! Either decrease "
