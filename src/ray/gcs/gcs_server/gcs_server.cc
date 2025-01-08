@@ -145,9 +145,9 @@ void GcsServer::Start() {
 void GcsServer::GetOrGenerateClusterId(
     Postable<void(ClusterID cluster_id)> continuation) {
   instrumented_io_context &io_context = continuation.io_context();
-  static std::string const kTokenNamespace = "cluster";
+  static std::string const kClusterIdNamespace = "cluster";
   kv_manager_->GetInstance().Get(
-      kTokenNamespace,
+      kClusterIdNamespace,
       kClusterIdKey,
       {[this, continuation = std::move(continuation)](
            std::optional<std::string> provided_cluster_id) mutable {
@@ -157,7 +157,7 @@ void GcsServer::GetOrGenerateClusterId(
            RAY_LOG(INFO) << "No existing server cluster ID found. Generating new ID: "
                          << cluster_id.Hex();
            kv_manager_->GetInstance().Put(
-               kTokenNamespace,
+               kClusterIdNamespace,
                kClusterIdKey,
                cluster_id.Binary(),
                false,
@@ -703,7 +703,8 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
                                                   *gcs_node_manager_,
                                                   *gcs_actor_manager_,
                                                   *gcs_placement_group_manager_,
-                                                  *raylet_client_pool_);
+                                                  *raylet_client_pool_,
+                                                  kv_manager_->GetInstance());
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
 
   autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(
