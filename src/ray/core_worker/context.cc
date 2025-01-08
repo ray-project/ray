@@ -328,7 +328,8 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
       return;
     }
 
-    // Check assumption (all task spec are equal) for later accesses.
+    // Ray currently doesn't reuse worker to run tasks or actors with different runtime
+    // envs.
     RAY_CHECK_EQ(serialized_runtime_env_, serialized_runtime_env);
     if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
       RAY_CHECK(runtime_env_ != nullptr);

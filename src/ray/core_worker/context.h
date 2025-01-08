@@ -156,7 +156,8 @@ class WorkerContext {
   std::string serialized_runtime_env_ ABSL_GUARDED_BY(mutex_);
   std::shared_ptr<nlohmann::json> runtime_env_ ABSL_GUARDED_BY(mutex_);
   // The runtime env info.
-  // For one worker context, it should be assigned only once.
+  // For one worker context, it should be assigned only once because Ray currently doesn't
+  // reuse worker to run tasks or actors with different runtime envs.
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_ ABSL_GUARDED_BY(mutex_);
   /// The id of the (main) thread that constructed this worker context.
   const boost::thread::id main_thread_id_;
