@@ -31,7 +31,7 @@ examples:
     link: ../train/examples/xgboost/xgboost_example
   - title: Distributed Data Processing with Data-Juicer
     skill_level: beginner
-    framework:
+    frameworks:
       - Data-Juicer
     use_cases:
       - large language models
