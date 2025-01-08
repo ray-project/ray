@@ -1066,6 +1066,8 @@ void CoreWorker::ConnectToRayletInternal() {
         core_worker_server_->GetPort(), options_.entrypoint);
     RAY_CHECK_OK(status) << "Failed to announce driver's port to raylet and GCS";
   } else {
+    // TODO(hjiang): In the future this function should only accessed by driver, should
+    // delete worker branch.
     Status status =
         local_raylet_client_->AnnounceWorkerPortForWorker(core_worker_server_->GetPort());
     RAY_CHECK_OK(status) << "Failed to announce worker's port to raylet and GCS";
