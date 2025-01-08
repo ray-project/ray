@@ -601,7 +601,7 @@ class ReporterAgent(
         try:
             pynpusmi.smi_initialize()
         except Exception as e:
-            logger.error(f"pynpusmi failed to retrieve NPU information: {e}")
+            logger.debug(f"pynpusmi failed to retrieve NPU information: {e}")
 
             if isinstance(e, pynpusmi.DCMIError_DriverNotLoaded):
                 enable_npu_usage_check = False
@@ -879,7 +879,7 @@ class ReporterAgent(
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
-            "accelerator": {
+            "accelerators": {
                 "gpus": self._get_gpu_usage(),
                 "npus": self._get_npu_usage(),
             },
