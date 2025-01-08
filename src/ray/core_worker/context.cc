@@ -309,23 +309,29 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   }
 
   if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
-    if (runtime_env_info_ == nullptr) {
+    const bool is_first_time_assignment = runtime_env_info_ == nullptr;
+
+    // Only perform heavy-loaded assigment and parsing on first access.
+    // All threads are requesting for the same parsed json result, so ok to place in
+    // critical section.
+    if (is_first_time_assignment) {
       runtime_env_info_ = std::make_shared<rpc::RuntimeEnvInfo>();
       *runtime_env_info_ = task_spec.RuntimeEnvInfo();
-    }
 
-    if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
-      // All threads are requesting for the same parsed json result, so ok to place in
-      // critical section.
-      if (!serialized_runtime_env_.empty()) {
-        RAY_CHECK_EQ(serialized_runtime_env_, serialized_runtime_env)
-            << "One worker context is expected to take only one serialized runtime env.";
-        RAY_CHECK(runtime_env_ != nullptr) << "Runtime env should be parsed already.";
-      } else {
+      RAY_CHECK(serialized_runtime_env_.empty());
+      RAY_CHECK(runtime_env_ == nullptr);
+      if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
         serialized_runtime_env_ = serialized_runtime_env;
         runtime_env_ = std::make_shared<nlohmann::json>();
         *runtime_env_ = nlohmann::json::parse(serialized_runtime_env);
       }
+      return;
+    }
+
+    // Check assumption (all task spec are equal) for later accesses.
+    RAY_CHECK_EQ(serialized_runtime_env_, serialized_runtime_env);
+    if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
+      RAY_CHECK(runtime_env_ != nullptr);
     }
   }
 }
