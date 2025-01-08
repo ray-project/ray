@@ -1394,19 +1394,21 @@ Status NodeManager::RegisterForNewWorker(
     pid_t pid,
     const StartupToken &worker_startup_token,
     std::function<void(Status, int)> send_reply_callback) {
+  Status status = Status::OK();
   if (send_reply_callback) {
-    auto status = worker_pool_.RegisterWorker(
+    worker_pool_.RegisterWorker(
         worker, pid, worker_startup_token, send_reply_callback);
-    if (!status.ok()) {
-      // If the worker failed to register to Raylet, trigger task dispatching here to
-      // allow new worker processes to be started (if capped by
-      // maximum_startup_concurrency).
-      cluster_task_manager_->ScheduleAndDispatchTasks();
-    }
-    return status;
+  } else {
+    worker_pool_.RegisterWorker(worker, pid, worker_startup_token);
   }
 
-  return worker_pool_.RegisterWorker(worker, pid, worker_startup_token);
+  if (!status.ok()) {
+    // If the worker failed to register to Raylet, trigger task dispatching here to
+    // allow new worker processes to be started (if capped by
+    // maximum_startup_concurrency).
+    cluster_task_manager_->ScheduleAndDispatchTasks();
+  }
+  return status;
 }
 
 Status NodeManager::RegisterForNewDriver(
