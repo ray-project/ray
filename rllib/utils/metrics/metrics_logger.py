@@ -449,6 +449,10 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
+        assert isinstance(
+            stats_dict, dict
+        ), f"`stats_dict` ({stats_dict}) must be dict!"
+
         prefix_key = force_tuple(key)
 
         def _map(path, stat_or_value):
@@ -693,7 +697,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         key_for_throughput: Optional[Union[str, Tuple[str, ...]]] = None,
         key_for_unit_count: Optional[Union[str, Tuple[str, ...]]] = None,
-    ) -> None:
+    ) -> Stats:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
         Additionally, measures and logs the throughput for the timed code, iff

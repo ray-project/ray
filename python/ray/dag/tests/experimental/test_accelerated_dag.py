@@ -15,7 +15,7 @@ import pytest
 
 
 from ray._private.test_utils import run_string_as_driver
-from ray.exceptions import RayChannelError, RayChannelTimeoutError
+from ray.exceptions import ActorDiedError, RayChannelError, RayChannelTimeoutError
 import ray
 import ray._private
 import ray.cluster_utils
@@ -26,6 +26,12 @@ from ray._private.utils import (
 )
 from ray.dag import DAGContext
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    wait_for_pid_to_exit,
+)
+import signal
+import psutil
 
 
 logger = logging.getLogger(__name__)
@@ -1514,7 +1520,9 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular, single_fetch):
         else:
             assert ray.get(refs) == [i + 1] * len(actors)
 
-    with pytest.raises(RayChannelError, match="Channel closed."):
+    with pytest.raises(
+        ActorDiedError, match="The actor died unexpectedly before finishing this task."
+    ):
         for i in range(99):
             refs = compiled_dag.execute(1)
             if single_fetch:
@@ -2634,6 +2642,41 @@ def test_signature_mismatch(shutdown_only):
     ):
         with InputNode() as inp:
             _ = worker.g.bind(inp)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Sigint not supported on Windows")
+def test_sigint_get_dagref(ray_start_cluster):
+    driver_script = """
+import ray
+from ray.dag import InputNode
+import time
+
+ray.init()
+
+@ray.remote
+class Actor:
+    def sleep(self, x):
+        while(True):
+            time.sleep(x)
+
+a = Actor.remote()
+with InputNode() as inp:
+    dag = a.sleep.bind(inp)
+compiled_dag = dag.experimental_compile()
+ref = compiled_dag.execute(1)
+ray.get(ref, timeout=100)
+"""
+    driver_proc = run_string_as_driver_nonblocking(
+        driver_script, env={"RAY_CGRAPH_teardown_timeout": "5"}
+    )
+    pid = driver_proc.pid
+    # wait for graph execution to start
+    time.sleep(5)
+    proc = psutil.Process(pid)
+    assert proc.status() == psutil.STATUS_RUNNING
+    os.kill(pid, signal.SIGINT)  # ctrl+c
+    # teardown will kill actors after 5 second timeout
+    wait_for_pid_to_exit(pid, 10)
 
 
 if __name__ == "__main__":

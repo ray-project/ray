@@ -461,8 +461,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 object. If unspecified, a default logger is created.
             **kwargs: Arguments passed to the Trainable base class.
         """
-        config = config  # or self.get_default_config()
-
         # Translate possible dict into an AlgorithmConfig object, as well as,
         # resolving generic config objects into specific ones (e.g. passing
         # an `AlgorithmConfig` super-class instance into a PPO constructor,
@@ -1663,7 +1661,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 for pol_states in state["policy_states"].values():
                     pol_states.pop("connector_configs", None)
 
-            elif self.config.is_multi_agent():
+            elif self.config.is_multi_agent:
 
                 multi_rl_module_spec = MultiRLModuleSpec.from_module(from_worker.module)
 
@@ -1862,7 +1860,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # The to-be-returned new MultiAgentRLModuleSpec.
         multi_rl_module_spec = None
 
-        if not self.config.is_multi_agent():
+        if not self.config.is_multi_agent:
             raise RuntimeError(
                 "Can't add a new RLModule to a single-agent setup! Make sure that your "
                 "setup is already initially multi-agent by either defining >1 "
@@ -2667,12 +2665,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             checkpoint_dir: The directory where the checkpoint files will be stored.
         """
         # New API stack: Delegate to the `Checkpointable` implementation of
-        # `save_to_path()`.
+        # `save_to_path()` and return.
         if self.config.enable_rl_module_and_learner:
-            return self.save_to_path(
+            self.save_to_path(
                 checkpoint_dir,
                 use_msgpack=self.config._use_msgpack_checkpoints,
             )
+            return
 
         checkpoint_dir = pathlib.Path(checkpoint_dir)
 
@@ -3674,7 +3673,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 f"{type(self).__name__}("
                 f"env={self.config.env}; env-runners={self.config.num_env_runners}; "
                 f"learners={self.config.num_learners}; "
-                f"multi-agent={self.config.is_multi_agent()}"
+                f"multi-agent={self.config.is_multi_agent}"
                 f")"
             )
         else:
