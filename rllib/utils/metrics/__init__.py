@@ -33,6 +33,27 @@ NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
 NUM_MODULE_STEPS_SAMPLED = "num_module_steps_sampled"
 NUM_MODULE_STEPS_SAMPLED_LIFETIME = "num_module_steps_sampled_lifetime"
 
+# Counters for adding and evicting in replay buffers.
+# TODO (Simon): Check, if we should prefix with 'REPLAY_BUFFER'.
+NUM_ENV_STEPS = "num_env_steps"
+NUM_ENV_STEPS_ADDED = "num_env_steps_added"
+NUM_ENV_STEPS_ADDED_LIFETIME = "num_env_steps_added_lifetime"
+NUM_ENV_STEPS_EVICTED = "num_env_steps_evicted"
+NUM_ENV_STEPS_EVICTED_LIFETIME = "num_env_steps_evicted_lifetime"
+NUM_AGENT_STEPS = "num_agent_steps"
+NUM_AGENT_STEPS_ADDED = "num_agent_steps_added"
+NUM_AGENT_STEPS_ADDED_LIFETIME = "num_agent_steps_added_lifetime"
+NUM_AGENT_STEPS_EVICTED = "num_agent_steps_evicted"
+NUM_AGENT_STEPS_EVICTED_LIFETIME = "num_agent_steps_evicted_lifetime"
+NUM_EPISODES = "num_episodes"
+NUM_EPISODES_ADDED = "num_episodes_added"
+NUM_EPISODES_ADDED_LIFETIME = "num_episodes_added_lifetime"
+NUM_EPISODES_EVICTED = "num_episodes_evicted"
+NUM_EPISODES_EVICTED_LIFETIME = "num_episodes_evicted_lifetime"
+NUM_AGENT_STEPS_EVICTED = "num_agent_steps_evicted"
+# If some requirements (like length) are not matched we resample.
+NUM_MISSED_SAMPLES = "num_missed_samples"
+
 EPISODE_DURATION_SEC_MEAN = "episode_duration_sec_mean"
 EPISODE_LEN_MEAN = "episode_len_mean"
 EPISODE_LEN_MAX = "episode_len_max"

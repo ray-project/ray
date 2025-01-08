@@ -8,9 +8,32 @@ import scipy
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS,
+    NUM_AGENT_STEPS_ADDED,
+    NUM_AGENT_STEPS_ADDED_LIFETIME,
+    NUM_AGENT_STEPS_EVICTED,
+    NUM_AGENT_STEPS_EVICTED_LIFETIME,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS,
+    NUM_ENV_STEPS_ADDED,
+    NUM_ENV_STEPS_ADDED_LIFETIME,
+    NUM_ENV_STEPS_EVICTED,
+    NUM_ENV_STEPS_EVICTED_LIFETIME,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES,
+    NUM_EPISODES_ADDED,
+    NUM_EPISODES_ADDED_LIFETIME,
+    NUM_EPISODES_EVICTED,
+    NUM_EPISODES_EVICTED_LIFETIME,
+)
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils import force_list
+from ray.rllib.utils.typing import ResultDict
 
 
 class EpisodeReplayBuffer(ReplayBufferInterface):
@@ -112,6 +135,9 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
         self.rng = np.random.default_rng(seed=None)
 
+        # Initialize the metrics.
+        self.metrics = MetricsLogger()
+
     @override(ReplayBufferInterface)
     def __len__(self) -> int:
         return self.get_num_timesteps()
@@ -134,8 +160,31 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             #  actually preferred).
             eps = copy.deepcopy(eps)
 
-            self._num_timesteps += len(eps)
-            self._num_timesteps_added += len(eps)
+            eps_len = len(eps)
+            # TODO (simon): Check, if we can deprecate these two
+            # variables and instead peek into the metrics.
+            self._num_timesteps += eps_len
+            self._num_timesteps_added += eps_len
+            self.metrics.log_value(
+                NUM_ENV_STEPS_ADDED,
+                eps_len,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                NUM_AGENT_STEPS_ADDED,
+                eps_len,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                NUM_ENV_STEPS_ADDED_LIFETIME,
+                eps_len,
+                reduce="sum",
+            )
+            self.metrics.log_value(
+                NUM_AGENT_STEPS_ADDED_LIFETIME, eps_len, reduce="sum"
+            )
 
             # Ongoing episode, concat to existing record.
             if eps.id_ in self.episode_id_to_index:
@@ -146,6 +195,17 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 existing_eps.concat_episode(eps)
             # New episode. Add to end of our episodes deque.
             else:
+                self.metrics.log_value(
+                    NUM_EPISODES_ADDED,
+                    1,
+                    reduce="sum",
+                    clear_on_reduce=True,
+                )
+                self.metrics.log_value(
+                    NUM_EPISODES_ADDED_LIFETIME,
+                    1,
+                    reduce="sum",
+                )
                 self.episodes.append(eps)
                 eps_idx = len(self.episodes) - 1 + self._num_episodes_evicted
                 self.episode_id_to_index[eps.id_] = eps_idx
@@ -153,10 +213,14 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
             # Eject old records from front of deque (only if we have more than 1 episode
             # in the buffer).
+            num_evicted_eps = 0
+            num_evicted_env_steps = 0
             while self._num_timesteps > self.capacity and self.get_num_episodes() > 1:
                 # Eject oldest episode.
                 evicted_eps = self.episodes.popleft()
                 evicted_eps_len = len(evicted_eps)
+                num_evicted_eps += 1
+                num_evicted_env_steps += evicted_eps_len
                 # Correct our size.
                 self._num_timesteps -= evicted_eps_len
 
@@ -205,6 +269,59 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
                 # Increase episode evicted counter.
                 self._num_episodes_evicted += 1
+
+            self.metrics.log_value(
+                NUM_AGENT_STEPS,
+                self.get_num_timesteps(),
+                reduce="mean",
+                # TODO (simon): Check, if a window of 1
+                # could be better.
+            )
+            self.metrics.log_value(
+                NUM_AGENT_STEPS_EVICTED,
+                num_evicted_env_steps,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                NUM_AGENT_STEPS_EVICTED_LIFETIME,
+                num_evicted_env_steps,
+                reduce="sum",
+            )
+            self.metrics.log_value(
+                NUM_ENV_STEPS,
+                self.get_num_timesteps(),
+                reduce="mean",
+                # TODO (simon): Check, if a window of 1
+                # could be better.
+            )
+            self.metrics.log_value(
+                NUM_ENV_STEPS_EVICTED,
+                num_evicted_env_steps,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                NUM_ENV_STEPS_EVICTED_LIFETIME,
+                num_evicted_env_steps,
+                reduce="sum",
+            )
+            self.metrics.log_value(
+                NUM_EPISODES,
+                self.get_num_episodes(),
+                reduce="mean",
+            )
+            self.metrics.log_value(
+                NUM_EPISODES_EVICTED,
+                num_evicted_eps,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                NUM_EPISODES_EVICTED_LIFETIME,
+                num_evicted_eps,
+                reduce="sum",
+            )
 
     @override(ReplayBufferInterface)
     def sample(
@@ -408,7 +525,32 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
         # Update our sampled counter.
         self.sampled_timesteps += batch_size_B * batch_length_T
-
+        self.metrics.log_value(
+            NUM_AGENT_STEPS_SAMPLED,
+            batch_size_B * batch_length_T,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        # TODO (simon): Check, if this is efficient with window=1,
+        # and check, if we can then deprecate self.sampled_timesteps.
+        self.metrics.log_value(
+            NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+            batch_size_B * batch_length_T,
+            reduce="sum",
+            window=1,
+        )
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED,
+            batch_size_B * batch_length_T,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED_LIFETIME,
+            batch_size_B * batch_length_T,
+            reduce="sum",
+            window=1,
+        )
         # TODO: Return SampleBatch instead of this simpler dict.
         ret = {
             "obs": np.array(observations),
@@ -624,8 +766,31 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         # Update the metric.
         self.sampled_timesteps += batch_size_B
 
+        self.metrics.log_value(
+            NUM_AGENT_STEPS_SAMPLED,
+            batch_size_B,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        # TODO (simon): Check, if this is efficient with window=1,
+        # and check, if we can then deprecate self.sampled_timesteps.
+        self.metrics.log_value(
+            NUM_AGENT_STEPS_SAMPLED_LIFETIME, batch_size_B, reduce="sum", window=1
+        )
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED,
+            batch_size_B,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED_LIFETIME, batch_size_B, reduce="sum", window=1
+        )
+
         return sampled_episodes
 
+    # TODO (simon): Check, if we can instead peek into the metrics
+    # and deprecate all variables.
     def get_num_episodes(self) -> int:
         """Returns number of episodes (completed or truncated) stored in the buffer."""
         return len(self.episodes)
@@ -645,6 +810,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
     def get_added_timesteps(self) -> int:
         """Returns number of timesteps that have been added in buffer's lifetime."""
         return self._num_timesteps_added
+
+    def get_metrics(self) -> ResultDict:
+
+        return self.metrics.reduce()
 
     @override(ReplayBufferInterface)
     def get_state(self) -> Dict[str, Any]:
