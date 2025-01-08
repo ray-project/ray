@@ -39,7 +39,7 @@ on the DAG.
     compiled_dag = dag.experimental_compile()
     compiled_dag.visualize()
 
-By default, a PNG image named ``compiled_graph.png`` is generated and saved in the current working directory.
+By default, Ray generates a PNG image named ``compiled_graph.png`` and saves it in the current working directory.
 Note that this requires ``graphviz`` to be installed.
 
 The example visualization of the above code is shown below:
