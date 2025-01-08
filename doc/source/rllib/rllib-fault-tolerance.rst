@@ -19,8 +19,7 @@ Worker Recovery
 ---------------
 
 RLlib supports self-recovering and elastic :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` for both
-:ref:`training and evaluation EnvRunner workers <rolloutworker-reference-docs>`.
-This provides fault tolerance at worker level.
+training and evaluation EnvRunner workers. This provides fault tolerance at worker level.
 
 This means that if you have n :py:class:`~ray.rllib.env.env_runner.EnvRunner` workers sitting on different machines and a
 machine is pre-empted, RLlib can continue training and evaluation with minimal interruption.
@@ -66,7 +65,7 @@ Fault Tolerance and Recovery Provided by Ray Tune
 Ray Tune provides fault tolerance and recovery at the experiment trial level.
 
 When using Ray Tune with RLlib, you can enable
-:ref:`periodic checkpointing <rllib-saving-and-loading-algos-and-policies-docs>`,
+:ref:`periodic checkpointing <rllib-checkpoints-docs>`,
 which saves the state of the experiment to a user-specified persistent storage location.
 If a trial fails, Ray Tune will automatically restart it from the latest
 :ref:`checkpointed <tune-fault-tol>` state.

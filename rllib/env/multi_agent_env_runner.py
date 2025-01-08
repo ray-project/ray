@@ -1,12 +1,13 @@
 from collections import defaultdict
 from functools import partial
 import logging
+import time
 from typing import Collection, DefaultDict, Dict, List, Optional, Union
 
 import gymnasium as gym
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
@@ -19,6 +20,7 @@ from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
@@ -39,6 +41,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -68,7 +71,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         super().__init__(config=config)
 
         # Raise an Error, if the provided config is not a multi-agent one.
-        if not self.config.is_multi_agent():
+        if not self.config.is_multi_agent:
             raise ValueError(
                 f"Cannot use this EnvRunner class ({type(self).__name__}), if your "
                 "setup is not multi-agent! Try adding multi-agent information to your "
@@ -85,7 +88,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._setup_metrics()
 
         # Create our callbacks object.
-        self._callbacks: DefaultCallbacks = self.config.callbacks_class()
+        self._callbacks = [cls() for cls in force_list(self.config.callbacks_class)]
 
         # Set device.
         self._device = get_device(
@@ -127,6 +130,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         self._weights_seq_no: int = 0
 
+        # Measures the time passed between returning from `sample()`
+        # and receiving the next `sample()` request from the user.
+        self._time_after_sampling = None
+
     @override(EnvRunner)
     def sample(
         self,
@@ -163,6 +170,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
+        # Log time between `sample()` requests.
+        if self._time_after_sampling is not None:
+            self.metrics.log_value(
+                key=TIME_BETWEEN_SAMPLING,
+                value=time.perf_counter() - self._time_after_sampling,
+            )
+
         # If no execution details are provided, use the config to try to infer the
         # desired timesteps/episodes to sample and the exploration behavior.
         if explore is None:
@@ -192,11 +206,18 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             )
 
         # Make the `on_sample_end` callback.
-        self._callbacks.on_sample_end(
-            env_runner=self,
-            metrics_logger=self.metrics,
-            samples=samples,
+        make_callback(
+            "on_sample_end",
+            callbacks_objects=self._callbacks,
+            callbacks_functions=self.config.callbacks_on_sample_end,
+            kwargs=dict(
+                env_runner=self,
+                metrics_logger=self.metrics,
+                samples=samples,
+            ),
         )
+
+        self._time_after_sampling = time.perf_counter()
 
         return samples
 
@@ -696,7 +717,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
-            "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
         }
 
         # RLModule (MultiRLModule) component.
@@ -752,12 +772,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 reduce="sum",
                 with_throughput=True,
-            )
-
-        # Update `agent_to_module_mapping_fn`.
-        if "agent_to_module_mapping_fn" in state:
-            self.config.multi_agent(
-                policy_mapping_fn=state["agent_to_module_mapping_fn"]
             )
 
     @override(Checkpointable)
@@ -869,11 +883,16 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._needs_initial_reset = True
 
         # Call the `on_environment_created` callback.
-        self._callbacks.on_environment_created(
-            env_runner=self,
-            metrics_logger=self.metrics,
-            env=self.env.unwrapped,
-            env_context=env_ctx,
+        make_callback(
+            "on_environment_created",
+            callbacks_objects=self._callbacks,
+            callbacks_functions=self.config.callbacks_on_environment_created,
+            kwargs=dict(
+                env_runner=self,
+                metrics_logger=self.metrics,
+                env=self.env.unwrapped,
+                env_context=env_ctx,
+            ),
         )
 
     @override(EnvRunner)
@@ -930,13 +949,18 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     def _make_on_episode_callback(self, which: str, episode=None):
         episode = episode if episode is not None else self._episode
-        getattr(self._callbacks, which)(
-            episode=episode,
-            env_runner=self,
-            metrics_logger=self.metrics,
-            env=self.env.unwrapped,
-            rl_module=self.module,
-            env_index=0,
+        make_callback(
+            which,
+            callbacks_objects=self._callbacks,
+            callbacks_functions=getattr(self.config, f"callbacks_{which}"),
+            kwargs=dict(
+                episode=episode,
+                env_runner=self,
+                metrics_logger=self.metrics,
+                env=self.env.unwrapped,
+                rl_module=self.module,
+                env_index=0,
+            ),
         )
 
     def _increase_sampled_metrics(self, num_steps, next_obs, episode):

@@ -4,12 +4,12 @@ import re
 
 import numpy as np
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 
-class SelfPlayLeagueBasedCallback(DefaultCallbacks):
+class SelfPlayLeagueBasedCallback(RLlibCallback):
     def __init__(self, win_rate_threshold):
         super().__init__()
         # All policies in the league.
@@ -215,7 +215,7 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                         }
                     )
 
-                algorithm.env_runner_group.foreach_worker(
+                algorithm.env_runner_group.foreach_env_runner(
                     lambda env_runner: env_runner.config.multi_agent(
                         policy_mapping_fn=agent_to_module_mapping_fn,
                         # This setting doesn't really matter for EnvRunners (no

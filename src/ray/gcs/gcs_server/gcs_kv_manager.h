@@ -47,7 +47,7 @@ class InternalKVInterface {
   virtual void MultiGet(
       const std::string &ns,
       const std::vector<std::string> &keys,
-      std::function<void(std::unordered_map<std::string, std::string>)> callback) = 0;
+      std::function<void(absl::flat_hash_map<std::string, std::string>)> callback) = 0;
 
   /// Associate a key with the specified value.
   ///
@@ -60,7 +60,7 @@ class InternalKVInterface {
   /// Overwritten return false.
   virtual void Put(const std::string &ns,
                    const std::string &key,
-                   const std::string &value,
+                   std::string value,
                    bool overwrite,
                    std::function<void(bool)> callback) = 0;
 
