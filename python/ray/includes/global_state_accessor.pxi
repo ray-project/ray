@@ -124,6 +124,17 @@ cdef class GlobalStateAccessor:
 
         return results
 
+    def get_internal_kv(self, namespace, key):
+        cdef:
+            c_string c_namespace = namespace
+            c_string c_key = key
+            unique_ptr[c_string] result
+        with nogil:
+            result = self.inner.get().GetInternalKV(c_namespace, c_key)
+        if result:
+            return c_string(result.get().data(), result.get().size())
+        return None
+
     def get_all_available_resources(self):
         cdef c_vector[c_string] result
         with nogil:

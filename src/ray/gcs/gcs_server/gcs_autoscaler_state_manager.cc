@@ -27,12 +27,14 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     GcsNodeManager &gcs_node_manager,
     GcsActorManager &gcs_actor_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager,
-    rpc::NodeManagerClientPool &raylet_client_pool)
+    rpc::NodeManagerClientPool &raylet_client_pool,
+    InternalKVInterface &kv)
     : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
       gcs_actor_manager_(gcs_actor_manager),
       gcs_placement_group_manager_(gcs_placement_group_manager),
-      raylet_client_pool_(raylet_client_pool) {}
+      raylet_client_pool_(raylet_client_pool),
+      kv_(kv) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -94,6 +96,21 @@ void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
   // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
   // having to parse the gcs status code embedded.
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+}
+
+void GcsAutoscalerStateManager::HandleReportClusterConfig(
+    rpc::autoscaler::ReportClusterConfigRequest request,
+    rpc::autoscaler::ReportClusterConfigReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+  // Save to kv for persistency in case of GCS FT.
+  kv_.Put(kGcsAutoscalerStateNamespace,
+          kGcsAutoscalerClusterConfigKey,
+          request.cluster_config().SerializeAsString(),
+          /*overwrite=*/true,
+          [send_reply_callback = std::move(send_reply_callback)](bool added) {
+            send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+          });
 }
 
 void GcsAutoscalerStateManager::HandleGetClusterStatus(

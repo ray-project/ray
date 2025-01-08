@@ -984,6 +984,9 @@ class AutoscalerStateAccessor {
   virtual Status ReportAutoscalingState(int64_t timeout_ms,
                                         const std::string &serialized_state);
 
+  virtual Status ReportClusterConfig(int64_t timeout_ms,
+                                     const std::string &serialized_cluster_config);
+
   virtual Status DrainNode(const std::string &node_id,
                            int32_t reason,
                            const std::string &reason_message,

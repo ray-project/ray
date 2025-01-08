@@ -559,6 +559,11 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const c_string &serialized_state
         )
 
+        CRayStatus ReportClusterConfig(
+            int64_t timeout_ms,
+            const c_string &serialized_cluster_config
+        )
+
         CRayStatus DrainNode(
             const c_string &node_id,
             int32_t reason,
@@ -738,3 +743,6 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef int kResourceUnitScaling
     cdef const char[] kImplicitResourcePrefix
     cdef int kStreamingGeneratorReturn
+    cdef const char[] kGcsAutoscalerStateNamespace
+    cdef const char[] kGcsAutoscalerV2EnabledKey
+    cdef const char[] kGcsAutoscalerClusterConfigKey
