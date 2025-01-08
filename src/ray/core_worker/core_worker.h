@@ -23,6 +23,7 @@
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/placement_group.h"
+#include "ray/common/status_or.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/common.h"

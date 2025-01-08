@@ -3412,12 +3412,12 @@ void CoreWorker::TryDeleteObjectRefStreams() {
 
 Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
                                           rpc::ObjectReference *object_ref_out) {
-  ObjectID object_id;
-  const auto &status = task_manager_->TryReadObjectRefStream(generator_id, &object_id);
+  RAY_ASSIGN_OR_RETURN(ObjectID object_id,
+                       task_manager_->TryReadObjectRefStream(generator_id));
   RAY_CHECK(object_ref_out != nullptr);
   object_ref_out->set_object_id(object_id.Binary());
   object_ref_out->mutable_owner_address()->CopyFrom(rpc_address_);
-  return status;
+  return Status::OK();
 }
 
 bool CoreWorker::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {

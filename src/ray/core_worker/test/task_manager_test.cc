@@ -21,6 +21,7 @@
 #include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
+#include "ray/common/test/testing.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -1368,16 +1369,15 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
     ASSERT_EQ(obj_id, dynamic_return_ids[0]);
   }
 
-  ObjectID obj_id;
   for (auto i = 0; i < last_idx; i++) {
     // READ * 2
-    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-    ASSERT_TRUE(status.ok());
-    ASSERT_EQ(obj_id, dynamic_return_ids[i]);
+    auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+    RAY_ASSERT_OK(obj_id);
+    ASSERT_EQ(*obj_id, dynamic_return_ids[i]);
   }
   // READ (EoF)
-  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefEndOfStream());
+  auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+  ASSERT_TRUE(obj_id.status().IsObjectRefEndOfStream());
   // DELETE
   manager_.TryDelObjectRefStream(generator_id);
 }
@@ -1418,10 +1418,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCancellation) {
 
   // Read first object.
   {
-    ObjectID obj_id;
-    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-    ASSERT_TRUE(status.ok());
-    ASSERT_EQ(obj_id, dynamic_return_ids[0]);
+    auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+    RAY_ASSERT_OK(obj_id);
+    ASSERT_EQ(*obj_id, dynamic_return_ids[0]);
   }
 
   manager_.MarkTaskCanceled(spec.TaskId());
@@ -1431,10 +1430,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCancellation) {
   // Next object should return EOS error, even though we have a value stored
   // for the object.
   {
-    ObjectID obj_id;
-    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-    ASSERT_TRUE(status.IsObjectRefEndOfStream());
-    ASSERT_EQ(obj_id, dynamic_return_ids[1]);
+    auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+    ASSERT_TRUE(obj_id.status().IsObjectRefEndOfStream());
+    ASSERT_EQ(*obj_id, dynamic_return_ids[1]);
   }
 
   manager_.TryDelObjectRefStream(generator_id);
@@ -1477,11 +1475,10 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCancellationOutOfOrderReports) {
 
   // Read first object.
   {
-    ObjectID obj_id;
     int64_t idx_expected = 0;
-    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-    ASSERT_TRUE(status.ok());
-    ASSERT_EQ(obj_id, ObjectID::FromIndex(spec.TaskId(), idx_expected + 2));
+    auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+    RAY_ASSERT_OK(obj_id);
+    ASSERT_EQ(*obj_id, ObjectID::FromIndex(spec.TaskId(), idx_expected + 2));
   }
 
   manager_.MarkTaskCanceled(spec.TaskId());
@@ -1491,11 +1488,10 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCancellationOutOfOrderReports) {
   // Next object should return EOS error instead of blocking the caller to wait
   // for the index to be reported.
   {
-    ObjectID obj_id;
     int64_t idx_expected = 1;
-    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-    ASSERT_TRUE(status.IsObjectRefEndOfStream());
-    ASSERT_EQ(obj_id, ObjectID::FromIndex(spec.TaskId(), idx_expected + 2));
+    auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+    ASSERT_TRUE(obj_id.status().IsObjectRefEndOfStream());
+    ASSERT_EQ(*obj_id, ObjectID::FromIndex(spec.TaskId(), idx_expected + 2));
   }
 
   manager_.TryDelObjectRefStream(generator_id);
@@ -1564,18 +1560,16 @@ TEST_F(TaskManagerTest, TestObjectRefStreamMixture) {
     ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
         req, /*execution_signal_callback*/ [](Status, int64_t) {}));
     // READ
-    ObjectID obj_id;
-    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-    ASSERT_TRUE(status.ok());
-    ASSERT_EQ(obj_id, dynamic_return_ids[i]);
+    auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+    RAY_ASSERT_OK(obj_id);
+    ASSERT_EQ(*obj_id, dynamic_return_ids[i]);
   }
   // WRITEEoF
   CompletePendingStreamingTask(spec, caller_address, 2);
 
-  ObjectID obj_id;
   // READ (EoF)
-  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefEndOfStream());
+  auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+  ASSERT_TRUE(obj_id.status().IsObjectRefEndOfStream());
   // DELETE
   manager_.TryDelObjectRefStream(generator_id);
 }
@@ -1605,10 +1599,9 @@ TEST_F(TaskManagerTest, TestObjectRefEndOfStream) {
       req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   CompletePendingStreamingTask(spec, caller_address, 1);
   // READ (works)
-  ObjectID obj_id;
-  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(obj_id, dynamic_return_id);
+  auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+  RAY_ASSERT_OK(obj_id);
+  ASSERT_EQ(*obj_id, dynamic_return_id);
 
   // WRITE
   dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
@@ -1623,8 +1616,8 @@ TEST_F(TaskManagerTest, TestObjectRefEndOfStream) {
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
       req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   // READ (doesn't works because EoF is already written)
-  status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefEndOfStream());
+  obj_id = manager_.TryReadObjectRefStream(generator_id);
+  ASSERT_TRUE(obj_id.status().IsObjectRefEndOfStream());
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamIndexDiscarded) {
@@ -1651,10 +1644,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamIndexDiscarded) {
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   // READ
-  ObjectID obj_id;
-  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(obj_id, dynamic_return_id);
+  auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+  RAY_ASSERT_OK(obj_id);
+  ASSERT_EQ(*obj_id, dynamic_return_id);
 
   // WRITE to the first index again.
   dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
@@ -1669,9 +1661,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamIndexDiscarded) {
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
       req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   // READ (New write will be ignored).
-  status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(obj_id, ObjectID::Nil());
+  obj_id = manager_.TryReadObjectRefStream(generator_id);
+  RAY_ASSERT_OK(obj_id);
+  ASSERT_EQ(*obj_id, ObjectID::Nil());
   CompletePendingStreamingTask(spec, caller_address, 1);
 }
 
@@ -1687,10 +1679,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamReadIgnoredWhenNothingWritten) {
   manager_.AddPendingTask(caller_address, spec, "", 0);
 
   // READ (no-op)
-  ObjectID obj_id;
-  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(obj_id, ObjectID::Nil());
+  auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+  RAY_ASSERT_OK(obj_id);
+  ASSERT_EQ(*obj_id, ObjectID::Nil());
 
   // WRITE
   auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
@@ -1705,14 +1696,14 @@ TEST_F(TaskManagerTest, TestObjectRefStreamReadIgnoredWhenNothingWritten) {
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
       req, /*execution_signal_callback*/ [](Status, int64_t) {}));
   // READ (works this time)
-  status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(obj_id, dynamic_return_id);
+  obj_id = manager_.TryReadObjectRefStream(generator_id);
+  RAY_ASSERT_OK(obj_id);
+  ASSERT_EQ(*obj_id, dynamic_return_id);
 
   // READ (nothing should return)
-  status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(obj_id, ObjectID::Nil());
+  obj_id = manager_.TryReadObjectRefStream(generator_id);
+  RAY_ASSERT_OK(obj_id);
+  ASSERT_EQ(*obj_id, ObjectID::Nil());
   CompletePendingStreamingTask(spec, caller_address, 1);
 }
 
@@ -1753,10 +1744,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
   ASSERT_EQ(results.size(), 1);
 
   // Make sure you can read.
-  ObjectID obj_id;
-  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(obj_id, dynamic_return_id);
+  auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+  RAY_ASSERT_OK(obj_id);
+  ASSERT_EQ(*obj_id, dynamic_return_id);
 
   // Finish the task.
   CompletePendingStreamingTask(spec, caller_address, 2);
@@ -1782,13 +1772,13 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
   ASSERT_EQ(results.size(), 1);
 
   // Make sure you can read.
-  status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(obj_id, dynamic_return_id2);
+  obj_id = manager_.TryReadObjectRefStream(generator_id);
+  RAY_ASSERT_OK(obj_id);
+  ASSERT_EQ(*obj_id, dynamic_return_id2);
 
   // Nothing more to read.
-  status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefEndOfStream());
+  obj_id = manager_.TryReadObjectRefStream(generator_id);
+  ASSERT_TRUE(obj_id.status().IsObjectRefEndOfStream());
 
   manager_.TryDelObjectRefStream(generator_id);
 }
@@ -1947,10 +1937,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageInScope) {
   results.clear();
 
   // Consume one ref.
-  ObjectID obj_id;
-  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(obj_id, dynamic_return_id);
+  auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+  RAY_ASSERT_OK(obj_id);
+  ASSERT_EQ(*obj_id, dynamic_return_id);
 
   // Write one ref that will stay unconsumed.
   RAY_CHECK_OK(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results));
@@ -2044,10 +2033,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferencesLineageBeforeTaskCo
   ASSERT_EQ(store_->Size(), 1);
 
   // Consume one ref.
-  ObjectID obj_id;
-  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.ok());
-  ASSERT_EQ(obj_id, dynamic_return_id);
+  auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+  RAY_ASSERT_OK(obj_id);
+  ASSERT_EQ(*obj_id, dynamic_return_id);
 
   // Clear consumers' references.
   reference_counter_->RemoveLocalReference(generator_id, nullptr);
@@ -2093,18 +2081,17 @@ TEST_F(TaskManagerTest, TestObjectRefStreamOutofOrder) {
   }
 
   // Verify read works.
-  ObjectID obj_id;
   for (auto i = 0; i < last_idx; i++) {
-    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-    ASSERT_TRUE(status.ok());
-    ASSERT_EQ(obj_id, dynamic_return_ids[i]);
-    reference_counter_->RemoveLocalReference(obj_id, nullptr);
+    auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+    RAY_ASSERT_OK(obj_id);
+    ASSERT_EQ(*obj_id, dynamic_return_ids[i]);
+    reference_counter_->RemoveLocalReference(*obj_id, nullptr);
   }
   reference_counter_->RemoveLocalReference(generator_id, nullptr);
 
   // READ (EoF)
-  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefEndOfStream());
+  auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+  ASSERT_TRUE(obj_id.status().IsObjectRefEndOfStream());
   ASSERT_TRUE(manager_.TryDelObjectRefStream(generator_id));
 }
 
@@ -2230,9 +2217,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
 
   // READ 0 -> READ 1
   for (auto i = 0; i < 2; i++) {
-    ObjectID object_id;
-    auto status = manager_.TryReadObjectRefStream(generator_id, &object_id);
-    ASSERT_TRUE(status.ok());
+    auto obj_id = manager_.TryReadObjectRefStream(generator_id);
+    RAY_ASSERT_OK(obj_id);
   }
 
   std::vector<ObjectID> removed;
@@ -2290,7 +2276,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
       /*execution_signal_callback*/ [&signal_called](Status status,
                                                      int64_t num_objects_consumed) {
         signal_called = true;
-        ASSERT_TRUE(status.ok());
+        RAY_ASSERT_OK(status);
         ASSERT_EQ(num_objects_consumed, 0);
       }));
   ASSERT_TRUE(signal_called);
@@ -2311,16 +2297,15 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
       /*execution_signal_callback*/ [&signal_called](Status status,
                                                      int64_t num_objects_consumed) {
         signal_called = true;
-        ASSERT_TRUE(status.ok());
+        RAY_ASSERT_OK(status);
         ASSERT_EQ(num_objects_consumed, 1);
       }));
   ASSERT_FALSE(signal_called);
 
-  ObjectID obj_id;
   // Read should signal the executor.
-  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  auto obj_id = manager_.TryReadObjectRefStream(generator_id);
   ASSERT_TRUE(signal_called);
-  reference_counter_->RemoveLocalReference(obj_id, nullptr);
+  reference_counter_->RemoveLocalReference(*obj_id, nullptr);
 
   /// 3 generate, 1 consumed, 2 threshold -> backpressured
   dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 4);
@@ -2380,7 +2365,7 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
       /*execution_signal_callback*/ [&signal_called](Status status,
                                                      int64_t num_objects_consumed) {
         signal_called = true;
-        ASSERT_TRUE(status.ok());
+        RAY_ASSERT_OK(status);
         ASSERT_EQ(num_objects_consumed, 0);
       }));
   ASSERT_TRUE(signal_called);
@@ -2401,7 +2386,7 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
       /*execution_signal_callback*/ [&signal_called](Status status,
                                                      int64_t num_objects_consumed) {
         signal_called = true;
-        ASSERT_TRUE(status.ok());
+        RAY_ASSERT_OK(status);
         ASSERT_EQ(num_objects_consumed, 1);
       }));
   ASSERT_FALSE(signal_called);
@@ -2427,7 +2412,7 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
       /*execution_signal_callback*/ [&retry_signal_called](Status status,
                                                            int64_t num_objects_consumed) {
         retry_signal_called = true;
-        ASSERT_TRUE(status.ok());
+        RAY_ASSERT_OK(status);
         ASSERT_EQ(num_objects_consumed, 0);
       }));
   ASSERT_TRUE(retry_signal_called);
@@ -2448,15 +2433,14 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
       /*execution_signal_callback*/ [&retry_signal_called](Status status,
                                                            int64_t num_objects_consumed) {
         retry_signal_called = true;
-        ASSERT_TRUE(status.ok());
+        RAY_ASSERT_OK(status);
         ASSERT_EQ(num_objects_consumed, 1);
       }));
   // Backpressured.
   ASSERT_FALSE(retry_signal_called);
 
-  ObjectID obj_id;
   // Read should signal both executor.
-  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  auto obj_id = manager_.TryReadObjectRefStream(generator_id);
   ASSERT_TRUE(signal_called);
   ASSERT_TRUE(retry_signal_called);
   CompletePendingStreamingTask(spec, caller_address, 2);

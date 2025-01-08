@@ -94,22 +94,22 @@ bool ObjectRefStream::IsObjectConsumed(int64_t item_index) const {
   return item_index < next_index_;
 }
 
-Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
-  *object_id_out = GetObjectRefAtIndex(next_index_);
+StatusOr<ObjectID> ObjectRefStream::TryReadNextItem() {
+  ObjectID obj_id = GetObjectRefAtIndex(next_index_);
   if (IsFinished()) {
     // next_index_ cannot be bigger than end_of_stream_index_.
-    RAY_CHECK(next_index_ == end_of_stream_index_);
+    RAY_CHECK_EQ(next_index_, end_of_stream_index_);
     RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
                    << " has no more objects.";
     return Status::ObjectRefEndOfStream("");
   }
 
-  auto it = refs_written_to_stream_.find(*object_id_out);
+  auto it = refs_written_to_stream_.find(obj_id);
   if (it != refs_written_to_stream_.end()) {
     total_num_object_consumed_ += 1;
     next_index_ += 1;
-    RAY_LOG_EVERY_MS(DEBUG, 10000) << "Get the next object id " << *object_id_out
-                                   << " generator id: " << generator_id_;
+    RAY_LOG_EVERY_MS(DEBUG, 10000)
+        << "Get the next object id " << obj_id << " generator id: " << generator_id_;
   } else {
     // If the current index hasn't been written, return nothing.
     // The caller is supposed to retry.
@@ -117,9 +117,9 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
         << "Object not available. Current index: " << next_index_
         << " end_of_stream_index_: " << end_of_stream_index_
         << " generator id: " << generator_id_;
-    *object_id_out = ObjectID::Nil();
+    obj_id = ObjectID::Nil();
   }
-  return Status::OK();
+  return obj_id;
 }
 
 bool ObjectRefStream::IsFinished() const {
@@ -509,8 +509,7 @@ bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
   return true;
 }
 
-Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
-                                           ObjectID *object_id_out) {
+StatusOr<ObjectID> TaskManager::TryReadObjectRefStream(const ObjectID &generator_id) {
   auto backpressure_threshold = 0;
   {
     absl::MutexLock lock(&mu_);
@@ -521,36 +520,32 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
   }
 
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  RAY_CHECK(object_id_out != nullptr);
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
       << "TryReadObjectRefStream API can be used only when the stream has been "
          "created "
          "and not removed.";
-  auto status = stream_it->second.TryReadNextItem(object_id_out);
+  RAY_ASSIGN_OR_RETURN(auto object_id, stream_it->second.TryReadNextItem());
 
   /// If you could read the next item, signal the executor to resume
   /// if necessary.
-  if (status.ok()) {
-    auto total_generated = stream_it->second.TotalNumObjectWritten();
-    auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-    auto total_unconsumed = total_generated - total_consumed;
-    if (backpressure_threshold != -1 && total_unconsumed < backpressure_threshold) {
-      auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
-      if (it != ref_stream_execution_signal_callbacks_.end()) {
-        for (const auto &execution_signal : it->second) {
-          RAY_LOG(DEBUG) << "The task for a stream " << generator_id
-                         << " should resume. total_generated: " << total_generated
-                         << ". total_consumed: " << total_consumed
-                         << ". threshold: " << backpressure_threshold;
-          execution_signal(Status::OK(), total_consumed);
-        }
-        it->second.clear();
+  auto total_generated = stream_it->second.TotalNumObjectWritten();
+  auto total_consumed = stream_it->second.TotalNumObjectConsumed();
+  auto total_unconsumed = total_generated - total_consumed;
+  if (backpressure_threshold != -1 && total_unconsumed < backpressure_threshold) {
+    auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
+    if (it != ref_stream_execution_signal_callbacks_.end()) {
+      for (const auto &execution_signal : it->second) {
+        RAY_LOG(DEBUG) << "The task for a stream " << generator_id
+                       << " should resume. total_generated: " << total_generated
+                       << ". total_consumed: " << total_consumed
+                       << ". threshold: " << backpressure_threshold;
+        execution_signal(Status::OK(), total_consumed);
       }
+      it->second.clear();
     }
   }
-
-  return status;
+  return object_id;
 }
 
 bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {

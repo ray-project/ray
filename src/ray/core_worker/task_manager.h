@@ -20,6 +20,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/common/status_or.h"
 #include "ray/common/task/task.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
@@ -109,10 +110,9 @@ class ObjectRefStream {
 
   /// Asynchronously read object reference of the next index.
   ///
-  /// \param[out] object_id_out The next object ID from the stream.
+  /// \return KeyError if it reaches to EoF, otherwise the next object ID from the stream.
   /// Nil ID is returned if the next index hasn't been written.
-  /// \return KeyError if it reaches to EoF. Ok otherwise.
-  Status TryReadNextItem(ObjectID *object_id_out);
+  StatusOr<ObjectID> TryReadNextItem();
 
   /// Return True if there's no more object to read. False otherwise.
   bool IsFinished() const;
@@ -438,10 +438,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// If it is called after the stream hasn't been created or deleted
   /// it will panic.
   ///
-  /// \param[out] object_id_out The next object ID from the stream.
-  /// Nil ID is returned if the next index hasn't been written.
-  /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
-  Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out)
+  /// \return ObjectRefEndOfStream if it reaches to EoF, otherwise the next object ID from
+  /// the stream. Nil ID is returned if the next index hasn't been written.
+  StatusOr<ObjectID> TryReadObjectRefStream(const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Returns true if there are no more objects to read from the streaming

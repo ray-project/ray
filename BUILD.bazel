@@ -785,6 +785,7 @@ ray_cc_library(
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
         "//src/ray/util",
+        "//src/ray/common:status_or",
         "@boost//:circular_buffer",
         "@boost//:fiber",
         "@com_google_absl//absl/cleanup",
@@ -969,6 +970,7 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":ray_mock",
+        "//src/ray/common/test:testing",
         "@com_google_googletest//:gtest_main",
     ],
 )
