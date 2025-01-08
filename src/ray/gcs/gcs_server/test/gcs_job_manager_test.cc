@@ -32,12 +32,6 @@
 
 namespace ray {
 
-class MockInMemoryStoreClient : public gcs::InMemoryStoreClient {
- public:
-  explicit MockInMemoryStoreClient(instrumented_io_context &main_io_service)
-      : gcs::InMemoryStoreClient(main_io_service) {}
-};
-
 class GcsJobManagerTest : public ::testing::Test {
  public:
   GcsJobManagerTest() : runtime_env_manager_(nullptr) {
@@ -52,8 +46,9 @@ class GcsJobManagerTest : public ::testing::Test {
 
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    store_client_ = std::make_shared<MockInMemoryStoreClient>(io_service_);
-    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
+    store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
+    gcs_table_storage_ =
+        std::make_shared<gcs::GcsTableStorage>(store_client_, io_service_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
@@ -94,7 +89,7 @@ TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
 
   fake_kv_->MultiGet("ns",
                      {"key", "key2"},
-                     [](const std::unordered_map<std::string, std::string> &result) {
+                     [](const absl::flat_hash_map<std::string, std::string> &result) {
                        ASSERT_EQ(result.size(), 2);
                        ASSERT_EQ(result.at("key"), "value");
                        ASSERT_EQ(result.at("key2"), "value2");

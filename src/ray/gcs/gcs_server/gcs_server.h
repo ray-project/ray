@@ -18,6 +18,7 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/postable.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
@@ -204,7 +205,7 @@ class GcsServer {
   /// Get cluster id if persisted, otherwise generate
   /// a new one and persist as necessary.
   /// Expected to be idempotent while server is up.
-  void GetOrGenerateClusterId(std::function<void(ClusterID cluster_id)> &&continuation);
+  void GetOrGenerateClusterId(Postable<void(ClusterID cluster_id)> continuation);
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
@@ -246,7 +247,7 @@ class GcsServer {
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
-  std::unique_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
+  std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The gcs redis failure detector.
   std::unique_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs placement group manager.

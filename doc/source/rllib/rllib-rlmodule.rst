@@ -59,7 +59,7 @@ If your config is set to the old API stack, use the
     )
 
 
-.. _rllib_default_rl_modules_docs:
+.. _rllib-default-rl-modules-docs:
 
 Default RLModules
 -----------------
@@ -211,9 +211,10 @@ The most direct way to construct your :py:class:`~ray.rllib.core.rl_module.rl_mo
 
 
 .. note::
-    If you have a checkpoint from an `py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or an individual
+    If you have a checkpoint of an `py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or an individual
     :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`,
-    see :ref:`Checkpointing RLModules <rllib-checkpointing-rl-modules-docs>` for how to create the stored RLModule instance from disk.
+    see :ref:`Creating instances with from_checkpoint <rllib-checkpoints-from-checkpoint>` for how to recreate your
+    :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` from disk.
 
 
 Construction through RLModuleSpecs
@@ -611,8 +612,8 @@ End-to-end example
 Putting together the elements of your custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` that you implemented,
 a working end-to-end example is as follows:
 
-.. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_rlm.py
-        :language: python
+.. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_torch_rlm.py
+    :language: python
 
 
 .. _rllib-rl-module-w-custom-action-dists:
@@ -715,7 +716,7 @@ model hyper-parameters:
     would take turns updating the same shared encoder, which would lead to learning instabilities.
 
 
-.. _rllib-checkpointing-rl-modules-docs:
+.. _rllib-checkpoints-rl-modules-docs:
 
 Checkpointing RLModules
 -----------------------
