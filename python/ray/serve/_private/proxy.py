@@ -33,8 +33,8 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
-    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
+    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_PROXY_GC_THRESHOLD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
@@ -1531,6 +1531,7 @@ def _determine_target_loop():
         return "asyncio"
     else:
         return "uvloop"
+
 
 def _configure_gc_options():
     if not RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS:

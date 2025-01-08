@@ -379,6 +379,6 @@ RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = (
 )
 
 # Used for gc.set_threshold() when proxy GC optimizations are enabled.
-RAY_SERVE_PROXY_GC_THRESHOLD = (
-    int(os.environ.get("RAY_SERVE_PROXY_GC_THRESHOLD", "10000"))
+RAY_SERVE_PROXY_GC_THRESHOLD = int(
+    os.environ.get("RAY_SERVE_PROXY_GC_THRESHOLD", "10000")
 )
