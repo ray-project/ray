@@ -81,9 +81,9 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
     std::string full_key = ns + key;
     auto it = kv_store_.find(full_key);
     if (it == kv_store_.end()) {
-      callback(std::nullopt);
+      std::move(callback).Post("FakeInternalKVInterface.Get.notfound", std::nullopt);
     } else {
-      callback(it->second);
+      std::move(callback).Post("FakeInternalKVInterface.Get.found", it->second);
     }
   }
 
@@ -99,7 +99,7 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
         result[key] = it->second;
       }
     }
-    callback(result);
+    std::move(callback).Post("FakeInternalKVInterface.MultiGet.result", result);
   }
 
   void Put(const std::string &ns,
@@ -109,10 +109,10 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
            Postable<void(bool)> callback) override {
     std::string full_key = ns + key;
     if (kv_store_.find(full_key) != kv_store_.end() && !overwrite) {
-      std::move(callback).Post(false);
+      std::move(callback).Post("FakeInternalKVInterface.Put.false", false);
     } else {
       kv_store_[full_key] = value;
-      std::move(callback).Post(true);
+      std::move(callback).Post("FakeInternalKVInterface.Put.true", true);
     }
   }
 

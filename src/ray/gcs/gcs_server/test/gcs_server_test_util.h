@@ -410,15 +410,14 @@ struct GcsServerMocker {
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:
     // The store_client and io_context args are NOT used.
-    MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client,
-                        instrumented_io_context &io_context)
-        : GcsActorTable(store_client, io_context) {}
+    MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
+        : GcsActorTable(store_client) {}
 
     Status Put(const ActorID &key,
                const rpc::ActorTableData &value,
                Postable<void(Status)> callback) override {
       auto status = Status::OK();
-      std::move(callback).Post(status);
+      std::move(callback).Post("FakeGcsActorTable.Put", status);
       return status;
     }
 

@@ -145,7 +145,7 @@ class GcsActorManagerTest : public ::testing::Test {
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
-    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
+    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
     auto scheduler = std::make_unique<MockActorScheduler>();
     mock_actor_scheduler_ = scheduler.get();
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(

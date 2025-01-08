@@ -706,6 +706,7 @@ void GcsActorManager::HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
 
 Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &request,
                                       RegisterActorCallback register_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
   // the GCS server is restarted, it is required to continue to register actor
   // successfully.
@@ -796,6 +797,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
              actor->GetActorID(),
              *actor->GetMutableActorTableData(),
              {[this, actor, register_callback](Status status) {
+                RAY_CHECK(thread_checker_.IsOnSameThread());
                 // The backend storage is supposed to be reliable, so the status must be
                 // ok.
                 RAY_CHECK_OK(status);
@@ -1023,6 +1025,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
                                    const rpc::ActorDeathCause &death_cause,
                                    bool force_kill,
                                    std::function<void()> done_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id) << "Destroying actor";
   actor_to_register_callbacks_.erase(actor_id);
   actor_to_restart_callbacks_.erase(actor_id);
@@ -1679,6 +1682,7 @@ const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>
 
 const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
     &GcsActorManager::GetActorRegisterCallbacks() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   return actor_to_register_callbacks_;
 }
 
