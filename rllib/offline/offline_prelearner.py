@@ -226,7 +226,7 @@ class OfflinePreLearner:
             )["episodes"]
 
         # TODO (simon): Make synching work. Right now this becomes blocking or never
-        # receives weights. Learners appear to be non accessable via other actors.
+        #  receives weights. Learners appear to be non accessi ble via other actors.
         # Increase the counter for updating the module.
         # self.iter_since_last_module_update += 1
 
@@ -258,6 +258,9 @@ class OfflinePreLearner:
             batch={},
             episodes=episodes,
             shared_data={},
+            # TODO (sven): Add MetricsLogger to non-Learner components that have a
+            #  LearnerConnector pipeline.
+            metrics=None,
         )
         # Convert to `MultiAgentBatch`.
         batch = MultiAgentBatch(

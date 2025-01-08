@@ -298,6 +298,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=[self._episode],
                     explore=explore,
                     shared_data=self._shared_data,
+                    metrics=self.metrics,
                 )
                 self._cached_to_module = None
 
@@ -320,6 +321,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=[self._episode],
                     explore=explore,
                     shared_data=self._shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -389,6 +391,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         explore=explore,
                         rl_module=self.module,
                         shared_data=self._shared_data,
+                        metrics=self.metrics,
                     )
 
                 # Make the `on_episode_end` callback (before finalizing the episode,
@@ -421,6 +424,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 episodes=[self._episode],
                 explore=explore,
                 shared_data=self._shared_data,
+                metrics=self.metrics,
             )
 
         # Store done episodes for metrics.
@@ -502,6 +506,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=[_episode],
                     explore=explore,
                     shared_data=_shared_data,
+                    metrics=self.metrics,
                 )
 
                 # MultiRLModule forward pass: Explore or not.
@@ -523,6 +528,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=[_episode],
                     explore=explore,
                     shared_data=_shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -600,6 +606,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         explore=explore,
                         rl_module=self.module,
                         shared_data=_shared_data,
+                        metrics=self.metrics,
                     )
 
                 # Make the `on_episode_end` callback (before finalizing the episode,

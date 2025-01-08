@@ -32,19 +32,7 @@ print(f"data_path={data_path}")
 # Define the BC config.
 config = (
     BCConfig()
-    .environment(
-        env="CartPole-v1",
-    )
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
-    .evaluation(
-        evaluation_interval=3,
-        evaluation_num_env_runners=1,
-        evaluation_duration=5,
-        evaluation_parallel_to_training=True,
-    )
+    .environment("CartPole-v1")
     # Note, the `input_` argument is the major argument for the
     # new offline API. Via the `input_read_method_kwargs` the
     # arguments for the `ray.data.Dataset` read method can be
@@ -75,6 +63,12 @@ config = (
         model_config=DefaultModelConfig(
             fcnet_hiddens=[256, 256],
         ),
+    )
+    .evaluation(
+        evaluation_interval=3,
+        evaluation_num_env_runners=1,
+        evaluation_duration=5,
+        evaluation_parallel_to_training=True,
     )
 )
 
