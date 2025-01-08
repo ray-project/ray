@@ -321,10 +321,10 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
       RAY_CHECK(serialized_runtime_env_.empty());
       RAY_CHECK(runtime_env_ == nullptr);
       if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
-        serialized_runtime_env_ = serialized_runtime_env;
         runtime_env_ = std::make_shared<nlohmann::json>();
         *runtime_env_ = nlohmann::json::parse(serialized_runtime_env);
       }
+      serialized_runtime_env_ = serialized_runtime_env;
       return;
     }
 
