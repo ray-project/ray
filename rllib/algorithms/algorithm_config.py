@@ -3917,18 +3917,11 @@ class AlgorithmConfig(_Config):
         asking the user to set rollout_fragment_length to `auto` or to a matching
         value.
 
-        Also, only checks this if `train_batch_size` > 0 (DDPPO sets this
-        to -1 to auto-calculate the actual batch size later).
-
         Raises:
             ValueError: If there is a mismatch between user provided
                 `rollout_fragment_length` and `total_train_batch_size`.
         """
-        if (
-            self.rollout_fragment_length != "auto"
-            and not self.in_evaluation
-            and self.total_train_batch_size > 0
-        ):
+        if self.rollout_fragment_length != "auto" and not self.in_evaluation:
             min_batch_size = (
                 max(self.num_env_runners, 1)
                 * self.num_envs_per_env_runner
