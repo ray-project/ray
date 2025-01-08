@@ -6,7 +6,7 @@ Ray Compiled Graph provides visualization functionalities to help users with dev
 Graph Structure
 ---------------
 
-To visualize the graph structure, users can call the ``visualize`` method after calling ``experimental_compile``
+To visualize the graph structure, call the ``visualize`` method after calling ``experimental_compile``
 on the DAG.
 
 .. testcode::
