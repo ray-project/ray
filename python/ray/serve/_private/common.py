@@ -550,6 +550,12 @@ class RunningReplicaInfo:
         )
 
 
+@dataclass(frozen=True)
+class DeploymentTargetInfo:
+    is_available: bool
+    running_replicas: List[RunningReplicaInfo]
+
+
 class ServeDeployMode(str, Enum):
     MULTI_APP = "MULTI_APP"
 
@@ -613,6 +619,8 @@ class RequestMetadata:
 
     # Serve's gRPC context associated with this request for getting and setting metadata
     grpc_context: Optional[RayServegRPCContext] = None
+
+    _by_reference: bool = True
 
     @property
     def is_http_request(self) -> bool:
