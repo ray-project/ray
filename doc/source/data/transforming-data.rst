@@ -194,7 +194,7 @@ pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. For
         batch = ...
 
         # return batch
-        return output
+        return batch
 
 The user defined function can also be a Python generator that yields batches, so the function can also
 be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``.
