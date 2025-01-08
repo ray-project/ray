@@ -65,7 +65,7 @@ Fault Tolerance and Recovery Provided by Ray Tune
 Ray Tune provides fault tolerance and recovery at the experiment trial level.
 
 When using Ray Tune with RLlib, you can enable
-:ref:`periodic checkpointing <rllib-checkpointing-docs>`,
+:ref:`periodic checkpointing <rllib-checkpoints-docs>`,
 which saves the state of the experiment to a user-specified persistent storage location.
 If a trial fails, Ray Tune automatically restarts it from the latest
 :ref:`checkpointed <tune-fault-tol>` state.

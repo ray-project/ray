@@ -14,13 +14,33 @@
 
 #pragma once
 
-#include <fstream>
+#include <string>
 
 namespace ray {
 
+namespace internal {
+
+// Return whether current user could write to cgroupv2.
+bool CanCurrenUserWriteCgroupV2();
+
+// Return whether cgroup V2 is mounted in read and write mode.
+bool IsCgroupV2MountedAsRw();
+
+}  // namespace internal
+
 // Util function to setup cgroups preparation for resource constraints.
+// It's expected to call from raylet to setup node level cgroup configurations.
+//
 // If error happens, error will be logged and return false.
 // Cgroup is not supported on non-linux platforms.
-bool SetupCgroupsPreparation();
+//
+// NOTICE: This function is expected to be called once for eacy raylet instance.
+bool SetupCgroupsPreparation(const std::string &node_id);
+
+// Get folder name for application cgroup v2 for current raylet instance.
+const std::string &GetCgroupV2AppFolder();
+
+// Get folder name for system cgroup v2 for current raylet instance.
+const std::string &GetCgroupV2SystemFolder();
 
 }  // namespace ray
