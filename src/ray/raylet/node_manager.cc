@@ -1396,8 +1396,7 @@ Status NodeManager::RegisterForNewWorker(
     std::function<void(Status, int)> send_reply_callback) {
   Status status = Status::OK();
   if (send_reply_callback) {
-    worker_pool_.RegisterWorker(
-        worker, pid, worker_startup_token, send_reply_callback);
+    worker_pool_.RegisterWorker(worker, pid, worker_startup_token, send_reply_callback);
   } else {
     worker_pool_.RegisterWorker(worker, pid, worker_startup_token);
   }
