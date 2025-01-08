@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import json
 import logging
 import os
@@ -33,6 +34,8 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
+    RAY_SERVE_PROXY_GC_THRESHOLD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
@@ -1270,6 +1273,8 @@ class ProxyActor:
             self.run_grpc_server()
         )
 
+        _configure_gc_options()
+
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.proxy_router.update_routes(endpoints)
 
@@ -1526,3 +1531,16 @@ def _determine_target_loop():
         return "asyncio"
     else:
         return "uvloop"
+
+def _configure_gc_options():
+    if not RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS:
+        return
+
+    # Collect any objects that exist already and exclude them from future GC.
+    gc.collect(2)
+    gc.freeze()
+
+    # Tune the GC threshold to run less frequently.
+    print(gc.get_freeze_count())
+    print("DEFAULT gc thresholds:", *gc.get_threshold())
+    gc.set_threshold(RAY_SERVE_PROXY_GC_THRESHOLD)

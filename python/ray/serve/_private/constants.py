@@ -371,3 +371,14 @@ RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
     "into the new behavior by setting "
     "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
 )
+
+# Feature flag to turn off GC optimizations in the proxy (in case there is a
+# memory leak or negative performance impact).
+RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = (
+    os.environ.get("RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS", "1") == "1"
+)
+
+# Used for gc.set_threshold() when proxy GC optimizations are enabled.
+RAY_SERVE_PROXY_GC_THRESHOLD = (
+    int(os.environ.get("RAY_SERVE_PROXY_GC_THRESHOLD", "10000"))
+)
