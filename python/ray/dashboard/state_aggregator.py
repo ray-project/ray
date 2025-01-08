@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from itertools import islice
 from typing import List, Optional
 
@@ -16,7 +15,6 @@ from ray.util.state.common import (
     RAY_MAX_LIMIT_FROM_API_SERVER,
     ActorState,
     ActorSummaries,
-    ClusterEventState,
     JobState,
     ListApiOptions,
     ListApiResponse,
@@ -536,41 +534,6 @@ class StateAPIManager:
 
         return await get_or_create_event_loop().run_in_executor(
             self._thread_pool_executor, transform, replies
-        )
-
-    async def list_cluster_events(self, *, option: ListApiOptions) -> ListApiResponse:
-        """List all cluster events from the cluster.
-
-        Returns:
-            A list of cluster events in the cluster.
-            The schema of returned "dict" is equivalent to the
-            `ClusterEventState` protobuf message.
-        """
-        reply = await self._client.get_all_cluster_events()
-
-        def transform(reply) -> ListApiResponse:
-            result = []
-            for _, events in reply.items():
-                for _, event in events.items():
-                    event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
-                    result.append(event)
-
-            num_after_truncation = len(result)
-            result.sort(key=lambda entry: entry["timestamp"])
-            total = len(result)
-            result = do_filter(result, option.filters, ClusterEventState, option.detail)
-            num_filtered = len(result)
-            # Sort to make the output deterministic.
-            result = list(islice(result, option.limit))
-            return ListApiResponse(
-                result=result,
-                total=total,
-                num_after_truncation=num_after_truncation,
-                num_filtered=num_filtered,
-            )
-
-        return await get_or_create_event_loop().run_in_executor(
-            self._thread_pool_executor, transform, reply
         )
 
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
