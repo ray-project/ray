@@ -844,7 +844,7 @@ class TestRouterMetricsManager:
         assert not metrics_manager.should_send_scaled_to_zero_optimized_push(0)
 
         # No queued requests at the handle, should not push metrics
-        metrics_manager.deployment_config = DeploymentConfig(
+        metrics_manager._deployment_config = DeploymentConfig(
             autoscaling_config=AutoscalingConfig()
         )
         assert not metrics_manager.should_send_scaled_to_zero_optimized_push(0)
@@ -887,7 +887,7 @@ class TestRouterMetricsManager:
                 FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
                 FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             )
-            metrics_manager.deployment_config = DeploymentConfig(
+            metrics_manager._deployment_config = DeploymentConfig(
                 autoscaling_config=AutoscalingConfig()
             )
 

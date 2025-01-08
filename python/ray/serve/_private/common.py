@@ -550,6 +550,12 @@ class RunningReplicaInfo:
         )
 
 
+@dataclass(frozen=True)
+class DeploymentTargetInfo:
+    is_available: bool
+    running_replicas: List[RunningReplicaInfo]
+
+
 class ServeDeployMode(str, Enum):
     MULTI_APP = "MULTI_APP"
 
