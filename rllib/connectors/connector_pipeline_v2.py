@@ -103,7 +103,8 @@ class ConnectorPipelineV2(ConnectorV2):
             stats = None
             if metrics:
                 stats = metrics.log_time(
-                    (TIMERS, CONNECTOR_TIMERS, connector.__class__.__name__)
+                    kwargs.get("prefix_key", ())
+                    + (TIMERS, CONNECTOR_TIMERS, connector.__class__.__name__)
                 )
                 stats.__enter__()
 

@@ -114,7 +114,6 @@ REPLAY_BUFFER_SAMPLE_TIMER = "replay_buffer_sampling_timer"
 REPLAY_BUFFER_UPDATE_PRIOS_TIMER = "replay_buffer_update_prios_timer"
 LEARNER_UPDATE_TIMER = "learner_update_timer"
 LEARN_ON_BATCH_TIMER = "learn"  # @OldAPIStack
-LEARNER_CONNECTOR_TIMER = "learner_connector_timer"
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"
 CONNECTOR_TIMERS = "connectors"

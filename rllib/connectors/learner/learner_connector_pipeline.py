@@ -30,7 +30,12 @@ class LearnerConnectorPipeline(ConnectorPipelineV2):
 
         # Make sure user does not necessarily send initial input into this pipeline.
         # Might just be empty and to be populated from `episodes`.
-        ret = super().__call__(episodes=episodes, metrics=metrics, **kwargs)
+        ret = super().__call__(
+            episodes=episodes,
+            metrics=metrics,
+            prefix_key=(ALL_MODULES,),
+            **kwargs,
+        )
 
         # Log the sum of lengths of all episodes outgoing.
         if metrics:
