@@ -87,7 +87,7 @@ demos/process_on_ray
     └── demo-dataset.jsonl
 ```
 
-> [!Important]
+> **Important:**
 > If you run these demos on multiple nodes, you need to put the demo dataset to a shared disk (e.g. NAS) and export the result dataset to it as well by modifying the `dataset_path` and `export_path` in the config files.
 
 ### Running Example of Ray Mode
