@@ -7,31 +7,54 @@
 Getting Started
 ===============
 
-In this tutorial, you learn how to design, customize, and run an RLlib learning experiment from scratch.
+.. _rllib-in-60min:
 
-
-.. _rllib-in-15min:
-
-RLlib in 15 minutes
+RLlib in 60 minutes
 -------------------
+
+.. figure:: images/rllib-index-header.svg
+
+In this tutorial, you learn how to design, customize, and run an end-to-end RLlib learning experiment
+from scratch. This includes picking and configuring an Algorithm, running a couple of training iterations,
+saving the state of your Algorithm from time to time, running a separate evaluation loop,
+and finally utilizing one of the checkpoints to deploy your trained model in an environment outside of RLlib
+and compute actions through it.
+
+You also learn how to optionally customize your RL environment and your neural network model.
+
+Installation
+~~~~~~~~~~~~
+
+First, install RLlib and `PyTorch <https://pytorch.org>`__, as shown below:
+
+.. code-block:: bash
+
+    pip install "ray[rllib]" "gymnasium[atari,accept-rom-license,mujoco]" torch
+
 
 .. _rllib-python-api:
 
 Python API
 ~~~~~~~~~~
 
-You manage experiments in RLlib through an instance of the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class. An
-Algorithm typically holds a neural network for computing actions, called "policy", the :ref:`RL environment <rllib-key-concepts-environments>`
-you want to optimize against, a loss function, an optimizer, and some code describing the algorithm's execution logic, like determining when to
-take which particular steps.
+RLlib's Python API provides all the flexibility required for applying the library to any
+type of RL problem.
 
-Through the algorithm's interface, you can train the policy, compute actions, or store your algorithm's state (checkpointing).
-In multi-agent training, the algorithm manages the querying and optimization of multiple policies at once.
+You manage experiments in RLlib through an instance of the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+class. An :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` typically holds a neural
+network for computing actions, called "policy", the :ref:`RL environment <rllib-key-concepts-environments>`
+you want to optimize against, a loss function, an optimizer, and some code describing the
+algorithm's execution logic, like determining when to take which particular steps.
+
+In multi-agent training, :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+manages the querying and optimization of multiple policies at once.
+
+Through the algorithm's interface, you can train the policy, compute actions, or store your
+algorithm's state through checkpointing.
 
 
 
 
-The Python API provides all the flexibility required for applying RLlib to any type of problem.
 
 Let's start with an example of the API's basic usage.
 We first create a `PPOConfig` instance and set some properties through the config class' various methods.
@@ -114,7 +137,7 @@ of the training results and retrieving the checkpoint(s) of the trained agent.
 
 Loading and restoring a trained algorithm from a checkpoint is simple.
 Let's assume you have a local checkpoint directory called ``checkpoint_path``.
-To load newer RLlib checkpoints (version >= 1.0), use the following code:
+To load newer RLlib checkpoints (version >= 2.1), use the following code:
 
 
 .. code-block:: python
@@ -128,8 +151,8 @@ Customizing your RL environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In the preceding examples, your :ref:`RL environment <rllib-key-concepts-environments>` was a `Farama gymnasium <gymnasium.farama.org>`__
-pre-registered one, like ``CartPole-v1``. However, if you would like to run your experiments against a different environment or even write a custom one,
-see this tab below for a less-than-50-lines example of a custom ``gym.Env`` class.
+pre-registered one, like ``CartPole-v1``. However, if you would like to run your experiments against a custom one,
+see this tab below for a less-than-50-lines example.
 
 See here for an :ref:`in-depth guide on how to setup RL environments in RLlib <rllib-environments-doc>` and how to customize them.
 
@@ -141,7 +164,7 @@ See here for an :ref:`in-depth guide on how to setup RL environments in RLlib <r
         import gymnasium as gym
         from ray.rllib.algorithms.ppo import PPOConfig
 
-        # 1) Define your custom env class:
+        # Define your custom env class by subclassing gymnasium.Env:
 
         class ParrotEnv(gym.Env):
             """Environment in which the agent learns to repeat the seen observations.
@@ -178,21 +201,22 @@ See here for an :ref:`in-depth guide on how to setup RL environments in RLlib <r
                 self._cur_obs = self.observation_space.sample()
                 return self._cur_obs, reward, terminated, truncated, {}
 
-        # 2) Configure it through RLlib's algorithm configs:
+        # Point your config to your custom env class:
         config = (
             PPOConfig()
             .environment(ParrotEnv)  # add `env_config=[some Box space] to customize the env
         )
 
-        # 3) Build the PPO and train
-        ppo_w_custom_env = config.build()
+        # Build a PPO algorithm and train it.
+        ppo_w_custom_env = config.build_algo()
+        ppo_w_custom_env.train()
 
     .. testcode::
         :hide:
 
         # Test that our setup is working.
-        ppo_w_custom_env.train()
         ppo_w_custom_env.stop()
+
 
 Customizing your models
 ~~~~~~~~~~~~~~~~~~~~~~~
