@@ -99,6 +99,52 @@ def _shutdown_all_compiled_dags():
     _compiled_dags = weakref.WeakValueDictionary()
 
 
+def _check_unused_dag_input_attributes(
+    output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]
+) -> Set[str]:
+    """
+    Helper function to check that all input attributes are used in the DAG.
+    For example, if the user creates an input attribute by calling
+    InputNode()["x"], we ensure that there is a path from the
+    InputAttributeNode corresponding to "x" to the DAG's output. If an
+    input attribute is not used, throw an error.
+
+    Args:
+        output_node: The starting node for the traversal.
+        input_attributes: A set of attributes accessed by the InputNode.
+    """
+    from ray.dag import InputAttributeNode
+
+    used_attributes = set()
+    visited_nodes = set()
+    stack: List["ray.dag.DAGNode"] = [output_node]
+
+    while stack:
+        current_node = stack.pop()
+        if current_node in visited_nodes:
+            continue
+        visited_nodes.add(current_node)
+
+        if isinstance(current_node, InputAttributeNode):
+            used_attributes.add(current_node.key)
+
+        stack.extend(current_node._upstream_nodes)
+
+    unused_attributes = input_attributes - used_attributes
+    if unused_attributes:
+        unused_attributes_str = ", ".join(str(key) for key in unused_attributes)
+        input_attributes_str = ", ".join(str(key) for key in input_attributes)
+        unused_phrase = "is unused" if len(unused_attributes) == 1 else "are unused"
+
+        raise ValueError(
+            "Compiled Graph expects input to be accessed "
+            f"using all of attributes {input_attributes_str}, "
+            f"but {unused_attributes_str} {unused_phrase}. "
+            "Ensure all input attributes are used and contribute "
+            "to the computation of the Compiled Graph output."
+        )
+
+
 @DeveloperAPI
 def do_allocate_channel(
     self,
@@ -946,39 +992,6 @@ class CompiledDAG:
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-    def find_unused_input_attributes(
-        self, output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]
-    ) -> Set[str]:
-        """
-        This is the helper function to handle_unused_attributes.
-        Traverse the DAG backwards from the output node to find unused attributes.
-        Args:
-            output_node: The starting node for the traversal.
-            input_attributes: A set of attributes accessed by the InputNode.
-        Returns:
-            A set:
-                - unused_attributes: A set of attributes that are unused.
-        """
-        from ray.dag import InputAttributeNode
-
-        used_attributes = set()
-        visited_nodes = set()
-        stack = [output_node]
-
-        while stack:
-            current_node = stack.pop()
-            if current_node in visited_nodes:
-                continue
-            visited_nodes.add(current_node)
-
-            if isinstance(current_node, InputAttributeNode):
-                used_attributes.add(current_node.key)
-
-            stack.extend(current_node._upstream_nodes)
-
-        unused_attributes = input_attributes - used_attributes
-        return unused_attributes
-
     def _preprocess(self) -> None:
         """Before compiling, preprocess the DAG to build an index from task to
         upstream and downstream tasks, and to set the input and output node(s)
@@ -1191,23 +1204,9 @@ class CompiledDAG:
                     # Add all readers to the NCCL actors of P2P.
                     nccl_actors_p2p.add(downstream_actor_handle)
 
-        # handle_unused_attributes:
-        unused_attributes = self.find_unused_input_attributes(
-            output_node, input_attributes
-        )
-
-        if unused_attributes:
-            unused_attributes_str = ", ".join(str(key) for key in unused_attributes)
-            input_attributes_str = ", ".join(str(key) for key in input_attributes)
-            unused_phrase = "is unused" if len(unused_attributes) == 1 else "are unused"
-
-            raise ValueError(
-                "Compiled Graph expects input to be accessed "
-                f"using all of attributes {input_attributes_str}, "
-                f"but {unused_attributes_str} {unused_phrase}. "
-                "Ensure all input attributes are used and contribute "
-                "to the computation of the Compiled Graph output."
-            )
+        # Check that all specified input attributes, e.g., InputNode()["x"],
+        # are used in the DAG.
+        _check_unused_dag_input_attributes(output_node, input_attributes)
 
         # Collect all leaf nodes.
         leaf_nodes: DAGNode = []
