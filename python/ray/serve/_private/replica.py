@@ -76,6 +76,7 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
+from ray.util.tracing.tracing_helper import _inject_tracing_into_class
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -788,7 +789,7 @@ class Replica(ReplicaBase):
         ) as status_code_callback:
             yield status_code_callback
 
-
+@_inject_tracing_into_class
 class ReplicaActor:
     """Actor definition for replicas of Ray Serve deployments.
 

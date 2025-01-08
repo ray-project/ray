@@ -19,6 +19,7 @@ from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import serve_encoders
 from ray.serve.exceptions import RayServeException
+from ray.util.tracing.tracing_helper import _inject_tracing_into_class
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -457,7 +458,7 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
         )
         return False
 
-
+@_inject_tracing_into_class
 class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
