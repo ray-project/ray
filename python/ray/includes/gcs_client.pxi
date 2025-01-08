@@ -581,6 +581,19 @@ cdef class InnerGcsClient:
 
         return (is_accepted, rejection_reason_message.decode())
 
+    def report_cluster_config(
+                self,
+                serialized_cluster_config: c_string):
+        """Report cluster config to GCS"""
+        cdef:
+            int64_t timeout_ms = -1
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Autoscaler().ReportClusterConfig(
+                    timeout_ms, serialized_cluster_config
+                )
+            )
+
 
 # Util functions for async handling
 

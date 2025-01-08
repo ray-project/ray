@@ -90,21 +90,21 @@ class PrometheusQueryError(Exception):
 
 
 class MetricsHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
         self.grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
+        default_metrics_root = os.path.join(self.session_dir, "metrics")
         self.prometheus_headers = parse_prom_headers(
             os.environ.get(
                 PROMETHEUS_HEADERS_ENV_VAR,
                 DEFAULT_PROMETHEUS_HEADERS,
             )
         )
-        default_metrics_root = os.path.join(self._dashboard_head.session_dir, "metrics")
         session_latest_metrics_root = os.path.join(
-            self._dashboard_head.temp_dir, SESSION_LATEST, "metrics"
+            self.temp_dir, SESSION_LATEST, "metrics"
         )
         self._metrics_root = os.environ.get(
             METRICS_OUTPUT_ROOT_ENV_VAR, default_metrics_root
@@ -128,10 +128,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # To be set later when dashboards gets generated
         self._dashboard_uids = {}
 
-        self._ip = dashboard_head.ip
         self._pid = os.getpid()
         self._component = "dashboard"
-        self._session_name = dashboard_head.session_name
         assert self._component in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
         self._dashboard_proc = psutil.Process()
 
@@ -176,7 +174,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                     success=True,
                     message="Grafana running",
                     grafana_host=grafana_iframe_host,
-                    session_name=self._session_name,
+                    session_name=self.session_name,
                     dashboard_uids=self._dashboard_uids,
                     dashboard_datasource=self._prometheus_name,
                 )
@@ -383,7 +381,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # Other than the root path, the config file generated here is identical to that
         # hardcoded config file.
         prom_discovery_file_path = os.path.join(
-            self._dashboard_head.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
+            self.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
         )
         with open(prometheus_config_output_path, "w") as f:
             f.write(
@@ -395,31 +393,31 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     @dashboard_utils.async_loop_forever(METRICS_RECORD_INTERVAL_S)
     async def record_dashboard_metrics(self):
         labels = {
-            "ip": self._ip,
+            "ip": self.ip,
             "pid": self._pid,
             "Version": ray.__version__,
             "Component": self._component,
-            "SessionName": self._session_name,
+            "SessionName": self.session_name,
         }
-        self._dashboard_head.metrics.metrics_dashboard_cpu.labels(**labels).set(
+        self.metrics.metrics_dashboard_cpu.labels(**labels).set(
             float(self._dashboard_proc.cpu_percent())
         )
-        self._dashboard_head.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
+        self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
             float(self._dashboard_proc.memory_full_info().uss) / 1.0e6
         )
-        self._dashboard_head.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
+        self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
             float(self._dashboard_proc.memory_full_info().rss) / 1.0e6
         )
 
         loop = get_or_create_event_loop()
 
-        self._dashboard_head.metrics.metrics_event_loop_tasks.labels(**labels).set(
+        self.metrics.metrics_event_loop_tasks.labels(**labels).set(
             len(asyncio.all_tasks(loop))
         )
 
         # Report the max lag since the last export, if any.
         if self._event_loop_lag_s_max is not None:
-            self._dashboard_head.metrics.metrics_event_loop_lag.labels(**labels).set(
+            self.metrics.metrics_event_loop_lag.labels(**labels).set(
                 float(self._event_loop_lag_s_max)
             )
             self._event_loop_lag_s_max = None
