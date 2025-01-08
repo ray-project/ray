@@ -3,7 +3,7 @@ Visualization
 
 Ray Compiled Graph provides visualization functionalities to help users with development and debugging.
 
-Graph Structure
+Graph structure
 ---------------
 
 To visualize the graph structure, call the ``visualize`` method after calling ``experimental_compile``
