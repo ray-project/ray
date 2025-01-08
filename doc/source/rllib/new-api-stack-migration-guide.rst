@@ -22,8 +22,8 @@ RLlib classes and code to RLlib's new API stack.
 What's the new API stack?
 --------------------------
 
-The new API stack is the result of re-writing RLlib's core APIs from scratch and reducing
-its user-facing classes from more than a dozen critical ones down to only a handful
+The new API stack is the result of re-writing the core RLlib APIs from scratch and reducing
+user-facing classes from more than a dozen critical ones down to only a handful
 of classes, without any loss of features. When designing these new interfaces,
 the Ray Team strictly applied the following principles:
 
@@ -37,14 +37,14 @@ Applying the preceding principles, the Ray Team reduced the important **must-kno
 for the average RLlib user from eight on the old stack, to only five on the new stack.
 The **core** new API stack classes are:
 
-* :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` (replaces ``ModelV2`` and ``PolicyMap`` APIs)
-* :py:class:`~ray.rllib.core.learner.learner.Learner` (replaces ``RolloutWorker`` and some of ``Policy``)
-* :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` and :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` (replaces ``ViewRequirement``, ``SampleCollector``, ``Episode``, and ``EpisodeV2``)
-* :py:class:`~ray.rllib.connector.connector_v2.ConnectorV2` (replaces ``Connector`` and some of ``RolloutWorker`` and ``Policy``)
+* :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, which replaces ``ModelV2`` and ``PolicyMap`` APIs
+* :py:class:`~ray.rllib.core.learner.learner.Learner`, which replaces ``RolloutWorker`` and some of ``Policy``
+* :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` and :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode`, which replace ``ViewRequirement``, ``SampleCollector``, ``Episode``, and ``EpisodeV2``
+* :py:class:`~ray.rllib.connector.connector_v2.ConnectorV2`, which replaces ``Connector`` and some of ``RolloutWorker`` and ``Policy``
 
 The :py:class:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig` and
 :py:class:`~ray.rllib.algorithm.algorithm.Algorithm` APIs remain as-is.
-These are already established APIs on the old stack.
+These classes are already established APIs on the old stack.
 
 
 .. note::
@@ -53,7 +53,7 @@ These are already established APIs on the old stack.
     RLlib supports a single deep learning framework, the `PyTorch <https://pytorch.org>`__
     framework, dropping TensorFlow support entirely.
     Note, though, that the Ray team continues to design RLlib to be framework-agnostic
-    as they may add support for new frameworks in the future.
+    and may add support for additional frameworks in the future.
 
 
 Check your AlgorithmConfig
@@ -118,7 +118,7 @@ RLModule on one or more GPUs on the Learner side, do the following:
 
     The `num_learners` setting determines how many remote :py:class:`~ray.rllib.core.learner.learner.Learner`
     workers there are in your Algorithm's :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`.
-    If you set this to ``0``, your LearnerGroup only contains a **local** Learner that runs on the main
+    If you set this parameter to ``0``, your LearnerGroup only contains a **local** Learner that runs on the main
     process and shares its compute resources, typically 1 CPU.
     For asynchronous algorithms like IMPALA or APPO, this setting should therefore always be >0.
 
@@ -241,7 +241,7 @@ It allows you to specify:
 #. the number of `Learner` workers through `.learners(num_learners=...)`.
 #. the resources per learner; use `.learners(num_gpus_per_learner=1)` for GPU training
    and `.learners(num_gpus_per_learner=0)` for CPU training.
-#. the custom Learner class you want to use; here is an `example on how to do this <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__
+#. the custom Learner class you want to use. See this `example <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__ for more details.
 #. a config dict you would like to set for your custom learner:
    `.learners(learner_config_dict={...})`. Note that every `Learner` has access to the
    entire `AlgorithmConfig` object through `self.config`, but setting the
@@ -400,11 +400,11 @@ The following callback methods are no longer available on the new API stack:
 * ``on_sub_environment_created()``: The new API stack uses `Farama's gymnasium <https://farama.org>`__ vector Envs leaving no control for RLlib
   to call a callback on each individual env-index's creation.
 * ``on_create_policy()``: This method is no longer available on the new API stack because only ``RolloutWorker`` calls it.
-* ``on_postprocess_trajectory()``: The new API stack no longer triggers and calls this method,
+* ``on_postprocess_trajectory()``: The new API stack no longer triggers and calls this method
   because :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pipelines handle trajectory processing entirely.
-  The documentation for :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is under development.
+  The documentation for :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` is under development.
 
-See here for a :ref:`detailed description of RLlib's callback APIs <rllib-callback-docs>`.
+See :ref:`<rllib-callback-docs>` for a detailed description of RLlib callback APIs.
 
 
 .. _rllib-modelv2-to-rlmodule:
