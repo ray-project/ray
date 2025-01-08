@@ -247,7 +247,7 @@ class MeanStdFilter(ConnectorV2):
                 "de_std_to_one": agent_filter.destd,
                 "clip_by_value": agent_filter.clip,
                 "running_stats": [
-                    s.to_state() for s in tree.flatten(agent_filter.running_stats)
+                    s.to_state() for s in tree.flatten(agent_filter.buffer)
                 ],
             }
         return ret
