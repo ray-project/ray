@@ -158,7 +158,7 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
 
   spec_builder.SetNormalTaskSpec(0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
 
-  return RayTask(spec_builder.Build());
+  return RayTask(std::move(spec_builder).ConsumeAndBuild());
 }
 
 class MockObjectManager : public ObjectManagerInterface {
