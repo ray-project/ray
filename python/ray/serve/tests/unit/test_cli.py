@@ -21,7 +21,13 @@ def test_convert_args_to_dict():
     ):
         convert_args_to_dict(("bad_arg",))
 
-    assert convert_args_to_dict(("key1=val1", "key2=val2")) == {
+    assert convert_args_to_dict(("key1=val1", "key2=val2", "key3=nested=val")) == {
+        "key1": "val1",
+        "key2": "val2",
+        "key3": "nested=val",
+    }
+
+    assert convert_args_to_dict(("key1=nested=val", "key2=val2")) == {
         "key1": "val1",
         "key2": "val2",
     }

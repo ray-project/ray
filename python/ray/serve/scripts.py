@@ -111,7 +111,7 @@ def process_dict_for_yaml_dump(data):
 def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     args_dict = dict()
     for arg in args:
-        split = arg.split("=")
+        split = arg.split("=", maxsplit=1)
         if len(split) != 2:
             raise click.ClickException(
                 f"Invalid application argument '{arg}', "
