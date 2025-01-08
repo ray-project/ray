@@ -144,7 +144,7 @@ if __name__ == "__main__":
                     ),
                     model_config=DefaultModelConfig(
                         fcnet_hiddens=[1024, 1024],
-                        #fcnet_activation="tanh",
+                        # fcnet_activation="tanh",
                     ),
                 )
                 for mid in names
@@ -182,16 +182,14 @@ if __name__ == "__main__":
             num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
         )
         .training(
-            #num_epochs=20,
             train_batch_size_per_learner=500,
             target_network_update_freq=4,
             num_aggregator_actors_per_learner=2,
-            lr=0.0005,# * ((args.num_learners or 1) ** 0.5),
+            lr=0.0005,
             vf_loss_coeff=1.0,
-            entropy_coeff=0.01,#[[0, 0.01], [3000000, 0.0]],  # <- crucial parameter to finetune
-            # Only update connector states and model weights every n training_step calls.
+            entropy_coeff=0.01,
+            # Update connector states and model weights every n training_step calls.
             broadcast_interval=5,
-            # learner_queue_size=1,
             circular_buffer_num_batches=4,
             circular_buffer_iterations_per_batch=2,
         )

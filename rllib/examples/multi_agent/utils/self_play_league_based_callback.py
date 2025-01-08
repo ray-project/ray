@@ -45,12 +45,11 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
         **kwargs,
     ) -> None:
         num_learning_policies = (
-            (episode.module_for(0) in env_runner.config.policies_to_train)
-            + (episode.module_for(1) in env_runner.config.policies_to_train)
-        )
+            episode.module_for(0) in env_runner.config.policies_to_train
+        ) + (episode.module_for(1) in env_runner.config.policies_to_train)
         # Make sure the mapping function doesn't match two non-trainables together.
         # This would be a waste of EnvRunner resources.
-        #assert num_learning_policies > 0
+        # assert num_learning_policies > 0
         # Ignore matches between two learning policies and don't count win-rates for
         # these.
         assert num_learning_policies > 0, (
