@@ -7,9 +7,6 @@
 RLlib's callback APIs
 =====================
 
-Overview
---------
-
 RLlib's callbacks are the easiest way for you to inject code into your experiments.
 
 In a nutshell, you define the code you want to execute at certain events and pass it to your
@@ -239,7 +236,7 @@ The following example demonstrates how to implement a simple custom function wri
 contents to disk from time to time.
 
 You normally don't want to write the contents of buffers along with your
-:ref:`Algorithm checkpoints <rllib-checkpointing-docs>`, so doing this less often, in a more
+:ref:`Algorithm checkpoints <rllib-checkpoints-docs>`, so doing this less often, in a more
 controlled fashion through a custom callback could be a good compromise.
 
 .. testcode::

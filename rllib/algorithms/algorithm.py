@@ -2664,12 +2664,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             checkpoint_dir: The directory where the checkpoint files will be stored.
         """
         # New API stack: Delegate to the `Checkpointable` implementation of
-        # `save_to_path()`.
+        # `save_to_path()` and return.
         if self.config.enable_rl_module_and_learner:
-            return self.save_to_path(
+            self.save_to_path(
                 checkpoint_dir,
                 use_msgpack=self.config._use_msgpack_checkpoints,
             )
+            return
 
         checkpoint_dir = pathlib.Path(checkpoint_dir)
 
