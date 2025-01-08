@@ -33,7 +33,7 @@ class LearnerConnectorPipeline(ConnectorPipelineV2):
         ret = super().__call__(
             episodes=episodes,
             metrics=metrics,
-            prefix_key=(ALL_MODULES,),
+            metrics_prefix_key=(ALL_MODULES,),
             **kwargs,
         )
 
