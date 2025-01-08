@@ -66,7 +66,7 @@ class ParquetReader(FileReader):
         if batch_size is None:
             batch_size = DEFAULT_BATCH_SIZE
 
-        self._user_provided_schema = schema
+        self._schema = schema
         self._dataset_kwargs = dataset_kwargs
         self._batch_size = batch_size
         self._use_threads = use_threads
@@ -93,16 +93,33 @@ class ParquetReader(FileReader):
         columns_rename: Optional[Dict[str, str]] = None,
         filesystem,
     ) -> Iterable[DataBatch]:
-
-        fragments, schema = self._create_fragments(paths, filesystem=filesystem)
-        if self._user_provided_schema is not None:
-            schema = self._user_provided_schema
-
         if columns and columns_rename:
             assert set(columns_rename.keys()).issubset(columns), (
                 f"All column rename keys must be a subset of the columns list. "
                 f"Invalid keys: {set(columns_rename.keys()) - set(columns)}"
             )
+
+        fragments = self._create_fragments(paths, filesystem=filesystem)
+
+        # Users can pass both data columns and partition columns in the 'columns'
+        # argument. To prevent PyArrow from complaining about missing columns, we
+        # separate the partition columns from the data columns. When we read the
+        # fragments, we pass the data columns to PyArrow and add the partition
+        # columns manually.
+        data_columns = None
+        partition_columns = None
+        if columns is not None:
+            data_columns = [
+                column
+                for column in columns
+                if column in fragments[0].physical_schema.names
+            ]
+            if self._partitioning is not None:
+                parse = PathPartitionParser(self._partitioning)
+                partitions = parse(fragments[0].path)
+                partition_columns = [
+                    column for column in columns if column in partitions
+                ]
 
         num_threads = self._get_num_threads(paths)
         if num_threads > 0:
@@ -111,8 +128,9 @@ class ParquetReader(FileReader):
                 functools.partial(
                     self._read_fragments,
                     filter_expr=filter_expr,
-                    schema=schema,
-                    columns=columns,
+                    schema=self._schema,
+                    data_columns=data_columns,
+                    partition_columns=partition_columns,
                     columns_rename=columns_rename,
                 ),
                 num_workers=num_threads,
@@ -121,8 +139,9 @@ class ParquetReader(FileReader):
             yield from self._read_fragments(
                 fragments,
                 filter_expr=filter_expr,
-                schema=schema,
-                columns=columns,
+                schema=self._schema,
+                data_columns=data_columns,
+                partition_columns=partition_columns,
                 columns_rename=columns_rename,
             )
 
@@ -138,7 +157,7 @@ class ParquetReader(FileReader):
             match=self._data_context.retried_io_errors,
         )
         check_for_legacy_tensor_type(parquet_dataset.schema)
-        return parquet_dataset.fragments, parquet_dataset.schema
+        return parquet_dataset.fragments
 
     def _get_num_threads(self, paths):
         num_threads = self._NUM_THREADS_PER_TASK
@@ -157,7 +176,8 @@ class ParquetReader(FileReader):
         fragments: List[pyarrow.dataset.ParquetFileFragment],
         filter_expr: pyarrow.dataset.Expression,
         schema: pyarrow.Schema,
-        columns: Optional[List[str]] = None,
+        data_columns: Optional[List[str]] = None,
+        partition_columns: Optional[List[str]] = None,
         columns_rename: Optional[Dict[str, str]] = None,
     ) -> Iterable["pyarrow.Table"]:
         for fragment in fragments:
@@ -167,17 +187,21 @@ class ParquetReader(FileReader):
                 partitions = parse(fragment.path)
 
             for batch in self._read_batches(
-                fragment, filter_expr, schema, columns, columns_rename
+                fragment, filter_expr, schema, data_columns
             ):
                 if self._include_paths:
                     batch = batch.append_column(
                         "path", pa.array([fragment.path] * len(batch))
                     )
                 for partition, value in partitions.items():
-                    if columns is None or partition in columns:
+                    if partition_columns is None or partition in partition_columns:
                         batch = batch.append_column(
                             partition, pa.array([value] * len(batch))
                         )
+                if columns_rename is not None:
+                    batch = batch.rename_columns(
+                        [columns_rename.get(col, col) for col in batch.schema.names]
+                    )
                 yield batch
 
     def _read_batches(
@@ -185,18 +209,12 @@ class ParquetReader(FileReader):
         fragment: pyarrow.dataset.ParquetFileFragment,
         filter_expr: pyarrow.dataset.Expression,
         schema: pyarrow.Schema,
-        columns: Optional[List[str]] = None,
-        columns_rename: Optional[Dict[str, str]] = None,
+        columns: Optional[List[str]],
     ) -> Iterable[pyarrow.Table]:
-        if columns is not None:
-            # The actual data might not contain all of the user-specified columns (e.g.,
-            # if the user includes partition columns). So, filter out columns that
-            # aren't in the actual data.
-            columns = [column for column in columns if column in schema.names]
-
         def get_batch_iterable():
             return fragment.to_batches(
                 use_threads=self._use_threads,
+                # Workaround for https://github.com/anyscale/rayturbo/issues/1328.
                 columns=None if not columns else columns,
                 filter=filter_expr,
                 schema=schema,
@@ -217,10 +235,6 @@ class ParquetReader(FileReader):
 
             # If the table is empty, drop it.
             if table.num_rows > 0:
-                if columns_rename is not None:
-                    table = table.rename_columns(
-                        [columns_rename.get(col, col) for col in table.schema.names]
-                    )
                 if self._block_udf is not None:
                     yield self._block_udf(table)
                 else:
