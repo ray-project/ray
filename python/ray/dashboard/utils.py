@@ -11,21 +11,27 @@ from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections import namedtuple
 from collections.abc import Mapping, MutableMapping, Sequence
+from dataclasses import dataclass
 from typing import Optional
 
 import aiosignal  # noqa: F401
 from frozenlist import FrozenList  # noqa: F401
+from packaging.version import Version
 
 import ray
 import ray._private.protobuf_compat
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
+import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray._private.utils import (
     binary_to_hex,
     check_dashboard_dependencies_installed,
+    get_or_create_event_loop,
     split_address,
 )
 from ray._raylet import GcsClient
+from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 try:
     create_task = asyncio.create_task
@@ -65,22 +71,128 @@ class DashboardAgentModule(abc.ABC):
         dependencies.
         """
 
-    def get_gcs_address(self):
+    @property
+    def gcs_address(self):
         return self._dashboard_agent.gcs_address
 
 
+@dataclass
+class DashboardHeadModuleConfig:
+    minimal: bool
+    cluster_id_hex: str
+    session_name: str
+    gcs_address: str
+    log_dir: str
+    temp_dir: str
+    session_dir: str
+    ip: str
+    http_host: str
+    http_port: int
+    # We can't put this to ctor of DashboardHeadModule because ServeRestApiImpl requires
+    # DashboardHeadModule and DashboardAgentModule have the same shape of ctor, that
+    # is, single argument.
+    metrics: DashboardPrometheusMetrics
+
+
 class DashboardHeadModule(abc.ABC):
-    def __init__(self, dashboard_head):
+    def __init__(self, config: DashboardHeadModuleConfig):
         """
         Initialize current module when DashboardHead loading modules.
-        :param dashboard_head: The DashboardHead instance.
+        :param config: The DashboardHeadModuleConfig instance.
         """
-        self._dashboard_head = dashboard_head
-        self.session_name = dashboard_head.session_name
+        self._config = config
+        self._gcs_client = None
+        self._gcs_aio_client = None  # lazy init
+        self._aiogrpc_gcs_channel = None  # lazy init
+        self._http_session = None  # lazy init
+
+    @property
+    def minimal(self):
+        return self._config.minimal
+
+    @property
+    def session_name(self):
+        return self._config.session_name
+
+    @property
+    def gcs_address(self):
+        return self._config.gcs_address
+
+    @property
+    def log_dir(self):
+        return self._config.log_dir
+
+    @property
+    def temp_dir(self):
+        return self._config.temp_dir
+
+    @property
+    def session_dir(self):
+        return self._config.session_dir
+
+    @property
+    def ip(self):
+        return self._config.ip
+
+    @property
+    def http_host(self):
+        return self._config.http_host
+
+    @property
+    def http_port(self):
+        return self._config.http_port
 
     @property
     def http_session(self):
-        return self._dashboard_head.http_session
+        assert not self._config.minimal, "http_session accessed in minimal Ray."
+        import aiohttp
+
+        if self._http_session is not None:
+            return self._http_session
+        # Create a http session for all modules.
+        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
+        if Version(aiohttp.__version__) < Version("4.0.0"):
+            self._http_session = aiohttp.ClientSession(loop=get_or_create_event_loop())
+        else:
+            self._http_session = aiohttp.ClientSession()
+        return self._http_session
+
+    @property
+    def metrics(self):
+        return self._config.metrics
+
+    @property
+    def gcs_client(self):
+        if self._gcs_client is None:
+            self._gcs_client = GcsClient(
+                address=self._config.gcs_address,
+                nums_reconnect_retry=0,
+                cluster_id=self._config.cluster_id_hex,
+            )
+        return self._gcs_client
+
+    @property
+    def gcs_aio_client(self):
+        if self._gcs_aio_client is None:
+            self._gcs_aio_client = GcsAioClient(
+                address=self._config.gcs_address,
+                nums_reconnect_retry=0,
+                cluster_id=self._config.cluster_id_hex,
+            )
+            if not internal_kv._internal_kv_initialized():
+                internal_kv._initialize_internal_kv(self.gcs_client)
+        return self._gcs_aio_client
+
+    @property
+    def aiogrpc_gcs_channel(self):
+        # TODO(ryw): once we removed the old gcs client, also remove this.
+        if self._config.minimal:
+            return None
+        if self._aiogrpc_gcs_channel is None:
+            gcs_channel = GcsChannel(gcs_address=self._config.gcs_address, aio=True)
+            gcs_channel.connect()
+            self._aiogrpc_gcs_channel = gcs_channel.channel()
+        return self._aiogrpc_gcs_channel
 
     @abc.abstractmethod
     async def run(self, server):
@@ -98,9 +210,6 @@ class DashboardHeadModule(abc.ABC):
         should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
-
-    def get_gcs_address(self):
-        return self._dashboard_head.gcs_address
 
 
 class RateLimitedModule(abc.ABC):

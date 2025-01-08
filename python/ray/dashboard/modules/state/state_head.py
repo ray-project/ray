@@ -51,10 +51,10 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
 
     def __init__(
         self,
-        dashboard_head,
+        config: dashboard_utils.DashboardHeadModuleConfig,
     ):
         """Initialize for handling RESTful requests from State API Client"""
-        dashboard_utils.DashboardHeadModule.__init__(self, dashboard_head)
+        dashboard_utils.DashboardHeadModule.__init__(self, config)
         # We don't allow users to configure too high a rate limit
         RateLimitedModule.__init__(
             self,
@@ -372,9 +372,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         )
 
     async def run(self, server):
-        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
+        gcs_channel = self.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
-            gcs_channel, self._dashboard_head.gcs_aio_client
+            gcs_channel, self.gcs_aio_client
         )
         self._state_api = StateAPIManager(
             self._state_api_data_source_client,

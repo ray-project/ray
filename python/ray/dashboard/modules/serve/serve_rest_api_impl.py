@@ -75,8 +75,17 @@ def create_serve_rest_api(
     # Ray Serve-related modules. That way, users can use the Ray dashboard agent for
     # non-Serve purposes without downloading Serve dependencies.
     class ServeRestApiImpl(dashboard_module_superclass):
-        def __init__(self, dashboard_head_or_agent):
-            super().__init__(dashboard_head_or_agent)
+        def __init__(
+            self,
+            dashboard_config_or_agent: Union[
+                dashboard_utils.DashboardHeadModuleConfig,
+                dashboard_utils.DashboardAgentModule,
+            ],
+        ):
+            # dashboard_config_or_agent is a bit awkward because it's either a Config
+            # for a HeadModule, or an AgentModule itself. Good news is that both have a
+            # session_name.
+            super().__init__(dashboard_config_or_agent)
             self._controller = None
             self._controller_lock = asyncio.Lock()
 
@@ -85,7 +94,6 @@ def create_serve_rest_api(
             # If the lock is already acquired by another async task, the async task
             # will asynchronously wait for the lock.
             self._controller_start_lock = asyncio.Lock()
-            self._session_name = dashboard_head_or_agent.session_name
 
         # TODO: It's better to use `/api/version`.
         # It requires a refactor of ClassMethodRouteTable to differentiate the server.
@@ -97,7 +105,7 @@ def create_serve_rest_api(
                 version=CURRENT_VERSION,
                 ray_version=ray.__version__,
                 ray_commit=ray.__commit__,
-                session_name=self._session_name,
+                session_name=self.session_name,
             )
             return Response(
                 text=json.dumps(dataclasses.asdict(resp)),

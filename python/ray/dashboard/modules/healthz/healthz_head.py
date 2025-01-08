@@ -14,9 +14,9 @@ class HealthzHead(dashboard_utils.DashboardHeadModule):
     GCS's heath.
     """
 
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
-        self._health_checker = HealthChecker(dashboard_head.gcs_aio_client)
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
+        self._health_checker = HealthChecker(self.gcs_aio_client)
 
     @routes.get("/api/gcs_healthz")
     async def health_check(self, req: Request) -> Response:
