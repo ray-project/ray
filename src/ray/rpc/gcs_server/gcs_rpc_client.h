@@ -524,6 +524,13 @@ class GcsRpcClient {
 
   VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc::autoscaler,
                                   AutoscalerStateService,
+                                  ReportClusterConfig,
+                                  autoscaler_state_grpc_client_,
+                                  /*method_timeout_ms*/ -1,
+                                  /*handle_payload_status=*/false, )
+
+  VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc::autoscaler,
+                                  AutoscalerStateService,
                                   RequestClusterResourceConstraint,
                                   autoscaler_state_grpc_client_,
                                   /*method_timeout_ms*/ -1,

@@ -131,6 +131,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         ] = defaultdict(list)
         self._weights_seq_no: int = 0
 
+        # Measures the time passed between returning from `sample()`
+        # and receiving the next `sample()` request from the user.
         self._time_after_sampling = None
 
     @override(EnvRunner)
@@ -169,6 +171,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
+        # Log time between `sample()` requests.
         if self._time_after_sampling is not None:
             self.metrics.log_value(
                 key=TIME_BETWEEN_SAMPLING,
