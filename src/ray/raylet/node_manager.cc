@@ -1416,6 +1416,8 @@ Status NodeManager::RegisterForNewDriver(
     const ray::protocol::RegisterClientRequest *message,
     std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK_GE(pid, 0);
+  RAY_CHECK(send_reply_callback);
+
   worker->SetProcess(Process::FromPid(pid));
   // Compute a dummy driver task id from a given driver.
   // The task id set in the worker here should be consistent with the task
@@ -1425,11 +1427,7 @@ Status NodeManager::RegisterForNewDriver(
   rpc::JobConfig job_config;
   job_config.ParseFromString(message->serialized_job_config()->str());
 
-  if (send_reply_callback) {
-    return worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
-  }
-
-  return worker_pool_.RegisterDriver(worker, job_config);
+  return worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
 }
 
 void NodeManager::ProcessAnnounceWorkerPortMessage(
