@@ -230,7 +230,7 @@ The following example demonstrates how to implement a simple custom function wri
 contents to disk from time to time.
 
 You normally don't want to write the contents of buffers along with your
-:ref:`Algorithm checkpoints <rllib-checkpointing-docs>`, so writing less often, in a more
+:ref:`Algorithm checkpoints <rllib-checkpoints-docs>`, so writing less often, in a more
 controlled fashion through a custom callback could be a good compromise.
 
 .. testcode::
