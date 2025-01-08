@@ -2952,15 +2952,18 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         eval_cf.validate()
         eval_cf.freeze()
 
-        # resources for the driver of this trainable
+        # Resources for the main process of this Algorithm.
         if cf.enable_rl_module_and_learner:
+            # Training is done on local Learner.
             if cf.num_learners == 0:
-                # in this case local_worker only does sampling and training is done on
-                # local learner worker
-                driver = cls._get_learner_bundles(cf)[0]
+                driver = {
+                    # Sampling and training is not done concurrently when local is
+                    # used, so pick the max.
+                    "CPU": max(cf.num_cpus_per_learner, cf.num_cpus_for_main_process),
+                    "GPU": cf.num_gpus_per_learner,
+                }
+            # Training is done on n remote Learners.
             else:
-                # in this case local_worker only does sampling and training is done on
-                # remote learner workers
                 driver = {"CPU": cf.num_cpus_for_main_process, "GPU": 0}
         else:
             driver = {

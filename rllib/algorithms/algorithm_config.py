@@ -3781,13 +3781,7 @@ class AlgorithmConfig(_Config):
 
     @property
     def total_train_batch_size(self):
-        #if (
-        #    self.train_batch_size_per_learner is not None
-        #    and self.enable_rl_module_and_learner
-        #):
         return self.train_batch_size_per_learner * (self.num_learners or 1)
-        #else:
-        #    return self.train_batch_size
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.
@@ -3924,10 +3918,7 @@ class AlgorithmConfig(_Config):
             ValueError: If there is a mismatch between user provided
                 `rollout_fragment_length` and `total_train_batch_size`.
         """
-        if (
-            self.rollout_fragment_length != "auto"
-            and not self.in_evaluation
-        ):
+        if self.rollout_fragment_length != "auto" and not self.in_evaluation:
             min_batch_size = (
                 max(self.num_env_runners, 1)
                 * self.num_envs_per_env_runner
