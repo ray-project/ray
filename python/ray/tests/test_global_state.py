@@ -510,6 +510,11 @@ def test_get_cluster_config(shutdown_only):
 
     cluster_config = autoscaler_pb2.ClusterConfig()
     cluster_config.max_resources["CPU"] = 100
+    node_group_config = autoscaler_pb2.NodeGroupConfig()
+    node_group_config.name = "m5.large"
+    node_group_config.resources["CPU"] = 5
+    node_group_config.max_count = -1
+    cluster_config.node_group_configs.append(node_group_config)
     gcs_client.report_cluster_config(cluster_config.SerializeToString())
     assert ray._private.state.state.get_cluster_config() == cluster_config
 
