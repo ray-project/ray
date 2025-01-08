@@ -344,20 +344,16 @@ void GcsWorkerManager::AddWorkerDeadListener(
 void GcsWorkerManager::GetWorkerInfo(
     const WorkerID &worker_id,
     Postable<void(std::optional<WorkerTableData>)> callback) const {
-  auto on_done = std::move(callback).TransformArg(
-      [worker_id](Status status, std::optional<WorkerTableData> data) {
-        if (!status.ok()) {
-          RAY_LOG(WARNING) << "Failed to get worker info, worker id = " << worker_id
-                           << ", status = " << status;
-        }
-        return data;
-      });
-
-  Status status = gcs_table_storage_.WorkerTable().Get(worker_id, on_done);
-  if (!status.ok()) {
-    // Should not really happen
-    std::move(on_done).Post("GcsWorkerManager.GetWorkerInfo", status, std::nullopt);
-  }
+  RAY_CHECK_OK(gcs_table_storage_.WorkerTable().Get(
+      worker_id,
+      std::move(callback).TransformArg(
+          [worker_id](Status status, std::optional<WorkerTableData> data) {
+            if (!status.ok()) {
+              RAY_LOG(WARNING) << "Failed to get worker info, worker id = " << worker_id
+                               << ", status = " << status;
+            }
+            return data;
+          })));
 }
 
 }  // namespace gcs

@@ -471,8 +471,8 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
     const auto &node_id = sorted_dead_node_list_.front().first;
-    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(
-        node_id, Postable<void(Status)>::Empty(io_context_)));
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeTable().Delete(node_id, {[](auto) {}, io_context_}));
     dead_nodes_.erase(sorted_dead_node_list_.front().first);
     sorted_dead_node_list_.pop_front();
   }

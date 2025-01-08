@@ -165,14 +165,15 @@ void GcsServer::GetOrGenerateClusterId(
                  continuation = std::move(continuation)](bool added_entry) mutable {
                   RAY_CHECK(added_entry) << "Failed to persist new cluster ID!";
                   std::move(continuation)
-                      .Post("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
+                      .Dispatch("GcsServer.GetOrGenerateClusterId.continuation",
+                                cluster_id);
                 },
                 io_context});
          } else {
            ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
            RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
            std::move(continuation)
-               .Post("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
+               .Dispatch("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
          }
        },
        io_context});

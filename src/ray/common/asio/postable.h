@@ -62,10 +62,6 @@ class Postable {
         << "Postable must be constructed with a non-null function.";
   }
 
-  static Postable Empty(instrumented_io_context &io_context) {
-    return Postable([](auto &&...) {}, io_context);
-  }
-
   template <typename... Args>
   void Post(const std::string &name, Args &&...args) && {
     RAY_CHECK(func_ != nullptr) << "Postable has already been invoked.";

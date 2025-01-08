@@ -1127,7 +1127,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
              actor_id, GenActorDataOnlyWithStates(*actor_table_data), nullptr));
          if (!is_restartable) {
            RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Delete(
-               actor_id, Postable<void(Status)>::Empty(io_context_)));
+               actor_id, {[](auto) {}, io_context_}));
          }
          actor->WriteActorExportEvent();
          // Destroy placement group owned by this actor.
@@ -1457,7 +1457,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
            RAY_CHECK_OK(gcs_publisher_->PublishActor(
                actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
            RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Delete(
-               actor_id, Postable<void(Status)>::Empty(this->io_context_)));
+               actor_id, {[](auto) {}, io_context_}));
            actor->WriteActorExportEvent();
          },
          io_context_}));
@@ -1640,7 +1640,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   }
   if (!dead_actors.empty()) {
     RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().BatchDelete(
-        dead_actors, Postable<void(Status)>::Empty(io_context_)));
+        dead_actors, {[](auto) {}, io_context_}));
   }
   sorted_destroyed_actor_list_.sort([](const std::pair<ActorID, int64_t> &left,
                                        const std::pair<ActorID, int64_t> &right) {
@@ -1783,8 +1783,8 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
   if (destroyed_actors_.size() >=
       RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
     const auto &actor_id = sorted_destroyed_actor_list_.front().first;
-    RAY_CHECK_OK(gcs_table_storage_->ActorTable().Delete(
-        actor_id, Postable<void(ray::Status)>::Empty(io_context_)));
+    RAY_CHECK_OK(
+        gcs_table_storage_->ActorTable().Delete(actor_id, {[](auto) {}, io_context_}));
     destroyed_actors_.erase(actor_id);
     sorted_destroyed_actor_list_.pop_front();
   }
