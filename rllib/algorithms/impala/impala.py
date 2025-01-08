@@ -369,7 +369,7 @@ class IMPALAConfig(AlgorithmConfig):
 
         # IMPALA and APPO need vtrace (A3C Policies no longer exist).
         if not self.vtrace:
-            raise ValueError(
+            self._value_error(
                 "IMPALA and APPO do NOT support vtrace=False anymore! Set "
                 "`config.training(vtrace=True)`."
             )
@@ -378,20 +378,20 @@ class IMPALAConfig(AlgorithmConfig):
         if self.enable_env_runner_and_connector_v2:
             # Does NOT support aggregation workers yet or a mixin replay buffer.
             if self.replay_ratio != 0.0:
-                raise ValueError(
+                self._value_error(
                     "The new API stack in combination with the new EnvRunner API "
                     "does NOT support a mixin replay buffer yet for "
                     f"{self} (set `config.replay_proportion` to 0.0)!"
                 )
             # `lr_schedule` checking.
             if self.lr_schedule is not None:
-                raise ValueError(
+                self._value_error(
                     "`lr_schedule` is deprecated and must be None! Use the "
                     "`lr` setting to setup a schedule."
                 )
             # Entropy coeff schedule checking.
             if self.entropy_coeff_schedule is not None:
-                raise ValueError(
+                self._value_error(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
                     "`entropy_coeff` setting to setup a schedule."
                 )
@@ -401,11 +401,28 @@ class IMPALAConfig(AlgorithmConfig):
                 description="entropy coefficient",
             )
             # Learner API specific checks.
+            # GPU-bound single Learner must be local (faster than remote Learner,
+            # b/c GPU can update in parallel through the learner thread).
+            if self.num_gpus_per_learner > 0 and self.num_learners == 1:
+                self._value_error(
+                    "When running with 1 GPU Learner, this Learner should be local! "
+                    "Set `config.learners(num_learners=0)` to configure a local "
+                    "Learner instance."
+                )
+            # CPU-bound single Learner must be remote (faster than local Learner,
+            # b/c learner thread would compete with main thread for resources).
+            elif self.num_gpus_per_learner == 0 and self.num_learners == 0:
+                self._value_error(
+                    "When running with a CPU Learner, this Learner should be remote! "
+                    "Set `config.learners(num_learners=1)` to configure a single "
+                    "remote Learner instance."
+                )
+
             if self.minibatch_size is not None and not (
                 (self.minibatch_size % self.rollout_fragment_length == 0)
                 and self.minibatch_size <= self.total_train_batch_size
             ):
-                raise ValueError(
+                self._value_error(
                     f"`minibatch_size` ({self._minibatch_size}) must either be None "
                     "or a multiple of `rollout_fragment_length` "
                     f"({self.rollout_fragment_length}) while at the same time smaller "
@@ -415,7 +432,7 @@ class IMPALAConfig(AlgorithmConfig):
         # Old API stack checks.
         else:
             if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
-                raise ValueError("`entropy_coeff` must be >= 0.0")
+                self._value_error("`entropy_coeff` must be >= 0.0")
 
         # If two separate optimizers/loss terms used for tf, must also set
         # `_tf_policy_handles_more_than_one_loss` to True.
@@ -424,7 +441,7 @@ class IMPALAConfig(AlgorithmConfig):
             and self._separate_vf_optimizer is True
             and self._tf_policy_handles_more_than_one_loss is False
         ):
-            raise ValueError(
+            self._value_error(
                 "`_tf_policy_handles_more_than_one_loss` must be set to True, for "
                 "TFPolicy to support more than one loss term/optimizer! Try setting "
                 "config.training(_tf_policy_handles_more_than_one_loss=True)."
