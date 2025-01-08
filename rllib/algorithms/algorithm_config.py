@@ -368,7 +368,7 @@ class AlgorithmConfig(_Config):
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         # Simple logic for now: If None, use `train_batch_size`.
-        self.train_batch_size_per_learner = None
+        self._train_batch_size_per_learner = None
         self.train_batch_size = 32  # @OldAPIStack
 
         # These setting have been adopted from the original PPO batch settings:
@@ -2336,7 +2336,7 @@ class AlgorithmConfig(_Config):
                 )
             self.grad_clip_by = grad_clip_by
         if train_batch_size_per_learner is not NotProvided:
-            self.train_batch_size_per_learner = train_batch_size_per_learner
+            self._train_batch_size_per_learner = train_batch_size_per_learner
         if train_batch_size is not NotProvided:
             self.train_batch_size = train_batch_size
         if num_epochs is not NotProvided:
@@ -3769,14 +3769,25 @@ class AlgorithmConfig(_Config):
             return default_rl_module_spec
 
     @property
+    def train_batch_size_per_learner(self):
+        # If not set explicitly, try to infer the value.
+        if self._train_batch_size_per_learner is None:
+            return self.train_batch_size // (self.num_learners or 1)
+        return self._train_batch_size_per_learner
+
+    @train_batch_size_per_learner.setter
+    def train_batch_size_per_learner(self, value):
+        self._train_batch_size_per_learner = value
+
+    @property
     def total_train_batch_size(self):
-        if (
-            self.train_batch_size_per_learner is not None
-            and self.enable_rl_module_and_learner
-        ):
-            return self.train_batch_size_per_learner * (self.num_learners or 1)
-        else:
-            return self.train_batch_size
+        #if (
+        #    self.train_batch_size_per_learner is not None
+        #    and self.enable_rl_module_and_learner
+        #):
+        return self.train_batch_size_per_learner * (self.num_learners or 1)
+        #else:
+        #    return self.train_batch_size
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.
