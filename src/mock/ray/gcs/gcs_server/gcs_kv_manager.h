@@ -70,10 +70,10 @@ class MockInternalKVInterface : public ray::gcs::InternalKVInterface {
 
 class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
  public:
-  FakeInternalKVInterface() {}
+  FakeInternalKVInterface() = default;
 
   // The C++ map.
-  std::unordered_map<std::string, std::string> kv_store_ = {};
+  std::unordered_map<std::string, std::string> kv_store_;
 
   void Get(const std::string &ns,
            const std::string &key,

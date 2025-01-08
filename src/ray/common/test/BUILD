@@ -91,6 +91,17 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "postable_test",
+    size = "small",
+    srcs = ["postable_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "id_test",
     size = "small",
     srcs = ["id_test.cc"],
