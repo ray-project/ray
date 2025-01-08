@@ -14,7 +14,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import gettempdir
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from unittest import mock
 import psutil
 import pytest
@@ -44,6 +44,9 @@ from ray._private.test_utils import (
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
+# TODO (mengjin) Improve the logging in the conftest files so that the logger can log
+# information in stdout as well as stderr and replace the print statements in the test
+# files
 logger = logging.getLogger(__name__)
 
 START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
@@ -177,23 +180,47 @@ def is_process_listen_to_port(pid, port):
     return False
 
 
-def find_user_process_by_port(port):
+def find_user_process_by_port_and_status(
+    port: int, statuses_to_check: Optional[list[str]]
+):
+    """
+    Test helper function to find the processes that have a connection to a provided
+    port and with statuses in the provided list.
+
+    Args:
+        port: The port to check.
+        statuses_to_check: The list of statuses to check. If None, the function will not
+            check the status of the connection.
+
+    Returns:
+        The first process that have a connection
+    """
+    # Here the function finds all the processes and checks if each of them is with the
+    # provided port and status. This is inefficient comparing to leveraging
+    # psutil.net_connections to directly filter the processes by port. However, the
+    # method is chosen because the net_connections method will need root access to run
+    # on macOS: https://psutil.readthedocs.io/en/latest/#psutil.net_connections.
+    # Therefore, the current solution is chosen to make the function work for all
+    processes = []
     for pid in psutil.pids():
         process = psutil.Process(pid)
         try:
             conns = process.connections()
             for conns in conns:
-                if conns.laddr.port == port and conns.status == psutil.CONN_LISTEN:
-                    return process
+                if conns.laddr.port == port:
+                    if statuses_to_check is None or conns.status in statuses_to_check:
+                        processes.append(process)
         except (psutil.AccessDenied, psutil.ZombieProcess, psutil.NoSuchProcess):
             continue
 
-    print(
-        f"Failed to find the process that listens to the port {port}. It could "
-        "be because the process needs higher privilege to access its "
-        "information or the port is not listened by any processes."
-    )
-    return None
+    if not processes:
+        print(
+            f"Failed to find processes that have connections to the port {port} and "
+            f"with connection status in {statuses_to_check}.  It could "
+            "be because the process needs higher privilege to access its "
+            "information or the port is not listened by any processes."
+        )
+    return processes
 
 
 def redis_alive(port, enable_tls):
@@ -297,8 +324,11 @@ def start_redis(db_dir):
                 # output log of the test to further investigate the issue if needed.
                 if "Redis process exited unexpectedly" in str(e):
                     # Output the process that listens to the port
-                    process = find_user_process_by_port(port)
-                    if process is not None:
+                    processes = find_user_process_by_port_and_status(
+                        port, [psutil.CONN_LISTEN]
+                    )
+
+                    for process in processes:
                         print(
                             f"Another process({process.pid}) with command"
                             f"\"{' '.join(process.args)}\" is listening on the port"

@@ -320,7 +320,8 @@ def start_redis_instance(
 
                 if process_info.process.poll() is not None:
                     raise Exception(
-                        f"Redis process exited unexpectedly: {process_info}"
+                        f"Redis process exited unexpectedly: {process_info}. "
+                        f"Exit code: {process_info.process.returncode}"
                     )
 
                 sleep(0.1)
