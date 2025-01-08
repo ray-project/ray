@@ -40,7 +40,7 @@ on the DAG.
     compiled_dag.visualize()
 
 By default, a PNG image named ``compiled_graph.png`` is generated and saved in the current working directory.
-Note that this requires ``pydot`` to be installed.
+Note that this requires ``graphviz`` to be installed.
 
 The example visualization of the above code is shown below:
 
