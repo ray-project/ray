@@ -682,7 +682,7 @@ class DQN(Algorithm):
                         # TODO (simon): Implement `burn_in_len` in SAC and remove this
                         # if-else clause.
                         min_batch_length_T=self.config.burn_in_len
-                        if self.config.burn_in_len
+                        if hasattr(self.config, "burn_in_len")
                         else 0,
                         gamma=self.config.gamma,
                         beta=self.config.replay_buffer_config.get("beta"),
