@@ -112,7 +112,7 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     args_dict = dict()
     for arg in args:
         split = arg.split("=", maxsplit=1)
-        if len(split) != 2 or len(split) == 2 and len(split[1]) == 0:
+        if len(split) != 2 or len(split[1]) == 0:
             raise click.ClickException(
                 f"Invalid application argument '{arg}', "
                 "must be of the form '<key>=<val>'."
