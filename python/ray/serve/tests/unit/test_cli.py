@@ -27,11 +27,6 @@ def test_convert_args_to_dict():
         "key3": "nested=val",
     }
 
-    assert convert_args_to_dict(("key1=nested=val", "key2=val2")) == {
-        "key1": "val1",
-        "key2": "val2",
-    }
-
 
 class FakeServeSubmissionClient:
     def __init__(self):
