@@ -32,6 +32,10 @@ DEFAULT_OVERLAP_GPU_COMMUNICATION = bool(
     os.environ.get("RAY_CGRAPH_overlap_gpu_communication", 0)
 )
 
+DEFAULT_READ_ITERATION_TIMEOUT_S = float(
+    os.environ.get("RAY_CGRAPH_read_iteration_timeout_s", 0.1)
+)
+
 
 @DeveloperAPI
 @dataclass
@@ -78,6 +82,9 @@ class DAGContext:
             computation during DAG execution. If True, the communication
             and computation can be overlapped, which can improve the
             performance of the DAG execution.
+        read_iteration_timeout_s: The timeout for each read iteration in seconds.
+            If the timeout is reached, the read operation will be interrupted and
+            then try to read the next input channel.
     """
 
     submit_timeout: int = DEFAULT_SUBMIT_TIMEOUT_S
@@ -88,6 +95,7 @@ class DAGContext:
     max_buffered_results: int = DEFAULT_MAX_BUFFERED_RESULTS
     max_inflight_executions: int = DEFAULT_MAX_INFLIGHT_EXECUTIONS
     overlap_gpu_communication: bool = DEFAULT_OVERLAP_GPU_COMMUNICATION
+    read_iteration_timeout_s: float = DEFAULT_READ_ITERATION_TIMEOUT_S
 
     @staticmethod
     def get_current() -> "DAGContext":
