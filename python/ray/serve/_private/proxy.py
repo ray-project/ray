@@ -1540,7 +1540,5 @@ def _configure_gc_options():
     gc.collect(2)
     gc.freeze()
 
-    # Tune the GC threshold to run less frequently.
-    print(gc.get_freeze_count())
-    print("DEFAULT gc thresholds:", *gc.get_threshold())
+    # Tune the GC threshold to run less frequently (default is 700).
     gc.set_threshold(RAY_SERVE_PROXY_GC_THRESHOLD)
