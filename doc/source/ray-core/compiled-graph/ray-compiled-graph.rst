@@ -53,7 +53,7 @@ More Resources
 --------------
 
 - `Ray Compiled Graph blog <https://www.anyscale.com/blog/announcing-compiled-graphs>`_
-- `Ray Compiled Graph talk at Ray Summit <https://www.youtube.com/watch?v=jv58Cpr6SAs&t=667s>`_
+- `Ray Compiled Graph talk at Ray Summit <https://www.youtube.com/watch?v=jv58Cpr6SAs>`_
 - `Heterogenous training with Ray Compiled Graph <https://www.youtube.com/watch?v=Mg08QTBILWU>`_
 - `Distributed LLM inference with Ray Compiled Graph <https://www.youtube.com/watch?v=oMb_WiUwf5o>`_
 
