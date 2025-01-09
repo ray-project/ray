@@ -904,12 +904,6 @@ class CompiledDAG:
     def communicator_ids(self) -> Set[str]:
         return self._communicator_ids
 
-    def increment_max_finished_execution_index(self) -> None:
-        """Increment the max finished execution index. It is used to
-        figure out the max number of in-flight requests to the DAG
-        """
-        self._max_finished_execution_index += 1
-
     def get_id(self) -> str:
         """
         Get the unique ID of the compiled DAG.
@@ -2012,7 +2006,7 @@ class CompiledDAG:
         timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
-            self.increment_max_finished_execution_index()
+            self._max_finished_execution_index += 1
             start_time = time.monotonic()
             self._dag_output_fetcher.release_channel_buffers(timeout)
 
@@ -2057,14 +2051,15 @@ class CompiledDAG:
 
         while self._max_finished_execution_index < execution_index:
             self.raise_if_result_buffer_at_capacity()
-            self.increment_max_finished_execution_index()
             start_time = time.monotonic()
 
             # Fetch results from each output channel up to execution_index and cache
             # them separately to enable individual retrieval
+            result = self._dag_output_fetcher.read(timeout)
+            self._max_finished_execution_index += 1
             self._cache_execution_results(
                 self._max_finished_execution_index,
-                self._dag_output_fetcher.read(timeout),
+                result,
             )
 
             if timeout != -1:
