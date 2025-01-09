@@ -208,10 +208,7 @@ class TestSelectNextNodes:
             [task_idx_2_0, task_idx_1_1], {task_idx_2_0, task_idx_1_1}
         )
 
-        # [TODO:andyub] This is no longer deterministic.
-        # When a.send, b.send are both candidates, we can either get a schedule like
-        # [a.send & b.recv, b.send & a.recv] or [b.send & a.recv, a.send & b.recv].
-        # Run the test 10 times to ensure that the result of `_select_next_nodes`
+        # Run the test 20 times to ensure that the result of `_select_next_nodes`
         # is deterministic.
         for _ in range(20):
             mock_graph = {
@@ -860,25 +857,25 @@ class TestGenerateActorToExecutionSchedule:
         monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
 
         worker_1 = ActorHandle("worker_1")
-        task_idx_1_1, exec_task_idx_1_1 = 1, 4
-        task_idx_1_3, exec_task_idx_1_3 = 2, 5
-        task_idx_1_6, exec_task_idx_1_6 = 3, 6
+        task_idx_1_1, exec_task_idx_1_1 = 1, 0
+        task_idx_1_3, exec_task_idx_1_3 = 2, 2
+        task_idx_1_6, exec_task_idx_1_6 = 3, 5
         task_idx_1_8, exec_task_idx_1_8 = 4, 7
         # worker 1 NCCL P2P operations.
-        task_idx_1_2, exec_task_idx_1_2 = 9, 0
-        task_idx_1_4, exec_task_idx_1_4 = 10, 1
-        task_idx_1_5, exec_task_idx_1_5 = 11, 2
-        task_idx_1_7, exec_task_idx_1_7 = 12, 3
+        task_idx_1_2, exec_task_idx_1_2 = 5, 1
+        task_idx_1_4, exec_task_idx_1_4 = 6, 3
+        task_idx_1_5, exec_task_idx_1_5 = 7, 4
+        task_idx_1_7, exec_task_idx_1_7 = 8, 6
         worker_2 = ActorHandle("worker_2")
-        task_idx_2_2, exec_task_idx_2_2 = 5, 4
-        task_idx_2_3, exec_task_idx_2_3 = 6, 5
-        task_idx_2_6, exec_task_idx_2_6 = 7, 6
-        task_idx_2_7, exec_task_idx_2_7 = 8, 7
+        task_idx_2_2, exec_task_idx_2_2 = 9, 1
+        task_idx_2_3, exec_task_idx_2_3 = 10, 2
+        task_idx_2_6, exec_task_idx_2_6 = 11, 5
+        task_idx_2_7, exec_task_idx_2_7 = 12, 6
         # worker 2 NCCL P2P operations.
         task_idx_2_1, exec_task_idx_2_1 = 13, 0
-        task_idx_2_4, exec_task_idx_2_4 = 14, 1
-        task_idx_2_5, exec_task_idx_2_5 = 15, 2
-        task_idx_2_8, exec_task_idx_2_8 = 16, 3
+        task_idx_2_4, exec_task_idx_2_4 = 14, 3
+        task_idx_2_5, exec_task_idx_2_5 = 15, 4
+        task_idx_2_8, exec_task_idx_2_8 = 16, 7
 
         nccl_op_1 = MockSyncGroup([task_idx_1_2, task_idx_2_1])
         nccl_op_2 = MockSyncGroup([task_idx_1_4, task_idx_2_5])
