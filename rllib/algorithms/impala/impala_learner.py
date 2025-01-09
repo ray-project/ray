@@ -3,6 +3,7 @@ import threading
 import time
 from typing import Any, Dict, Union
 
+import ray
 from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.learner.learner import Learner
@@ -84,9 +85,12 @@ class IMPALALearner(Learner):
         **kwargs,
     ) -> ResultDict:
         global _CURRENT_GLOBAL_TIMESTEPS
-        _CURRENT_GLOBAL_TIMESTEPS = timesteps
+        _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
 
-        self.before_gradient_based_update(timesteps=timesteps)
+        if isinstance(batch, ray.ObjectRef):
+            batch = ray.get(batch)
+
+        self.before_gradient_based_update(timesteps=timesteps or {})
 
         if isinstance(self._learner_thread_in_queue, CircularBuffer):
             ts_dropped = self._learner_thread_in_queue.add(batch)

@@ -52,7 +52,6 @@ class TestAPPOLearner(unittest.TestCase):
                 num_env_runners=0,
                 rollout_fragment_length=frag_length,
             )
-            .resources(num_gpus=0)
             .training(
                 gamma=0.99,
                 model=dict(
@@ -73,7 +72,7 @@ class TestAPPOLearner(unittest.TestCase):
         )
 
         algo_config = config.copy(copy_frozen=False)
-        algo_config.learners(num_learners=0)
+        algo_config.learners(num_learners=0).experimental(_validate_config=False)
         algo_config.validate()
 
         learner_group = algo_config.build_learner_group(env=algo.env_runner.env)
