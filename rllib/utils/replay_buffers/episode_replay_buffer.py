@@ -182,12 +182,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 NUM_ENV_STEPS_ADDED_LIFETIME,
                 eps_len,
-                reduce="sum",                
+                reduce="sum",
             )
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_ADDED_LIFETIME, DEFAULT_AGENT_ID),
                 eps_len,
-                reduce="sum"
+                reduce="sum",
             )
 
             # Ongoing episode, concat to existing record.
@@ -538,7 +538,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self.metrics.log_value(
             (NUM_AGENT_STEPS_SAMPLED_LIFETIME, DEFAULT_AGENT_ID),
             batch_size_B * batch_length_T,
-            reduce="sum",            
+            reduce="sum",
         )
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED,
@@ -549,7 +549,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
             batch_size_B * batch_length_T,
-            reduce="sum",            
+            reduce="sum",
         )
         # TODO: Return SampleBatch instead of this simpler dict.
         ret = {

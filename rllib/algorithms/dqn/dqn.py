@@ -662,7 +662,9 @@ class DQN(Algorithm):
                     )
 
                     replay_buffer_results = self.local_replay_buffer.get_metrics()
-                    self.metrics.merge_and_log_n_dicts([replay_buffer_results], key=REPLAY_BUFFER_RESULTS)
+                    self.metrics.merge_and_log_n_dicts(
+                        [replay_buffer_results], key=REPLAY_BUFFER_RESULTS
+                    )
 
                 # Perform an update on the buffer-sampled train batch.
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
