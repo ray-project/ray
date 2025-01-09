@@ -2742,10 +2742,15 @@ class CompiledDAG:
                 if dag_node.is_class_method_call:
                     # Class Method Call Node
                     method_name = dag_node.get_method_name()
-                    actor_handle = dag_node._get_actor_handle()
-                    if actor_handle:
-                        actor_id = actor_handle._actor_id.hex()
-                        label += f"Actor: {actor_id[:6]}...\nMethod: {method_name}"
+                    actor = dag_node._get_actor_handle()
+                    if actor:
+                        class_name = (
+                            actor._ray_actor_creation_function_descriptor.class_name
+                        )
+                        actor_id = actor._actor_id.hex()
+                        label += f"Actor: {class_name}\n"
+                        label += f"ID: {actor_id[:6]}...\n"
+                        label += f"Method: {method_name}"
                         fillcolor = actor_id_to_color[actor_id]
                     else:
                         label += f"Method: {method_name}"
