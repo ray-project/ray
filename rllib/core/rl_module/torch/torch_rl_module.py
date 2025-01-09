@@ -57,16 +57,18 @@ class TorchRLModule(nn.Module, RLModule):
                 parts = attr.split(".")
                 if not hasattr(self, parts[0]):
                     continue
-                target = getattr(self, parts[0])
+                target_name = parts[0]
+                target_obj = getattr(self, target_name)
                 # Traverse from the next part on (if nested).
                 for part in parts[1:]:
-                    if not hasattr(target, part):
-                        target = None
+                    if not hasattr(target_obj, part):
+                        target_obj = None
                         break
-                    target = getattr(target, part)
+                    target_name = part
+                    target_obj = getattr(target_obj, target_name)
                 # Delete, if target is valid.
-                if target is not None:
-                    del target
+                if target_obj is not None:
+                    delattr(self, target_name)
 
     def compile(self, compile_config: TorchCompileConfig):
         """Compile the forward methods of this module.

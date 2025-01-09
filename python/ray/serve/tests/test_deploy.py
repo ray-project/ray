@@ -10,7 +10,7 @@ import requests
 import ray
 from ray import serve
 from ray._private.pydantic_compat import ValidationError
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS
 from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
@@ -349,7 +349,9 @@ def test_reconfigure_does_not_run_while_there_are_active_queries(serve_instance)
     responses = [handle.remote() for _ in range(10)]
 
     # Give the queries time to get to the replicas before the reconfigure.
-    time.sleep(0.1)
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == len(responses)
+    )
 
     @ray.remote(num_cpus=0)
     def reconfigure():
