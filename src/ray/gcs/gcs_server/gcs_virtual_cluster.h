@@ -392,11 +392,6 @@ class IndivisibleCluster : public VirtualCluster {
   /// \param callback The callback to replenish the dead node instances.
   /// \return True if any dead node instances are replenished, false otherwise.
   bool ReplenishNodeInstances(const NodeInstanceReplenishCallback &callback) override;
-};
-
-class JobCluster : public IndivisibleCluster {
- public:
-  using IndivisibleCluster::IndivisibleCluster;
 
   /// Handle detached actor registration.
   void OnDetachedActorRegistration(const ActorID &actor_id);
@@ -410,26 +405,28 @@ class JobCluster : public IndivisibleCluster {
   /// Handle detached placement group destroy.
   void OnDetachedPlacementGroupDestroy(const PlacementGroupID &placement_group_id);
 
-  /// Check if job cluster is still in use
-  ///
-  /// \return True if the job is in use, false otherwise.
-  bool InUse() const override;
-
-  /// Set Job as Finished
-  void SetFinished() { finished = true; }
-
-  /// Check if job is finished
-  ///
-  /// \return True if the job is finished, false otherwise.
-  bool IsFinished() const { return finished; }
-
  private:
   // The references of detached actors
   absl::flat_hash_set<ActorID> detached_actors_;
   // The references of detached placement groups
   absl::flat_hash_set<PlacementGroupID> detached_placement_groups_;
-  // If the job is finished
-  bool finished = false;
+};
+
+class JobCluster : public IndivisibleCluster {
+ public:
+  using IndivisibleCluster::IndivisibleCluster;
+
+  /// Set Job as dead
+  void SetJobDead() { job_dead = true; }
+
+  /// Check if job is dead
+  ///
+  /// \return True if the job is dead, false otherwise.
+  bool IsJobDead() const { return job_dead; }
+
+ private:
+  // If the job is dead
+  bool job_dead = false;
 };
 
 class PrimaryCluster : public DivisibleCluster,
@@ -537,6 +534,9 @@ class PrimaryCluster : public DivisibleCluster,
 
   /// Replenish dead node instances of all the virtual clusters.
   void ReplenishAllClusterNodeInstances();
+
+  /// Garbage collect expired job clusters.
+  void GCExpiredJobClusters();
 
  protected:
   /// Handle the node dead event.

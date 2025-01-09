@@ -880,7 +880,7 @@ async def test_list_cluster_resources(job_sdk_client):
     "job_sdk_client",
     [
         {
-            "ntemplates": 1,
+            "ntemplates": 2,
         },
     ],
     indirect=True,
@@ -895,6 +895,13 @@ async def test_detached_job_cluster(job_sdk_client):
         {TEMPLATE_ID_PREFIX + str(0): 2},
         True,
     )
+    await create_virtual_cluster(
+        gcs_address,
+        virtual_cluster_id + "_indivisible",
+        {TEMPLATE_ID_PREFIX + str(1): 2},
+        True,
+    )
+
     actor_name = "test_actor"
     pg_name = "test_pg"
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -936,7 +943,7 @@ ray.get(a.run.remote())
         runtime_env = upload_working_dir_if_needed(runtime_env, tmp_dir, logger=logger)
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
 
-        def _successful_submit():
+        def _successful_submit(head_client, runtime_env, virtual_cluster_id):
             job_id = head_client.submit_job(
                 entrypoint="python test_script.py",
                 entrypoint_memory=1,
@@ -949,6 +956,8 @@ ray.get(a.run.remote())
                 assert head_client.get_job_status(job_id) == JobStatus.SUCCEEDED
                 return True
 
+            assert head_client.get_job_status(job_id) != JobStatus.FAILED
+
             wait_for_condition(
                 partial(
                     _check_job_succeeded,
@@ -957,8 +966,9 @@ ray.get(a.run.remote())
                 ),
                 timeout=20,
             )
+            return True
 
-        _successful_submit()
+        _successful_submit(head_client, runtime_env, virtual_cluster_id)
 
         def _failed_submit():
             job_id = head_client.submit_job(
@@ -1012,7 +1022,11 @@ ray.get(a.run.remote())
         actor = ray.get_actor(name=actor_name, namespace="test")
         ray.kill(actor)
 
-        _successful_submit()
+        wait_for_condition(
+            partial(_successful_submit, head_client, runtime_env, virtual_cluster_id),
+            timeout=50,
+            retry_interval_ms=5000,
+        )
 
         _remove_pg()
 
@@ -1035,10 +1049,22 @@ ray.util.remove_placement_group(pg)
             )
             runtime_env = RuntimeEnv(**runtime_env).to_dict()
 
-            _successful_submit()
+            wait_for_condition(
+                partial(
+                    _successful_submit, head_client, runtime_env, virtual_cluster_id
+                ),
+                timeout=50,
+                retry_interval_ms=5000,
+            )
             # Test that the job submission is successful if detached is
             # early killed in job.
-            _successful_submit()
+            wait_for_condition(
+                partial(
+                    _successful_submit, head_client, runtime_env, virtual_cluster_id
+                ),
+                timeout=50,
+                retry_interval_ms=5000,
+            )
 
 
 if __name__ == "__main__":

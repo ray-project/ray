@@ -20,3 +20,6 @@
 
 /// The interval to replenish node instances of all the virtual clusters.
 RAY_CONFIG(uint64_t, node_instances_replenish_interval_ms, 30000)
+
+/// The interval to check and delete expired job clusters.
+RAY_CONFIG(uint64_t, expired_job_clusters_gc_interval_ms, 30000)
