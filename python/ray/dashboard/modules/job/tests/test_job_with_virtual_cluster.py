@@ -599,7 +599,6 @@ import os
 ray.init(address="auto")
 storage = ray.get_actor(name="{storage_actor_name}", namespace="storage")
 
-
 @ray.remote
 def access_nodes():
     return ray.nodes()
@@ -822,10 +821,10 @@ async def test_list_nodes(job_sdk_client):
             "_system_config": {"gcs_actor_scheduling_enabled": False},
             "ntemplates": 3,
         },
-        # {
-        #     "_system_config": {"gcs_actor_scheduling_enabled": True},
-        #     "ntemplates": 3,
-        # },
+        {
+            "_system_config": {"gcs_actor_scheduling_enabled": True},
+            "ntemplates": 3,
+        },
     ],
     indirect=True,
 )
