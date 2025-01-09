@@ -38,9 +38,7 @@ def _wrap_grpc_call(f):
     """Decorator that processes grpc methods."""
 
     def serialize(result, metadata):
-        if isinstance(result, ReplicaQueueLengthInfo):
-            return pickle.dumps(result)
-        elif metadata.is_streaming and metadata.is_http_request:
+        if metadata.is_streaming and metadata.is_http_request:
             return result
         else:
             return cloudpickle.dumps(result)
@@ -59,7 +57,9 @@ def _wrap_grpc_call(f):
             request_args = (pickle.loads(request_args[0]),)
 
         try:
-            result = await f(self, request_metadata, *request_args, **request_kwargs)
+            result = await f(
+                self, context, request_metadata, *request_args, **request_kwargs
+            )
             return serve_proprietary_pb2.ASGIResponse(
                 serialized_message=serialize(result, request_metadata)
             )
@@ -84,7 +84,7 @@ def _wrap_grpc_call(f):
 
         try:
             async for result in f(
-                self, request_metadata, *request_args, **request_kwargs
+                self, context, request_metadata, *request_args, **request_kwargs
             ):
                 yield serve_proprietary_pb2.ASGIResponse(
                     serialized_message=serialize(result, request_metadata)
@@ -222,7 +222,11 @@ class AnyscaleReplica(ReplicaBase):
 
     @_wrap_grpc_call
     async def HandleRequest(
-        self, request_metadata: RequestMetadata, *request_args, **request_kwargs
+        self,
+        context: grpc.aio.ServicerContext,
+        request_metadata: RequestMetadata,
+        *request_args,
+        **request_kwargs,
     ):
         return await self.handle_request(
             request_metadata, *request_args, **request_kwargs
@@ -230,7 +234,11 @@ class AnyscaleReplica(ReplicaBase):
 
     @_wrap_grpc_call
     async def HandleRequestStreaming(
-        self, request_metadata: RequestMetadata, *request_args, **request_kwargs
+        self,
+        context: grpc.aio.ServicerContext,
+        request_metadata: RequestMetadata,
+        *request_args,
+        **request_kwargs,
     ):
         async for result in self.handle_request_streaming(
             request_metadata, *request_args, **request_kwargs
@@ -239,7 +247,11 @@ class AnyscaleReplica(ReplicaBase):
 
     @_wrap_grpc_call
     async def HandleRequestWithRejection(
-        self, request_metadata: RequestMetadata, *request_args, **request_kwargs
+        self,
+        context: grpc.aio.ServicerContext,
+        request_metadata: RequestMetadata,
+        *request_args,
+        **request_kwargs,
     ) -> AsyncGenerator[Any, None]:
         """gRPC entrypoint for all requests with strict max_ongoing_requests enforcement
 
@@ -250,7 +262,22 @@ class AnyscaleReplica(ReplicaBase):
         exception or an error intentionally raised by Serve, it will be returned as
         a gRPC response instead of raised directly.
         """
-        async for result in self.handle_request_with_rejection(
+        result_gen = self.handle_request_with_rejection(
             request_metadata, *request_args, **request_kwargs
-        ):
+        )
+        queue_len_info: ReplicaQueueLengthInfo = await result_gen.__anext__()
+        await context.send_initial_metadata(
+            [
+                ("accepted", str(int(queue_len_info.accepted))),
+                ("num_ongoing_requests", str(queue_len_info.num_ongoing_requests)),
+            ]
+        )
+        if not queue_len_info.accepted:
+            # NOTE(edoakes): in gRPC, it's not guaranteed that the initial metadata sent
+            # by the server will be delivered for a stream with no messages. Therefore,
+            # we send a dummy message here to ensure it is populated in every case.
+            yield b""
+            return
+
+        async for result in result_gen:
             yield result

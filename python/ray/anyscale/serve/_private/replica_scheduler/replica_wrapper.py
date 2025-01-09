@@ -77,15 +77,32 @@ class gRPCReplicaWrapper(ReplicaWrapper):
             on_separate_loop=self._on_separate_loop,
         )
 
+    async def _parse_initial_metadata(
+        self, call: grpc.aio.Call
+    ) -> ReplicaQueueLengthInfo:
+        # NOTE(edoakes): this is required for gRPC to raise an AioRpcError if something
+        # goes wrong establishing the connection (for example, a bug in our code).
+        await call.wait_for_connection()
+        metadata = await call.initial_metadata()
+
+        accepted = metadata.get("accepted", None)
+        num_ongoing_requests = metadata.get("num_ongoing_requests", None)
+        if accepted is None or num_ongoing_requests is None:
+            code = await call.code()
+            details = await call.details()
+            raise RuntimeError(f"Unexpected error ({code}): {details}.")
+
+        return ReplicaQueueLengthInfo(
+            accepted=bool(int(accepted)),
+            num_ongoing_requests=int(num_ongoing_requests),
+        )
+
     async def send_request_with_rejection(
         self, pr: PendingRequest
     ) -> Tuple[Optional[ReplicaResult], ReplicaQueueLengthInfo]:
         call = self._send_request_python(pr, with_rejection=True)
         try:
-            first_msg = await call.__aiter__().__anext__()
-            queue_len_info: ReplicaQueueLengthInfo = pickle.loads(
-                first_msg.serialized_message
-            )
+            queue_len_info = await self._parse_initial_metadata(call)
 
             if not queue_len_info.accepted:
                 return None, queue_len_info
@@ -118,4 +135,4 @@ class gRPCReplicaWrapper(ReplicaWrapper):
                     self._actor_handle._actor_id.binary(),
                 )
 
-            raise
+            raise e from None

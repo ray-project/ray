@@ -89,8 +89,14 @@ class FakeReplicaActor:
 
             return
 
-        yield serve_proprietary_pb2.ASGIResponse(
-            serialized_message=pickle.dumps(self._replica_queue_length_info)
+        await context.send_initial_metadata(
+            [
+                ("accepted", str(int(self._replica_queue_length_info.accepted))),
+                (
+                    "num_ongoing_requests",
+                    str(self._replica_queue_length_info.num_ongoing_requests),
+                ),
+            ]
         )
         if not self._replica_queue_length_info.accepted:
             return
