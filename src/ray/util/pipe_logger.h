@@ -38,27 +38,65 @@ struct LogRotationOption {
 
 // TODO(hjiang): Use `MEMFD_TYPE_NON_UNIQUE` after we split `plasma/compat.h` into a
 // separate target, otherwise we're introducing too many unnecessary dependencies.
-class PipeStreamToken {
+class RotationFileHandle {
  public:
-  PipeStreamToken(int write_fd, std::function<void()> termination_caller)
+  RotationFileHandle(int write_fd, std::function<void()> termination_caller)
       : write_fd_(write_fd), termination_caller_(std::move(termination_caller)) {}
-  PipeStreamToken(const PipeStreamToken &) = delete;
-  PipeStreamToken &operator=(const PipeStreamToken &) = delete;
-  PipeStreamToken(PipeStreamToken &&) = default;
-  PipeStreamToken &operator=(PipeStreamToken &&) = default;
-
-  ~PipeStreamToken() { termination_caller_(); }
+  RotationFileHandle(const RotationFileHandle &) = delete;
+  RotationFileHandle &operator=(const RotationFileHandle &) = delete;
 
   // Used to write to.
   //
   // TODO(hjiang): I will followup with another PR to make a `FD` class, which is not
   // copiable to avoid manual `dup`.
 #if defined(__APPLE__) || defined(__linux__)
+  RotationFileHandle(RotationFileHandle &&rhs) {
+    write_fd_ = rhs.write_fd_;
+    rhs.write_fd_ = -1;
+    termination_caller_ = std::move(rhs.termination_caller_);
+  }
+  RotationFileHandle &operator=(RotationFileHandle &&rhs) {
+    if (this == &rhs) {
+      return *this;
+    }
+    write_fd_ = rhs.write_fd_;
+    rhs.write_fd_ = -1;
+    termination_caller_ = std::move(rhs.termination_caller_);
+    return *this;
+  }
+  ~RotationFileHandle() {
+    // Only invoke termination functor when handler at a valid state.
+    if (write_fd_ != -1) {
+      termination_caller_();
+    }
+  }
+
   int GetWriteHandle() const { return write_fd_; }
 
  private:
   int write_fd_;
 #elif defined(_WIN32)
+  RotationFileHandle(RotationFileHandle &&rhs) {
+    write_fd_ = rhs.write_fd_;
+    rhs.write_fd_ = nullptr;
+    termination_caller_ = std::move(rhs.termination_caller_);
+  }
+  RotationFileHandle &operator=(RotationFileHandle &&rhs) {
+    if (this == &rhs) {
+      return *this;
+    }
+    write_fd_ = rhs.write_fd_;
+    rhs.write_fd_ = nullptr;
+    termination_caller_ = std::move(rhs.termination_caller_);
+    return *this;
+  }
+  ~RotationFileHandle() {
+    // Only invoke termination functor when handler at a valid state.
+    if (write_fd_ != nullptr) {
+      termination_caller_();
+    }
+  }
+
   HANDLE GetWriteHandle() const { return write_handle_; }
 
  private:
@@ -73,7 +111,7 @@ class PipeStreamToken {
 // There're will be two threads spawned in the background, one thread continuously reads
 // from the pipe, another one dumps whatever read from pipe to the persistent file.
 //
-// The returned [PipeStreamToken] owns the lifecycle for pipe file descriptors and
+// The returned [RotationFileHandle] owns the lifecycle for pipe file descriptors and
 // background threads, the resource release happens at token's destruction.
 //
 // @param on_completion: called after all content has been persisted.
@@ -82,8 +120,8 @@ class PipeStreamToken {
 //
 // Notice caller side should _NOT_ close the given file handle, it will be handled
 // internally.
-PipeStreamToken CreatePipeAndStreamOutput(const std::string &fname,
-                                          const LogRotationOption &log_rotate_opt,
-                                          std::function<void()> on_completion);
+RotationFileHandle CreatePipeAndStreamOutput(const std::string &fname,
+                                             const LogRotationOption &log_rotate_opt,
+                                             std::function<void()> on_completion);
 
 }  // namespace ray

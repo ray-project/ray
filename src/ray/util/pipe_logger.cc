@@ -197,9 +197,9 @@ std::shared_ptr<spdlog::logger> CreateLogger(const std::string &fname,
 
 }  // namespace
 
-PipeStreamToken CreatePipeAndStreamOutput(const std::string &fname,
-                                          const LogRotationOption &log_rotate_opt,
-                                          std::function<void()> on_completion) {
+RotationFileHandle CreatePipeAndStreamOutput(const std::string &fname,
+                                             const LogRotationOption &log_rotate_opt,
+                                             std::function<void()> on_completion) {
 #if defined(__APPLE__) || defined(__linux__)
   int pipefd[2] = {0};
   // TODO(hjiang): We shoud have our own syscall macro.
@@ -242,9 +242,9 @@ PipeStreamToken CreatePipeAndStreamOutput(const std::string &fname,
                      std::move(on_completion));
 
 #if defined(__APPLE__) || defined(__linux__)
-  PipeStreamToken stream_token{write_fd, std::move(termination_caller)};
+  RotationFileHandle stream_token{write_fd, std::move(termination_caller)};
 #else  // __linux__
-  PipeStreamToken stream_token{write_handle, std::move(termination_caller)};
+  RotationFileHandle stream_token{write_handle, std::move(termination_caller)};
 #endif
 
   return stream_token;
