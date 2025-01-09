@@ -51,6 +51,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_TARGET_UPDATES,
     REPLAY_BUFFER_ADD_DATA_TIMER,
+    REPLAY_BUFFER_RESULTS,
     REPLAY_BUFFER_SAMPLE_TIMER,
     REPLAY_BUFFER_UPDATE_PRIOS_TIMER,
     SAMPLE_TIMER,
@@ -659,6 +660,9 @@ class DQN(Algorithm):
                         beta=self.config.replay_buffer_config.get("beta"),
                         sample_episodes=True,
                     )
+
+                    replay_buffer_results = self.local_replay_buffer.get_metrics()
+                    self.metrics.merge_and_log_n_dicts([replay_buffer_results], key=REPLAY_BUFFER_RESULTS)
 
                 # Perform an update on the buffer-sampled train batch.
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
