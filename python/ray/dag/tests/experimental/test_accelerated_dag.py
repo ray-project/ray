@@ -2408,7 +2408,6 @@ def test_driver_and_intraprocess_read(ray_start_cluster):
     assert ray.get(dag.execute(1)) == [1, 2]
 
 
-@pytest.mark.skip("Currently buffer size is set to 1 because of regression.")
 @pytest.mark.parametrize("temporary_change_timeout", [1], indirect=True)
 def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     ray.init()
