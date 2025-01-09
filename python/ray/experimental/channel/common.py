@@ -279,7 +279,7 @@ class ReaderInterface:
         self._closed = False
         self._num_reads = 0
 
-        # A set of channels that were not read in the last `read` call
+        # A list of channels that were not read in the last `read` call
         # because the reader returned immediately when a RayTaskError was found.
         # These channels must be consumed before the next read to avoid reading
         # stale data remaining from the last read.
