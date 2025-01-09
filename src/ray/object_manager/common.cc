@@ -254,7 +254,7 @@ Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
 
 Status PlasmaObjectHeader::TryToAcquireSemaphore(
     sem_t *sem,
-    const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point,
+    const std::optional<std::chrono::steady_clock::time_point> &timeout_point,
     const std::function<Status()> &check_signals) const {
   return Status::NotImplemented("Not supported on Windows.");
 }
@@ -266,7 +266,7 @@ Status PlasmaObjectHeader::WriteAcquire(
     uint64_t write_data_size,
     uint64_t write_metadata_size,
     int64_t write_num_readers,
-    const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) {
+    const std::optional<std::chrono::steady_clock::time_point> &timeout_point) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
@@ -280,7 +280,7 @@ Status PlasmaObjectHeader::ReadAcquire(
     int64_t version_to_read,
     int64_t &version_read,
     const std::function<Status()> &check_signals,
-    const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) {
+    const std::optional<std::chrono::steady_clock::time_point> &timeout_point) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
