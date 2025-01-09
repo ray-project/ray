@@ -84,8 +84,8 @@ class EventHead(
     dashboard_utils.RateLimitedModule,
     event_pb2_grpc.ReportEventServiceServicer,
 ):
-    def __init__(self, dashboard_head):
-        dashboard_utils.DashboardHeadModule.__init__(self, dashboard_head)
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        dashboard_utils.DashboardHeadModule.__init__(self, config)
         dashboard_utils.RateLimitedModule.__init__(
             self,
             min(
@@ -93,7 +93,7 @@ class EventHead(
                 RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
             ),
         )
-        self._event_dir = os.path.join(self._dashboard_head.log_dir, "events")
+        self._event_dir = os.path.join(self.log_dir, "events")
         os.makedirs(self._event_dir, exist_ok=True)
         self._monitor: Union[asyncio.Task, None] = None
         self.total_report_events_count = 0
