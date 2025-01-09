@@ -28,6 +28,7 @@ from ray.util.state.common import (
     SummaryApiResponse,
     TaskState,
     TaskSummaries,
+    VirtualClusterState,
     WorkerState,
     protobuf_message_to_dict,
     protobuf_to_task_state_dict,
@@ -448,6 +449,121 @@ class StateAPIManager:
 
         return await get_or_create_event_loop().run_in_executor(
             self._thread_pool_executor, transform, replies
+        )
+
+    async def list_vclusters(self, *, option: ListApiOptions) -> ListApiResponse:
+        """List all virtrual cluster information from the cluster.
+
+        Returns:
+            {virtual_cluster_id -> virtual_cluster_data_in_dict}
+            virtual_cluster_data_in_dict's schema is in VirtualClusterState
+        """
+        try:
+            reply = await self._client.get_all_virtual_cluster_info(
+                timeout=option.timeout, filters=option.filters
+            )
+        except DataSourceUnavailable:
+            raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
+
+        def transform(reply) -> ListApiResponse:
+            result = []
+            for message in reply.virtual_clusters_view:
+                data = protobuf_message_to_dict(
+                    message=message,
+                    fields_to_decode=[],
+                )
+                result.append(data)
+
+            entries = {}
+            for entry in result:
+                entry = {
+                    "virtual_cluster_id": entry["id"],
+                    "divided_clusters": [],
+                    "divisible": entry["divisible"],
+                    "replica_sets": {},
+                    "undivided_replica_sets": {},
+                    "visible_node_instances": entry.get("node_instance_views", {}),
+                    "undivided_nodes": {},
+                }
+                entries[entry["virtual_cluster_id"]] = entry
+
+            primary_cluster = entries["kPrimaryClusterID"]
+
+            all_nodes = {}
+            cluster_nodes = {}
+            for id, entry in entries.items():
+                cluster_nodes[id] = set()
+                if id != "kPrimaryClusterID":
+                    primary_cluster["divided_clusters"].append(id)
+                elif "##" in id:
+                    parent_cluster_id = id.split("##")[0]
+                    entries[parent_cluster_id]["divided_clusters"].append(id)
+                all_nodes.update(entry["visible_node_instances"])
+
+            # update cluster nodes to calculate template ids
+            for id, entry in entries.items():
+                for sub_cluster_id in entry["divided_clusters"]:
+                    cluster_nodes[id].update(
+                        entries[sub_cluster_id]["visible_node_instances"].keys()
+                    )
+                cluster_nodes[id].update(entry["visible_node_instances"].keys())
+
+            # calculate template ids
+            for id, entry in entries.items():
+                for node_id in cluster_nodes[id]:
+                    node = all_nodes[node_id]
+                    if not node["is_dead"]:
+                        entry["replica_sets"][node["template_id"]] = (
+                            entry["replica_sets"].get(node["template_id"], 0) + 1
+                        )
+
+            def collect_all_sub_nodes(virtual_cluster_id):
+                ret = set()
+                entry = entries[virtual_cluster_id]
+                for sub_cluster_id in entry["divided_clusters"]:
+                    ret.update(collect_all_sub_nodes(sub_cluster_id))
+                ret.update(entry["visible_node_instances"].keys())
+                return ret
+
+            for id, entry in entries.items():
+                divided_nodes = set()
+                for sub_cluster_id in entry["divided_clusters"]:
+                    divided_nodes.update(collect_all_sub_nodes(sub_cluster_id))
+                undivided_nodes = {}
+                for node_id, node in entry["visible_node_instances"].items():
+                    if node_id not in divided_nodes:
+                        undivided_nodes[node_id] = node
+                        if not node["is_dead"]:
+                            entry["undivided_replica_sets"][node["template_id"]] = (
+                                entry["undivided_replica_sets"].get(
+                                    node["template_id"], 0
+                                )
+                                + 1
+                            )
+                entry["undivided_nodes"] = undivided_nodes
+
+            result = list(entries.values())
+
+            num_after_truncation = len(result)
+            result = do_filter(
+                result, option.filters, VirtualClusterState, option.detail
+            )
+            num_filtered = len(result)
+
+            # Sort to make the output deterministic.
+            result.sort(key=lambda entry: entry["virtual_cluster_id"])
+
+            result = list(islice(result, option.limit))
+
+            return ListApiResponse(
+                result=result,
+                total=reply.total,
+                num_after_truncation=num_after_truncation,
+                num_filtered=num_filtered,
+            )
+
+        return await get_or_create_event_loop().run_in_executor(
+            self._thread_pool_executor, transform, reply
         )
 
     async def list_runtime_envs(self, *, option: ListApiOptions) -> ListApiResponse:

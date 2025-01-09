@@ -49,6 +49,14 @@ struct NodeInstance {
     return node_instance;
   }
 
+  std::shared_ptr<rpc::NodeInstanceView> ToView() const {
+    auto node_view = std::make_shared<rpc::NodeInstanceView>();
+    node_view->set_template_id(template_id_);
+    node_view->set_hostname(hostname_);
+    node_view->set_is_dead(is_dead_);
+    return node_view;
+  }
+
   std::string DebugString() const {
     std::ostringstream stream;
     stream << "NodeInstance(" << node_instance_id_ << "," << hostname_ << ","
@@ -86,6 +94,9 @@ using RemoveVirtualClusterCallback = CreateOrUpdateVirtualClusterCallback;
 
 using VirtualClustersDataVisitCallback =
     std::function<void(std::shared_ptr<rpc::VirtualClusterTableData>)>;
+
+using VirtualClustersViewVisitCallback =
+    std::function<void(std::shared_ptr<rpc::VirtualClusterView>)>;
 
 using AsyncClusterDataFlusher = std::function<Status(
     std::shared_ptr<rpc::VirtualClusterTableData>, CreateOrUpdateVirtualClusterCallback)>;
@@ -202,6 +213,11 @@ class VirtualCluster {
   /// to redis or publishing to raylet.
   /// \return A shared pointer to the proto data.
   std::shared_ptr<rpc::VirtualClusterTableData> ToProto() const;
+
+  /// Convert the virtual cluster to view which usually is used for displaying
+  /// to client
+  /// \return A shared pointer to the view.
+  std::shared_ptr<rpc::VirtualClusterView> ToView() const;
 
   /// Get the debug string of the virtual cluster.
   virtual std::string DebugString() const;
@@ -501,6 +517,13 @@ class PrimaryCluster : public DivisibleCluster,
   /// \param callback The callback to visit each virtual cluster data.
   void ForeachVirtualClustersData(rpc::GetVirtualClustersRequest request,
                                   VirtualClustersDataVisitCallback callback);
+
+  /// Iterate virtual clusters view matching the request.
+  ///
+  /// \param request The request to get the virtual clusters view.
+  /// \param callback The callback to visit each virtual cluster view.
+  void ForeachVirtualClustersView(rpc::GetAllVirtualClusterInfoRequest request,
+                                  VirtualClustersViewVisitCallback callback) const;
 
   /// Handle the node added event.
   ///

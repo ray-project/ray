@@ -242,6 +242,30 @@ void GcsVirtualClusterManager::HandleGetVirtualClusters(
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
+void GcsVirtualClusterManager::HandleGetAllVirtualClusterInfo(
+    rpc::GetAllVirtualClusterInfoRequest request,
+    rpc::GetAllVirtualClusterInfoReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  size_t limit =
+      (request.limit() > 0) ? request.limit() : std::numeric_limits<size_t>::max();
+  RAY_LOG(DEBUG) << "Getting virtual clusters info.";
+
+  size_t count = 0;
+  size_t total = 0;
+
+  primary_cluster_->ForeachVirtualClustersView(
+      std::move(request), [reply, send_reply_callback, limit, &count, &total](auto data) {
+        total += 1;
+        if (count >= limit) {
+          return;
+        }
+        count += 1;
+        reply->add_virtual_clusters_view()->CopyFrom(*data);
+      });
+  reply->set_total(total);
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 void GcsVirtualClusterManager::HandleCreateJobCluster(
     rpc::CreateJobClusterRequest request,
     rpc::CreateJobClusterReply *reply,

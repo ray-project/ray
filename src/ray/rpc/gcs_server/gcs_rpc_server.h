@@ -737,6 +737,10 @@ class VirtualClusterInfoGcsServiceHandler {
   virtual void HandleCreateJobCluster(CreateJobClusterRequest request,
                                       CreateJobClusterReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllVirtualClusterInfo(GetAllVirtualClusterInfoRequest request,
+                                              GetAllVirtualClusterInfoReply *reply,
+                                              SendReplyCallback send_reply_callback) = 0;
 };
 
 class VirtualClusterInfoGrpcService : public GrpcService {
@@ -759,6 +763,7 @@ class VirtualClusterInfoGrpcService : public GrpcService {
     VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(RemoveVirtualCluster);
     VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(GetVirtualClusters);
     VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(CreateJobCluster);
+    VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(GetAllVirtualClusterInfo);
   }
 
  private:

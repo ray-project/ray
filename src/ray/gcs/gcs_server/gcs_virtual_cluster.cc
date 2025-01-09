@@ -313,6 +313,21 @@ std::shared_ptr<rpc::VirtualClusterTableData> VirtualCluster::ToProto() const {
   return data;
 }
 
+std::shared_ptr<rpc::VirtualClusterView> VirtualCluster::ToView() const {
+  auto data = std::make_shared<rpc::VirtualClusterView>();
+  data->set_id(GetID());
+  data->set_divisible(Divisible());
+  data->set_revision(GetRevision());
+  for (auto &[template_id, job_node_instances] : visible_node_instances_) {
+    for (auto &[job_cluster_id, node_instances] : job_node_instances) {
+      for (auto &[id, node_instance] : node_instances) {
+        (*data->mutable_node_instance_views())[id] = std::move(*node_instance->ToView());
+      }
+    }
+  }
+  return data;
+}
+
 std::string VirtualCluster::DebugString() const {
   int indent = 2;
   std::ostringstream stream;
@@ -1044,6 +1059,27 @@ void PrimaryCluster::ForeachVirtualClustersData(
   if (logical_cluster != nullptr) {
     visit_proto_data(logical_cluster.get());
   }
+}
+
+void PrimaryCluster::ForeachVirtualClustersView(
+    rpc::GetAllVirtualClusterInfoRequest request,
+    VirtualClustersViewVisitCallback callback) const {
+  std::vector<std::shared_ptr<rpc::VirtualClusterView>> virtual_cluster_view_list;
+
+  auto visit_view_data = [&](const VirtualCluster *cluster) {
+    if (cluster->Divisible()) {
+      auto divisible_cluster = dynamic_cast<const DivisibleCluster *>(cluster);
+      divisible_cluster->ForeachJobCluster(
+          [&](const auto &job_cluster) { callback(job_cluster->ToView()); });
+    }
+    callback(cluster->ToView());
+  };
+
+  // Get all virtual clusters data.
+  for (const auto &[_, logical_cluster] : logical_clusters_) {
+    visit_view_data(logical_cluster.get());
+  }
+  visit_view_data(this);
 }
 
 void PrimaryCluster::ReplenishAllClusterNodeInstances() {
