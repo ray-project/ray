@@ -2185,10 +2185,11 @@ def test_inflight_requests_exceeds_max_inflight_requests(ray_start_regular):
         ray.exceptions.RayCgraphCapacityExceeded, match=(r"2 in-flight requests: ")
     ):
         ref3 = compiled_dag.execute(1)
+        (ref3)
     # to show variables are being used and avoid destruction since
     # CompiledDagRef __del__ will release buffers and
     # increment _max_finished_execution_index
-    (ref1, ref2, ref3)
+    (ref1, ref2)
 
 
 def test_result_buffer_exceeds_max_inflight_requests(ray_start_regular):
