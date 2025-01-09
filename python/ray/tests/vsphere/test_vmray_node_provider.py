@@ -10,7 +10,7 @@ from ray.autoscaler.tags import (
 )
 from ray.autoscaler._private.vsphere.node_provider import VmRayNodeProvider
 
-from python.ray.autoscaler.tags import STATUS_SETTING_UP
+from ray.autoscaler.tags import STATUS_SETTING_UP
 
 _CLUSTER_NAME = "test"
 _PROVIDER_CONFIG = {
