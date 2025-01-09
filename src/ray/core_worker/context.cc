@@ -22,7 +22,7 @@ namespace ray {
 namespace core {
 namespace {
 const rpc::JobConfig kDefaultJobConfig{};
-}
+}  // namespace
 
 /// per-thread context for core worker.
 struct WorkerThreadContext {
@@ -277,6 +277,10 @@ void WorkerContext::SetTaskDepth(int64_t depth) { task_depth_ = depth; }
 
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
+
+  const auto &serialized_runtime_env =
+      task_spec.GetMessage().runtime_env_info().serialized_runtime_env();
+
   absl::WriterMutexLock lock(&mutex_);
   SetTaskDepth(task_spec.GetDepth());
   if (CurrentThreadIsMain()) {
@@ -303,15 +307,32 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   } else {
     RAY_CHECK(false);
   }
+
   if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
-    // TODO(architkulkarni): Once workers are cached by runtime env, we should
-    // only set runtime_env_ once and then RAY_CHECK that we
-    // never see a new one.
-    runtime_env_info_ = std::make_shared<rpc::RuntimeEnvInfo>();
-    *runtime_env_info_ = task_spec.RuntimeEnvInfo();
-    if (!IsRuntimeEnvEmpty(runtime_env_info_->serialized_runtime_env())) {
-      runtime_env_ = std::make_shared<nlohmann::json>();
-      *runtime_env_ = nlohmann::json::parse(runtime_env_info_->serialized_runtime_env());
+    const bool is_first_time_assignment = runtime_env_info_ == nullptr;
+
+    // Only perform heavy-loaded assigment and parsing on first access.
+    // All threads are requesting for the same parsed json result, so ok to place in
+    // critical section.
+    if (is_first_time_assignment) {
+      runtime_env_info_ = std::make_shared<rpc::RuntimeEnvInfo>();
+      *runtime_env_info_ = task_spec.RuntimeEnvInfo();
+
+      RAY_CHECK(serialized_runtime_env_.empty());
+      RAY_CHECK(runtime_env_ == nullptr);
+      if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
+        runtime_env_ = std::make_shared<nlohmann::json>();
+        *runtime_env_ = nlohmann::json::parse(serialized_runtime_env);
+      }
+      serialized_runtime_env_ = serialized_runtime_env;
+      return;
+    }
+
+    // Ray currently doesn't reuse worker to run tasks or actors with different runtime
+    // envs.
+    RAY_CHECK_EQ(serialized_runtime_env_, serialized_runtime_env);
+    if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
+      RAY_CHECK(runtime_env_ != nullptr);
     }
   }
 }
