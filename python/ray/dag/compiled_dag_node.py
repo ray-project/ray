@@ -865,7 +865,7 @@ class CompiledDAG:
         self._communicator_ids: Set[str] = set()
         # The index of the current execution. It is incremented each time
         # the DAG is executed.
-        self._execution_index: int = 0
+        self._execution_index: int = -1
         # The maximum index of finished executions.
         # All results with higher indexes have not been generated yet.
         self._max_finished_execution_index: int = -1
@@ -1912,10 +1912,10 @@ class CompiledDAG:
         num_in_flight_requests = (
             self._execution_index - self._max_finished_execution_index
         )
-        if num_in_flight_requests > self._max_inflight_executions:
+        if num_in_flight_requests >= self._max_inflight_executions:
             raise ray.exceptions.RayCgraphCapacityExceeded(
-                f"There are {num_in_flight_requests} in-flight requests which "
-                "is more than specified _max_inflight_executions of the dag: "
+                f"{num_in_flight_requests} in-flight requests: "
+                "the specified _max_inflight_executions of the dag is "
                 f"{self._max_inflight_executions}. Retrieve the output using "
                 "ray.get before submitting more requests or increase "
                 "`max_inflight_executions`. "
@@ -1925,8 +1925,8 @@ class CompiledDAG:
     def raise_if_result_buffer_at_capacity(self):
         if len(self._result_buffer) >= self._max_inflight_executions:
             raise ray.exceptions.RayCgraphCapacityExceeded(
-                "Too many buffered results: the allowed max count for "
-                f"buffered results is {self._max_inflight_executions}; call "
+                f"{len(self._result_buffer)} buffered results: the allowed max count "
+                f"for buffered results is {self._max_inflight_executions}; call "
                 "ray.get() on previous CompiledDAGRefs to free them up "
                 "from buffer. If you would like to increase the buffer size, "
                 "set _max_inflight_executions when calling experimenetal_compile."
@@ -2112,6 +2112,8 @@ class CompiledDAG:
         self.raise_if_too_many_inflight_requests()
         self._dag_submitter.write(inp, self._submit_timeout)
 
+        self._execution_index += 1
+
         if self._returns_list:
             ref = [
                 CompiledDAGRef(self, self._execution_index, channel_index)
@@ -2120,7 +2122,6 @@ class CompiledDAG:
         else:
             ref = CompiledDAGRef(self, self._execution_index)
 
-        self._execution_index += 1
         return ref
 
     def _check_inputs(self, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> None:
@@ -2181,6 +2182,8 @@ class CompiledDAG:
             fut = asyncio.Future()
             await self._fut_queue.put(fut)
 
+        self._execution_index += 1
+
         if self._returns_list:
             fut = [
                 CompiledDAGFuture(self, self._execution_index, fut, channel_index)
@@ -2189,7 +2192,6 @@ class CompiledDAG:
         else:
             fut = CompiledDAGFuture(self, self._execution_index, fut)
 
-        self._execution_index += 1
         return fut
 
     def _visualize_ascii(self) -> str:
