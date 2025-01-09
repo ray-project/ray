@@ -27,7 +27,7 @@ pragmas?
 (RL|rl)lib
 RNN
 RLModules?
-rollout
+[Rr]ollout
 (SAC|sac)
 SGD
 [Ss]ubcomponents?
