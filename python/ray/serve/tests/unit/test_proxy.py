@@ -56,16 +56,6 @@ class FakeRef:
         pass
 
 
-class FakeActorHandle:
-    @property
-    def receive_asgi_messages(self):
-        class FakeReceiveASGIMessagesActorMethod:
-            def remote(self, request_id):
-                return FakeRef()
-
-        return FakeReceiveASGIMessagesActorMethod()
-
-
 class FakeGrpcHandle:
     def __init__(self, streaming: bool, grpc_context: RayServegRPCContext):
         self.deployment_id = DeploymentID(
@@ -450,7 +440,7 @@ class TestHTTPProxy:
             node_ip_address=node_ip_address,
             is_head=is_head,
             proxy_router=FakeProxyRouter(),
-            proxy_actor=FakeActorHandle(),
+            self_actor_name="fake-proxy-name",
         )
 
     @pytest.mark.asyncio
@@ -716,7 +706,7 @@ async def test_head_http_unhealthy_until_route_table_updated():
         # proxy is on head node
         is_head=True,
         proxy_router=ProxyRouter(get_handle_override),
-        proxy_actor=FakeActorHandle(),
+        self_actor_name="fake-proxy-name",
     )
     proxy_request = FakeProxyRequest(
         request_type="http",
@@ -760,7 +750,7 @@ async def test_worker_http_unhealthy_until_replicas_populated():
         # proxy is on worker node
         is_head=False,
         proxy_router=ProxyRouter(lambda *args: handle),
-        proxy_actor=FakeActorHandle(),
+        self_actor_name="fake-proxy-name",
     )
     proxy_request = FakeProxyRequest(
         request_type="http",
