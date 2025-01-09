@@ -15,8 +15,10 @@ from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
 from ray.serve._private.replica_scheduler.common import PendingRequest
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
+from ray.util.tracing.tracing_helper import _inject_tracing_into_class
 
 
+@_inject_tracing_into_class
 class ReplicaWrapper(ABC):
     """Defines the interface for a scheduler to talk to a replica.
 
