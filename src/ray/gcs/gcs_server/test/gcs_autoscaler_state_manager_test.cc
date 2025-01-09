@@ -87,7 +87,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                       *gcs_node_manager_,
                                       *gcs_actor_manager_,
                                       *gcs_placement_group_manager_,
-                                      *client_pool_));
+                                      *client_pool_,
+                                      kv_manager_->GetInstance()));
   }
 
  public:

@@ -479,7 +479,11 @@ def _run(
         # Record after Ray has been started.
         ServeUsageTag.API_VERSION.record("v2")
         handle = client.deploy_application(
-            build_app(target, name=name),
+            build_app(
+                target,
+                name=name,
+                default_runtime_env=ray.get_runtime_context().runtime_env,
+            ),
             blocking=_blocking,
             route_prefix=route_prefix,
             logging_config=logging_config,
