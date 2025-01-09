@@ -1922,6 +1922,16 @@ class CompiledDAG:
                 "`dag.experimental_compile(_max_inflight_executions=...)`"
             )
 
+    def raise_if_result_buffer_at_capacity(self):
+        if len(self._result_buffer) >= self._max_inflight_executions:
+            raise ray.exceptions.RayCgraphCapacityExceeded(
+                "Too many buffered results: the allowed max count for "
+                f"buffered results is {self._max_inflight_executions}; call "
+                "ray.get() on previous CompiledDAGRefs to free them up "
+                "from buffer. If you would like to increase the buffer size, "
+                "set _max_inflight_executions when calling experimenetal_compile."
+            )
+
     def _has_execution_results(
         self,
         execution_index: int,
@@ -2046,15 +2056,16 @@ class CompiledDAG:
                 timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
+            self.raise_if_result_buffer_at_capacity()
+            self.increment_max_finished_execution_index()
             start_time = time.monotonic()
 
             # Fetch results from each output channel up to execution_index and cache
             # them separately to enable individual retrieval
             self._cache_execution_results(
-                self._max_finished_execution_index + 1,
+                self._max_finished_execution_index,
                 self._dag_output_fetcher.read(timeout),
             )
-            self.increment_max_finished_execution_index()
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
