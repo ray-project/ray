@@ -20,6 +20,7 @@ from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
+    DeploymentTargetInfo,
     ReplicaID,
     RequestMetadata,
     RunningReplicaInfo,
@@ -37,7 +38,7 @@ from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import PendingRequest, ReplicaScheduler
 from ray.serve._private.utils import generate_request_id, resolve_deployment_response
 from ray.serve.config import AutoscalingConfig
-from ray.serve.exceptions import BackPressureError
+from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -114,15 +115,18 @@ class RouterMetricsManager:
         # Regularly aggregate and push autoscaling metrics to controller
         self.metrics_pusher = MetricsPusher()
         self.metrics_store = InMemoryMetricsStore()
-        self.deployment_config: Optional[DeploymentConfig] = None
+        # The config for the deployment this router sends requests to will be broadcast
+        # by the controller. That means it is not available until we get the first
+        # update. This includes an optional autoscaling config.
+        self._deployment_config: Optional[DeploymentConfig] = None
         # Track whether the metrics manager has been shutdown
         self._shutdown: bool = False
 
     @contextmanager
     def wrap_request_assignment(self, request_meta: RequestMetadata):
         max_queued_requests = (
-            self.deployment_config.max_queued_requests
-            if self.deployment_config is not None
+            self._deployment_config.max_queued_requests
+            if self._deployment_config is not None
             else -1
         )
         if (
@@ -168,10 +172,10 @@ class RouterMetricsManager:
 
     @property
     def autoscaling_config(self) -> Optional[AutoscalingConfig]:
-        if self.deployment_config is None:
+        if self._deployment_config is None:
             return None
 
-        return self.deployment_config.autoscaling_config
+        return self._deployment_config.autoscaling_config
 
     def update_deployment_config(
         self, deployment_config: DeploymentConfig, curr_num_replicas: int
@@ -181,7 +185,7 @@ class RouterMetricsManager:
         if self._shutdown:
             return
 
-        self.deployment_config = deployment_config
+        self._deployment_config = deployment_config
 
         # Start the metrics pusher if autoscaling is enabled.
         autoscaling_config = self.autoscaling_config
@@ -356,6 +360,9 @@ class AsyncioRouter:
         self._event_loop = event_loop
         self.deployment_id = deployment_id
         self._enable_strict_max_ongoing_requests = enable_strict_max_ongoing_requests
+        # By default, deployment is available unless we receive news
+        # otherwise through a long poll broadcast from the controller.
+        self._deployment_available = True
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler
         self._resolve_request_arg_func = resolve_request_arg_func
@@ -363,11 +370,6 @@ class AsyncioRouter:
         # Flipped to `True` once the router has received a non-empty
         # replica set at least once.
         self._running_replicas_populated: bool = False
-
-        # The config for the deployment this router sends requests to will be broadcast
-        # by the controller. That means it is not available until we get the first
-        # update. This includes an optional autoscaling config.
-        self.deployment_config: Optional[DeploymentConfig] = None
 
         # Initializing `self._metrics_manager` before `self.long_poll_client` is
         # necessary to avoid race condition where `self.update_deployment_config()`
@@ -405,9 +407,9 @@ class AsyncioRouter:
             controller_handle,
             {
                 (
-                    LongPollNamespace.RUNNING_REPLICAS,
+                    LongPollNamespace.DEPLOYMENT_TARGETS,
                     deployment_id,
-                ): self.update_running_replicas,
+                ): self.update_deployment_targets,
                 (
                     LongPollNamespace.DEPLOYMENT_CONFIG,
                     deployment_id,
@@ -419,7 +421,10 @@ class AsyncioRouter:
     def running_replicas_populated(self) -> bool:
         return self._running_replicas_populated
 
-    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+    def update_deployment_targets(self, deployment_target_info: DeploymentTargetInfo):
+        self._deployment_available = deployment_target_info.is_available
+
+        running_replicas = deployment_target_info.running_replicas
         self._replica_scheduler.update_running_replicas(running_replicas)
         self._metrics_manager.update_running_replicas(running_replicas)
 
@@ -585,6 +590,9 @@ class AsyncioRouter:
         # traces collected in the replica.
         propagate_context = create_propagated_context()
         request_meta.tracing_context = propagate_context
+
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
 
         response_id = generate_request_id()
         assign_request_task = asyncio.current_task()
