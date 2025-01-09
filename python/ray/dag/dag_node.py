@@ -1,8 +1,11 @@
+import copy
+from ray.experimental.channel.auto_channel_type import AutoChannelType
+from ray.experimental.channel.shared_memory_channel import SharedMemoryType
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 import ray
 from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.util.annotations import DeveloperAPI
-import copy
 
 from itertools import chain
 
@@ -21,6 +24,7 @@ import asyncio
 
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.experimental.channel import ChannelOutputType
+from ray.experimental.channel.communicator import Communicator
 
 T = TypeVar("T")
 
@@ -78,7 +82,8 @@ class DAGNode(DAGNodeBase):
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
-        self._type_hint: ChannelOutputType = ChannelOutputType()
+        self._type_hint: ChannelOutputType = SharedMemoryType()
+
         # Whether this node calls `experimental_compile`.
         self.is_cgraph_output_node = False
 
@@ -129,13 +134,38 @@ class DAGNode(DAGNodeBase):
             upstream_node._downstream_nodes.append(self)
         return upstream_nodes
 
-    def with_type_hint(self, typ: ChannelOutputType):
-        self._type_hint = copy.deepcopy(typ)
+    def with_tensor_transport(
+        self,
+        transport: Optional[Union[str, Communicator]] = "auto",
+        _static_shape: bool = False,
+        _direct_return: bool = False,
+    ):
+        if transport == "auto":
+            self._type_hint = AutoChannelType()
+        elif transport == "nccl":
+            self._type_hint = TorchTensorType(
+                transport=transport,
+                _static_shape=_static_shape,
+                _direct_return=_direct_return,
+            )
+        else:
+            assert isinstance(
+                transport, Communicator
+            ), "transport must be 'auto', 'nccl' or a Communicator type"
+            self._type_hint = TorchTensorType(
+                transport=transport,
+                _static_shape=_static_shape,
+                _direct_return=_direct_return,
+            )
         return self
 
     @property
     def type_hint(self) -> ChannelOutputType:
         return self._type_hint
+
+    @type_hint.setter
+    def type_hint(self, type_hint: ChannelOutputType) -> None:
+        self._type_hint = type_hint
 
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""
@@ -558,7 +588,7 @@ class DAGNode(DAGNodeBase):
             new_args, new_kwargs, new_options, new_other_args_to_resolve
         )
         instance._stable_uuid = self._stable_uuid
-        instance = instance.with_type_hint(self.type_hint)
+        instance._type_hint = copy.deepcopy(self._type_hint)
         return instance
 
     def __getstate__(self):
