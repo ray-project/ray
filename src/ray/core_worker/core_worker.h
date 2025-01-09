@@ -1370,6 +1370,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                 NodeID *raylet_id,
                                 int *port);
 
+  Status RegisterWorkerToRayletWithPort(raylet::RayletConnection &conn,
+                                        const WorkerID &worker_id,
+                                        rpc::WorkerType worker_type,
+                                        const JobID &job_id,
+                                        int runtime_env_hash,
+                                        const Language &language,
+                                        const std::string &ip_address,
+                                        const std::string &serialized_job_config,
+                                        const StartupToken &startup_token,
+                                        int port);
+
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
 

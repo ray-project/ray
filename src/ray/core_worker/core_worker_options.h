@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -99,7 +101,12 @@ struct CoreWorkerOptions {
         session_name(""),
         entrypoint(""),
         worker_launch_time_ms(-1),
-        worker_launched_time_ms(-1) {}
+        worker_launched_time_ms(-1),
+        assigned_worker_port(std::nullopt),
+        assigned_raylet_id(std::nullopt) {
+    // TODO(hjiang): Add invariant check: for worker, both should be assigned; for driver,
+    // neither should be assigned.
+  }
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -200,6 +207,18 @@ struct CoreWorkerOptions {
   std::string entrypoint;
   int64_t worker_launch_time_ms;
   int64_t worker_launched_time_ms;
+  /// Available port number for the worker.
+  ///
+  /// TODO(hjiang): Figure out how to assign available port at core worker start, also
+  /// need to add an end-to-end integration test.
+  ///
+  /// On the next end-to-end integrartion PR, we should check
+  /// - non-empty for worker
+  /// - and empty for driver
+  std::optional<int> assigned_worker_port;
+  /// Same as [assigned_worker_port], will be assigned for worker, and left empty for
+  /// driver.
+  std::optional<NodeID> assigned_raylet_id;
 };
 }  // namespace core
 }  // namespace ray

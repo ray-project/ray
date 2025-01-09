@@ -104,6 +104,8 @@ Status RayletClient::Disconnect(
   return Status::OK();
 }
 
+// TODO(hjiang): After we merge register client and announce port, should delete this
+// function.
 Status RayletClient::AnnounceWorkerPortForWorker(int port) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateAnnounceWorkerPort(fbb, port, fbb.CreateString(""));

@@ -752,6 +752,8 @@ boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
                                  : boost::optional<const rpc::JobConfig &>(iter->second);
 }
 
+// TODO(hjiang): In the next integration PR, worker should have port assigned and no
+// [send_reply_callback]. Should delete this overload.
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
                                   pid_t pid,
                                   StartupToken worker_startup_token,
@@ -907,26 +909,6 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
           send_reply_callback(Status::OK(), port);
         });
   }
-  return Status::OK();
-}
-
-Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
-                                  const rpc::JobConfig &job_config) {
-  auto &state = GetStateForLanguage(driver->GetLanguage());
-  state.registered_drivers.insert(std::move(driver));
-  const auto job_id = driver->GetAssignedJobId();
-  HandleJobStarted(job_id, job_config);
-
-  if (driver->GetLanguage() == Language::JAVA) {
-    return Status::OK();
-  }
-
-  if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
-      !RayConfig::instance().enable_worker_prestart()) {
-    RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
-    PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
-  }
-  first_job_registered_ = true;
   return Status::OK();
 }
 
