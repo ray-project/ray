@@ -47,7 +47,9 @@ scheduling::NodeID RandomSchedulingPolicy::Schedule(
     // requirement, the distribution might not be even.
     const auto &node_id = iter->first;
     const auto &node = iter->second;
-    if (is_node_available_(node_id) && node.GetLocalView().IsFeasible(resource_request) &&
+    if (is_node_available_(node_id) &&
+        is_node_schedulable_(node_id, options.scheduling_context.get()) &&
+        node.GetLocalView().IsFeasible(resource_request) &&
         node.GetLocalView().IsAvailable(resource_request,
                                         /*ignore_pull_manager_at_capacity*/ true)) {
       best_node = iter->first;

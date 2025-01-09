@@ -316,7 +316,9 @@ class RayletClient : public RayletClientInterface {
   /// \param port The port.
   /// \param entrypoint The entrypoint of the driver's job.
   /// \return ray::Status.
-  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint);
+  Status AnnounceWorkerPortForDriver(int port,
+                                     const std::string &entrypoint,
+                                     const std::string &virtual_cluster_id);
 
   /// Tell the raylet that the client has finished executing a task.
   ///

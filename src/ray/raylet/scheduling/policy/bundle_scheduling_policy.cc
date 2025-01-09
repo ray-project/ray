@@ -110,6 +110,9 @@ BundleSchedulingPolicy::SelectCandidateNodes(const SchedulingContext *context) c
   RAY_UNUSED(context);
   absl::flat_hash_map<scheduling::NodeID, const Node *> result;
   for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
+    if (is_node_schedulable_ != nullptr && !is_node_schedulable_(entry.first, context)) {
+      continue;
+    }
     if (is_node_available_ == nullptr || is_node_available_(entry.first)) {
       result.emplace(entry.first, &entry.second);
     }
@@ -550,6 +553,10 @@ BundleStrictSpreadSchedulingPolicy::SelectCandidateNodes(
 
   absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
   for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
+    if (is_node_schedulable_ && !is_node_schedulable_(entry.first, context)) {
+      continue;
+    }
+
     if (is_node_available_ && !is_node_available_(entry.first)) {
       continue;
     }

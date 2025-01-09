@@ -49,14 +49,18 @@ namespace raylet_scheduling_policy {
 ///
 class HybridSchedulingPolicy : public ISchedulingPolicy {
  public:
-  HybridSchedulingPolicy(scheduling::NodeID local_node_id,
-                         const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
-                         std::function<bool(scheduling::NodeID)> is_node_alive)
+  HybridSchedulingPolicy(
+      scheduling::NodeID local_node_id,
+      const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
+      std::function<bool(scheduling::NodeID)> is_node_alive,
+      std::function<bool(scheduling::NodeID, const SchedulingContext *)>
+          is_node_schedulable)
       : local_node_id_(local_node_id),
         nodes_(nodes),
         is_node_alive_(is_node_alive),
         bitgen_(),
-        bitgenref_(bitgen_) {}
+        bitgenref_(bitgen_),
+        is_node_schedulable_(is_node_schedulable) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -121,7 +125,8 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
                                   NodeFilter node_filter,
                                   const std::string &preferred_node,
                                   int32_t schedule_top_k_absolute,
-                                  float scheduler_top_k_fraction);
+                                  float scheduler_top_k_fraction,
+                                  const SchedulingContext *scheduling_context);
 
   /// Identifier of local node.
   const scheduling::NodeID local_node_id_;
@@ -134,6 +139,8 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   mutable absl::BitGen bitgen_;
   /// Using BitGenRef to simplify testing.
   mutable absl::BitGenRef bitgenref_;
+  /// Function Checks if node is schedulable.
+  std::function<bool(scheduling::NodeID, const SchedulingContext *)> is_node_schedulable_;
 
   FRIEND_TEST(HybridSchedulingPolicyTest, GetBestNode);
   FRIEND_TEST(HybridSchedulingPolicyTest, GetBestNodePrioritizePreferredNode);

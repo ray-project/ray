@@ -23,6 +23,8 @@ from ray.includes.unique_ids cimport (
     CWorkerID,
     CPlacementGroupID,
     CClusterID,
+    CSimpleID,
+    CVirtualClusterID,
 )
 
 
@@ -135,6 +137,47 @@ cdef class UniqueID(BaseID):
     cdef size_t hash(self):
         return self.data.Hash()
 
+cdef class SimpleID:
+
+    @classmethod
+    def from_binary(cls, id_bytes):
+        return cls(id_bytes)
+
+    def binary(self):
+        raise NotImplementedError
+
+    def is_nil(self):
+        raise NotImplementedError
+
+    def __hash__(self):
+        return self.hash()
+
+    def __eq__(self, other):
+        return type(self) == type(other) and self.binary() == other.binary()
+
+    def __ne__(self, other):
+        return type(self) != type(other) or self.binary() != other.binary()
+
+    def __bytes__(self):
+        return self.binary()
+
+    def __repr__(self):
+        return self.__class__.__name__ + "(" + self.binary() + ")"
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __reduce__(self):
+        return type(self), (self.binary(),)
+
+    def redis_shard_hash(self):
+        # NOTE: The hash function used here must match the one in
+        # GetRedisContext in src/ray/gcs/tables.h. Changes to the
+        # hash function should only be made through std::hash in
+        # src/common/common.h.
+        # Do not use __hash__ that returns signed uint64_t, which
+        # is different from std::hash in c++ code.
+        return self.hash()
 
 cdef class TaskID(BaseID):
     cdef CTaskID data
@@ -383,6 +426,12 @@ cdef class ClusterID(UniqueID):
     cdef CClusterID native(self):
         return <CClusterID>self.data
 
+cdef class VirtualClusterID(SimpleID):
+    cdef CVirtualClusterID data
+
+    def __init__(self, id):
+        self.data = CVirtualClusterID.FromBinary(<c_string>id)
+
 
 # This type alias is for backward compatibility.
 ObjectID = ObjectRef
@@ -443,4 +492,6 @@ _ID_TYPES = [
     UniqueID,
     PlacementGroupID,
     ClusterID,
+    SimpleID,
+    VirtualClusterID,
 ]

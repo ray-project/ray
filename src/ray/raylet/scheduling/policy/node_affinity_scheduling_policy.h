@@ -28,13 +28,17 @@ namespace raylet_scheduling_policy {
 // hybrid policy will be used to select another node.
 class NodeAffinitySchedulingPolicy : public ISchedulingPolicy {
  public:
-  NodeAffinitySchedulingPolicy(scheduling::NodeID local_node_id,
-                               const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
-                               std::function<bool(scheduling::NodeID)> is_node_alive)
+  NodeAffinitySchedulingPolicy(
+      scheduling::NodeID local_node_id,
+      const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
+      std::function<bool(scheduling::NodeID)> is_node_alive,
+      std::function<bool(scheduling::NodeID, const SchedulingContext *)>
+          is_node_schedulable)
       : local_node_id_(local_node_id),
         nodes_(nodes),
         is_node_alive_(is_node_alive),
-        hybrid_policy_(local_node_id_, nodes_, is_node_alive_) {}
+        hybrid_policy_(local_node_id_, nodes_, is_node_alive_, is_node_schedulable),
+        is_node_schedulable_(is_node_schedulable) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -43,6 +47,7 @@ class NodeAffinitySchedulingPolicy : public ISchedulingPolicy {
   const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;
   std::function<bool(scheduling::NodeID)> is_node_alive_;
   HybridSchedulingPolicy hybrid_policy_;
+  std::function<bool(scheduling::NodeID, const SchedulingContext *)> is_node_schedulable_;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

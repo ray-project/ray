@@ -21,6 +21,7 @@ from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
     JobInfoStorageClient,
+    VirtualClusterClient,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobStatus
@@ -74,9 +75,11 @@ class JobSupervisor:
         cluster_id_hex: str,
         logs_dir: Optional[str] = None,
     ):
+
         self._job_id = job_id
         gcs_aio_client = GcsAioClient(address=gcs_address, cluster_id=cluster_id_hex)
         self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
+        self._virtual_cluster_client = VirtualClusterClient(gcs_address)
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
 
@@ -415,6 +418,9 @@ class JobSupervisor:
                         )
                         self._kill_processes(proc_to_kill, signal.SIGKILL)
 
+                await self._virtual_cluster_client.remove_job_cluster(
+                    curr_info.job_cluster_id
+                )
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
@@ -427,6 +433,9 @@ class JobSupervisor:
                     f"exited with code {return_code}"
                 )
                 if return_code == 0:
+                    await self._virtual_cluster_client.remove_job_cluster(
+                        curr_info.job_cluster_id
+                    )
                     await self._job_info_client.put_status(
                         self._job_id,
                         JobStatus.SUCCEEDED,
@@ -446,6 +455,9 @@ class JobSupervisor:
                             "Job entrypoint command "
                             f"failed with exit code {return_code}. No logs available."
                         )
+                    await self._virtual_cluster_client.remove_job_cluster(
+                        curr_info.job_cluster_id
+                    )
                     await self._job_info_client.put_status(
                         self._job_id,
                         JobStatus.FAILED,
@@ -458,6 +470,9 @@ class JobSupervisor:
                 f"command. {traceback.format_exc()}"
             )
             try:
+                await self._virtual_cluster_client.remove_job_cluster(
+                    curr_info.job_cluster_id
+                )
                 await self._job_info_client.put_status(
                     self._job_id,
                     JobStatus.FAILED,

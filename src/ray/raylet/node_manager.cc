@@ -320,7 +320,19 @@ NodeManager::NodeManager(
       [this]() { return object_manager_.PullManagerHasPullsQueued(); },
       shutdown_raylet_gracefully,
       /*labels*/
-      config.labels);
+      config.labels,
+      /*is_node_schedulable_fn=*/
+      [this](scheduling::NodeID node_id, const SchedulingContext *context) {
+        if (virtual_cluster_manager_ == nullptr) {
+          return true;
+        }
+        if (context->virtual_cluster_id.empty()) {
+          return true;
+        }
+        auto node_instance_id = NodeID::FromBinary(node_id.Binary());
+        return virtual_cluster_manager_->ContainsNodeInstance(context->virtual_cluster_id,
+                                                              node_instance_id);
+      });
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -403,6 +415,8 @@ NodeManager::NodeManager(
 
   mutable_object_provider_ = std::make_unique<core::experimental::MutableObjectProvider>(
       *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this), nullptr);
+
+  virtual_cluster_manager_ = std::make_shared<VirtualClusterManager>();
 }
 
 std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
@@ -498,6 +512,18 @@ ray::Status NodeManager::RegisterGcs() {
   };
   RAY_RETURN_NOT_OK(
       gcs_client_->Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
+
+  // Subscribe to all virtual clusrter update notification.
+  const auto virtual_cluster_update_notification_handler =
+      [this](const VirtualClusterID &virtual_cluster_id,
+             rpc::VirtualClusterTableData &&virtual_cluster_data) {
+        virtual_cluster_manager_->UpdateVirtualCluster(std::move(virtual_cluster_data));
+      };
+  RAY_RETURN_NOT_OK(gcs_client_->VirtualCluster().AsyncSubscribeAll(
+      virtual_cluster_update_notification_handler, [](const ray::Status &status) {
+        RAY_CHECK_OK(status);
+        RAY_LOG(INFO) << "Finished subscribing all virtual cluster infos.";
+      }));
 
   periodical_runner_->RunFnPeriodically(
       [this] {
@@ -1475,6 +1501,9 @@ void NodeManager::ProcessAnnounceWorkerPortMessageImpl(
                                 worker->GetProcess().GetId(),
                                 string_from_flatbuf(*message->entrypoint()),
                                 *job_config);
+
+    job_data_ptr->set_virtual_cluster_id(
+        string_from_flatbuf(*message->virtual_cluster_id()));
 
     RAY_CHECK_OK(
         gcs_client_->Jobs().AsyncAdd(job_data_ptr, [this, client](Status status) {

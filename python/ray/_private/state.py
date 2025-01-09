@@ -158,7 +158,7 @@ class GlobalState:
         }
         return actor_info
 
-    def node_table(self):
+    def node_table(self, virtual_cluster_id=None):
         """Fetch and parse the Gcs node info table.
 
         Returns:
@@ -166,7 +166,7 @@ class GlobalState:
         """
         self._check_connected()
 
-        return self.global_state_accessor.get_node_table()
+        return self.global_state_accessor.get_node_table(virtual_cluster_id)
 
     def job_table(self):
         """Fetch and parse the gcs job table.
@@ -724,7 +724,7 @@ class GlobalState:
             worker_id, num_paused_threads_delta
         )
 
-    def cluster_resources(self):
+    def cluster_resources(self, virtual_cluster_id=None):
         """Get the current total cluster resources.
 
         Note that this information can grow stale as nodes are added to or
@@ -738,23 +738,25 @@ class GlobalState:
 
         # Calculate total resources.
         total_resources = defaultdict(int)
-        for node_total_resources in self.total_resources_per_node().values():
+        for node_total_resources in self.total_resources_per_node(
+            virtual_cluster_id
+        ).values():
             for resource_id, value in node_total_resources.items():
                 total_resources[resource_id] += value
 
         return dict(total_resources)
 
-    def _live_node_ids(self):
+    def _live_node_ids(self, virtual_cluster_id=None):
         """Returns a set of node IDs corresponding to nodes still alive."""
-        return set(self.total_resources_per_node().keys())
+        return set(self.total_resources_per_node(virtual_cluster_id).keys())
 
-    def available_resources_per_node(self):
+    def available_resources_per_node(self, virtual_cluster_id=None):
         """Returns a dictionary mapping node id to available resources."""
         self._check_connected()
         available_resources_by_id = {}
 
         all_available_resources = (
-            self.global_state_accessor.get_all_available_resources()
+            self.global_state_accessor.get_all_available_resources(virtual_cluster_id)
         )
         for available_resource in all_available_resources:
             message = gcs_pb2.AvailableResources.FromString(available_resource)
@@ -769,11 +771,15 @@ class GlobalState:
         return available_resources_by_id
 
     # returns a dict that maps node_id(hex string) to a dict of {resource_id: capacity}
-    def total_resources_per_node(self) -> Dict[str, Dict[str, int]]:
+    def total_resources_per_node(
+        self, virtual_cluster_id=None
+    ) -> Dict[str, Dict[str, int]]:
         self._check_connected()
         total_resources_by_node = {}
 
-        all_total_resources = self.global_state_accessor.get_all_total_resources()
+        all_total_resources = self.global_state_accessor.get_all_total_resources(
+            virtual_cluster_id
+        )
         for node_total_resources in all_total_resources:
             message = gcs_pb2.TotalResources.FromString(node_total_resources)
             # Calculate total resources for this node.
@@ -786,7 +792,7 @@ class GlobalState:
 
         return total_resources_by_node
 
-    def available_resources(self):
+    def available_resources(self, virtual_cluster_id=None):
         """Get the current available cluster resources.
 
         This is different from `cluster_resources` in that this will return
@@ -802,7 +808,9 @@ class GlobalState:
         """
         self._check_connected()
 
-        available_resources_by_id = self.available_resources_per_node()
+        available_resources_by_id = self.available_resources_per_node(
+            virtual_cluster_id
+        )
 
         # Calculate total available resources.
         total_available_resources = defaultdict(int)
@@ -879,13 +887,19 @@ def next_job_id():
 
 @DeveloperAPI
 @client_mode_hook
-def nodes():
+def nodes(virtual_cluster_id=None):
     """Get a list of the nodes in the cluster (for debugging only).
 
     Returns:
         Information about the Ray clients in the cluster.
     """
-    return state.node_table()
+    if not virtual_cluster_id:
+        virtual_cluster_id = ray.get_runtime_context().virtual_cluster_id
+    elif type(virtual_cluster_id) is not str:
+        raise TypeError(
+            f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}"
+        )
+    return state.node_table(virtual_cluster_id)
 
 
 def workers():
@@ -999,7 +1013,7 @@ def object_transfer_timeline(filename=None):
 
 @DeveloperAPI
 @client_mode_hook
-def cluster_resources():
+def cluster_resources(virtual_cluster_id=None):
     """Get the current total cluster resources.
 
     Note that this information can grow stale as nodes are added to or removed
@@ -1009,12 +1023,18 @@ def cluster_resources():
         A dictionary mapping resource name to the total quantity of that
             resource in the cluster.
     """
-    return state.cluster_resources()
+    if not virtual_cluster_id:
+        virtual_cluster_id = ray.get_runtime_context().virtual_cluster_id
+    elif type(virtual_cluster_id) is not str:
+        raise TypeError(
+            f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}"
+        )
+    return state.cluster_resources(virtual_cluster_id)
 
 
 @DeveloperAPI
 @client_mode_hook
-def available_resources():
+def available_resources(virtual_cluster_id=None):
     """Get the current available cluster resources.
 
     This is different from `cluster_resources` in that this will return idle
@@ -1028,7 +1048,13 @@ def available_resources():
             is currently not available (i.e., quantity is 0), it will not
             be included in this dictionary.
     """
-    return state.available_resources()
+    if not virtual_cluster_id:
+        virtual_cluster_id = ray.get_runtime_context().virtual_cluster_id
+    elif type(virtual_cluster_id) is not str:
+        raise TypeError(
+            f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}"
+        )
+    return state.available_resources(virtual_cluster_id)
 
 
 @DeveloperAPI
@@ -1045,7 +1071,7 @@ def available_resources_per_node():
 
 
 @DeveloperAPI
-def total_resources_per_node():
+def total_resources_per_node(virtual_cluster_id=None):
     """Get the current total resources of each live node.
 
     Note that this information can grow stale as tasks start and finish.
@@ -1054,6 +1080,12 @@ def total_resources_per_node():
         A dictionary mapping node hex id to total resources dictionary.
     """
 
+    if not virtual_cluster_id:
+        virtual_cluster_id = ray.get_runtime_context().virtual_cluster_id
+    elif type(virtual_cluster_id) is not str:
+        raise TypeError(
+            f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}"
+        )
     return state.total_resources_per_node()
 
 

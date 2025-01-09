@@ -144,6 +144,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CPlacementGroupID,
     ObjectIDIndexType,
+    CVirtualClusterID,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,

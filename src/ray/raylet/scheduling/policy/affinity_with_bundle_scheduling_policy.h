@@ -27,11 +27,14 @@ class AffinityWithBundleSchedulingPolicy : public ISchedulingPolicy {
       scheduling::NodeID local_node_id,
       const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
       std::function<bool(scheduling::NodeID)> is_node_alive,
-      const BundleLocationIndex &pg_location_index)
+      const BundleLocationIndex &pg_location_index,
+      std::function<bool(scheduling::NodeID, const SchedulingContext *)>
+          is_node_schedulable)
       : local_node_id_(local_node_id),
         nodes_(nodes),
         is_node_alive_(is_node_alive),
-        bundle_location_index_(pg_location_index) {}
+        bundle_location_index_(pg_location_index),
+        is_node_schedulable_(is_node_schedulable) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -40,11 +43,13 @@ class AffinityWithBundleSchedulingPolicy : public ISchedulingPolicy {
   const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;
   std::function<bool(scheduling::NodeID)> is_node_alive_;
   const BundleLocationIndex &bundle_location_index_;
+  std::function<bool(scheduling::NodeID, const SchedulingContext *)> is_node_schedulable_;
 
  private:
   bool IsNodeFeasibleAndAvailable(const scheduling::NodeID &node_id,
                                   const ResourceRequest &resource_request,
-                                  bool avoid_gpu_nodes);
+                                  bool avoid_gpu_nodes,
+                                  const SchedulingContext *scheduling_context);
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

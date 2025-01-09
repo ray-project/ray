@@ -209,6 +209,11 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *autoscaler_state_accessor_;
   }
 
+  VirtualClusterInfoAccessor &VirtualCluster() {
+    RAY_CHECK(virtual_cluster_accessor_ != nullptr);
+    return *virtual_cluster_accessor_;
+  }
+
   // Gets ClusterID. If it's not set in Connect(), blocks on a sync RPC to GCS to get it.
   virtual ClusterID GetClusterId() const;
 
@@ -234,6 +239,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
   std::unique_ptr<RuntimeEnvAccessor> runtime_env_accessor_;
   std::unique_ptr<AutoscalerStateAccessor> autoscaler_state_accessor_;
+  std::unique_ptr<VirtualClusterInfoAccessor> virtual_cluster_accessor_;
 
  private:
   /// If client_call_manager_ does not have a cluster ID, fetches it from GCS. The

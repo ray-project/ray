@@ -23,6 +23,7 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/gcs_server/state_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -64,6 +65,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                               ClusterResourceManager &cluster_resource_manager,
                               GcsNodeManager &gcs_node_manager,
                               NodeID local_node_id,
+                              GcsVirtualClusterManager &gcs_virtual_cluster_manager,
                               ClusterTaskManager *cluster_task_manager = nullptr);
 
   virtual ~GcsResourceManager() = default;
@@ -198,6 +200,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   ClusterResourceManager &cluster_resource_manager_;
   GcsNodeManager &gcs_node_manager_;
   NodeID local_node_id_;
+  /// The gcs virtual cluster handler and service.
+  GcsVirtualClusterManager &gcs_virtual_cluster_manager_;
   ClusterTaskManager *cluster_task_manager_;
   /// Num of alive nodes in the cluster.
   size_t num_alive_nodes_ = 0;

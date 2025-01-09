@@ -263,6 +263,7 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState(
   case rpc::ChannelType::GCS_JOB_CHANNEL:
   case rpc::ChannelType::GCS_NODE_INFO_CHANNEL:
   case rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL:
+  case rpc::ChannelType::RAY_VIRTUAL_CLUSTER_CHANNEL:
     return std::make_unique<EntityState>(RayConfig::instance().max_grpc_message_size(),
                                          /*max_buffered_bytes=*/-1);
 
