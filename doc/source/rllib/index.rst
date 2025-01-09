@@ -1,31 +1,5 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. |single_agent| image:: /rllib/images/sigils/single-agent.svg
-    :class: inline-figure
-    :width: 72
-
-.. |multi_agent| image:: /rllib/images/sigils/multi-agent.svg
-    :class: inline-figure
-    :width: 72
-
-.. |discr_act| image:: /rllib/images/sigils/discr-actions.svg
-    :class: inline-figure
-    :width: 72
-
-.. |cont_act| image:: /rllib/images/sigils/cont-actions.svg
-    :class: inline-figure
-    :width: 72
-
-.. |multi_gpu| image:: /rllib/images/sigils/multi-gpu.svg
-    :class: inline-figure
-    :width: 72
-
-.. |multi_node_multi_gpu| image:: /rllib/images/sigils/multi-node-multi-gpu.svg
-    :class: inline-figure
-    :alt: Only on the Anyscale Platform!
-    :width: 72
-
-
 .. sphinx_rllib_readme_begin
 
 .. _rllib-index:
@@ -40,12 +14,44 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
 
 .. sphinx_rllib_readme_end
 
+.. todo (sven): redo toctree:
+    suggestion:
+    getting-started (replaces rllib-training)
+    key-concepts
+    rllib-env (single-agent)
+        ...  <- multi-agent
+        ...  <- external
+        ...  <- hierarchical
+    algorithm-configs
+        rllib-algorithms (overview of all available algos)
+    dev-guide (replaces user-guides)
+        debugging
+        scaling-guide
+        fault-tolerance
+        checkpoints
+        callbacks
+        metrics-logger
+    rllib-advanced-api
+        algorithm (general description of how algos work)
+        rllib-rlmodule
+        rllib-offline
+        single-agent-episode
+        multi-agent-episode
+        connector-v2
+        rllib-learner
+        env-runners
+    rllib-examples
+    rllib-new-api-stack  <- remove?
+    new-api-stack-migration-guide
+    package_ref/index
+
 .. toctree::
     :hidden:
 
     rllib-training
     key-concepts
     rllib-env
+    algorithm-config
     rllib-algorithms
     user-guides
     rllib-examples
@@ -280,7 +286,21 @@ Learn More
 
     .. grid-item-card::
 
-        **RLlib Environments**
+        **RLlib Key Concepts**
+        ^^^
+        Learn more about the core concepts of RLlib, such as Algorithms, environments,
+        models, and learners.
+        +++
+        .. button-ref:: rllib-key-concepts
+            :color: primary
+            :outline:
+            :expand:
+
+            Key Concepts
+
+    .. grid-item-card::
+
+        **RL Environments**
         ^^^
         Get started with environments supported by RLlib, such as Farama foundation's Gymnasium, Petting Zoo,
         and many custom formats for vectorized and multi-agent environments.
@@ -294,24 +314,26 @@ Learn More
 
     .. grid-item-card::
 
-        **RLlib Key Concepts**
+        **Models (RLModule)**
         ^^^
-        Learn more about the core concepts of RLlib, such as environments, algorithms and
-        policies.
+        Learn how to configure RLlib's default models and implement your own
+        custom models through the RLModule APIs, which support arbitrary architectures
+        with PyTorch, complex multi-model setups, and multi-agent models with components
+        shared between agents.
         +++
-        .. button-ref:: rllib-core-concepts
+        .. button-ref:: rlmodule-guide
             :color: primary
             :outline:
             :expand:
 
-            Key Concepts
+            Models (RLModule)
 
     .. grid-item-card::
 
-        **RLlib Algorithms**
+        **Algorithms**
         ^^^
-        See the many available RL algorithms of RLlib for model-free and model-based
-        RL, on-policy and off-policy training, multi-agent RL, and more.
+        See the many available RL algorithms of RLlib for on-policy and off-policy training,
+        offline- and model-based RL, multi-agent RL, and more.
         +++
         .. button-ref:: rllib-algorithms-doc
             :color: primary
@@ -331,7 +353,6 @@ in python using the `Farama Foundation's gymnasium <https://farama.org>`__ or De
 provide custom `PyTorch models <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`_,
 write your own `optimizer setups and loss definitions <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__,
 or define custom `exploratory behavior <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py>`_.
-
 
 .. figure:: images/rllib-new-api-stack-simple.svg
     :align: left
@@ -387,3 +408,31 @@ If RLlib helps with your academic research, the Ray RLlib team encourages you to
     }
 
 .. sphinx_rllib_readme_3_end
+
+
+.. sigils used on this page
+
+.. |single_agent| image:: /rllib/images/sigils/single-agent.svg
+    :class: inline-figure
+    :width: 72
+
+.. |multi_agent| image:: /rllib/images/sigils/multi-agent.svg
+    :class: inline-figure
+    :width: 72
+
+.. |discr_act| image:: /rllib/images/sigils/discr-actions.svg
+    :class: inline-figure
+    :width: 72
+
+.. |cont_act| image:: /rllib/images/sigils/cont-actions.svg
+    :class: inline-figure
+    :width: 72
+
+.. |multi_gpu| image:: /rllib/images/sigils/multi-gpu.svg
+    :class: inline-figure
+    :width: 72
+
+.. |multi_node_multi_gpu| image:: /rllib/images/sigils/multi-node-multi-gpu.svg
+    :class: inline-figure
+    :alt: Only on the Anyscale Platform!
+    :width: 72
