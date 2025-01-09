@@ -1607,6 +1607,12 @@ class Learner(Checkpointable):
             )
 
     def _log_trainable_parameters(self) -> None:
+        """Logs the number of trainable and non-trainable parameters to self.metrics.
+
+        Use MetricsLogger (self.metrics) tuple-keys:
+        (ALL_MODULES, NUM_TRAINABLE_PARAMETERS) and
+        (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS) with EMA.
+        """
         pass
 
     def _check_is_built(self, error: bool = True) -> bool:

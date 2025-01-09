@@ -905,6 +905,10 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
+        # Validation is blocked.
+        if not self._validate_config:
+            return
+
         self._validate_env_runner_settings()
         self._validate_callbacks_settings()
         self._validate_framework_settings()
@@ -3776,7 +3780,25 @@ class AlgorithmConfig(_Config):
         self._train_batch_size_per_learner = value
 
     @property
-    def total_train_batch_size(self):
+    def train_batch_size_per_learner(self) -> int:
+        # If not set explicitly, try to infer the value.
+        if self._train_batch_size_per_learner is None:
+            return self.train_batch_size // (self.num_learners or 1)
+        return self._train_batch_size_per_learner
+
+    @train_batch_size_per_learner.setter
+    def train_batch_size_per_learner(self, value: int) -> None:
+        self._train_batch_size_per_learner = value
+
+    @property
+    def total_train_batch_size(self) -> int:
+        """Returns the effective total train batch size.
+
+        New API stack: `train_batch_size_per_learner` * [effective num Learners].
+
+        @OldAPIStack: User never touches `train_batch_size_per_learner` or
+        `num_learners`) -> `train_batch_size`.
+        """
         return self.train_batch_size_per_learner * (self.num_learners or 1)
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
