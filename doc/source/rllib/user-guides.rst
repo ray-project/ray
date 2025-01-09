@@ -97,7 +97,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-dev
 
-            How to contribute to RLlib?
+            Contribute to RLlib
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
