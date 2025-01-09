@@ -483,6 +483,13 @@ def ray_start_regular_shared(request):
         yield res
 
 
+@pytest.fixture(scope="module")
+def ray_start_regular_shared_2_cpus(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=2, **param) as res:
+        yield res
+
+
 @pytest.fixture(scope="module", params=[{"local_mode": True}, {"local_mode": False}])
 def ray_start_shared_local_modes(request):
     param = getattr(request, "param", {})

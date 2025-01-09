@@ -1,3 +1,5 @@
+from typing import Optional
+
 import pandas as pd
 import pytest
 
@@ -5,6 +7,7 @@ import ray
 from ray.anyscale.data._internal.execution.operators import hash_shuffle
 from ray.anyscale.data._internal.logical.operators.join_operator import JoinType
 from ray.data import Dataset
+from ray.data._internal.util import MiB
 from ray.tests.conftest import *  # noqa
 
 
@@ -21,21 +24,22 @@ def nullify_shuffle_aggregator_num_cpus():
 
 
 @pytest.mark.parametrize(
-    "num_rows_left,num_rows_right",
+    "num_rows_left,num_rows_right,partition_size_hint",
     [
-        (32, 32),
-        (32, 16),
-        (16, 32),
+        (32, 32, 1 * MiB),
+        (32, 16, None),
+        (16, 32, None),
         # "Degenerate" cases with mostly empty partitions
-        (32, 1),
-        (1, 32),
+        (32, 1, None),
+        (1, 32, None),
     ],
 )
 def test_simple_inner_join(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     nullify_shuffle_aggregator_num_cpus,
-    num_rows_left,
-    num_rows_right,
+    num_rows_left: int,
+    num_rows_right: int,
+    partition_size_hint: Optional[int],
 ):
     doubles = ray.data.range(num_rows_left).map(
         lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
@@ -50,25 +54,24 @@ def test_simple_inner_join(
 
     # Join using Pandas (to assert against)
     expected_pd = doubles_pd.join(squares_pd.set_index("id"), on="id", how="inner")
+    expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
 
     # Join using Ray Data
     joined: Dataset = doubles.join(
         squares,
         join_type="inner",
-        num_outputs=16,
+        num_partitions=16,
         key_column_names=("id",),
+        partition_size_hint=partition_size_hint,
     )
-
-    print(joined.count())
-    print(joined.take_all())
 
     # TODO use native to_pandas() instead
     joined_pd = pd.DataFrame(joined.take_all())
 
     # Sort resulting frame and reset index (to be able to compare with expected one)
-    result_pd = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+    joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
 
-    pd.testing.assert_frame_equal(expected_pd, result_pd)
+    pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
 
 @pytest.mark.parametrize(
@@ -90,7 +93,7 @@ def test_simple_inner_join(
     ],
 )
 def test_simple_left_right_outer_join(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     nullify_shuffle_aggregator_num_cpus,
     join_type,
     num_rows_left,
@@ -125,16 +128,16 @@ def test_simple_left_right_outer_join(
     joined: Dataset = doubles.join(
         squares,
         join_type=join_type,
-        num_outputs=16,
+        num_partitions=16,
         key_column_names=("id",),
     )
 
     joined_pd = pd.DataFrame(joined.take_all())
 
     # Sort resulting frame and reset index (to be able to compare with expected one)
-    result_pd = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+    joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
 
-    pd.testing.assert_frame_equal(expected_pd, result_pd)
+    pd.testing.assert_frame_equal(expected_pd, joined_pd_sorted)
 
 
 @pytest.mark.parametrize(
@@ -149,7 +152,7 @@ def test_simple_left_right_outer_join(
     ],
 )
 def test_simple_full_outer_join(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     nullify_shuffle_aggregator_num_cpus,
     num_rows_left,
     num_rows_right,
@@ -174,30 +177,34 @@ def test_simple_full_outer_join(
     joined: Dataset = doubles.join(
         squares,
         join_type="full_outer",
-        num_outputs=16,
+        num_partitions=16,
         key_column_names=("id",),
         # NOTE: We override this to reduce hardware requirements
         #       for every aggregator (by default requiring 1 logical CPU)
-        aggregator_ray_remote_args={"num_cpus": 0},
+        aggregator_ray_remote_args={"num_cpus": 0.01},
     )
 
     joined_pd = pd.DataFrame(joined.take_all())
 
     # Sort resulting frame and reset index (to be able to compare with expected one)
-    result_pd = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+    joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
 
-    pd.testing.assert_frame_equal(expected_pd, result_pd)
+    pd.testing.assert_frame_equal(expected_pd, joined_pd_sorted)
 
 
 @pytest.mark.parametrize("join_type", [jt for jt in JoinType])  # noqa: C416
-def test_invalid_join_not_matching_key_columns(ray_start_regular_shared, join_type):
+def test_invalid_join_not_matching_key_columns(
+    ray_start_regular_shared_2_cpus, join_type
+):
     # Case 1: Check on missing key column
     empty_ds = ray.data.range(0)
 
     non_empty_ds = ray.data.range(32)
 
     with pytest.raises(ValueError) as exc_info:
-        empty_ds.join(non_empty_ds, join_type, num_outputs=16, key_column_names=("id",))
+        empty_ds.join(
+            non_empty_ds, join_type, num_partitions=16, key_column_names=("id",)
+        )
 
     assert (
         str(exc_info.value)
@@ -213,7 +220,7 @@ def test_invalid_join_not_matching_key_columns(ray_start_regular_shared, join_ty
 
     with pytest.raises(ValueError) as exc_info:
         id_int_type_ds.join(
-            id_float_type_ds, join_type, num_outputs=16, key_column_names=("id",)
+            id_float_type_ds, join_type, num_partitions=16, key_column_names=("id",)
         )
 
     assert (

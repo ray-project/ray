@@ -4,6 +4,7 @@ import itertools
 import logging
 import math
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from typing import (
     Any,
     AsyncGenerator,
@@ -17,6 +18,7 @@ from typing import (
     Union,
 )
 
+import numpy as np
 import pyarrow as pa
 
 import ray
@@ -34,6 +36,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
 )
+from ray.data._internal.util import GiB, MiB
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 
 logger = logging.getLogger(__name__)
@@ -66,6 +69,9 @@ class StatefulShuffleAggregation(abc.ABC):
         - Upon completion of the shuffling (ie once whole sequence is shuffled)
         aggregation will receive a call to finalize the aggregation at which point
         it's expected to produce and return resulting block.
+
+        - After successful finalization aggregation's `clear` method will be invoked
+         to clear any accumulated state to release resources.
     """
 
     def __init__(self, aggregator_id: int):
@@ -83,6 +89,13 @@ class StatefulShuffleAggregation(abc.ABC):
         from all input sequences returning resulting block.
         """
 
+        raise NotImplementedError()
+
+    def clear(self, partition_id: int):
+        """Clears out any accumulated state for provided partition-id.
+
+        NOTE: This method is invoked after aggregation is finalized for the given
+              partition."""
         raise NotImplementedError()
 
 
@@ -115,6 +128,9 @@ class Concat(StatefulShuffleAggregation):
     def finalize(self, partition_id: int) -> Block:
         return self._partition_block_builders[partition_id].build()
 
+    def clear(self, partition_id: int):
+        self._partition_block_builders.pop(partition_id)
+
 
 @ray.remote
 def _shuffle_block(
@@ -123,7 +139,7 @@ def _shuffle_block(
     key_columns: List[str],
     pool: "AggregatorPool",
     send_empty_blocks: bool = False,
-) -> BlockMetadata:
+) -> Tuple[BlockMetadata, Dict[int, "_PartitionStats"]]:
     """Shuffles provided block following the algorithm:
 
     1. Hash-partitions provided block into N partitions (where N is determined by
@@ -140,8 +156,14 @@ def _shuffle_block(
               corresponding partitions (of the block)
 
     Returns:
-        Metadata for the shuffled block
+        A tuple of
+            - Metadata for the block being shuffled
+            - Map of partition ids to partition shard stats produced from the
+            shuffled block
     """
+
+    if block.num_rows == 0:
+        return BlockAccessor.for_block(block).get_metadata(), {}
 
     num_partitions = pool.num_partitions
 
@@ -151,6 +173,7 @@ def _shuffle_block(
         block, hash_cols=key_columns, num_partitions=num_partitions
     )
 
+    partition_shards_stats = {}
     awaitable_to_partition_map = {}
 
     for partition_id in range(num_partitions):
@@ -165,6 +188,15 @@ def _shuffle_block(
                 continue
 
             partition_shard = create_empty_table(block.schema)
+
+        # Capture partition shard metadata
+        #
+        # NOTE: We're skipping over empty shards as these are used for schema
+        #       broadcasting and aren't relevant to keep track of
+        if partition_shard.num_rows > 0:
+            partition_shards_stats[partition_id] = _PartitionStats.for_table(
+                partition_shard
+            )
 
         aggregator = pool.get_aggregator_for_partition(partition_id)
         # Put target partition shard into the Object Store to make sure partition shards
@@ -190,22 +222,58 @@ def _shuffle_block(
             pending_submissions, num_returns=len(pending_submissions), timeout=1
         )
 
-        # TODO clean up
-        logger.debug(
-            f">>> [DBG] ({i}) Submissions completed: "
-            f"{[awaitable_to_partition_map[s] for s in ready]}"
-        )
-        logger.debug(
-            f">>> [DBG] ({i}) Submissions pending: "
-            f"{[awaitable_to_partition_map[s] for s in unready]}"
-        )
-
         pending_submissions = unready
-
         i += 1
 
+    original_block_metadata = BlockAccessor.for_block(block).get_metadata()
+
+    if logger.isEnabledFor(logging.DEBUG):
+        num_rows_series, byte_sizes_series = zip(
+            *[(s.num_rows, s.byte_size) for s in partition_shards_stats.values()]
+        )
+
+        quantiles = [0, 50, 100]
+        num_rows_quantiles = np.percentile(num_rows_series, quantiles)
+        byte_sizes_quantiles = np.percentile(byte_sizes_series, quantiles)
+
+        logger.debug(
+            f"Shuffled block (rows={original_block_metadata.num_rows}, "
+            f"bytes={original_block_metadata.size_bytes/MiB:.2f}MB) "
+            f"into {len(partition_shards_stats)} partitions ("
+            f"quantiles={'/'.join(map(str, quantiles))}, "
+            f"rows={'/'.join(map(str, num_rows_quantiles))}, "
+            f"bytes={'/'.join(map(str, byte_sizes_quantiles))})"
+        )
+
     # Return metadata for the original, shuffled block
-    return BlockAccessor.for_block(block).get_metadata()
+    return original_block_metadata, partition_shards_stats
+
+
+@dataclass
+class _PartitionStats:
+    num_rows: int
+    byte_size: int
+
+    @staticmethod
+    def from_block_metadata(block_metadata: BlockMetadata) -> "_PartitionStats":
+        return _PartitionStats(
+            num_rows=block_metadata.num_rows,
+            byte_size=block_metadata.size_bytes,
+        )
+
+    @staticmethod
+    def for_table(table: pa.Table) -> "_PartitionStats":
+        return _PartitionStats(
+            num_rows=table.num_rows,
+            byte_size=table.nbytes,
+        )
+
+    @staticmethod
+    def combine(one: "_PartitionStats", other: "_PartitionStats") -> "_PartitionStats":
+        return _PartitionStats(
+            num_rows=one.num_rows + other.num_rows,
+            byte_size=one.byte_size + other.byte_size,
+        )
 
 
 class HashShufflingOperatorBase(PhysicalOperator):
@@ -225,6 +293,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
         key_columns: List[Tuple[str]],
         num_partitions: int,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
+        partition_size_hint: Optional[int] = None,
         partition_aggregation_factory: StatefulShuffleAggregationFactory,
     ):
         super().__init__(
@@ -243,9 +312,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
         self._num_partitions = num_partitions
 
         # Cap number of aggregators to not exceed max configured
-        num_aggregators = min(
-            num_partitions, data_context.get_current().max_hash_shuffle_aggregators
-        )
+        num_aggregators = min(num_partitions, data_context.max_hash_shuffle_aggregators)
 
         self._aggregator_pool: AggregatorPool = AggregatorPool(
             num_partitions=num_partitions,
@@ -256,13 +323,10 @@ class HashShufflingOperatorBase(PhysicalOperator):
                 or self._get_default_aggregator_ray_remote_args(
                     num_partitions=num_partitions,
                     num_aggregators=num_aggregators,
+                    partition_size_hint=partition_size_hint,
                 )
             ),
         )
-
-        self._shuffle_block_ray_remote_args = {
-            "num_cpus": 1,
-        }
 
         self._next_shuffle_tasks_idx: int = 0
         # Shuffling tasks are mapped like following
@@ -279,15 +343,28 @@ class HashShufflingOperatorBase(PhysicalOperator):
         #
         # NOTE: Aggregating tasks are invariant of the # of input operators, as
         #       aggregation is assumed to always produce a single sequence
-        self._aggregating_tasks: Dict[int, DataOpTask] = dict()
+        self._finalizing_tasks: Dict[int, DataOpTask] = dict()
 
-        self._is_finalized: bool = False
-        self._has_propagated_schemas: DefaultDict[int, bool] = defaultdict(bool)
+        # This is a workaround to be able to distribute schemas to individual
+        # aggregators (keeps track which input sequences have already broadcasted
+        # their schemas)
+        self._has_schemas_broadcasted: DefaultDict[int, bool] = defaultdict(bool)
+        # Id of the last partition finalization of which had already been scheduled
+        self._last_finalized_partition_id: int = -1
 
         self._output_queue: Deque[RefBundle] = deque()
 
         self._output_blocks_metadata: List[BlockMetadata] = list()
-        self._shuffling_blocks_metadata: List[BlockMetadata] = list()
+        self._shuffled_blocks_metadata: List[BlockMetadata] = list()
+
+        # Incremental individual partition metadata accumulated separately for
+        # individual input sequences during shuffling. Maps
+        #
+        #   input_sequence_id -> partition_id -> _PartitionStats
+        #
+        self._partitions_stats: DefaultDict[
+            int, Dict[int, _PartitionStats]
+        ] = defaultdict(dict)
 
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
@@ -304,50 +381,67 @@ class HashShufflingOperatorBase(PhysicalOperator):
 
     def _do_add_input_inner(self, input_bundle: RefBundle, input_index: int):
         input_blocks_refs: List[ObjectRef[Block]] = input_bundle.block_refs
+        input_blocks_metadata: List[BlockMetadata] = input_bundle.metadata
 
-        # TODO add concurrency control
-        for block_ref in input_blocks_refs:
+        for block_ref, block_metadata in zip(input_blocks_refs, input_blocks_metadata):
             # If operator hasn't propagated schemas (for this sequence) to its
             # aggregator pool, it will need to do that upon receiving of the
             # first block
-            should_propagate_schemas = not self._has_propagated_schemas[input_index]
+            should_broadcast_schemas = not self._has_schemas_broadcasted[input_index]
             input_key_column_names = self._key_column_names[input_index]
+            # Compose shuffling task resource bundle
+            shuffle_task_resource_bundle = {
+                "num_cpus": 1,
+                "memory": self._estimate_shuffling_memory_req(block_metadata),
+            }
 
             # Fan out provided input blocks to "shuffle" it
             #   - Block is first hash-partitioned into N partitions
             #   - Individual partitions then are submitted to the corresponding
             #     aggregators
-            shuffled_blocks_metadata_ref: ObjectRef[
-                List[BlockMetadata]
+            input_block_partition_shards_metadata_tuple_ref: ObjectRef[
+                Tuple[BlockMetadata, Dict[int, _PartitionStats]]
             ] = _shuffle_block.options(
-                **self._shuffle_block_ray_remote_args,
+                **shuffle_task_resource_bundle,
                 num_returns=1,
             ).remote(
                 block_ref,
                 input_index,
                 input_key_column_names,
                 self._aggregator_pool,
-                send_empty_blocks=should_propagate_schemas,
+                send_empty_blocks=should_broadcast_schemas,
             )
 
-            if should_propagate_schemas:
-                self._has_propagated_schemas[input_index] = True
+            if should_broadcast_schemas:
+                self._has_schemas_broadcasted[input_index] = True
 
             cur_shuffle_task_idx = self._next_shuffle_tasks_idx
             self._next_shuffle_tasks_idx += 1
 
             def _on_partitioning_done():
                 task = self._shuffling_tasks[input_index].pop(cur_shuffle_task_idx)
-                # Fetch shuffled block metadata and add it to the list of processed
-                # blocks
-                block_metadata = ray.get(task.get_waitable(), timeout=0)
-                self._shuffling_blocks_metadata.append(block_metadata)
+                # Fetch input block and resulting partition shards block metadata and
+                # handle obtained metadata
+                #
+                # NOTE: We set timeout equal to 1m here as an upper-bound to make
+                #       sure that `ray.get(...)` invocation couldn't stall the pipeline
+                #       indefinitely
+                input_block_metadata, partition_shards_stats = ray.get(
+                    task.get_waitable(), timeout=60
+                )
+
+                self._handle_shuffled_block_metadata(
+                    input_index, input_block_metadata, partition_shards_stats
+                )
 
             # TODO update metrics
             self._shuffling_tasks[input_index][cur_shuffle_task_idx] = MetadataOpTask(
                 task_index=cur_shuffle_task_idx,
-                object_ref=shuffled_blocks_metadata_ref,
+                object_ref=input_block_partition_shards_metadata_tuple_ref,
                 task_done_callback=_on_partitioning_done,
+                task_resource_bundle=(
+                    ExecutionResources.from_resource_dict(shuffle_task_resource_bundle)
+                ),
             )
 
     def has_next(self) -> bool:
@@ -369,9 +463,9 @@ class HashShufflingOperatorBase(PhysicalOperator):
         shuffling_tasks = self._get_active_shuffling_tasks()
 
         # Collect aggregating tasks for every input sequence
-        aggregating_tasks: List[DataOpTask] = list(self._aggregating_tasks.values())
+        finalizing_tasks: List[DataOpTask] = list(self._finalizing_tasks.values())
 
-        return shuffling_tasks + aggregating_tasks
+        return shuffling_tasks + finalizing_tasks
 
     def _get_active_shuffling_tasks(self) -> List[MetadataOpTask]:
         return list(
@@ -392,8 +486,8 @@ class HashShufflingOperatorBase(PhysicalOperator):
         )
 
     def _try_finalize(self):
-        # Skip if already finalized
-        if self._is_finalized:
+        # Skip if finalization of all partitions had been already scheduled
+        if self._is_finalized():
             return
 
         # Finalization can only proceed once
@@ -402,7 +496,10 @@ class HashShufflingOperatorBase(PhysicalOperator):
         if not self._is_shuffling_done():
             return
 
-        logger.debug("Shuffling finished, finalization is in progress")
+        logger.debug(
+            f"Scheduling next shuffling finalization batch (last finalized "
+            f"partition id is {self._last_finalized_partition_id})"
+        )
 
         def _on_bundle_ready(bundle: RefBundle):
             # Add finalized block to the output queue
@@ -410,8 +507,8 @@ class HashShufflingOperatorBase(PhysicalOperator):
             self._metrics.on_output_queued(bundle)
 
         def _on_aggregation_done(partition_id: int, exc: Optional[Exception]):
-            if partition_id in self._aggregating_tasks:
-                self._aggregating_tasks.pop(partition_id)
+            if partition_id in self._finalizing_tasks:
+                self._finalizing_tasks.pop(partition_id)
 
                 if exc:
                     logger.error(
@@ -420,14 +517,71 @@ class HashShufflingOperatorBase(PhysicalOperator):
                         exc_info=exc,
                     )
 
-        for partition_id in range(self._num_partitions):
+        # NOTE: Unless explicitly set finalization batch size defaults to the #
+        #       of shuffle aggregators
+        max_batch_size = (
+            self.data_context.max_hash_shuffle_finalization_batch_size
+            or self.data_context.max_hash_shuffle_aggregators
+        )
+
+        num_remaining_partitions = (
+            self._num_partitions - 1 - self._last_finalized_partition_id
+        )
+        num_running_finalizing_tasks = len(self._finalizing_tasks)
+
+        # Finalization is executed in batches of no more than
+        # `DataContext.max_hash_shuffle_finalization_batch_size` tasks at a time.
+        #
+        # Batch size is used as a lever to limit memory pressure on the nodes
+        # where aggregators are run by limiting # of finalization tasks running
+        # concurrently
+        next_batch_size = min(
+            num_remaining_partitions,
+            max_batch_size - num_running_finalizing_tasks,
+        )
+
+        assert next_batch_size >= 0, (
+            f"Finalization batch size must be greater than 0 "
+            f"(got {next_batch_size}; "
+            f"remaining={num_remaining_partitions}, "
+            f"finalizing={num_running_finalizing_tasks}, "
+            f"max_batch_size={max_batch_size})"
+        )
+
+        if next_batch_size == 0:
+            return
+
+        # Next partition to be scheduled for finalization is the one right
+        # after the last one scheduled
+        next_partition_id = self._last_finalized_partition_id + 1
+
+        target_partition_ids = list(
+            range(next_partition_id, next_partition_id + next_batch_size)
+        )
+
+        logger.debug(
+            f"Scheduling partitions {target_partition_ids} for finalization: "
+            f"{[self._get_partition_stats(pid) for pid in target_partition_ids]}"
+        )
+
+        for partition_id in target_partition_ids:
             aggregator = self._aggregator_pool.get_aggregator_for_partition(
                 partition_id
             )
-            # Finalize target partition
-            block_gen = aggregator.finalize.remote(partition_id)
 
-            self._aggregating_tasks[partition_id] = DataOpTask(
+            # Estimate (heap) memory requirement to execute finalization task
+            # Compose shuffling task resource bundle
+            finalize_task_resource_bundle = {
+                # TODO currently not possible to specify the resources for an actor
+                # "memory": self._estimate_finalization_memory_req(partition_id),
+            }
+
+            # Request finalization of the partition
+            block_gen = aggregator.finalize.options(
+                **finalize_task_resource_bundle
+            ).remote(partition_id)
+
+            self._finalizing_tasks[partition_id] = DataOpTask(
                 task_index=partition_id,
                 streaming_gen=block_gen,
                 output_ready_callback=_on_bundle_ready,
@@ -435,29 +589,41 @@ class HashShufflingOperatorBase(PhysicalOperator):
                 task_done_callback=functools.partial(
                     _on_aggregation_done, partition_id
                 ),
+                task_resource_bundle=(
+                    ExecutionResources.from_resource_dict(finalize_task_resource_bundle)
+                ),
             )
 
-        self._is_finalized = True
+        # Update last finalized partition id
+        self._last_finalized_partition_id = max(target_partition_ids)
 
     def get_stats(self):
         return {
             # TODO factor in output blocks metadata
-            self._name: self._shuffling_blocks_metadata,
+            self._name: self._shuffled_blocks_metadata,
         }
 
     def current_processor_usage(self) -> ExecutionResources:
-        # Count both shuffle tasks and aggregator actors.
+        # Current processors resource usage is comprised by
+        #   - Base Aggregator actors resource utilization (captured by
+        #     `base_resource_usage` method)
+        #   - Active shuffling tasks
+        #   - Active finalizing tasks (actor tasks)
         base_usage = self.base_resource_usage()
-        shuffling_tasks_cpus_used = len(
-            self._get_active_shuffling_tasks()
-        ) * self._shuffle_block_ray_remote_args.get("num_cpus")
 
+        shuffling_tasks = self._get_active_shuffling_tasks()
+        shuffling_tasks_cpus_used = sum(
+            [t.get_requested_resource_bundle().cpu for t in shuffling_tasks]
+        )
+
+        # TODO add memory to resources being tracked
         return ExecutionResources(
             cpu=base_usage.cpu + shuffling_tasks_cpus_used,
             gpu=0,
         )
 
     def base_resource_usage(self) -> ExecutionResources:
+        # TODO add memory to resources being tracked
         return ExecutionResources(
             cpu=(
                 self._aggregator_pool.num_aggregators
@@ -478,24 +644,101 @@ class HashShufflingOperatorBase(PhysicalOperator):
             gpu=0,
         )
 
+    def completed(self) -> bool:
+        # TODO remove impl from base class
+        return self._is_finalized() and super().completed()
+
+    def implements_accurate_memory_accounting(self) -> bool:
+        return True
+
+    def _is_finalized(self):
+        return self._last_finalized_partition_id == self._num_partitions - 1
+
+    def _handle_shuffled_block_metadata(
+        self,
+        input_seq_id: int,
+        input_block_metadata: BlockMetadata,
+        partition_shards_stats: Dict[int, _PartitionStats],
+    ):
+        # Keep track of the progress of shuffling incoming blocks
+        self._shuffled_blocks_metadata.append(input_block_metadata)
+
+        # Update incremental input sequence partitions metadata
+        for partition_id, new_partition_shard_stats in partition_shards_stats.items():
+            current_partition_stats: Optional[_PartitionStats] = self._partitions_stats[
+                input_seq_id
+            ].get(partition_id, None)
+
+            self._partitions_stats[input_seq_id][partition_id] = (
+                _PartitionStats.combine(
+                    current_partition_stats,
+                    new_partition_shard_stats,
+                )
+                if current_partition_stats
+                else new_partition_shard_stats
+            )
+
+    def _get_partition_stats(
+        self, partition_id: int
+    ) -> Dict[int, Optional[_PartitionStats]]:
+        return {
+            # NOTE: Some partitions might be empty (and hence missing) in some sequences
+            input_seq_id: partition_stats_map.get(partition_id)
+            for input_seq_id, partition_stats_map in self._partitions_stats.items()
+        }
+
     @classmethod
+    def _estimate_shuffling_memory_req(cls, block_metadata: BlockMetadata):
+        return (
+            math.ceil(block_metadata.size_bytes * 1.25)
+            if block_metadata.size_bytes
+            else 2 * GiB
+        )
+
     def _get_default_aggregator_ray_remote_args(
-        cls, *, num_partitions: int, num_aggregators: int
+        self,
+        *,
+        num_partitions: int,
+        num_aggregators: int,
+        partition_size_hint: Optional[int],
     ):
         assert num_partitions >= num_aggregators
+        assert partition_size_hint is None or partition_size_hint > 0
 
-        # TODO elaborate
+        # Since aggregators can handle multiple individual partitions,
+        # CPU allocation is proportionately scaled with the number of partitions
         partition_aggregator_ratio: int = math.ceil(num_partitions / num_aggregators)
 
         assert partition_aggregator_ratio >= 1
 
+        aggregator_total_memory_required = self._estimate_aggregator_memory_allocation(
+            num_aggregators=num_aggregators,
+            num_partitions=num_partitions,
+            # NOTE: If no partition size hint is provided we simply assume target
+            #       max block size specified as the best partition size estimate
+            partition_byte_size_estimate=partition_size_hint
+            or self.data_context.target_max_block_size,
+        )
+
         remote_args = {
             **DEFAULT_SHUFFLE_AGGREGATOR_RAY_REMOTE_ARGS,
-            "num_cpus": DEFAULT_SHUFFLE_AGGREGATOR_NUM_CPUS
-            * partition_aggregator_ratio,
+            "num_cpus": (
+                DEFAULT_SHUFFLE_AGGREGATOR_NUM_CPUS * partition_aggregator_ratio
+            ),
+            "memory": aggregator_total_memory_required,
         }
 
         return remote_args
+
+    @classmethod
+    def _estimate_aggregator_memory_allocation(
+        cls,
+        *,
+        num_aggregators: int,
+        num_partitions: int,
+        partition_byte_size_estimate: int,
+    ) -> int:
+        raise NotImplementedError()
 
 
 class ShuffleOperator(HashShufflingOperatorBase):
@@ -517,6 +760,42 @@ class ShuffleOperator(HashShufflingOperatorBase):
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
             partition_aggregation_factory=Concat.__init__,
         )
+
+    @classmethod
+    def _estimate_aggregator_memory_allocation(
+        cls,
+        *,
+        num_aggregators: int,
+        num_partitions: int,
+        partition_byte_size_estimate: int,
+    ) -> int:
+        dataset_size = num_partitions * partition_byte_size_estimate
+        # Estimate of object store memory required to accommodate all partitions
+        # handled by a single aggregator
+        aggregator_shuffle_object_store_memory_required: int = math.ceil(
+            dataset_size / num_aggregators
+        )
+        # Estimate of memory required to accommodate single partition as an output
+        # (inside Object Store)
+        output_object_store_memory_required: int = partition_byte_size_estimate
+
+        aggregator_total_memory_required: int = (
+            # Inputs (OS)
+            aggregator_shuffle_object_store_memory_required
+            +
+            # Output (OS)
+            output_object_store_memory_required
+        )
+
+        logger.debug(
+            f"Estimated memory requirement for shuffling aggregator "
+            f"(partitions={num_partitions}, aggregators={num_aggregators}): "
+            f"shuffle={aggregator_shuffle_object_store_memory_required / GiB:.2f}GiB, "
+            f"output={output_object_store_memory_required / GiB:.2f}GiB, "
+            f"total={aggregator_total_memory_required / GiB:.2f}GiB, "
+        )
+
+        return aggregator_total_memory_required
 
 
 class AggregatorPool:
@@ -606,7 +885,10 @@ class ShuffleAggregator:
     def finalize(
         self, partition_id: int
     ) -> AsyncGenerator[Union[Block, BlockMetadata], None]:
+        # Finalize given partition id
         result = self._agg.finalize(partition_id)
+        # Clear any remaining state (to release resources)
+        self._agg.clear(partition_id)
 
         # TODO break down blocks to target size
         yield result

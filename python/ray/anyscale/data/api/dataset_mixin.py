@@ -1,5 +1,5 @@
 import functools
-from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 from ray.anyscale.data._internal.logical.operators.join_operator import Join
 from ray.anyscale.data._internal.logical.operators.list_files_operator import (
@@ -96,10 +96,11 @@ class DatasetMixin:
         self: DatasetProtocol,
         ds: "Dataset",
         join_type: str,
-        num_outputs: int,
+        num_partitions: int,
         key_column_names: Tuple[str] = ("id",),
         right_key_column_names: Optional[Tuple[str]] = None,
         *,
+        partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "Dataset":
         """Join :class:`Datasets <ray.data.Dataset>` on join keys
@@ -108,19 +109,58 @@ class DatasetMixin:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of (“inner”,
               “left_outer”, “right_outer”, “full_outer”)
-            num_outputs: Total number of blocks to be produced by this operation (see
-              py-doc for `Dataset.repartition` operation for more context)
+            num_partitions: Total number of "partitions" input sequences will be split
+              into with each partition being joined independently. Increasing number
+              of partitions allows to reduce individual partition size, hence reducing
+              memory requirements when individual partitions are being joined. Note
+              that, consequently, this will also be a total number of blocks that will
+              be produced as a result of executing join.
             key_column_names: The columns from the left operand that will be used as
               keys for the join operation.
             right_key_column_names: The columns from the right operand that will be
               used as keys for the join operation. When none, `key_column_names` will
               be assumed to be a list of columns to be used for the right dataset
               as well.
-
+            partition_size_hint: Hint to joining operator about the estimated
+              avg expected size of the individual partition (in bytes).
+              This is used in estimating the total dataset size and allow to tune
+              memory requirement of the individual joining workers to prevent OOMs
+              when joining very large datasets.
+            aggregator_ray_remote_args: Parameter overriding `ray.remote` args passed
+              when constructing joining (aggregator) workers
 
         Returns:
             A :class:`Dataset` that holds join of input left Dataset with the right
               Dataset based on join type and keys.
+
+        Examples:
+
+        .. testcode::
+
+            doubles_ds = ray.data.range(3).map(
+                lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
+            )
+
+            squares_ds = ray.data.range(3).map(
+                lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
+            )
+
+            joined_ds = doubles.join(
+                squares,
+                join_type="inner",
+                num_outputs=16,
+                key_column_names=("id",),
+            )
+
+            print(sorted(joined_ds.take_all(), key=lambda item: item["id"]))
+
+        .. testoutput::
+
+            [
+                {'id': 1, 'double': 2, 'square': 1},
+                {'id': 2, 'double': 4, 'square': 4},
+                {'id': 3, 'double': 6, 'square': 9}
+            ]
         """
 
         left_op_schema: Optional["Schema"] = self.schema()
@@ -130,7 +170,7 @@ class DatasetMixin:
         #       side ones
         right_key_column_names = right_key_column_names or key_column_names
 
-        _validate_join_op(
+        Join._validate_schemas(
             left_op_schema, right_op_schema, key_column_names, right_key_column_names
         )
 
@@ -141,11 +181,12 @@ class DatasetMixin:
             left_key_columns=key_column_names,
             right_key_columns=right_key_column_names,
             join_type=join_type,
-            num_outputs=num_outputs,
+            num_partitions=num_partitions,
+            partition_size_hint=partition_size_hint,
             aggregator_ray_remote_args=aggregator_ray_remote_args,
         )
-        logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
+
+        return Dataset(plan, LogicalPlan(op, self.context))
 
     @functools.wraps(Dataset.input_files)
     def input_files(self) -> List[str]:
@@ -198,45 +239,4 @@ class DatasetMixin:
             SnowflakeDatasink(table, connection_parameters),
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
-        )
-
-
-def _validate_join_op(
-    left_op_schema: "Schema",
-    right_op_schema: "Schema",
-    left_key_column_names: Tuple[str],
-    right_key_column_names: Tuple[str],
-):
-    def _col_names_as_str(keys: Sequence[str]):
-        keys_joined = ", ".join(map(lambda k: f"'{k}'", keys))
-        return f"[{keys_joined}]"
-
-    if len(left_key_column_names) < 1:
-        raise ValueError(
-            f"At least 1 column name to join on has to be provided (got "
-            f"{_col_names_as_str(left_key_column_names)})"
-        )
-
-    if len(left_key_column_names) != len(right_key_column_names):
-        raise ValueError(
-            f"Number of columns provided for left and right datasets has to match "
-            f"(got {_col_names_as_str(left_key_column_names)} and "
-            f"{_col_names_as_str(right_key_column_names)})"
-        )
-
-    def _get_key_column_types(schema: "Schema", keys: Tuple[str]):
-        return (
-            [_type for name, _type in zip(schema.names, schema.types) if name in keys]
-            if schema
-            else None
-        )
-
-    right_op_key_cols = _get_key_column_types(right_op_schema, left_key_column_names)
-    left_op_key_cols = _get_key_column_types(left_op_schema, right_key_column_names)
-
-    if left_op_key_cols != right_op_key_cols:
-        raise ValueError(
-            f"Key columns are expected to be present and have the same types "
-            "in both left and right operands of the join operation: "
-            f"left has {left_op_schema}, but right has {right_op_schema}"
         )

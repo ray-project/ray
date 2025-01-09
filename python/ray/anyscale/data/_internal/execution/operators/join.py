@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.anyscale.data._internal.execution.operators.hash_shuffle import (
@@ -9,6 +10,7 @@ from ray.anyscale.data._internal.logical.operators.join_operator import JoinType
 from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.util import GiB
 from ray.data.block import Block
 
 _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
@@ -23,6 +25,23 @@ logger = logging.getLogger(__name__)
 
 
 class JoiningShuffleAggregation(StatefulShuffleAggregation):
+    """Aggregation performing distributed joining of the 2 sequences,
+    by utilising hash-based shuffling.
+
+    Hash-based shuffling applied to 2 input sequences and employing the same
+    partitioning scheme allows to
+
+        - Accumulate identical keys from both sequences into the same
+        (numerical) partition. In other words, all keys such that
+
+            hash(key) % num_partitions = partition_id
+
+        - Perform join on individual partitions independently (from other partitions)
+
+    For actual joining Pyarrow native joining functionality is utilised, providing
+    incredible performance while allowing keep the data from being deserialized.
+    """
+
     def __init__(
         self,
         *,
@@ -41,7 +60,7 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             left_key_col_names
         ), "Number of column for both left and right join operands has to match"
 
-        assert _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[join_type], (
+        assert join_type in _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP, (
             f"Join type is not currently supported (got: {join_type}; "  # noqa: C416
             f"supported: {[jt for jt in JoinType]})"  # noqa: C416
         )
@@ -63,12 +82,6 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
     def accept(self, input_seq_id: int, partition_id: int, partition_shard: Block):
         assert 0 <= input_seq_id < 2
 
-        # TODO clean up
-        logger.debug(
-            f">>> [DBG] Accepting partition shard input_seq={input_seq_id}, "
-            f"partition={partition_id} (rows={partition_shard.num_rows})"
-        )
-
         partition_builder = self._get_partition_builder(
             input_seq_id=input_seq_id,
             partition_id=partition_id,
@@ -76,17 +89,8 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
 
         partition_builder.add_block(partition_shard)
 
-        # TODO clean up
-        logger.debug(
-            f">>> [DBG] Accepted partition shard input_seq={input_seq_id}, "
-            f"partition={partition_id} (rows={partition_shard.num_rows})"
-        )
-
     def finalize(self, partition_id: int) -> Block:
         import pyarrow as pa
-
-        # TODO clean up
-        logger.debug(f">>> [DBG] Finalizing partition for partition={partition_id}")
 
         left_seq_partition: pa.Table = self._get_partition_builder(
             input_seq_id=0, partition_id=partition_id
@@ -97,7 +101,6 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
 
         arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
 
-        # TODO use threads?
         joined = left_seq_partition.join(
             right_seq_partition,
             join_type=arrow_join_type,
@@ -105,12 +108,11 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             right_keys=(list(self._right_key_col_names)),
         )
 
-        # TODO clean up
-        logger.debug(
-            f">>> [DBG] Finalized partition {partition_id} (rows={joined.num_rows})"
-        )
-
         return joined
+
+    def clear(self, partition_id: int):
+        self._left_input_seq_partition_builders.pop(partition_id)
+        self._right_input_seq_partition_builders.pop(partition_id)
 
     def _get_partition_builder(self, *, input_seq_id: int, partition_id: int):
         if input_seq_id == 0:
@@ -135,6 +137,7 @@ class JoinOperator(HashShufflingOperatorBase):
         join_type: JoinType,
         *,
         num_partitions: int,
+        partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
@@ -143,6 +146,7 @@ class JoinOperator(HashShufflingOperatorBase):
             data_context=data_context,
             key_columns=[left_key_columns, right_key_columns],
             num_partitions=num_partitions,
+            partition_size_hint=partition_size_hint,
             partition_aggregation_factory=(
                 lambda aggregator_id, target_partition_ids: JoiningShuffleAggregation(
                     aggregator_id=aggregator_id,
@@ -156,12 +160,68 @@ class JoinOperator(HashShufflingOperatorBase):
         )
 
     @classmethod
+    def _estimate_aggregator_memory_allocation(
+        cls,
+        *,
+        num_aggregators: int,
+        num_partitions: int,
+        partition_byte_size_estimate: int,
+    ) -> int:
+        dataset_size = num_partitions * partition_byte_size_estimate
+        # Estimate of object store memory required to accommodate all partitions
+        # handled by a single aggregator
+        #
+        # NOTE: x2 due to 2 sequences involved in joins
+        aggregator_shuffle_object_store_memory_required: int = math.ceil(
+            2 * dataset_size / num_aggregators
+        )
+        # Estimate of memory required to perform actual (in-memory) join
+        # operation (inclusive of 50% overhead allocated for Pyarrow join
+        # implementation)
+        #
+        # NOTE:
+        #   - x2 due to 2 partitions (from left/right sequences)
+        #   - x1.5 due to 50% overhead of in-memory join
+        join_memory_required: int = math.ceil(partition_byte_size_estimate * 3)
+        # Estimate of memory required to accommodate single partition as an output
+        # (inside Object Store)
+        #
+        # NOTE: x2 due to 2 sequences involved in joins
+        output_object_store_memory_required: int = 2 * partition_byte_size_estimate
+
+        aggregator_total_memory_required: int = (
+            # Inputs (OS)
+            aggregator_shuffle_object_store_memory_required
+            +
+            # Join (heap)
+            join_memory_required
+            +
+            # Output (OS)
+            output_object_store_memory_required
+        )
+
+        logger.debug(
+            f"Estimated memory requirement for joining aggregator "
+            f"(partitions={num_partitions}, aggregators={num_aggregators}): "
+            f"shuffle={aggregator_shuffle_object_store_memory_required / GiB:.2f}GiB, "
+            f"joining={join_memory_required / GiB:.2f}GiB, "
+            f"output={output_object_store_memory_required / GiB:.2f}GiB, "
+            f"total={aggregator_total_memory_required / GiB:.2f}GiB, "
+        )
+
+        return aggregator_total_memory_required
+
     def _get_default_aggregator_ray_remote_args(
-        cls, *, num_partitions: int, num_aggregators: int
+        self,
+        *,
+        num_partitions: int,
+        num_aggregators: int,
+        partition_size_hint: Optional[int],
     ):
         shuffle_base_remote_args = super()._get_default_aggregator_ray_remote_args(
             num_partitions=num_partitions,
             num_aggregators=num_aggregators,
+            partition_size_hint=partition_size_hint,
         )
 
         return {

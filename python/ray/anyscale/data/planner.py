@@ -59,6 +59,7 @@ def _register_anyscale_plan_logical_op_fns():
             left_key_columns=logical_op._left_key_columns,
             right_key_columns=logical_op._right_key_columns,
             num_partitions=logical_op._num_outputs,
+            partition_size_hint=logical_op._partition_size_hint,
             aggregator_ray_remote_args_override=logical_op._aggregator_ray_remote_args,
         )
 

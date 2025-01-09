@@ -294,6 +294,7 @@ class DataContext:
 
     # Hash-based shuffling configuration
     max_hash_shuffle_aggregators: int = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+    max_hash_shuffle_finalization_batch_size: Optional[int] = None
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
