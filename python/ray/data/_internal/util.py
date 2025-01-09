@@ -1083,7 +1083,8 @@ def iterate_with_retry(
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
                 logger.debug(
-                    f"Retrying {attempt+1} attempts to {description} after {backoff} seconds."
+                    f"Retrying {attempt+1} attempts to {description} "
+                    f"after {backoff} seconds."
                 )
                 time.sleep(backoff)
             else:
