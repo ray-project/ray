@@ -1,4 +1,6 @@
 import functools
+import logging
+import os
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import pyarrow
@@ -16,9 +18,12 @@ from ray.data._internal.util import call_with_retry, iterate_with_retry, make_as
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.data.datasource import Partitioning, PathPartitionParser
+from ray.util.debug import log_once
 
 # The number of rows to read per batch. This is the default we use in OSS.
 DEFAULT_BATCH_SIZE = 10_000
+
+logger = logging.getLogger(__name__)
 
 
 class ParquetReader(FileReader):
@@ -195,9 +200,19 @@ class ParquetReader(FileReader):
                     )
                 for partition, value in partitions.items():
                     if partition_columns is None or partition in partition_columns:
-                        batch = batch.append_column(
-                            partition, pa.array([value] * len(batch))
-                        )
+                        if partition not in batch.column_names:
+                            batch = batch.append_column(
+                                partition, pa.array([value] * len(batch))
+                            )
+                        elif log_once(f"duplicate_partition_field_{partition}"):
+                            directory = os.path.dirname(fragment.path)
+                            filename = os.path.basename(fragment.path)
+                            logger.warning(
+                                f"The partition field '{partition}' exists in both the "
+                                f"path '{directory}' and in the Parquet file "
+                                f"'{filename}'. Ray Data will default to using the "
+                                "value in the Parquet file."
+                            )
                 if columns_rename is not None:
                     batch = batch.rename_columns(
                         [columns_rename.get(col, col) for col in batch.schema.names]
