@@ -1005,7 +1005,7 @@ TEST_F(FailoverTest, FailoverWithDeadNodes) {
     };
     ASSERT_TRUE(
         virtual_cluster_1->ReplenishNodeInstances(node_instance_replenish_callback));
-    async_data_flusher_(virtual_cluster_1->ToProto(), nullptr);
+    ASSERT_TRUE(async_data_flusher_(virtual_cluster_1->ToProto(), nullptr).ok());
 
     // Mock a gcs_init_data.
     instrumented_io_context io_service;

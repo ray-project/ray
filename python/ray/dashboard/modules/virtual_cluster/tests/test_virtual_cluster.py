@@ -447,3 +447,7 @@ def test_get_virtual_clusters(disable_aiohttp_cache, ray_start_cluster_head):
             return False
 
     wait_for_condition(_get_virtual_clusters, timeout=10)
+
+
+if __name__ == "__main__":
+    pass

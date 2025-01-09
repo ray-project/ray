@@ -357,7 +357,7 @@ Status DivisibleCluster::CreateJobCluster(const std::string &job_cluster_id,
   ReplicaInstances replica_instances_to_add;
   // Lookup undivided alive node instances based on `replica_sets_to_add`.
   auto success = LookupUndividedNodeInstances(
-      replica_sets, replica_instances_to_add, [this](const auto &node_instance) {
+      replica_sets, replica_instances_to_add, [](const auto &node_instance) {
         return !node_instance.is_dead();
       });
   if (!success) {
@@ -472,9 +472,12 @@ bool DivisibleCluster::ReplenishNodeInstances(
     const NodeInstanceReplenishCallback &callback) {
   RAY_CHECK(callback != nullptr);
   bool any_node_instance_replenished = false;
-  for (const auto &[job_cluster_id, job_cluster] : job_clusters_) {
+  for (const auto &[_, job_cluster] : job_clusters_) {
+    // Explicitly capture the `job_cluster` by value to avoid the compile error.
+    // e.g. error: 'job_cluster_id' in capture list does not name a variable
+    const auto &job_cluster_id = job_cluster->GetID();
     bool replenished = job_cluster->ReplenishNodeInstances(
-        [this, &job_cluster_id, &callback, &any_node_instance_replenished](
+        [this, &job_cluster_id, &any_node_instance_replenished, &callback](
             std::shared_ptr<NodeInstance> node_instance) {
           const auto &template_id = node_instance->template_id();
           if (auto replenished_node_instance = callback(node_instance)) {
@@ -515,7 +518,11 @@ bool DivisibleCluster::ReplenishNodeInstances(
 
     if (replenished) {
       // Flush and publish the job cluster data.
-      async_data_flusher_(job_cluster->ToProto(), nullptr);
+      auto status = async_data_flusher_(job_cluster->ToProto(), nullptr);
+      if (!status.ok()) {
+        RAY_LOG(ERROR) << "Failed to flush and publish the job cluster " << job_cluster_id
+                       << " data: " << status.message();
+      }
     }
   }
 
@@ -845,7 +852,7 @@ Status PrimaryCluster::DetermineNodeInstanceAdditionsAndRemovals(
   // Lookup undivided alive node instances from main cluster based on
   // `replica_sets_to_add`.
   auto success = LookupUndividedNodeInstances(
-      replica_sets_to_add, replica_instances_to_add, [this](const auto &node_instance) {
+      replica_sets_to_add, replica_instances_to_add, [](const auto &node_instance) {
         return !node_instance.is_dead();
       });
   if (!success) {
@@ -1047,7 +1054,11 @@ void PrimaryCluster::ReplenishAllClusterNodeInstances() {
   for (auto &[_, logical_cluster] : logical_clusters_) {
     if (logical_cluster->ReplenishNodeInstances(node_instance_replenish_callback)) {
       // Flush the logical cluster data.
-      async_data_flusher_(logical_cluster->ToProto(), nullptr);
+      auto status = async_data_flusher_(logical_cluster->ToProto(), nullptr);
+      if (!status.ok()) {
+        RAY_LOG(ERROR) << "Failed to flush logical cluster " << logical_cluster->GetID()
+                       << " data, status: " << status.ToString();
+      }
     }
   }
 

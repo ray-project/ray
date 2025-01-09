@@ -939,7 +939,8 @@ service VirtualClusterInfoGcsService {
   rpc CreateOrUpdateVirtualCluster(CreateOrUpdateVirtualClusterRequest)
       returns (CreateOrUpdateVirtualClusterReply);
   // Remove a virtual cluster.
-  rpc RemoveVirtualCluster(RemoveVirtualClusterRequest) returns (RemoveVirtualClusterReply);
+  rpc RemoveVirtualCluster(RemoveVirtualClusterRequest)
+      returns (RemoveVirtualClusterReply);
   // Get virtual clusters.
   rpc GetVirtualClusters(GetVirtualClustersRequest) returns (GetVirtualClustersReply);
   // Create job cluster.
