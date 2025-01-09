@@ -29,7 +29,7 @@ from ray.dag.constants import (
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
 import ray
-from ray.exceptions import RayTaskError, RayChannelError
+from ray.exceptions import RayTaskError, RayChannelError, RayChannelTimeoutError
 from ray.experimental.compiled_dag_ref import (
     CompiledDAGRef,
     CompiledDAGFuture,
@@ -2089,12 +2089,12 @@ class CompiledDAG:
             # them separately to enable individual retrieval
             try:
                 result = self._dag_output_fetcher.read(timeout)
-            except ray.exceptions.RayChannelTimeoutError:
-                raise ray.exceptions.RayChannelTimeoutError(
+            except RayChannelTimeoutError as e:
+                raise RayChannelTimeoutError(
                     "If the execution is expected to take a long time, increase "
-                    f"RAY_CGRAPH_get_timeout which is currently {timeout}. "
+                    f"RAY_CGRAPH_get_timeout which is currently {timeout} seconds. "
                     "Otherwise, this may indicate that the execution is hanging."
-                )
+                ) from e
 
             self.increment_max_finished_execution_index()
             self._cache_execution_results(
@@ -2147,12 +2147,12 @@ class CompiledDAG:
         self.raise_if_too_many_inflight_requests()
         try:
             self._dag_submitter.write(inp, self._submit_timeout)
-        except ray.exceptions.RayChannelTimeoutError:
-            raise ray.exceptions.RayChannelTimeoutError(
+        except RayChannelTimeoutError as e:
+            raise RayChannelTimeoutError(
                 "If the execution is expected to take a long time, increase "
-                "RAY_CGRAPH_submit_timeout which is currently {self._submit_timeout}. "
-                "Otherwise, this may indicate that execution is hanging."
-            )
+                f"RAY_CGRAPH_submit_timeout which is currently {self._submit_timeout} "
+                "seconds. Otherwise, this may indicate that execution is hanging."
+            ) from e
 
         if self._returns_list:
             ref = [
