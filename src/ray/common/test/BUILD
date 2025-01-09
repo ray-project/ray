@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_test", "ray_cc_library")
+load("//bazel:ray.bzl", "ray_cc_test", "ray_cc_library", "ray_cc_binary")
 
 ray_cc_test(
     name = "resource_request_test",
@@ -103,7 +103,7 @@ ray_cc_test(
     ],
 )
 
-cc_binary(
+ray_cc_binary(
     name = "syncer_service_e2e_test",
     srcs = ["syncer_service_e2e_test.cc"],
     deps = [
