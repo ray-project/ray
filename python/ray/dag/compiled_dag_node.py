@@ -2006,6 +2006,7 @@ class CompiledDAG:
         timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
+            print("in releasing")
             self._max_finished_execution_index += 1
             start_time = time.monotonic()
             self._dag_output_fetcher.release_channel_buffers(timeout)

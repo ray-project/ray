@@ -2179,12 +2179,16 @@ def test_inflight_requests_exceeds_max_inflight_requests(ray_start_regular):
     with InputNode() as inp:
         dag = a.sleep.bind(inp)
     compiled_dag = dag.experimental_compile(_max_inflight_executions=2)
-    _ = compiled_dag.execute(1)
-    _ = compiled_dag.execute(1)
+    ref1 = compiled_dag.execute(1)
+    ref2 = compiled_dag.execute(1)
     with pytest.raises(
         ray.exceptions.RayCgraphCapacityExceeded, match=(r"2 in-flight requests: ")
     ):
-        _ = compiled_dag.execute(1)
+        ref3 = compiled_dag.execute(1)
+    # to show variables are being used and avoid destruction since
+    # CompiledDagRef __del__ will release buffers and
+    # increment _max_finished_execution_index
+    (ref1, ref2, ref3)
 
 
 def test_result_buffer_exceeds_max_inflight_requests(ray_start_regular):
@@ -2192,15 +2196,17 @@ def test_result_buffer_exceeds_max_inflight_requests(ray_start_regular):
     with InputNode() as inp:
         dag = a.inc.bind(inp)
     compiled_dag = dag.experimental_compile(_max_inflight_executions=2)
-    _ = compiled_dag.execute(1)
+    ref1 = compiled_dag.execute(1)
     ref2 = compiled_dag.execute(2)
     ray.get(ref2)
-    _ = compiled_dag.execute(3)
+    ref3 = compiled_dag.execute(3)
     ref4 = compiled_dag.execute(4)
     with pytest.raises(
         ray.exceptions.RayCgraphCapacityExceeded, match=(r"2 buffered results: ")
     ):
         ray.get(ref4)
+    # same reason as comment for test_inflight_requests_exceeds_max_inflight_requests
+    (ref1, ref3)
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
