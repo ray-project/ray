@@ -23,7 +23,7 @@ namespace gcs {
 class InMemoryStoreClientTest : public StoreClientTestBase {
  public:
   void InitStoreClient() override {
-    store_client_ = std::make_shared<InMemoryStoreClient>(*(io_service_pool_->Get()));
+    store_client_ = std::make_shared<InMemoryStoreClient>();
   }
 
   void DisconnectStoreClient() override {}

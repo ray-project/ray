@@ -6,7 +6,6 @@ from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
 from gymnasium.wrappers.vector import DictInfoToList
-from gymnasium.envs.registration import VectorizeMode
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.callbacks import RLlibCallback
@@ -132,6 +131,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         ] = defaultdict(list)
         self._weights_seq_no: int = 0
 
+        # Measures the time passed between returning from `sample()`
+        # and receiving the next `sample()` request from the user.
         self._time_after_sampling = None
 
     @override(EnvRunner)
@@ -170,6 +171,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
+        # Log time between `sample()` requests.
         if self._time_after_sampling is not None:
             self.metrics.log_value(
                 key=TIME_BETWEEN_SAMPLING,
@@ -305,6 +307,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=episodes,
                     explore=explore,
                     shared_data=shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -364,6 +367,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     explore=explore,
                     rl_module=self.module,
                     shared_data=shared_data,
+                    metrics=self.metrics,
                 )
 
             for env_index in range(self.num_envs):
@@ -637,15 +641,16 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 env_context=env_ctx,
             )
         gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
+        vectorize_mode = self.config.gym_env_vectorize_mode
 
         self.env = DictInfoToList(
             gym.make_vec(
                 "rllib-single-agent-env-v0",
                 num_envs=self.config.num_envs_per_env_runner,
                 vectorization_mode=(
-                    VectorizeMode.ASYNC
-                    if self.config.remote_worker_envs
-                    else VectorizeMode.SYNC
+                    vectorize_mode
+                    if isinstance(vectorize_mode, gym.envs.registration.VectorizeMode)
+                    else gym.envs.registration.VectorizeMode(vectorize_mode.lower())
                 ),
             )
         )
@@ -725,6 +730,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 episodes=episodes,
                 explore=explore,
                 shared_data=shared_data,
+                metrics=self.metrics,
             )
 
         # Call `on_episode_start()` callbacks (always after reset).

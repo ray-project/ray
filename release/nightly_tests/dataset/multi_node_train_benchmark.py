@@ -768,6 +768,6 @@ if __name__ == "__main__":
     else:
         case_name = "cache-none"
 
-    benchmark = Benchmark(benchmark_name)
+    benchmark = Benchmark()
     benchmark.run_fn(case_name, benchmark_code, args=args)
-    benchmark.write_result("/tmp/multi_node_train_benchmark.json")
+    benchmark.write_result()
