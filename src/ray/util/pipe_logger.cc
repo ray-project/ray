@@ -241,13 +241,10 @@ PipeStreamToken CreatePipeAndStreamOutput(const std::string &fname,
                      logger,
                      std::move(on_completion));
 
-  PipeStreamToken stream_token;
-  stream_token.termination_caller = std::move(termination_caller);
-
 #if defined(__APPLE__) || defined(__linux__)
-  stream_token.write_fd = write_fd;
+  PipeStreamToken stream_token{write_fd, std::move(termination_caller)};
 #else  // __linux__
-  stream_token.write_handle = write_handle;
+  PipeStreamToken stream_token{write_handle, std::move(termination_caller)};
 #endif
 
   return stream_token;

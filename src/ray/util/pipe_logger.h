@@ -38,34 +38,43 @@ struct LogRotationOption {
 
 // TODO(hjiang): Use `MEMFD_TYPE_NON_UNIQUE` after we split `plasma/compat.h` into a
 // separate target, otherwise we're introducing too many unnecessary dependencies.
-#if defined(__APPLE__) || defined(__linux__)
-struct PipeStreamToken {
+class PipeStreamToken {
+ public:
+  PipeStreamToken(int write_fd, std::function<void()> termination_caller)
+      : write_fd_(write_fd), termination_caller_(std::move(termination_caller)) {}
+  PipeStreamToken(const PipeStreamToken &) = delete;
+  PipeStreamToken &operator=(const PipeStreamToken &) = delete;
+  PipeStreamToken(PipeStreamToken &&) = default;
+  PipeStreamToken &operator=(PipeStreamToken &&) = default;
+
+  ~PipeStreamToken() { termination_caller_(); }
+
   // Used to write to.
   //
   // TODO(hjiang): I will followup with another PR to make a `FD` class, which is not
   // copiable to avoid manual `dup`.
-  int write_fd;
-  // Termination hook, used to flush and call completion.
-  std::function<void()> termination_caller;
-};
+#if defined(__APPLE__) || defined(__linux__)
+  int GetWriteHandle() const { return write_fd_; }
+
+ private:
+  int write_fd_;
 #elif defined(_WIN32)
-struct PipeStreamToken {
-  // Used to write to.
-  HANDLE write_fd;
+  HANDLE GetWriteHandle() const { return write_handle_; }
+
+ private:
+  HANDLE write_handle_;
+#endif
+
   // Termination hook, used to flush and call completion.
-  std::function<void()> termination_caller;
+  std::function<void()> termination_caller_;
 };
-#endif  // __linux__
 
 // This function creates a pipe so applications could write to.
 // There're will be two threads spawned in the background, one thread continuously reads
 // from the pipe, another one dumps whatever read from pipe to the persistent file.
 //
-// We follow a cooperative destruction model, which means
-// - The stop and destruction is initiated by application with the termination function we
-// returns;
-// - Application is expected to block wait on the completion via the passed-in
-// [on_completion].
+// The returned [PipeStreamToken] owns the lifecycle for pipe file descriptors and
+// background threads, the resource release happens at token's destruction.
 //
 // @param on_completion: called after all content has been persisted.
 // @return pipe stream token, so application could stream content into, and synchronize on

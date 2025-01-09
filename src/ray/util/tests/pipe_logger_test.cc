@@ -49,18 +49,20 @@ TEST_P(PipeLoggerTest, LogWriteAndPersistence) {
 
   // Take the default option, which doesn't have rotation enabled.
   LogRotationOption logging_option{};
-  auto log_token =
-      CreatePipeAndStreamOutput(test_fname, logging_option, std::move(on_completion));
+  {
+    auto log_token =
+        CreatePipeAndStreamOutput(test_fname, logging_option, std::move(on_completion));
 
-  ASSERT_EQ(write(log_token.write_fd, kLogLine1.data(), kLogLine1.length()),
-            kLogLine1.length());
-  ASSERT_EQ(write(log_token.write_fd, kLogLine2.data(), kLogLine2.length()),
-            kLogLine2.length());
+    ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
+              kLogLine1.length());
+    ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
+              kLogLine2.length());
 
-  // Write empty line, which is not expected to appear.
-  ASSERT_EQ(write(log_token.write_fd, "\n", /*count=*/1), 1);
+    // Write empty line, which is not expected to appear.
+    ASSERT_EQ(write(log_token.GetWriteHandle(), "\n", /*count=*/1), 1);
+  }
 
-  log_token.termination_caller();
+  // Synchronize on log flush completion.
   promise.get_future().get();
 
   // Check log content after completion.
