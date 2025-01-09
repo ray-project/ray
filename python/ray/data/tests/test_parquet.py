@@ -1438,6 +1438,25 @@ def test_read_file_with_partition_values(ray_start_regular_shared, tmp_path):
     assert ds.take_all() == [{"data": 0, "year": 2024}]
 
 
+def test_read_null_data_in_first_file(tmp_path, ray_start_regular_shared):
+    # The `read_parquet` implementation might infer the schema from the first file.
+    # This test ensures that implementation handles the case where the first file has no
+    # data and the inferred type is `null`.
+    pq.write_table(pa.Table.from_pydict({"data": [None, None, None]}), tmp_path / "1")
+    pq.write_table(pa.Table.from_pydict({"data": ["spam", "ham"]}), tmp_path / "2")
+
+    ds = ray.data.read_parquet(tmp_path)
+
+    rows = sorted(ds.take_all(), key=lambda row: row["data"] or "")
+    assert rows == [
+        {"data": None},
+        {"data": None},
+        {"data": None},
+        {"data": "ham"},
+        {"data": "spam"},
+    ]
+
+
 if __name__ == "__main__":
     import sys
 
