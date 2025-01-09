@@ -25,6 +25,7 @@ from ray.anyscale.serve._private.tracing_utils import (
     setup_tracing,
     tracing_decorator_factory,
 )
+from ray.anyscale.serve.utils import asyncio_grpc_exception_handler
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import (
     DeploymentID,
@@ -1288,6 +1289,10 @@ class ProxyActor:
             if self.should_start_grpc_service()
             else None
         )
+        if self.grpc_proxy:
+            get_or_create_event_loop().set_exception_handler(
+                asyncio_grpc_exception_handler
+            )
 
         self.wrapped_http_proxy = self.http_proxy
 

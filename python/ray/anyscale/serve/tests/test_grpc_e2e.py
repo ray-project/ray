@@ -1,11 +1,16 @@
 import os
+import signal
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+import requests
 
 from ray import serve
-from ray.serve.schema import LoggingConfig
+from ray._private.test_utils import wait_for_condition
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve.schema import ApplicationStatus, LoggingConfig
 from ray.serve.tests.conftest import *  # noqa
 from ray.serve.tests.conftest import _shared_serve_instance  # noqa
 
@@ -14,6 +19,9 @@ from ray.serve.tests.conftest import _shared_serve_instance  # noqa
 class Downstream:
     def __call__(self):
         return "hi"
+
+
+downstream_node = Downstream.bind()
 
 
 @serve.deployment
@@ -33,7 +41,7 @@ class Ingress:
 )
 def test_no_spammy_errors_in_composed_app(ray_instance, tmp_dir):
     """Direct all stdout/stderr to logs, and check that the false errors
-    from gRPC are not there."""
+    from gRPC are not there in replica logs."""
 
     logs_dir = Path(tmp_dir)
     logging_config = LoggingConfig(encoding="JSON", logs_dir=str(logs_dir))
@@ -57,11 +65,60 @@ def test_no_spammy_errors_in_composed_app(ray_instance, tmp_dir):
         with open(logs_dir / log_file) as f:
             logs = f.read()
 
-        assert "Exception in callback PollerCompletionQueue._handle_events" not in logs
+        assert "Exception in callback" not in logs
+        assert "PollerCompletionQueue._handle_events" not in logs
         assert "BlockingIOError" not in logs
         assert "Resource temporarily unavailable" not in logs
 
-    serve.shutdown()
+
+def check_running():
+    assert (
+        serve.status().applications[SERVE_DEFAULT_APP_NAME].status
+        == ApplicationStatus.RUNNING
+    )
+    return True
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [{"ANYSCALE_RAY_SERVE_PROXY_USE_GRPC": "1"}],
+    indirect=True,
+)
+def test_no_spammy_errors_in_grpc_proxy(ray_instance, tmp_dir):
+    """Direct all stdout/stderr to logs, and check that the false errors
+    from gRPC are not there in proxy logs."""
+
+    serve.start(
+        grpc_options={
+            "port": 9000,
+            "grpc_servicer_functions": [
+                "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",  # noqa
+            ],
+        },
+    )
+
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--address=auto",
+            "ray.anyscale.serve.tests.test_grpc_e2e.downstream_node",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    wait_for_condition(check_running)
+    for _ in range(10):
+        assert requests.post("http://localhost:8000").text == "hi"
+
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    process_output, _ = p.communicate()
+    logs = process_output.decode("utf-8").strip()
+    assert "Exception in callback" not in logs
+    assert "PollerCompletionQueue._handle_events" not in logs
+    assert "BlockingIOError" not in logs
+    assert "Resource temporarily unavailable" not in logs
 
 
 def test_same_loop_handle(serve_instance):
