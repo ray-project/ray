@@ -33,9 +33,11 @@ struct LogRotationOption {
   // Max number of bytes in a rotated file.
   size_t rotation_max_size = std::numeric_limits<size_t>::max();
   // Max number of files for all rotated files.
-  size_t rotation_max_file = 1;
+  size_t rotation_max_file_count = 1;
 };
 
+// TODO(hjiang): Use `MEMFD_TYPE_NON_UNIQUE` after we split `plasma/compat.h` into a
+// separate target, otherwise we're introducing too many unnecessary dependencies.
 #if defined(__APPLE__) || defined(__linux__)
 struct PipeStreamToken {
   // Used to write to.

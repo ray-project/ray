@@ -187,7 +187,7 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
 std::shared_ptr<spdlog::logger> CreateLogger(const std::string &fname,
                                              const LogRotationOption &log_rotate_opt) {
   auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-      fname, log_rotate_opt.rotation_max_size, log_rotate_opt.rotation_max_file);
+      fname, log_rotate_opt.rotation_max_size, log_rotate_opt.rotation_max_file_count);
   file_sink->set_level(spdlog::level::info);
 
   auto logger = std::make_shared<spdlog::logger>(fname, std::move(file_sink));
