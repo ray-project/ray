@@ -1,5 +1,6 @@
 load("@rules_cc//cc:defs.bzl", "cc_test")
 load("//bazel:ray.bzl", "COPTS")
+load("//bazel:ray.bzl", "ray_cc_library")
 
 cc_test(
     name = "array_test",
@@ -224,6 +225,31 @@ cc_test(
     srcs = ["shared_lru_test.cc"],
     deps = [
         "//src/ray/util:shared_lru",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    copts = COPTS,
+    tags = ["team:core"],
+)
+
+ray_cc_library(
+    name = "linux_test_utils",
+    hdrs = ["linux_test_utils.h"],
+    srcs = ["linux_test_utils.cc"],
+    deps = [
+        "//src/ray/util",
+        "@boost//:scope_exit",
+    ],
+    testonly = True,
+)
+
+cc_test(
+    name = "pipe_logger_test",
+    srcs = ["pipe_logger_test.cc"],
+    deps = [
+        "//src/ray/util:pipe_logger",
+        ":linux_test_utils",
+        "//src/ray/util",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
