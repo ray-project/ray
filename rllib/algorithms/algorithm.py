@@ -4003,6 +4003,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         for k, counter in self._counters.items():
             counters[k] = counter
         results["counters"] = counters
+        # TODO: Backward compatibility.
+        results["info"].update(counters)
 
         return results
 

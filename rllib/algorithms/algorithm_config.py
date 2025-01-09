@@ -905,10 +905,6 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
-        # Validation is blocked.
-        if not self._validate_config:
-            return
-
         self._validate_env_runner_settings()
         self._validate_callbacks_settings()
         self._validate_framework_settings()
@@ -4409,7 +4405,10 @@ class AlgorithmConfig(_Config):
             "\nTo suppress all validation errors, set "
             "`config.experimental(_validate_config=False)` at your own risk."
         )
-        raise ValueError(msg)
+        if self._validate_config:
+            raise ValueError(msg)
+        else:
+            logger.warning(errmsg)
 
     def _validate_env_runner_settings(self) -> None:
         allowed_vectorize_modes = set(
