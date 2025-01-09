@@ -92,13 +92,16 @@ void CompleteWriteEOFIndicator(HANDLE write_handle) {
 
 template <typename ReadFunc>
 std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
+                                                 std::function<void()> close_read_handle,
                                                  std::shared_ptr<spdlog::logger> logger,
                                                  std::function<void()> on_completion) {
   auto stream_dumper = std::make_shared<StreamDumper>();
 
   // Create two threads, so there's no IO operation within critical section thus no
   // blocking on write.
-  std::thread([read_func = std::move(read_func), stream_dumper = stream_dumper]() {
+  std::thread([read_func = std::move(read_func),
+               close_read_handle = std::move(close_read_handle),
+               stream_dumper = stream_dumper]() {
     const size_t buf_size = GetPipeLogReadSizeOrDefault();
     // TODO(hjiang): Should resize without initialization.
     std::string content(buf_size, '\0');
@@ -117,9 +120,15 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
 
         // Reached the end of stream.
         if (cur_new_line == kEofIndicator) {
-          std::lock_guard lck(stream_dumper->mu);
-          stream_dumper->stopped = true;
-          stream_dumper->cv.notify_one();
+          {
+            std::lock_guard lck(stream_dumper->mu);
+            stream_dumper->stopped = true;
+            stream_dumper->cv.notify_one();
+          }
+
+          // Place IO operation out of critical section.
+          close_read_handle();
+
           return;
         }
 
@@ -199,6 +208,7 @@ PipeStreamToken CreatePipeAndStreamOutput(const std::string &fname,
   int write_fd = pipefd[1];
 
   auto read_func = [read_fd](char *data, size_t len) { return Read(read_fd, data, len); };
+  auto close_read_handle = [read_fd]() { RAY_CHECK_EQ(close(read_fd), 0); };
   auto termination_caller = [write_fd]() {
     CompleteWriteEOFIndicator(write_fd);
     RAY_CHECK_EQ(close(write_fd), 0);
@@ -216,14 +226,20 @@ PipeStreamToken CreatePipeAndStreamOutput(const std::string &fname,
 
   auto read_func = [read_handle](char *data, size_t len) {
     return Read(read_handle, data, len);
-  } auto termination_caller = [write_handle]() {
+  };
+  auto close_read_handle = [read_handle]() { RAY_CHECK(CloseHandle(read_handle)); };
+  auto termination_caller = [write_handle, read_handle]() {
     CompleteWriteEOFIndicator(write_handle);
+    RAY_CHECK(CloseHandle(write_handle));
   };
 
 #endif
 
   auto logger = CreateLogger(fname, log_rotate_opt);
-  CreateStreamDumper(std::move(read_func), logger, std::move(on_completion));
+  CreateStreamDumper(std::move(read_func),
+                     std::move(close_read_handle),
+                     logger,
+                     std::move(on_completion));
 
   PipeStreamToken stream_token;
   stream_token.termination_caller = std::move(termination_caller);
