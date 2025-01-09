@@ -1,11 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-getting-started:
 
 Getting Started
 ===============
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rllib-in-60min:
 
@@ -20,7 +20,7 @@ saving the state of your Algorithm from time to time, running a separate evaluat
 and finally utilizing one of the checkpoints to deploy your trained model in an environment outside of RLlib
 and compute actions through it.
 
-You also learn how to optionally customize your RL environment and your neural network model.
+You also learn how to customize your RL environment and your neural network model.
 
 Installation
 ~~~~~~~~~~~~
@@ -46,24 +46,28 @@ network for computing actions, called "policy", the :ref:`RL environment <rllib-
 you want to optimize against, a loss function, an optimizer, and some code describing the
 algorithm's execution logic, like determining when to take which particular steps.
 
-In multi-agent training, :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-manages the querying and optimization of multiple policies at once.
+In :ref:`multi-agent training <rllib-multi-agent-environments-doc>`,
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` manages the querying and optimization of multiple policies at once.
 
 Through the algorithm's interface, you can train the policy, compute actions, or store your
 algorithm's state through checkpointing.
 
 
+Configure and build the algorithm
++++++++++++++++++++++++++++++++++
 
+You first create an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` instance
+and change some default settings through the config object's various methods.
 
+For example, we can set the RL environment we want to use by calling the config's
+:py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment` method.
 
-Let's start with an example of the API's basic usage.
-We first create a `PPOConfig` instance and set some properties through the config class' various methods.
-For example, we can set the RL environment we want to use by calling the config's `environment` method.
-To scale our algorithm and define, how many environment workers (EnvRunners) we want to leverage, we can call
-the `env_runners` method.
-After we `build` the `PPO` Algorithm from its configuration, we can `train` it for a number of
-iterations (here `10`) and `save` the resulting policy periodically (here every `5` iterations).
+To scale our setup and define, how many EnvRunner actors you want to leverage,
+you can call the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners` method.
 
+Finally, you build the actual :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance
+through calling the :py:meth:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig.build_algo`
+method.
 
 .. testcode::
 
@@ -72,11 +76,65 @@ iterations (here `10`) and `save` the resulting policy periodically (here every 
     # Configure the Algorithm (PPO).
     config = (
         PPOConfig()
-        .environment("CartPole-v1")
-        .env_runners(num_env_runners=1)
+        .environment("Pendulum-v1")
+        .env_runners(num_env_runners=3)
+        .training(
+            lr=0.0002,
+            train_batch_size_per_learner=2000,
+            num_epochs=10,
+        )
     )
+
     # Build the Algorithm (PPO).
-    ppo = config.build()
+    ppo = config.build_algo()
+
+
+.. note::
+
+    See here to learn, which config methods you can use to configure your Algorithm, see here.
+
+
+Run the algorithm
++++++++++++++++++
+
+After you have built your :ref:`PPO <ppo>` from its configuration, you can ``train`` it for a number of
+iterations through calling its :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.train` method.
+
+It returns a result dictionary that you can pretty-print for debugging purposes:
+
+.. testcode::
+
+    from pprint import pprint
+
+    for _ in range(5):
+        pprint(ppo.train())
+
+
+Checkpoint the algorithm
+++++++++++++++++++++++++
+
+To save your Algorithm's current state, create a so-called ``checkpoint`` through
+calling its `save_to_path` method. It returns the location of the saved checkpoint.
+
+Alternatively to not passing any arguments and letting the algorithm decide, where to save
+the checkpoint, you can provide a checkpoint directory yourself:
+
+.. testcode::
+
+    checkpoint_path = ppo.save_to_path()
+
+    # OR:
+    # ppo.save_to_path([a checkpoint location of your choice])
+
+
+Evaluate the algorithm
+++++++++++++++++++++++
+
+
+Restore the model
+
+
+Let's start with an example of the API's basic usage.
 
     # Train for 10 iterations.
     for i in range(10):
