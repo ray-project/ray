@@ -42,7 +42,7 @@ In addition to worker fault tolerance, RLlib offers fault tolerance at the envir
 
 Rollout or evaluation workers often run multiple environments in parallel to take
 advantage of, for example, the parallel computing power that GPU offers. You can control this parallelism with
-the ``num_envs_per_env_runner`` config. It may then be wasteful if RLlib needs to reconstruct 
+the ``num_envs_per_env_runner`` config. It may then be wasteful if RLlib needs to reconstruct
 the entire worker needs because of errors from a single environment.
 
 In that case, RLlib offers the capability to restart individual environments without bubbling the
