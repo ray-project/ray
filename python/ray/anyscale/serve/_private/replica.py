@@ -55,6 +55,9 @@ def _wrap_grpc_call(f):
         request_args = cloudpickle.loads(request.request_args)
         request_kwargs = cloudpickle.loads(request.request_kwargs)
 
+        if request_metadata.is_http_request or request_metadata.is_grpc_request:
+            request_args = (pickle.loads(request_args[0]),)
+
         try:
             result = await f(self, request_metadata, *request_args, **request_kwargs)
             return serve_proprietary_pb2.ASGIResponse(
@@ -75,6 +78,9 @@ def _wrap_grpc_call(f):
         request_metadata = pickle.loads(request.pickled_request_metadata)
         request_args = cloudpickle.loads(request.request_args)
         request_kwargs = cloudpickle.loads(request.request_kwargs)
+
+        if request_metadata.is_http_request or request_metadata.is_grpc_request:
+            request_args = (pickle.loads(request_args[0]),)
 
         try:
             async for result in f(

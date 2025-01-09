@@ -2,7 +2,7 @@ import logging
 import pickle
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Awaitable, Callable, List, Tuple, Union
+from typing import Any, AsyncIterator, List, Tuple, Union
 
 import grpc
 from starlette.types import Receive, Scope, Send
@@ -107,11 +107,12 @@ class ASGIProxyRequest(ProxyRequest):
         self.scope["root_path"] = root_path
 
     def request_object(
-        self, receive_asgi_messages: Callable[[str], Awaitable[bytes]]
+        self,
+        proxy_actor_name: str,
     ) -> StreamingHTTPRequest:
         return StreamingHTTPRequest(
             asgi_scope=self.scope,
-            receive_asgi_messages=receive_asgi_messages,
+            proxy_actor_name=proxy_actor_name,
         )
 
     def populate_tracing_context(self):

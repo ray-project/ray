@@ -1,6 +1,6 @@
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -30,6 +30,7 @@ class AbstractMap(AbstractOneToOne):
         min_rows_per_bundled_input: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        compute: Optional[ComputeStrategy] = None,
     ):
         """
         Args:
@@ -51,6 +52,7 @@ class AbstractMap(AbstractOneToOne):
         self._min_rows_per_bundled_input = min_rows_per_bundled_input
         self._ray_remote_args = ray_remote_args or {}
         self._ray_remote_args_fn = ray_remote_args_fn
+        self._compute = compute or TaskPoolStrategy()
 
 
 class AbstractUDFMap(AbstractMap):
@@ -68,7 +70,7 @@ class AbstractUDFMap(AbstractMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -87,8 +89,8 @@ class AbstractUDFMap(AbstractMap):
                 `fn` if `fn` is a callable class.
             min_rows_per_bundled_input: The target number of rows to pass to
                 ``MapOperator._add_bundled_input()``.
-            compute: The compute strategy, either ``"tasks"`` (default) to use Ray
-                tasks, or ``"actors"`` to use an autoscaling actor pool.
+            compute: The compute strategy, either ``TaskPoolStrategy`` (default) to use
+                Ray tasks, or ``ActorPoolStrategy`` to use an autoscaling actor pool.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -103,13 +105,13 @@ class AbstractUDFMap(AbstractMap):
             input_op,
             min_rows_per_bundled_input=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
+            compute=compute,
         )
         self._fn = fn
         self._fn_args = fn_args
         self._fn_kwargs = fn_kwargs
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
-        self._compute = compute or TaskPoolStrategy()
         self._ray_remote_args_fn = ray_remote_args_fn
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
@@ -154,7 +156,7 @@ class MapBatches(AbstractUDFMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -191,7 +193,7 @@ class MapRows(AbstractUDFMap):
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -221,7 +223,7 @@ class Filter(AbstractUDFMap):
         input_op: LogicalOperator,
         fn: Optional[UserDefinedFunction] = None,
         filter_expr: Optional["pa.dataset.Expression"] = None,
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -260,11 +262,15 @@ class Project(AbstractMap):
         input_op: LogicalOperator,
         cols: Optional[List[str]] = None,
         cols_rename: Optional[Dict[str, str]] = None,
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__("Project", input_op=input_op, ray_remote_args=ray_remote_args)
-        self._compute = compute
+        super().__init__(
+            "Project",
+            input_op=input_op,
+            ray_remote_args=ray_remote_args,
+            compute=compute,
+        )
         self._batch_size = DEFAULT_BATCH_SIZE
         self._cols = cols or []
         self._cols_rename = cols_rename or {}
@@ -295,7 +301,7 @@ class FlatMap(AbstractUDFMap):
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
