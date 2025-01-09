@@ -314,12 +314,10 @@ void RayLog::InitLogFormat() {
       ray_rotation_max_bytes != nullptr) {
     size_t max_size = 0;
     if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size) && max_size > 0) {
-      // 0 means no log rotation in python, but not in spdlog. We just use the default
-      // value here.
       return max_size;
     }
   }
-  return kDefaultLogRotationMaxSize;
+  return std::numeric_limits<size_t>::max();
 }
 
 /*static*/ size_t RayLog::GetRayLogRotationBackupCountOrDefault() {
@@ -330,7 +328,7 @@ void RayLog::InitLogFormat() {
       return file_num;
     }
   }
-  return kDefaultLogRotationFileNum;
+  return 1;
 }
 
 /*static*/ std::string RayLog::GetLogFilepathFromDirectory(const std::string &log_dir,
