@@ -1,6 +1,7 @@
 from collections import defaultdict
 from functools import partial
 import logging
+import time
 from typing import Collection, DefaultDict, Dict, List, Optional, Union
 
 import gymnasium as gym
@@ -40,6 +41,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -69,7 +71,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         super().__init__(config=config)
 
         # Raise an Error, if the provided config is not a multi-agent one.
-        if not self.config.is_multi_agent():
+        if not self.config.is_multi_agent:
             raise ValueError(
                 f"Cannot use this EnvRunner class ({type(self).__name__}), if your "
                 "setup is not multi-agent! Try adding multi-agent information to your "
@@ -128,6 +130,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         self._weights_seq_no: int = 0
 
+        # Measures the time passed between returning from `sample()`
+        # and receiving the next `sample()` request from the user.
+        self._time_after_sampling = None
+
     @override(EnvRunner)
     def sample(
         self,
@@ -163,6 +169,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             A list of `MultiAgentEpisode` instances, carrying the sampled data.
         """
         assert not (num_timesteps is not None and num_episodes is not None)
+
+        # Log time between `sample()` requests.
+        if self._time_after_sampling is not None:
+            self.metrics.log_value(
+                key=TIME_BETWEEN_SAMPLING,
+                value=time.perf_counter() - self._time_after_sampling,
+            )
 
         # If no execution details are provided, use the config to try to infer the
         # desired timesteps/episodes to sample and the exploration behavior.
@@ -203,6 +216,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 samples=samples,
             ),
         )
+
+        self._time_after_sampling = time.perf_counter()
 
         return samples
 
@@ -283,6 +298,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=[self._episode],
                     explore=explore,
                     shared_data=self._shared_data,
+                    metrics=self.metrics,
                 )
                 self._cached_to_module = None
 
@@ -305,6 +321,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=[self._episode],
                     explore=explore,
                     shared_data=self._shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -374,6 +391,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         explore=explore,
                         rl_module=self.module,
                         shared_data=self._shared_data,
+                        metrics=self.metrics,
                     )
 
                 # Make the `on_episode_end` callback (before finalizing the episode,
@@ -406,6 +424,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 episodes=[self._episode],
                 explore=explore,
                 shared_data=self._shared_data,
+                metrics=self.metrics,
             )
 
         # Store done episodes for metrics.
@@ -487,6 +506,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=[_episode],
                     explore=explore,
                     shared_data=_shared_data,
+                    metrics=self.metrics,
                 )
 
                 # MultiRLModule forward pass: Explore or not.
@@ -508,6 +528,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=[_episode],
                     explore=explore,
                     shared_data=_shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -585,6 +606,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         explore=explore,
                         rl_module=self.module,
                         shared_data=_shared_data,
+                        metrics=self.metrics,
                     )
 
                 # Make the `on_episode_end` callback (before finalizing the episode,

@@ -8,3 +8,4 @@ rich==13.3.2
 # Msgpack checkpoint stuff.
 msgpack
 msgpack-numpy
+ormsgpack

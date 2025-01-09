@@ -13,7 +13,22 @@ from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _open_file_with_retry,
 )
-from ray.data.datasource.path_util import _is_local_windows_path
+from ray.data.datasource.path_util import _has_file_extension, _is_local_windows_path
+
+
+@pytest.mark.parametrize(
+    "path, extensions, has_extension",
+    [
+        ("foo.csv", ["csv"], True),
+        ("foo.csv", ["json", "csv"], True),
+        ("foo.csv", ["json", "jsonl"], False),
+        ("foo.parquet.crc", ["parquet"], False),
+        ("foo.parquet.crc", ["crc"], True),
+        ("foo.csv", None, True),
+    ],
+)
+def test_has_file_extension(path, extensions, has_extension):
+    assert _has_file_extension(path, extensions) == has_extension
 
 
 class MockFileBasedDatasource(FileBasedDatasource):

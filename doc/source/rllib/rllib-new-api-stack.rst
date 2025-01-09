@@ -13,9 +13,6 @@ RLlib's new API stack
     if you have old API stack custom code. See the :ref:`migration guide <rllib-new-api-stack-migration-guide>` for details.
 
 
-Overview
---------
-
 Starting in Ray 2.10, you can opt-in to the alpha version of the "new API stack", a fundamental overhaul from the ground
 up with respect to architecture, design principles, code base, and user facing APIs.
 The following select algorithms and setups are available.
@@ -87,10 +84,10 @@ Applying the above principles, the Ray Team reduced the important **must-know** 
 for the average RLlib user from seven on the old stack, to only four on the new stack.
 The **core** new API stack classes are:
 
-* :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` (replaces :py:class:`~ray.rllib.models.modelv2.ModelV2` and :py:class:`~ray.rllib.policy.policy_map.PolicyMap` APIs)
-* :py:class:`~ray.rllib.core.learner.learner.Learner` (replaces :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` and some of :py:class:`~ray.rllib.policy.policy.Policy`)
-* :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` and :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` (replaces :py:class:`~ray.rllib.policy.view_requirement.ViewRequirement`, :py:class:`~ray.rllib.evaluation.collectors.SampleCollector`, :py:class:`~ray.rllib.evaluation.episode.Episode`, and :py:class:`~ray.rllib.evaluation.episode_v2.EpisodeV2`)
-* :py:class:`~ray.rllib.connector.connector_v2.ConnectorV2` (replaces :py:class:`~ray.rllib.connector.connector.Connector` and some of :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` and :py:class:`~ray.rllib.policy.policy.Policy`)
+* :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` (replaces ``ModelV2`` and ``PolicyMap`` APIs)
+* :py:class:`~ray.rllib.core.learner.learner.Learner` (replaces ``RolloutWorker`` and some of ``Policy``)
+* :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` and :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` (replaces ``ViewRequirement``, ``SampleCollector``, ``Episode``, and ``EpisodeV2``)
+* :py:class:`~ray.rllib.connector.connector_v2.ConnectorV2` (replaces ``Connector`` and some of ``RolloutWorker`` and ``Policy``)
 
 The :py:class:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig` and :py:class:`~ray.rllib.algorithm.algorithm.Algorithm` APIs remain as-is. These are already established APIs on the old stack.
 

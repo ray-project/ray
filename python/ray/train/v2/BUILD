@@ -121,7 +121,7 @@ py_test(
 
 py_test(
     name = "test_scheduling",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_scheduling.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
     deps = ["//:ray_lib", ":conftest"],

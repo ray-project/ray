@@ -214,7 +214,7 @@ def do_profile_tasks(
             for operation in schedule:
                 start_t = time.perf_counter()
                 task = tasks[operation.exec_task_idx]
-                done = tasks[operation.exec_task_idx].exec_operation(
+                done = task.exec_operation(
                     self, operation.type, overlap_gpu_communication
                 )
                 end_t = time.perf_counter()
@@ -774,13 +774,13 @@ class CompiledDAG:
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
             max_inflight_executions: The maximum number of in-flight executions that
-                are allowed to be sent to this DAG. Before submitting more requests,
-                the caller is responsible for calling ray.get to get the result,
-                otherwise, RayCgraphCapacityExceeded is raised.
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution. If True, the communication
-                and computation can be overlapped, which can improve the
-                performance of the DAG execution. If None, the default value
+                can be submitted via `execute` or `execute_async` before consuming
+                the output using `ray.get()`. If the caller submits more executions,
+                `RayCgraphCapacityExceeded` is raised.
+            overlap_gpu_communication: (experimental) Whether to overlap GPU
+                communication with computation during DAG execution. If True, the
+                communication and computation can be overlapped, which can improve
+                the performance of the DAG execution. If None, the default value
                 will be used.
 
         Returns:
@@ -1898,7 +1898,7 @@ class CompiledDAG:
                     for cancel_ref in cancel_refs:
                         try:
                             ray.get(cancel_ref, timeout=30)
-                        except ray.exceptions.RayChannelError:
+                        except RayChannelError:
                             # Channel error happens when a channel is closed
                             # or timed out. In this case, do not log.
                             pass
@@ -1910,13 +1910,18 @@ class CompiledDAG:
                         _destroy_communicator(communicator_id)
 
                     logger.info("Waiting for worker tasks to exit")
-                    self.wait_teardown()
+                    self.wait_teardown(kill_actors=kill_actors)
                     logger.info("Teardown complete")
                     self._teardown_done = True
 
             def run(self):
                 try:
                     ray.get(list(outer.worker_task_refs.values()))
+                except KeyboardInterrupt:
+                    logger.info(
+                        "Received KeyboardInterrupt, tearing down with kill_actors=True"
+                    )
+                    self.teardown(kill_actors=True)
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     self.teardown()
@@ -2682,10 +2687,15 @@ class CompiledDAG:
                 if dag_node.is_class_method_call:
                     # Class Method Call Node
                     method_name = dag_node.get_method_name()
-                    actor_handle = dag_node._get_actor_handle()
-                    if actor_handle:
-                        actor_id = actor_handle._actor_id.hex()
-                        label += f"Actor: {actor_id[:6]}...\nMethod: {method_name}"
+                    actor = dag_node._get_actor_handle()
+                    if actor:
+                        class_name = (
+                            actor._ray_actor_creation_function_descriptor.class_name
+                        )
+                        actor_id = actor._actor_id.hex()
+                        label += f"Actor: {class_name}\n"
+                        label += f"ID: {actor_id[:6]}...\n"
+                        label += f"Method: {method_name}"
                         fillcolor = actor_id_to_color[actor_id]
                     else:
                         label += f"Method: {method_name}"
