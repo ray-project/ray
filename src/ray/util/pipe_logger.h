@@ -23,16 +23,20 @@
 namespace ray {
 
 // Environmenr variable, which indicates the pipe size of read.
-inline constexpr std::string_view kPipeLogReadBufSizeEnv =
-    "RAY_PIPE_LOG_READ_BUF_SIZEinline ";
+//
+// TODO(hjiang): Should document the env variable after end-to-end integration has
+// finished.
+inline constexpr std::string_view kPipeLogReadBufSizeEnv = "RAY_PIPE_LOG_READ_BUF_SIZE";
 
 // Configuration for log rotation. By default no rotation enabled.
 struct LogRotationOption {
+  // Max number of bytes in a rotated file.
   size_t rotation_max_size = std::numeric_limits<size_t>::max();
-  size_t rotation_file_num = 1;
+  // Max number of files for all rotated files.
+  size_t rotation_max_file = 1;
 };
 
-#ifdef __linux__
+#if defined(__APPLE__) || defined(__linux__)
 struct PipeStreamToken {
   // Used to write to.
   //
@@ -40,26 +44,33 @@ struct PipeStreamToken {
   // copiable to avoid manual `dup`.
   int write_fd;
   // Termination hook, used to flush and call completion.
-  std::function<void()> termination_hook;
+  std::function<void()> termination_caller;
 };
-#else   // __linux__
+#elif defined(_WIN32)
 struct PipeStreamToken {
   // Used to write to.
-  //
-  // TODO(hjiang): I will followup with another PR to make a `FD` class, which is not
-  // copiable to avoid manual `dup`.
   HANDLE write_fd;
   // Termination hook, used to flush and call completion.
-  std::function<void()> termination_hook;
+  std::function<void()> termination_caller;
 };
 #endif  // __linux__
 
-// TODO(hjiang): Currently the background pipe read thread and dump thread terminates at
-// process exit, consider whether it's better to return a terminate callable.
+// This function creates a pipe so applications could write to.
+// There're will be two threads spawned in the background, one thread continuously reads
+// from the pipe, another one dumps whatever read from pipe to the persistent file.
+//
+// We follow a cooperative destruction model, which means
+// - The stop and destruction is initiated by application with the termination function we
+// returns;
+// - Application is expected to block wait on the completion via the passed-in
+// [on_completion].
 //
 // @param on_completion: called after all content has been persisted.
-// @return pipe stream token, so application could stream content into.
-// Notice caller side should _NOT_ close the given file handle.
+// @return pipe stream token, so application could stream content into, and synchronize on
+// the destruction.
+//
+// Notice caller side should _NOT_ close the given file handle, it will be handled
+// internally.
 PipeStreamToken CreatePipeAndStreamOutput(const std::string &fname,
                                           const LogRotationOption &log_rotate_opt,
                                           std::function<void()> on_completion);

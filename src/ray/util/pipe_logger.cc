@@ -58,7 +58,7 @@ struct StreamDumper {
 
 // Read bytes from handle into [data], return number of bytes read.
 // If read fails, throw exception.
-#ifdef __linux__
+#if defined(__APPLE__) || defined(__linux__)
 #include <unistd.h>
 size_t Read(int read_fd, char *data, size_t len) {
   // TODO(hjiang): Notice frequent read could cause performance issue.
@@ -73,7 +73,7 @@ void CompleteWriteEOFIndicator(int write_fd) {
   bytes_written = write(write_fd, "\n", /*count=*/1);
   RAY_CHECK_EQ(bytes_written, 1);
 }
-#else  // __linux__
+#elif defined(_WIN32)
 #include <windows.h>
 size_t Read(HANDLE read_handle, char *data, size_t len) {
   DWORD bytes_read = 0;
@@ -88,7 +88,7 @@ void CompleteWriteEOFIndicator(HANDLE write_handle) {
   RAY_CHECK_EQ(bytes_written, kEofIndicator.size());
   RAY_CHECK(result);
 }
-#endif  // __linux__
+#endif
 
 template <typename ReadFunc>
 std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
@@ -178,7 +178,7 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
 std::shared_ptr<spdlog::logger> CreateLogger(const std::string &fname,
                                              const LogRotationOption &log_rotate_opt) {
   auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-      fname, log_rotate_opt.rotation_max_size, log_rotate_opt.rotation_file_num);
+      fname, log_rotate_opt.rotation_max_size, log_rotate_opt.rotation_max_file);
   file_sink->set_level(spdlog::level::info);
 
   auto logger = std::make_shared<spdlog::logger>(fname, std::move(file_sink));
@@ -191,7 +191,7 @@ std::shared_ptr<spdlog::logger> CreateLogger(const std::string &fname,
 PipeStreamToken CreatePipeAndStreamOutput(const std::string &fname,
                                           const LogRotationOption &log_rotate_opt,
                                           std::function<void()> on_completion) {
-#ifdef __linux__
+#if defined(__APPLE__) || defined(__linux__)
   int pipefd[2] = {0};
   // TODO(hjiang): We shoud have our own syscall macro.
   RAY_CHECK_EQ(pipe(pipefd), 0);
@@ -199,12 +199,12 @@ PipeStreamToken CreatePipeAndStreamOutput(const std::string &fname,
   int write_fd = pipefd[1];
 
   auto read_func = [read_fd](char *data, size_t len) { return Read(read_fd, data, len); };
-  auto termination_hook = [write_fd]() {
+  auto termination_caller = [write_fd]() {
     CompleteWriteEOFIndicator(write_fd);
     RAY_CHECK_EQ(close(write_fd), 0);
   };
 
-#else  // __linux__
+#elif defined(_WIN32)
   SECURITY_ATTRIBUTES sa;
   sa.nLength = sizeof(SECURITY_ATTRIBUTES);
   sa.lpSecurityDescriptor = nullptr;
@@ -216,21 +216,23 @@ PipeStreamToken CreatePipeAndStreamOutput(const std::string &fname,
 
   auto read_func = [read_handle](char *data, size_t len) {
     return Read(read_handle, data, len);
-  } auto termination_hook = [write_handle]() { CompleteWriteEOFIndicator(write_handle); };
+  } auto termination_caller = [write_handle]() {
+    CompleteWriteEOFIndicator(write_handle);
+  };
 
-#endif  // __linux__
+#endif
 
   auto logger = CreateLogger(fname, log_rotate_opt);
   CreateStreamDumper(std::move(read_func), logger, std::move(on_completion));
 
   PipeStreamToken stream_token;
-  stream_token.termination_hook = std::move(termination_hook);
+  stream_token.termination_caller = std::move(termination_caller);
 
-#ifdef __linux__
+#if defined(__APPLE__) || defined(__linux__)
   stream_token.write_fd = write_fd;
-#else   // __linux__
+#else  // __linux__
   stream_token.write_handle = write_handle;
-#endif  // __linux__
+#endif
 
   return stream_token;
 }

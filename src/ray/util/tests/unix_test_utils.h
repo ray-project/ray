@@ -16,8 +16,8 @@
 
 #pragma once
 
-#ifndef __linux__
-#error "Current testing util can only be used in linux"
+#if !defined(__APPLE__) && !defined(__linux__)
+#error "This header file can only be used in unix"
 #endif
 
 #include <string>

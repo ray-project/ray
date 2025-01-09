@@ -233,9 +233,9 @@ cc_test(
 )
 
 ray_cc_library(
-    name = "linux_test_utils",
-    hdrs = ["linux_test_utils.h"],
-    srcs = ["linux_test_utils.cc"],
+    name = "unix_test_utils",
+    hdrs = ["unix_test_utils.h"],
+    srcs = ["unix_test_utils.cc"],
     deps = [
         "//src/ray/util",
         "@boost//:scope_exit",
@@ -248,7 +248,7 @@ cc_test(
     srcs = ["pipe_logger_test.cc"],
     deps = [
         "//src/ray/util:pipe_logger",
-        ":linux_test_utils",
+        ":unix_test_utils",
         "//src/ray/util",
         "@com_google_googletest//:gtest_main",
     ],

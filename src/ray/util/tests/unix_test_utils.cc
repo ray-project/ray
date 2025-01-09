@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/tests/linux_test_utils.h"
+#include "ray/util/tests/unix_test_utils.h"
 
 #include <boost/scope_exit.hpp>
 

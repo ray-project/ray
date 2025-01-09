@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifdef __linux__
+#if defined(__APPLE__) || defined(__linux__)
 
 #include "ray/util/pipe_logger.h"
 
@@ -22,7 +22,7 @@
 #include <future>
 #include <string_view>
 
-#include "ray/util/tests/linux_test_utils.h"
+#include "ray/util/tests/unix_test_utils.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -60,7 +60,7 @@ TEST_P(PipeLoggerTest, LogWriteAndPersistence) {
   // Write empty line, which is not expected to appear.
   ASSERT_EQ(write(log_token.write_fd, "\n", /*count=*/1), 1);
 
-  log_token.termination_hook();
+  log_token.termination_caller();
   promise.get_future().get();
 
   // Check log content after completion.
@@ -78,4 +78,4 @@ INSTANTIATE_TEST_SUITE_P(PipeLoggerTest, PipeLoggerTest, testing::Values(1024, 3
 
 }  // namespace ray
 
-#endif  // __linux__
+#endif
