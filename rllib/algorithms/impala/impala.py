@@ -191,7 +191,6 @@ class IMPALAConfig(AlgorithmConfig):
         vtrace: Optional[bool] = NotProvided,
         vtrace_clip_rho_threshold: Optional[float] = NotProvided,
         vtrace_clip_pg_rho_threshold: Optional[float] = NotProvided,
-        gamma: Optional[float] = NotProvided,
         num_gpu_loader_threads: Optional[int] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
@@ -225,7 +224,6 @@ class IMPALAConfig(AlgorithmConfig):
             vtrace: V-trace params (see vtrace_tf/torch.py).
             vtrace_clip_rho_threshold:
             vtrace_clip_pg_rho_threshold:
-            gamma: Float specifying the discount factor of the Markov Decision process.
             num_gpu_loader_threads: The number of GPU-loader threads (per Learner
                 worker), used to load incoming (CPU) batches to the GPU, if applicable.
                 The incoming batches are produced by each Learner's LearnerConnector
@@ -307,8 +305,6 @@ class IMPALAConfig(AlgorithmConfig):
             self.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
         if vtrace_clip_pg_rho_threshold is not NotProvided:
             self.vtrace_clip_pg_rho_threshold = vtrace_clip_pg_rho_threshold
-        if gamma is not NotProvided:
-            self.gamma = gamma
         if num_gpu_loader_threads is not NotProvided:
             self.num_gpu_loader_threads = num_gpu_loader_threads
         if num_multi_gpu_tower_stacks is not NotProvided:
@@ -367,7 +363,7 @@ class IMPALAConfig(AlgorithmConfig):
 
         # IMPALA and APPO need vtrace (A3C Policies no longer exist).
         if not self.vtrace:
-            raise ValueError(
+            self._value_error(
                 "IMPALA and APPO do NOT support vtrace=False anymore! Set "
                 "`config.training(vtrace=True)`."
             )
@@ -376,20 +372,20 @@ class IMPALAConfig(AlgorithmConfig):
         if self.enable_env_runner_and_connector_v2:
             # Does NOT support aggregation workers yet or a mixin replay buffer.
             if self.replay_ratio != 0.0:
-                raise ValueError(
+                self._value_error(
                     "The new API stack in combination with the new EnvRunner API "
                     "does NOT support a mixin replay buffer yet for "
                     f"{self} (set `config.replay_proportion` to 0.0)!"
                 )
             # `lr_schedule` checking.
             if self.lr_schedule is not None:
-                raise ValueError(
+                self._value_error(
                     "`lr_schedule` is deprecated and must be None! Use the "
                     "`lr` setting to setup a schedule."
                 )
             # Entropy coeff schedule checking.
             if self.entropy_coeff_schedule is not None:
-                raise ValueError(
+                self._value_error(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
                     "`entropy_coeff` setting to setup a schedule."
                 )
@@ -403,16 +399,17 @@ class IMPALAConfig(AlgorithmConfig):
                 (self.minibatch_size % self.rollout_fragment_length == 0)
                 and self.minibatch_size <= self.total_train_batch_size
             ):
-                raise ValueError(
+                self._value_error(
                     f"`minibatch_size` ({self._minibatch_size}) must either be None "
                     "or a multiple of `rollout_fragment_length` "
                     f"({self.rollout_fragment_length}) while at the same time smaller "
                     "than or equal to `total_train_batch_size` "
                     f"({self.total_train_batch_size})!"
                 )
-
-        elif isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
-            raise ValueError("`entropy_coeff` must be >= 0.0")
+        # Old API stack checks.
+        else:
+            if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
+                self._value_error("`entropy_coeff` must be >= 0.0")
 
         # Check whether worker to aggregation-worker ratio makes sense.
         if self.num_aggregation_workers > self.num_env_runners:
@@ -434,7 +431,7 @@ class IMPALAConfig(AlgorithmConfig):
             and self._separate_vf_optimizer is True
             and self._tf_policy_handles_more_than_one_loss is False
         ):
-            raise ValueError(
+            self._value_error(
                 "`_tf_policy_handles_more_than_one_loss` must be set to True, for "
                 "TFPolicy to support more than one loss term/optimizer! Try setting "
                 "config.training(_tf_policy_handles_more_than_one_loss=True)."

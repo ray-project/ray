@@ -105,7 +105,7 @@ class BCConfig(MARWILConfig):
         super().validate()
 
         if self.beta != 0.0:
-            raise ValueError("For behavioral cloning, `beta` parameter must be 0.0!")
+            self._value_error("For behavioral cloning, `beta` parameter must be 0.0!")
 
 
 class BC(MARWIL):

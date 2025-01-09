@@ -1,5 +1,6 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -17,7 +18,11 @@ class LearnerConnectorPipeline(ConnectorPipelineV2):
     def __call__(
         self,
         *,
+        rl_module: RLModule,
+        batch: Optional[Dict[str, Any]] = None,
         episodes: List[EpisodeType],
+        explore: bool = False,
+        shared_data: Optional[dict] = None,
         metrics: Optional[MetricsLogger] = None,
         **kwargs,
     ):
@@ -31,7 +36,11 @@ class LearnerConnectorPipeline(ConnectorPipelineV2):
         # Make sure user does not necessarily send initial input into this pipeline.
         # Might just be empty and to be populated from `episodes`.
         ret = super().__call__(
+            rl_module=rl_module,
+            batch=batch if batch is not None else {},
             episodes=episodes,
+            shared_data=shared_data if shared_data is not None else {},
+            explore=explore,
             metrics=metrics,
             metrics_prefix_key=(ALL_MODULES,),
             **kwargs,

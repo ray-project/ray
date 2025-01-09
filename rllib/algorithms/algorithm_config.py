@@ -567,6 +567,7 @@ class AlgorithmConfig(_Config):
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
 
         # `self.experimental()`
+        self._validate_config = True
         self._use_msgpack_checkpoints = False
         self._torch_grad_scaler_class = None
         self._torch_lr_scheduler_classes = None
@@ -906,6 +907,10 @@ class AlgorithmConfig(_Config):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def validate(self) -> None:
         """Validates all values in this config."""
+
+        # Validation is blocked.
+        if not self._validate_config:
+            return
 
         self._validate_env_runner_settings()
         self._validate_callbacks_settings()
@@ -3593,6 +3598,7 @@ class AlgorithmConfig(_Config):
     def experimental(
         self,
         *,
+        _validate_config: Optional[bool] = True,
         _use_msgpack_checkpoints: Optional[bool] = NotProvided,
         _torch_grad_scaler_class: Optional[Type] = NotProvided,
         _torch_lr_scheduler_classes: Optional[
@@ -3606,6 +3612,8 @@ class AlgorithmConfig(_Config):
         """Sets the config's experimental settings.
 
         Args:
+            _validate_config: Whether to run `validate()` on this config. True by
+                default. If False, ignores any calls to `self.validate()`.
             _use_msgpack_checkpoints: Create state files in all checkpoints through
                 msgpack rather than pickle.
             _torch_grad_scaler_class: Class to use for torch loss scaling (and gradient
@@ -3647,6 +3655,8 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if _validate_config is not NotProvided:
+            self._validate_config = _validate_config
         if _use_msgpack_checkpoints is not NotProvided:
             self._use_msgpack_checkpoints = _use_msgpack_checkpoints
         if _tf_policy_handles_more_than_one_loss is not NotProvided:
@@ -3903,8 +3913,6 @@ class AlgorithmConfig(_Config):
 
         return eval_config_obj
 
-    # TODO: Move this to those algorithms that really need this, which is currently
-    #  only A2C and PG.
     def validate_train_batch_size_vs_rollout_fragment_length(self) -> None:
         """Detects mismatches for `train_batch_size` vs `rollout_fragment_length`.
 
@@ -3938,7 +3946,7 @@ class AlgorithmConfig(_Config):
                 suggested_rollout_fragment_length = self.total_train_batch_size // (
                     self.num_envs_per_env_runner * (self.num_env_runners or 1)
                 )
-                raise ValueError(
+                self._value_error(
                     "Your desired `total_train_batch_size` "
                     f"({self.total_train_batch_size}={self.num_learners} "
                     f"learners x {self.train_batch_size_per_learner}) "
@@ -4407,13 +4415,20 @@ class AlgorithmConfig(_Config):
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
     # -----------------------------------------------------------
+    def _value_error(self, errmsg) -> None:
+        msg = errmsg + (
+            "\nTo suppress all validation errors, set "
+            "`config.experimental(_validate_config=False)` at your own risk."
+        )
+        raise ValueError(msg)
+
     def _validate_env_runner_settings(self) -> None:
         allowed_vectorize_modes = set(
             list(gym.envs.registration.VectorizeMode.__members__.keys())
             + list(gym.envs.registration.VectorizeMode.__members__.values())
         )
         if self.gym_env_vectorize_mode not in allowed_vectorize_modes:
-            raise ValueError(
+            self._value_error(
                 f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) must be a "
                 "member of `gym.envs.registration.VectorizeMode`! Allowed values "
                 f"are {allowed_vectorize_modes}."
@@ -4440,7 +4455,7 @@ class AlgorithmConfig(_Config):
                 or self.callbacks_on_checkpoint_loaded is not None
                 or self.callbacks_on_env_runners_recreated is not None
             ):
-                raise ValueError(
+                self._value_error(
                     "Config settings `config.callbacks(on_....=lambda ..)` aren't "
                     "supported on the old API stack! Switch to the new API stack "
                     "through `config.api_stack(enable_env_runner_and_connector_v2=True,"
@@ -4460,7 +4475,7 @@ class AlgorithmConfig(_Config):
 
         # Can not use "tf" with learner API.
         if self.framework_str == "tf" and self.enable_rl_module_and_learner:
-            raise ValueError(
+            self._value_error(
                 "Cannot use `framework=tf` with the new API stack! Either switch to tf2"
                 " via `config.framework('tf2')` OR disable the new API stack via "
                 "`config.api_stack(enable_rl_module_and_learner=False)`."
@@ -4473,7 +4488,7 @@ class AlgorithmConfig(_Config):
             and version.parse(_torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
             and (self.torch_compile_learner or self.torch_compile_worker)
         ):
-            raise ValueError("torch.compile is only supported from torch 2.0.0")
+            self._value_error("torch.compile is only supported from torch 2.0.0")
 
         # Make sure the Learner's torch-what-to-compile setting is supported.
         if self.torch_compile_learner:
@@ -4485,7 +4500,7 @@ class AlgorithmConfig(_Config):
                 TorchCompileWhatToCompile.FORWARD_TRAIN,
                 TorchCompileWhatToCompile.COMPLETE_UPDATE,
             ]:
-                raise ValueError(
+                self._value_error(
                     f"`config.torch_compile_learner_what_to_compile` must be one of ["
                     f"TorchCompileWhatToCompile.forward_train, "
                     f"TorchCompileWhatToCompile.complete_update] but is"
@@ -4502,7 +4517,7 @@ class AlgorithmConfig(_Config):
         #  https://github.com/ray-project/ray/issues/35409
         #  Remove this once we are able to specify placement group bundle index in RLlib
         if self.num_cpus_per_learner > 1 and self.num_gpus_per_learner > 0:
-            raise ValueError(
+            self._value_error(
                 "Can't set both `num_cpus_per_learner` > 1 and "
                 " `num_gpus_per_learner` > 0! Either set "
                 "`num_cpus_per_learner` > 1 (and `num_gpus_per_learner`"
@@ -4512,13 +4527,6 @@ class AlgorithmConfig(_Config):
                 "https://github.com/ray-project/ray/issues/35409 for more details."
             )
 
-        # Make sure the resource requirements for learner_group is valid.
-        if self.num_learners == 0 and self.num_gpus_per_env_runner > 1:
-            raise ValueError(
-                "num_gpus_per_env_runner must be 0 (cpu) or 1 (gpu) when using local "
-                "mode (i.e., `num_learners=0`)"
-            )
-
     def _validate_multi_agent_settings(self):
         """Checks, whether multi-agent related settings make sense."""
 
@@ -4526,7 +4534,7 @@ class AlgorithmConfig(_Config):
         if isinstance(self.policies_to_train, (list, set, tuple)):
             for pid in self.policies_to_train:
                 if pid not in self.policies:
-                    raise ValueError(
+                    self._value_error(
                         "`config.multi_agent(policies_to_train=..)` contains "
                         f"policy ID ({pid}) that was not defined in "
                         f"`config.multi_agent(policies=..)`!"
@@ -4539,7 +4547,7 @@ class AlgorithmConfig(_Config):
             and self.enable_env_runner_and_connector_v2
             and self.num_envs_per_env_runner > 1
         ):
-            raise ValueError(
+            self._value_error(
                 "For now, using env vectorization "
                 "(`config.num_envs_per_env_runner > 1`) in combination with "
                 "multi-agent AND the new EnvRunners is not supported! Try setting "
@@ -4553,7 +4561,7 @@ class AlgorithmConfig(_Config):
         # (which is also async):
         # `config.evaluation(evaluation_parallel_to_training=True)`.
         if self.enable_async_evaluation is True:
-            raise ValueError(
+            self._value_error(
                 "`enable_async_evaluation` has been deprecated (you should set this to "
                 "False)! Use `config.evaluation(evaluation_parallel_to_training=True)` "
                 "instead."
@@ -4578,7 +4586,7 @@ class AlgorithmConfig(_Config):
             self.evaluation_num_env_runners == 0
             and self.evaluation_parallel_to_training
         ):
-            raise ValueError(
+            self._value_error(
                 "`evaluation_parallel_to_training` can only be done if "
                 "`evaluation_num_env_runners` > 0! Try setting "
                 "`config.evaluation_parallel_to_training` to False."
@@ -4588,7 +4596,7 @@ class AlgorithmConfig(_Config):
         # `evaluation_parallel_to_training=False`.
         if self.evaluation_duration == "auto":
             if not self.evaluation_parallel_to_training:
-                raise ValueError(
+                self._value_error(
                     "`evaluation_duration=auto` not supported for "
                     "`evaluation_parallel_to_training=False`!"
                 )
@@ -4604,7 +4612,7 @@ class AlgorithmConfig(_Config):
             not isinstance(self.evaluation_duration, int)
             or self.evaluation_duration <= 0
         ):
-            raise ValueError(
+            self._value_error(
                 f"`evaluation_duration` ({self.evaluation_duration}) must be an "
                 f"int and >0!"
             )
@@ -4613,7 +4621,7 @@ class AlgorithmConfig(_Config):
         """Checks, whether input related settings make sense."""
 
         if self.input_ == "sampler" and self.off_policy_estimation_methods:
-            raise ValueError(
+            self._value_error(
                 "Off-policy estimation methods can only be used if the input is a "
                 "dataset. We currently do not support applying off_policy_estimation_"
                 "method on a sampler input."
@@ -4661,7 +4669,7 @@ class AlgorithmConfig(_Config):
             # User is using the new EnvRunners, but forgot to switch on
             # `enable_rl_module_and_learner`.
             if self.enable_env_runner_and_connector_v2:
-                raise ValueError(
+                self._value_error(
                     "You are using the new API stack EnvRunners (SingleAgentEnvRunner "
                     "or MultiAgentEnvRunner), but have forgotten to switch on the new "
                     "API stack! Try setting "
@@ -4684,7 +4692,7 @@ class AlgorithmConfig(_Config):
         # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
         # `enable_env_runner_and_connector_v2` must be True or both False.
         if not self.enable_env_runner_and_connector_v2:
-            raise ValueError(
+            self._value_error(
                 "Setting `enable_rl_module_and_learner` to True and "
                 "`enable_env_runner_and_connector_v2` to False ('hybrid API stack'"
                 ") is not longer supported! Set both to True (new API stack) or both "
@@ -4721,7 +4729,7 @@ class AlgorithmConfig(_Config):
         # This is not compatible with RLModules, which all have a method
         # `forward_exploration` to specify custom exploration behavior.
         if self.exploration_config:
-            raise ValueError(
+            self._value_error(
                 "When the RLModule API is enabled, exploration_config can not be "
                 "set. If you want to implement custom exploration behaviour, "
                 "please modify the `forward_exploration` method of the "
@@ -4741,12 +4749,12 @@ class AlgorithmConfig(_Config):
         )
 
         if self.model["custom_model"] is not None:
-            raise ValueError(
+            self._value_error(
                 not_compatible_w_rlm_msg.format("custom_model", "custom_model")
             )
 
         if self.model["custom_model_config"] != {}:
-            raise ValueError(
+            self._value_error(
                 not_compatible_w_rlm_msg.format(
                     "custom_model_config", "custom_model_config"
                 )
@@ -4766,7 +4774,7 @@ class AlgorithmConfig(_Config):
             )
 
         if self.preprocessor_pref not in ["rllib", "deepmind", None]:
-            raise ValueError(
+            self._value_error(
                 "`config.preprocessor_pref` must be either 'rllib', 'deepmind' or None!"
             )
 
@@ -4799,12 +4807,12 @@ class AlgorithmConfig(_Config):
             #  ok for tf2 here.
             #  Remove this hacky check, once we have fully moved to the Learner API.
             if self.framework_str == "tf2" and type(self).__name__ != "AlphaStar":
-                raise ValueError(
+                self._value_error(
                     "`num_gpus` > 1 not supported yet for "
                     f"framework={self.framework_str}!"
                 )
             elif self.simple_optimizer is True:
-                raise ValueError(
+                self._value_error(
                     "Cannot use `simple_optimizer` if `num_gpus` > 1! "
                     "Consider not setting `simple_optimizer` in your config."
                 )
@@ -4853,7 +4861,7 @@ class AlgorithmConfig(_Config):
         # User manually set simple-optimizer to False -> Error if tf-eager.
         elif self.simple_optimizer is False:
             if self.framework_str == "tf2":
-                raise ValueError(
+                self._value_error(
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
@@ -4868,7 +4876,7 @@ class AlgorithmConfig(_Config):
             not (self.evaluation_num_env_runners > 0 or self.evaluation_interval)
             and (self.action_space is None or self.observation_space is None)
         ):
-            raise ValueError(
+            self._value_error(
                 "If no evaluation should be run, `action_space` and "
                 "`observation_space` must be provided."
             )
@@ -4879,14 +4887,14 @@ class AlgorithmConfig(_Config):
         if self.offline_data_class and not issubclass(
             self.offline_data_class, OfflineData
         ):
-            raise ValueError(
+            self._value_error(
                 "Unknown `offline_data_class`. OfflineData class needs to inherit "
                 "from `OfflineData` class."
             )
         if self.prelearner_class and not issubclass(
             self.prelearner_class, OfflinePreLearner
         ):
-            raise ValueError(
+            self._value_error(
                 "Unknown `prelearner_class`. PreLearner class needs to inherit "
                 "from `OfflinePreLearner` class."
             )
@@ -4898,7 +4906,7 @@ class AlgorithmConfig(_Config):
         if self.prelearner_buffer_class and not issubclass(
             self.prelearner_buffer_class, EpisodeReplayBuffer
         ):
-            raise ValueError(
+            self._value_error(
                 "Unknown `prelearner_buffer_class`. The buffer class for the "
                 "prelearner needs to inherit from `EpisodeReplayBuffer`. "
                 "Specifically it needs to store and sample lists of "
@@ -4908,7 +4916,7 @@ class AlgorithmConfig(_Config):
         if self.input_read_batch_size and not (
             self.input_read_episodes or self.input_read_sample_batches
         ):
-            raise ValueError(
+            self._value_error(
                 "Setting `input_read_batch_size` is only allowed in case of a "
                 "dataset that holds either `EpisodeType` or `BatchType` data (i.e. "
                 "rows that contains multiple timesteps), but neither "
@@ -4921,7 +4929,7 @@ class AlgorithmConfig(_Config):
             and self.output_write_episodes
             and self.batch_mode != "complete_episodes"
         ):
-            raise ValueError(
+            self._value_error(
                 "When recording episodes only complete episodes should be "
                 "recorded (i.e. `batch_mode=='complete_episodes'`). Otherwise "
                 "recorded episodes cannot be read in for training."

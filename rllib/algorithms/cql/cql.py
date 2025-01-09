@@ -251,7 +251,7 @@ class CQLConfig(SACConfig):
             and not self.dataset_num_iters_per_learner
             and self.enable_rl_module_and_learner
         ):
-            raise ValueError(
+            self._value_error(
                 "When using a single local learner the number of iterations "
                 "per learner, `dataset_num_iters_per_learner` has to be defined. "
                 "Set this hyperparameter in the `AlgorithmConfig.offline_data`."

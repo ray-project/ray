@@ -1,7 +1,6 @@
 import abc
 from collections import defaultdict
 import copy
-from functools import partial
 import logging
 import numpy
 from typing import (
@@ -302,6 +301,9 @@ class Learner(Checkpointable):
         # Configure, construct, and register all optimizers needed to train
         # `self.module`.
         self.configure_optimizers()
+
+        # Log the number of trainable/non-trainable parameters.
+        self._log_trainable_parameters()
 
         self._is_built = True
 
@@ -1376,12 +1378,7 @@ class Learner(Checkpointable):
         self._log_steps_trained_metrics(batch)
 
         if minibatch_size:
-            if self._learner_connector is not None:
-                batch_iter = partial(
-                    MiniBatchCyclicIterator, _uses_new_env_runners=True
-                )
-            else:
-                batch_iter = MiniBatchCyclicIterator
+            batch_iter = MiniBatchCyclicIterator
         elif num_epochs > 1:
             # `minibatch_size` was not set but `num_epochs` > 1.
             # Under the old training stack, users could do multiple epochs
@@ -1594,6 +1591,15 @@ class Learner(Checkpointable):
                 f"`params` ({params}) must be a list of framework-specific parameters "
                 "(variables)!"
             )
+
+    def _log_trainable_parameters(self) -> None:
+        """Logs the number of trainable and non-trainable parameters to self.metrics.
+
+        Use MetricsLogger (self.metrics) tuple-keys:
+        (ALL_MODULES, NUM_TRAINABLE_PARAMETERS) and
+        (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS) with EMA.
+        """
+        pass
 
     def _check_is_built(self, error: bool = True) -> bool:
         if self.module is None:
