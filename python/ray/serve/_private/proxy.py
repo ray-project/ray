@@ -76,7 +76,7 @@ from ray.serve._private.utils import (
     get_head_node_id,
 )
 from ray.serve.config import gRPCOptions
-from ray.serve.exceptions import BackPressureError
+from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
 from ray.serve.handle import DeploymentHandle
@@ -1056,7 +1056,7 @@ class HTTPProxy(GenericProxy):
             logger.info(
                 f"Client for request {request_id} disconnected, cancelling request."
             )
-        except BackPressureError as e:
+        except (BackPressureError, DeploymentUnavailableError) as e:
             status_code = 503
             status = ResponseStatus(
                 code=status_code,
