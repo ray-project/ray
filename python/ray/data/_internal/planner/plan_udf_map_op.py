@@ -4,7 +4,7 @@ import inspect
 import queue
 from threading import Thread
 from types import GeneratorType
-from typing import Any, Callable, Iterable, Iterator, List, Optional
+from typing import Any, Callable, Iterable, Iterator, List, Optional, Generator
 
 import numpy as np
 import pandas as pd
@@ -13,6 +13,7 @@ import pyarrow as pa
 import ray
 from ray._private.utils import get_or_create_event_loop
 from ray.data._internal.compute import get_compute
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -113,6 +114,69 @@ def plan_project_op(
     compute = get_compute(op._compute)
     transform_fn = _generate_transform_fn_for_map_block(fn)
     map_transformer = _create_map_transformer_for_block_based_map_op(
+        transform_fn,
+    )
+
+    return MapOperator.create(
+        map_transformer,
+        input_physical_dag,
+        data_context,
+        name=op.name,
+        compute_strategy=compute,
+        ray_remote_args=op._ray_remote_args,
+        ray_remote_args_fn=op._ray_remote_args_fn,
+    )
+
+
+def plan_streaming_repartition_op(
+    op: Project,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+
+    max_num_rows_per_block = op.max_num_rows_per_block
+
+    def fn(block: Block) -> List[Block]:
+        accessor = BlockAccessor.for_block(block)
+        num_rows_in_block = accessor.num_rows()
+
+        # If the number of rows in block is within the allowed max_num_rows_per_block, nothing to do.
+        if num_rows_in_block <= max_num_rows_per_block:
+            return [block]
+
+        block_list = []
+        cur_block_builder = DelegatingBlockBuilder()
+        start_idx = 0
+
+        # Iterate through the block, partitioning it into smaller blocks.
+        while start_idx < num_rows_in_block:
+            remaining_rows = num_rows_in_block - start_idx
+            cur_rows = cur_block_builder.num_rows()
+
+            # Determine the slice range for the next partition.
+            end_idx = start_idx + min(remaining_rows, max_num_rows_per_block - cur_rows)
+            cur_block_builder.add_block(accessor.slice(start_idx, end_idx, copy=True))
+
+            # If the current block reaches the size limit, finalize and store it.
+            if cur_block_builder.num_rows() == max_num_rows_per_block:
+                block_list.append(cur_block_builder.build())
+                # Reset builder for next partition.
+                cur_block_builder = DelegatingBlockBuilder()
+
+            # Move to the next segment.
+            start_idx = end_idx
+
+        # Add any remaining rows as the final partitioned block.
+        if cur_block_builder.num_rows() > 0:
+            block_list.append(cur_block_builder.build())
+
+        return block_list
+
+    compute = get_compute(op._compute)
+    transform_fn = _generate_transform_fn_for_repartition_block(fn)
+    map_transformer = _create_map_transformer_for_block_repartition_op(
         transform_fn,
     )
 
@@ -520,6 +584,17 @@ def _generate_transform_fn_for_map_block(
     return transform_fn
 
 
+def _generate_transform_fn_for_repartition_block(
+    fn: UserDefinedFunction,
+) -> MapTransformCallable[Block, Block]:
+    def transform_fn(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+        for block in blocks:
+            out_blocks = fn(block)
+            yield from out_blocks
+
+    return transform_fn
+
+
 # Following are util functions for creating `MapTransformer`s.
 
 
@@ -572,6 +647,18 @@ def _create_map_transformer_for_block_based_map_op(
         # Apply the UDF.
         BlockMapTransformFn(block_fn),
         BuildOutputBlocksMapTransformFn.for_blocks(),
+    ]
+    return MapTransformer(transform_fns, init_fn=init_fn)
+
+
+def _create_map_transformer_for_block_repartition_op(
+    block_fn: MapTransformCallable[Block, Block],
+    init_fn: Optional[Callable[[], None]] = None,
+) -> MapTransformer:
+    """Create a MapTransformer for a block-based repartition operator."""
+    transform_fns = [
+        # Apply the UDF.
+        BlockMapTransformFn(block_fn),
     ]
     return MapTransformer(transform_fns, init_fn=init_fn)
 

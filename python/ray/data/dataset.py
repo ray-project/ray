@@ -67,15 +67,13 @@ from ray.data._internal.logical.operators.map_operator import (
     MapBatches,
     MapRows,
     Project,
+    StreamingRepartition,
 )
 from ray.data._internal.logical.operators.n_ary_operator import (
     Union as UnionLogicalOperator,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.logical.operators.one_to_one_operator import (
-    Limit,
-    StreamingRepartition,
-)
+from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
