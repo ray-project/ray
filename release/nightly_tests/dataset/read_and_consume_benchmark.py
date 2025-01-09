@@ -79,7 +79,8 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
     elif args.iter_batches:
 
         def consume_fn(ds):
-            ds.iter_batches(batch_format=args.iter_batches)
+            for _ in ds.iter_batches(batch_format=args.iter_batches):
+                pass
 
     elif args.iter_torch_batches:
 
