@@ -78,3 +78,27 @@ class Limit(AbstractOneToOne):
     def _input_files(self):
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         return self._input_dependencies[0].aggregate_output_metadata().input_files
+
+
+class StreamingRepartition(AbstractOneToOne):
+    """Logical operator for streaming repartition operation.
+    Args:
+        max_num_rows_per_block: The maximum number of rows per block granularity for
+        streaming repartition.
+    """
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        max_num_rows_per_block: int,
+    ):
+        super().__init__("StreamingRepartition", input_op)
+        self.max_num_rows_per_block = max_num_rows_per_block
+
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return False
+
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata()
