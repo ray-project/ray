@@ -102,7 +102,11 @@ struct CoreWorkerOptions {
         entrypoint(""),
         worker_launch_time_ms(-1),
         worker_launched_time_ms(-1),
-        assigned_worker_port(std::nullopt) {}
+        assigned_worker_port(std::nullopt),
+        assigned_raylet_id(std::nullopt) {
+    // TODO(hjiang): Add invariant check: for worker, both should be assigned; for driver,
+    // neither should be assigned.
+  }
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;

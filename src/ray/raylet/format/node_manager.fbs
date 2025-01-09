@@ -160,8 +160,6 @@ table RegisterWorkerWithPortRequest {
 }
 
 table RegisterWorkerWithPortReply {
-  // GCS NodeID of the local node manager.
-  raylet_id: string;
   // Whether the announcement and job registration succeeded.
   success: bool;
   // The reason of registration failure.

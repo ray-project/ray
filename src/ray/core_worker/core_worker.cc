@@ -309,7 +309,6 @@ Status CoreWorker::RegisterWorkerToRayletWithPort(
     const std::string &ip_address,
     const std::string &serialized_job_config,
     const StartupToken &startup_token,
-    NodeID *raylet_id,
     int port) {
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
@@ -352,7 +351,6 @@ Status CoreWorker::RegisterWorkerToRayletWithPort(
     return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
   }
 
-  *raylet_id = NodeID::FromBinary(string_from_flatbuf(*reply_message->raylet_id()));
   return Status::OK();
 }
 
@@ -996,7 +994,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                                               options_.node_ip_address,
                                               options_.serialized_job_config,
                                               options_.startup_token,
-                                              &local_raylet_id,
                                               assigned_port);
     RAY_CHECK_OK(s);
   } else {
