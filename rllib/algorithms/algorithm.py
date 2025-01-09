@@ -2921,7 +2921,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @override(Trainable)
     def cleanup(self) -> None:
-        # Stop all workers.
+        # Stop all EnvRunners.
         if hasattr(self, "env_runner_group") and self.env_runner_group is not None:
             self.env_runner_group.stop()
         if (
@@ -2929,6 +2929,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             and self.eval_env_runner_group is not None
         ):
             self.eval_env_runner_group.stop()
+
+        # Stop all Learners.
+        if hasattr(self, "learner_group") and self.learner_group is not None:
+            self.learner_group.shutdown()
 
     @OverrideToImplementCustomLogic
     @classmethod

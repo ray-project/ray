@@ -8,6 +8,7 @@ import ray.rllib.algorithms.appo as appo
 from ray.rllib.algorithms.appo.appo import LEARNER_RESULTS_CURR_KL_COEFF_KEY
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -85,36 +86,35 @@ class TestAPPOLearner(unittest.TestCase):
         config = (
             appo.APPOConfig()
             .environment("CartPole-v1")
-            # Asynchronous Algo, make sure we have some results after 1 iteration.
-            .reporting(min_time_s_per_iteration=10)
             .env_runners(
                 num_env_runners=0,
                 rollout_fragment_length=frag_length,
                 exploration_config={},
             )
-            .resources(num_gpus=0)
+            .learners(num_learners=0)
+            .experimental(_validate_config=False)
             .training(
-                gamma=0.99,
-                model=dict(
+                use_kl_loss=True,
+                kl_coeff=initial_kl_coeff,
+            )
+            .rl_module(
+                model_config=DefaultModelConfig(
                     fcnet_hiddens=[10, 10],
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
-                use_kl_loss=True,
-                kl_coeff=initial_kl_coeff,
             )
         )
         algo = config.build()
         # Call train while results aren't returned because this is
         # a asynchronous algorithm and results are returned asynchronously.
-        while True:
+        curr_kl_coeff = None
+        while curr_kl_coeff is None:
             results = algo.train()
             print(results)
-            if results.get(LEARNER_RESULTS, {}).get(DEFAULT_MODULE_ID):
-                break
-        curr_kl_coeff = results[LEARNER_RESULTS][DEFAULT_MODULE_ID][
-            LEARNER_RESULTS_CURR_KL_COEFF_KEY
-        ]
+            results = results.get(LEARNER_RESULTS, {})
+            results = results.get(DEFAULT_MODULE_ID, {})
+            curr_kl_coeff = results.get(LEARNER_RESULTS_CURR_KL_COEFF_KEY)
         self.assertNotEqual(curr_kl_coeff, initial_kl_coeff)
 
 
