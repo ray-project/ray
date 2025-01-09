@@ -1323,7 +1323,13 @@ class Dataset:
         *,
         shuffle: bool = False,
     ) -> "Dataset":
-        """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
+        """Repartitions the :class:`Dataset`.
+
+        When `num_blocks` is set, repartition :class:`Dataset` into exactly this number
+        of :ref:`blocks <dataset_concept>`.
+
+        When `max_num_rows_per_block` is set, repartition :class:`Dataset` to honor at
+        most maximum rows per :ref:`blocks <dataset_concept>`.
 
         This method can be useful to tune the performance of your pipeline. To learn
         more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
