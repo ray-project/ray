@@ -78,8 +78,6 @@ curl localhost:8080
 kubectl get service
 
 # NAME                                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                                    AGE
-# kuberay-operator                    ClusterIP   10.96.137.190   <none>        8080/TCP                                                   13m
-# kubernetes                          ClusterIP   10.96.0.1       <none>        443/TCP                                                    14m
 # raycluster-embed-grafana-head-svc   ClusterIP   None            <none>        44217/TCP,10001/TCP,44227/TCP,8265/TCP,6379/TCP,8080/TCP   13m
 ```
 
@@ -151,7 +149,7 @@ spec:
 ```
 
 * The **install.sh** script creates the above YAML example, [podMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/podMonitor.yaml#L26-L63) so you don't need to create anything.
-* See the [PodMonitor official document](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#podmonitor) for more details about the configurations.
+* See the [PodMonitor official document](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#monitoring.coreos.com/v1.PodMonitor) for more details about the configurations.
 * `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label. See [here](#prometheus-can-only-detect-this-label) for more details.
 
 (prometheus-can-only-detect-this-label)=
@@ -266,7 +264,7 @@ $$\frac{ number\ of\ update\ resource\ usage\ RPCs\ that\ have\ RTT\ smaller\ th
 
 * The recording rule above is one of rules defined in [prometheusRules.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/rules/prometheusRules.yaml), and it is created by **install.sh**. Hence, no need to create anything here.
 
-* See [PrometheusRule official document](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#prometheusrule) for more details about the configurations.
+* See [PrometheusRule official document](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#monitoring.coreos.com/v1.PrometheusRule) for more details about the configurations.
 
 * `release: $HELM_RELEASE`: Prometheus can only detect PrometheusRule with this label. See [here](#prometheus-can-only-detect-this-label) for more details.
 
@@ -366,9 +364,19 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
 
 * TODO: Note that importing the dashboard manually is not ideal. We should find a way to import the dashboard automatically.
 
+## Step 11: View metrics from different RayCluster CRs
+
+Once the Ray Dashboard is imported into Grafana, you can filter metrics by using the `Cluster` variable. This variable is automatically applied by default when using the provided `PodMonitor` configuration. No additional setup is needed for this labeling.
+
+If you have multiple RayCluster custom resources, the `Cluster` variable allows you to filter metrics specific to a particular cluster. This ensures that you can easily monitor or debug individual RayCluster instances without being overwhelmed by data from all clusters.
+
+For example, in the following figures, one selects the metrics from the RayCluster `raycluster-embed-grafana`, and the other selects metrics from the RayCluster `raycluster-embed-grafana-2`.
+
 ![Grafana Ray Dashboard](../images/grafana_ray_dashboard.png)
 
-## Step 11: Embed Grafana panels in Ray Dashboard
+![Grafana Ray Dashboard2](../images/grafana_ray_dashboard2.png)
+
+## Step 12: Embed Grafana panels in Ray Dashboard
 
 ```sh
 kubectl port-forward svc/raycluster-embed-grafana-head-svc 8265:8265
