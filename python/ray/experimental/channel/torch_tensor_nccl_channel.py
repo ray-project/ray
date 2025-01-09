@@ -158,11 +158,17 @@ class TorchTensorNcclChannel(ChannelInterface):
         )
 
     def ensure_registered_as_writer(self):
+        if self._local_channel is not None:
+            self._local_channel.ensure_registered_as_writer()
         self._gpu_data_channel.ensure_registered_as_writer()
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self):
+        reader = utils.get_self_actor()
+        if reader == self._writer:
+            self._local_channel.ensure_registered_as_reader()
+            return
         self._gpu_data_channel.ensure_registered_as_reader()
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.ensure_registered_as_reader()
