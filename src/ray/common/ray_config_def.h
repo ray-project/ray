@@ -247,7 +247,7 @@ RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 
 /// These are used by the worker to set timeouts and to batch requests when
 /// getting objects.
-RAY_CONFIG(int64_t, get_iteration_timeout_milliseconds, 1000)
+RAY_CONFIG(int64_t, check_signal_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
 /// How long to wait for a fetch to complete during ray.get before warning the

@@ -349,9 +349,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   int64_t remaining_timeout = timeout_ms;
   int64_t iteration_timeout =
       timeout_ms == -1
-          ? RayConfig::instance().get_iteration_timeout_milliseconds()
+          ? RayConfig::instance().check_signal_interval_milliseconds()
           : std::min(timeout_ms,
-                     RayConfig::instance().get_iteration_timeout_milliseconds());
+                     RayConfig::instance().check_signal_interval_milliseconds());
 
   // Repeatedly call Wait() on a shorter timeout so we can check for signals between
   // calls. If timeout_ms == -1, this should run forever until all objects are

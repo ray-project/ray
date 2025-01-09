@@ -318,7 +318,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     int64_t batch_timeout =
-        std::max(RayConfig::instance().get_iteration_timeout_milliseconds(),
+        std::max(RayConfig::instance().check_signal_interval_milliseconds(),
                  int64_t(10 * batch_ids.size()));
     if (remaining_timeout >= 0) {
       batch_timeout = std::min(remaining_timeout, batch_timeout);
@@ -384,7 +384,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
   int64_t remaining_timeout = timeout_ms;
   while (!should_break) {
     WaitResultPair result_pair;
-    int64_t call_timeout = RayConfig::instance().get_iteration_timeout_milliseconds();
+    int64_t call_timeout = RayConfig::instance().check_signal_interval_milliseconds();
     if (remaining_timeout >= 0) {
       call_timeout = std::min(remaining_timeout, call_timeout);
       remaining_timeout -= call_timeout;
