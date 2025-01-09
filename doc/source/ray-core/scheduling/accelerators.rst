@@ -36,6 +36,9 @@ The accelerators natively supported by Ray Core are:
    * - Huawei Ascend
      - NPU
      - Experimental, supported by the community
+   * - Cambricon MLU
+     - MLU
+     - Experimental, supported by the community
 
 Starting Ray nodes with accelerators
 ------------------------------------
@@ -115,6 +118,16 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             You can set the ``ASCEND_RT_VISIBLE_DEVICES`` environment variable before starting a Ray node
             to limit the Huawei Ascend NPUs that are visible to Ray.
             For example, ``ASCEND_RT_VISIBLE_DEVICES=1,3 ray start --head --resources='{"NPU": 2}'``
+            lets Ray only see devices 1 and 3.
+
+    .. tab-item:: Cambricon MLU
+        :sync: Cambricon MLU
+
+        .. tip::
+
+            You can set the ``MLU_VISIBLE_DEVICES`` environment variable before starting a Ray node
+            to limit the Cambricon MLUs that are visible to Ray.
+            For example, ``MLU_VISIBLE_DEVICES=1,3 ray start --head --resources='{"MLU": 2}'``
             lets Ray only see devices 1 and 3.
 
 .. note::
@@ -405,6 +418,45 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             (npu_task pid=51830) NPU IDs: [1]
             (npu_task pid=51830) ASCEND_RT_VISIBLE_DEVICES: 1
 
+    .. tab-item:: Cambricon MLU
+        :sync: Cambricon MLU
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            import os
+            import ray
+
+            ray.init(resources={"MLU": 2})
+
+            @ray.remote(resources={"MLU": 1})
+            class MLUActor:
+                def ping(self):
+                    print("MLU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MLU"]))
+                    print("MLU_VISIBLE_DEVICES: {}".format(os.environ["MLU_VISIBLE_DEVICES"]))
+
+            @ray.remote(resources={"MLU": 1})
+            def mlu_task():
+                print("MLU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MLU"]))
+                print("MLU_VISIBLE_DEVICES: {}".format(os.environ["MLU_VISIBLE_DEVICES"]))
+
+            mlu_actor = MLUActor.remote()
+            ray.get(mlu_actor.ping.remote())
+            # The actor uses the first MLU so the task uses the second one.
+            ray.get(mlu_task.remote())
+
+        .. testoutput::
+            :options: +MOCK
+
+            (MLUActor pid=1445193) MLU IDs: ['0']
+            (MLUActor pid=1445193) MLU_VISIBLE_DEVICES: 0
+            (mlu_task pid=1445205) MLU IDs: ['1']
+            (mlu_task pid=1445205) MLU_VISIBLE_DEVICES: 1
+
 
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a
 list of accelerator IDs that are available to the task or actor.
@@ -549,6 +601,27 @@ so multiple tasks and actors can share the same accelerator.
             # and share the same NPU.
             ray.get([f.remote() for _ in range(4)])
 
+    .. tab-item:: Cambricon MLU
+        :sync: Cambricon MLU
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            ray.init(num_cpus=4, resources={"MLU": 1})
+
+            @ray.remote(resources={"MLU": 0.25})
+            def f():
+                import time
+
+                time.sleep(1)
+
+            # The four tasks created here can execute concurrently
+            # and share the same MLU.
+            ray.get([f.remote() for _ in range(4)])
 
 **Note:** It is the user's responsibility to make sure that the individual tasks
 don't use more than their share of the accelerator memory.
