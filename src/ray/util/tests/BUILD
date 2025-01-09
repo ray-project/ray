@@ -1,7 +1,6 @@
-load("@rules_cc//cc:defs.bzl", "cc_test")
-load("//bazel:ray.bzl", "COPTS")
+load("//bazel:ray.bzl", "COPTS", "ray_cc_test")
 
-cc_test(
+ray_cc_test(
     name = "array_test",
     srcs = ["array_test.cc"],
     copts = COPTS,
@@ -13,7 +12,7 @@ cc_test(
 )
 
 
-cc_test(
+ray_cc_test(
     name = "function_traits_test",
     srcs = ["function_traits_test.cc"],
     copts = COPTS,
@@ -24,7 +23,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "thread_checker_test",
     srcs = ["thread_checker_test.cc"],
     copts = COPTS,
@@ -36,7 +35,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "container_util_test",
     size = "small",
     srcs = ["container_util_test.cc"],
@@ -51,7 +50,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "counter_test",
     size = "small",
     srcs = ["counter_test.cc"],
@@ -63,7 +62,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "event_test",
     size = "small",
     srcs = ["event_test.cc"],
@@ -81,7 +80,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "exponential_backoff_test",
     size = "small",
     srcs = ["exponential_backoff_test.cc"],
@@ -93,7 +92,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "filesystem_test",
     size = "small",
     srcs = ["filesystem_test.cc"],
@@ -106,7 +105,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "logging_test",
     size = "small",
     srcs = ["logging_test.cc"],
@@ -129,7 +128,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "sample_test",
     size = "small",
     srcs = ["sample_test.cc"],
@@ -141,7 +140,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "sequencer_test",
     size = "small",
     srcs = ["sequencer_test.cc"],
@@ -153,7 +152,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "signal_test",
     size = "small",
     srcs = ["signal_test.cc"],
@@ -165,7 +164,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "throttler_test",
     size = "small",
     srcs = ["throttler_test.cc"],
@@ -178,7 +177,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.cc"],
@@ -193,7 +192,7 @@ cc_test(
 )
 
 
-cc_test(
+ray_cc_test(
     name = "proto_schema_backward_compatibility_test",
     size = "small",
     srcs = ["proto_schema_backward_compatibility_test.cc"],
@@ -207,7 +206,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "size_literals_test",
     srcs = ["size_literals_test.cc"],
     size = "small",
@@ -219,7 +218,7 @@ cc_test(
     ],
 )
 
-cc_test(
+ray_cc_test(
     name = "shared_lru_test",
     srcs = ["shared_lru_test.cc"],
     deps = [
