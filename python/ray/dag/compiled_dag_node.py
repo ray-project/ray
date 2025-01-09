@@ -1867,7 +1867,8 @@ class CompiledDAG:
                         else:
                             msg += (
                                 " Teardown may hang. "
-                                "Call teardown with kill_actors=True to force kill."
+                                "Call teardown with kill_actors=True if force kill "
+                                "is desired."
                             )
 
                         logger.warning(msg)
@@ -2082,21 +2083,24 @@ class CompiledDAG:
                     "ray.get() on previous CompiledDAGRefs to free them up "
                     "from buffer."
                 )
-            self.increment_max_finished_execution_index()
             start_time = time.monotonic()
 
             # Fetch results from each output channel up to execution_index and cache
             # them separately to enable individual retrieval
             try:
-                self._cache_execution_results(
-                    self._max_finished_execution_index,
-                    self._dag_output_fetcher.read(timeout),
-                )
+                result = self._dag_output_fetcher.read(timeout)
             except ray.exceptions.RayChannelTimeoutError as e:
                 raise ray.exceptions.RayChannelTimeoutError(
-                    "Timed out on getting execution results. "
-                    "Update RAY_CGRAPH_get_timeout for longer get timeout."
+                    "If the execution is expected to take a long time, increase "
+                    f"RAY_CGRAPH_get_timeout which is currently {timeout}. "
+                    "Otherwise, this may indicate that the execution is hanging."
                 ) from e
+
+            self.increment_max_finished_execution_index()
+            self._cache_execution_results(
+                self._max_finished_execution_index,
+                result,
+            )
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
@@ -2145,8 +2149,9 @@ class CompiledDAG:
             self._dag_submitter.write(inp, self._submit_timeout)
         except ray.exceptions.RayChannelTimeoutError as e:
             raise ray.exceptions.RayChannelTimeoutError(
-                "Timed out on submitting execution. "
-                "Update RAY_CGRAPH_submit_timeout for longer submit timeout."
+                "If the execution is expected to take a long time, increase "
+                "RAY_CGRAPH_submit_timeout which is currently {self._submit_timeout}. "
+                "Otherwise, this may indicate that execution is hanging."
             ) from e
 
         if self._returns_list:
