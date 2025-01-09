@@ -6,6 +6,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray.air._internal.device_manager.cpu import CPUTorchDeviceManager
 from ray.air._internal.device_manager.hpu import HPUTorchDeviceManager
+from ray.air._internal.device_manager.mlu import MLUTorchDeviceManager
 from ray.air._internal.device_manager.npu import NPUTorchDeviceManager
 from ray.air._internal.device_manager.nvidia_gpu import CUDATorchDeviceManager
 from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
@@ -20,6 +21,7 @@ SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER = {
     ray_constants.GPU: CUDATorchDeviceManager,
     ray_constants.HPU: HPUTorchDeviceManager,
     ray_constants.NPU: NPUTorchDeviceManager,
+    ray_constants.MLU: MLUTorchDeviceManager,
 }
 
 
@@ -29,6 +31,9 @@ def register_custom_torch_dist_backend(backend: Optional[str] = None) -> None:
         HPUTorchDeviceManager.register_custom_torch_dist_backend()
 
         NPUTorchDeviceManager.register_custom_torch_dist_backend()
+    elif backend == "cncl":
+        # The communication backend of torch-mlu is cncl
+        MLUTorchDeviceManager.register_custom_torch_dist_backend()
 
 
 _torch_device_manager = None
@@ -74,6 +79,8 @@ def get_torch_device_manager_by_device_type(device_type: str):
         return NPUTorchDeviceManager()
     elif device_type.lower() == ray_constants.HPU.lower():
         return HPUTorchDeviceManager()
+    elif device_type.lower() == ray_constants.MLU.lower():
+        return MLUTorchDeviceManager()
     elif device_type.lower() == "cpu":
         return CPUTorchDeviceManager()
 
@@ -86,6 +93,7 @@ __all__ = [
     CUDATorchDeviceManager,
     HPUTorchDeviceManager,
     NPUTorchDeviceManager,
+    MLUTorchDeviceManager,
     register_custom_torch_dist_backend,
     get_torch_device_manager_by_context,
     get_torch_device_manager_by_device_type,
