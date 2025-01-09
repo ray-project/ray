@@ -89,7 +89,7 @@ void ClusterResourceScheduler::Init(
           *cluster_resource_manager_,
           /*is_node_available_fn*/
           [this](auto node_id) { return this->NodeAvailable(node_id); },
-          /*is_node_schedulable_fn*/
+          /*is_node_schedulable*/
           is_node_schedulable_fn_);
   bundle_scheduling_policy_ =
       std::make_unique<raylet_scheduling_policy::CompositeBundleSchedulingPolicy>(

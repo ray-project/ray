@@ -557,7 +557,6 @@ bool IndivisibleCluster::IsUndividedNodeInstanceIdle(
   auto node_id =
       scheduling::NodeID(NodeID::FromHex(node_instance.node_instance_id()).Binary());
   const auto &node_resources = cluster_resource_manager_.GetNodeResources(node_id);
-  // TODO(Chong-Li): the resource view sync message may lag.
   if (node_resources.normal_task_resources.IsEmpty() &&
       node_resources.total == node_resources.available) {
     return true;

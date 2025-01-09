@@ -19,12 +19,6 @@ class VirtualClusterHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
 
-        self._gcs_virtual_cluster_info_stub = (
-            gcs_service_pb2_grpc.VirtualClusterInfoGcsServiceStub(
-                dashboard_head.aiogrpc_gcs_channel
-            )
-        )
-
     @routes.get("/virtual_clusters")
     @dashboard_optional_utils.aiohttp_cache(10)
     async def get_all_virtual_clusters(self, req) -> aiohttp.web.Response:
@@ -132,7 +126,11 @@ class VirtualClusterHead(dashboard_utils.DashboardHeadModule):
             )
 
     async def run(self, server):
-        pass
+        self._gcs_virtual_cluster_info_stub = (
+            gcs_service_pb2_grpc.VirtualClusterInfoGcsServiceStub(
+                self._dashboard_head.aiogrpc_gcs_channel
+            )
+        )
 
     @staticmethod
     def is_minimal_module():

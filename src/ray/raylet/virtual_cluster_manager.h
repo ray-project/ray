@@ -23,7 +23,10 @@ namespace raylet {
 
 class VirtualClusterManager {
  public:
-  VirtualClusterManager() = default;
+  VirtualClusterManager(const NodeID &node_id,
+                        std::function<void()> local_node_cleanup_fn)
+      : local_node_instance_id_(node_id.Hex()),
+        local_node_cleanup_fn_(local_node_cleanup_fn) {}
 
   /// Update the virtual cluster.
   ///
@@ -47,6 +50,11 @@ class VirtualClusterManager {
  private:
   /// The virtual clusters.
   absl::flat_hash_map<std::string, rpc::VirtualClusterTableData> virtual_clusters_;
+  /// The local node instance id.
+  std::string local_node_instance_id_;
+  std::function<void()> local_node_cleanup_fn_;
+  /// The (indivisible) virtual cluster to which the local node belongs.
+  std::string local_virtual_cluster_id_;
 };
 
 }  // namespace raylet

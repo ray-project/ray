@@ -69,26 +69,68 @@ Status VirtualClusterInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<VirtualClusterID, rpc::VirtualClusterTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto callback =
-        [subscribe, done](
-            const Status &status,
-            std::vector<rpc::VirtualClusterTableData> &&virtual_cluster_info_list) {
-          for (auto &virtual_cluster_info : virtual_cluster_info_list) {
-            subscribe(VirtualClusterID::FromBinary(virtual_cluster_info.id()),
-                      std::move(virtual_cluster_info));
+  const auto updated_subscribe =
+      [this, subscribe](const VirtualClusterID &virtual_cluster_id,
+                        rpc::VirtualClusterTableData &&virtual_cluster_data) {
+        auto iter = virtual_clusters_.find(virtual_cluster_id);
+        if (iter != virtual_clusters_.end()) {
+          if (virtual_cluster_data.revision() < iter->second.revision()) {
+            RAY_LOG(WARNING) << "The revision of the received virtual cluster ("
+                             << virtual_cluster_id << ") is outdated. Ignore it.";
+            return;
           }
-          if (done) {
-            done(status);
+          if (virtual_cluster_data.is_removed()) {
+            virtual_clusters_.erase(iter);
+          } else {
+            iter->second = virtual_cluster_data;
           }
-        };
-    RAY_CHECK_OK(AsyncGetAll(
-        /*include_job_clusters=*/true,
-        /*only_include_indivisible_clusters=*/true,
-        callback));
-  };
-  subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
-    return client_impl_->GetGcsSubscriber().SubscribeAllVirtualClusters(subscribe, done);
+        } else {
+          virtual_clusters_[virtual_cluster_id] = virtual_cluster_data;
+        }
+
+        subscribe(virtual_cluster_id, std::move(virtual_cluster_data));
+      };
+  fetch_all_data_operation_ =
+      [this, subscribe, updated_subscribe](const StatusCallback &done) {
+        auto callback =
+            [this, subscribe, updated_subscribe, done](
+                const Status &status,
+                std::vector<rpc::VirtualClusterTableData> &&virtual_cluster_info_list) {
+              absl::flat_hash_set<VirtualClusterID> virtual_cluster_id_set;
+              for (auto &virtual_cluster_info : virtual_cluster_info_list) {
+                auto virtual_cluster_id =
+                    VirtualClusterID::FromBinary(virtual_cluster_info.id());
+                updated_subscribe(virtual_cluster_id, std::move(virtual_cluster_info));
+                virtual_cluster_id_set.emplace(virtual_cluster_id);
+              }
+              if (virtual_clusters_.size() > virtual_cluster_id_set.size()) {
+                for (auto iter = virtual_clusters_.begin();
+                     iter != virtual_clusters_.end();) {
+                  auto curr_iter = iter++;
+                  // If there is any virtual cluster not in `virtual_cluster_id_set`, it
+                  // means the local node may miss the pub messages (when gcs removed
+                  // virtual clusters) in the past. So we have to explicitely notify the
+                  // subscriber to clean its local cache.
+                  if (!virtual_cluster_id_set.contains(curr_iter->first)) {
+                    auto virtual_cluster_data = std::move(curr_iter->second);
+                    virtual_cluster_data.set_is_removed(true);
+                    subscribe(curr_iter->first, std::move(virtual_cluster_data));
+                    virtual_clusters_.erase(curr_iter);
+                  }
+                }
+              }
+              if (done) {
+                done(status);
+              }
+            };
+        RAY_CHECK_OK(AsyncGetAll(
+            /*include_job_clusters=*/true,
+            /*only_include_indivisible_clusters=*/true,
+            callback));
+      };
+  subscribe_operation_ = [this, updated_subscribe](const StatusCallback &done) {
+    return client_impl_->GetGcsSubscriber().SubscribeAllVirtualClusters(updated_subscribe,
+                                                                        done);
   };
   return subscribe_operation_(
       [this, done](const Status &status) { fetch_all_data_operation_(done); });

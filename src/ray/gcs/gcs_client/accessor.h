@@ -1058,6 +1058,9 @@ class VirtualClusterInfoAccessor {
   SubscribeOperation subscribe_operation_;
 
   GcsClient *client_impl_;
+
+  // Local cache of the virtual cluster data. It can be used for revision control.
+  absl::flat_hash_map<VirtualClusterID, rpc::VirtualClusterTableData> virtual_clusters_;
 };
 
 }  // namespace gcs
