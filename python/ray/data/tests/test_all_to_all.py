@@ -14,6 +14,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data.aggregate import AggregateFn
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
@@ -102,6 +103,49 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     large = ray.data.range(10000, override_num_blocks=10)
     large = large.repartition(20, shuffle=True)
     assert large._block_num_rows() == [500] * 20
+
+
+@pytest.mark.parametrize(
+    "total_rows,max_num_rows_per_block",
+    [
+        (128, 1),
+        (128, 2),
+        (128, 4),
+        (128, 5),
+        (128, 7),
+        (128, 128),
+    ],
+)
+def test_repartition_max_rows_per_block(
+    ray_start_regular_shared,
+    total_rows,
+    max_num_rows_per_block,
+):
+    ds = ray.data.range(total_rows).repartition(
+        max_num_rows_per_block=max_num_rows_per_block
+    )
+    rows_count = 0
+    all_data = []
+    for ref_bundle in ds.iter_internal_ref_bundles():
+        block, block_metadata = (
+            ray.get(ref_bundle.blocks[0][0]),
+            ref_bundle.blocks[0][1],
+        )
+        assert block_metadata.num_rows <= max_num_rows_per_block
+        rows_count += block_metadata.num_rows
+        block_data = (
+            BlockAccessor.for_block(block).to_pandas().to_dict(orient="records")
+        )
+        all_data.extend(block_data)
+
+    assert rows_count == total_rows
+
+    # Verify total rows match
+    assert rows_count == total_rows
+
+    # Verify data consistency
+    all_values = [row["id"] for row in all_data]
+    assert sorted(all_values) == list(range(total_rows))
 
 
 def test_unique(ray_start_regular_shared):
