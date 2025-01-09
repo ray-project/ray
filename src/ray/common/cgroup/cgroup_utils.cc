@@ -48,9 +48,11 @@ constexpr int kCgroupV2FilePerm = 0600;
 static constexpr std::string_view kDefaultCgroupV2Id = "default_cgroup_id";
 
 // Open a cgroup path and append write [content] into the file.
-void OpenCgroupV2FileAndAppend(std::string_view path, std::string_view content) {
+// Return whether the append operation succeeds.
+bool OpenCgroupV2FileAndAppend(std::string_view path, std::string_view content) {
   std::ofstream out_file{path.data(), std::ios::out | std::ios::app};
   out_file << content;
+  return out.good();
 }
 
 bool CreateNewCgroupV2(const PhysicalModeExecutionContext &ctx) {
@@ -67,11 +69,16 @@ bool CreateNewCgroupV2(const PhysicalModeExecutionContext &ctx) {
   }
 
   const std::string procs_path = absl::StrFormat("%s/cgroup.procs", cgroup_folder);
-  OpenCgroupV2FileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid));
+  if (!OpenCgroupV2FileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid))) {
+    return false;
+  }
 
   // Add max memory into cgroup.
   const std::string max_memory_path = absl::StrFormat("%s/memory.max", cgroup_folder);
-  OpenCgroupV2FileAndAppend(max_memory_path, absl::StrFormat("%d", ctx.max_memory));
+  if (!OpenCgroupV2FileAndAppend(max_memory_path,
+                                 absl::StrFormat("%d", ctx.max_memory))) {
+    return false;
+  }
 
   return true;
 }
@@ -94,7 +101,9 @@ bool UpdateDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
   }
 
   const std::string procs_path = absl::StrFormat("%s/cgroup.procs", cgroup_folder);
-  OpenCgroupV2FileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid));
+  if (!OpenCgroupV2FileAndAppend(procs_path, absl::StrFormat("%d", ctx.pid))) {
+    return false;
+  }
 
   return true;
 }
