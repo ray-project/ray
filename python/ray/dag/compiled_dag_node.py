@@ -20,6 +20,10 @@ import time
 import uuid
 import traceback
 
+from ray.experimental.channel.auto_transport_type import (
+    AutoTransportType,
+    TypeHintResolver,
+)
 import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
@@ -375,7 +379,9 @@ class CompiledTask:
         # corresponding value from `args` or `kwargs` in the DAG's input.
         self.output_channels: List[ChannelInterface] = []
         self.output_idxs: List[Optional[Union[int, str]]] = []
-        self.arg_type_hints: List["ChannelOutputType"] = []
+        # The DAGNodes that are arguments to this task.
+        # This is used for lazy resolution of the arguments' type hints.
+        self.arg_nodes: List["ray.dag.DAGNode"] = []
         # idxs of possible ClassMethodOutputNodes if they exist, used for visualization
         self.output_node_idxs: List[int] = []
 
@@ -390,6 +396,10 @@ class CompiledTask:
     @property
     def num_readers(self) -> int:
         return len(self.downstream_task_idxs)
+
+    @property
+    def arg_type_hints(self) -> List["ChannelOutputType"]:
+        return [arg_node.type_hint for arg_node in self.arg_nodes]
 
     def __str__(self) -> str:
         return f"""
@@ -890,6 +900,9 @@ class CompiledDAG:
         self.actor_to_tasks: Dict[
             "ray.actor.ActorHandle", List["CompiledTask"]
         ] = defaultdict(list)
+        # Mapping from actor handle to its GPU IDs.
+        # This is used for type hint resolution for with_tensor_transport("auto").
+        self.actor_to_gpu_ids: Dict["ray.actor.ActorHandle", List[str]] = {}
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
@@ -1043,6 +1056,8 @@ class CompiledDAG:
         # Collect the set of InputNode keys bound to DAG node args.
         input_positional_args: Set[int] = set()
         input_kwargs: Set[str] = set()
+        # Set of tasks with annotation of with_tensor_transport("auto").
+        auto_transport_tasks: Set["CompiledTask"] = set()
 
         # For each task node, set its upstream and downstream task nodes.
         # Also collect the set of tasks that produce torch.tensors.
@@ -1069,6 +1084,14 @@ class CompiledDAG:
                         "Compiled DAGs can only bind methods to an actor "
                         "that is already created with Actor.remote()"
                     )
+
+                if actor_handle not in self.actor_to_gpu_ids:
+                    self.actor_to_gpu_ids[actor_handle] = self._get_gpu_ids(
+                        actor_handle
+                    )
+
+                if isinstance(dag_node.type_hint, AutoTransportType):
+                    auto_transport_tasks.add(task)
 
                 # Collect actors for NCCL P2P methods.
                 if dag_node.type_hint.requires_nccl():
@@ -1140,8 +1163,9 @@ class CompiledDAG:
                 ):
                     downstream_actor_handle = dag_node._get_actor_handle()
 
-                # Add the type hint of the upstream node to the task.
-                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
+                # Add upstream node as the argument nodes of this task, whose
+                # type hints may be updated when resolved lazily.
+                task.arg_nodes.append(upstream_task.dag_node)
 
                 if isinstance(upstream_task.dag_node, InputAttributeNode):
                     # Record all of the keys used to index the InputNode.
@@ -1207,6 +1231,33 @@ class CompiledDAG:
                 f"{[leaf_node.get_method_name() for leaf_node in leaf_nodes]} to the "
                 f"the MultiOutputNode."
             )
+
+        type_hint_resolver = TypeHintResolver(self.actor_to_gpu_ids)
+        # Resolve AutoChannelType type hints and track the actors that use NCCL.
+        # This is needed so that the NCCL group can be initialized for these
+        # actors that use NCCL.
+        for task in auto_transport_tasks:
+            writer = task.dag_node._get_actor_handle()
+            readers = task.downstream_task_idxs.values()
+            if any(reader is None for reader in readers):
+                # None means reader is the driver, currently driver on GPU
+                # is not supported, so we always use shared memory to transfer
+                # tensors.
+                task.dag_node.type_hint = TorchTensorType()
+                continue
+            writer_and_node = (writer, self._get_node_id(writer))
+            reader_and_node_list = [
+                (reader, self._get_node_id(reader)) for reader in readers
+            ]
+            # Update the type hint to the resolved one. This is needed because
+            # the resolved type hint's `register_custom_serializer` will be called
+            # in preparation for channel I/O.
+            task.dag_node.type_hint = type_hint_resolver.resolve(
+                writer_and_node, reader_and_node_list
+            )
+            if task.dag_node.type_hint.requires_nccl():
+                nccl_actors_p2p.add(writer)
+                nccl_actors_p2p.update(readers)
 
         nccl_actors_p2p = list(nccl_actors_p2p)
         if None in nccl_actors_p2p:
@@ -1291,6 +1342,17 @@ class CompiledDAG:
         else:
             self._input_num_positional_args = max(input_positional_args) + 1
         self._input_kwargs = tuple(input_kwargs)
+
+    def _get_gpu_ids(self, actor_handle: "ray.actor.ActorHandle") -> List[str]:
+        """
+        Get the GPU IDs of an actor handle.
+        """
+        accelerator_ids = ray.get(
+            actor_handle.__ray_call__.remote(
+                lambda self: ray.get_runtime_context().get_accelerator_ids()
+            )
+        )
+        return accelerator_ids.get("GPU", [])
 
     def _get_node_id(self, actor_handle: "ray.actor.ActorHandle") -> str:
         """
@@ -1492,10 +1554,16 @@ class CompiledDAG:
                     reader_and_node_list = list(
                         input_node_to_reader_and_node_set[input_dag_node]
                     )
+
+                    if isinstance(input_dag_node.type_hint, AutoTransportType):
+                        # Currently driver on GPU is not supported, so we always
+                        # use shared memory to transfer tensors.
+                        input_dag_node.type_hint = TorchTensorType()
+
                     output_channel = do_allocate_channel(
                         self,
                         reader_and_node_list,
-                        type_hint,
+                        input_dag_node.type_hint,
                         None,
                     )
                     task.output_channels.append(output_channel)
