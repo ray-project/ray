@@ -1064,11 +1064,11 @@ def iterate_with_retry(
     assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
 
     num_items_yielded = 0
-    for i in range(max_attempts):
+    for attempt in range(max_attempts):
         try:
             iterable = iterable_factory()
-            for i, item in enumerate(iterable):
-                if i < num_items_yielded:
+            for item_index, item in enumerate(iterable):
+                if item_index < num_items_yielded:
                     # Skip items that have already been yielded.
                     continue
 
@@ -1079,11 +1079,11 @@ def iterate_with_retry(
             is_retryable = match is None or any(
                 [pattern in str(e) for pattern in match]
             )
-            if is_retryable and i + 1 < max_attempts:
+            if is_retryable and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
-                backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
+                backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
                 logger.debug(
-                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
+                    f"Retrying {attempt+1} attempts to {description} after {backoff} seconds."
                 )
                 time.sleep(backoff)
             else:
