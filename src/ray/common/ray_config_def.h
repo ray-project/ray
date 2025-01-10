@@ -245,7 +245,7 @@ RAY_CONFIG(int64_t, worker_lease_timeout_milliseconds, 500)
 /// When this happens, they will kill themselves.
 RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 
-/// These values are used by the worker to set the interval for checking signals and
+/// These are used by the worker to set the interval for checking signals and
 /// batching requests when getting objects.
 RAY_CONFIG(int64_t, get_check_signal_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
