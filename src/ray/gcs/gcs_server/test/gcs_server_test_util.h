@@ -17,6 +17,8 @@
 #include <memory>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
@@ -37,24 +39,36 @@ struct GcsServerMocker {
     void PushNormalTask(
         std::unique_ptr<rpc::PushTaskRequest> request,
         const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
-      callbacks.push_back(callback);
+      absl::MutexLock lock(&mutex_);
+      callbacks_.push_back(callback);
     }
 
     bool ReplyPushTask(Status status = Status::OK(), bool exit = false) {
-      if (callbacks.size() == 0) {
-        return false;
+      rpc::ClientCallback<rpc::PushTaskReply> callback = nullptr;
+      {
+        absl::MutexLock lock(&mutex_);
+        if (callbacks_.size() == 0) {
+          return false;
+        }
+        callback = callbacks_.front();
+        callbacks_.pop_front();
       }
-      auto callback = callbacks.front();
+      // call the callback without the lock to avoid deadlock.
       auto reply = rpc::PushTaskReply();
       if (exit) {
         reply.set_worker_exiting(true);
       }
       callback(status, std::move(reply));
-      callbacks.pop_front();
       return true;
     }
 
-    std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
+    size_t GetNumCallbacks() {
+      absl::MutexLock lock(&mutex_);
+      return callbacks_.size();
+    }
+
+    std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks_ ABSL_GUARDED_BY(mutex_);
+    absl::Mutex mutex_;
   };
 
   class MockRayletClient : public RayletClientInterface {
