@@ -280,8 +280,6 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             agents_that_stepped_only=not self._as_learner_connector,
         ):
             if self._as_learner_connector:
-                assert not sa_episode.is_finalized
-
                 # Multi-agent case: Extract correct single agent RLModule (to get the
                 # state for individually).
                 if sa_episode.module_id is not None:
@@ -338,17 +336,17 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     column=Columns.STATE_IN,
                     # items_to_add.shape=(B,[state-dim])
                     # B=episode len // max_seq_len
-                    items_to_add=tree.map_structure(
-                        # Explanation:
-                        # [::max_seq_len]: only keep every Tth state.
-                        # [:-1]: Shift state outs by one, ignore very last
-                        # STATE_OUT (but therefore add the lookback/init state at
-                        # the beginning).
-                        #lambda i, o, m=max_seq_len: np.concatenate([[i], o[:-1]])[::m],
-                        lambda i, o, m=max_seq_len: ([i] + o[:-1])[::m],
-                        look_back_state,
-                        state_outs,
-                    ),
+                    # Explanation:
+                    # [::max_seq_len]: only keep every Tth state.
+                    # [:-1]: Shift state outs by one, ignore very last
+                    # STATE_OUT (but therefore add the lookback/init state at
+                    # the beginning).
+                    items_to_add=([look_back_state] + state_outs[:-1])[::max_seq_len],
+                    #tree.map_structure(
+                    #    lambda i, o, m=max_seq_len: np.concatenate([[i], o[:-1]])[::m],
+                    #    look_back_state,
+                    #    state_outs,
+                    #),
                     num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
                     single_agent_episode=sa_episode,
                 )
@@ -356,10 +354,11 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     self.add_n_batch_items(
                         batch=batch,
                         column=Columns.NEXT_STATE_IN,
-                        items_to_add=tree.map_structure(
-                            lambda i, m=max_seq_len: i[::m],
-                            state_outs,
-                        ),
+                        items_to_add=state_outs[::max_seq_len],
+                        #tree.map_structure(
+                        #    lambda i, m=max_seq_len: i[::m],
+                        #    state_outs,
+                        #),
                         num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
                         single_agent_episode=sa_episode,
                     )
