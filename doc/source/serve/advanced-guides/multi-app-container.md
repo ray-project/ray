@@ -92,6 +92,10 @@ podman push $IMG2
 
 Finally, you can specify the container image within which you want to run each application in the `image_uri` field of an application's runtime environment specification.
 
+:::{note}
+Previously the feature could be accessed through the `container` field of the runtime environment. That API is now deprecated in favor of `image_uri`.
+:::
+
 The following Serve config runs the `whisper` app with the image `IMG1`, and the `resnet` app with the image `IMG2`. `podman images` command can be used to list the names of the images. Concretely, all deployment replicas in the applications start and run in containers with the respective images.
 
 ```yaml
