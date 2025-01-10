@@ -10,8 +10,7 @@ For reference, in our experiments with 25 to 100 Alibaba Cloud nodes, Data-Juice
 
 More details can be found in our paper, [Data-Juicer 2.0: Cloud-Scale Adaptive Data Processing for Foundation Models](http://dail-wlcb.oss-cn-wulanchabu.aliyuncs.com/data_juicer/DJ2.0_arXiv_preview.pdf).
 
-![Arch-Overview](
-https://img.alicdn.com/imgextra/i4/O1CN01uawwRu1JMSdafy5lF_!!6000000001014-2-tps-4034-4146.png)
+<img src="https://img.alicdn.com/imgextra/i4/O1CN01uawwRu1JMSdafy5lF_!!6000000001014-2-tps-4034-4146.png" align="center" width="600" />
 
 ## Implementation and Optimizations
 
@@ -45,7 +44,7 @@ An optimized MinHash-LSH-based Deduplicator is provided in Ray mode. We implemen
 
 We conducted experiments on datasets with billions of samples. We prepared a 560k-sample multimodal dataset and expanded it by different factors (1x to 125000x) to create datasets of varying sizes. The experimental results, shown in the figure below, demonstrate good scalability.
 
-![Overview](https://img.alicdn.com/imgextra/i3/O1CN01JV8wcC1oxn0G2xnBT_!!6000000005292-0-tps-1328-1742.jpg)
+<img src="https://img.alicdn.com/imgextra/i3/O1CN01JV8wcC1oxn0G2xnBT_!!6000000005292-0-tps-1328-1742.jpg" align="center" width="600" />
 
 ### Distributed Deduplication on Large-Scale Datasets
 
