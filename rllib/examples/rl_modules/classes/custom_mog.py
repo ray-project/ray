@@ -2,12 +2,19 @@ import torch
 import torch.nn as nn
 import gymnasium as gym
 from typing import Any, Dict, Optional
+from ray.rllib.utils.annotations import override
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
-from ray.rllib.utils.annotations import override
 
 
+"""
+Custom rl_module that demonstrates setting up, definding the necessary _forward methods,
+and overriding the ValueFunctionAPI to compute values using mixture of gaussian components.
+
+This also uses a custom_config from the module_to_load_spec to get the fcnet_hiddens
+as well as custom arg num_gaussians
+"""
 
 class MOGModule(TorchRLModule, ValueFunctionAPI):
     def __init__(
@@ -81,7 +88,6 @@ class MOGModule(TorchRLModule, ValueFunctionAPI):
         sigmas_prev = mog_output[:, self.num_gaussians:self.num_gaussians*2]
         sigmas = nn.functional.softplus(sigmas_prev) + 1e-6
         alphas = mog_output[:, self.num_gaussians*2:]
-        # alphas = torch.clamp(nn.functional.softmax(alphas, dim=-1), 1e-6, None)
         return {
             'means': means,
             'sigmas': sigmas,
