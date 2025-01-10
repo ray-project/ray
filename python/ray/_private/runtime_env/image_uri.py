@@ -165,6 +165,10 @@ class ContainerPlugin(RuntimeEnvPlugin):
         if not runtime_env.has_py_container() or not runtime_env.py_container_image():
             return
 
+        logger.warning(
+            "The `container` runtime environment field is DEPRECATED and will be "
+            "removed in the near future. Please use `image_uri` instead."
+        )
         self.worker_path = await _create_impl(runtime_env.py_container_image(), logger)
 
     def modify_context(
