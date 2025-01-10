@@ -50,7 +50,7 @@ The visualization for the preceding code is shown below:
 
 Note that tasks of the same actor are shown in the same color.
 
-Execution Schedule
+Execution schedule
 ------------------
 
 Compiled Graph generates an execution schedule for each of the participating actors. This is very useful information
