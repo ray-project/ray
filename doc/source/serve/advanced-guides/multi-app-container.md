@@ -147,7 +147,7 @@ ox
 
 ### Compatibility with other runtime environment fields
 
-Currently, use of the `image_uri` field is not supported with any other field in `runtime_env`. If you have a use case for pairing `image_uri` with another runtime environment feature, submit a feature request on [Github](https://github.com/ray-project/ray/issues).
+Currently, use of the `image_uri` field is only supported with `config` and `env_vars`. If you have a use case for pairing `image_uri` with another runtime environment feature, submit a feature request on [Github](https://github.com/ray-project/ray/issues).
 
 ### Environment variables
 
