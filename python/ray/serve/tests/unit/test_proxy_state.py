@@ -7,13 +7,14 @@ import pytest
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.constants import PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
-from ray.serve._private.proxy_state import ProxyState, ProxyStateManager, ProxyWrapper
+from ray.serve._private.proxy_state import ProxyId, ProxyState, ProxyStateManager, ProxyWrapper
 from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import Timer
 from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve.schema import LoggingConfig, ProxyStatus
 
 HEAD_NODE_ID = "node_id-index-head"
+HEAD_PROXY_ID = ProxyId("node_id-index-head", 0)
 
 
 class MockClusterNodeInfoCache:
@@ -148,7 +149,7 @@ def _update_and_check_proxy_state_manager(
     proxy_states = proxy_state_manager._proxy_states
     assert all(
         [
-            proxy_states[node_ids[idx]].status == statuses[idx]
+            proxy_states[ProxyId(node_ids[idx], 0)].status == statuses[idx]
             for idx in range(len(node_ids))
         ]
     ), [proxy_state.status for proxy_state in proxy_states.values()]
@@ -203,7 +204,7 @@ def test_proxy_state_manager_restarts_unhealthy_proxies(all_nodes):
     # First iteration, refresh state
     proxy_state_manager.update()
 
-    prev_proxy_state = proxy_state_manager._proxy_states[HEAD_NODE_ID]
+    prev_proxy_state = proxy_state_manager._proxy_states[HEAD_PROXY_ID]
     # Mark existing head-node proxy UNHEALTHY
     prev_proxy_state._set_status(ProxyStatus.UNHEALTHY)
     old_proxy = prev_proxy_state.actor_handle
@@ -214,7 +215,7 @@ def test_proxy_state_manager_restarts_unhealthy_proxies(all_nodes):
         # Advance timer by 5 (to perform a health-check)
         timer.advance(5)
 
-    new_proxy_state = proxy_state_manager._proxy_states[HEAD_NODE_ID]
+    new_proxy_state = proxy_state_manager._proxy_states[HEAD_PROXY_ID]
     # Previous proxy's state stays UNHEALTHY
     assert prev_proxy_state.status == ProxyStatus.UNHEALTHY
     # Ensure the old proxy is getting shutdown.
@@ -405,7 +406,7 @@ def test_proxy_manager_update_proxies_states(all_nodes, number_of_worker_nodes):
     cluster_node_info_cache.alive_nodes = all_nodes
 
     for node_id, _ in all_nodes:
-        manager._proxy_states[node_id] = _create_proxy_state(
+        manager._proxy_states[ProxyId(node_id, 0)] = _create_proxy_state(
             status=ProxyStatus.HEALTHY,
             node_id=node_id,
         )
@@ -502,19 +503,19 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
     cluster_node_info_cache.alive_nodes = all_nodes
 
     for node_id, _ in all_nodes:
-        manager._proxy_states[node_id] = _create_proxy_state(
+        manager._proxy_states[ProxyId(node_id, 0)] = _create_proxy_state(
             status=ProxyStatus.STARTING,
             node_id=node_id,
             timer=timer,
         )
 
-        manager._proxy_states[node_id]._actor_proxy_wrapper.is_ready_response = True
+        manager._proxy_states[ProxyId(node_id, 0)]._actor_proxy_wrapper.is_ready_response = True
 
     # All nodes are target proxy nodes
     node_ids = [node_id for node_id, _ in all_nodes]
 
     worker_node_id = node_ids[1]
-    worker_proxy_state = manager._proxy_states[worker_node_id]
+    worker_proxy_state = manager._proxy_states[ProxyId(worker_node_id, 0)]
 
     # Reconcile all proxies states
     manager.update(
@@ -522,7 +523,7 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
     )
 
     # Assert all proxies are HEALTHY
-    proxy_statuses = [manager._proxy_states[node_id].status for node_id in node_ids]
+    proxy_statuses = [manager._proxy_states[ProxyId(node_id, 0)].status for node_id in node_ids]
     assert [ProxyStatus.HEALTHY, ProxyStatus.HEALTHY] == proxy_statuses
 
     # Reconcile proxies with empty set of target nodes (ie only proxy on the head-node
@@ -537,7 +538,7 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
         # Assert that
         #   - Head-node proxy is HEALTHY4
         #   - Worker node proxy is DRAINING
-        proxy_statuses = [manager._proxy_states[node_id].status for node_id in node_ids]
+        proxy_statuses = [manager._proxy_states[ProxyId(node_id, 0)].status for node_id in node_ids]
         assert [ProxyStatus.HEALTHY, ProxyStatus.DRAINING] == proxy_statuses
 
     assert worker_proxy_state._actor_proxy_wrapper.get_num_drain_checks() == N
@@ -552,7 +553,7 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
     )
 
     assert len(manager._proxy_states) == 1
-    assert manager._proxy_states[HEAD_NODE_ID].status == ProxyStatus.HEALTHY
+    assert manager._proxy_states[HEAD_PROXY_ID].status == ProxyStatus.HEALTHY
 
 
 def test_is_ready_for_shutdown(all_nodes):
@@ -568,7 +569,7 @@ def test_is_ready_for_shutdown(all_nodes):
     cluster_node_info_cache.alive_nodes = all_nodes
 
     for node_id, node_ip_address in all_nodes:
-        manager._proxy_states[node_id] = _create_proxy_state(
+        manager._proxy_states[ProxyId(node_id, 0)] = _create_proxy_state(
             status=ProxyStatus.HEALTHY,
             node_id=node_id,
         )
@@ -615,7 +616,7 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
     # Ensure the proxy state statuses before update are STARTING, set the
     # readiness check to failing
     for node_id in node_ids:
-        proxy_state = proxy_state_manager._proxy_states[node_id]
+        proxy_state = proxy_state_manager._proxy_states[ProxyId(node_id, 0)]
 
         assert proxy_state.status == ProxyStatus.STARTING
         proxy_state._actor_proxy_wrapper.is_ready_response = False
@@ -631,8 +632,8 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
     # Ensure the proxy state statuses before update are STARTING, set the
     # readiness check to failing
     for node_id in node_ids:
-        proxy_state = proxy_state_manager._proxy_states[node_id]
-        prev_proxy_state = prev_proxy_states[node_id]
+        proxy_state = proxy_state_manager._proxy_states[ProxyId(node_id, 0)]
+        prev_proxy_state = prev_proxy_states[ProxyId(node_id, 0)]
         # Assert
         #   - All proxies are restarted
         #   - Previous proxy states are UNHEALTHY
@@ -654,8 +655,8 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
     # Ensure the proxy state statuses before update are STARTING, set the
     # readiness check to failing
     for node_id in node_ids:
-        proxy_state = proxy_state_manager._proxy_states[node_id]
-        prev_proxy_state = prev_proxy_states[node_id]
+        proxy_state = proxy_state_manager._proxy_states[ProxyId(node_id, 0)]
+        prev_proxy_state = prev_proxy_states[ProxyId(node_id, 0)]
         # Assert
         #   - All proxies are restarted
         #   - Previous proxy states are UNHEALTHY

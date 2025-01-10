@@ -507,13 +507,20 @@ class TestLoggingAPI:
     def test_start_serve_with_logging_config(self, serve_and_ray_shutdown):
         serve.start(logging_config={"log_level": "DEBUG", "encoding": "JSON"})
         serve_log_dir = get_serve_logs_dir()
-        # Check controller log
+
+        proxy_pid = None
+        controller_pid = None
         actors = state_api.list_actors()
-        expected_log_regex = [".*logger with logging config.*"]
         for actor in actors:
-            print(actor["name"])
             if "SERVE_CONTROLLER_ACTOR" == actor["name"]:
                 controller_pid = actor["pid"]
+            if "SERVE_PROXY_ACTOR" in actor["name"]:
+                proxy_pid = actor["pid"]
+
+        assert proxy_pid is not None and controller_pid is not None
+
+        # Check controller log
+        expected_log_regex = [".*logger with logging config.*"]
         controller_log_file_name = get_component_file_name(
             "controller", controller_pid, component_type=None, suffix=".log"
         )
@@ -524,7 +531,7 @@ class TestLoggingAPI:
         nodes = state_api.list_nodes()
         node_ip_address = nodes[0].node_ip
         proxy_log_file_name = get_component_file_name(
-            "proxy", node_ip_address, component_type=None, suffix=".log"
+            "proxy", f"{node_ip_address}_{proxy_pid}", component_type=None, suffix=".log"
         )
         proxy_log_path = os.path.join(serve_log_dir, proxy_log_file_name)
         check_log_file(proxy_log_path, expected_log_regex)
