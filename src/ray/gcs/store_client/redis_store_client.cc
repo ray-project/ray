@@ -440,7 +440,7 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
   }
 }
 
-int RedisStoreClient::GetNextJobID() {
+Status RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
   // Note: This is not a HASH! It's a simple key-value pair.
   // Key: "RAYexternal_storage_namespace@JobCounter"
   // Value: The next job ID.
@@ -448,8 +448,15 @@ int RedisStoreClient::GetNextJobID() {
       "INCRBY", RedisKey{external_storage_namespace_, "JobCounter"}, {"1"}};
 
   auto *cxt = redis_client_->GetPrimaryContext();
-  auto reply = cxt->RunArgvSync(command.ToRedisArgs());
-  return static_cast<int>(reply->ReadAsInteger());
+
+  cxt->RunArgvAsync(command.ToRedisArgs(),
+                    [callback = std::move(callback)](
+                        const std::shared_ptr<CallbackReply> &reply) mutable {
+                      auto job_id = reply->ReadAsInteger();
+                      std::move(callback).Post("GcsStore.GetNextJobID", job_id);
+                    });
+
+  return Status::OK();
 }
 
 Status RedisStoreClient::AsyncGetKeys(const std::string &table_name,

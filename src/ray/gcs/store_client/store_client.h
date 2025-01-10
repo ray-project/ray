@@ -104,7 +104,7 @@ class StoreClient {
   /// Get next job id by `INCR` "JobCounter" key synchronously.
   ///
   /// \return Next job id in integer representation.
-  virtual int GetNextJobID() = 0;
+  virtual Status AsyncGetNextJobID(Postable<void(int)> callback) = 0;
 
   /// Get all the keys match the prefix from the given table asynchronously.
   ///
