@@ -3,7 +3,6 @@ load("//bazel:ray.bzl", "COPTS", "ray_cc_test", "ray_cc_library")
 ray_cc_test(
     name = "array_test",
     srcs = ["array_test.cc"],
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
@@ -15,7 +14,6 @@ ray_cc_test(
 ray_cc_test(
     name = "function_traits_test",
     srcs = ["function_traits_test.cc"],
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
@@ -26,7 +24,6 @@ ray_cc_test(
 ray_cc_test(
     name = "thread_checker_test",
     srcs = ["thread_checker_test.cc"],
-    copts = COPTS,
     size = "small",
     tags = ["team:core"],
     deps = [
@@ -39,7 +36,6 @@ ray_cc_test(
     name = "container_util_test",
     size = "small",
     srcs = ["container_util_test.cc"],
-    copts = COPTS,
     tags = ["team:core"],
     linkstatic = True,
     deps = [
@@ -54,7 +50,6 @@ ray_cc_test(
     name = "counter_test",
     size = "small",
     srcs = ["counter_test.cc"],
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
@@ -66,7 +61,6 @@ ray_cc_test(
     name = "event_test",
     size = "small",
     srcs = ["event_test.cc"],
-    copts = COPTS,
     tags = [
         "no_tsan",
         "no_windows",
@@ -84,7 +78,6 @@ ray_cc_test(
     name = "exponential_backoff_test",
     size = "small",
     srcs = ["exponential_backoff_test.cc"],
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
@@ -96,7 +89,6 @@ ray_cc_test(
     name = "filesystem_test",
     size = "small",
     srcs = ["filesystem_test.cc"],
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
         "//:ray_common",
@@ -114,7 +106,6 @@ ray_cc_test(
         # Disable so we can test terminate handler.
         "--gtest_catch_exceptions=0",
     ],
-    copts = COPTS,
     tags = [
         "no_ubsan",
         "team:core",
@@ -132,7 +123,6 @@ ray_cc_test(
     name = "sample_test",
     size = "small",
     srcs = ["sample_test.cc"],
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
         "//:ray_common",
@@ -144,7 +134,6 @@ ray_cc_test(
     name = "sequencer_test",
     size = "small",
     srcs = ["sequencer_test.cc"],
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
@@ -156,7 +145,6 @@ ray_cc_test(
     name = "signal_test",
     size = "small",
     srcs = ["signal_test.cc"],
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
         "//:raylet_lib",
@@ -168,7 +156,6 @@ ray_cc_test(
     name = "throttler_test",
     size = "small",
     srcs = ["throttler_test.cc"],
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
@@ -181,7 +168,6 @@ ray_cc_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.cc"],
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
@@ -196,10 +182,8 @@ ray_cc_test(
     name = "proto_schema_backward_compatibility_test",
     size = "small",
     srcs = ["proto_schema_backward_compatibility_test.cc"],
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
-        # "//src/ray/util",
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
         "//src/ray/protobuf:gcs_cc_proto",
@@ -210,7 +194,6 @@ ray_cc_test(
     name = "size_literals_test",
     srcs = ["size_literals_test.cc"],
     size = "small",
-    copts = COPTS,
     tags = ["team:core"],
     deps = [
         "//src/ray/util:size_literals",
@@ -226,7 +209,6 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
-    copts = COPTS,
     tags = ["team:core"],
 )
 
