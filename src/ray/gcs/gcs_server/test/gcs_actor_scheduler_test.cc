@@ -218,6 +218,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
                                                node_id,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Reply the actor creation request, then the actor should be scheduled successfully.
@@ -269,6 +270,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
                                                node_id,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Reply the actor creation request, then the actor should be scheduled successfully.
@@ -307,6 +309,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
                                                node_id,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
 
@@ -429,6 +432,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
                                                node_id,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Remove the node and cancel the scheduling on this node, the scheduling should be
@@ -476,6 +480,7 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
                                                node_id,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Cancel the scheduling on this node, the scheduling should be interrupted.
@@ -546,6 +551,7 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
                                                node_id_2,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Reply the actor creation request, then the actor should be scheduled successfully.
@@ -601,6 +607,7 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
                                                node_id_1,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Reply the actor creation request, then the actor should be scheduled successfully.
@@ -726,6 +733,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleAndDestroyOneActor) {
                                                node_id,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Reply the actor creation request, then the actor should be scheduled successfully.
@@ -865,6 +873,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasingByGcs) {
                                                node_id,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Reply the actor creation request, then the actor should be scheduled successfully.
@@ -906,6 +915,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreatingByGcs) {
                                                node_id,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
 
@@ -1037,6 +1047,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs) {
                                                node_id,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Remove the node and cancel the scheduling on this node, the scheduling should be
@@ -1047,6 +1058,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs) {
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());
   ASSERT_EQ(actor->GetActorID(), actor_ids.front());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Reply the actor creation request, which will influence nothing.
@@ -1087,6 +1099,7 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreatingByGcs) {
                                                node_id,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Cancel the scheduling on this node, the scheduling should be interrupted.
@@ -1129,6 +1142,7 @@ TEST_F(GcsActorSchedulerTest, TestRescheduleByGcs) {
   gcs_actor_scheduler_->Reschedule(actor);
   ASSERT_EQ(0, raylet_client_->num_workers_requested);
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Reply the actor creation request, then the actor should be scheduled successfully.
@@ -1149,6 +1163,7 @@ TEST_F(GcsActorSchedulerTest, TestRescheduleByGcs) {
                                                node_id_1,
                                                NodeID::Nil()));
   ASSERT_EQ(0, raylet_client_->callbacks.size());
+  WaitForCondition([&]() { return worker_client_->callbacks.size() == 1; }, 1000);
   ASSERT_EQ(1, worker_client_->callbacks.size());
 
   // Reply the actor creation request, then the actor should be scheduled successfully.
