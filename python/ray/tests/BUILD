@@ -760,7 +760,7 @@ py_test_module_list(
   tags = ["exclusive", "debug_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   env = {
-    "RAY_TEST_DEBUG_MODE" : "1",
+    "RAY_DEBUG_MODE" : "1",
   }
 )
 

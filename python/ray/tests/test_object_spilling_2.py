@@ -20,7 +20,7 @@ from ray._private.external_storage import (
 # Note: Disk write speed can be as low as 6 MiB/s in AWS Mac instances, so we have to
 # increase the timeout.
 pytestmark = [pytest.mark.timeout(900 if platform.system() == "Darwin" else 180)]
-condition_wait_timeout = 20 if os.getenv("RAY_TEST_DEBUG_MODE") == "1" else 10
+condition_wait_timeout = 20 if os.getenv("RAY_DEBUG_MODE") == "1" else 10
 
 
 def test_delete_objects(object_spilling_config, shutdown_only):
@@ -96,7 +96,6 @@ def test_delete_objects_delete_while_creating(object_spilling_config, shutdown_o
         lambda: is_dir_empty(temp_folder, ray_context["node_id"]),
         timeout=condition_wait_timeout,
     )
-    print("condition_wait_timeout: ", condition_wait_timeout)
     assert_no_thrashing(ray_context["address"])
 
 
