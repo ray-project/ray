@@ -435,7 +435,9 @@ NodeManager::NodeManager(
                             "node is removed from virtual cluster.";
         }
         if (!cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle()) {
-          for (auto &[_, worker] : leased_workers_) {
+          for (auto iter = leased_workers_.begin(); iter != leased_workers_.end();) {
+            auto curr_iter = iter++;
+            auto worker = curr_iter->second;
             RAY_LOG(DEBUG).WithField(worker->WorkerId())
                 << "Worker is cleaned because the node is removed from virtual cluster.";
             DestroyWorker(

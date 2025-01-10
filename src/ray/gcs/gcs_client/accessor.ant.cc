@@ -103,20 +103,18 @@ Status VirtualClusterInfoAccessor::AsyncSubscribeAll(
                 updated_subscribe(virtual_cluster_id, std::move(virtual_cluster_info));
                 virtual_cluster_id_set.emplace(virtual_cluster_id);
               }
-              if (virtual_clusters_.size() > virtual_cluster_id_set.size()) {
-                for (auto iter = virtual_clusters_.begin();
-                     iter != virtual_clusters_.end();) {
-                  auto curr_iter = iter++;
-                  // If there is any virtual cluster not in `virtual_cluster_id_set`, it
-                  // means the local node may miss the pub messages (when gcs removed
-                  // virtual clusters) in the past. So we have to explicitely notify the
-                  // subscriber to clean its local cache.
-                  if (!virtual_cluster_id_set.contains(curr_iter->first)) {
-                    auto virtual_cluster_data = std::move(curr_iter->second);
-                    virtual_cluster_data.set_is_removed(true);
-                    subscribe(curr_iter->first, std::move(virtual_cluster_data));
-                    virtual_clusters_.erase(curr_iter);
-                  }
+
+              for (auto iter = virtual_clusters_.begin(); iter != virtual_clusters_.end();) {
+                auto curr_iter = iter++;
+                // If there is any virtual cluster not in `virtual_cluster_id_set`, it
+                // means the local node may miss the pub messages (when gcs removed
+                // virtual clusters) in the past. So we have to explicitely notify the
+                // subscriber to clean its local cache.
+                if (!virtual_cluster_id_set.contains(curr_iter->first)) {
+                  auto virtual_cluster_data = std::move(curr_iter->second);
+                  virtual_cluster_data.set_is_removed(true);
+                  subscribe(curr_iter->first, std::move(virtual_cluster_data));
+                  virtual_clusters_.erase(curr_iter);
                 }
               }
               if (done) {
