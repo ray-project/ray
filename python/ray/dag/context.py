@@ -11,6 +11,9 @@ _context_lock = threading.Lock()
 DEFAULT_SUBMIT_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_submit_timeout", 10))
 DEFAULT_GET_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_get_timeout", 10))
 DEFAULT_TEARDOWN_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_teardown_timeout", 30))
+DEFAULT_READ_ITERATION_TIMEOUT_S = float(
+    os.environ.get("RAY_CGRAPH_read_iteration_timeout_s", 0.1)
+)
 # Default buffer size is 1MB.
 DEFAULT_BUFFER_SIZE_BYTES = int(os.environ.get("RAY_CGRAPH_buffer_size_bytes", 1e6))
 # Default asyncio_max_queue_size is 0, which means no limit.
@@ -30,10 +33,6 @@ DEFAULT_MAX_INFLIGHT_EXECUTIONS = int(
 
 DEFAULT_OVERLAP_GPU_COMMUNICATION = bool(
     os.environ.get("RAY_CGRAPH_overlap_gpu_communication", 0)
-)
-
-DEFAULT_READ_ITERATION_TIMEOUT_S = float(
-    os.environ.get("RAY_CGRAPH_read_iteration_timeout_s", 0.1)
 )
 
 
@@ -61,6 +60,11 @@ class DAGContext:
             value higher than the expected time to execute the entire DAG.
         teardown_timeout: The maximum time in seconds to wait for the DAG to
             cleanly shut down.
+        read_iteration_timeout_s: The timeout in seconds for each read iteration
+            that reads one of the input channels. If the timeout is reached, the
+            read operation will be interrupted and will try to read the next
+            input channel. The default value is 0.1 seconds. It must be less than
+            or equal to `get_timeout`.
         buffer_size_bytes: The initial buffer size in bytes for messages
             that can be passed between tasks in the DAG. The buffers will
             be automatically resized if larger messages are written to the
@@ -82,20 +86,23 @@ class DAGContext:
             communication with computation during DAG execution. If True, the
             communication and computation can be overlapped, which can improve
             the performance of the DAG execution.
-        read_iteration_timeout_s: The timeout for each read iteration in seconds.
-            If the timeout is reached, the read operation will be interrupted and
-            then try to read the next input channel.
     """
 
     submit_timeout: int = DEFAULT_SUBMIT_TIMEOUT_S
     get_timeout: int = DEFAULT_GET_TIMEOUT_S
     teardown_timeout: int = DEFAULT_TEARDOWN_TIMEOUT_S
+    read_iteration_timeout_s: float = DEFAULT_READ_ITERATION_TIMEOUT_S
     buffer_size_bytes: int = DEFAULT_BUFFER_SIZE_BYTES
     asyncio_max_queue_size: int = DEFAULT_ASYNCIO_MAX_QUEUE_SIZE
     max_buffered_results: int = DEFAULT_MAX_BUFFERED_RESULTS
     max_inflight_executions: int = DEFAULT_MAX_INFLIGHT_EXECUTIONS
     overlap_gpu_communication: bool = DEFAULT_OVERLAP_GPU_COMMUNICATION
-    read_iteration_timeout_s: float = DEFAULT_READ_ITERATION_TIMEOUT_S
+
+    def __post_init__(self):
+        if self.read_iteration_timeout_s > self.get_timeout:
+            raise ValueError(
+                "read_iteration_timeout_s must be less than or equal to get_timeout"
+            )
 
     @staticmethod
     def get_current() -> "DAGContext":

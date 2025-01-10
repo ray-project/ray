@@ -1,5 +1,6 @@
 import asyncio
 import concurrent
+import logging
 import sys
 import threading
 import time
@@ -21,6 +22,8 @@ import ray.exceptions
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+logger = logging.getLogger(__name__)
 
 # The context singleton on this process.
 _default_context: "Optional[ChannelContext]" = None
@@ -394,13 +397,22 @@ class SynchronousReader(ReaderInterface):
                         self._unread_channels = [
                             c for c in self._input_channels if c not in read_channel_set
                         ]
+                        logger.warning(
+                            f"Input channel {i} returned a RayTaskError. "
+                            "Returning immediately."
+                        )
                         return [result for _ in range(len(self._input_channels))]
                 except ray.exceptions.RayChannelTimeoutError as e:
                     remaining_timeout = max(timeout_point - time.monotonic(), 0)
                     if remaining_timeout == 0:
                         raise e
-                # Do not update the `remaining_timeout` here if no
-                # RayChannelTimeoutError is encountered.
+                    continue
+
+                remaining_timeout = max(timeout_point - time.monotonic(), 0)
+                if remaining_timeout == 0:
+                    raise ray.exceptions.RayChannelTimeoutError(
+                        f"Cannot read all channels within {timeout} seconds"
+                    )
         return results
 
 
