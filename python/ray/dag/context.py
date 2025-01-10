@@ -101,7 +101,8 @@ class DAGContext:
     def __post_init__(self):
         if self.read_iteration_timeout_s > self.get_timeout:
             raise ValueError(
-                "read_iteration_timeout_s must be less than or equal to get_timeout"
+                f"read_iteration_timeout_s ({self.read_iteration_timeout_s}) must be "
+                f"less than or equal to get_timeout ({self.get_timeout})"
             )
 
     @staticmethod
