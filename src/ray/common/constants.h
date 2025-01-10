@@ -96,10 +96,10 @@ constexpr char kLibraryPathEnvName[] = "PATH";
 constexpr char kLibraryPathEnvName[] = "LD_LIBRARY_PATH";
 #endif
 
-#define RAY_DEFAULT_LABEL_KEYS_PREFIX "ray.io/"
+#define RAY_LABEL_KEY_PREFIX "ray.io/"
 /// Default node label key: node_id
-constexpr char kLabelKeyNodeID[] = RAY_DEFAULT_LABEL_KEYS_PREFIX "node_id";
-#undef RAY_DEFAULT_LABEL_KEYS_PREFIX
+constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
+#undef RAY_LABEL_KEY_PREFIX
 
 /// All nodes implicitly have resources with this prefix and the quantity is 1.
 /// NOTE: DON'T CHANGE THIS since autoscaler depends on it.
