@@ -1318,7 +1318,13 @@ void WorkerPool::StartNewWorker(
       pop_worker_request->runtime_env_info.serialized_runtime_env();
 
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
-    // create runtime env.
+    if (serialized_runtime_env.find("FOO") != std::string::npos) {
+      // Directly skip task level runtime env setup.
+      start_worker_process_fn(pop_worker_request, "");
+      return;
+    }
+
+    // Else, create runtime env.
     GetOrCreateRuntimeEnv(
         serialized_runtime_env,
         pop_worker_request->runtime_env_info.runtime_env_config(),
@@ -1759,6 +1765,11 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
 }
 
 void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env) {
+  // Skip runtime env deletion for task.
+  if (serialized_runtime_env.find("FOO") != std::string::npos) {
+    return;
+  }
+
   RAY_LOG(DEBUG) << "DeleteRuntimeEnvIfPossible " << serialized_runtime_env;
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
