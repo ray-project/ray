@@ -1928,7 +1928,41 @@ class TestFastFail:
         else:
             start_time = time.time()
             with pytest.raises(ValueError, match="x is even"):
-                print(ray.get(compiled_dag.execute(6)))
+                ray.get(compiled_dag.execute(6))
+            end_time = time.time()
+            assert end_time - start_time < 6
+
+    @pytest.mark.parametrize("is_async", [True, False])
+    def test_get_one_of_output_refs(self, ray_start_regular, is_async):
+        """
+        Tests the case where `ray.get` is called on only one of the output refs
+        which doesn't fail.
+        """
+        a = FastFailActor.remote()
+        b = FastFailActor.remote()
+        with InputNode() as inp:
+            dag = MultiOutputNode(
+                [a.sleep_and_echo.bind(inp), b.fail_if_x_is_even.bind(inp)]
+            )
+        compiled_dag = dag.experimental_compile(enable_asyncio=is_async)
+
+        if is_async:
+
+            async def main():
+                futs = await compiled_dag.execute_async(6)
+                start_time = time.time()
+                with pytest.raises(ValueError, match="x is even"):
+                    await asyncio.gather(futs[0])
+                end_time = time.time()
+                assert end_time - start_time < 6
+
+            loop = get_or_create_event_loop()
+            loop.run_until_complete(main())
+        else:
+            start_time = time.time()
+            with pytest.raises(ValueError, match="x is even"):
+                refs = compiled_dag.execute(6)
+                ray.get(refs[0])
             end_time = time.time()
             assert end_time - start_time < 6
 
@@ -1965,7 +1999,7 @@ class TestFastFail:
         else:
             start_time = time.time()
             with pytest.raises(ValueError, match="x is even"):
-                print(ray.get(compiled_dag.execute(6)))
+                ray.get(compiled_dag.execute(6))
             end_time = time.time()
             assert end_time - start_time < 6
 
