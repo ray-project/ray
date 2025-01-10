@@ -260,11 +260,11 @@ class MARWILConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule,
+            from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+                DefaultPPOTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=PPOTorchRLModule)
+            return RLModuleSpec(module_class=DefaultPPOTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -382,10 +382,10 @@ class MARWILConfig(AlgorithmConfig):
         super().validate()
 
         if self.beta < 0.0 or self.beta > 1.0:
-            raise ValueError("`beta` must be within 0.0 and 1.0!")
+            self._value_error("`beta` must be within 0.0 and 1.0!")
 
         if self.postprocess_inputs is False and self.beta > 0.0:
-            raise ValueError(
+            self._value_error(
                 "`postprocess_inputs` must be True for MARWIL (to "
                 "calculate accum., discounted returns)! Try setting "
                 "`config.offline_data(postprocess_inputs=True)`."
@@ -399,7 +399,7 @@ class MARWILConfig(AlgorithmConfig):
             and not self.dataset_num_iters_per_learner
             and self.enable_rl_module_and_learner
         ):
-            raise ValueError(
+            self._value_error(
                 "When using a local Learner (`config.num_learners=0`), the number of "
                 "iterations per learner (`dataset_num_iters_per_learner`) has to be "
                 "defined! Set this hyperparameter through `config.offline_data("

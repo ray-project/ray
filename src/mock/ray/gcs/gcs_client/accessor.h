@@ -327,7 +327,7 @@ class MockInternalKVAccessor : public InternalKVAccessor {
                const std::string &value,
                bool overwrite,
                const int64_t timeout_ms,
-               const OptionalItemCallback<int> &callback),
+               const OptionalItemCallback<bool> &callback),
               (override));
   MOCK_METHOD(Status,
               AsyncInternalKVExists,

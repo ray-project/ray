@@ -312,8 +312,8 @@ def add_rllib_example_script_args(
     parser.add_argument(
         "--num-gpus",
         type=int,
-        default=0,
-        help="The number of GPUs to use (if on the old API stack).",
+        default=None,
+        help="The number of GPUs to use (only on the old API stack).",
     )
 
     return parser
@@ -834,7 +834,7 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
     is_multi_agent = (
         AlgorithmConfig()
         .update_from_dict({"policies": train_results["config"]["policies"]})
-        .is_multi_agent()
+        .is_multi_agent
     )
 
     # Check in particular the "info" dict.
@@ -923,7 +923,7 @@ def check_train_results(train_results: ResultDict):
     is_multi_agent = (
         AlgorithmConfig()
         .update_from_dict({"policies": train_results["config"]["policies"]})
-        .is_multi_agent()
+        .is_multi_agent
     )
 
     # Check in particular the "info" dict.
@@ -1087,15 +1087,17 @@ def run_rllib_example_script_experiment(
                 enable_env_runner_and_connector_v2=False,
             )
 
-        # Define EnvRunner/RolloutWorker scaling and behavior.
+        # Define EnvRunner scaling and behavior.
         if args.num_env_runners is not None:
             config.env_runners(num_env_runners=args.num_env_runners)
+        if args.num_envs_per_env_runner is not None:
+            config.env_runners(num_envs_per_env_runner=args.num_envs_per_env_runner)
 
         # Define compute resources used automatically (only using the --num-learners
         # and --num-gpus-per-learner args).
         # New stack.
         if config.enable_rl_module_and_learner:
-            if args.num_gpus > 0:
+            if args.num_gpus is not None and args.num_gpus > 0:
                 raise ValueError(
                     "--num-gpus is not supported on the new API stack! To train on "
                     "GPUs, use the command line options `--num-gpus-per-learner=1` and "
@@ -1146,8 +1148,8 @@ def run_rllib_example_script_experiment(
             else:
                 config.learners(num_gpus_per_learner=args.num_gpus_per_learner)
 
-        # Old stack.
-        else:
+        # Old stack (override only if arg was provided by user).
+        elif args.num_gpus is not None:
             config.resources(num_gpus=args.num_gpus)
 
         # Evaluation setup.

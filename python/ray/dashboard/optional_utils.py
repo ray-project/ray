@@ -12,7 +12,7 @@ import os
 import time
 import traceback
 from collections import namedtuple
-from typing import Any, Callable
+from typing import Any, Callable, Union
 
 from aiohttp.web import Request, Response
 
@@ -24,7 +24,12 @@ from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_boo
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
-from ray.dashboard.utils import CustomEncoder, to_google_style
+from ray.dashboard.utils import (
+    CustomEncoder,
+    DashboardAgentModule,
+    DashboardHeadModule,
+    to_google_style,
+)
 
 try:
     create_task = asyncio.create_task
@@ -294,11 +299,13 @@ def init_ray_and_catch_exceptions() -> Callable:
 
     def decorator_factory(f: Callable) -> Callable:
         @functools.wraps(f)
-        async def decorator(self, *args, **kwargs):
+        async def decorator(
+            self: Union[DashboardAgentModule, DashboardHeadModule], *args, **kwargs
+        ):
             try:
                 if not ray.is_initialized():
                     try:
-                        address = self.get_gcs_address()
+                        address = self.gcs_address
                         logger.info(f"Connecting to ray with address={address}")
                         # Set the gcs rpc timeout to shorter
                         os.environ["RAY_gcs_server_request_timeout_seconds"] = str(
