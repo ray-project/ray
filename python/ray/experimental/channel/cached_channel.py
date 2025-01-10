@@ -58,6 +58,7 @@ class CachedChannel(ChannelInterface):
         )
 
     def write(self, value: Any, timeout: Optional[float] = None):
+        self.ensure_registered_as_writer()
         # TODO: better organize the imports
         from ray.experimental.channel import ChannelContext
 
@@ -74,6 +75,7 @@ class CachedChannel(ChannelInterface):
         ctx.set_data(self._channel_id, value, self._num_reads)
 
     def read(self, timeout: Optional[float] = None) -> Any:
+        self.ensure_registered_as_reader()
         # TODO: better organize the imports
         from ray.experimental.channel import ChannelContext
 
