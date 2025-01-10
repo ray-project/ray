@@ -140,6 +140,16 @@ def _get_basic_autoscaling_config() -> dict:
     }
 
 
+def _get_autoscaling_config_with_groups_suspended() -> dict:
+    """The expected autoscaling with all groups suspended."""
+    config = _get_basic_autoscaling_config()
+    for _, spec in config["available_node_types"].items():
+        spec["max_workers"] = 0
+        spec["min_workers"] = 0
+    config["max_workers"] = 0
+    return config
+
+
 def _get_ray_cr_no_cpu_error() -> dict:
     """Incorrectly formatted Ray CR without num-cpus rayStartParam and without resource
     limits. Autoscaler should raise an error when reading this.
@@ -236,6 +246,14 @@ def _get_ray_cr_with_only_requests() -> dict:
     return cr
 
 
+def _get_ray_cr_with_groups_suspended() -> dict:
+    """CR with all worker groups suspended"""
+    cr = get_basic_ray_cr()
+    for group in cr["spec"]["workerGroupSpecs"]:
+        group["suspend"] = True
+    return cr
+
+
 def _get_autoscaling_config_with_options() -> dict:
     config = _get_basic_autoscaling_config()
     config["upscaling_speed"] = 1
@@ -311,6 +329,14 @@ TEST_DATA = (
             None,
             None,
             id="autoscaler-options",
+        ),
+        pytest.param(
+            _get_ray_cr_with_groups_suspended(),
+            _get_autoscaling_config_with_groups_suspended(),
+            None,
+            None,
+            None,
+            id="groups-suspended",
         ),
         pytest.param(
             _get_ray_cr_with_tpu_custom_resource(),

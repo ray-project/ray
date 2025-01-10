@@ -213,16 +213,18 @@ def _node_type_from_group_spec(
     if is_head:
         # The head node type has no workers because the head is not a worker.
         min_workers = max_workers = 0
+        suspend = False
     else:
         # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec
         min_workers = group_spec["minReplicas"]
         max_workers = group_spec["maxReplicas"]
+        suspend = group_spec.get("suspend", False)
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
 
     node_type = {
-        "min_workers": min_workers,
-        "max_workers": max_workers,
+        "min_workers": min_workers if not suspend else 0,
+        "max_workers": max_workers if not suspend else 0,
         # `node_config` is a legacy field required for compatibility.
         # Pod config data is required by the operator but not by the autoscaler.
         "node_config": {},
