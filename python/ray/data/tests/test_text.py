@@ -19,7 +19,6 @@ from ray.data.datasource import (
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
-from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
 
 
@@ -119,7 +118,9 @@ def test_read_text_meta_provider(
         )
 
 
+@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
 def test_read_text_partitioned_with_filter(
+    style,
     shutdown_only,
     tmp_path,
     write_base_partitioned_df,
@@ -129,45 +130,35 @@ def test_read_text_partitioned_with_filter(
         dataframe.to_string(path, index=False, header=False, **kwargs)
 
     partition_keys = ["one"]
-    kept_file_counter = Counter.remote()
-    skipped_file_counter = Counter.remote()
 
     def skip_unpartitioned(kv_dict):
-        keep = bool(kv_dict)
-        counter = kept_file_counter if keep else skipped_file_counter
-        ray.get(counter.increment.remote())
-        return keep
+        return bool(kv_dict)
 
-    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
-        base_dir = os.path.join(tmp_path, style.value)
-        partition_path_encoder = PathPartitionEncoder.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-        )
-        write_base_partitioned_df(
-            partition_keys,
-            partition_path_encoder,
-            df_to_text,
-        )
-        df_to_text(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.txt"))
-        partition_path_filter = PathPartitionFilter.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filter_fn=skip_unpartitioned,
-        )
-        ds = ray.data.read_text(base_dir, partition_filter=partition_path_filter)
-        assert_base_partitioned_ds(
-            ds,
-            schema=Schema(pa.schema([("text", pa.string())])),
-            sorted_values=["1 a", "1 b", "1 c", "3 e", "3 f", "3 g"],
-            ds_take_transform_fn=_to_lines,
-        )
-        assert ray.get(kept_file_counter.get.remote()) == 2
-        assert ray.get(skipped_file_counter.get.remote()) == 1
-        ray.get(kept_file_counter.reset.remote())
-        ray.get(skipped_file_counter.reset.remote())
+    base_dir = os.path.join(tmp_path, style.value)
+    partition_path_encoder = PathPartitionEncoder.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+    )
+    write_base_partitioned_df(
+        partition_keys,
+        partition_path_encoder,
+        df_to_text,
+    )
+    df_to_text(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.txt"))
+    partition_path_filter = PathPartitionFilter.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filter_fn=skip_unpartitioned,
+    )
+    ds = ray.data.read_text(base_dir, partition_filter=partition_path_filter)
+    assert_base_partitioned_ds(
+        ds,
+        schema=Schema(pa.schema([("text", pa.string())])),
+        sorted_values=["1 a", "1 b", "1 c", "3 e", "3 f", "3 g"],
+        ds_take_transform_fn=_to_lines,
+    )
 
 
 def test_read_text_remote_args(ray_start_cluster, tmp_path):

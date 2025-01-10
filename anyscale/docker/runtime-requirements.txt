@@ -1,0 +1,12 @@
+# Extra dependencies to be installed in ray and ray-ml images.
+#
+# All packages declared in this file must also have been included
+# in requirements_compiled.txt already.
+#
+# One way to get it included is to add the package into one of the
+# test dependencies file upstream, and then rebuild the
+# requirements_compiled.txt file.
+
+# Anytensor requirements.
+certifi
+pycurl

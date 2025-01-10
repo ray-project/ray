@@ -1,0 +1,234 @@
+###############
+# Serve tests
+###############
+
+- name: serve_node_draining
+  group: Serve tests
+  working_dir: anyscale/serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod: {}
+    cluster_compute: ../../serve_tests/compute_tpl_8_cpu_autoscaling.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/serve_node_draining.py
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../../serve_tests/compute_tpl_8_cpu_autoscaling_gce.yaml
+
+- name: safetensors_integration_tests_on_gpu
+  group: Serve tests
+  working_dir: ../python/ray/anyscale/safetensors/tests/integration
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: gpu_test_compute_aws.yaml
+
+  run:
+    timeout: 1200
+    script: TEST_ON_CUDA=1 pytest -vs test_dummy_model.py
+
+- name: safetensors_load_file_benchmark
+  group: Serve tests
+  working_dir: ../python/ray/anyscale/safetensors/tests/benchmarks
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod:
+      type: gpu
+
+  run:
+    timeout: 1200
+
+  variations:
+    - __suffix__: cpu
+      cluster:
+        cluster_compute: release_test_compute_cpu_aws.yaml
+
+      run:
+        script: python load_file_benchmark.py --device cpu
+
+    - __suffix__: gpu
+      cluster:
+        cluster_compute: release_test_compute_gpu_aws.yaml
+
+      run:
+        script: python load_file_benchmark.py --device cuda
+
+- name: serve_grpc_microbenchmarks
+  group: Serve tests
+  working_dir: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod:
+      runtime_env:
+        - ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT=1
+        - ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+    cluster_compute: compute_tpl_single_node_32_cpu.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/microbenchmarks.py --run-all
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_tpl_single_node_gce.yaml
+
+###############
+# Data tests
+###############
+
+- name: cpu_job_autoscaling_benchmark
+  group: data-tests
+  working_dir: anyscale/data
+
+  frequency: nightly
+  team: data
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: cpu_job_autoscaling_benchmark_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python cpu_job_autoscaling_benchmark.py
+
+- name: checkpoint_benchmark
+  group: data-tests
+  working_dir: anyscale/data
+
+  frequency: nightly
+  team: data
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: checkpoint_benchmark_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python ./run_checkpoint_benchmark.py
+
+###############
+# Rllib tests
+###############
+
+- name: rllib_multi_node_e2e_training_test
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  # Quoting sven: "a really old test case that should have been removed some time ago"
+  # So mark this test as not auto running.
+  #
+  # TODO(aslonnie, sven): to be removed after getting final
+  # confirmation from sven.
+  frequency: manual
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: multi_node_ckpt_training_compute_config.yaml
+
+  run:
+    timeout: 3600
+    script: pytest multinode_training_checkpointing_tests/smoke_test_basic_multi_node_training_learner.py
+
+    wait_for_nodes:
+      num_nodes: 2
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: multi_node_ckpt_training_compute_config_gce.yaml
+
+###############
+# Train tests
+###############
+- name: train_elastic_e2e_with_node_killing
+  group: Train tests
+  working_dir: anyscale/train/elastic_e2e
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_gpu_aws.yaml
+
+  run:
+    timeout: 4800
+    script: RAY_TRAIN_V2_ENABLED=1 python torch_elastic_e2e.py run --num-epochs 60
+
+    wait_for_nodes:
+      num_nodes: 1
+
+  variations:
+    - __suffix__: aws
+
+  alert: default
+
+###############
+# Core tests
+###############
+- name: core_nodes_scale_test
+  group: core-scalability-test
+  working_dir: anyscale/core
+
+  frequency: weekly
+  team: core
+
+  cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - RAY_worker_register_timeout_seconds=360
+        - RAY_gcs_rpc_server_connect_timeout_s=60
+    cluster_compute: core_nodes_scale_compute.yaml
+    # TODO(dayshah): switch to k8s with 1cpu-4gb workers when FDN-543 (kubelet QPS increase) is completed
+    # cloud_id: cld_em92sg116s6wi32iuysjfeq2yy # anyscale_eks_public_default_cloud_us_west_2
+  run:
+    timeout: 7200
+    script: python core_nodes_scale_test.py --target_num_nodes 3000 --time_to_run_after_target_num_nodes 300
+    wait_for_nodes:
+      num_nodes: 1
+
+  variations:
+    - __suffix__: aws

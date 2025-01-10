@@ -1,5 +1,6 @@
 import os
 import types
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -9,7 +10,12 @@ import pytest
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
-from ray.data._internal.arrow_ops.transform_pyarrow import concat, unify_schemas
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    concat,
+    hash_partition,
+    try_combine_chunked_columns,
+    unify_schemas,
+)
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
     ArrowConversionError,
@@ -20,6 +26,66 @@ from ray.data.extensions import (
     ArrowVariableShapedTensorType,
     _object_extension_type_allowed,
 )
+
+
+def test_try_defragment_table():
+    chunks = np.array_split(np.arange(1000), 10)
+
+    t = pa.Table.from_pydict(
+        {
+            "id": pa.chunked_array([pa.array(c) for c in chunks]),
+        }
+    )
+
+    assert len(t["id"].chunks) == 10
+
+    dt = try_combine_chunked_columns(t)
+
+    assert len(dt["id"].chunks) == 1
+    assert dt == t
+
+
+def test_hash_partitioning():
+    idx = list(range(100))
+
+    t = pa.Table.from_pydict(
+        {
+            "idx": pa.array(idx),
+            "ints": pa.array(idx),
+            "floats": pa.array([float(i) for i in idx]),
+            "strings": pa.array([str(i) for i in idx]),
+            "structs": pa.array(
+                [
+                    {
+                        "value": i,
+                    }
+                    for i in idx
+                ]
+            ),
+        }
+    )
+
+    single_partition_dict = hash_partition(t, hash_cols=["idx"], num_partitions=1)
+
+    # There's just 1 partition
+    assert len(single_partition_dict) == 1
+    assert t == single_partition_dict.get(0)
+
+    def _concat_and_sort_partitions(parts: Iterable[pa.Table]) -> pa.Table:
+        return pa.concat_tables(parts).sort_by("idx")
+
+    _5_partition_dict = hash_partition(t, hash_cols=["strings"], num_partitions=5)
+
+    assert len(_5_partition_dict) == 5
+    assert t == _concat_and_sort_partitions(_5_partition_dict.values())
+
+    # There could be no more partitions than elements
+    _structs_partition_dict = hash_partition(
+        t, hash_cols=["structs"], num_partitions=101
+    )
+
+    assert len(_structs_partition_dict) == 34
+    assert t == _concat_and_sort_partitions(_structs_partition_dict.values())
 
 
 def test_arrow_concat_empty():

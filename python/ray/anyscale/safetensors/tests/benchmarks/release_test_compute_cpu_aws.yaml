@@ -1,0 +1,9 @@
+# Used to run the benchmark tests on GPU as part of the release test process.
+# See rayturbo/release/release_runtime_tests.yaml.
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+head_node_type:
+    name: head_node
+    # 25 Gbps network.
+    instance_type: m5n.8xlarge

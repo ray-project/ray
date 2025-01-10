@@ -82,3 +82,10 @@ TrainingIterator.__module__ = "ray.train"
 
 
 # DO NOT ADD ANYTHING AFTER THIS LINE.
+# Append Anyscale proprietary APIs and apply patches
+if is_v2_enabled():
+    from ray.anyscale.train.api.config import (  # noqa: E402, F811, isort: skip
+        ScalingConfig,
+    )
+
+    ScalingConfig.__module__ = "ray.train"

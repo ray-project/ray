@@ -245,6 +245,14 @@ class Filter(AbstractUDFMap):
     def can_modify_num_rows(self) -> bool:
         return True
 
+    def is_expression_based(self) -> bool:
+        return self._filter_expr is not None
+
+    def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
+        if self.is_expression_based():
+            return f"{op_name}(<expression>)"
+        return super()._get_operator_name(op_name, fn)
+
 
 class Project(AbstractMap):
     """Logical operator for select_columns."""

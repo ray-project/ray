@@ -3681,6 +3681,14 @@ cdef class CoreWorker:
                 f" | PlacementGroupSchedulingStrategy"
                 f" | NodeAffinitySchedulingStrategy]")
 
+    def prestart_workers(self,
+                         c_string serialized_runtime_env_info,
+                         int keep_alive_s,
+                         int num_workers):
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().PrestartWorkers(
+                serialized_runtime_env_info, keep_alive_s, num_workers)
+
     def submit_task(self,
                     Language language,
                     FunctionDescriptor function_descriptor,

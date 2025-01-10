@@ -80,11 +80,49 @@ def test_np_in_composed_model(serve_instance):
     assert float(result.text) == 100.0
 
 
+# https://github.com/ray-project/ray/issues/12395
 def test_replica_memory_growth(serve_instance):
-    # https://github.com/ray-project/ray/issues/12395
+    # NOTE(zcin): this test checks that there are no circular references
+    # since depending on the size of the objects locked in that cycle,
+    # it could cause large memory growth for the replica in the short
+    # term. Unfortunately the asyncio Python gRPC implementation has a
+    # circular reference between
+    # https://github.com/grpc/grpc/blob/04f05a3/src/python/grpcio/grpc/_server.py#L987
+    # & https://github.com/grpc/grpc/blob/04f05a3/src/python/grpcio/grpc/_server.py#L993
+    # So just by using the asyncio Python gRPC API in the replica, it
+    # will violate the checks in this test. However the objects locked
+    # in that cycle are metadata objects on the order of tens to
+    # hundreds of bytes, which is very small and should be fine to be
+    # garbage collected by the slower GC cycle that checks for circular
+    # references. Therefore we whitelist those objects in the test.
+    def whitelist(phase, info):
+        if phase == "start":
+            return
+
+        for item in gc.garbage[:]:
+            if getattr(type(item), "__name__", None) == "_Metadatum":
+                gc.garbage.remove(item)
+            elif type(item) == tuple and all(
+                getattr(type(s), "__name__", None) == "_Metadatum" for s in item
+            ):
+                gc.garbage.remove(item)
+            elif (
+                getattr(type(item), "__name__", None)
+                == "__pyx_scope_struct_35__find_method_handler"
+            ):
+                gc.garbage.remove(item)
+            elif (
+                getattr(item, "__name__", None) == "query_handlers"
+                and item.func_globals["_find_method_handler"]
+            ):
+                gc.garbage.remove(item)
+            elif getattr(type(item), "__name__", None) == "_HandlerCallDetails":
+                gc.garbage.remove(item)
+
     @serve.deployment
     def gc_unreachable_objects(*args):
         gc.set_debug(gc.DEBUG_SAVEALL)
+        gc.callbacks.append(whitelist)
         gc.collect()
         gc_garbage_len = len(gc.garbage)
         if gc_garbage_len > 0:

@@ -1,0 +1,21 @@
+group: runtime serve tests
+steps:
+  - label: ":ray-serve: serve: runtime tests"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/serve/... serve
+    depends_on: servebuild
+    job_env: forge
+
+  - label: ":ray-serve: serve: gRPC tests"
+    parallelism: 2
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
+        --except-tags post_wheel_build,gpu,ha_integration
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --build-name servebuild --test-env=ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT=1
+        --test-env=ANYSCALE_RAY_SERVE_GRPC_RUN_PROXY_ROUTER_SEPARATE_LOOP=0
+        --test-env=ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+    depends_on: servebuild
+    job_env: forge

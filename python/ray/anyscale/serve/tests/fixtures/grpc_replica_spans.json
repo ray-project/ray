@@ -1,0 +1,42 @@
+[
+   {
+      "name":"application_span",
+      "kind":"SpanKind.INTERNAL",
+      "status":{
+         "status_code":"UNSET"
+      },
+      "attributes":{
+         "deployment":"grpc-deployment",
+         "replica_id":""
+      },
+      "events":[
+         
+      ],
+      "links":[
+         
+      ]
+   },
+   {
+      "name":"replica_handle_request",
+      "kind":"SpanKind.SERVER",
+      "status":{
+         "status_code":"OK"
+      },
+      "attributes":{
+         "request_id":"",
+         "replica_id":"",
+         "deployment":"grpc-deployment",
+         "app":"default",
+         "call_method":"__call__",
+         "route":"default",
+         "multiplexed_model_id":"",
+         "is_streaming":false
+      },
+      "events":[
+         
+      ],
+      "links":[
+         
+      ]
+   }
+]

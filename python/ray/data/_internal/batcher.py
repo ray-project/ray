@@ -2,16 +2,11 @@ from typing import Optional
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS,
+)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor
-
-# pyarrow.Table.slice is slow when the table has many chunks
-# so we combine chunks into a single one to make slice faster
-# with the cost of an extra copy.
-# See https://github.com/ray-project/ray/issues/31108 for more details.
-# TODO(jjyao): remove this once
-# https://github.com/apache/arrow/issues/35126 is resolved.
-MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = 10
 
 # Delay compaction until the shuffle buffer has reached this ratio over the min
 # shuffle buffer size. Setting this to 1 minimizes memory usage, at the cost of
@@ -133,15 +128,14 @@ class Batcher(BatcherInterface):
                 output.add_block(accessor.to_block())
                 needed -= accessor.num_rows()
             else:
-                if (
-                    isinstance(accessor, ArrowBlockAccessor)
-                    and block.num_columns > 0
-                    and block.column(0).num_chunks
-                    >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
-                ):
+                # Try de-fragmenting table in case its columns
+                # have too many chunks (potentially hindering performance of
+                # subsequent slicing operation)
+                if isinstance(accessor, ArrowBlockAccessor):
                     accessor = BlockAccessor.for_block(
-                        transform_pyarrow.combine_chunks(block)
+                        transform_pyarrow.try_combine_chunked_columns(block)
                     )
+
                 # We only need part of the block to fill out a batch.
                 output.add_block(accessor.slice(0, needed, copy=False))
                 # Add the rest of the block to the leftovers.
