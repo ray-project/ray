@@ -6,6 +6,7 @@ from ray.rllib.algorithms.sac.sac_learner import (
     QF_TWIN_PREDS,
 )
 from ray.rllib.algorithms.sac.default_sac_rl_module import DefaultSACRLModule
+from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT, Encoder, Model
 from ray.rllib.core.rl_module.apis import QNetAPI, TargetNetworkAPI
@@ -21,6 +22,12 @@ torch, nn = try_import_torch()
 @DeveloperAPI
 class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
     framework: str = "torch"
+
+    def __init__(self, *args, **kwargs):
+        catalog_class = kwargs.pop("catalog_class", None)
+        if catalog_class is None:
+            catalog_class = SACCatalog
+        super().__init__(*args, **kwargs, catalog_class=catalog_class)
 
     @override(RLModule)
     def _forward_inference(self, batch: Dict) -> Dict[str, Any]:

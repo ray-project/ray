@@ -45,7 +45,9 @@ HTTP_PROXY_TIMEOUT = 60
 #: If no replicas at target version is running by the time we're at
 #: max construtor retry count, deploy() is considered failed.
 #: By default we set threshold as min(num_replicas * 3, this value)
-MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = 100
+MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = int(
+    os.environ.get("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", "20")
+)
 
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [
@@ -368,6 +370,17 @@ RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
     "or keep the existing behavior by making them `async def`. Opt "
     "into the new behavior by setting "
     "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
+)
+
+# Feature flag to turn off GC optimizations in the proxy (in case there is a
+# memory leak or negative performance impact).
+RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = (
+    os.environ.get("RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS", "1") == "1"
+)
+
+# Used for gc.set_threshold() when proxy GC optimizations are enabled.
+RAY_SERVE_PROXY_GC_THRESHOLD = int(
+    os.environ.get("RAY_SERVE_PROXY_GC_THRESHOLD", "10000")
 )
 
 # Feature flag to enable multiple proxies per node.

@@ -35,15 +35,19 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
-    benchmark = Benchmark("read-and-consume")
-    read_fn = get_read_fn(args)
-    consume_fn = get_consume_fn(args)
+    benchmark = Benchmark()
 
     def benchmark_fn():
+        read_fn = get_read_fn(args)
+        consume_fn = get_consume_fn(args)
+
         ds = read_fn(args.path)
         consume_fn(ds)
 
-    benchmark.run_fn(str(vars(args)), benchmark_fn)
+        # Report arguments for the benchmark.
+        return vars(args)
+
+    benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
 
 
@@ -75,12 +79,15 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
     elif args.iter_batches:
 
         def consume_fn(ds):
-            ds.iter_batches(batch_format=args.iter_batches)
+            for _ in ds.iter_batches(batch_format=args.iter_batches):
+                pass
 
     elif args.iter_torch_batches:
 
+        # In addition to consuming the data, we also want to test the performance of
+        # moving data to GPU.
         def consume_fn(ds):
-            for _ in ds.iter_torch_batches():
+            for _ in ds.iter_torch_batches(device="cuda"):
                 pass
 
     elif args.to_tf:

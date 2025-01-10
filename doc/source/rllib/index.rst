@@ -1,29 +1,6 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. |single_agent| image:: /rllib/images/sigils/single-agent.svg
-    :class: inline-figure
-    :width: 72
-
-.. |multi_agent| image:: /rllib/images/sigils/multi-agent.svg
-    :class: inline-figure
-    :width: 72
-
-.. |discr_act| image:: /rllib/images/sigils/discr-actions.svg
-    :class: inline-figure
-    :width: 72
-
-.. |cont_act| image:: /rllib/images/sigils/cont-actions.svg
-    :class: inline-figure
-    :width: 72
-
-.. |multi_gpu| image:: /rllib/images/sigils/multi-gpu.svg
-    :class: inline-figure
-    :width: 72
-
-.. |multi_node_multi_gpu| image:: /rllib/images/sigils/multi-node-multi-gpu.svg
-    :class: inline-figure
-    :alt: Only on the Anyscale Platform!
-    :width: 72
+.. sphinx_rllib_readme_begin
 
 .. _rllib-index:
 
@@ -35,12 +12,46 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
 .. image:: images/rllib-logo.png
     :align: center
 
+.. sphinx_rllib_readme_end
+
+.. todo (sven): redo toctree:
+    suggestion:
+    getting-started (replaces rllib-training)
+    key-concepts
+    rllib-env (single-agent)
+        ...  <- multi-agent
+        ...  <- external
+        ...  <- hierarchical
+    algorithm-configs
+        rllib-algorithms (overview of all available algos)
+    dev-guide (replaces user-guides)
+        debugging
+        scaling-guide
+        fault-tolerance
+        checkpoints
+        callbacks
+        metrics-logger
+    rllib-advanced-api
+        algorithm (general description of how algos work)
+        rllib-rlmodule
+        rllib-offline
+        single-agent-episode
+        multi-agent-episode
+        connector-v2
+        rllib-learner
+        env-runners
+    rllib-examples
+    rllib-new-api-stack  <- remove?
+    new-api-stack-migration-guide
+    package_ref/index
+
 .. toctree::
     :hidden:
 
     rllib-training
     key-concepts
     rllib-env
+    algorithm-config
     rllib-algorithms
     user-guides
     rllib-examples
@@ -49,7 +60,9 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
     package_ref/index
 
 
-**RLlib** is an open source library for reinforcement learning (RL), offering support for
+.. sphinx_rllib_readme_2_begin
+
+**RLlib** is an open source library for reinforcement learning (**RL**), offering support for
 production-level, highly scalable, and fault-tolerant RL workloads, while maintaining simple and unified
 APIs for a large variety of industry applications.
 
@@ -57,7 +70,7 @@ Whether training policies in a **multi-agent** setup, from historic **offline** 
 or using **externally connected simulators**, RLlib offers simple solutions for each of
 these autonomous decision making needs and enables you to start running your experiments within hours.
 
-RLlib is used in production by industry leaders in many different verticals, such as
+Industry leaders use RLlib in production in many different verticals, such as
 `gaming <https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games>`_,
 `robotics <https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for>`_,
 `finance <https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray>`_,
@@ -66,6 +79,7 @@ RLlib is used in production by industry leaders in many different verticals, suc
 `automobile <https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution>`_,
 and
 `boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_.
+
 
 RLlib in 60 seconds
 -------------------
@@ -81,24 +95,24 @@ Install RLlib and `PyTorch <https://pytorch.org>`__, as shown below:
 
 .. note::
 
-    For installation on computers running Apple Silicon (such as M1),
+    For installation on computers running Apple Silicon, such as M1,
     `follow instructions here. <https://docs.ray.io/en/latest/ray-overview/installation.html#m1-mac-apple-silicon-support>`_
 
 .. note::
 
-    To be able to run our Atari or MuJoCo examples, you also need to run:
+    To be able to run the Atari or MuJoCo examples, you also need to do:
     `pip install "gymnasium[atari,accept-rom-license,mujoco]"`.
 
-This is all! You can now start coding against RLlib. Here is an example for running the PPO Algorithm on the
+This is all. You can now start coding against RLlib. Here is an example for running the PPO Algorithm on the
 `Taxi domain <https://gymnasium.farama.org/environments/toy_text/taxi/>`__.
-You first create a `config` for the algorithm, which defines the RL environment (taxi) and
+You first create a `config` for the algorithm, which defines the RL environment and
 any other needed settings and parameters.
 
-Next, `build` the algorithm and `train` it for a total of 5 iterations.
-One training iteration includes parallel (distributed) sample collection by the :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors,
+Next, `build` the algorithm and `train` it for a total of five iterations.
+One training iteration includes parallel, distributed sample collection by the :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors,
 followed by loss calculation on the collected data, and a model update step.
 
-At the end of your script, the trained Algorithm is evaluated:
+At the end of your script, RLlib evaluates the trained Algorithm:
 
 .. literalinclude:: doc_code/rllib_in_60s.py
     :language: python
@@ -111,7 +125,7 @@ with the `env` argument.
 In `config.env_runners()` you can specify - amongst many other things - the number of parallel
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors to collect samples from the environment.
 
-You can also tweak the NN architecture used by by tweaking RLlib's `DefaultModelConfig`, as well as, set up a separate
+You can also tweak the NN architecture used by tweaking RLlib's `DefaultModelConfig`, as well as, set up a separate
 config for the evaluation :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors through the `config.evaluation()` method.
 
 `See here <rllib-training.html#using-the-python-api>`_, if you want to learn more about the RLlib training APIs.
@@ -272,7 +286,21 @@ Learn More
 
     .. grid-item-card::
 
-        **RLlib Environments**
+        **RLlib Key Concepts**
+        ^^^
+        Learn more about the core concepts of RLlib, such as Algorithms, environments,
+        models, and learners.
+        +++
+        .. button-ref:: rllib-key-concepts
+            :color: primary
+            :outline:
+            :expand:
+
+            Key Concepts
+
+    .. grid-item-card::
+
+        **RL Environments**
         ^^^
         Get started with environments supported by RLlib, such as Farama foundation's Gymnasium, Petting Zoo,
         and many custom formats for vectorized and multi-agent environments.
@@ -286,24 +314,26 @@ Learn More
 
     .. grid-item-card::
 
-        **RLlib Key Concepts**
+        **Models (RLModule)**
         ^^^
-        Learn more about the core concepts of RLlib, such as environments, algorithms and
-        policies.
+        Learn how to configure RLlib's default models and implement your own
+        custom models through the RLModule APIs, which support arbitrary architectures
+        with PyTorch, complex multi-model setups, and multi-agent models with components
+        shared between agents.
         +++
-        .. button-ref:: rllib-core-concepts
+        .. button-ref:: rlmodule-guide
             :color: primary
             :outline:
             :expand:
 
-            Key Concepts
+            Models (RLModule)
 
     .. grid-item-card::
 
-        **RLlib Algorithms**
+        **Algorithms**
         ^^^
-        See the many available RL algorithms of RLlib for model-free and model-based
-        RL, on-policy and off-policy training, multi-agent RL, and more.
+        See the many available RL algorithms of RLlib for on-policy and off-policy training,
+        offline- and model-based RL, multi-agent RL, and more.
         +++
         .. button-ref:: rllib-algorithms-doc
             :color: primary
@@ -324,12 +354,85 @@ provide custom `PyTorch models <https://github.com/ray-project/ray/blob/master/r
 write your own `optimizer setups and loss definitions <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__,
 or define custom `exploratory behavior <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py>`_.
 
-
 .. figure:: images/rllib-new-api-stack-simple.svg
     :align: left
     :width: 850
 
     **RLlib's API stack:** Built on top of Ray, RLlib offers off-the-shelf, distributed and fault-tolerant
     algorithms and loss functions, PyTorch default models, multi-GPU training, and multi-agent support.
-    User customizations are realized by subclassing the existing abstractions and - by overriding certain
-    methods in those subclasses - define custom behavior.
+    Users customize their experiments by subclassing the existing abstractions.
+
+.. sphinx_rllib_readme_2_end
+
+
+.. sphinx_rllib_readme_3_begin
+
+Citing RLlib
+------------
+
+If RLlib helps with your academic research, the Ray RLlib team encourages you to cite these papers:
+
+.. code-block::
+
+    @inproceedings{liang2021rllib,
+        title={{RLlib} Flow: Distributed Reinforcement Learning is a Dataflow Problem},
+        author={
+            Wu, Zhanghao and
+            Liang, Eric and
+            Luo, Michael and
+            Mika, Sven and
+            Gonzalez, Joseph E. and
+            Stoica, Ion
+        },
+        booktitle={Conference on Neural Information Processing Systems ({NeurIPS})},
+        year={2021},
+        url={https://proceedings.neurips.cc/paper/2021/file/2bce32ed409f5ebcee2a7b417ad9beed-Paper.pdf}
+    }
+
+    @inproceedings{liang2018rllib,
+        title={{RLlib}: Abstractions for Distributed Reinforcement Learning},
+        author={
+            Eric Liang and
+            Richard Liaw and
+            Robert Nishihara and
+            Philipp Moritz and
+            Roy Fox and
+            Ken Goldberg and
+            Joseph E. Gonzalez and
+            Michael I. Jordan and
+            Ion Stoica,
+        },
+        booktitle = {International Conference on Machine Learning ({ICML})},
+        year={2018},
+        url={https://arxiv.org/pdf/1712.09381}
+    }
+
+.. sphinx_rllib_readme_3_end
+
+
+.. sigils used on this page
+
+.. |single_agent| image:: /rllib/images/sigils/single-agent.svg
+    :class: inline-figure
+    :width: 72
+
+.. |multi_agent| image:: /rllib/images/sigils/multi-agent.svg
+    :class: inline-figure
+    :width: 72
+
+.. |discr_act| image:: /rllib/images/sigils/discr-actions.svg
+    :class: inline-figure
+    :width: 72
+
+.. |cont_act| image:: /rllib/images/sigils/cont-actions.svg
+    :class: inline-figure
+    :width: 72
+
+.. |multi_gpu| image:: /rllib/images/sigils/multi-gpu.svg
+    :class: inline-figure
+    :width: 72
+
+.. |multi_node_multi_gpu| image:: /rllib/images/sigils/multi-node-multi-gpu.svg
+    :class: inline-figure
+    :alt: Only on the Anyscale Platform!
+    :width: 72

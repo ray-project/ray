@@ -11,6 +11,7 @@ from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.connectors.common import NumpyToTensor
 from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
@@ -36,7 +37,6 @@ LEARNER_THREAD_IN_QUEUE_WAIT_TIMER = "learner_thread_in_queue_wait_timer"
 LEARNER_THREAD_ENV_STEPS_DROPPED = "learner_thread_env_steps_dropped"
 LEARNER_THREAD_UPDATE_TIMER = "learner_thread_update_timer"
 RAY_GET_EPISODES_TIMER = "ray_get_episodes_timer"
-EPISODES_TO_BATCH_TIMER = "episodes_to_batch_timer"
 
 QUEUE_SIZE_GPU_LOADER_QUEUE = "queue_size_gpu_loader_queue"
 QUEUE_SIZE_LEARNER_THREAD_QUEUE = "queue_size_learner_thread_queue"
@@ -156,13 +156,13 @@ class IMPALALearner(Learner):
         # Only send a batch to the learner pipeline if its size is > 0.
         if env_steps > 0:
             # Call the learner connector pipeline.
-            with self.metrics.log_time((ALL_MODULES, EPISODES_TO_BATCH_TIMER)):
-                batch = self._learner_connector(
-                    rl_module=self.module,
-                    batch={},
-                    episodes=episodes_flat,
-                    shared_data={},
-                )
+            batch = self._learner_connector(
+                rl_module=self.module,
+                batch={},
+                episodes=episodes_flat,
+                shared_data={},
+                metrics=self.metrics,
+            )
 
             # Queue the CPU batch to the GPU-loader thread.
             if self.config.num_gpus_per_learner > 0:
@@ -211,6 +211,13 @@ class IMPALALearner(Learner):
     def remove_module(self, module_id: str):
         super().remove_module(module_id)
         self.entropy_coeff_schedulers_per_module.pop(module_id)
+
+    @classmethod
+    @override(Learner)
+    def rl_module_required_apis(cls) -> list[type]:
+        # In order for a PPOLearner to update an RLModule, it must implement the
+        # following APIs:
+        return [ValueFunctionAPI]
 
 
 ImpalaLearner = IMPALALearner
