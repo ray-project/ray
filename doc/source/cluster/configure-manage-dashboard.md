@@ -227,13 +227,13 @@ Then, configure `RAY_PROMETHEUS_HOST` environment variable properly as stated ab
 
 #### Customize headers for requests from the Ray dashboard to Prometheus
 
-If the Prometheus requires additional headers for authentication, set `RAY_PROMETHEUS_HEADERS` in one of the following JSON formats for Ray dashboard to carry them to Prometheus:
+If Prometheus requires additional headers for authentication, set `RAY_PROMETHEUS_HEADERS` in one of the following JSON formats for Ray dashboard to send them to Prometheus:
 1. `{"Header1": "Value1", "Header2": "Value2"}`
 2. `[["Header1", "Value1"], ["Header2", "Value2"], ["Header2", "Value3"]]`
 
 
 #### Alternate Grafana host location
-By default, Ray Dashboard assumes Grafana is hosted at `localhost:3000` You can choose to run Grafana on a non-default port or on a different machine as long as the head node and the browsers of dashboard users can access it.
+By default, Ray Dashboard assumes Grafana is hosted at `localhost:3000`. You can choose to run Grafana on a non-default port or on a different machine as long as the head node and the dashboard browsers of can access it.
 
 If Grafana is exposed with NGINX ingress on a Kubernetes cluster, the following line should be present in the Grafana ingress annotation:
 
