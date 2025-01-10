@@ -1,52 +1,32 @@
-from typing import Any, Dict
 import math
+import logging
+import torch.nn as nn
+from typing import Any, Dict
 
 from ray.rllib.examples.learners.custom_ppo_config import CustomPPOConfig
-from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModuleID, TensorType
+from ray.rllib.utils.torch_utils import explained_variance
 
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
-    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
-    PPOConfig,
 )
-from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
-from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import explained_variance
-from ray.rllib.utils.typing import ModuleID, TensorType
-import torch.nn as nn
 
-from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
-from ray.rllib.connectors.learner import (
-    AddOneTsToEpisodesAndTruncate,
-    GeneralAdvantageEstimation,
-)
-from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import AddNextObservationsFromEpisodesToTrainBatch
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import ModuleID, TensorType
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 torch, _ = try_import_torch()
 
 
 class PPOTorchLearnerCustomMOGLoss(PPOTorchLearner):
-    """A custom PPO torch learner adding a weight regularizer term to the loss.
-
-    We compute a naive regularizer term averaging over all parameters of the RLModule
-    and add this mean value (multiplied by the regularizer coefficient) to the base PPO
-    loss.
-    The experiment shows that even with a large learning rate, our custom Learner is
-    still able to learn properly as it's forced to keep the weights small.
+    """A custom PPO torch learner adding the negative log-likelihood loss to the base actor network loss.
     """
 
     def compute_log_likelihood(self, td_targets, mu_current, sigma_current, alpha_current):
@@ -131,9 +111,9 @@ class PPOTorchLearnerCustomMOGLoss(PPOTorchLearner):
             alpha_current = mog_components['alphas']
 
             # pass through the network
-            # during initialization new_obs doesn't show up, so just pass the same observation
             if 'new_obs' not in batch:
-                print(f"batch is: {batch}")
+                logger.warning("new_obs not in batch! Using current obs!")
+                print(batch)
                 next_obs_in = {
                     'obs': batch['obs']
                 }
