@@ -46,7 +46,7 @@ class GcsWorkerManagerTest : public Test {
       io_service_.run();
     });
     worker_manager_ =
-        std::make_shared<gcs::GcsWorkerManager>(*gcs_table_storage_, *gcs_publisher_);
+        std::make_shared<gcs::GcsWorkerManager>(RayConfig::instance().maximum_gcs_dead_worker_cached_count(), *gcs_table_storage_, *gcs_publisher_);
   }
 
   void TearDown() override {

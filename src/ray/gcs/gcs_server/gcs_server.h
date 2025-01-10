@@ -160,7 +160,7 @@ class GcsServer {
   void InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs worker manager.
-  void InitGcsWorkerManager();
+  void InitGcsWorkerManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs task manager.
   void InitGcsTaskManager();
