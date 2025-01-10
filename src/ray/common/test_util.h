@@ -152,14 +152,16 @@ auto SyncPostAndWait(instrumented_io_context &io_context,
                      Lambda f) {
   using ReturnType = std::invoke_result_t<Lambda>;
   std::promise<ReturnType> promise;
-  io_context.post([&]() {
-    if constexpr (std::is_void_v<ReturnType>) {
-      f();
-      promise.set_value();
-    } else {
-      promise.set_value(f());
-    }
-     }, name);
+  io_context.post(
+      [&]() {
+        if constexpr (std::is_void_v<ReturnType>) {
+          f();
+          promise.set_value();
+        } else {
+          promise.set_value(f());
+        }
+      },
+      name);
   return promise.get_future().get();
 }
 
