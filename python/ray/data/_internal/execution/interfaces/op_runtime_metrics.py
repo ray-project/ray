@@ -2,6 +2,7 @@ import time
 from dataclasses import Field, dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from collections import defaultdict
 
 import ray
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
@@ -101,6 +102,12 @@ class RunningTaskInfo:
     num_outputs: int
     bytes_outputs: int
 
+
+@dataclass
+class NodeMetrics:
+    num_tasks_submitted: int = field(default=0)
+    num_tasks_running: int = field(default=0)
+    num_tasks_finished: int = field(default=0)
 
 class OpRuntimesMetricsMeta(type):
     def __init__(cls, name, bases, dict):
@@ -308,6 +315,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._internal_outqueue = create_bundle_queue()
         self._pending_task_inputs = create_bundle_queue()
 
+        self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
+
     @property
     def extra_metrics(self) -> Dict[str, Any]:
         """Return a dict of extra metrics."""
@@ -512,6 +521,18 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         """Callback when the operator submits a task."""
         self.num_tasks_submitted += 1
         self.num_tasks_running += 1
+
+        node_ids = set()
+        for block, meta in inputs.blocks:
+            # collect node ids
+            if meta.exec_stats is not None and meta.exec_stats.node_id is not None:
+                node_ids.add(meta.exec_stats.node_id)
+
+        for node_id in node_ids:
+            node_metrics = self._per_node_metrics[node_id]
+            node_metrics.num_tasks_submitted += 1
+            node_metrics.num_tasks_running += 1
+
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self._pending_task_inputs.add(inputs)
         self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
@@ -525,6 +546,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.bytes_task_outputs_generated += output_bytes
 
         task_info = self._running_tasks[task_index]
+        # TODO(mowen): Shouldn't this be `if task_info.num_outputs != 0`?
         if task_info.num_outputs == 0:
             self.num_tasks_have_outputs += 1
         task_info.num_outputs += num_outputs
@@ -569,6 +591,18 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                     self.obj_store_mem_spilled += meta.size_bytes
 
         self.obj_store_mem_freed += total_input_size
+
+        # update per node metrics
+        node_ids = set()
+        for block, meta in inputs.blocks:
+            # collect node ids
+            if meta.exec_stats is not None and meta.exec_stats.node_id is not None:
+                node_ids.add(meta.exec_stats.node_id)
+
+        for node_id in node_ids:
+            node_metrics = self._per_node_metrics[node_id]
+            node_metrics.num_tasks_finished += 1
+            node_metrics.num_tasks_running -= 1
 
         inputs.destroy_if_owned()
         del self._running_tasks[task_index]
