@@ -29,7 +29,7 @@ from ray.dag.constants import (
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
 import ray
-from ray.exceptions import RayTaskError, RayChannelError
+from ray.exceptions import RayTaskError, RayChannelError, RayChannelTimeoutError
 from ray.experimental.compiled_dag_ref import (
     CompiledDAGRef,
     CompiledDAGFuture,
@@ -1858,10 +1858,18 @@ class CompiledDAG:
                             f"{teardown_timeout}s after teardown()."
                         )
                         if kill_actors:
-                            msg += " Force-killing actor."
+                            msg += (
+                                " Force-killing actor. "
+                                "Increase RAY_CGRAPH_teardown_timeout if you want "
+                                "teardown to wait longer."
+                            )
                             ray.kill(actor)
                         else:
-                            msg += " Teardown may hang."
+                            msg += (
+                                " Teardown may hang. "
+                                "Call teardown with kill_actors=True if force kill "
+                                "is desired."
+                            )
 
                         logger.warning(msg)
                         timeout = True
@@ -2075,14 +2083,23 @@ class CompiledDAG:
                     "ray.get() on previous CompiledDAGRefs to free them up "
                     "from buffer."
                 )
-            self.increment_max_finished_execution_index()
             start_time = time.monotonic()
 
             # Fetch results from each output channel up to execution_index and cache
             # them separately to enable individual retrieval
+            try:
+                result = self._dag_output_fetcher.read(timeout)
+            except RayChannelTimeoutError as e:
+                raise RayChannelTimeoutError(
+                    "If the execution is expected to take a long time, increase "
+                    f"RAY_CGRAPH_get_timeout which is currently {timeout} seconds. "
+                    "Otherwise, this may indicate that the execution is hanging."
+                ) from e
+
+            self.increment_max_finished_execution_index()
             self._cache_execution_results(
                 self._max_finished_execution_index,
-                self._dag_output_fetcher.read(timeout),
+                result,
             )
 
             if timeout != -1:
@@ -2128,7 +2145,14 @@ class CompiledDAG:
             inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
         self.raise_if_too_many_inflight_requests()
-        self._dag_submitter.write(inp, self._submit_timeout)
+        try:
+            self._dag_submitter.write(inp, self._submit_timeout)
+        except RayChannelTimeoutError as e:
+            raise RayChannelTimeoutError(
+                "If the execution is expected to take a long time, increase "
+                f"RAY_CGRAPH_submit_timeout which is currently {self._submit_timeout} "
+                "seconds. Otherwise, this may indicate that execution is hanging."
+            ) from e
 
         if self._returns_list:
             ref = [
