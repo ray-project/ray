@@ -10,10 +10,10 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
-def _is_filters_string_safe(filters_str: str) -> bool:
+def _is_filter_string_safe(filter_str: str) -> bool:
     in_string = False
     escape_next = False
-    for c in filters_str:
+    for c in filter_str:
         if in_string:
             # If we're inside a string, check if we're closing it.
             if c == "'" and not escape_next:
@@ -43,7 +43,7 @@ class ClickHouseDatasource(Datasource):
     NUM_SAMPLE_ROWS = 100
     MIN_ROWS_PER_READ_TASK = 50
     _BASE_QUERY = "SELECT {select_clause} FROM {table}"
-    _EXPLAIN_FILTERS_QUERY = "EXPLAIN SELECT 1 FROM {table} WHERE {filters_clause}"
+    _EXPLAIN_FILTERS_QUERY = "EXPLAIN SELECT 1 FROM {table} WHERE {filter_clause}"
     _SIZE_ESTIMATE_QUERY = "SELECT SUM(byteSize(*)) AS estimate FROM ({query})"
     _COUNT_ESTIMATE_QUERY = "SELECT COUNT(*) AS estimate FROM ({query})"
     _SAMPLE_BLOCK_QUERY = "{query} LIMIT {limit_row_count}"
@@ -62,7 +62,7 @@ class ClickHouseDatasource(Datasource):
         table: str,
         dsn: str,
         columns: Optional[List[str]] = None,
-        filters: Optional[str] = None,
+        filter: Optional[str] = None,
         order_by: Optional[Tuple[List[str], bool]] = None,
         client_settings: Optional[Dict[str, Any]] = None,
         client_kwargs: Optional[Dict[str, Any]] = None,
@@ -79,9 +79,9 @@ class ClickHouseDatasource(Datasource):
                 <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
             columns: Optional List of columns to select from the data source.
                 If no columns are specified, all columns will be selected by default.
-            filters: Optional SQL filters clause string that will be used in the
+            filter: Optional SQL filter string that will be used in the
                 WHERE statement (e.g., "label = 2 AND text IS NOT NULL").
-                These filters must be valid for use in a ClickHouse WHERE clause.
+                The filter must be valid for use in a ClickHouse WHERE clause.
                 see `ClickHouse SQL WHERE Clause doc
                 <https://clickhouse.com/docs/en/sql-reference/statements/select/where>`_.
             order_by: Optional Tuple containing a list of columns to order by
@@ -99,7 +99,7 @@ class ClickHouseDatasource(Datasource):
         self._table = table
         self._dsn = dsn
         self._columns = columns
-        self._filters = filters
+        self._filter = filter
         self._order_by = order_by
         self._client_settings = client_settings or {}
         self._client_kwargs = client_kwargs or {}
@@ -115,26 +115,26 @@ class ClickHouseDatasource(Datasource):
             **self._client_kwargs or {},
         )
 
-    def _validate_filters(self):
-        if not self._filters:
+    def _validate_filter(self):
+        if not self._filter:
             return
         # Minimal lexical check (regex or manual approach for semicolons, etc.).
-        if not _is_filters_string_safe(self._filters):
+        if not _is_filter_string_safe(self._filter):
             raise ValueError(
-                f"invalid characters outside of "
-                f"string literals in filters: {self._filters}"
+                f"Invalid characters outside of "
+                f"string literals in filter: {self._filter}"
             )
         # Test "EXPLAIN" query to confirm parse-ability and catch expression errors.
         client = self._init_client()
         try:
             test_query = self._EXPLAIN_FILTERS_QUERY.format(
                 table=self._table,
-                filters_clause=self._filters,
+                filter_clause=self._filter,
             )
             client.query(test_query)
         except Exception as e:
             raise ValueError(
-                f"Invalid filters expression: {self._filters}. Error: {e}",
+                f"Invalid filter expression: {self._filter}. Error: {e}",
             )
         finally:
             client.close()
@@ -144,9 +144,9 @@ class ClickHouseDatasource(Datasource):
             select_clause=", ".join(self._columns) if self._columns else "*",
             table=self._table,
         )
-        if self._filters:
-            self._validate_filters()
-            query += f" WHERE {self._filters}"
+        if self._filter:
+            self._validate_filter()
+            query += f" WHERE {self._filter}"
         if self._order_by:
             columns, desc = self._order_by
             direction = " DESC" if desc else ""
