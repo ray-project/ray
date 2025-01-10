@@ -112,7 +112,7 @@ more information.
             .. image:: https://img.shields.io/github/stars/modelscope/data-juicer?style=social)]
                 :target: https://github.com/modelscope/data-juicer
 
-            Data-Juicer is a one-stop multimodal data processing system to make data higher-quality, juicier, and more digestible for LLMs. It integrates with Ray for distributed data processing on large-scale datasets with over 100 multimodal operators and supports TB-size dataset deduplication.
+            Data-Juicer is a one-stop multimodal data processing system to data higher-quality, juicier, and more digestible for foundation models. It integrates with Ray for distributed data processing on large-scale datasets with over 100 multimodal operators and supports TB-size dataset deduplication.
 
         +++
         .. button-link:: https://github.com/modelscope/data-juicer?tab=readme-ov-file#distributed-data-processing
