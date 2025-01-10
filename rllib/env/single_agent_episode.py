@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, SupportsFloat, Union
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor
 from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import PublicAPI
@@ -618,7 +619,14 @@ class SingleAgentEpisode:
         other.validate()
 
         # Make sure, end matches other episode chunk's beginning.
-        assert np.all(other.observations[0] == self.observations[-1])
+        last_obs = self.observations[-1]
+        if isinstance(last_obs, Dict):
+            assert np.all(
+                flatten_inputs_to_1d_tensor(other.observations[0], batch_axis=False)
+                == flatten_inputs_to_1d_tensor(last_obs, batch_axis=False)
+            )
+        else:
+            assert np.all(other.observations[0] == last_obs)
         # Pop out our last observations and infos (as these are identical
         # to the first obs and infos in the next episode).
         self.observations.pop()
