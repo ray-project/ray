@@ -833,8 +833,18 @@ class AggregatorPool:
 
             assert len(target_partition_ids) > 0
 
+            num_cpus_allocated = self._aggregator_ray_remote_args.get("num_cpus", 1)
+
+            # NOTE: ShuffleAggregator is configured as threaded actor to provide
+            #       to allow multiple requests being handled "concurrently" (par GIL) --
+            #       while it's not a real concurrency in its fullest of senses, having
+            #       multiple Python threads allows as to parallelize all activities not
+            #       requiring the GIL (inside Ray Core) such that concurrent request
+            #       handling tasks are only blocked on GIL and are ready to execute as
+            #       soon as it's released
             aggregator = ShuffleAggregator.options(
-                **self._aggregator_ray_remote_args
+                max_concurrency=int(num_cpus_allocated),
+                **self._aggregator_ray_remote_args,
             ).remote(aggregator_id, target_partition_ids, self._aggregation_factory_ref)
 
             self._aggregators.append(aggregator)
