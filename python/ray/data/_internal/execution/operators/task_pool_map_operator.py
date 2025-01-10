@@ -50,7 +50,7 @@ class TaskPoolMapOperator(MapOperator):
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-                        ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
+                ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
         """
         super().__init__(
             map_transformer,
@@ -94,7 +94,7 @@ class TaskPoolMapOperator(MapOperator):
                 2 * data_context._max_num_blocks_in_streaming_gen_buffer
             )
 
-        gen = map_task.options(**ray_remote_args).remote(
+        gen = self._map_task.options(**dynamic_ray_remote_args).remote(
             self._map_transformer_ref,
             data_context,
             ctx,
