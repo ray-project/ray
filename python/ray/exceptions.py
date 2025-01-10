@@ -901,7 +901,7 @@ class RayCgraphCapacityExceeded(RaySystemError):
     pass
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 class RayChannelFastFailError(RayError):
     """Raised when the Compiled Graph channel operation times out."""
 

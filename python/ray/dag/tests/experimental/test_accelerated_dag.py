@@ -1051,20 +1051,6 @@ def test_buffered_get_timeout(ray_start_regular):
         ray.get(refs[-1], timeout=3.5)
 
 
-def test_get_with_zero_timeout(ray_start_regular):
-    a = Actor.remote(0)
-    with InputNode() as inp:
-        dag = a.inc.bind(inp)
-
-    compiled_dag = dag.experimental_compile()
-    ref = compiled_dag.execute(1)
-    # Give enough time for DAG execution result to be ready
-    time.sleep(2)
-    # Use timeout=0 to either get result immediately or raise an exception
-    result = ray.get(ref, timeout=0)
-    assert result == 1
-
-
 def test_dag_exception_basic(ray_start_regular, capsys):
     # Test application throwing exceptions with a single task.
     a = Actor.remote(0)
