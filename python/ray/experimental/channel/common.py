@@ -300,8 +300,8 @@ class ReaderInterface:
 
         Args:
             timeout: The maximum time in seconds to wait for reading.
-                None means using default timeout, 0 means immediate timeout
-                (immediate success or timeout without blocking), -1 means
+                None means using default timeout which is infinite, 0 means immediate
+                timeout (immediate success or timeout without blocking), -1 means
                 infinite timeout (block indefinitely).
 
         """
@@ -364,6 +364,10 @@ class SynchronousReader(ReaderInterface):
             # timeout in the following read operation.
             self._unread_channels = None
 
+        # It is a special case that `timeout` is set to 0, which means
+        # read once for each channel.
+        is_zero_timeout = timeout == 0
+
         results = [None for _ in range(len(self._input_channels))]
         if timeout is None or timeout == -1:
             timeout = float("inf")
@@ -397,12 +401,7 @@ class SynchronousReader(ReaderInterface):
                         self._unread_channels = [
                             c for c in self._input_channels if c not in read_channel_set
                         ]
-                        fast_fail_error = ray.exceptions.RayChannelFastFailError(
-                            i, result
-                        )
-                        return [
-                            fast_fail_error for _ in range(len(self._input_channels))
-                        ]
+                        return [result for _ in range(len(self._input_channels))]
                 except ray.exceptions.RayChannelTimeoutError as e:
                     remaining_timeout = max(timeout_point - time.monotonic(), 0)
                     if remaining_timeout == 0:
@@ -410,7 +409,7 @@ class SynchronousReader(ReaderInterface):
                     continue
 
                 remaining_timeout = max(timeout_point - time.monotonic(), 0)
-                if remaining_timeout == 0:
+                if remaining_timeout == 0 and not is_zero_timeout:
                     raise ray.exceptions.RayChannelTimeoutError(
                         f"Cannot read all channels within {timeout} seconds"
                     )
@@ -469,12 +468,7 @@ class AwaitableBackgroundReader(ReaderInterface):
                         self._unread_channels = [
                             c for c in self._input_channels if c not in read_channel_set
                         ]
-                        fast_fail_error = ray.exceptions.RayChannelFastFailError(
-                            i, result
-                        )
-                        return [
-                            fast_fail_error for _ in range(len(self._input_channels))
-                        ]
+                        return [result for _ in range(len(self._input_channels))]
                 except ray.exceptions.RayChannelTimeoutError:
                     pass
                 if sys.is_finalizing():

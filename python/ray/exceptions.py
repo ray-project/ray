@@ -901,25 +901,6 @@ class RayCgraphCapacityExceeded(RaySystemError):
     pass
 
 
-@DeveloperAPI
-class RayChannelFastFailError(RayError):
-    """Raised when the Compiled Graph channel operation times out."""
-
-    def __init__(self, channel_index: int, error: RayTaskError):
-        self.channel_index = channel_index
-        self.error = error
-
-    def __str__(self):
-        return (
-            f"Input channel {self.channel_index} returned a RayTaskError: "
-            f"{self.error}. Returning immediately no matter whether "
-            "all input channels are read."
-        )
-
-    def as_instanceof_cause(self):
-        return self.error.as_instanceof_cause()
-
-
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -949,5 +930,4 @@ RAY_EXCEPTION_TYPES = [
     RayChannelTimeoutError,
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
-    RayChannelFastFailError,
 ]
