@@ -280,11 +280,10 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             agents_that_stepped_only=not self._as_learner_connector,
         ):
             if self._as_learner_connector:
-                assert sa_episode.is_numpy
+                assert not sa_episode.is_finalized
 
                 # Multi-agent case: Extract correct single agent RLModule (to get the
                 # state for individually).
-                sa_module = rl_module
                 if sa_episode.module_id is not None:
                     sa_module = rl_module[sa_episode.module_id]
                 else:
@@ -327,6 +326,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 else:
                     # Then simply use the `look_back_state`, i.e. in this case the
                     # initial state as `"state_in` in training.
+                    raise NotImplementedError("TODO")
                     state_outs = tree.map_structure(
                         lambda a: np.repeat(
                             a[np.newaxis, ...], len(sa_episode), axis=0
@@ -344,7 +344,8 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         # [:-1]: Shift state outs by one, ignore very last
                         # STATE_OUT (but therefore add the lookback/init state at
                         # the beginning).
-                        lambda i, o, m=max_seq_len: np.concatenate([[i], o[:-1]])[::m],
+                        #lambda i, o, m=max_seq_len: np.concatenate([[i], o[:-1]])[::m],
+                        lambda i, o, m=max_seq_len: ([i] + o[:-1])[::m],
                         look_back_state,
                         state_outs,
                     ),

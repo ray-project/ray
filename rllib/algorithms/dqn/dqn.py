@@ -138,7 +138,6 @@ class DQNConfig(AlgorithmConfig):
         # TODO (simon): Ensure that users can understand how to provide epsilon.
         #  (sven): Should we add this to `self.env_runners(epsilon=..)`?
         self.epsilon = [(0, 1.0), (10000, 0.05)]
-        self.episodes_to_numpy_from_env_runner = False
 
         # `training()`
         self.grad_clip = 40.0

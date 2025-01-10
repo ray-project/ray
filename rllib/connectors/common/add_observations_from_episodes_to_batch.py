@@ -155,6 +155,13 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
                 self.add_n_batch_items(
                     batch,
                     Columns.OBS,
+                    # Add all observations, except the very last one.
+                    # For a terminated episode, this is the terminal observation that
+                    # has no value for training.
+                    # For a truncated episode, algorithms either add an extra NEXT_OBS
+                    # column to the batch (ex. DQN) or extend the episode length by one
+                    # (using a separate connector piece and this truncated last obs),
+                    # then bootstrap the value estimation for that extra timestep.
                     items_to_add=sa_episode.get_observations(slice(0, len(sa_episode))),
                     num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
