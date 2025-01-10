@@ -1,6 +1,5 @@
 import asyncio
 import concurrent
-import logging
 import sys
 import threading
 import time
@@ -22,8 +21,6 @@ import ray.exceptions
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-logger = logging.getLogger(__name__)
 
 # The context singleton on this process.
 _default_context: "Optional[ChannelContext]" = None
