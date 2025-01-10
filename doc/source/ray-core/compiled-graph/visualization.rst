@@ -53,7 +53,7 @@ Note that tasks of the same actor are shown in the same color.
 Execution schedule
 ------------------
 
-Compiled Graph generates an execution schedule for each of the participating actors. This is very useful information
+Compiled Graph generates an execution schedule for each of the participating actors. This schedule is useful information
 to understand how the graph is executed at runtime.
 
 To visualize the execution schedule, set the environment variable ``RAY_CGRAPH_VISUALIZE_SCHEDULE=1``
