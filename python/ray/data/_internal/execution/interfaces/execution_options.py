@@ -19,6 +19,7 @@ class ExecutionResources:
         gpu: Optional[float] = None,
         object_store_memory: Optional[float] = None,
         default_to_inf: bool = False,
+        resources: Optional[Dict[str, float]] = {},
     ):
         """Initializes ExecutionResources.
         Args:
@@ -29,11 +30,13 @@ class ExecutionResources:
                 should be set to False. And missing values will default to 0.
                 When the object represents resource limits, this flag should be
                 set to True. And missing values will default to infinity.
+            resources: A dictionary of resource labels and amounts.
         """
         self._cpu = cpu
         self._gpu = gpu
         self._object_store_memory = object_store_memory
         self._default_to_inf = default_to_inf
+        self._resources = resources
 
     @classmethod
     def from_resource_dict(
@@ -99,9 +102,14 @@ class ExecutionResources:
     def object_store_memory(self, value: float):
         self._object_store_memory = value
 
+    @property
+    def resources(self) -> Dict[str, float]:
+        return self._resources
+
     def __repr__(self):
         return (
             f"ExecutionResources(cpu={self.cpu:.1f}, gpu={self.gpu:.1f}, "
+            f"resources={self._resources}, "
             f"object_store_memory={self.object_store_memory_str()})"
         )
 
@@ -134,7 +142,7 @@ class ExecutionResources:
     def copy(self) -> "ExecutionResources":
         """Returns a copy of this ExecutionResources object."""
         return ExecutionResources(
-            self._cpu, self._gpu, self._object_store_memory, self._default_to_inf
+            self._cpu, self._gpu, self._object_store_memory, self._default_to_inf, self._resources
         )
 
     def add(self, other: "ExecutionResources") -> "ExecutionResources":
@@ -147,6 +155,7 @@ class ExecutionResources:
             self.cpu + other.cpu,
             self.gpu + other.gpu,
             self.object_store_memory + other.object_store_memory,
+            resources= self._resources
         )
 
     def subtract(self, other: "ExecutionResources") -> "ExecutionResources":
@@ -159,6 +168,7 @@ class ExecutionResources:
             self.cpu - other.cpu,
             self.gpu - other.gpu,
             self.object_store_memory - other.object_store_memory,
+            resources= self._resources
         )
 
     def max(self, other: "ExecutionResources") -> "ExecutionResources":
@@ -169,6 +179,7 @@ class ExecutionResources:
             object_store_memory=max(
                 self.object_store_memory, other.object_store_memory
             ),
+            resources= self._resources
         )
 
     def min(self, other: "ExecutionResources") -> "ExecutionResources":
@@ -179,6 +190,7 @@ class ExecutionResources:
             object_store_memory=min(
                 self.object_store_memory, other.object_store_memory
             ),
+            resources= self._resources
         )
 
     def satisfies_limit(self, limit: "ExecutionResources") -> bool:
@@ -203,6 +215,7 @@ class ExecutionResources:
             cpu=self.cpu * f,
             gpu=self.gpu * f,
             object_store_memory=self.object_store_memory * f,
+            resources= self._resources
         )
 
 
