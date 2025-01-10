@@ -69,7 +69,7 @@ size_t Read(int read_fd, char *data, size_t len) {
 }
 void CompleteWriteEOFIndicator(int write_fd) {
   ssize_t bytes_written = write(write_fd, kEofIndicator.data(), kEofIndicator.length());
-  RAY_CHECK_EQ(bytes_written, kEofIndicator.length());
+  RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(kEofIndicator.length()));
   bytes_written = write(write_fd, "\n", /*count=*/1);
   RAY_CHECK_EQ(bytes_written, 1);
 }
@@ -114,7 +114,7 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
       std::string_view cur_content{content.data(), bytes_read};
       std::vector<std::string_view> newlines = absl::StrSplit(cur_content, '\n');
 
-      for (int idx = 0; idx < newlines.size() - 1; ++idx) {
+      for (size_t idx = 0; idx < newlines.size() - 1; ++idx) {
         std::string cur_new_line = std::move(last_line);
         cur_new_line += newlines[idx];
 
