@@ -54,7 +54,7 @@ Execution schedule
 ------------------
 
 Compiled Graph generates an execution schedule for each of the participating actors. This schedule is useful information
-to understand how the graph is executed at runtime.
+for understanding how Ray executes the graph at runtime.
 
 To visualize the execution schedule, set the environment variable ``RAY_CGRAPH_VISUALIZE_SCHEDULE=1``
 when running the script. For example, save the preceding code in a script named ``example.py``,
