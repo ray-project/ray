@@ -20,6 +20,7 @@ class TaskPoolMapOperator(MapOperator):
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         target_max_block_size: Optional[int],
         name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
@@ -49,11 +50,12 @@ class TaskPoolMapOperator(MapOperator):
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Customize the ray remote args for this op's tasks.
+                        ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
         """
         super().__init__(
             map_transformer,
             input_op,
+            data_context,
             name,
             target_max_block_size,
             min_rows_per_bundle,
@@ -63,22 +65,32 @@ class TaskPoolMapOperator(MapOperator):
         )
         self._concurrency = concurrency
 
+        # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the
+        #       blocks themselves are going to be passed inside `fn.options(...)`
+        #       invocation
+        ray_remote_static_args = {
+            **(self._ray_remote_args or {}),
+            "num_returns": "streaming",
+        }
+
+        self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
+
     def _add_bundled_input(self, bundle: RefBundle):
         # Submit the task as a normal Ray task.
-        map_task = cached_remote_fn(_map_task, num_returns="streaming")
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
             target_max_block_size=self.actual_target_max_block_size,
         )
-        data_context = DataContext.get_current()
-        ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
-        ray_remote_args["name"] = self.name
 
+        dynamic_ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
+        dynamic_ray_remote_args["name"] = self.name
+
+        data_context = self.data_context
         if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
             # The `_generator_backpressure_num_objects` parameter should be
             # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
             # 2 objects for each block: the block and the block metadata.
-            ray_remote_args["_generator_backpressure_num_objects"] = (
+            dynamic_ray_remote_args["_generator_backpressure_num_objects"] = (
                 2 * data_context._max_num_blocks_in_streaming_gen_buffer
             )
 
@@ -87,6 +99,7 @@ class TaskPoolMapOperator(MapOperator):
             data_context,
             ctx,
             *bundle.block_refs,
+            **self.get_map_task_kwargs(),
         )
         self._submit_data_task(gen, bundle)
 
@@ -117,6 +130,9 @@ class TaskPoolMapOperator(MapOperator):
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
         )
+
+    def pending_processor_usage(self) -> ExecutionResources:
+        return ExecutionResources()
 
     def incremental_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(
