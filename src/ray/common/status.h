@@ -32,6 +32,7 @@
 #include <iosfwd>
 #include <string>
 
+#include "ray/common/source_location.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
@@ -49,35 +50,22 @@ class error_code;
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \
   do {                                 \
-    ::ray::Status _s = (s);            \
+    const ::ray::Status &_s = (s);     \
     if (RAY_PREDICT_FALSE(!_s.ok())) { \
       return _s;                       \
     }                                  \
   } while (0)
 
-#define RAY_RETURN_NOT_OK_ELSE(s, else_) \
-  do {                                   \
-    ::ray::Status _s = (s);              \
-    if (!_s.ok()) {                      \
-      else_;                             \
-      return _s;                         \
-    }                                    \
-  } while (0)
-
-// If 'to_call' returns a bad status, CHECK immediately with a logged message
-// of 'msg' followed by the status.
-#define RAY_CHECK_OK_PREPEND(to_call, msg)                \
-  do {                                                    \
-    ::ray::Status _s = (to_call);                         \
-    RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
-  } while (0)
-
-// If the status is bad, CHECK immediately, appending the status to the
-// logged message.
-#define RAY_CHECK_OK(s) RAY_CHECK_OK_PREPEND(s, "Bad status")
+// If the status is not OK, CHECK-fail immediately, appending the status to the
+// logged message. The message can be appended with <<.
+#define RAY_CHECK_OK(s)                          \
+  if (const ::ray::Status &_status_ = (s); true) \
+  RAY_CHECK_WITH_DISPLAY(_status_.ok(), #s)      \
+      << "Status not OK: " << _status_.ToString() << " "
 
 namespace ray {
 
+// If you add to this list, please also update kCodeToStr in status.cc.
 enum class StatusCode : char {
   OK = 0,
   OutOfMemory = 1,
@@ -96,19 +84,13 @@ enum class StatusCode : char {
   NotFound = 17,
   Disconnected = 18,
   SchedulingCancelled = 19,
+  AlreadyExists = 20,
   // object store status
   ObjectExists = 21,
   ObjectNotFound = 22,
   ObjectAlreadySealed = 23,
   ObjectStoreFull = 24,
   TransientObjectStoreFull = 25,
-  // grpc status
-  // This represents UNAVAILABLE status code
-  // returned by grpc.
-  GrpcUnavailable = 26,
-  // This represents all other status codes
-  // returned by grpc that are not defined above.
-  GrpcUnknown = 27,
   // Object store is both out of memory and
   // out of disk.
   OutOfDisk = 28,
@@ -119,6 +101,12 @@ enum class StatusCode : char {
   AuthError = 33,
   // Indicates the input value is not valid.
   InvalidArgument = 34,
+  // Indicates that a channel (a mutable plasma object) is closed and cannot be
+  // read or written to.
+  ChannelError = 35,
+  // Indicates that a read or write on a channel (a mutable plasma object) timed out.
+  ChannelTimeoutError = 36,
+  // If you add to this list, please also update kCodeToStr in status.cc.
 };
 
 #if defined(__clang__)
@@ -129,14 +117,19 @@ class RAY_MUST_USE_RESULT RAY_EXPORT Status;
 class RAY_EXPORT Status {
  public:
   // Create a success status.
-  Status() : state_(NULL) {}
+  Status() : state_(nullptr) {}
   ~Status() { delete state_; }
 
   Status(StatusCode code, const std::string &msg, int rpc_code = -1);
+  Status(StatusCode code, const std::string &msg, SourceLocation loc, int rpc_code = -1);
 
   // Copy the specified status.
   Status(const Status &s);
-  void operator=(const Status &s);
+  Status &operator=(const Status &s);
+
+  // Move the specified status.
+  Status(Status &&s);
+  Status &operator=(Status &&s);
 
   // Return a success status.
   static Status OK() { return Status(); }
@@ -214,6 +207,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::SchedulingCancelled, msg);
   }
 
+  static Status AlreadyExists(const std::string &msg) {
+    return Status(StatusCode::AlreadyExists, msg);
+  }
+
   static Status ObjectExists(const std::string &msg) {
     return Status(StatusCode::ObjectExists, msg);
   }
@@ -242,14 +239,6 @@ class RAY_EXPORT Status {
     return Status(StatusCode::OutOfDisk, msg);
   }
 
-  static Status GrpcUnavailable(const std::string &msg) {
-    return Status(StatusCode::GrpcUnavailable, msg);
-  }
-
-  static Status GrpcUnknown(const std::string &msg) {
-    return Status(StatusCode::GrpcUnknown, msg);
-  }
-
   static Status RpcError(const std::string &msg, int rpc_code) {
     return Status(StatusCode::RpcError, msg, rpc_code);
   }
@@ -262,10 +251,18 @@ class RAY_EXPORT Status {
     return Status(StatusCode::AuthError, msg);
   }
 
+  static Status ChannelError(const std::string &msg) {
+    return Status(StatusCode::ChannelError, msg);
+  }
+
+  static Status ChannelTimeoutError(const std::string &msg) {
+    return Status(StatusCode::ChannelTimeoutError, msg);
+  }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
-  bool ok() const { return (state_ == NULL); }
+  bool ok() const { return (state_ == nullptr); }
 
   bool IsOutOfMemory() const { return code() == StatusCode::OutOfMemory; }
   bool IsOutOfDisk() const { return code() == StatusCode::OutOfDisk; }
@@ -297,6 +294,7 @@ class RAY_EXPORT Status {
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
   bool IsDisconnected() const { return code() == StatusCode::Disconnected; }
   bool IsSchedulingCancelled() const { return code() == StatusCode::SchedulingCancelled; }
+  bool IsAlreadyExists() const { return code() == StatusCode::AlreadyExists; }
   bool IsObjectExists() const { return code() == StatusCode::ObjectExists; }
   bool IsObjectNotFound() const { return code() == StatusCode::ObjectNotFound; }
   bool IsObjectUnknownOwner() const { return code() == StatusCode::ObjectUnknownOwner; }
@@ -305,16 +303,16 @@ class RAY_EXPORT Status {
   bool IsTransientObjectStoreFull() const {
     return code() == StatusCode::TransientObjectStoreFull;
   }
-  bool IsGrpcUnavailable() const { return code() == StatusCode::GrpcUnavailable; }
-  bool IsGrpcUnknown() const { return code() == StatusCode::GrpcUnknown; }
-
-  bool IsGrpcError() const { return IsGrpcUnknown() || IsGrpcUnavailable(); }
 
   bool IsRpcError() const { return code() == StatusCode::RpcError; }
 
   bool IsOutOfResource() const { return code() == StatusCode::OutOfResource; }
 
   bool IsAuthError() const { return code() == StatusCode::AuthError; }
+
+  bool IsChannelError() const { return code() == StatusCode::ChannelError; }
+
+  bool IsChannelTimeoutError() const { return code() == StatusCode::ChannelTimeoutError; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
@@ -334,10 +332,13 @@ class RAY_EXPORT Status {
   struct State {
     StatusCode code;
     std::string msg;
+    SourceLocation loc;
     // If code is RpcError, this contains the RPC error code
     int rpc_code;
   };
-  // OK status has a `NULL` state_.  Otherwise, `state_` points to
+  // Use raw pointer instead of unique pointer to achieve copiable `Status`.
+  //
+  // OK status has a `nullptr` state_.  Otherwise, `state_` points to
   // a `State` structure containing the error code and message(s)
   State *state_;
 
@@ -350,14 +351,29 @@ static inline std::ostream &operator<<(std::ostream &os, const Status &x) {
 }
 
 inline Status::Status(const Status &s)
-    : state_((s.state_ == NULL) ? NULL : new State(*s.state_)) {}
+    : state_((s.state_ == nullptr) ? nullptr : new State(*s.state_)) {}
 
-inline void Status::operator=(const Status &s) {
+inline Status &Status::operator=(const Status &s) {
   // The following condition catches both aliasing (when this == &s),
   // and the common case where both s and *this are ok.
   if (state_ != s.state_) {
     CopyFrom(s.state_);
   }
+  return *this;
+}
+
+inline Status::Status(Status &&rhs) {
+  state_ = rhs.state_;
+  rhs.state_ = nullptr;
+}
+
+inline Status &Status::operator=(Status &&rhs) {
+  if (this == &rhs) {
+    return *this;
+  }
+  state_ = rhs.state_;
+  rhs.state_ = nullptr;
+  return *this;
 }
 
 Status boost_to_ray_status(const boost::system::error_code &error);

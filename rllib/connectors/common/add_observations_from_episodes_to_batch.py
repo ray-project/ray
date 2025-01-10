@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -7,12 +7,41 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class AddObservationsFromEpisodesToBatch(ConnectorV2):
     """Gets the last observation from a running episode and adds it to the batch.
 
-    - Operates on a list of Episode objects.
+    Note: This is one of the default env-to-module or Learner ConnectorV2 pieces that
+    are added automatically by RLlib into every env-to-module/Learner connector
+    pipeline, unless `config.add_default_connectors_to_env_to_module_pipeline` or
+    `config.add_default_connectors_to_learner_pipeline ` are set to
+    False.
+
+    The default env-to-module connector pipeline is:
+    [
+        [0 or more user defined ConnectorV2 pieces],
+        AddObservationsFromEpisodesToBatch,
+        AddStatesFromEpisodesToBatch,
+        AgentToModuleMapping,  # only in multi-agent setups!
+        BatchIndividualItems,
+        NumpyToTensor,
+    ]
+    The default Learner connector pipeline is:
+    [
+        [0 or more user defined ConnectorV2 pieces],
+        AddObservationsFromEpisodesToBatch,
+        AddColumnsFromEpisodesToTrainBatch,
+        AddStatesFromEpisodesToBatch,
+        AgentToModuleMapping,  # only in multi-agent setups!
+        BatchIndividualItems,
+        NumpyToTensor,
+    ]
+
+    This ConnectorV2:
+    - Operates on a list of Episode objects (single- or multi-agent).
     - Gets the most recent observation(s) from all the given episodes and adds them
     to the batch under construction (as a list of individual observations).
     - Does NOT alter any observations (or other data) in the given episodes.
@@ -49,9 +78,9 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         # Call the connector with the two created episodes.
         # Note that this particular connector works without an RLModule, so we
         # simplify here for the sake of this example.
-        output_data = connector(
+        output_batch = connector(
             rl_module=None,
-            data={},
+            batch={},
             episodes=episodes,
             explore=True,
             shared_data={},
@@ -59,7 +88,7 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         # The output data should now contain the last observations of both episodes,
         # in a "per-episode organized" fashion.
         check(
-            output_data,
+            output_batch,
             {
                 "obs": {
                     (episodes[0].id_,): [eps_1_last_obs],
@@ -98,26 +127,33 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         # If "obs" already in data, early out.
-        if Columns.OBS in data:
-            return data
-
-        for sa_episode in self.single_agent_episode_iterator(
-            episodes,
-            # If Learner connector, get all episodes (for train batch).
-            # If EnvToModule, get only those ongoing episodes that just had their
-            # agent step (b/c those are the ones we need to compute actions for next).
-            agents_that_stepped_only=not self._as_learner_connector,
+        if Columns.OBS in batch:
+            return batch
+        for i, sa_episode in enumerate(
+            self.single_agent_episode_iterator(
+                episodes,
+                # If Learner connector, get all episodes (for train batch).
+                # If EnvToModule, get only those ongoing episodes that just had their
+                # agent step (b/c those are the ones we need to compute actions for
+                # next).
+                agents_that_stepped_only=not self._as_learner_connector,
+            )
         ):
             if self._as_learner_connector:
+                # TODO (sven): Resolve this hack by adding a new connector piece that
+                #  performs this very task.
+                if "_" not in sa_episode.id_:
+                    sa_episode.id_ += "_" + str(i)
+
                 self.add_n_batch_items(
-                    data,
+                    batch,
                     Columns.OBS,
                     items_to_add=sa_episode.get_observations(slice(0, len(sa_episode))),
                     num_items=len(sa_episode),
@@ -126,9 +162,10 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
             else:
                 assert not sa_episode.is_numpy
                 self.add_batch_item(
-                    data,
+                    batch,
                     Columns.OBS,
                     item_to_add=sa_episode.get_observations(-1),
                     single_agent_episode=sa_episode,
                 )
-        return data
+
+        return batch

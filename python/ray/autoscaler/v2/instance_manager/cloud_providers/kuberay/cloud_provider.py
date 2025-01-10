@@ -55,13 +55,12 @@ class KubeRayProvider(ICloudInstanceProvider):
         """
         Args:
             cluster_name: The name of the RayCluster resource.
-            namespace: The namespace of the RayCluster resource.
+            provider_config: The namespace of the RayCluster.
             k8s_api_client: The client to the Kubernetes API server.
                 This could be used to mock the Kubernetes API server for testing.
         """
         self._cluster_name = cluster_name
         self._namespace = provider_config["namespace"]
-        self._head_node_type = provider_config["head_node_type"]
 
         self._k8s_api_client = k8s_api_client or KubernetesHttpApiClient(
             namespace=self._namespace
@@ -210,21 +209,25 @@ class KubeRayProvider(ICloudInstanceProvider):
         cur_instances = self.instances
 
         # Get the worker groups that have pending deletes and the worker groups that
-        # have finished deletes.
+        # have finished deletes, and the set of workers included in the workersToDelete
+        # field of any worker group.
         (
             worker_groups_with_pending_deletes,
             worker_groups_without_pending_deletes,
-        ) = self._get_workers_groups_with_deletes(
-            ray_cluster, set(cur_instances.keys())
-        )
+            worker_to_delete_set,
+        ) = self._get_workers_delete_info(ray_cluster, set(cur_instances.keys()))
 
         # Calculate the desired number of workers by type.
         num_workers_dict = defaultdict(int)
-        for _, cur_instance in cur_instances.items():
-            if cur_instance.node_kind == NodeKind.HEAD:
-                # Only track workers.
-                continue
-            num_workers_dict[cur_instance.node_type] += 1
+        worker_groups = ray_cluster["spec"].get("workerGroupSpecs", [])
+        for worker_group in worker_groups:
+            node_type = worker_group["groupName"]
+            # Handle the case where users manually increase `minReplicas`
+            # to scale up the number of worker Pods. In this scenario,
+            # `replicas` will be smaller than `minReplicas`.
+            num_workers_dict[node_type] = max(
+                worker_group["replicas"], worker_group["minReplicas"]
+            )
 
         # Add to launch nodes.
         for node_type, count in to_launch.items():
@@ -241,6 +244,11 @@ class KubeRayProvider(ICloudInstanceProvider):
 
             if to_delete_instance.node_kind == NodeKind.HEAD:
                 # Not possible to delete head node.
+                continue
+
+            if to_delete_instance.cloud_instance_id in worker_to_delete_set:
+                # If the instance is already in the workersToDelete field of
+                # any worker group, skip it.
                 continue
 
             num_workers_dict[to_delete_instance.node_type] -= 1
@@ -322,6 +330,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             # No patch required.
             return
 
+        logger.info(f"Submitting a scale request: {scale_request}")
         self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
 
     def _add_launch_errors(
@@ -393,9 +402,9 @@ class KubeRayProvider(ICloudInstanceProvider):
         return copy.deepcopy(self._cached_instances)
 
     @staticmethod
-    def _get_workers_groups_with_deletes(
+    def _get_workers_delete_info(
         ray_cluster_spec: Dict[str, Any], node_set: Set[CloudInstanceId]
-    ) -> Tuple[Set[NodeType], Set[NodeType]]:
+    ) -> Tuple[Set[NodeType], Set[NodeType], Set[CloudInstanceId]]:
         """
         Gets the worker groups that have pending deletes and the worker groups that
         have finished deletes.
@@ -405,10 +414,13 @@ class KubeRayProvider(ICloudInstanceProvider):
                 deletes.
             worker_groups_with_finished_deletes: The worker groups that have finished
                 deletes.
+            worker_to_delete_set: A set of Pods that are included in the workersToDelete
+                field of any worker group.
         """
 
         worker_groups_with_pending_deletes = set()
         worker_groups_with_deletes = set()
+        worker_to_delete_set = set()
 
         worker_groups = ray_cluster_spec["spec"].get("workerGroupSpecs", [])
         for worker_group in worker_groups:
@@ -423,6 +435,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             worker_groups_with_deletes.add(node_type)
 
             for worker in workersToDelete:
+                worker_to_delete_set.add(worker)
                 if worker in node_set:
                     worker_groups_with_pending_deletes.add(node_type)
                     break
@@ -430,7 +443,11 @@ class KubeRayProvider(ICloudInstanceProvider):
         worker_groups_with_finished_deletes = (
             worker_groups_with_deletes - worker_groups_with_pending_deletes
         )
-        return worker_groups_with_pending_deletes, worker_groups_with_finished_deletes
+        return (
+            worker_groups_with_pending_deletes,
+            worker_groups_with_finished_deletes,
+            worker_to_delete_set,
+        )
 
     def _fetch_instances(self) -> Dict[CloudInstanceId, CloudInstance]:
         """
@@ -478,26 +495,23 @@ class KubeRayProvider(ICloudInstanceProvider):
                 # Ignore pods marked for termination.
                 continue
             pod_name = pod["metadata"]["name"]
-            cloud_instance = self._cloud_instance_from_pod(pod, self._head_node_type)
+            cloud_instance = self._cloud_instance_from_pod(pod)
             if cloud_instance:
                 cloud_instances[pod_name] = cloud_instance
         return cloud_instances
 
     @staticmethod
-    def _cloud_instance_from_pod(
-        pod: Dict[str, Any], head_node_type: NodeType
-    ) -> Optional[CloudInstance]:
+    def _cloud_instance_from_pod(pod: Dict[str, Any]) -> Optional[CloudInstance]:
         """
         Convert a pod to a Ray CloudInstance.
 
         Args:
             pod: The pod resource dict.
-            head_node_type: The node type of the head node.
         """
         labels = pod["metadata"]["labels"]
         if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
             kind = NodeKind.HEAD
-            type = head_node_type
+            type = labels[KUBERAY_LABEL_KEY_TYPE]
         elif labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_WORKER:
             kind = NodeKind.WORKER
             type = labels[KUBERAY_LABEL_KEY_TYPE]

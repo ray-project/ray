@@ -5,6 +5,7 @@ from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.aggregate import AggregateFn
+from ray.data.block import BlockMetadata
 
 
 class AbstractAllToAll(LogicalOperator):
@@ -28,7 +29,7 @@ class AbstractAllToAll(LogicalOperator):
                 of `input_op` will be the inputs to this operator.
             num_outputs: The number of expected output bundles outputted by this
                 operator.
-            ray_remote_args: Args to provide to ray.remote.
+            ray_remote_args: Args to provide to :func:`ray.remote`.
         """
         super().__init__(name, [input_op], num_outputs)
         self._num_outputs = num_outputs
@@ -49,6 +50,10 @@ class RandomizeBlocks(AbstractAllToAll):
             input_op,
         )
         self._seed = seed
+
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata()
 
 
 class RandomShuffle(AbstractAllToAll):
@@ -71,6 +76,10 @@ class RandomShuffle(AbstractAllToAll):
             ray_remote_args=ray_remote_args,
         )
         self._seed = seed
+
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata()
 
 
 class Repartition(AbstractAllToAll):
@@ -99,6 +108,10 @@ class Repartition(AbstractAllToAll):
         )
         self._shuffle = shuffle
 
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata()
+
 
 class Sort(AbstractAllToAll):
     """Logical operator for sort."""
@@ -107,6 +120,7 @@ class Sort(AbstractAllToAll):
         self,
         input_op: LogicalOperator,
         sort_key: SortKey,
+        batch_format: Optional[str] = "default",
     ):
         super().__init__(
             "Sort",
@@ -118,6 +132,11 @@ class Sort(AbstractAllToAll):
             ],
         )
         self._sort_key = sort_key
+        self._batch_format = batch_format
+
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata()
 
 
 class Aggregate(AbstractAllToAll):
@@ -128,14 +147,17 @@ class Aggregate(AbstractAllToAll):
         input_op: LogicalOperator,
         key: Optional[str],
         aggs: List[AggregateFn],
+        batch_format: Optional[str] = "default",
     ):
         super().__init__(
             "Aggregate",
             input_op,
             sub_progress_bar_names=[
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
         self._key = key
         self._aggs = aggs
+        self._batch_format = batch_format

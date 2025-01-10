@@ -1,5 +1,9 @@
 """Example of using fractional GPUs (< 1.0) per Learner worker.
 
+The number of GPUs required, just for learning (excluding those maybe needed on your
+EnvRunners, if applicable) can be computed by:
+`num_gpus = config.num_learners * config.num_gpus_per_learner`
+
 This example:
   - shows how to set up an Algorithm that uses one or more Learner workers ...
   - ... and how to assign a fractional (< 1.0) number of GPUs to each of these Learners.
@@ -7,8 +11,8 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-learner-workers=
-[number of Learner workers, e.g. 1] --num-gpus-per-learner [some fraction <1.0]`
+`python [script file name].py --enable-new-api-stack --num-learners=
+[number of Learners, e.g. 1] --num-gpus-per-learner [some fraction <1.0]`
 
 The following command line combinations been tested on a 4 NVIDIA T4 GPUs (16 vCPU)
 machine.
@@ -17,7 +21,8 @@ learning rates in the `base_config` below:
 1) --num-learners=1 --num-gpus-per-learner=0.5 (2.0 GPUs used).
 2) --num-learners=1 --num-gpus-per-learner=0.3 (1.2 GPUs used).
 3) --num-learners=1 --num-gpus-per-learner=0.25 (1.0 GPU used).
-4) non-sensical setting: --num-learners=2 --num-gpus-per-learner=0.5 (expect an
+4) --num-learners=2 --num-gpus-per-learner=1 (8 GPUs used).
+5) non-sensical setting: --num-learners=2 --num-gpus-per-learner=0.5 (expect an
 NCCL-related error due to the fact that torch will try to perform DDP sharding,
 but notices that the shards sit on the same GPU).
 
@@ -77,17 +82,14 @@ from ray.tune.registry import get_trainable_cls
 parser = add_rllib_example_script_args(
     default_iters=50, default_reward=180, default_timesteps=100000
 )
-# TODO (sven): Retire the currently supported --num-gpus in favor of --num-learners.
-parser.add_argument("--num-learners", type=int, default=1)
-parser.add_argument("--num-gpus-per-learner", type=float, default=0.5)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    num_env_runners=2,
+)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     base_config = (
         get_trainable_cls(args.algo)
@@ -98,10 +100,12 @@ if __name__ == "__main__":
             enable_env_runner_and_connector_v2=True,
         )
         .environment("CartPole-v1")
+        # Define EnvRunner scaling.
+        .env_runners(num_env_runners=args.num_env_runners)
         # Define Learner scaling.
         .learners(
-            # How many Learner workers do we need? If you have more than 1 GPU, you
-            # should set this to the number of GPUs available.
+            # How many Learner workers do we need? If you have more than 1 GPU,
+            # set this parameter to the number of GPUs available.
             num_learners=args.num_learners,
             # How many GPUs does each Learner need? If you have more than 1 GPU or only
             # one Learner, you should set this to 1, otherwise, set this to some

@@ -1,6 +1,7 @@
-"""Example showing how one can restore a connector enabled TF policy
+# @OldAPIStack
+"""Example showing to restore a connector enabled TF policy
 checkpoint for a new self-play PyTorch training job.
-The checkpointed policy may be trained with a different algorithm too.
+You can train the checkpointed policy with a different algorithm too.
 """
 
 import argparse
@@ -11,7 +12,7 @@ import tempfile
 import ray
 from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.env.utils import try_import_pyspiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
@@ -47,7 +48,7 @@ MAIN_POLICY_ID = "main"
 OPPONENT_POLICY_ID = "opponent"
 
 
-class AddPolicyCallback(DefaultCallbacks):
+class AddPolicyCallback(RLlibCallback):
     def __init__(self, checkpoint_dir):
         self._checkpoint_dir = checkpoint_dir
         super().__init__()
@@ -63,7 +64,7 @@ class AddPolicyCallback(DefaultCallbacks):
         algorithm.add_policy(
             policy_id=OPPONENT_POLICY_ID,
             policy=policy,
-            evaluation_workers=True,
+            add_to_eval_env_runners=True,
         )
 
 

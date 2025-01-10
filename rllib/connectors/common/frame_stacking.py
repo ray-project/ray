@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 import tree  # pip install dm_tree
@@ -17,15 +17,19 @@ class _FrameStacking(ConnectorV2):
     """A connector piece that stacks the previous n observations into one."""
 
     @override(ConnectorV2)
-    def recompute_observation_space_from_input_spaces(self):
+    def recompute_output_observation_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
         # Change our observation space according to the given stacking settings.
         if self._multi_agent:
             ret = {}
-            for agent_id, obs_space in self.input_observation_space.spaces.items():
+            for agent_id, obs_space in input_observation_space.spaces.items():
                 ret[agent_id] = self._convert_individual_space(obs_space)
             return gym.spaces.Dict(ret)
         else:
-            return self._convert_individual_space(self.input_observation_space)
+            return self._convert_individual_space(input_observation_space)
 
     def __init__(
         self,
@@ -62,7 +66,7 @@ class _FrameStacking(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -74,11 +78,11 @@ class _FrameStacking(ConnectorV2):
                 episodes, agents_that_stepped_only=False
             ):
 
-                def _map_fn(s):
+                def _map_fn(s, _sa_episode=sa_episode):
                     # Squeeze out last dim.
                     s = np.squeeze(s, axis=-1)
                     # Calculate new shape and strides
-                    new_shape = (len(sa_episode), self.num_frames) + s.shape[1:]
+                    new_shape = (len(_sa_episode), self.num_frames) + s.shape[1:]
                     new_strides = (s.strides[0],) + s.strides
                     # Create a strided view of the array.
                     return np.transpose(
@@ -92,13 +96,13 @@ class _FrameStacking(ConnectorV2):
                 # the very last one, which is the final observation not needed for
                 # learning).
                 self.add_n_batch_items(
-                    batch=data,
+                    batch=batch,
                     column=Columns.OBS,
                     items_to_add=tree.map_structure(
                         _map_fn,
                         sa_episode.get_observations(
                             indices=slice(-self.num_frames + 1, len(sa_episode)),
-                            neg_indices_left_of_zero=True,
+                            neg_index_as_lookback=True,
                             fill=0.0,
                         ),
                     ),
@@ -122,13 +126,13 @@ class _FrameStacking(ConnectorV2):
                     *obs_stack,
                 )
                 self.add_batch_item(
-                    batch=data,
+                    batch=batch,
                     column=Columns.OBS,
                     item_to_add=stacked_obs,
                     single_agent_episode=sa_episode,
                 )
 
-        return data
+        return batch
 
     def _convert_individual_space(self, obs_space):
         # Some assumptions: Space is box AND last dim (the stacking one) is 1.

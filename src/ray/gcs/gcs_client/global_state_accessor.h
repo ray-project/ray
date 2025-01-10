@@ -49,7 +49,9 @@ class GlobalStateAccessor {
   /// \return All job info. To support multi-language, we serialize each JobTableData and
   /// return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::vector<std::string> GetAllJobInfo() ABSL_LOCKS_EXCLUDED(mutex_);
+  std::vector<std::string> GetAllJobInfo(bool skip_submission_job_info_field = false,
+                                         bool skip_is_running_tasks_field = false)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get next job id from GCS Service.
   ///
@@ -72,6 +74,13 @@ class GlobalStateAccessor {
   /// each AvailableResources and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /// Get total resources of all nodes.
+  ///
+  /// \return total resources of all nodes. To support multi-language, we serialize
+  /// each TotalResources and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllTotalResources() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get draining nodes.
   ///
@@ -242,7 +251,7 @@ class GlobalStateAccessor {
   template <class DATA>
   OptionalItemCallback<DATA> TransformForOptionalItemCallback(
       std::unique_ptr<std::string> &data, std::promise<bool> &promise) {
-    return [&data, &promise](const Status &status, const boost::optional<DATA> &result) {
+    return [&data, &promise](const Status &status, const std::optional<DATA> &result) {
       RAY_CHECK_OK(status);
       if (result) {
         data.reset(new std::string(result->SerializeAsString()));

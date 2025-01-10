@@ -254,9 +254,8 @@ NodeResources LocalResourceManager::ToNodeResources() const {
   node_resources.available = local_resources_.available.ToNodeResourceSet();
   node_resources.total = local_resources_.total.ToNodeResourceSet();
   node_resources.labels = local_resources_.labels;
-  node_resources.is_draining = is_local_node_draining_;
-  node_resources.draining_deadline_timestamp_ms =
-      local_node_draining_deadline_timestamp_ms_;
+  node_resources.is_draining = IsLocalNodeDraining();
+  node_resources.draining_deadline_timestamp_ms = GetDrainingDeadline();
   return node_resources;
 }
 
@@ -330,8 +329,7 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   }
 
   resource_view_sync_message.set_is_draining(IsLocalNodeDraining());
-  resource_view_sync_message.set_draining_deadline_timestamp_ms(
-      local_node_draining_deadline_timestamp_ms_);
+  resource_view_sync_message.set_draining_deadline_timestamp_ms(GetDrainingDeadline());
 
   for (const auto &iter : last_idle_times_) {
     if (iter.second == absl::nullopt) {
@@ -383,7 +381,8 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
     RAY_LOG(INFO) << "The node is drained, continue to shut down raylet...";
-    shutdown_raylet_gracefully_(node_death_info_);
+    rpc::NodeDeathInfo node_death_info = DeathInfoFromDrainRequest();
+    shutdown_raylet_gracefully_(std::move(node_death_info));
   }
 
   ++version_;
@@ -391,6 +390,22 @@ void LocalResourceManager::OnResourceOrStateChanged() {
     return;
   }
   resource_change_subscriber_(ToNodeResources());
+}
+
+rpc::NodeDeathInfo LocalResourceManager::DeathInfoFromDrainRequest() {
+  rpc::NodeDeathInfo death_info;
+  RAY_CHECK(drain_request_.has_value());
+  if (drain_request_->reason() ==
+      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
+    death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
+    death_info.set_reason_message(drain_request_->reason_message());
+  } else {
+    RAY_CHECK_EQ(drain_request_->reason(),
+                 rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+    death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+    death_info.set_reason_message(drain_request_->reason_message());
+  }
+  return death_info;
 }
 
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {
@@ -445,11 +460,8 @@ void LocalResourceManager::RecordMetrics() const {
 }
 
 void LocalResourceManager::SetLocalNodeDraining(
-    int64_t draining_deadline_timestamp_ms, const rpc::NodeDeathInfo &node_death_info) {
-  RAY_CHECK_GE(draining_deadline_timestamp_ms, 0);
-  is_local_node_draining_ = true;
-  local_node_draining_deadline_timestamp_ms_ = draining_deadline_timestamp_ms;
-  node_death_info_ = node_death_info;
+    const rpc::DrainRayletRequest &drain_request) {
+  drain_request_ = std::make_optional(drain_request);
   OnResourceOrStateChanged();
 }
 

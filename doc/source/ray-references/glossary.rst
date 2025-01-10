@@ -459,13 +459,13 @@ documentation, sorted alphabetically.
         RolloutWorkers are used as ``@ray.remote`` actors to collect and return samples
         from environments or offline files in parallel. An RLlib
         :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` usually has
-        ``num_workers`` :py:class:`~ray.rllib.env.env_runner.EnvRunner`s plus a
+        ``num_workers`` :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances plus a
         single "local" :py:class:`~ray.rllib.env.env_runner.EnvRunner` (not ``@ray.remote``) in
         its :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` under ``self.workers``.
 
         Depending on its evaluation config settings, an additional
         :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` with
-        :py:class:`~ray.rllib.env.env_runner.EnvRunner`s for evaluation may be present in the
+        :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances for evaluation may be present in the
         :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
         under ``self.evaluation_workers``.
 

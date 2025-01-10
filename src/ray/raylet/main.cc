@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdlib>
 #include <iostream>
-
-#ifdef __linux__
-#include <stdlib.h>
-#endif
+#include <limits>
 
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
@@ -73,6 +71,10 @@ DEFINE_string(native_library_path,
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
+DEFINE_string(
+    ray_log_filepath,
+    "",
+    "The filename to dump raylet log on stdout, which is written via `RAY_LOG`.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
@@ -80,6 +82,10 @@ DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.")
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
 DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
+DEFINE_bool(enable_physical_mode,
+            false,
+            "Whether physical mode is enaled, which applies constraint to tasks' "
+            "resource consumption.");
 
 #ifdef __linux__
 DEFINE_string(plasma_directory,
@@ -121,15 +127,32 @@ absl::flat_hash_map<std::string, std::string> parse_node_labels(
 }
 
 int main(int argc, char *argv[]) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog,
-                                         argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  // TODO(hjiang): For the current implementation, we assume all logging are managed by
+  // spdlog, the caveat is there could be there's writing to stdout/stderr as well. The
+  // final solution is implement self-customized sink for spdlog, and redirect
+  // stderr/stdout to the file descritor. Hold until it's confirmed necessary.
+  //
+  // Backward compatibility notes:
+  // By default, GCS server flushes all logging and stdout/stderr to a single file called
+  // `gcs_server.out`, without log rotations. To keep backward compatibility at best
+  // effort, we use the same filename as output, and disable log rotation by default.
+
+  // For compatibility, by default GCS server dumps logging into a single file with no
+  // rotation.
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      /*app_name=*/argv[0],
+      ray::RayLogLevel::INFO,
+      /*ray_log_filepath=*/FLAGS_ray_log_filepath,
+      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
+
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
 #ifdef __linux__
   // Reset LD_PRELOAD if it's loaded with ray jemalloc
   auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD");
@@ -180,10 +203,17 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
+  // Setup cgroup preparation if specified.
+  // TODO(hjiang): Depends on
+  // - https://github.com/ray-project/ray/pull/48833, which checks cgroup V2 availability.
+  // - https://github.com/ray-project/ray/pull/48828, which sets up cgroup preparation for
+  // cgroup related operations.
+
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
   absl::flat_hash_map<std::string, double> static_resource_conf;
 
+  SetThreadName("raylet");
   // IO Service for node manager.
   instrumented_io_context main_service;
 
@@ -193,10 +223,13 @@ int main(int argc, char *argv[]) {
 
   // Initialize gcs client
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
-  ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
+  ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address,
+                                            cluster_id,
+                                            /*allow_cluster_id_nil=*/false,
+                                            /*fetch_cluster_id_if_nil=*/false);
   gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
 
-  RAY_CHECK_OK(gcs_client->Connect(main_service, cluster_id));
+  RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
   // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does
@@ -207,7 +240,7 @@ int main(int argc, char *argv[]) {
     if (ray::SetThisProcessAsSubreaper()) {
       ray::KnownChildrenTracker::instance().Enable();
       ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
-      auto runner = std::make_shared<ray::PeriodicalRunner>(main_service);
+      auto runner = ray::PeriodicalRunner::Create(main_service);
       runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
                                 /*period_ms=*/10000,
                                 "Raylet.KillUnknownChildren");
@@ -266,12 +299,13 @@ int main(int argc, char *argv[]) {
         "shutdown_raylet_gracefully_internal");
   };
 
-  RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
-      [&](::ray::Status status,
-          const boost::optional<std::string> &stored_raylet_config) {
+  RAY_CHECK_OK(gcs_client->InternalKV().AsyncGetInternalConfig(
+      [&](::ray::Status status, const std::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());
-        RayConfig::instance().initialize(stored_raylet_config.get());
+        RayConfig::instance().initialize(*stored_raylet_config);
+        ray::asio::testing::init();
+        ray::rpc::testing::init();
 
         // Core worker tries to kill child processes when it exits. But they can't do
         // it perfectly: if the core worker is killed by SIGKILL, the child processes
@@ -308,7 +342,7 @@ int main(int argc, char *argv[]) {
                            ? static_cast<int>(num_cpus_it->second)
                            : 0;
 
-        node_manager_config.raylet_config = stored_raylet_config.get();
+        node_manager_config.raylet_config = *stored_raylet_config;
         node_manager_config.resource_config = ray::ResourceSet(static_resource_conf);
         RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                        << node_manager_config.resource_config.DebugString();
@@ -410,8 +444,8 @@ int main(int argc, char *argv[]) {
             {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
-        RAY_LOG(INFO) << "Setting node ID to: " << node_id;
         ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
+        RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
 
         node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
         // Initialize the node manager.
@@ -429,7 +463,9 @@ int main(int argc, char *argv[]) {
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
-          ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
+          const std::vector<ray::SourceTypeVariant> source_types = {
+              ray::rpc::Event_SourceType::Event_SourceType_RAYLET};
+          ray::RayEventInit(source_types,
                             {{"node_id", raylet->GetNodeId().Hex()}},
                             log_dir,
                             RayConfig::instance().event_level(),
@@ -439,11 +475,25 @@ int main(int argc, char *argv[]) {
         raylet->Start();
       }));
 
-  auto signal_handler = [shutdown_raylet_gracefully_internal](
+  auto signal_handler = [&raylet, shutdown_raylet_gracefully_internal](
                             const boost::system::error_code &error, int signal_number) {
     ray::rpc::NodeDeathInfo node_death_info;
-    node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
-    node_death_info.set_reason_message("received SIGTERM");
+    std::optional<ray::rpc::DrainRayletRequest> drain_request =
+        raylet->node_manager().GetLocalDrainRequest();
+    RAY_LOG(INFO) << "received SIGTERM. Existing local drain request = "
+                  << (drain_request.has_value() ? drain_request->DebugString() : "None");
+    if (drain_request.has_value() &&
+        drain_request->reason() ==
+            ray::rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION &&
+        drain_request->deadline_timestamp_ms() != 0 &&
+        drain_request->deadline_timestamp_ms() < current_sys_time_ms()) {
+      node_death_info.set_reason(ray::rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+      node_death_info.set_reason_message(drain_request->reason_message());
+    } else {
+      node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+      node_death_info.set_reason_message("received SIGTERM");
+    }
+
     shutdown_raylet_gracefully_internal(node_death_info);
   };
   boost::asio::signal_set signals(main_service);

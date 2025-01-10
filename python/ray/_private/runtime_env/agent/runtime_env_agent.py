@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import os
 import time
@@ -14,10 +13,12 @@ from ray._private.ray_constants import (
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaPlugin
-from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.default_impl import get_image_uri_plugin_cls
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
+from ray._private.runtime_env.image_uri import ContainerPlugin
 from ray._private.runtime_env.pip import PipPlugin
+from ray._private.runtime_env.uv import UvPlugin
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.plugin import (
     RuntimeEnvPlugin,
@@ -105,7 +106,7 @@ class ReferenceTable:
                     unused_uris.append((uri, uri_type))
                     del self._uri_reference[uri]
             else:
-                default_logger.warn(f"URI {uri} does not exist.")
+                default_logger.warning(f"URI {uri} does not exist.")
         if unused_uris:
             default_logger.info(f"Unused uris {unused_uris}.")
             self._unused_uris_callback(unused_uris)
@@ -124,7 +125,7 @@ class ReferenceTable:
                 unused = True
                 del self._runtime_env_reference[serialized_env]
         else:
-            default_logger.warn(f"Runtime env {serialized_env} does not exist.")
+            default_logger.warning(f"Runtime env {serialized_env} does not exist.")
         if unused:
             default_logger.info(f"Unused runtime env {serialized_env}.")
             self._unused_runtime_env_callback(serialized_env)
@@ -171,15 +172,29 @@ class RuntimeEnvAgent:
         self,
         runtime_env_dir,
         logging_params,
-        gcs_address,
+        gcs_address: str,
+        cluster_id_hex: str,
         temp_dir,
         address,
         runtime_env_agent_port,
     ):
         super().__init__()
-        self._runtime_env_dir = runtime_env_dir
+
+        self._logger = default_logger
         self._logging_params = logging_params
-        self._gcs_address = gcs_address
+        self._logging_params.update(filename=self.LOG_FILENAME)
+        self._logger = setup_component_logger(
+            logger_name=default_logger.name, **self._logging_params
+        )
+        # Don't propagate logs to the root logger, because these logs
+        # might contain sensitive information. Instead, these logs should
+        # be confined to the runtime env agent log file `self.LOG_FILENAME`.
+        self._logger.propagate = False
+
+        self._logger.info("Starting runtime env agent at pid %s", os.getpid())
+        self._logger.info(f"Parent raylet pid is {os.environ.get('RAY_RAYLET_PID')}")
+
+        self._runtime_env_dir = runtime_env_dir
         self._per_job_logger_cache = dict()
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
@@ -187,9 +202,12 @@ class RuntimeEnvAgent:
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        self._gcs_aio_client = GcsAioClient(address=self._gcs_address)
+        self._gcs_aio_client = GcsAioClient(
+            address=gcs_address, cluster_id=cluster_id_hex
+        )
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
+        self._uv_plugin = UvPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)
         self._py_modules_plugin = PyModulesPlugin(
             self._runtime_env_dir, self._gcs_aio_client
@@ -200,23 +218,27 @@ class RuntimeEnvAgent:
         self._working_dir_plugin = WorkingDirPlugin(
             self._runtime_env_dir, self._gcs_aio_client
         )
+        self._container_plugin = ContainerPlugin(temp_dir)
         # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
-        self._container_manager = ContainerManager(temp_dir)
         self._mpi_plugin = MPIPlugin()
+        self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to
         # self._xxx_plugin, we should just iterate through self._plugins.
         self._base_plugins: List[RuntimeEnvPlugin] = [
             self._working_dir_plugin,
+            self._uv_plugin,
             self._pip_plugin,
             self._conda_plugin,
             self._py_modules_plugin,
             self._java_jars_plugin,
+            self._container_plugin,
             self._nsight_plugin,
             self._mpi_plugin,
+            self._image_uri_plugin,
         ]
         self._plugin_manager = RuntimeEnvPluginManager()
         for plugin in self._base_plugins:
@@ -228,23 +250,11 @@ class RuntimeEnvAgent:
             self.unused_runtime_env_processor,
         )
 
-        self._logger = default_logger
-        self._logging_params.update(filename=self.LOG_FILENAME)
-        self._logger = setup_component_logger(
-            logger_name=default_logger.name, **self._logging_params
-        )
-        # Don't propagate logs to the root logger, because these logs
-        # might contain sensitive information. Instead, these logs should
-        # be confined to the runtime env agent log file `self.LOG_FILENAME`.
-        self._logger.propagate = False
-
-        self._logger.info("Starting runtime env agent at pid %s", os.getpid())
-        self._logger.info("Parent raylet pid is %s", int(os.environ["RAY_RAYLET_PID"]))
         self._logger.info(
             "Listening to address %s, port %d", address, runtime_env_agent_port
         )
 
-    def uris_parser(self, runtime_env):
+    def uris_parser(self, runtime_env: RuntimeEnv):
         result = list()
         for name, plugin_setup_context in self._plugin_manager.plugins.items():
             plugin = plugin_setup_context.class_instance
@@ -295,23 +305,12 @@ class RuntimeEnvAgent:
 
         async def _setup_runtime_env(
             runtime_env: RuntimeEnv,
-            serialized_runtime_env,
-            serialized_allocated_resource_instances,
+            runtime_env_config: RuntimeEnvConfig,
         ):
-            allocated_resource: dict = json.loads(
-                serialized_allocated_resource_instances or "{}"
-            )
-            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
             log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger for each job.
             per_job_logger = self.get_or_create_logger(request.job_id, log_files)
-            # TODO(chenk008): Add log about allocated_resource to
-            # avoid lint error. That will be moved to cgroup plugin.
-            per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
             context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
-            await self._container_manager.setup(
-                runtime_env, context, logger=per_job_logger
-            )
 
             # Warn about unrecognized fields in the runtime env.
             for name, _ in runtime_env.plugins():
@@ -355,19 +354,16 @@ class RuntimeEnvAgent:
 
         async def _create_runtime_env_with_retry(
             runtime_env,
-            serialized_runtime_env,
-            serialized_allocated_resource_instances,
             setup_timeout_seconds,
+            runtime_env_config: RuntimeEnvConfig,
         ) -> Tuple[bool, str, str]:
             """
             Create runtime env with retry times. This function won't raise exceptions.
 
             Args:
                 runtime_env: The instance of RuntimeEnv class.
-                serialized_runtime_env: The serialized runtime env.
-                serialized_allocated_resource_instances: The serialized allocated
-                resource instances.
-                setup_timeout_seconds: The timeout of runtime environment creation.
+                setup_timeout_seconds: The timeout of runtime environment creation for
+                each attempt.
 
             Returns:
                 a tuple which contains result (bool), runtime env context (str), error
@@ -383,9 +379,7 @@ class RuntimeEnvAgent:
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
                     runtime_env_setup_task = _setup_runtime_env(
-                        runtime_env,
-                        serialized_env,
-                        request.serialized_allocated_resource_instances,
+                        runtime_env, runtime_env_config
                     )
                     runtime_env_context = await asyncio.wait_for(
                         runtime_env_setup_task, timeout=setup_timeout_seconds
@@ -488,6 +482,7 @@ class RuntimeEnvAgent:
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
             runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
+
             # accroding to the document of `asyncio.wait_for`,
             # None means disable timeout logic
             setup_timeout_seconds = (
@@ -503,9 +498,8 @@ class RuntimeEnvAgent:
                 error_message,
             ) = await _create_runtime_env_with_retry(
                 runtime_env,
-                serialized_env,
-                request.serialized_allocated_resource_instances,
                 setup_timeout_seconds,
+                runtime_env_config,
             )
             creation_time_ms = int(round((time.perf_counter() - start) * 1000, 0))
             if not successful:

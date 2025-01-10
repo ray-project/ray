@@ -1,9 +1,21 @@
 import copy
 import functools
 import itertools
+import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
-from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union
+from typing import (
+    Any,
+    Callable,
+    Deque,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray import ObjectRef
@@ -37,6 +49,8 @@ from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+logger = logging.getLogger(__name__)
+
 
 class MapOperator(OneToOneOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
@@ -49,9 +63,11 @@ class MapOperator(OneToOneOperator, ABC):
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         name: str,
         target_max_block_size: Optional[int],
         min_rows_per_bundle: Optional[int],
+        supports_fusion: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
     ):
@@ -60,6 +76,7 @@ class MapOperator(OneToOneOperator, ABC):
         # NOTE: This constructor must be called by subclasses.
 
         self._map_transformer = map_transformer
+        self._supports_fusion = supports_fusion
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_fn = ray_remote_args_fn
         self._ray_remote_args_factory_actor_locality = None
@@ -79,13 +96,32 @@ class MapOperator(OneToOneOperator, ABC):
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
         # Keep track of all finished streaming generators.
-        super().__init__(name, input_op, target_max_block_size)
+        super().__init__(name, input_op, data_context, target_max_block_size)
 
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
         # too-large blocks, which may reduce parallelism for
         # the subsequent operator.
         self._additional_split_factor = None
+        # Callback functions that generate additional task kwargs
+        # for the map task.
+        self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
+
+    def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
+        """Add a callback function that generates additional kwargs for the map tasks.
+        In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
+        """
+        self._map_task_kwargs_fns.append(map_task_kwargs_fn)
+
+    def get_map_task_kwargs(self) -> Dict[str, Any]:
+        """Get the kwargs for the map task.
+        Subclasses should pass the returned kwargs to the map tasks.
+        In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
+        """
+        kwargs = {}
+        for fn in self._map_task_kwargs_fns:
+            kwargs.update(fn())
+        return kwargs
 
     def get_additional_split_factor(self) -> int:
         if self._additional_split_factor is None:
@@ -107,12 +143,14 @@ class MapOperator(OneToOneOperator, ABC):
         cls,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         target_max_block_size: Optional[int] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
+        supports_fusion: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "MapOperator":
@@ -135,13 +173,14 @@ class MapOperator(OneToOneOperator, ABC):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            supports_fusion: Whether this operator supports fusion with other operators.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Customize the ray remote args for this op's tasks.
+            ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
         """
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
@@ -154,10 +193,12 @@ class MapOperator(OneToOneOperator, ABC):
             return TaskPoolMapOperator(
                 map_transformer,
                 input_op,
+                data_context,
                 name=name,
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
                 concurrency=compute_strategy.size,
+                supports_fusion=supports_fusion,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -169,10 +210,12 @@ class MapOperator(OneToOneOperator, ABC):
             return ActorPoolMapOperator(
                 map_transformer,
                 input_op,
+                data_context,
                 target_max_block_size=target_max_block_size,
                 compute_strategy=compute_strategy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
+                supports_fusion=supports_fusion,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -224,15 +267,22 @@ class MapOperator(OneToOneOperator, ABC):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
+
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
         self._metrics.on_input_queued(refs)
+
         if self._block_ref_bundler.has_bundle():
+            # The ref bundler combines one or more RefBundles into a new larger
+            # RefBundle. Rather than dequeuing the new RefBundle, which was never
+            # enqueued in the first place, we dequeue the original RefBundles.
+            input_refs, bundled_input = self._block_ref_bundler.get_next_bundle()
+            for bundle in input_refs:
+                self._metrics.on_input_dequeued(bundle)
+
             # If the bundler has a full bundle, add it to the operator's task submission
-            # queue.
-            bundle = self._block_ref_bundler.get_next_bundle()
-            self._metrics.on_input_dequeued(bundle)
-            self._add_bundled_input(bundle)
+            # queue
+            self._add_bundled_input(bundled_input)
 
     def _get_runtime_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
@@ -248,7 +298,7 @@ class MapOperator(OneToOneOperator, ABC):
         # compute load-balancing. For tasks with large args, we will use DEFAULT to
         # allow the Ray locality scheduler a chance to optimize task placement.
         if "scheduling_strategy" not in ray_remote_args:
-            ctx = DataContext.get_current()
+            ctx = self.data_context
             if input_bundle and input_bundle.size_bytes() > ctx.large_args_threshold:
                 ray_remote_args[
                     "scheduling_strategy"
@@ -310,17 +360,25 @@ class MapOperator(OneToOneOperator, ABC):
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
             self._metrics.on_task_finished(task_index, exception)
 
-            # Estimate number of tasks from inputs received and tasks submitted so far
-            estimated_num_tasks = (
-                self.input_dependencies[0].num_outputs_total()
-                / self._metrics.num_inputs_received
-                * self._next_data_task_idx
-            )
-            self._estimated_output_blocks = round(
-                estimated_num_tasks
-                * self._metrics.num_outputs_of_finished_tasks
-                / self._metrics.num_tasks_finished
-            )
+            # Estimate number of tasks and rows from inputs received and tasks
+            # submitted so far
+            upstream_op_num_outputs = self.input_dependencies[0].num_outputs_total()
+            if upstream_op_num_outputs:
+                estimated_num_tasks = (
+                    upstream_op_num_outputs
+                    / self._metrics.num_inputs_received
+                    * self._next_data_task_idx
+                )
+                self._estimated_num_output_bundles = round(
+                    estimated_num_tasks
+                    * self._metrics.num_outputs_of_finished_tasks
+                    / self._metrics.num_tasks_finished
+                )
+                self._estimated_output_num_rows = round(
+                    estimated_num_tasks
+                    * self._metrics.rows_task_outputs_generated
+                    / self._metrics.num_tasks_finished
+                )
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
@@ -358,8 +416,8 @@ class MapOperator(OneToOneOperator, ABC):
         self._block_ref_bundler.done_adding_bundles()
         if self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
-            bundle = self._block_ref_bundler.get_next_bundle()
-            self._add_bundled_input(bundle)
+            _, bundled_input = self._block_ref_bundler.get_next_bundle()
+            self._add_bundled_input(bundled_input)
         super().all_inputs_done()
 
     def has_next(self) -> bool:
@@ -370,8 +428,7 @@ class MapOperator(OneToOneOperator, ABC):
         assert self._started
         bundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
-        for _, meta in bundle.blocks:
-            self._output_metadata.append(meta)
+        self._output_metadata.extend(bundle.metadata)
         return bundle
 
     @abstractmethod
@@ -396,6 +453,10 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def pending_processor_usage(self) -> ExecutionResources:
+        raise NotImplementedError
+
+    @abstractmethod
     def base_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
@@ -403,12 +464,30 @@ class MapOperator(OneToOneOperator, ABC):
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
+    def implements_accurate_memory_accounting(self) -> bool:
+        return True
+
+    def supports_fusion(self) -> bool:
+        return self._supports_fusion
+
+    def num_active_tasks(self) -> int:
+        # Override `num_active_tasks` to only include data tasks and exclude
+        # metadata tasks, which are used by the actor-pool map operator to
+        # check if a newly created actor is ready.
+        # The reasons are because:
+        # 1. `PhysicalOperator.completed` checks `num_active_tasks`. The operator
+        #   should be considered completed if there are still pending actors.
+        # 2. The number of active tasks in the progress bar will be more accurate
+        #   to reflect the actual data processing tasks.
+        return len(self._data_tasks)
+
 
 def _map_task(
     map_transformer: MapTransformer,
     data_context: DataContext,
     ctx: TaskContext,
     *blocks: Block,
+    **kwargs: Dict[str, Any],
 ) -> Iterator[Union[Block, List[BlockMetadata]]]:
     """Remote function for a single operator task.
 
@@ -422,11 +501,12 @@ def _map_task(
         as the last generator return.
     """
     DataContext._set_current(data_context)
+    ctx.kwargs.update(kwargs)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
-        m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+        m_out = BlockAccessor.for_block(b_out).get_metadata()
         m_out.exec_stats = stats.build()
         m_out.exec_stats.udf_time_s = map_transformer.udf_time()
         m_out.exec_stats.task_idx = ctx.task_idx
@@ -464,8 +544,13 @@ class _BlockRefBundler:
             or (self._finalized and self._bundle_buffer_size > 0)
         )
 
-    def get_next_bundle(self) -> RefBundle:
-        """Gets the next bundle."""
+    def get_next_bundle(self) -> Tuple[List[RefBundle], RefBundle]:
+        """Gets the next bundle.
+
+        Returns:
+            A two-tuple. The first element is a list of bundles that were combined into
+            the output bundle. The second element is the output bundle.
+        """
         assert self.has_bundle()
         if self._min_rows_per_bundle is None:
             # Short-circuit if no bundle row target was defined.
@@ -473,7 +558,7 @@ class _BlockRefBundler:
             bundle = self._bundle_buffer[0]
             self._bundle_buffer = []
             self._bundle_buffer_size = 0
-            return bundle
+            return [bundle], bundle
         leftover = []
         output_buffer = []
         output_buffer_size = 0
@@ -501,7 +586,7 @@ class _BlockRefBundler:
         self._bundle_buffer_size = sum(
             self._get_bundle_size(bundle) for bundle in leftover
         )
-        return _merge_ref_bundles(*output_buffer)
+        return list(output_buffer), _merge_ref_bundles(*output_buffer)
 
     def done_adding_bundles(self):
         """Indicate that no more RefBundles will be added to this bundler."""
@@ -611,16 +696,16 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
     and should not be a serious limitation for users.
     """
     ray_remote_args = ray_remote_args.copy()
+
+    if ray_remote_args.get("num_cpus") and ray_remote_args.get("num_gpus"):
+        logger.warning(
+            "Specifying both num_cpus and num_gpus for map tasks is experimental, "
+            "and may result in scheduling or stability issues. "
+            "Please report any issues to the Ray team: "
+            "https://github.com/ray-project/ray/issues/new/choose"
+        )
+
     if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
         ray_remote_args["num_cpus"] = 1
-    if ray_remote_args.get("num_gpus", 0) > 0:
-        if ray_remote_args.get("num_cpus", 0) != 0:
-            raise ValueError(
-                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
-            )
-    elif ray_remote_args.get("num_cpus", 0) > 0:
-        if ray_remote_args.get("num_gpus", 0) != 0:
-            raise ValueError(
-                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
-            )
+
     return ray_remote_args

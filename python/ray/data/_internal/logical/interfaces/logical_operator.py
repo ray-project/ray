@@ -1,6 +1,10 @@
-from typing import Iterator, List, Optional
+from typing import TYPE_CHECKING, Iterator, List, Optional
 
 from .operator import Operator
+from ray.data.block import BlockMetadata
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import RefBundle
 
 
 class LogicalOperator(Operator):
@@ -51,3 +55,25 @@ class LogicalOperator(Operator):
 
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
         return super().post_order_iter()  # type: ignore
+
+    def output_data(self) -> Optional[List["RefBundle"]]:
+        """The output data of this operator, or ``None`` if not known."""
+        return None
+
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
+
+        This method is used by methods like :meth:`~ray.data.Dataset.schema` to
+        efficiently return metadata.
+        """
+        return BlockMetadata(None, None, None, None, None)
+
+    def is_lineage_serializable(self) -> bool:
+        """Returns whether the lineage of this operator can be serialized.
+
+        An operator is lineage serializable if you can serialize it on one machine and
+        deserialize it on another without losing information. Operators that store
+        object references (e.g., ``InputData``) aren't lineage serializable because the
+        objects aren't available on the deserialized machine.
+        """
+        return True

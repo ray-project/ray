@@ -13,25 +13,14 @@ def hf_dataset():
     return datasets.load_dataset("tweet_eval", "stance_climate")
 
 
-def _arrow_sort_values(table: pyarrow.lib.Table) -> pyarrow.lib.Table:
-    """
-    Sort an Arrow table by the values in the first column. Used for testing
-    compatibility with pyarrow 6 where `sort_by` does not exist. Inspired by:
-    https://stackoverflow.com/questions/70893521/how-to-sort-a-pyarrow-table
-    """
-    by = [table.schema.names[0]]  # grab first col_name
-    table_sorted_indexes = pyarrow.compute.bottom_k_unstable(
-        table, sort_keys=by, k=len(table)
-    )
-    table_sorted = table.take(table_sorted_indexes)
-    return table_sorted
-
-
 def hfds_assert_equals(hfds: datasets.Dataset, ds: Dataset):
-    hfds_table = _arrow_sort_values(hfds.data.table)
-    ds_table = _arrow_sort_values(
-        pyarrow.concat_tables([ray.get(tbl) for tbl in ds.to_arrow_refs()])
-    )
+    hfds_table = hfds.data.table
+    ds_table = pyarrow.concat_tables([ray.get(tbl) for tbl in ds.to_arrow_refs()])
+
+    sorting = [(name, "descending") for name in hfds_table.column_names]
+    hfds_table = hfds_table.sort_by(sorting)
+    ds_table = ds_table.sort_by(sorting)
+
     assert hfds_table.equals(ds_table)
 
 

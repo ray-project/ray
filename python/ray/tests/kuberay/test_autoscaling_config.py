@@ -12,14 +12,18 @@ from ray.autoscaler._private.kuberay.autoscaling_config import (
     _derive_autoscaling_config_from_ray_cr,
     AutoscalingConfigProducer,
     _round_up_k8s_quantity,
+    _get_num_tpus,
+    _get_custom_resources,
 )
+
+from ray.autoscaler._private.kuberay.utils import tpu_node_selectors_to_type
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
 
 
 def get_basic_ray_cr() -> dict:
     """Returns the example Ray CR included in the Ray documentation,
-    modified to include a GPU worker group.
+    modified to include a GPU worker group and a TPU worker group.
     """
     cr_path = str(
         Path(__file__).resolve().parents[2]
@@ -35,6 +39,21 @@ def get_basic_ray_cr() -> dict:
     )
     gpu_group["maxReplicas"] = 200
     config["spec"]["workerGroupSpecs"].append(gpu_group)
+    tpu_group = copy.deepcopy(config["spec"]["workerGroupSpecs"][0])
+    tpu_group["groupName"] = "tpu-group"
+    tpu_group["template"]["spec"]["containers"][0]["resources"]["limits"].setdefault(
+        "google.com/tpu", 4
+    )
+    tpu_group["template"]["spec"]["nodeSelector"] = {}
+    tpu_group["template"]["spec"]["nodeSelector"][
+        "cloud.google.com/gke-tpu-topology"
+    ] = "2x2x2"
+    tpu_group["template"]["spec"]["nodeSelector"][
+        "cloud.google.com/gke-tpu-accelerator"
+    ] = "tpu-v4-podslice"
+    tpu_group["maxReplicas"] = 4
+    tpu_group["numOfHosts"] = 2
+    config["spec"]["workerGroupSpecs"].append(tpu_group)
     return config
 
 
@@ -52,7 +71,7 @@ def _get_basic_autoscaling_config() -> dict:
             "type": "kuberay",
         },
         "available_node_types": {
-            "head-group": {
+            "headgroup": {
                 "max_workers": 0,
                 "min_workers": 0,
                 "node_config": {},
@@ -65,7 +84,7 @@ def _get_basic_autoscaling_config() -> dict:
             },
             "small-group": {
                 "max_workers": 300,
-                "min_workers": 1,
+                "min_workers": 0,
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
@@ -78,7 +97,7 @@ def _get_basic_autoscaling_config() -> dict:
             # and modified max_workers.
             "gpu-group": {
                 "max_workers": 200,
-                "min_workers": 1,
+                "min_workers": 0,
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
@@ -88,17 +107,32 @@ def _get_basic_autoscaling_config() -> dict:
                     "GPU": 3,
                 },
             },
+            # Same as "small-group" with a TPU resource entry added
+            # and modified max_workers and node_config.
+            "tpu-group": {
+                "max_workers": 4,
+                "min_workers": 0,
+                "node_config": {},
+                "resources": {
+                    "CPU": 1,
+                    "memory": 536870912,
+                    "Custom2": 5,
+                    "Custom3": 1,
+                    "TPU": 4,
+                    "TPU-v4-16-head": 1,
+                },
+            },
         },
         "auth": {},
         "cluster_synced_files": [],
         "file_mounts": {},
         "file_mounts_sync_continuously": False,
-        "head_node_type": "head-group",
+        "head_node_type": "headgroup",
         "head_setup_commands": [],
         "head_start_ray_commands": [],
         "idle_timeout_minutes": 1.0,
         "initialization_commands": [],
-        "max_workers": 500,
+        "max_workers": 504,
         "setup_commands": [],
         "upscaling_speed": 1000,
         "worker_setup_commands": [],
@@ -116,6 +150,9 @@ def _get_ray_cr_no_cpu_error() -> dict:
     del cr["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0][
         "resources"
     ]["limits"]["cpu"]
+    del cr["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0][
+        "resources"
+    ]["requests"]["cpu"]
     return cr
 
 
@@ -149,32 +186,53 @@ def _get_autoscaling_config_with_overrides() -> dict:
     return config
 
 
-def _get_ray_cr_missing_gpu_arg() -> dict:
-    """CR with gpu present in K8s limits but not in Ray start params.
-    Should result in a warning that Ray doesn't see the GPUs.
-    """
-    cr = get_basic_ray_cr()
-    cr["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0]["resources"][
-        "limits"
-    ]["nvidia.com/gpu"] = 1
-    return cr
-
-
-def _get_gpu_complaint() -> str:
-    """The logger warning generated when processing the above CR."""
-    return (
-        "Detected GPUs in container resources for group small-group."
-        "To ensure Ray and the autoscaler are aware of the GPUs,"
-        " set the `--num-gpus` rayStartParam."
-    )
-
-
 def _get_ray_cr_with_autoscaler_options() -> dict:
     cr = get_basic_ray_cr()
     cr["spec"]["autoscalerOptions"] = {
         "upscalingMode": "Conservative",
         "idleTimeoutSeconds": 300,
     }
+    return cr
+
+
+def _get_ray_cr_with_tpu_custom_resource() -> dict:
+    cr = get_basic_ray_cr()
+    cr["spec"]["workerGroupSpecs"][2]["rayStartParams"][
+        "resources"
+    ] = '"{"TPU": 4, "Custom2": 5, "Custom3": 1}"'
+    # remove google.com/tpu k8s resource Pod limit
+    del cr["spec"]["workerGroupSpecs"][2]["template"]["spec"]["containers"][0][
+        "resources"
+    ]["limits"]["google.com/tpu"]
+
+    return cr
+
+
+def _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource() -> dict:
+    cr = get_basic_ray_cr()
+    cr["spec"]["workerGroupSpecs"][2]["rayStartParams"][
+        "resources"
+    ] = '"{"TPU": 4, "Custom2": 5, "Custom3": 1}"'
+
+    return cr
+
+
+def _get_ray_cr_with_no_tpus() -> dict:
+    cr = get_basic_ray_cr()
+    # remove TPU worker group
+    cr["spec"]["workerGroupSpecs"].pop(2)
+
+    return cr
+
+
+def _get_ray_cr_with_only_requests() -> dict:
+    """CR contains only resource requests"""
+    cr = get_basic_ray_cr()
+
+    for group in [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]:
+        for container in group["template"]["spec"]["containers"]:
+            container["resources"]["requests"] = container["resources"]["limits"]
+            del container["resources"]["limits"]
     return cr
 
 
@@ -223,6 +281,14 @@ TEST_DATA = (
             id="basic",
         ),
         pytest.param(
+            _get_ray_cr_with_only_requests(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="only-requests",
+        ),
+        pytest.param(
             _get_ray_cr_no_cpu_error(),
             None,
             ValueError,
@@ -245,6 +311,30 @@ TEST_DATA = (
             None,
             None,
             id="autoscaler-options",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_custom_resource(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="tpu-custom-resource",
+        ),
+        pytest.param(
+            get_basic_ray_cr(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="tpu-k8s-resource-limit",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="tpu-k8s-resource-limit-and-custom-resource",
         ),
     ]
 )
@@ -280,8 +370,8 @@ def test_cr_image_consistency():
     cr = get_basic_ray_cr()
 
     group_specs = [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]
-    # Head, CPU group, GPU group.
-    assert len(group_specs) == 3
+    # Head, CPU group, GPU group, TPU group.
+    assert len(group_specs) == 4
 
     ray_containers = [
         group_spec["template"]["spec"]["containers"][0] for group_spec in group_specs
@@ -336,8 +426,129 @@ def test_autoscaling_config_fetch_retries(exception, num_exceptions):
             assert out == {"ok-key": "ok-value"}
 
 
+TPU_TYPES_ARGS = ",".join(
+    [
+        "accelerator",
+        "topology",
+        "expected_tpu_type",
+    ]
+)
+TPU_TYPES_DATA = (
+    []
+    if platform.system() == "Windows"
+    else [
+        pytest.param(
+            "tpu-v4-podslice",
+            None,
+            None,
+            id="tpu-none-topology",
+        ),
+        pytest.param(
+            None,
+            "2x2x2",
+            None,
+            id="tpu-none-accelerator",
+        ),
+        pytest.param(
+            "tpu-v4-podslice",
+            "2x2x2",
+            "v4-16",
+            id="tpu-v4-test",
+        ),
+        pytest.param(
+            "tpu-v5-lite-device",
+            "2x2",
+            "v5e-4",
+            id="tpu-v5e-device-test",
+        ),
+        pytest.param(
+            "tpu-v5-lite-podslice",
+            "2x4",
+            "v5e-8",
+            id="tpu-v5e-podslice-test",
+        ),
+        pytest.param(
+            "tpu-v5p-slice",
+            "2x2x4",
+            "v5p-32",
+            id="tpu-v5p-test",
+        ),
+        pytest.param(
+            "tpu-v6e-slice",
+            "16x16",
+            "v6e-256",
+            id="tpu-v6e-test",
+        ),
+    ]
+)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+@pytest.mark.parametrize(TPU_TYPES_ARGS, TPU_TYPES_DATA)
+def test_tpu_node_selectors_to_type(
+    accelerator: str, topology: str, expected_tpu_type: str
+):
+    """Verify that tpu_node_selectors_to_type correctly returns TPU type from
+    TPU nodeSelectors.
+    """
+    tpu_type = tpu_node_selectors_to_type(topology, accelerator)
+    assert expected_tpu_type == tpu_type
+
+
+TPU_PARAM_ARGS = ",".join(
+    [
+        "ray_cr_in",
+        "expected_num_tpus",
+    ]
+)
+TPU_TEST_DATA = (
+    []
+    if platform.system() == "Windows"
+    else [
+        pytest.param(
+            get_basic_ray_cr(),
+            4,
+            id="tpu-k8s-resource-limits",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_custom_resource(),
+            4,
+            id="tpu-custom-resource",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource(),
+            4,
+            id="tpu--k8s-resource-limits-and-custom-resource",
+        ),
+        pytest.param(
+            _get_ray_cr_with_no_tpus(),
+            0,
+            id="no-tpus-requested",
+        ),
+    ]
+)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+@pytest.mark.parametrize(TPU_PARAM_ARGS, TPU_TEST_DATA)
+def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
+    """Verify that _get_num_tpus correctly returns the number of requested TPUs."""
+    for worker_group in ray_cr_in["spec"]["workerGroupSpecs"]:
+        ray_start_params = worker_group["rayStartParams"]
+        custom_resources = _get_custom_resources(
+            ray_start_params, worker_group["groupName"]
+        )
+        k8s_resources = worker_group["template"]["spec"]["containers"][0]["resources"]
+
+        num_tpus = _get_num_tpus(custom_resources, k8s_resources)
+
+        if worker_group["groupName"] == "tpu-group":
+            assert num_tpus == expected_num_tpus
+        else:
+            assert num_tpus is None
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))

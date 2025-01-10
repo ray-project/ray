@@ -1,5 +1,6 @@
 import gymnasium as gym
 from gymnasium.spaces import Tuple, Dict
+from gymnasium.core import ActType, ObsType
 import numpy as np
 from ray.rllib.utils.annotations import DeveloperAPI
 import tree  # pip install dm_tree
@@ -41,6 +42,79 @@ def get_original_space(space: gym.Space) -> gym.Space:
         return get_original_space(space.original_space)
     else:
         return space
+
+
+@DeveloperAPI
+def is_composite_space(space: gym.Space) -> bool:
+    """Returns true, if the space is composite.
+
+    Note, we follow here the glossary of `gymnasium` by which any spoace
+    that holds other spaces is defined as being 'composite'.
+
+    Args:
+        space: The space to be checked for being composed of other spaces.
+
+    Returns:
+        True, if the space is composed of other spaces, otherwise False.
+    """
+    if type(space) in [
+        gym.spaces.Dict,
+        gym.spaces.Graph,
+        gym.spaces.Sequence,
+        gym.spaces.Tuple,
+    ]:
+        return True
+    else:
+        return False
+
+
+@DeveloperAPI
+def to_jsonable_if_needed(
+    sample: Union[ActType, ObsType], space: gym.Space
+) -> Union[ActType, ObsType, List]:
+    """Returns a jsonabled space sample, if the space is composite.
+
+    Checks, if the space is composite and converts the sample to a jsonable
+    struct in this case. Otherwise return the sample as is.
+
+    Args:
+        sample: Any action or observation type possible in `gymnasium`.
+        space: Any space defined in `gymnasium.spaces`.
+
+    Returns:
+        The `sample` as-is, if the `space` is composite, otherwise converts the
+        composite sample to a JSONable data type.
+    """
+
+    if is_composite_space(space):
+        return space.to_jsonable([sample])
+    else:
+        return sample
+
+
+@DeveloperAPI
+def from_jsonable_if_needed(
+    sample: Union[ActType, ObsType], space: gym.Space
+) -> Union[ActType, ObsType, List]:
+    """Returns a jsonabled space sample, if the space is composite.
+
+    Checks, if the space is composite and converts the sample to a JSONable
+    struct in this case. Otherwise return the sample as is.
+
+    Args:
+        sample: Any action or observation type possible in `gymnasium`, or a
+            JSONable data type.
+        space: Any space defined in `gymnasium.spaces`.
+
+    Returns:
+        The `sample` as-is, if the `space` is not composite, otherwise converts the
+        composite sample jsonable to an actual `space` sample..
+    """
+
+    if is_composite_space(space):
+        return space.from_jsonable(sample)[0]
+    else:
+        return sample
 
 
 @DeveloperAPI
@@ -296,11 +370,7 @@ def batch(
         individual_items_already_have_batch_dim = isinstance(flat[0], BatchedNdArray)
 
     np_func = np.concatenate if individual_items_already_have_batch_dim else np.stack
-    try:
-        ret = tree.map_structure(lambda *s: np_func(s, axis=0), *list_of_structs)
-    except Exception as e:
-        print(e)
-        return None
+    ret = tree.map_structure(lambda *s: np_func(s, axis=0), *list_of_structs)
     return ret
 
 

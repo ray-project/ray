@@ -32,15 +32,15 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
       io_service.run();
     });
     ray::gcs::RedisClientOptions redis_client_options(
-        "127.0.0.1", ray::TEST_REDIS_SERVER_PORTS.front(), "", false);
+        "127.0.0.1", ray::TEST_REDIS_SERVER_PORTS.front(), "", "", false);
     if (GetParam() == "redis") {
       auto client = std::make_shared<ray::gcs::RedisClient>(redis_client_options);
       RAY_CHECK_OK(client->Connect(io_service));
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
-          std::make_unique<ray::gcs::RedisStoreClient>(client));
+          std::make_unique<ray::gcs::RedisStoreClient>(client), io_service);
     } else if (GetParam() == "memory") {
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
-          std::make_unique<ray::gcs::InMemoryStoreClient>(io_service));
+          std::make_unique<ray::gcs::InMemoryStoreClient>(), io_service);
     }
   }
 

@@ -136,7 +136,9 @@ class TestInterface : public MutableObjectReaderInterface {
 };
 
 std::shared_ptr<MutableObjectReaderInterface> GetTestInterface(
-    std::shared_ptr<TestInterface> &interface, const NodeID &node_id) {
+    std::shared_ptr<TestInterface> &interface,
+    const NodeID &node_id,
+    rpc::ClientCallManager &client_call_manager) {
   return interface;
 }
 
@@ -145,13 +147,14 @@ std::shared_ptr<MutableObjectReaderInterface> GetTestInterface(
 TEST(MutableObjectProvider, RegisterWriterChannel) {
   ObjectID object_id = ObjectID::FromRandom();
   NodeID node_id = NodeID::FromRandom();
-  auto plasma = std::make_shared<TestPlasma>();
+  auto plasma = std::make_unique<TestPlasma>();
   auto interface = std::make_shared<TestInterface>();
 
   MutableObjectProvider provider(
-      plasma,
-      /*factory=*/absl::bind_front(GetTestInterface, interface));
-  provider.RegisterWriterChannel(object_id, &node_id);
+      *plasma,
+      /*factory=*/absl::bind_front(GetTestInterface, interface),
+      nullptr);
+  provider.RegisterWriterChannel(object_id, {node_id});
 
   std::shared_ptr<Buffer> data;
   EXPECT_EQ(provider
@@ -172,21 +175,58 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
   EXPECT_EQ(interface->pushed_objects().front(), object_id);
 }
 
+TEST(MutableObjectProvider, MutableObjectBufferReadRelease) {
+  ObjectID object_id = ObjectID::FromRandom();
+  auto plasma = std::make_unique<TestPlasma>();
+  MutableObjectProvider provider(*plasma,
+                                 /*factory=*/nullptr,
+                                 nullptr);
+  provider.RegisterWriterChannel(object_id, {});
+
+  std::shared_ptr<Buffer> data;
+  EXPECT_EQ(provider
+                .WriteAcquire(object_id,
+                              /*data_size=*/0,
+                              /*metadata=*/nullptr,
+                              /*metadata_size=*/0,
+                              /*num_readers=*/1,
+                              data)
+                .code(),
+            StatusCode::OK);
+  EXPECT_EQ(provider.WriteRelease(object_id).code(), StatusCode::OK);
+
+  provider.RegisterReaderChannel(object_id);
+
+  // `next_version_to_read` should be initialized to 1.
+  EXPECT_EQ(provider.object_manager_->GetChannel(object_id)->next_version_to_read, 1);
+  {
+    std::shared_ptr<RayObject> result;
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::OK);
+  }
+  // The result (RayObject) together with the underlying MutableObjectBuffer
+  // goes out of scope here, this will trigger the call to ReadRelease() in
+  // the destructor of MutableObjectBuffer. This is verified by checking
+  // `next_version_to_read` of the channel, which is only incremented inside
+  // ReadRelease().
+  EXPECT_EQ(provider.object_manager_->GetChannel(object_id)->next_version_to_read, 2);
+}
+
 TEST(MutableObjectProvider, HandlePushMutableObject) {
   ObjectID object_id = ObjectID::FromRandom();
   ObjectID local_object_id = ObjectID::FromRandom();
-  auto plasma = std::make_shared<TestPlasma>();
+  auto plasma = std::make_unique<TestPlasma>();
   auto interface = std::make_shared<TestInterface>();
 
   MutableObjectProvider provider(
-      plasma,
-      /*factory=*/absl::bind_front(GetTestInterface, interface));
+      *plasma,
+      /*factory=*/absl::bind_front(GetTestInterface, interface),
+      nullptr);
   provider.HandleRegisterMutableObject(object_id, /*num_readers=*/1, local_object_id);
 
   ray::rpc::PushMutableObjectRequest request;
   request.set_writer_object_id(object_id.Binary());
-  request.set_data_size(0);
-  request.set_metadata_size(0);
+  request.set_total_data_size(0);
+  request.set_total_metadata_size(0);
 
   ray::rpc::PushMutableObjectReply reply;
   provider.HandlePushMutableObject(request, &reply);
@@ -195,6 +235,176 @@ TEST(MutableObjectProvider, HandlePushMutableObject) {
   EXPECT_EQ(provider.ReadAcquire(local_object_id, result).code(), StatusCode::OK);
   EXPECT_EQ(result->GetSize(), 0UL);
   EXPECT_EQ(provider.ReadRelease(local_object_id).code(), StatusCode::OK);
+}
+
+TEST(MutableObjectProvider, MutableObjectBufferSetError) {
+  ObjectID object_id = ObjectID::FromRandom();
+  auto plasma = std::make_unique<TestPlasma>();
+  MutableObjectProvider provider(*plasma,
+                                 /*factory=*/nullptr,
+                                 nullptr);
+  provider.RegisterWriterChannel(object_id, {});
+
+  std::shared_ptr<Buffer> data;
+  EXPECT_EQ(provider
+                .WriteAcquire(object_id,
+                              /*data_size=*/0,
+                              /*metadata=*/nullptr,
+                              /*metadata_size=*/0,
+                              /*num_readers=*/1,
+                              data)
+                .code(),
+            StatusCode::OK);
+  EXPECT_EQ(provider.WriteRelease(object_id).code(), StatusCode::OK);
+
+  provider.RegisterReaderChannel(object_id);
+
+  // Set error.
+  EXPECT_EQ(provider.SetError(object_id).code(), StatusCode::OK);
+  // Set error is idempotent and should never block.
+  EXPECT_EQ(provider.SetError(object_id).code(), StatusCode::OK);
+
+  // All future reads and writes return ChannelError.
+  {
+    std::shared_ptr<RayObject> result;
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::ChannelError);
+  }
+  {
+    std::shared_ptr<RayObject> result;
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::ChannelError);
+  }
+  EXPECT_EQ(provider
+                .WriteAcquire(object_id,
+                              /*data_size=*/0,
+                              /*metadata=*/nullptr,
+                              /*metadata_size=*/0,
+                              /*num_readers=*/1,
+                              data)
+                .code(),
+            StatusCode::ChannelError);
+  EXPECT_EQ(provider
+                .WriteAcquire(object_id,
+                              /*data_size=*/0,
+                              /*metadata=*/nullptr,
+                              /*metadata_size=*/0,
+                              /*num_readers=*/1,
+                              data)
+                .code(),
+            StatusCode::ChannelError);
+}
+
+TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeWriteRelease) {
+  ObjectID object_id = ObjectID::FromRandom();
+  auto plasma = std::make_unique<TestPlasma>();
+  MutableObjectProvider provider(*plasma,
+                                 /*factory=*/nullptr,
+                                 nullptr);
+  provider.RegisterWriterChannel(object_id, {});
+
+  std::shared_ptr<Buffer> data;
+  EXPECT_EQ(provider
+                .WriteAcquire(object_id,
+                              /*data_size=*/0,
+                              /*metadata=*/nullptr,
+                              /*metadata_size=*/0,
+                              /*num_readers=*/1,
+                              data)
+                .code(),
+            StatusCode::OK);
+
+  provider.RegisterReaderChannel(object_id);
+
+  // Set error before the writer has released.
+  EXPECT_EQ(provider.SetError(object_id).code(), StatusCode::OK);
+  // Set error is idempotent and should never block.
+  EXPECT_EQ(provider.SetError(object_id).code(), StatusCode::OK);
+
+  // All future reads and writes return ChannelError.
+  {
+    std::shared_ptr<RayObject> result;
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::ChannelError);
+  }
+  {
+    std::shared_ptr<RayObject> result;
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::ChannelError);
+  }
+  EXPECT_EQ(provider.WriteRelease(object_id).code(), StatusCode::ChannelError);
+  EXPECT_EQ(provider
+                .WriteAcquire(object_id,
+                              /*data_size=*/0,
+                              /*metadata=*/nullptr,
+                              /*metadata_size=*/0,
+                              /*num_readers=*/1,
+                              data)
+                .code(),
+            StatusCode::ChannelError);
+  EXPECT_EQ(provider
+                .WriteAcquire(object_id,
+                              /*data_size=*/0,
+                              /*metadata=*/nullptr,
+                              /*metadata_size=*/0,
+                              /*num_readers=*/1,
+                              data)
+                .code(),
+            StatusCode::ChannelError);
+}
+
+TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeReadRelease) {
+  ObjectID object_id = ObjectID::FromRandom();
+  auto plasma = std::make_unique<TestPlasma>();
+  MutableObjectProvider provider(*plasma,
+                                 /*factory=*/nullptr,
+                                 nullptr);
+  provider.RegisterWriterChannel(object_id, {});
+
+  std::shared_ptr<Buffer> data;
+  EXPECT_EQ(provider
+                .WriteAcquire(object_id,
+                              /*data_size=*/0,
+                              /*metadata=*/nullptr,
+                              /*metadata_size=*/0,
+                              /*num_readers=*/1,
+                              data)
+                .code(),
+            StatusCode::OK);
+  EXPECT_EQ(provider.WriteRelease(object_id).code(), StatusCode::OK);
+
+  provider.RegisterReaderChannel(object_id);
+
+  {
+    std::shared_ptr<RayObject> result;
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::OK);
+    // Set error before the reader has released.
+    EXPECT_EQ(provider.SetError(object_id).code(), StatusCode::OK);
+
+    // When the error is set, reading again before releasing does not block.
+    // Also immediately returns the error.
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::ChannelError);
+  }
+
+  // All future reads and writes return ChannelError.
+  {
+    std::shared_ptr<RayObject> result;
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::ChannelError);
+  }
+  EXPECT_EQ(provider
+                .WriteAcquire(object_id,
+                              /*data_size=*/0,
+                              /*metadata=*/nullptr,
+                              /*metadata_size=*/0,
+                              /*num_readers=*/1,
+                              data)
+                .code(),
+            StatusCode::ChannelError);
+  EXPECT_EQ(provider
+                .WriteAcquire(object_id,
+                              /*data_size=*/0,
+                              /*metadata=*/nullptr,
+                              /*metadata_size=*/0,
+                              /*num_readers=*/1,
+                              data)
+                .code(),
+            StatusCode::ChannelError);
 }
 
 #endif  // defined(__APPLE__) || defined(__linux__)

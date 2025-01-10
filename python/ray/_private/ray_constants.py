@@ -23,6 +23,21 @@ def env_integer(key, default):
     return default
 
 
+def env_float(key, default):
+    if key in os.environ:
+        value = os.environ[key]
+        try:
+            return float(value)
+        except ValueError:
+            logger.debug(
+                f"Found {key} in environment, but value must "
+                f"be a float. Got: {value}. Returning "
+                f"provided default {default}."
+            )
+            return default
+    return default
+
+
 def env_bool(key, default):
     if key in os.environ:
         return (
@@ -40,6 +55,8 @@ def env_set_by_user(key):
 # Whether event logging to driver is enabled. Set to 0 to disable.
 AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
 
+RAY_LOG_TO_DRIVER = env_bool("RAY_LOG_TO_DRIVER", True)
+
 # Filter level under which events will be filtered out, i.e. not printing to driver
 RAY_LOG_TO_DRIVER_EVENT_LEVEL = os.environ.get("RAY_LOG_TO_DRIVER_EVENT_LEVEL", "INFO")
 
@@ -48,17 +65,17 @@ DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
-# Sync with src/ray/common/constants.h
-AUTOSCALER_V2_ENABLED_KEY = "__autoscaler_v2_enabled"
-AUTOSCALER_NAMESPACE = "__autoscaler"
-
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
-DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10**9
+DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = env_integer(
+    "RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES", 200 * 10**9  # 200 GB
+)
 # The default proportion of available memory allocated to the object store
-DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
+DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = env_float(
+    "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", 0.3
+)
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
@@ -192,9 +209,6 @@ RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 LABELS_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_LABELS"
 
-# The reporter will report its statistics this often (milliseconds).
-REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
-
 # Temporary flag to disable log processing in the dashboard.  This is useful
 # if the dashboard is overloaded by logs and failing to process other
 # dashboard API requests (e.g. Job Submission).
@@ -203,7 +217,11 @@ DISABLE_DASHBOARD_LOG_INFO = env_integer("RAY_DISABLE_DASHBOARD_LOG_INFO", 0)
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_ESCAPE = json.dumps(LOGGER_FORMAT.replace("%", "%%"))
 LOGGER_FORMAT_HELP = f"The logging format. default={LOGGER_FORMAT_ESCAPE}"
-LOGGER_LEVEL = "info"
+# Configure the default logging levels for various Ray components.
+# TODO (kevin85421): Currently, I don't encourage Ray users to configure
+# `RAY_LOGGER_LEVEL` until its scope and expected behavior are clear and
+# easy to understand. Now, only Ray developers should use it.
+LOGGER_LEVEL = os.environ.get("RAY_LOGGER_LEVEL", "info")
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = (
     "The logging level threshold, choices=['debug', 'info',"
@@ -329,6 +347,8 @@ OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
+REDIS_DEFAULT_USERNAME = ""
+
 REDIS_DEFAULT_PASSWORD = ""
 
 # The default ip address to bind to.
@@ -396,6 +416,7 @@ KV_NAMESPACE_PDB = b"ray_pdb"
 KV_NAMESPACE_HEALTHCHECK = b"healthcheck"
 KV_NAMESPACE_JOB = b"job"
 KV_NAMESPACE_CLUSTER = b"cluster"
+KV_HEAD_NODE_ID_KEY = b"head_node_id"
 # TODO: Set package for runtime env
 # We need to update ray client for this since runtime env use ray client
 # This might introduce some compatibility issues so leave it here for now.
@@ -409,12 +430,16 @@ LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
 
 CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
+ROCR_VISIBLE_DEVICES_ENV_VAR = "ROCR_VISIBLE_DEVICES"
 NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+NPU_RT_VISIBLE_DEVICES_ENV_VAR = "ASCEND_RT_VISIBLE_DEVICES"
 
 NEURON_CORES = "neuron_cores"
 GPU = "GPU"
 TPU = "TPU"
+NPU = "NPU"
+HPU = "HPU"
 
 
 RAY_WORKER_NICENESS = "RAY_worker_niceness"
@@ -423,6 +448,12 @@ RAY_WORKER_NICENESS = "RAY_worker_niceness"
 # tasks.
 DEFAULT_TASK_MAX_RETRIES = 3
 
+# Default max_concurrency option in @ray.remote for threaded actors.
+DEFAULT_MAX_CONCURRENCY_THREADED = 1
+
+# Default max_concurrency option in @ray.remote for async actors.
+DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
+
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
@@ -430,6 +461,15 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
+
+# Ray internal flags. These flags should not be set by users, and we strip them on job
+# submission.
+# This should be consistent with src/ray/common/ray_internal_flag_def.h
+RAY_INTERNAL_FLAGS = [
+    "RAY_JOB_ID",
+    "RAY_RAYLET_PID",
+    "RAY_OVERRIDE_NODE_ID_FOR_TESTING",
+]
 
 
 def gcs_actor_scheduling_enabled():
@@ -441,7 +481,7 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 9), (3, 10), (3, 11), (3, 12)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
@@ -482,7 +522,18 @@ RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
 
 RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
 
-
 RAY_NODE_IP_FILENAME = "node_ip_address.json"
 
 PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
+
+RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
+
+RAY_BACKEND_LOG_JSON_ENV_VAR = "RAY_BACKEND_LOG_JSON"
+
+RAY_ENABLE_EXPORT_API_WRITE = env_bool("RAY_enable_export_api_write", False)
+
+RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
+    "RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES", 100 * 1e6
+)
+
+RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT", 20)

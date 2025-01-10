@@ -181,6 +181,25 @@ Function API
 For reporting results and checkpoints with the function API,
 see the :ref:`Ray Train utilities <train-loop-api>` documentation.
 
+**Classes**
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~tune.Checkpoint
+    ~tune.TuneContext
+
+**Functions**
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~tune.get_checkpoint
+    ~tune.get_context
+    ~tune.report
+
 .. _tune-trainable-docstring:
 
 Trainable (Class API)
@@ -248,4 +267,4 @@ Tune Trainable Debugging Utilities
 
     tune.utils.diagnose_serialization
     tune.utils.validate_save_restore
-
+    tune.utils.util.validate_warmstart

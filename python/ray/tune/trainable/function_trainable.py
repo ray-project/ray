@@ -6,7 +6,6 @@ from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type
 
-import ray.train
 from ray.air._internal.util import RunnerThread, StartTraceback
 from ray.air.constants import _ERROR_FETCH_TIMEOUT
 from ray.train._internal.checkpoint_manager import _TrainingResult
@@ -49,6 +48,7 @@ class FunctionTrainable(Trainable):
                 resources=self.trial_resources,
                 logdir=self._storage.trial_driver_staging_path,
                 driver_ip=None,
+                driver_node_id=None,
                 experiment_name=self._storage.experiment_dir_name,
             ),
             storage=self._storage,
@@ -178,6 +178,7 @@ class FunctionTrainable(Trainable):
                 resources=self.trial_resources,
                 logdir=self._storage.trial_working_directory,
                 driver_ip=None,
+                driver_node_id=None,
                 experiment_name=self._storage.experiment_dir_name,
             ),
             storage=self._storage,
@@ -230,9 +231,9 @@ def wrap_function(
                 if not output:
                     return
                 elif isinstance(output, dict):
-                    ray.train.report(output)
+                    get_session().report(output)
                 elif isinstance(output, Number):
-                    ray.train.report({DEFAULT_METRIC: output})
+                    get_session().report({DEFAULT_METRIC: output})
                 else:
                     raise ValueError(
                         "Invalid return or yield value. Either return/yield "
@@ -251,7 +252,7 @@ def wrap_function(
             # If train_func returns, we need to notify the main event loop
             # of the last result while avoiding double logging. This is done
             # with the keyword RESULT_DUPLICATE -- see tune/tune_controller.py.
-            ray.train.report({RESULT_DUPLICATE: True})
+            get_session().report({RESULT_DUPLICATE: True})
             return output
 
         @classmethod

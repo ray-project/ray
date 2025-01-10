@@ -13,7 +13,22 @@ from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _open_file_with_retry,
 )
-from ray.data.datasource.path_util import _is_local_windows_path
+from ray.data.datasource.path_util import _has_file_extension, _is_local_windows_path
+
+
+@pytest.mark.parametrize(
+    "path, extensions, has_extension",
+    [
+        ("foo.csv", ["csv"], True),
+        ("foo.csv", ["json", "csv"], True),
+        ("foo.csv", ["json", "jsonl"], False),
+        ("foo.parquet.crc", ["parquet"], False),
+        ("foo.parquet.crc", ["crc"], True),
+        ("foo.csv", None, True),
+    ],
+)
+def test_has_file_extension(path, extensions, has_extension):
+    assert _has_file_extension(path, extensions) == has_extension
 
 
 class MockFileBasedDatasource(FileBasedDatasource):
@@ -116,6 +131,17 @@ def test_windows_path():
         assert _is_local_windows_path("c:/some/where")
         assert _is_local_windows_path("c:\\some\\where")
         assert _is_local_windows_path("c:\\some\\where/mixed")
+
+
+@pytest.mark.parametrize("shuffle", [True, False, "file"])
+def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
+    with pytest.raises(ValueError):
+        FileBasedDatasource("example://iris.csv", shuffle=shuffle)
+
+
+@pytest.mark.parametrize("shuffle", [None, "files"])
+def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffle):
+    FileBasedDatasource("example://iris.csv", shuffle=shuffle)
 
 
 if __name__ == "__main__":

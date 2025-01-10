@@ -446,23 +446,23 @@ def test_backup_release_tags(
             "test",
             "ray",
             ["3.9"],
-            ["cpu", "cu11.8.0"],
+            ["cpu", "cu12.1.1-cudnn8"],
             ["x86_64", "aarch64"],
             [
                 "test",
                 "test-aarch64",
                 "test-cpu",
                 "test-cpu-aarch64",
-                "test-cu118",
-                "test-cu118-aarch64",
+                "test-cu121",
+                "test-cu121-aarch64",
                 "test-gpu",
                 "test-gpu-aarch64",
                 "test-py39",
                 "test-py39-aarch64",
                 "test-py39-cpu",
                 "test-py39-cpu-aarch64",
-                "test-py39-cu118",
-                "test-py39-cu118-aarch64",
+                "test-py39-cu121",
+                "test-py39-cu121-aarch64",
                 "test-py39-gpu",
                 "test-py39-gpu-aarch64",
             ],
@@ -471,16 +471,16 @@ def test_backup_release_tags(
             "test",
             "ray-ml",
             ["3.9"],
-            ["cpu", "cu11.8.0"],
+            ["cpu", "cu12.1.1-cudnn8"],
             ["x86_64"],
             [
                 "test",
                 "test-cpu",
-                "test-cu118",
+                "test-cu121",
                 "test-gpu",
                 "test-py39",
                 "test-py39-cpu",
-                "test-py39-cu118",
+                "test-py39-cu121",
                 "test-py39-gpu",
             ],
         ),
@@ -500,7 +500,7 @@ def test_list_image_tags(
             "test",
             "ray",
             ["3.8"],
-            ["cpu", "cu11.8.0"],
+            ["cpu", "cu11.8.0-cudnn8"],
             ["x86_64", "aarch64"],
         ),  # python version not supported
         (
@@ -514,28 +514,28 @@ def test_list_image_tags(
             "test",
             "ray",
             ["3.9"],
-            ["cpu", "cu11.8.0"],
+            ["cpu", "cu11.8.0-cudnn8"],
             ["aarch32"],
         ),  # architecture not supported
         (
             "test",
             "ray-ml",
             ["3.9"],
-            ["cpu", "cu11.8.0"],
+            ["cpu", "cu11.8.0-cudnn8"],
             ["aarch64"],
         ),  # architecture not supported
         (
             "test",
             "ray-ml",
             ["3.9"],
-            ["cpu", "cu11.5.2"],
+            ["cpu", "cu11.7.1-cudnn8"],
             ["x86_64"],
         ),  # platform not supported
         (
             "test",
             "not-ray",
             ["3.8"],
-            ["cpu", "cu11.8.0"],
+            ["cpu", "cu11.8.0-cudnn8"],
             ["x86_64"],
         ),  # ray type not supported
     ],
@@ -630,4 +630,4 @@ def test_check_image_ray_commit_failure(
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))

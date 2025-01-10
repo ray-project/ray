@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 
-from pytest_shutil.workspace import pytest
+import pytest
 
 from ray.data import ExecutionResources
 from ray.data._internal.execution.autoscaler.default_autoscaler import DefaultAutoscaler

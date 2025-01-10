@@ -65,6 +65,7 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   /// Mark a task has been executed on the receiver side.
   void MarkSeqnoCompleted(uint64_t sequence_no,
                           const TaskSpecification &task_spec) override;
+  bool Empty() override;
 
  private:
   /// The ID of the actor.

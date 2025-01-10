@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 import numpy as np
 import os
@@ -18,6 +18,10 @@ ray.init()
 def train_and_export_policy_and_model(algo_name, num_steps, model_dir, ckpt_dir):
     cls = get_trainable_cls(algo_name)
     config = cls.get_default_config()
+    config.api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     # This Example is only for tf.
     config.framework("tf")
     # Set exporting native (DL-framework) model files to True.

@@ -617,9 +617,11 @@ class DynamicTFPolicy(TFPolicy):
                 )
             # Get the correct slice of the already loaded batch to use,
             # based on offset and batch size.
-            batch_size = self.config.get(
-                "sgd_minibatch_size", self.config["train_batch_size"]
-            )
+            batch_size = self.config.get("minibatch_size")
+            if batch_size is None:
+                batch_size = self.config.get(
+                    "sgd_minibatch_size", self.config["train_batch_size"]
+                )
             if batch_size >= len(self._loaded_single_cpu_batch):
                 sliced_batch = self._loaded_single_cpu_batch
             else:
@@ -972,7 +974,7 @@ class TFMultiGPUTowerStack:
             self.max_per_device_batch_size = (
                 max_per_device_batch_size
                 or policy.config.get(
-                    "sgd_minibatch_size", policy.config.get("train_batch_size", 999999)
+                    "minibatch_size", policy.config.get("train_batch_size", 999999)
                 )
             ) // len(self.devices)
             input_placeholders = tree.flatten(self.policy._loss_input_dict_no_rnn)
@@ -1181,7 +1183,7 @@ class TFMultiGPUTowerStack:
         if sequences_per_minibatch < len(self.devices):
             raise ValueError(
                 "Must load at least 1 tuple sequence per device. Try "
-                "increasing `sgd_minibatch_size` or reducing `max_seq_len` "
+                "increasing `minibatch_size` or reducing `max_seq_len` "
                 "to ensure that at least one sequence fits per device."
             )
         self._loaded_per_device_batch_size = (

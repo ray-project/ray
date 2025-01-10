@@ -38,8 +38,10 @@ copyright_format() {
 }
 
 bazel_team() {
-  bazel query 'kind("cc_test", //...)' --output=xml | python ./ci/lint/check-bazel-team-owner.py
-  bazel query 'kind("py_test", //...)' --output=xml | python ./ci/lint/check-bazel-team-owner.py
+  TMP_DIR="$(mktemp -d)"
+  bazelisk query 'kind("cc_test|py_test", //...)' --output=xml > "${TMP_DIR}/tests.xml"
+  bazelisk run //ci/lint:check_bazel_team_owner < "${TMP_DIR}/tests.xml"
+  rm -rf "${TMP_DIR}"
 }
 
 bazel_buildifier() {
@@ -56,15 +58,16 @@ test_coverage() {
 }
 
 api_annotations() {
-  # shellcheck disable=SC2102
-  RAY_DISABLE_EXTRA_CPP=1 pip install -e python/[all]
+  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
   ./ci/lint/check_api_annotations.py
 }
 
-api_discrepancy() {
-  # shellcheck disable=SC2102
-  RAY_DISABLE_EXTRA_CPP=1 pip install -e python/[all]
-  ./ci/lint/check_api_discrepancy.py
+api_policy_check() {
+  # install ray and compile doc to generate API files
+  make -C doc/ html
+  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
+  # validate the API files
+  bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- /ray "$@"
 }
 
 documentation_style() {

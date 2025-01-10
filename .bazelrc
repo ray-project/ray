@@ -49,8 +49,8 @@ build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
 build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
-build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
-build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
+build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=unused-function"
+build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=unused-function"
 # Ignore warnings for host tools, which we generally can't control.
 # Ideally we only want to ignore warnings for external project
 # but the current bazel version doesn't support host_per_file_copt yet.
@@ -157,9 +157,6 @@ build:ci --progress_report_interval=100
 build:ci --show_progress_rate_limit=15
 build:ci --ui_actions_shown=1024
 build:ci --show_timestamps
-build:ci-travis --disk_cache=~/ray-bazel-cache
-build:ci-github --experimental_repository_cache_hardlinks # GitHub Actions has low disk space, so prefer hardlinks there.
-build:ci-github --disk_cache=~/ray-bazel-cache
 test:ci --flaky_test_attempts=3
 # Disable test result caching because py_test under Bazel can import from outside of sandbox, but Bazel only looks at
 # declared dependencies to determine if a result should be cached. More details at:

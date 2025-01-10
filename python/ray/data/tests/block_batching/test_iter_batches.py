@@ -1,8 +1,7 @@
-import itertools
 import queue
 import threading
 import time
-from typing import Iterator, List, Tuple
+from typing import Iterator, List
 
 import pandas as pd
 import pyarrow as pa
@@ -15,45 +14,49 @@ from ray.data._internal.block_batching.iter_batches import (
     prefetch_batches_locally,
     restore_original_order,
 )
+from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockMetadata
+from ray.types import ObjectRef
 
 
-def block_generator(
-    num_rows: int, num_blocks: int
-) -> Iterator[Tuple[Block, BlockMetadata]]:
+def ref_bundle_generator(num_rows: int, num_blocks: int) -> Iterator[RefBundle]:
     for i in range(num_blocks):
-        yield pa.table({"foo": [i] * num_rows}), BlockMetadata(
+        block = pa.table({"foo": [i] * num_rows})
+        metadata = BlockMetadata(
             num_rows=num_rows,
             size_bytes=0,
             schema=None,
             input_files=[],
             exec_stats=None,
         )
+        yield RefBundle(blocks=((ray.put(block), metadata),), owns_blocks=True)
 
 
 @pytest.mark.parametrize("num_batches_to_prefetch", [1, 2])
 @pytest.mark.parametrize("batch_size", [None, 1, 4])
-def test_prefetch_batches_locally(num_batches_to_prefetch, batch_size):
+def test_prefetch_batches_locally(
+    ray_start_regular_shared, num_batches_to_prefetch, batch_size
+):
     class DummyPrefetcher(BlockPrefetcher):
         def __init__(self):
             self.windows = []
 
-        def prefetch_blocks(self, blocks: List[Block]):
+        def prefetch_blocks(self, block_refs: List[ObjectRef[Block]]):
             if batch_size is None:
-                assert len(blocks) == num_batches_to_prefetch
+                assert len(block_refs) == num_batches_to_prefetch
             else:
                 assert (
-                    sum(len(block) for block in blocks)
+                    sum(len(ray.get(block_ref)) for block_ref in block_refs)
                     >= batch_size * num_batches_to_prefetch
                 )
-            self.windows.append(blocks)
+            self.windows.append(block_refs)
 
     num_blocks = 10
     num_rows = 2
     prefetcher = DummyPrefetcher()
-    blocks = list(block_generator(num_blocks=num_blocks, num_rows=num_rows))
+    ref_bundles = list(ref_bundle_generator(num_blocks=num_blocks, num_rows=num_rows))
     prefetch_block_iter = prefetch_batches_locally(
-        iter(blocks),
+        iter(ref_bundles),
         prefetcher=prefetcher,
         num_batches_to_prefetch=num_batches_to_prefetch,
         batch_size=batch_size,
@@ -82,7 +85,10 @@ def test_prefetch_batches_locally(num_batches_to_prefetch, batch_size):
             previous_num_windows = len(prefetcher.windows)
 
     # Test that original blocks are unchanged.
-    assert prefetched_blocks == [block for block, metadata, in blocks]
+    expected_blocks = []
+    for ref_bundle in ref_bundles:
+        expected_blocks.extend(ref_bundle.block_refs)
+    assert prefetched_blocks == expected_blocks
 
 
 def test_restore_from_original_order():
@@ -100,10 +106,7 @@ def test_restore_from_original_order():
 
 def test_finalize_fn_uses_single_thread(ray_start_regular_shared):
     """Tests that finalize_fn is not run with multiple threads."""
-    block_refs_iter = itertools.starmap(
-        lambda block, metadata: (ray.put(block), metadata),
-        block_generator(num_blocks=20, num_rows=2),
-    )
+    ref_bundles_iter = ref_bundle_generator(num_blocks=20, num_rows=2)
 
     q = queue.Queue()
     semaphore = threading.Semaphore(value=1)
@@ -119,8 +122,7 @@ def test_finalize_fn_uses_single_thread(ray_start_regular_shared):
     # Test that finalize_fn is called in a single thread,
     # even if prefetch_batches is set.
     output_batches = iter_batches(
-        block_refs_iter,
-        dataset_tag="dataset",
+        ref_bundles_iter,
         collate_fn=lambda batch: batch,
         finalize_fn=finalize_enforce_single_thread,
         prefetch_batches=4,
@@ -150,14 +152,10 @@ def test_iter_batches_e2e(
     def collate_fn(batch: pd.DataFrame):
         return batch + 1
 
-    block_refs_iter = itertools.starmap(
-        lambda block, metadata: (ray.put(block), metadata),
-        block_generator(num_blocks=4, num_rows=2),
-    )
+    ref_bundles_iter = ref_bundle_generator(num_blocks=4, num_rows=2)
 
     output_batches = iter_batches(
-        block_refs_iter,
-        dataset_tag="dataset",
+        ref_bundles_iter,
         batch_size=batch_size,
         prefetch_batches=prefetch_batches,
         batch_format="pandas",
@@ -196,14 +194,10 @@ def test_iter_batches_e2e_async(ray_start_regular_shared):
         time.sleep(2)
         return batch
 
-    block_refs_iter = itertools.starmap(
-        lambda block, metadata: (ray.put(block), metadata),
-        block_generator(num_blocks=20, num_rows=2),
-    )
+    ref_bundles = ref_bundle_generator(num_blocks=20, num_rows=2)
     start_time = time.time()
     output_batches = iter_batches(
-        block_refs_iter,
-        dataset_tag="dataset",
+        ref_bundles,
         batch_size=None,
         collate_fn=collate_fn,
         prefetch_batches=4,

@@ -45,6 +45,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   GcsAutoscalerStateManagerTest() {}
 
  protected:
+  static constexpr char kRayletConfig[] = R"({"raylet_config":"this is a config"})";
   instrumented_io_context io_service_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
@@ -60,12 +61,14 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
   void SetUp() override {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+    client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
     kv_manager_ = std::make_unique<GcsInternalKVManager>(
-        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()));
+        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>(),
+                                                io_service_),
+        kRayletConfig);
     function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
     runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
         [](const std::string &, std::function<void(bool)>) {});
@@ -84,7 +87,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                       *gcs_node_manager_,
                                       *gcs_actor_manager_,
                                       *gcs_placement_group_manager_,
-                                      client_pool_));
+                                      *client_pool_,
+                                      kv_manager_->GetInstance()));
   }
 
  public:
@@ -634,9 +638,10 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
         Mocker::GenClusterResourcesConstraint({{{"CPU", 2}, {"GPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
-    ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
-    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0).request(),
-                         {{"CPU", 2}, {"GPU", 1}});
+    ASSERT_EQ(state.cluster_resource_constraints(0).resource_requests_size(), 1);
+    CheckResourceRequest(
+        state.cluster_resource_constraints(0).resource_requests(0).request(),
+        {{"CPU", 2}, {"GPU", 1}});
   }
 
   // Override it
@@ -645,9 +650,10 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
         {{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
-    ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
-    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0).request(),
-                         {{"CPU", 4}, {"GPU", 5}, {"TPU", 1}});
+    ASSERT_EQ(state.cluster_resource_constraints(0).resource_requests_size(), 1);
+    CheckResourceRequest(
+        state.cluster_resource_constraints(0).resource_requests(0).request(),
+        {{"CPU", 4}, {"GPU", 5}, {"TPU", 1}});
   }
 }
 
@@ -752,6 +758,38 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {
   }
 }
 
+TEST_F(GcsAutoscalerStateManagerTest, TestDrainNodeRaceCondition) {
+  auto node = Mocker::GenNodeInfo();
+
+  // Adding a node.
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->mutable_resources_total()->insert({"GPU", 1});
+  node->set_instance_id("instance_1");
+  AddNode(node);
+
+  rpc::autoscaler::DrainNodeRequest request;
+  request.set_node_id(node->node_id());
+  request.set_reason(rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+  request.set_reason_message("preemption");
+  request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+  rpc::autoscaler::DrainNodeReply reply;
+  auto send_reply_callback =
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+  gcs_autoscaler_state_manager_->HandleDrainNode(request, &reply, send_reply_callback);
+
+  // At this point, the GCS request is not accepted yet since ralyet has not replied.
+  ASSERT_FALSE(reply.is_accepted());
+
+  // Inject a race condition on GCS: remove the node before raylet accepts the request.
+  RemoveNode(node);
+
+  // Simulates raylet accepts the drain request and replies to GCS.
+  ASSERT_TRUE(raylet_client_->ReplyDrainRaylet());
+
+  // The GCS request is accepted now.
+  ASSERT_TRUE(reply.is_accepted());
+}
+
 TEST_F(GcsAutoscalerStateManagerTest, TestIdleTime) {
   auto node = Mocker::GenNodeInfo();
 
@@ -799,10 +837,17 @@ TEST_F(GcsAutoscalerStateManagerTest, TestIdleTime) {
   }
 }
 
+TEST_F(GcsAutoscalerStateManagerTest, TestGcsKvManagerInternalConfig) {
+  // This is really a test for GcsKvManager. However gcs_kv_manager_test.cc is a larger
+  // misnomer - it does not test that class at all; it only tests StoreClientInternalKV.
+  // We temporarily put this test here.
+  rpc::GetInternalConfigRequest request;
+  rpc::GetInternalConfigReply reply;
+  auto send_reply_callback =
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+  kv_manager_->HandleGetInternalConfig(request, &reply, send_reply_callback);
+  EXPECT_EQ(reply.config(), kRayletConfig);
+}
+
 }  // namespace gcs
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

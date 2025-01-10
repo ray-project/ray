@@ -1,6 +1,7 @@
-text: Below are examples for using Ray Train with a variety of frameworks and use cases. Ray Train makes it easy to scale out each of these examples to a large cluster of GPUs!
+text: Below are examples for using Ray Train with a variety of frameworks and use cases. Ray Train makes it easy to scale out each of these examples to a large cluster of GPUs.
 columns_to_show:
   - frameworks
+groupby: skill_level
 examples:
   - title: Train an image classifier with PyTorch
     skill_level: beginner
@@ -72,6 +73,16 @@ examples:
       - computer vision
       - generative ai
     link: examples/pytorch/dreambooth_finetuning
+  - title: Finetune Stable Diffusion and generate images with Intel Gaudi
+    skill_level: intermediate
+    frameworks:
+      - accelerate
+      - transformers
+    use_cases:
+      - computer vision
+      - generative ai
+    contributor: community
+    link: examples/intel_gaudi/sd
   - title: Train a text classifier with PyTorch Lightning and Ray Data
     frameworks:
       - lightning
@@ -86,8 +97,39 @@ examples:
     use_cases:
       - natural language processing
     link: examples/transformers/huggingface_text_classification
+  - title: "Fine-tune Llama-2-7b and Llama-2-70b with Intel Gaudi"
+    frameworks:
+      - accelerate
+      - transformers
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/intel_gaudi/llama
+  - title: "Pre-train Llama-2 with Intel Gaudi"
+    frameworks:
+      - accelerate
+      - transformers
+      - deepspeed
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/intel_gaudi/llama_pretrain
 
-  - title: Fine-tune a Llama-2 text generation models with DeepSpeed and Hugging Face Accelerate
+  - title: Fine-tune Llama3.1 with AWS Trainium
+    frameworks:
+      - pytorch
+      - aws neuron
+    skill_level: advanced
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/aws-trainium/llama3
+  - title: Fine-tune a Llama-2 text generation model with DeepSpeed and Hugging Face Accelerate
     frameworks:
       - accelerate
       - deepspeed

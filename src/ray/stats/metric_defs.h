@@ -48,8 +48,15 @@ DECLARE_stats(tasks);
 /// Actor stats, broken down by state.
 DECLARE_stats(actors);
 
+/// Job stats.
+DECLARE_stats(running_jobs);
+DECLARE_stats(finished_jobs);
+
 /// Placement group stats, broken down by state.
 DECLARE_stats(placement_groups);
+
+/// ASIO stats
+DECLARE_stats(io_context_event_loop_lag_ms);
 
 /// Event stats
 DECLARE_stats(operation_count);
@@ -118,6 +125,9 @@ DECLARE_stats(gcs_actors_count);
 
 /// Memory Manager
 DECLARE_stats(memory_manager_worker_eviction_total);
+
+/// Core Worker Task Manager
+DECLARE_stats(total_lineage_bytes);
 
 /// The below items are legacy implementation of metrics.
 /// TODO(sang): Use DEFINE_stats instead.
@@ -214,7 +224,7 @@ static Sum NumCachedWorkersSkippedJobMismatch(
     "workers");
 
 static Sum NumCachedWorkersSkippedRuntimeEnvironmentMismatch(
-    "internal_num_processes_skipped_runtime_enviornment_mismatch",
+    "internal_num_processes_skipped_runtime_environment_mismatch",
     "The total number of cached workers skipped due to runtime environment mismatch.",
     "workers");
 

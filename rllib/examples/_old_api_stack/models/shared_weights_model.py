@@ -1,3 +1,4 @@
+# @OldAPIStack
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -170,7 +171,7 @@ class TorchSharedWeightsModel(TorchModelV2, nn.Module):
 
         # Non-shared initial layer.
         self.first_layer = SlimFC(
-            int(np.product(observation_space.shape)),
+            int(np.prod(observation_space.shape)),
             64,
             activation_fn=nn.ReLU,
             initializer=torch.nn.init.xavier_uniform_,

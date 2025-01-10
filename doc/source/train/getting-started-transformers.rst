@@ -205,7 +205,7 @@ Set up a training function
 
 .. include:: ./common/torch-configure-train_func.rst
 
-Ray Train sets up the distributed process group on each worker before entering this function. 
+Ray Train sets up the distributed process group on each worker before entering this function.
 Put all the logic into this function, including dataset construction and preprocessing,
 model initialization, transformers trainer definition and more.
 

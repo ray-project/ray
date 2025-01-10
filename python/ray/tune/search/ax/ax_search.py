@@ -48,11 +48,11 @@ class AxSearch(Searcher):
     interface with BoTorch, a flexible, modern library for Bayesian
     optimization in PyTorch. More information can be found in https://ax.dev/.
 
-    To use this search algorithm, you must install Ax and sqlalchemy:
+    To use this search algorithm, you must install Ax:
 
     .. code-block:: bash
 
-        $ pip install ax-platform sqlalchemy
+        $ pip install ax-platform
 
     Parameters:
         space: Parameters in the experiment search space.
@@ -157,7 +157,7 @@ class AxSearch(Searcher):
             ax is not None
         ), """Ax must be installed!
             You can install AxSearch with the command:
-            `pip install ax-platform sqlalchemy`."""
+            `pip install ax-platform`."""
 
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."

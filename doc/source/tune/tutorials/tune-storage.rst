@@ -212,7 +212,7 @@ you can resume it any time starting from the experiment state saved in the cloud
 There are a few options for restoring an experiment:
 ``resume_unfinished``, ``resume_errored`` and ``restart_errored``.
 Please see the documentation of
-:meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>` for more details.
+:meth:`~ray.tune.Tuner.restore` for more details.
 
 
 Advanced configuration

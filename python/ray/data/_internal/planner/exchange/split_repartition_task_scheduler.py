@@ -117,7 +117,7 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
                 builder = PandasBlockBuilder()
             empty_block = builder.build()
             empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
-                input_files=None, exec_stats=None
+                exec_stats=None
             )  # No stats for empty block.
             empty_block_refs, empty_metadata = zip(
                 *[(ray.put(empty_block), empty_meta) for _ in range(num_empty_blocks)]

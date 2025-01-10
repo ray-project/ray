@@ -61,7 +61,7 @@ def _get_platform_tag(platform: str) -> str:
     if platform == "cpu":
         return "-cpu"
     versions = platform.split(".")
-    return f"-{versions[0]}{versions[1]}"  # cu11.8.0 -> cu118
+    return f"-{versions[0]}{versions[1]}"  # cu11.8.0-cudnn8 -> cu118
 
 
 def _get_architecture_tag(architecture: str) -> str:

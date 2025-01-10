@@ -5,16 +5,28 @@ import ray
 
 from ray._private.test_utils import (
     get_and_run_resource_killer,
-    NodeKillerActor,
+    RayletKiller,
     WorkerKillerActor,
+    EC2InstanceTerminator,
 )
 
 
 def parse_script_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--kill-workers", action="store_true", default=False)
+
+    parser.add_argument(
+        "--chaos",
+        type=str,
+        default="",
+        help=(
+            "Chaos to inject into the test environment. "
+            "Options: KillRaylet, KillWorker, TerminateEC2Instance."
+        ),
+    )
+
     parser.add_argument("--kill-interval", type=int, default=60)
     parser.add_argument("--max-to-kill", type=int, default=2)
+    parser.add_argument("--batch-size-to-kill", type=int, default=1)
     parser.add_argument(
         "--no-start",
         action="store_true",
@@ -77,6 +89,22 @@ def task_node_filter(task_names):
     return _task_node_filter
 
 
+def get_chaos_killer(args):
+    if args.chaos != "":
+        chaos_type = args.chaos
+    else:
+        chaos_type = "KillRaylet"  # default
+
+    if chaos_type == "KillRaylet":
+        return RayletKiller, task_node_filter(args.task_names)
+    elif chaos_type == "KillWorker":
+        return WorkerKillerActor, task_filter(args.task_names)
+    elif chaos_type == "TerminateEC2Instance":
+        return EC2InstanceTerminator, task_node_filter(args.task_names)
+    else:
+        raise ValueError(f"Chaos type {chaos_type} not supported.")
+
+
 def main():
     """Start the chaos testing.
 
@@ -84,12 +112,7 @@ def main():
     """
     args, _ = parse_script_args()
     ray.init(address="auto")
-    if args.kill_workers:
-        resource_killer_cls = WorkerKillerActor
-        kill_filter_fn = task_filter(args.task_names)
-    else:
-        resource_killer_cls = NodeKillerActor
-        kill_filter_fn = task_node_filter(args.task_names)
+    resource_killer_cls, kill_filter_fn = get_chaos_killer(args)
 
     get_and_run_resource_killer(
         resource_killer_cls,
@@ -98,12 +121,11 @@ def main():
         lifetime="detached",
         no_start=args.no_start,
         max_to_kill=args.max_to_kill,
+        batch_size_to_kill=args.batch_size_to_kill,
         kill_delay_s=args.kill_delay,
         kill_filter_fn=kill_filter_fn,
     )
-    print(
-        f"Successfully deployed a {'worker' if args.kill_workers else 'node'} killer."
-    )
+    print(f"Successfully deployed a {resource_killer_cls} killer.")
 
 
 main()

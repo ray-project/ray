@@ -11,6 +11,8 @@ export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
 export RUN_PER_FLAKY_TEST="2"
+export TORCH_VERSION=2.0.1
+export TORCHVISION_VERSION=0.15.2
 
 filter_out_flaky_tests() {
   bazel run ci/ray_ci/automation:filter_tests -- --state_filter=-flaky --prefix=darwin:
@@ -70,7 +72,6 @@ run_large_test() {
 }
 
 run_core_dashboard_test() {
-  TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
   # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
   # with dynamic linking.
   # shellcheck disable=SC2046

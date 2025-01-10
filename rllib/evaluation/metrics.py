@@ -110,9 +110,9 @@ def collect_episodes(
     # This will drop get_metrics() calls that are too slow.
     # We can potentially make this an asynchronous call if this turns
     # out to be a problem.
-    metric_lists = workers.foreach_worker(
+    metric_lists = workers.foreach_env_runner(
         lambda w: w.get_metrics(),
-        local_worker=True,
+        local_env_runner=True,
         remote_worker_ids=remote_worker_ids,
         timeout_seconds=timeout_seconds,
     )
@@ -173,8 +173,12 @@ def summarize_episodes(
         episode_rewards.append(episode.episode_reward)
         for k, v in episode.custom_metrics.items():
             custom_metrics[k].append(v)
-        for (_, policy_id), reward in episode.agent_rewards.items():
-            if policy_id != DEFAULT_POLICY_ID:
+        is_multi_agent = (
+            len(episode.agent_rewards) > 1
+            or DEFAULT_POLICY_ID not in episode.agent_rewards
+        )
+        if is_multi_agent:
+            for (_, policy_id), reward in episode.agent_rewards.items():
                 policy_rewards[policy_id].append(reward)
         for k, v in episode.hist_data.items():
             hist_stats[k] += v
@@ -242,7 +246,6 @@ def summarize_episodes(
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
         episode_media=dict(episode_media),
-        episodes_this_iter=len(new_episodes),
         episodes_timesteps_total=sum(episode_lengths),
         policy_reward_min=policy_reward_min,
         policy_reward_max=policy_reward_max,
@@ -259,4 +262,5 @@ def summarize_episodes(
         episode_return_max=max_reward,
         episode_return_min=min_reward,
         episode_return_mean=avg_reward,
+        episodes_this_iter=len(new_episodes),  # deprecate in favor of `num_epsodes_...`
     )

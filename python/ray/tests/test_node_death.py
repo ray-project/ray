@@ -4,7 +4,7 @@ import pytest
 import ray
 
 from ray._private.test_utils import wait_for_condition
-from ray.core.generated import gcs_pb2
+from ray.core.generated import common_pb2
 
 
 def test_normal_termination(ray_start_cluster):
@@ -14,16 +14,34 @@ def test_normal_termination(ray_start_cluster):
     worker_node = cluster.add_node(resources={"worker": 1})
     cluster.wait_for_nodes()
     worker_node_id = worker_node.node_id
+
+    @ray.remote
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.options(num_cpus=0, resources={"worker": 1}).remote()
+    ray.get(actor.ping.remote())
+
+    # normal node termination
     cluster.remove_node(worker_node)
 
     worker_node_info = [
         node for node in ray.nodes() if node["NodeID"] == worker_node_id
     ][0]
     assert not worker_node_info["Alive"]
-    assert worker_node_info["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+    assert worker_node_info["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
         "EXPECTED_TERMINATION"
     )
     assert worker_node_info["DeathReasonMessage"] == "received SIGTERM"
+
+    try:
+        ray.get(actor.ping.remote())
+        raise
+    except ray.exceptions.ActorDiedError as e:
+        assert not e.preempted
+        assert "The actor died because its node has died." in str(e)
+        assert "the actor's node was terminated expectedly: received SIGTERM" in str(e)
 
 
 def test_abnormal_termination(monkeypatch, ray_start_cluster):
@@ -46,6 +64,14 @@ def test_abnormal_termination(monkeypatch, ray_start_cluster):
         == {head_node_id, worker_node_id}
     )
 
+    @ray.remote
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.options(num_cpus=0, resources={"worker": 1}).remote()
+    ray.get(actor.ping.remote())
+
     # Simulate the worker node crashes.
     cluster.remove_node(worker_node, False)
 
@@ -55,13 +81,24 @@ def test_abnormal_termination(monkeypatch, ray_start_cluster):
     )
 
     worker_node = [node for node in ray.nodes() if node["NodeID"] == worker_node_id][0]
-    assert worker_node["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+    assert worker_node["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
         "UNEXPECTED_TERMINATION"
     )
     assert (
         worker_node["DeathReasonMessage"]
         == "health check failed due to missing too many heartbeats"
     )
+
+    try:
+        ray.get(actor.ping.remote())
+        raise
+    except ray.exceptions.ActorDiedError as e:
+        assert not e.preempted
+        assert "The actor died because its node has died." in str(e)
+        assert (
+            "the actor's node was terminated unexpectedly: "
+            "health check failed due to missing too many heartbeats" in str(e)
+        )
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+.. _ray-oom-prevention:
+
 Out-Of-Memory Prevention
 ========================
 
@@ -25,7 +27,7 @@ It's available on Linux and is tested with Ray running inside a container that i
 How do I disable the memory monitor?
 --------------------------------------
 
-The memory monitor is enabled by default and can be disabled by setting the environment variable ``RAY_memory_monitor_refresh_ms`` to zero when Ray starts (e.g., RAY_memory_monitor_refresh_ms=0 ray start ...). 
+The memory monitor is enabled by default and can be disabled by setting the environment variable ``RAY_memory_monitor_refresh_ms`` to zero when Ray starts (e.g., RAY_memory_monitor_refresh_ms=0 ray start ...).
 
 How do I configure the memory monitor?
 --------------------------------------
@@ -97,7 +99,7 @@ If, at this point, the node still runs out of memory, the process will repeat:
         RAY_event_stats_print_interval_ms=1000 python oom.py
 
         (raylet) node_manager.cc:3040: 1 Workers (tasks / actors) killed due to memory pressure (OOM), 0 Workers crashed due to other reasons at node (ID: 2c82620270df6b9dd7ae2791ef51ee4b5a9d5df9f795986c10dd219c, IP: 172.31.183.172) over the last time period. To see more information about the Workers killed on this node, use `ray logs raylet.out -ip 172.31.183.172`
-        (raylet) 
+        (raylet)
         (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
                 task failed with OutOfMemoryError, which is expected
                 Verify the task was indeed executed twice via ``task_oom_retry``:
@@ -125,7 +127,7 @@ If, at this point, the node still runs out of memory, the process will repeat:
     .. code-block:: bash
 
         $ python two_actors.py
-        
+
         First started actor, which is retriable, was killed by the memory monitor.
         Second started actor, which is not-retriable, finished.
 

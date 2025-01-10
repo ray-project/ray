@@ -279,7 +279,7 @@ are the two main APIs to interact with Train checkpoints:
     :end-before: __inspect_checkpoint_example_end__
 
 
-For Lightning and Transformers, if you are using the default `RayTrainReportCallback` for checkpoint saving in your training function, 
+For Lightning and Transformers, if you are using the default `RayTrainReportCallback` for checkpoint saving in your training function,
 you can retrieve the original checkpoint files as below:
 
 .. tab-set::
@@ -290,7 +290,7 @@ you can retrieve the original checkpoint files as below:
             :language: python
             :start-after: __inspect_lightning_checkpoint_example_start__
             :end-before: __inspect_lightning_checkpoint_example_end__
-    
+
     .. tab-item:: Transformers
 
         .. literalinclude:: ../doc_code/checkpoints.py

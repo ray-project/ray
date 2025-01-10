@@ -48,9 +48,6 @@ class TesterContainer(Container):
         self.build_type = build_type
         self.network = network
         self.gpus = gpus
-        assert (
-            self.gpus == 0 or self.gpus >= self.shard_count
-        ), f"Not enough gpus ({self.gpus} provided) for {self.shard_count} shards"
 
         if not skip_ray_installation:
             self.install_ray(build_type)

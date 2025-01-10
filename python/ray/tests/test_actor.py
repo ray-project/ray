@@ -18,6 +18,8 @@ from ray._private.test_utils import (
 from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray._private.test_utils import SignalActor
+from ray.core.generated import gcs_pb2
+from ray._private.utils import hex_to_binary
 
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
@@ -935,6 +937,7 @@ def test_named_actor_cache(ray_start_regular_shared):
     a = Counter.options(name="hi").remote()
     first_get = ray.get_actor("hi")
     assert ray.get(first_get.inc_and_get.remote()) == 1
+
     second_get = ray.get_actor("hi")
     assert ray.get(second_get.inc_and_get.remote()) == 2
     ray.kill(a, no_restart=True)
@@ -1221,9 +1224,10 @@ def test_keep_calling_get_actor(ray_start_regular_shared):
     actor = Actor.options(name="ABC").remote()
     assert ray.get(actor.hello.remote()) == "hello"
 
+    # Getting the actor by name acts as a weakref.
     for _ in range(10):
-        actor = ray.get_actor("ABC")
-        assert ray.get(actor.hello.remote()) == "hello"
+        named_actor = ray.get_actor("ABC")
+        assert ray.get(named_actor.hello.remote()) == "hello"
 
     del actor
 
@@ -1263,7 +1267,8 @@ def test_actor_parent_task_correct(shutdown_only, actor_type):
         core_worker = ray._private.worker.global_worker.core_worker
         refs = [child_actor.child.remote(), child.remote()]
         expected = {ref.task_id().hex() for ref in refs}
-        task_id = ray.get_runtime_context().task_id
+        task_id_hex = ray.get_runtime_context().get_task_id()
+        task_id = ray.TaskID(hex_to_binary(task_id_hex))
         children_task_ids = core_worker.get_pending_children_task_ids(task_id)
         actual = {task_id.hex() for task_id in children_task_ids}
         ray.get(refs)
@@ -1339,7 +1344,8 @@ def test_parent_task_correct_concurrent_async_actor(shutdown_only):
             refs = [child.remote(sig) for _ in range(2)]
             core_worker = ray._private.worker.global_worker.core_worker
             expected = {ref.task_id().hex() for ref in refs}
-            task_id = ray.get_runtime_context().task_id
+            task_id_hex = ray.get_runtime_context().get_task_id()
+            task_id = ray.TaskID(hex_to_binary(task_id_hex))
             children_task_ids = core_worker.get_pending_children_task_ids(task_id)
             actual = {task_id.hex() for task_id in children_task_ids}
             await sig.wait.remote()
@@ -1386,6 +1392,147 @@ def test_actor_equal(ray_start_regular_shared):
 
     remote = ray.get(get_actor.remote(origin))
     assert origin == remote
+
+
+def test_actor_handle_weak_ref_counting(ray_start_regular_shared):
+    """
+    Actors can get handles to themselves or to named actors but these count
+    only as weak refs.  Check that this pattern does not crash the normal ref
+    counting protocol, which tracks handles passed through task args and return
+    values.
+    """
+
+    @ray.remote
+    class WeakReferenceHolder:
+        def pass_weak_ref(self, handle):
+            self.handle = handle
+
+    @ray.remote
+    class Actor:
+        def read_self_handle(self, self_handle):
+            # This actor has a strong reference to itself through the arg
+            # self_handle.
+
+            # Get and delete a weak reference to ourselves. This should not
+            # crash the distributed ref counting protocol.
+            # TODO(swang): Commenting these lines out currently causes the
+            # actor handle to leak.
+            weak_self_handle = ray.get_runtime_context().current_actor
+            del weak_self_handle
+
+        def pass_self_handle(self, self_handle, weak_ref_holder):
+            # This actor has a strong reference to itself through the arg
+            # self_handle.
+
+            # Pass a weak reference to ourselves to another actor. This should
+            # not count towards the distributed ref counting protocol.
+            weak_self_handle = ray.get_runtime_context().current_actor
+            ray.get(weak_ref_holder.pass_weak_ref.remote(weak_self_handle))
+
+        def read_handle_by_name(self, handle, name):
+            # This actor has a strong reference to another actor through the
+            # arg handle.
+
+            # Get and delete a weak reference to the same actor as the one
+            # passed through handle. This should not crash the distributed ref
+            # counting protocol.
+            weak_handle = ray.get_actor(name=name)
+            del weak_handle
+
+        def pass_named_handle(self, handle, name, weak_ref_holder):
+            # This actor has a strong reference to another actor through the
+            # arg handle.
+
+            # Pass a weak reference to the actor to another actor. This should
+            # not count towards the distributed ref counting protocol.
+            weak_handle = ray.get_actor(name=name)
+            ray.get(weak_ref_holder.pass_weak_ref.remote(weak_handle))
+
+        def getpid(self):
+            return os.getpid()
+
+    # Check ref counting when getting actors via self handle.
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    for _ in range(3):
+        ray.get(a.read_self_handle.remote(a))
+    # Check that there are no leaks after all handles have gone out of scope.
+    a = None
+    wait_for_pid_to_exit(pid)
+
+    # Check that passing a weak ref to the self actor to other actors does not
+    # count towards the ref count.
+    weak_ref_holder = WeakReferenceHolder.remote()
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    for _ in range(3):
+        ray.get(a.pass_self_handle.remote(a, weak_ref_holder))
+    # Check that there are no leaks after all strong refs have gone out of
+    # scope.
+    a = None
+    wait_for_pid_to_exit(pid)
+
+    # Check ref counting when getting actors by name.
+    a = Actor.remote()
+    b = Actor.options(name="actor").remote()
+    pid = ray.get(b.getpid.remote())
+    for _ in range(3):
+        ray.get(a.read_handle_by_name.remote(b, "actor"))
+    # Check that there are no leaks after all handles have gone out of scope.
+    b = None
+    wait_for_pid_to_exit(pid)
+
+    # Check that passing a weak ref to an actor handle that was gotten by name
+    # to other actors does not count towards the ref count.
+    a = Actor.remote()
+    b = Actor.options(name="actor").remote()
+    pid = ray.get(b.getpid.remote())
+    for _ in range(3):
+        ray.get(a.pass_named_handle.remote(b, "actor", weak_ref_holder))
+    # Check that there are no leaks after all strong refs have gone out of
+    # scope.
+    b = None
+    wait_for_pid_to_exit(pid)
+
+
+def test_self_handle_leak(ray_start_regular_shared):
+    """
+    Actors can get handles to themselves. Check that holding such a reference
+    does not cause the actor to leak.
+    """
+
+    @ray.remote
+    class Actor:
+        def read_self_handle(self, self_handle):
+            pass
+
+        def getpid(self):
+            return os.getpid()
+
+    # Check ref counting when getting actors via self handle.
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    for _ in range(3):
+        ray.get(a.read_self_handle.remote(a))
+    # Check that there are no leaks after all handles have gone out of scope.
+    a = None
+    wait_for_pid_to_exit(pid)
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+def test_get_local_actor_state(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+    assert actor._get_local_state() == gcs_pb2.ActorTableData.ActorState.ALIVE
+    ray.kill(actor)
+    wait_for_condition(
+        lambda: actor._get_local_state() == gcs_pb2.ActorTableData.ActorState.DEAD
+    )
 
 
 if __name__ == "__main__":

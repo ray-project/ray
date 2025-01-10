@@ -1,14 +1,21 @@
+import logging
 import os
 import threading
+import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+import ray
 from ray._private.ray_constants import env_bool, env_integer
+from ray._private.worker import WORKER_MODE
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import ExecutionOptions
+
+logger = logging.getLogger(__name__)
 
 # The context singleton on this process.
 _default_context: "Optional[DataContext]" = None
@@ -67,6 +74,12 @@ DEFAULT_MIN_PARALLELISM = 200
 
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 
+# NOTE: V1 tensor type format only supports tensors of no more than 2Gb in
+#       total cumulative size (due to it internally utilizing int32 offsets)
+#
+#       V2 in turn relies on int64 offsets, therefore having a limit of ~9Eb (exabytes)
+DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", True)
+
 DEFAULT_AUTO_LOG_STATS = False
 
 DEFAULT_VERBOSE_STATS_LOG = False
@@ -77,19 +90,39 @@ DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = env_bool(
     "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT", False
 )
 
+DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION = env_bool(
+    "RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION", False
+)
+
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
+# Globally enable or disable all progress bars.
+# If this is False, both the global and operator-level progress bars are disabled.
 DEFAULT_ENABLE_PROGRESS_BARS = not bool(
     env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
+)
+DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
+    "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
 
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
+# `write_file_retry_on_errors` is deprecated in favor of `retried_io_errors`. You
+# shouldn't need to modify `DEFAULT_WRITE_FILE_RETRY_ON_ERRORS`.
 DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
     "AWS Error INTERNAL_FAILURE",
     "AWS Error NETWORK_CONNECTION",
     "AWS Error SLOW_DOWN",
+    "AWS Error UNKNOWN (HTTP status 503)",
+)
+
+DEFAULT_RETRIED_IO_ERRORS = (
+    "AWS Error INTERNAL_FAILURE",
+    "AWS Error NETWORK_CONNECTION",
+    "AWS Error SLOW_DOWN",
+    "AWS Error UNKNOWN (HTTP status 503)",
+    "AWS Error SERVICE_UNAVAILABLE",
 )
 
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
@@ -189,6 +222,12 @@ class DataContext:
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
+        use_arrow_tensor_v2: Config enabling V2 version of ArrowTensorArray supporting
+            tensors > 2Gb in size (off by default)
+        enable_fallback_to_arrow_object_ext_type: Enables fallback to serialize column
+            values not suppported by Arrow natively (like user-defined custom Python
+            classes for ex, etc) using `ArrowPythonObjectType` (simply serializing
+            these as bytes)
         enable_auto_log_stats: Whether to automatically log stats after execution. If
             disabled, you can still manually print stats with ``Dataset.stats()``.
         verbose_stats_logs: Whether stats logs should be verbose. This includes fields
@@ -200,6 +239,9 @@ class DataContext:
             to use.
         use_ray_tqdm: Whether to enable distributed tqdm.
         enable_progress_bars: Whether to enable progress bars.
+        enable_progress_bar_name_truncation: If True, the name of the progress bar
+            (often the operator name) will be truncated if it exceeds
+            `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
         enable_get_object_locations_for_metrics: Whether to enable
             ``get_object_locations`` for metrics.
         write_file_retry_on_errors: A list of substrings of error messages that should
@@ -224,12 +266,17 @@ class DataContext:
         log_internal_stack_trace_to_stdout: Whether to include internal Ray Data/Ray
             Core code stack frames when logging to stdout. The full stack trace is
             always written to the Ray Data log file.
+        raise_original_map_exception: Whether to raise the original exception
+            encountered in map UDF instead of wrapping it in a `UserCodeException`.
         print_on_execution_start: If ``True``, print execution information when
             execution starts.
         s3_try_create_dir: If ``True``, try to create directories on S3 when a write
             call is made with a S3 URI.
         wait_for_min_actors_s: The default time to wait for minimum requested
             actors to start before raising a timeout, in seconds.
+        retried_io_errors: A list of substrings of error messages that should
+            trigger a retry when reading or writing files. This is useful for handling
+            transient errors when reading from remote storage systems.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -251,6 +298,8 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
+    use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
+    enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
@@ -259,6 +308,13 @@ class DataContext:
     )
     use_ray_tqdm: bool = DEFAULT_USE_RAY_TQDM
     enable_progress_bars: bool = DEFAULT_ENABLE_PROGRESS_BARS
+    # By default, enable the progress bar for operator-level progress.
+    # In __post_init__(), we disable operator-level progress
+    # bars when running in a Ray job.
+    enable_operator_progress_bars: bool = True
+    enable_progress_bar_name_truncation: bool = (
+        DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
+    )
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )
@@ -273,9 +329,15 @@ class DataContext:
     log_internal_stack_trace_to_stdout: bool = (
         DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
     )
+    raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
+    retried_io_errors: List[str] = field(
+        default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
+    )
+
+    override_object_store_memory_limit_fraction: float = None
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -292,12 +354,68 @@ class DataContext:
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
 
+        is_ray_job = os.environ.get("RAY_JOB_ID") is not None
+        if is_ray_job:
+            is_driver = ray.get_runtime_context().worker.mode != WORKER_MODE
+            if is_driver and log_once(
+                "ray_data_disable_operator_progress_bars_in_ray_jobs"
+            ):
+                logger.info(
+                    "Disabling operator-level progress bars by default in Ray Jobs. "
+                    "To enable progress bars for all operators, set "
+                    "`ray.data.DataContext.get_current()"
+                    ".enable_operator_progress_bars = True`."
+                )
+            # Disable operator-level progress bars by default in Ray jobs.
+            # The global progress bar for the overall Dataset execution will
+            # still be enabled, unless the user also sets
+            # `ray.data.DataContext.get_current().enable_progress_bars = False`.
+            self.enable_operator_progress_bars = False
+        else:
+            # When not running in Ray job, operator-level progress
+            # bars are enabled by default.
+            self.enable_operator_progress_bars = True
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if (
+            name == "write_file_retry_on_errors"
+            and value != DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
+        ):
+            warnings.warn(
+                "`write_file_retry_on_errors` is deprecated. Configure "
+                "`retried_io_errors` instead.",
+                DeprecationWarning,
+            )
+
+        super().__setattr__(name, value)
+
     @staticmethod
     def get_current() -> "DataContext":
-        """Get or create a singleton context.
+        """Get or create the current DataContext.
 
-        If the context has not yet been created in this process, it will be
-        initialized with default settings.
+        When a Dataset is created, the current DataContext will be sealed.
+        Changes to `DataContext.get_current()` will not impact existing Datasets.
+
+        Examples:
+
+            .. testcode::
+                import ray
+
+                context = ray.data.DataContext.get_current()
+
+                context.target_max_block_size = 100 * 1024 ** 2
+                ds1 = ray.data.range(1)
+                context.target_max_block_size = 1 * 1024 ** 2
+                ds2 = ray.data.range(1)
+
+                # ds1's target_max_block_size will be 100MB
+                ds1.take_all()
+                # ds2's target_max_block_size will be 1MB
+                ds2.take_all()
+
+        Developer notes: Avoid using `DataContext.get_current()` in data
+        internal components, use the DataContext object captured in the
+        Dataset and pass it around as arguments.
         """
 
         global _default_context

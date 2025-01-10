@@ -14,20 +14,25 @@
 
 #pragma once
 
+#include <memory>
+
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/postable.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
+#include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -47,6 +52,7 @@ struct GcsServerConfig {
   std::string grpc_server_name = "GcsServer";
   uint16_t grpc_server_port = 0;
   uint16_t grpc_server_thread_num = 1;
+  std::string redis_username;
   std::string redis_password;
   std::string redis_address;
   uint16_t redis_port = 6379;
@@ -75,10 +81,14 @@ class GcsAutoscalerStateManager;
 /// and the management of actor creation.
 /// For more details, please see the design document.
 /// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
+///
+/// Notes on lifecycle:
+/// 1. Gcs server contains a lot of data member, gcs server outlives all of them.
+/// 2. Gcs table storage and all gcs managers share a lifetime, that starts from a
+/// `DoStart` call to `Stop`.
 class GcsServer {
  public:
-  explicit GcsServer(const GcsServerConfig &config,
-                     instrumented_io_context &main_service);
+  GcsServer(const GcsServerConfig &config, instrumented_io_context &main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -195,50 +205,65 @@ class GcsServer {
   /// Get cluster id if persisted, otherwise generate
   /// a new one and persist as necessary.
   /// Expected to be idempotent while server is up.
-  void GetOrGenerateClusterId(std::function<void(ClusterID cluster_id)> &&continuation);
+  void GetOrGenerateClusterId(Postable<void(ClusterID cluster_id)> continuation);
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
 
   /// Get or connect to a redis server
-  std::shared_ptr<RedisClient> GetOrConnectRedis();
+  std::shared_ptr<RedisClient> CreateRedisClient(instrumented_io_context &io_service);
 
   void TryGlobalGC();
 
+  IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
+
+  /// NOTICE: The declaration order for data members should follow dependency.
+  ///
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.
   const StorageType storage_type_;
-  /// The main io service to drive event posted from grpc threads.
-  instrumented_io_context &main_service_;
-  /// The io service used by Pubsub, for isolation from other workload.
-  instrumented_io_context pubsub_io_service_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
   /// Node manager client pool.
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
-  /// The gcs resource manager.
-  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  std::unique_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  /// Local task manager.
+  NoopLocalTaskManager local_task_manager_;
+  /// The gcs table storage.
+  std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// The cluster task manager.
-  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  std::unique_ptr<ClusterTaskManager> cluster_task_manager_;
+  /// [gcs_resource_manager_] depends on [cluster_task_manager_].
+  /// The gcs resource manager.
+  std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The autoscaler state manager.
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
+  /// A publisher for publishing gcs messages.
+  std::unique_ptr<GcsPublisher> gcs_publisher_;
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
   std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The gcs redis failure detector.
-  std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
-  /// The gcs actor manager.
-  std::shared_ptr<GcsActorManager> gcs_actor_manager_;
-  /// The gcs placement group scheduler.
-  std::shared_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
+  std::unique_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs placement group manager.
-  std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
+  std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
+  /// The gcs actor manager.
+  std::unique_ptr<GcsActorManager> gcs_actor_manager_;
+  /// The gcs placement group scheduler.
+  /// [gcs_placement_group_scheduler_] depends on [raylet_client_pool_].
+  std::unique_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
+  /// Function table manager.
+  std::unique_ptr<GcsFunctionManager> function_manager_;
+  /// Stores references to URIs stored by the GCS for runtime envs.
+  std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
+  /// Global KV storage handler and service.
+  std::unique_ptr<GcsInternalKVManager> kv_manager_;
+  std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
   /// Job info handler and service.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
@@ -246,16 +271,12 @@ class GcsServer {
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
   /// Node info handler and service.
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
-  /// Function table manager.
-  std::unique_ptr<GcsFunctionManager> function_manager_;
   /// Node resource info handler and service.
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
 
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
-  std::unique_ptr<std::thread> ray_syncer_thread_;
-  instrumented_io_context ray_syncer_io_context_;
 
   /// The node id of GCS.
   NodeID gcs_node_id_;
@@ -268,9 +289,6 @@ class GcsServer {
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Placement Group info handler and service.
   std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
-  /// Global KV storage handler and service.
-  std::unique_ptr<GcsInternalKVManager> kv_manager_;
-  std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
   /// Runtime env handler and service.
   std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
   std::unique_ptr<rpc::RuntimeEnvGrpcService> runtime_env_service_;
@@ -283,18 +301,10 @@ class GcsServer {
   std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
   /// Gcs Autoscaler state manager.
   std::unique_ptr<rpc::autoscaler::AutoscalerStateGrpcService> autoscaler_state_service_;
-  /// Backend client.
-  std::shared_ptr<RedisClient> redis_client_;
-  /// A publisher for publishing gcs messages.
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
-  PeriodicalRunner pubsub_periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
-  /// The gcs table storage.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// Stores references to URIs stored by the GCS for runtime envs.
-  std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;

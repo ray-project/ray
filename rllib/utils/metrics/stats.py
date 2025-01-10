@@ -1,4 +1,6 @@
+from collections import defaultdict, deque
 import time
+import threading
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import numpy as np
@@ -135,6 +137,7 @@ class Stats:
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         on_exit: Optional[Callable] = None,
+        throughput: Union[bool, float] = False,
     ):
         """Initializes a Stats instance.
 
@@ -172,6 +175,13 @@ class Stats:
                 to True is useful for cases, in which the internal values list would
                 otherwise grow indefinitely, for example if reduce is None and there
                 is no `window` provided.
+            with_throughput: Whether to track a throughput estimate together with this
+                Stats. This is only supported for `reduce=sum` and
+                `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
+                then keeps track of the time passed between two consecutive calls to
+                `reduce()` and update its throughput estimate. The current throughput
+                estimate of a key can be obtained through:
+                `Stats.peek([some key], throughput=True)`.
         """
         # Thus far, we only support mean, max, min, and sum.
         if reduce not in [None, "mean", "min", "max", "sum"]:
@@ -205,14 +215,24 @@ class Stats:
         self._window = window
         self._ema_coeff = ema_coeff
 
-        # Timing functionality.
-        self._start_time = None
+        # Timing functionality (keep start times per thread).
+        self._start_times = defaultdict(lambda: None)
 
         # Simply store ths flag for the user of this class.
         self._clear_on_reduce = clear_on_reduce
 
         # Code to execute when exiting a with-context.
         self._on_exit = on_exit
+
+        # On each `.reduce()` call, we store the result of this call in hist[0] and the
+        # previous `reduce()` result in hist[1].
+        self._hist = deque([0, 0, 0], maxlen=3)
+
+        self._throughput = throughput if throughput is not True else 0.0
+        if self._throughput is not False:
+            assert self._reduce_method == "sum"
+            assert self._window in [None, float("inf")]
+            self._throughput_last_time = -1
 
     def push(self, value) -> None:
         """Appends a new value into the internal values list.
@@ -227,34 +247,55 @@ class Stats:
         """Called when entering a context (with which users can measure a time delta).
 
         Returns:
-            This Stats instance (self).
+            This Stats instance (self), unless another thread has already entered (and
+            not exited yet), in which case a copy of `self` is returned. This way, the
+            second thread(s) cannot mess with the original Stat's (self) time-measuring.
+            This also means that only the first thread to __enter__ actually logs into
+            `self` and the following threads' measurements are discarded (logged into
+            a non-referenced shim-Stats object, which will simply be garbage collected).
         """
-        assert self._start_time is None, "Concurrent updates not supported!"
-        self._start_time = time.time()
+        # In case another thread already is measuring this Stats (timing), simply ignore
+        # the "enter request" and return a clone of `self`.
+        thread_id = threading.get_ident()
+        # assert self._start_times[thread_id] is None
+        self._start_times[thread_id] = time.perf_counter()
         return self
 
     def __exit__(self, exc_type, exc_value, tb) -> None:
         """Called when exiting a context (with which users can measure a time delta)."""
-        assert self._start_time is not None
-        time_delta = time.time() - self._start_time
-        self.push(time_delta)
+        thread_id = threading.get_ident()
+        assert self._start_times[thread_id] is not None
+        time_delta_s = time.perf_counter() - self._start_times[thread_id]
+        self.push(time_delta_s)
 
         # Call the on_exit handler.
         if self._on_exit:
-            self._on_exit(time_delta)
+            self._on_exit(time_delta_s)
 
-        self._start_time = None
+        del self._start_times[thread_id]
 
-    def peek(self) -> Any:
+    def peek(self, *, previous: Optional[int] = None, throughput: bool = False) -> Any:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
         Thus, users can call this method to get an accurate look at the reduced value
         given the current internal values list.
 
+        Args:
+            previous: If provided (int), returns that previously (reduced) result of
+                this `Stats` object, which was generated `previous` number of `reduce()`
+                calls ago). If None (default), returns the current (reduced) value.
+
         Returns:
-            The result of reducing the internal values list.
+            The result of reducing the internal values list (or the previously computed
+            reduced result, if `previous` is True).
         """
+        # Return previously reduced value.
+        if previous is not None:
+            return self._hist[-abs(previous)]
+        # Return the last measured throughput.
+        elif throughput:
+            return self._throughput if self._throughput is not False else None
         return self._reduced_values()[0]
 
     def reduce(self) -> "Stats":
@@ -270,10 +311,31 @@ class Stats:
             Returns a new `Stats` object with an empty internal values list, but
             otherwise the same constructor settings (window, reduce, etc..) as `self`.
         """
+        reduced, values = self._reduced_values()
+
+        # Keep track and update underlying throughput metric.
+        if self._throughput is not False:
+            # Take the delta between the new (upcoming) reduced value and the most
+            # recently reduced value (one `reduce()` call ago).
+            delta_sum = reduced - self._hist[-1]
+            assert delta_sum >= 0
+            time_now = time.perf_counter()
+            if self._throughput_last_time == -1:
+                self._throughput = np.nan
+            else:
+                delta_time = time_now - self._throughput_last_time
+                assert delta_time >= 0.0
+                self._throughput = delta_sum / delta_time
+            self._throughput_last_time = time_now
+
         # Reduce everything to a single (init) value.
-        self.values = self._reduced_values()[1]
-        # `clear_on_reduce` -> Return an empty new Stats object with the same option as
-        # `self`.
+        self.values = values
+
+        # Shift historic reduced valued by one in our hist-tuple.
+        self._hist.append(reduced)
+
+        # `clear_on_reduce` -> Return an empty new Stats object with the same settings
+        # as `self`.
         if self._clear_on_reduce:
             return Stats.similar_to(self)
         # No reset required upon `reduce()` -> Return `self`.
@@ -293,50 +355,84 @@ class Stats:
         if self._window not in [None, float("inf")]:
             self.values = self.values[-self._window :]
 
+        # Adopt `other`'s current throughput estimate (it's the newer one).
+        if self._throughput is not False:
+            self._throughput = other._throughput
+
     def merge_in_parallel(self, *others: "Stats") -> None:
         """Merges all internal values of `others` into `self`'s internal values list.
 
         Thereby, the newly incoming values of `others` are treated equally with respect
         to each other as well as with respect to the internal values of self.
 
-        Use this method to merge another Stats into this one that resulted from a
-        parallel run and metrics logging of `self` and n `others` (for example, n
-        Learner workers all returning a loss value).
+        Use this method to merge other `Stats` objects, which resulted from some
+        parallelly executed components, into this one. For example: n Learner workers
+        all returning a loss value in the form of `{"total_loss": [some value]}`.
 
-        The following examples demonstrate the parallel merging logic:
+        The following examples demonstrate the parallel merging logic for different
+        reduce- and window settings:
 
         .. testcode::
-
             from ray.rllib.utils.metrics.stats import Stats
             from ray.rllib.utils.test_utils import check
 
-            # Parallel-merge two mean stats (win=3).
+            # Parallel-merge two (reduce=mean) stats with window=3.
             stats = Stats(reduce="mean", window=3)
             stats1 = Stats(reduce="mean", window=3)
+            stats1.push(0)
             stats1.push(1)
             stats1.push(2)
             stats1.push(3)
             stats2 = Stats(reduce="mean", window=3)
-            stats1.push(4)
-            stats1.push(5)
-            stats1.push(6)
+            stats2.push(4000)
+            stats2.push(4)
+            stats2.push(5)
+            stats2.push(6)
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [3.5, 3.5, 3.5])
+            # Fill new merged-values list:
+            # - Start with index -1, moving to the start.
+            # - Thereby always reducing across the different Stats objects' at the
+            #   current index.
+            # - The resulting reduced value (across Stats at current index) is then
+            #   repeated AND added to the new merged-values list n times (where n is
+            #   the number of Stats, across which we merge).
+            # - The merged-values list is reversed.
+            # Here:
+            # index -1: [3, 6] -> [4.5, 4.5]
+            # index -2: [2, 5] -> [4.5, 4.5, 3.5, 3.5]
+            # STOP after merged list contains >= 3 items (window size)
+            # reverse: [3.5, 3.5, 4.5, 4.5]
+            check(stats.values, [3.5, 3.5, 4.5, 4.5])
+            check(stats.peek(), (3.5 + 4.5 + 4.5) / 3)  # mean last 3 items (window)
 
-            # Parallel-merge two max stats (win=3).
+            # Parallel-merge two (reduce=max) stats with window=3.
             stats = Stats(reduce="max", window=3)
             stats1 = Stats(reduce="max", window=3)
             stats1.push(1)
             stats1.push(2)
             stats1.push(3)
             stats2 = Stats(reduce="max", window=3)
-            stats1.push(4)
-            stats1.push(5)
-            stats1.push(6)
+            stats2.push(4)
+            stats2.push(5)
+            stats2.push(6)
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [6])
+            # Same here: Fill new merged-values list:
+            # - Start with index -1, moving to the start.
+            # - Thereby always reduce across the different Stats objects' at the
+            #   current index.
+            # - The resulting reduced value (across Stats at current index) is then
+            #   repeated AND added to the new merged-values list n times (where n is the
+            #   number of Stats, across which we merge).
+            # - The merged-values list is reversed.
+            # Here:
+            # index -1: [3, 6] -> [6, 6]
+            # index -2: [2, 5] -> [6, 6, 5, 5]
+            # STOP after merged list contains >= 3 items (window size)
+            # reverse: [5, 5, 6, 6]
+            check(stats.values, [5, 5, 6, 6])
+            check(stats.peek(), 6)  # max is 6
 
-            # Parallel-merge two min stats (win=4).
+            # Parallel-merge two (reduce=min) stats with window=4.
             stats = Stats(reduce="min", window=4)
             stats1 = Stats(reduce="min", window=4)
             stats1.push(1)
@@ -344,34 +440,54 @@ class Stats:
             stats1.push(1)
             stats1.push(4)
             stats2 = Stats(reduce="min", window=4)
-            stats1.push(5)
-            stats1.push(0.5)
-            stats1.push(7)
-            stats1.push(8)
+            stats2.push(5)
+            stats2.push(0.5)
+            stats2.push(7)
+            stats2.push(8)
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [0.5])
+            # Same procedure:
+            # index -1: [4, 8] -> [4, 4]
+            # index -2: [1, 7] -> [4, 4, 1, 1]
+            # STOP after merged list contains >= 4 items (window size)
+            # reverse: [1, 1, 4, 4]
+            check(stats.values, [1, 1, 4, 4])
+            check(stats.peek(), 1)  # min is 1
 
-            # Parallel-merge two sum stats (no window).
+            # Parallel-merge two (reduce=sum) stats with no window.
+            # Note that when reduce="sum", we do NOT reduce across the indices of the
+            # parallel values.
             stats = Stats(reduce="sum")
             stats1 = Stats(reduce="sum")
             stats1.push(1)
             stats1.push(2)
+            stats1.push(0)
             stats1.push(3)
             stats2 = Stats(reduce="sum")
-            stats1.push(4)
-            stats1.push(5)
-            stats1.push(6)
+            stats2.push(4)
+            stats2.push(5)
+            stats2.push(6)
+            # index -1: [3, 6] -> [3, 6] (no reduction, leave values as-is)
+            # index -2: [0, 5] -> [3, 6, 0, 5]
+            # index -3: [2, 4] -> [3, 6, 0, 5, 2, 4]
+            # index -4: [1] -> [3, 6, 0, 5, 2, 4, 1]
+            # reverse: [1, 4, 2, 5, 0, 6, 3]
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [21])
+            check(stats.values, [1, 4, 2, 5, 0, 6, 3])
+            check(stats.peek(), 21)
 
-            # Parallel-merge two "concat" stats (reduce=None; no win).
+            # Parallel-merge two "concat" (reduce=None) stats with no window.
+            # Note that when reduce=None, we do NOT reduce across the indices of the
+            # parallel values.
             stats = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
             stats1 = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
             stats1.push(1)
             stats2 = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
-            stats1.push(2)
+            stats2.push(2)
+            # index -1: [1, 2] -> [1, 2] (no reduction, leave values as-is)
+            # reverse: [2, 1]
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [1, 2])
+            check(stats.values, [2, 1])
+            check(stats.peek(), [2, 1])
 
         Args:
             others: One or more other Stats objects that need to be parallely merged
@@ -379,38 +495,59 @@ class Stats:
                 `self`.
         """
         # Make sure `others` have same reduction settings.
-        assert all(self._reduce_method == o._reduce_method for o in others)
-        assert all(self._window == o._window for o in others)
-        assert all(self._ema_coeff == o._ema_coeff for o in others)
+        assert all(
+            self._reduce_method == o._reduce_method
+            and self._window == o._window
+            and self._ema_coeff == o._ema_coeff
+            for o in others
+        )
+        win = self._window or float("inf")
 
-        # Extend `self`'s values by all `others`' values.
-        for o in others:
-            self.values.extend(o.values)
+        # Take turns stepping through `self` and `*others` values, thereby moving
+        # backwards from last index to beginning and will up the resulting values list.
+        # Stop as soon as we reach the window size.
+        new_values = []
+        tmp_values = []
+        # Loop from index=-1 backward to index=start until our new_values list has
+        # at least a len of `win`.
+        for i in range(1, max(map(len, [self, *others])) + 1):
+            # Per index, loop through all involved stats, including `self` and add
+            # to `tmp_values`.
+            for stats in [self, *others]:
+                if len(stats) < i:
+                    continue
+                tmp_values.append(stats.values[-i])
 
-        # Reduce over the entire values (no matter the window size!) first.
-        store_win = self._window
-        self._window = None
-        reduced_value, new_values = self._reduced_values()
-        self._window = store_win
-        # x-fold the reduced_value over the actual window size and use the resulting
-        # list as new self.values.
-        if self._reduce_method == "mean":
-            self.values = [reduced_value] * self._window
-        else:
-            self.values = new_values
-
-    def numpy(self, value: Any = None) -> "Stats":
-        """Converts all of self's internal values to numpy (if a tensor)."""
-        if value is not None:
-            if self._reduce_method is None:
-                assert isinstance(value, list) and len(self.values) >= len(value)
-                self.values = convert_to_numpy(value)
+            # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
+            # TODO (sven) : explain why all this
+            if self._ema_coeff is not None:
+                new_values.extend([np.nanmean(tmp_values)] * len(tmp_values))
+            elif self._reduce_method in [None, "sum"]:
+                new_values.extend(tmp_values)
             else:
-                assert len(self.values) > 0
-                self.values = [convert_to_numpy(value)]
+                new_values.extend(
+                    [self._reduced_values(values=tmp_values, window=float("inf"))[0]]
+                    * len(tmp_values)
+                )
+            tmp_values.clear()
+            if len(new_values) >= win:
+                break
+
+        self.values = list(reversed(new_values))
+
+    def set_to_numpy_values(self, values) -> None:
+        """Converts `self.values` from tensors to actual numpy values.
+
+        Args:
+            values: The (numpy) values to set `self.values` to.
+        """
+        numpy_values = convert_to_numpy(values)
+        if self._reduce_method is None:
+            assert isinstance(values, list) and len(self.values) >= len(values)
+            self.values = numpy_values
         else:
-            self.values = convert_to_numpy(self.values)
-        return self
+            assert len(self.values) > 0
+            self.values = [numpy_values]
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
@@ -464,76 +601,133 @@ class Stats:
 
     def get_state(self) -> Dict[str, Any]:
         return {
-            "values": self.values,
+            "values": convert_to_numpy(self.values),
             "reduce": self._reduce_method,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
+            "_hist": list(self._hist),
         }
 
     @staticmethod
     def from_state(state: Dict[str, Any]) -> "Stats":
-        return Stats(
+        stats = Stats(
             state["values"],
             reduce=state["reduce"],
             window=state["window"],
             ema_coeff=state["ema_coeff"],
             clear_on_reduce=state["clear_on_reduce"],
         )
+        stats._hist = deque(state["_hist"], maxlen=stats._hist.maxlen)
+        return stats
 
     @staticmethod
-    def similar_to(other: "Stats", init_value: Optional[Any] = None):
-        return Stats(
+    def similar_to(
+        other: "Stats",
+        init_value: Optional[Any] = None,
+    ) -> "Stats":
+        """Returns a new Stats object that's similar to `other`.
+
+        "Similar" here means it has the exact same settings (reduce, window, ema_coeff,
+        etc..). The initial values of the returned `Stats` are empty by default, but
+        can be set as well.
+
+        Args:
+            other: The other Stats object to return a similar new Stats equivalent for.
+            init_value: The initial value to already push into the returned Stats. If
+                None (default), the returned Stats object will have no values in it.
+
+        Returns:
+            A new Stats object similar to `other`, with the exact same settings and
+            maybe a custom initial value (if provided; otherwise empty).
+        """
+        stats = Stats(
             init_value=init_value,
             reduce=other._reduce_method,
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
+            throughput=other._throughput,
         )
+        stats._hist = other._hist
+        return stats
 
-    def _reduced_values(self) -> Tuple[Any, Any]:
-        """Runs a non-commited reduction procedure on the internal values list.
+    def _reduced_values(self, values=None, window=None) -> Tuple[Any, Any]:
+        """Runs a non-commited reduction procedure on given values (or `self.values`).
+
+        Note that this method does NOT alter any state of `self` or the possibly
+        provided list of `values`. It only returns new values as they should be
+        adopted after a possible, actual reduction step.
+
+        Args:
+            values: The list of values to reduce. If not None, use `self.values`
+            window: A possible override window setting to use (instead of
+                `self._window`). Use float('inf') here for an infinite window size.
 
         Returns:
             A tuple containing 1) the reduced value and 2) the new internal values list
             to be used.
         """
+        values = values if values is not None else self.values
+        window = window if window is not None else self._window
+        inf_window = window in [None, float("inf")]
+
+        # Apply the window (if provided and not inf).
+        values = values if inf_window else values[-window:]
+
         # No reduction method. Return list as-is OR reduce list to len=window.
         if self._reduce_method is None:
-            # No window -> return all internal values.
-            if self._window is None or self._window == float("inf"):
-                return self.values, self.values
-            # Window -> return shortened internal values list.
-            else:
-                return self.values[-self._window :], self.values[-self._window :]
+            return values, values
 
         # Special case: Internal values list is empty -> return NaN.
-        elif len(self.values) == 0:
-            return float("nan"), []
-        # Do EMA (always a "mean" reduction).
+        elif len(values) == 0:
+            if self._reduce_method in ["min", "max", "mean"]:
+                return float("nan"), []
+            else:
+                return 0, []
+
+        # Do EMA (always a "mean" reduction; possibly using a window).
         elif self._ema_coeff is not None:
             # Perform EMA reduction over all values in internal values list.
-            mean_value = self.values[0]
-            for v in self.values[1:]:
+            mean_value = values[0]
+            for v in values[1:]:
                 mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
-            return mean_value, [mean_value]
+            if inf_window:
+                return mean_value, [mean_value]
+            else:
+                return mean_value, values
         # Do non-EMA reduction (possibly using a window).
         else:
-            values = (
-                self.values
-                if self._window is None or self._window == float("inf")
-                else self.values[-self._window :]
-            )
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
-                reduce_meth = getattr(torch, "nan" + self._reduce_method)
-                reduce_in = torch.stack(values)
-                if self._reduce_method == "mean":
-                    reduce_in = reduce_in.float()
-                reduced = reduce_meth(reduce_in)
+                assert all(torch.is_tensor(v) for v in values), values
+                # TODO (sven) If the shape is (), do NOT even use the reduce method.
+                #  Using `tf.reduce_mean()` here actually lead to a completely broken
+                #  DreamerV3 (for a still unknown exact reason).
+                if len(values[0].shape) == 0:
+                    reduced = values[0]
+                else:
+                    reduce_meth = getattr(torch, "nan" + self._reduce_method)
+                    reduce_in = torch.stack(values)
+                    if self._reduce_method == "mean":
+                        reduce_in = reduce_in.float()
+                    reduced = reduce_meth(reduce_in)
             elif tf and tf.is_tensor(values[0]):
-                reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
-                reduced = reduce_meth(values)
+                # TODO (sven): Currently, tensor metrics only work with window=1.
+                #  We might want o enforce it more formally, b/c it's probably not a
+                #  good idea to have MetricsLogger or Stats tinker with the actual
+                #  computation graph that users are trying to build in their loss
+                #  functions.
+                assert len(values) == 1
+                # TODO (sven) If the shape is (), do NOT even use the reduce method.
+                #  Using `tf.reduce_mean()` here actually lead to a completely broken
+                #  DreamerV3 (for a still unknown exact reason).
+                if len(values[0].shape) == 0:
+                    reduced = values[0]
+                else:
+                    reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
+                    reduced = reduce_meth(values)
+
             else:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
                 reduced = reduce_meth(values)
@@ -548,16 +742,13 @@ class Stats:
 
             # For window=None|inf (infinite window) and reduce != mean, we don't have to
             # keep any values, except the last (reduced) one.
-            if (
-                self._window is None or self._window == float("inf")
-            ) and self._reduce_method != "mean":
-                # TODO (sven): What if out values are torch tensors? In this case, we
+            if inf_window and self._reduce_method != "mean":
+                # TODO (sven): What if values are torch tensors? In this case, we
                 #  would have to do reduction using `torch` above (not numpy) and only
                 #  then return the python primitive AND put the reduced new torch
-                #  tensor in `new_values`.
-                new_values = [reduced]
+                #  tensor in the new `self.values`.
+                return reduced, [reduced]
             # In all other cases, keep the values that were also used for the reduce
             # operation.
             else:
-                new_values = values
-            return reduced, new_values
+                return reduced, values

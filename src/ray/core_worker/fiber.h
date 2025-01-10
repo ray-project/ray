@@ -60,7 +60,7 @@ using StdEvent = Event<std::mutex, std::condition_variable>;
 /// semaphore data structure.
 class FiberRateLimiter {
  public:
-  FiberRateLimiter(int num) : num_(num) {}
+  explicit FiberRateLimiter(int num) : num_(num) {}
 
   // Enter the semaphore. Wait for the value to be > 0 and decrement the value.
   void Acquire() {
@@ -97,12 +97,12 @@ class FiberState {
     return true;
   }
 
-  FiberState(int max_concurrency)
+  explicit FiberState(int max_concurrency)
       : allocator_(kStackSize),
         rate_limiter_(max_concurrency),
         fiber_stopped_event_(std::make_shared<StdEvent>()) {
     std::shared_ptr<StdEvent> fiber_stopped_event = fiber_stopped_event_;
-    fiber_runner_thread_ = std::thread([&, fiber_stopped_event]() {
+    auto fiber_runner_thread = std::thread([&, fiber_stopped_event]() {
       while (!channel_.is_closed()) {
         std::function<void()> func;
         auto op_status = channel_.pop(func);
@@ -140,10 +140,12 @@ class FiberState {
         std::this_thread::sleep_for(std::chrono::hours(1));
       }
     });
+
+    fiber_runner_thread.detach();
   }
 
   void EnqueueFiber(std::function<void()> &&callback) {
-    auto op_status = channel_.push([this, callback]() {
+    auto op_status = channel_.push([this, callback = std::move(callback)]() {
       rate_limiter_.Acquire();
       callback();
       rate_limiter_.Release();
@@ -153,38 +155,26 @@ class FiberState {
 
   void Stop() { channel_.close(); }
 
-  void Join() {
-    fiber_stopped_event_->Wait();
-    fiber_runner_thread_.detach();
-  }
+  void Join() { fiber_stopped_event_->Wait(); }
 
  private:
-  // The fiber stack size. 128 KiB on Linux and Windows. 256 KiB on Mac.
-  // Note that the default fiber stack size is 128 KiB. In the Mac CI environment, this is
-  // not large enough and thus it causes segfaults. See
-  // https://github.com/ray-project/ray/pull/44331.
-#if defined(__APPLE__)
   static constexpr size_t kStackSize = 1024 * 256;
-#else
-  static constexpr size_t kStackSize = 1024 * 128;
-#endif
 
   // The fiber stack allocator.
   boost::fibers::fixedsize_stack allocator_;
   /// The fiber channel used to send task between the submitter thread
-  /// (main direct_actor_trasnport thread) and the fiber_runner_thread_ (defined below)
+  /// (main direct_actor_trasnport thread) and the fiber_runner_thread
   FiberChannel channel_;
   /// The fiber semaphore used to limit the number of concurrent fibers
   /// running at once.
   FiberRateLimiter rate_limiter_;
-  /// The fiber event used to notify that all worker fibers are stopped running.
-  /// Since we don't join the fiber_runner_thread, it's possible that the
+  /// The fiber event used to notify that the event loop in fiber_runner_thread
+  /// have stopped running.
+  /// Since we don't join the fiber threads, it's possible that the
   /// `fiber_runner_thread_` still accesses the `fiber_stopped_event_` after it's
   /// deallocated in the main thread. As a result, we use a shared_ptr here to make sure
   /// it's not deallocated if `fiber_runner_thread_` still has a reference to it.
   std::shared_ptr<StdEvent> fiber_stopped_event_;
-  /// The thread that runs all asyncio fibers. is_asyncio_ must be true.
-  std::thread fiber_runner_thread_;
 };
 
 }  // namespace core

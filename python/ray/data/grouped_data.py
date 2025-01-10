@@ -1,12 +1,17 @@
+from functools import partial
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
+from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
+from ray.data.aggregate import AggregateFn
 from ray.data.block import BlockAccessor, CallableClass, UserDefinedFunction
 from ray.data.dataset import DataBatch, Dataset
 from ray.util.annotations import PublicAPI
+
+CDS_API_GROUP = "Computations or Descriptive Stats"
+FA_API_GROUP = "Function Application"
 
 
 class _MultiColumnSortedKey:
@@ -31,7 +36,6 @@ class _MultiColumnSortedKey:
         return "T" + self.data.__repr__()
 
 
-@PublicAPI
 class GroupedData:
     """Represents a grouped dataset created by calling ``Dataset.groupby()``.
 
@@ -56,6 +60,7 @@ class GroupedData:
             f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
         )
 
+    @PublicAPI(api_group=FA_API_GROUP)
     def aggregate(self, *aggs: AggregateFn) -> Dataset:
         """Implements an accumulator-based aggregation.
 
@@ -75,7 +80,7 @@ class GroupedData:
             key=self._key,
             aggs=aggs,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self._dataset.context)
         return Dataset(
             plan,
             logical_plan,
@@ -85,7 +90,6 @@ class GroupedData:
         self,
         agg_cls: type,
         on: Union[str, List[str]],
-        ignore_nulls: bool,
         *args,
         **kwargs,
     ):
@@ -97,10 +101,11 @@ class GroupedData:
         aggregation on the entire row for a simple Dataset.
         """
         aggs = self._dataset._build_multicolumn_aggs(
-            agg_cls, on, ignore_nulls, *args, skip_cols=self._key, **kwargs
+            agg_cls, on, *args, skip_cols=self._key, **kwargs
         )
         return self.aggregate(*aggs)
 
+    @PublicAPI(api_group=FA_API_GROUP)
     def map_groups(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
@@ -123,6 +128,12 @@ class GroupedData:
             * It requires that each group fits in memory on a single node.
 
         In general, prefer to use aggregate() instead of map_groups().
+
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
 
         Examples:
             >>> # Return a single record per group (list of multiple records in,
@@ -178,7 +189,8 @@ class GroupedData:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
 
         Returns:
             The return type is determined by the return type of ``fn``, and the return
@@ -250,7 +262,10 @@ class GroupedData:
 
         # Change the name of the wrapped function so that users see the name of their
         # function rather than `wrapped_fn` in the progress bar.
-        wrapped_fn.__name__ = fn.__name__
+        if isinstance(fn, partial):
+            wrapped_fn.__name__ = fn.func.__name__
+        else:
+            wrapped_fn.__name__ = fn.__name__
 
         # Note we set batch_size=None here, so it will use the entire block as a batch,
         # which ensures that each group will be contained within a batch in entirety.
@@ -271,6 +286,7 @@ class GroupedData:
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def count(self) -> Dataset:
         """Compute count aggregation.
 
@@ -287,6 +303,7 @@ class GroupedData:
         """
         return self.aggregate(Count())
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def sum(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -328,8 +345,9 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Sum, on, ignore_nulls)
+        return self._aggregate_on(Sum, on, ignore_nulls=ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def min(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -366,8 +384,9 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Min, on, ignore_nulls)
+        return self._aggregate_on(Min, on, ignore_nulls=ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def max(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -404,8 +423,9 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Max, on, ignore_nulls)
+        return self._aggregate_on(Max, on, ignore_nulls=ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def mean(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -442,8 +462,9 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Mean, on, ignore_nulls)
+        return self._aggregate_on(Mean, on, ignore_nulls=ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def std(
         self,
         on: Union[str, List[str]] = None,
@@ -493,7 +514,7 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
+        return self._aggregate_on(Std, on, ignore_nulls=ignore_nulls, ddof=ddof)
 
 
 # Backwards compatibility alias.

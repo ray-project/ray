@@ -3,7 +3,7 @@
 Configuring Scale and GPUs
 ==========================
 Increasing the scale of a Ray Train training run is simple and can be done in a few lines of code.
-The main interface for this is the :class:`~ray.train.ScalingConfig`, 
+The main interface for this is the :class:`~ray.train.ScalingConfig`,
 which configures the number of workers and the resources they should use.
 
 In this guide, a *worker* refers to a Ray Train distributed training worker,
@@ -72,8 +72,8 @@ You can get the associated devices with :meth:`ray.train.torch.get_device`.
 
 Assigning multiple GPUs to a worker
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Sometimes you might want to allocate multiple GPUs for a worker. For example, 
-you can specify `resources_per_worker={"GPU": 2}` in the `ScalingConfig` if you want to 
+Sometimes you might want to allocate multiple GPUs for a worker. For example,
+you can specify `resources_per_worker={"GPU": 2}` in the `ScalingConfig` if you want to
 assign 2 GPUs for each worker.
 
 You can get a list of associated devices with :meth:`ray.train.torch.get_devices`.
@@ -108,15 +108,15 @@ Setting the GPU type
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray Train allows you to specify the accelerator type for each worker.
 This is useful if you want to use a specific accelerator type for model training.
-In a heterogeneous Ray cluster, this means that your training workers will be forced to run on the specified GPU type, 
-rather than on any arbitrary GPU node. You can get a list of supported `accelerator_type` from 
+In a heterogeneous Ray cluster, this means that your training workers will be forced to run on the specified GPU type,
+rather than on any arbitrary GPU node. You can get a list of supported `accelerator_type` from
 :ref:`the available accelerator types <accelerator_types>`.
 
-For example, you can specify `accelerator_type="A100"` in the :class:`~ray.train.ScalingConfig` if you want to 
-assign each worker a NVIDIA A100 GPU. 
+For example, you can specify `accelerator_type="A100"` in the :class:`~ray.train.ScalingConfig` if you want to
+assign each worker a NVIDIA A100 GPU.
 
 .. tip::
-    Ensure that your cluster has instances with the specified accelerator type 
+    Ensure that your cluster has instances with the specified accelerator type
     or is able to autoscale to fulfill the request.
 
 .. testcode::
@@ -128,13 +128,13 @@ assign each worker a NVIDIA A100 GPU.
     )
 
 
-(PyTorch) Setting the communication backend 
+(PyTorch) Setting the communication backend
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 PyTorch Distributed supports multiple `backends <https://pytorch.org/docs/stable/distributed.html#backends>`__
 for communicating tensors across workers. By default Ray Train will use NCCL when ``use_gpu=True`` and Gloo otherwise.
 
-If you explictly want to override this setting, you can configure a :class:`~ray.train.torch.TorchConfig` 
+If you explictly want to override this setting, you can configure a :class:`~ray.train.torch.TorchConfig`
 and pass it into the :class:`~ray.train.torch.TorchTrainer`.
 
 .. testcode::
@@ -159,8 +159,8 @@ and pass it into the :class:`~ray.train.torch.TorchTrainer`.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When using NCCL for distributed training, you can configure the network interface cards
-that are used for communicating between GPUs by setting the 
-`NCCL_SOCKET_IFNAME <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-socket-ifname>`__ 
+that are used for communicating between GPUs by setting the
+`NCCL_SOCKET_IFNAME <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-socket-ifname>`__
 environment variable.
 
 To ensure that the environment variable is set for all training workers, you can pass it
@@ -228,21 +228,6 @@ an actor for the :class:`Trainer <ray.train.trainer.BaseTrainer>` object when
 you call :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>`.
 
 This object often only manages lightweight communication between the training workers.
-You can still specify its resources, which can be useful if you implemented your own
-Trainer that does heavier processing.
-
-.. testcode::
-
-    from ray.train import ScalingConfig
-
-    scaling_config = ScalingConfig(
-        num_workers=8,
-        trainer_resources={
-            "CPU": 4,
-            "GPU": 1,
-        }
-    )
-
 Per default, a trainer uses 1 CPU. If you have a cluster with 8 CPUs and want
 to start 4 training workers a 2 CPUs, this will not work, as the total number
 of required CPUs will be 9 (4 * 2 + 1). In that case, you can specify the trainer

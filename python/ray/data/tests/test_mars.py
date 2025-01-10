@@ -1,10 +1,15 @@
-import mars
-import mars.dataframe as md
+import sys
+
 import pyarrow as pa
 import pytest
 
 import ray
 from ray.data.tests.test_execution_optimizer import _check_usage_record  # noqa
+
+if sys.version_info <= (3, 12):
+    # Skip this test for Python 3.12+ due to to incompatibility mars
+    import mars
+    import mars.dataframe as md
 
 
 @pytest.fixture(scope="module")
@@ -15,6 +20,9 @@ def ray_start_regular(request):  # pragma: no cover
         ray.shutdown()
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No pymars support for Python 3.12+"
+)
 def test_mars(ray_start_regular):
     import pandas as pd
 
@@ -48,6 +56,9 @@ def test_mars(ray_start_regular):
     cluster.stop()
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No pymars support for Python 3.12+"
+)
 def test_from_mars_e2e(ray_start_regular):
     import pandas as pd
 

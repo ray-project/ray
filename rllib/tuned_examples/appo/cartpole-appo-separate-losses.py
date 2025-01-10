@@ -9,12 +9,16 @@ from ray import tune
 
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 400,
     f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000,
 }
 
 config = (
     APPOConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     .environment("CartPole-v1")
     # Switch on >1 loss/optimizer API for TFPolicy and EagerTFPolicy.
     .experimental(_tf_policy_handles_more_than_one_loss=True)
@@ -23,7 +27,7 @@ config = (
         _separate_vf_optimizer=True,
         # Separate learning rate (and schedule) for the value function branch.
         _lr_vf=tune.grid_search([0.00075, [[0, 0.00075], [100000, 0.0003]]]),
-        num_sgd_iter=6,
+        num_epochs=6,
         # `vf_loss_coeff` will be ignored anyways as we use separate loss terms.
         vf_loss_coeff=0.01,
         vtrace=True,

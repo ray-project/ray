@@ -54,15 +54,15 @@ void GcsInternalKVManager::HandleInternalKVMultiGet(
       return;
     }
   }
-  auto callback =
-      [reply, send_reply_callback](std::unordered_map<std::string, std::string> results) {
-        for (auto &result : results) {
-          auto entry = reply->add_results();
-          entry->set_key(result.first);
-          entry->set_value(result.second);
-        }
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-      };
+  auto callback = [reply, send_reply_callback](
+                      absl::flat_hash_map<std::string, std::string> results) {
+    for (auto &&result : std::move(results)) {
+      auto entry = reply->add_results();
+      entry->set_key(result.first);
+      entry->set_value(std::move(result.second));
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
   std::vector<std::string> keys(request.keys().begin(), request.keys().end());
   kv_instance_->MultiGet(request.namespace_(), keys, std::move(callback));
 }
@@ -75,13 +75,14 @@ void GcsInternalKVManager::HandleInternalKVPut(
   if (!status.ok()) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   } else {
-    auto callback = [reply, send_reply_callback](bool newly_added) {
-      reply->set_added_num(newly_added ? 1 : 0);
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-    };
+    auto callback =
+        [reply, send_reply_callback = std::move(send_reply_callback)](bool newly_added) {
+          reply->set_added(newly_added);
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        };
     kv_instance_->Put(request.namespace_(),
                       request.key(),
-                      request.value(),
+                      std::move(*request.mutable_value()),
                       request.overwrite(),
                       std::move(callback));
   }
@@ -139,6 +140,14 @@ void GcsInternalKVManager::HandleInternalKVKeys(
     };
     kv_instance_->Keys(request.namespace_(), request.prefix(), std::move(callback));
   }
+}
+
+void GcsInternalKVManager::HandleGetInternalConfig(
+    rpc::GetInternalConfigRequest request,
+    rpc::GetInternalConfigReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  reply->set_config(raylet_config_list_);
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 Status GcsInternalKVManager::ValidateKey(const std::string &key) const {

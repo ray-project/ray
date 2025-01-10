@@ -1,6 +1,6 @@
 -r dl-cpu-requirements.txt
 
-aim==3.17.5
+aim==3.23.0; python_version < "3.12"
 
 gpy==1.13.1
 

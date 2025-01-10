@@ -101,7 +101,7 @@ TFRecords
 
    read_tfrecords
    Dataset.write_tfrecords
-
+   TFXReadOptions
 
 Pandas
 ------
@@ -177,6 +177,33 @@ Databricks
 
    read_databricks_tables
 
+Delta Sharing
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_delta_sharing_tables
+
+Hudi
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hudi
+
+Iceberg
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_iceberg
+
 Lance
 -----
 
@@ -185,6 +212,15 @@ Lance
    :toctree: doc/
 
    read_lance
+
+ClickHouse
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_clickhouse
 
 Dask
 ----
@@ -288,6 +324,8 @@ Datasink API
    datasource.RowBasedFileDatasink
    datasource.BlockBasedFileDatasink
    datasource.FileBasedDatasource
+   datasource.WriteResult
+   datasource.WriteReturnType
 
 Partitioning API
 ----------------
@@ -312,9 +350,15 @@ MetadataProvider API
 
    datasource.FileMetadataProvider
    datasource.BaseFileMetadataProvider
-   datasource.ParquetMetadataProvider
    datasource.DefaultFileMetadataProvider
-   datasource.DefaultParquetMetadataProvider
+   datasource.ParquetMetadataProvider
    datasource.FastFileMetadataProvider
 
-   
+Shuffling API
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   FileShuffleConfig

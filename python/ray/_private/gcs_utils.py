@@ -9,11 +9,11 @@ from ray.core.generated.common_pb2 import ErrorType, JobConfig
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     AvailableResources,
+    TotalResources,
     ErrorTableData,
     GcsEntry,
     GcsNodeInfo,
     JobTableData,
-    ObjectTableData,
     PlacementGroupTableData,
     PubSubMessage,
     ResourceDemand,
@@ -32,6 +32,7 @@ __all__ = [
     "ActorTableData",
     "GcsNodeInfo",
     "AvailableResources",
+    "TotalResources",
     "JobTableData",
     "JobConfig",
     "ErrorTableData",
@@ -39,7 +40,6 @@ __all__ = [
     "GcsEntry",
     "ResourceUsageBatchData",
     "ResourcesData",
-    "ObjectTableData",
     "TablePrefix",
     "TablePubsub",
     "TaskEvents",
@@ -111,7 +111,12 @@ GcsAioClient = ray._private.gcs_aio_client.GcsAioClient
 
 
 def cleanup_redis_storage(
-    host: str, port: int, password: str, use_ssl: bool, storage_namespace: str
+    host: str,
+    port: int,
+    password: str,
+    use_ssl: bool,
+    storage_namespace: str,
+    username: Optional[str] = None,
 ):
     """This function is used to cleanup the storage. Before we having
     a good design for storage backend, it can be used to delete the old
@@ -120,15 +125,22 @@ def cleanup_redis_storage(
     Args:
        host: The host address of the Redis.
        port: The port of the Redis.
+       username: The username of the Redis.
        password: The password of the Redis.
        use_ssl: Whether to encrypt the connection.
        storage_namespace: The namespace of the storage to be deleted.
     """
 
-    from ray._raylet import del_key_from_storage  # type: ignore
+    from ray._raylet import del_key_prefix_from_storage  # type: ignore
 
     if not isinstance(host, str):
         raise ValueError("Host must be a string")
+
+    if username is None:
+        username = ""
+
+    if not isinstance(username, str):
+        raise ValueError("Username must be a string")
 
     if not isinstance(password, str):
         raise ValueError("Password must be a string")
@@ -142,6 +154,10 @@ def cleanup_redis_storage(
     if not isinstance(storage_namespace, str):
         raise ValueError("storage namespace must be a string")
 
-    # Right now, GCS store all data into a hash set key by storage_namespace.
-    # So we only need to delete the specific key to cleanup the cluster.
-    return del_key_from_storage(host, port, password, use_ssl, storage_namespace)
+    # Right now, GCS stores all data into multiple hashes with keys prefixed by
+    # storage_namespace. So we only need to delete the specific key prefix to cleanup
+    # the cluster.
+    # Note this deletes all keys with prefix `RAY{key_prefix}@`, not `{key_prefix}`.
+    return del_key_prefix_from_storage(
+        host, port, username, password, use_ssl, storage_namespace
+    )

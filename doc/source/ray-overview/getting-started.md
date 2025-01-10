@@ -112,7 +112,7 @@ This training function can be executed with:
 :language: python
 :start-after: __torch_single_run_begin__
 :end-before: __torch_single_run_end__
-:dedent: 0
+:dedent: 4
 ```
 
 Convert this to a distributed multi-worker training function.
@@ -136,7 +136,7 @@ with 4 workers, and use it to run the new training function.
 :language: python
 :start-after: __torch_trainer_begin__
 :end-before: __torch_trainer_end__
-:dedent: 0
+:dedent: 4
 ```
 ````
 
@@ -320,6 +320,8 @@ Learn more about Ray RLlib
 `````
 
 ## Ray Core Quickstart
+
+[![try-anyscale-quickstart-ray-quickstart](../_static/img/run-quickstart-anyscale.svg)](https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-core-quickstart&redirectTo=/v2/template-preview/workspace-intro)
 
 Turn functions and classes easily into Ray tasks and actors,
 for Python and Java, with simple primitives for building and running distributed applications.
@@ -587,6 +589,21 @@ Learn more about launching Ray Clusters on AWS, GCP, Azure, and more
 
 `````
 
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on Kubernetes
+:animate: fade-in-slide-down
+
+Ray programs can run on a single node Kubernetes cluster, or seamlessly scale to larger clusters.
+
+```{button-ref}  kuberay-index
+:color: primary
+:outline:
+:expand:
+
+Learn more about launching Ray Clusters on Kubernetes
+```
+
+`````
+
 ## Debugging and Monitoring Quickstart
 
 Use built-in observability tools to monitor and debug Ray applications and clusters.
@@ -636,56 +653,50 @@ pip install -U "ray[default]"
 Run the following code.
 
 ```{code-block} python
+import ray
+import time
 
-    import ray
-    import time
+ray.init(num_cpus=4)
 
-    ray.init(num_cpus=4)
+@ray.remote
+def task_running_300_seconds():
+    print("Start!")
+    time.sleep(300)
 
-    @ray.remote
-    def task_running_300_seconds():
-        print("Start!")
-        time.sleep(300)
+@ray.remote
+class Actor:
+    def __init__(self):
+        print("Actor created")
 
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            print("Actor created")
+# Create 2 tasks
+tasks = [task_running_300_seconds.remote() for _ in range(2)]
 
-    # Create 2 tasks
-    tasks = [task_running_300_seconds.remote() for _ in range(2)]
+# Create 2 actors
+actors = [Actor.remote() for _ in range(2)]
 
-    # Create 2 actors
-    actors = [Actor.remote() for _ in range(2)]
-
-    ray.get(tasks)
-
+ray.get(tasks)
 ```
 
 See the summarized statistics of Ray tasks using ``ray summary tasks``.
 
 ```{code-block} bash
-
-    ray summary tasks
-
+ray summary tasks
 ```
 
 ```{code-block} text
+======== Tasks Summary: 2022-07-22 08:54:38.332537 ========
+Stats:
+------------------------------------
+total_actor_scheduled: 2
+total_actor_tasks: 0
+total_tasks: 2
 
-    ======== Tasks Summary: 2022-07-22 08:54:38.332537 ========
-    Stats:
-    ------------------------------------
-    total_actor_scheduled: 2
-    total_actor_tasks: 0
-    total_tasks: 2
 
-
-    Table (group by func_name):
-    ------------------------------------
-        FUNC_OR_CLASS_NAME        STATE_COUNTS    TYPE
-    0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
-    1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
-
+Table (group by func_name):
+------------------------------------
+FUNC_OR_CLASS_NAME        STATE_COUNTS    TYPE
+0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
+1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
 ```
 
 ```{button-ref}  observability-programmatic

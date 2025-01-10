@@ -118,7 +118,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 self.add_module("one_hot_{}".format(i), self.one_hot[i])
             # Everything else (1D Box).
             else:
-                size = int(np.product(component.shape))
+                size = int(np.prod(component.shape))
                 config = {
                     "fcnet_hiddens": model_config["fcnet_hiddens"],
                     "fcnet_activation": model_config.get("fcnet_activation"),

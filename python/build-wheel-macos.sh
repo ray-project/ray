@@ -10,7 +10,7 @@ DOWNLOAD_DIR=python_downloads
 
 NODE_VERSION="14"
 
-PY_MMS=("3.9" "3.10" "3.11")
+PY_MMS=("3.9" "3.10" "3.11" "3.12")
 
 if [[ -n "${SKIP_DEP_RES}" ]]; then
   ./ci/env/install-bazel.sh
@@ -71,7 +71,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   pushd python
     # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
     # TODO: Unpin after https://github.com/pypa/setuptools/issues/2849 is fixed.
-    $PIP_CMD install --upgrade setuptools==58.4
+    $PIP_CMD install --upgrade setuptools==69.5.1
     $PIP_CMD install -q cython==0.29.37
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel

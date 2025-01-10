@@ -3,6 +3,7 @@ import pytest
 from pytest_docker_tools import container, fetch, network, volume
 from pytest_docker_tools import wrappers
 import subprocess
+import docker
 from typing import List
 
 # If you need to debug tests using fixtures in this file,
@@ -65,7 +66,13 @@ class Container(wrappers.Container):
             print(content.decode())
 
 
-gcs_network = network(driver="bridge")
+# This allows us to assign static ips to docker containers
+ipam_config = docker.types.IPAMConfig(
+    pool_configs=[
+        docker.types.IPAMPool(subnet="192.168.52.0/24", gateway="192.168.52.254")
+    ]
+)
+gcs_network = network(driver="bridge", ipam=ipam_config)
 
 redis_image = fetch(repository="redis:latest")
 
@@ -96,6 +103,8 @@ def gen_head_node(envs):
             # ip:port is treated as a different raylet.
             "--node-manager-port",
             "9379",
+            "--dashboard-host",
+            "0.0.0.0",
         ],
         volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
         environment=envs,
@@ -109,7 +118,7 @@ def gen_head_node(envs):
     )
 
 
-def gen_worker_node(envs):
+def gen_worker_node(envs, num_cpus):
     return container(
         image="rayproject/ray:ha_integration",
         network="{gcs_network.name}",
@@ -123,6 +132,8 @@ def gen_worker_node(envs):
             # ip:port is treated as a different raylet.
             "--node-manager-port",
             "9379",
+            "--num-cpus",
+            f"{num_cpus}",
         ],
         volumes={"{worker_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
         environment=envs,
@@ -145,11 +156,12 @@ head_node = gen_head_node(
 )
 
 worker_node = gen_worker_node(
-    {
+    envs={
         "RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379",
         "RAY_raylet_client_num_connect_attempts": "10",
         "RAY_raylet_client_connect_timeout_milliseconds": "100",
-    }
+    },
+    num_cpus=8,
 )
 
 
@@ -159,6 +171,12 @@ def docker_cluster(head_node, worker_node):
 
 
 def run_in_container(cmds: List[List[str]], container_id: str):
+    """Run a list of commands in the specified container.
+
+    Checks that each docker command executed without error.
+    Returns the output from each command as a list.
+    """
+
     outputs = []
     for cmd in cmds:
         docker_cmd = ["docker", "exec", container_id] + cmd
@@ -175,7 +193,7 @@ IMAGE_NAME = "rayproject/ray:runtime_env_container"
 NESTED_IMAGE_NAME = "rayproject/ray:runtime_env_container_nested"
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def podman_docker_cluster():
     start_container_command = [
         "docker",

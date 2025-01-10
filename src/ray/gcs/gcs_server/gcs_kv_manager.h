@@ -47,7 +47,7 @@ class InternalKVInterface {
   virtual void MultiGet(
       const std::string &ns,
       const std::vector<std::string> &keys,
-      std::function<void(std::unordered_map<std::string, std::string>)> callback) = 0;
+      std::function<void(absl::flat_hash_map<std::string, std::string>)> callback) = 0;
 
   /// Associate a key with the specified value.
   ///
@@ -60,7 +60,7 @@ class InternalKVInterface {
   /// Overwritten return false.
   virtual void Put(const std::string &ns,
                    const std::string &key,
-                   const std::string &value,
+                   std::string value,
                    bool overwrite,
                    std::function<void(bool)> callback) = 0;
 
@@ -94,14 +94,15 @@ class InternalKVInterface {
                     const std::string &prefix,
                     std::function<void(std::vector<std::string>)> callback) = 0;
 
-  virtual ~InternalKVInterface(){};
+  virtual ~InternalKVInterface() = default;
 };
 
 /// This implementation class of `InternalKVHandler`.
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
-  explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance)
-      : kv_instance_(std::move(kv_instance)) {}
+  explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance,
+                                const std::string &raylet_config_list)
+      : kv_instance_(std::move(kv_instance)), raylet_config_list_(raylet_config_list) {}
 
   void HandleInternalKVGet(rpc::InternalKVGetRequest request,
                            rpc::InternalKVGetReply *reply,
@@ -127,10 +128,16 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
                             rpc::InternalKVKeysReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get internal config.
+  void HandleGetInternalConfig(rpc::GetInternalConfigRequest request,
+                               rpc::GetInternalConfigReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   InternalKVInterface &GetInstance() { return *kv_instance_; }
 
  private:
   std::unique_ptr<InternalKVInterface> kv_instance_;
+  const std::string raylet_config_list_;
   Status ValidateKey(const std::string &key) const;
 };
 

@@ -12,9 +12,11 @@ steps:
     job_env: forge
     instance_type: small_branch
     commands:
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_COMMIT="$RAY_COMMIT"
+      - source .buildkite/release-automation/set-ray-version.sh
       - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
-        --ray_version="$RAY_VERSION"
-        --commit_hash="$BUILDKITE_COMMIT"
+        --ray_version="$$RAY_VERSION" --commit_hash="$$RAY_COMMIT"
         --pypi_env=test
 
   - block: "Download & validate Ray wheels from TestPyPI Linux x86_64"
@@ -30,11 +32,13 @@ steps:
     commands:
       - export PYTHON_VERSION={{matrix}}
       - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_COMMIT="$RAY_COMMIT"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
 
   - block: "Download & validate Ray wheels from TestPyPI Linux arm64"
     key: block-validate-linux-arm64-wheels
@@ -50,11 +54,13 @@ steps:
     commands:
       - export PYTHON_VERSION={{matrix}}
       - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_COMMIT="$RAY_COMMIT"
       - bash -i .buildkite/release-automation/verify-linux-wheels.sh
     matrix:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
 
   - block: "Download & validate Ray wheels from TestPyPI Mac"
     key: block-validate-macos-wheels
@@ -89,7 +95,9 @@ steps:
     job_env: forge
     instance_type: small_branch
     commands:
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_COMMIT="$RAY_COMMIT"
+      - source .buildkite/release-automation/set-ray-version.sh
       - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
-        --ray_version="$RAY_VERSION" 
-        --commit_hash="$BUILDKITE_COMMIT" 
+        --ray_version="$$RAY_VERSION" --commit_hash="$$RAY_COMMIT"
         --pypi_env=prod

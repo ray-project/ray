@@ -57,7 +57,7 @@ class ClientCallManager;
 ///
 /// \tparam Reply Type of the reply message.
 template <class Reply>
-using ClientCallback = std::function<void(const Status &status, const Reply &reply)>;
+using ClientCallback = std::function<void(const Status &status, Reply &&reply)>;
 
 /// Implementation of the `ClientCall`. It represents a `ClientCall` for a particular
 /// RPC method.
@@ -102,7 +102,8 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
     if (callback_ != nullptr) {
-      callback_(status, reply_);
+      // This should be only called once.
+      callback_(status, std::move(reply_));
     }
   }
 
@@ -271,6 +272,7 @@ class ClientCallManager {
 
   /// Get the cluster ID.
   const ClusterID &GetClusterId() const { return cluster_id_; }
+  void SetClusterId(const ClusterID &cluster_id) { cluster_id_ = cluster_id; }
 
   /// Get the main service of this rpc.
   instrumented_io_context &GetMainService() { return main_service_; }

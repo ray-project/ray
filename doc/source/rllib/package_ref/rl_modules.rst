@@ -3,19 +3,17 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. include:: /_includes/rllib/new_api_stack_component.rst
-
 .. _rlmodule-reference-docs:
 
-RLModule API
-============
+RLModule APIs
+=============
 
 
-RL Module specifications and configurations
+RLModule specifications and configurations
 -------------------------------------------
 
-Single Agent
-++++++++++++
+Single RLModuleSpec
++++++++++++++++++++
 
 .. currentmodule:: ray.rllib.core.rl_module.rl_module
 
@@ -23,80 +21,85 @@ Single Agent
     :nosignatures:
     :toctree: doc/
 
-    SingleAgentRLModuleSpec
-    SingleAgentRLModuleSpec.build
-    SingleAgentRLModuleSpec.get_rl_module_config
+    RLModuleSpec
+    RLModuleSpec.build
 
-RLModule Configuration
-+++++++++++++++++++++++
+MultiRLModuleSpec
++++++++++++++++++
 
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    RLModuleConfig
-    RLModuleConfig.to_dict
-    RLModuleConfig.from_dict
-    RLModuleConfig.get_catalog
-
-Multi Agent
-++++++++++++
-
-.. currentmodule:: ray.rllib.core.rl_module.marl_module
+.. currentmodule:: ray.rllib.core.rl_module.multi_rl_module
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    MultiAgentRLModuleSpec
-    MultiAgentRLModuleSpec.build
-    MultiAgentRLModuleSpec.get_marl_config
+    MultiRLModuleSpec
+    MultiRLModuleSpec.build
+
+DefaultModelConfig
+++++++++++++++++++
+
+.. currentmodule:: ray.rllib.core.rl_module.default_model_config
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    DefaultModelConfig
 
 
-
-RL Module API
--------------
+RLModule API
+------------
 
 .. currentmodule:: ray.rllib.core.rl_module.rl_module
 
-
-Constructor
-+++++++++++
+Construction and setup
+++++++++++++++++++++++
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
     RLModule
-    RLModule.as_multi_agent
+    RLModule.observation_space
+    RLModule.action_space
+    RLModule.inference_only
+    RLModule.model_config
+    RLModule.setup
+    RLModule.as_multi_rl_module
 
 
 Forward methods
 +++++++++++++++
 
+Use the following three forward methods when you use RLModule from inside other classes
+and components. However, do NOT override them and leave them as-is in your custom subclasses.
+For defining your own forward behavior, override the private methods ``_forward`` (generic forward behavior for
+all phases) or, for more granularity, use ``_forward_exploration``, ``_forward_inference``, and ``_forward_train``.
+
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-
-    ~RLModule.forward_train
     ~RLModule.forward_exploration
     ~RLModule.forward_inference
+    ~RLModule.forward_train
 
-IO specifications
-+++++++++++++++++
+
+Override these private methods to define your custom model's forward behavior.
+- ``_forward``: generic forward behavior for all phases
+- ``_forward_exploration``: for training sample collection
+- ``_forward_inference``: for production deployments, greedy acting
+- `_forward_train``: for computing loss function inputs
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    ~RLModule.input_specs_inference
-    ~RLModule.input_specs_exploration
-    ~RLModule.input_specs_train
-    ~RLModule.output_specs_inference
-    ~RLModule.output_specs_exploration
-    ~RLModule.output_specs_train
-
+    ~RLModule._forward
+    ~RLModule._forward_exploration
+    ~RLModule._forward_inference
+    ~RLModule._forward_train
 
 
 Saving and Loading
@@ -106,18 +109,17 @@ Saving and Loading
     :nosignatures:
     :toctree: doc/
 
+    ~RLModule.save_to_path
+    ~RLModule.restore_from_path
+    ~RLModule.from_checkpoint
     ~RLModule.get_state
     ~RLModule.set_state
-    ~RLModule.save_state
-    ~RLModule.load_state
-    ~RLModule.save_to_checkpoint
-    ~RLModule.from_checkpoint
 
 
-Multi Agent RL Module API
--------------------------
+MultiRLModule API
+-----------------
 
-.. currentmodule:: ray.rllib.core.rl_module.marl_module
+.. currentmodule:: ray.rllib.core.rl_module.multi_rl_module
 
 Constructor
 +++++++++++
@@ -126,26 +128,29 @@ Constructor
     :nosignatures:
     :toctree: doc/
 
-    MultiAgentRLModule
-    MultiAgentRLModule.setup
-    MultiAgentRLModule.as_multi_agent
+    MultiRLModule
+    MultiRLModule.setup
+    MultiRLModule.as_multi_rl_module
 
-Modifying the underlying RL modules
-++++++++++++++++++++++++++++++++++++
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~MultiAgentRLModule.add_module
-    ~MultiAgentRLModule.remove_module
-
-Saving and Loading
-++++++++++++++++++++++
+Modifying the underlying RLModules
+++++++++++++++++++++++++++++++++++
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    ~MultiAgentRLModule.save_state
-    ~MultiAgentRLModule.load_state
+    ~MultiRLModule.add_module
+    ~MultiRLModule.remove_module
+
+Saving and restoring
+++++++++++++++++++++
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~MultiRLModule.save_to_path
+    ~MultiRLModule.restore_from_path
+    ~MultiRLModule.from_checkpoint
+    ~MultiRLModule.get_state
+    ~MultiRLModule.set_state

@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from ray._private.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -91,8 +92,10 @@ class MockReplicaActorWrapper:
         self._is_cross_language = False
         self._actor_handle = MockActorHandle()
         self._node_id = None
+        self._node_ip = None
         self._node_id_is_set = False
         self._actor_id = None
+        self._port = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
 
@@ -158,6 +161,10 @@ class MockReplicaActorWrapper:
 
     @property
     def log_file_path(self) -> Optional[str]:
+        return None
+
+    @property
+    def grpc_port(self) -> Optional[int]:
         return None
 
     @property
@@ -278,6 +285,7 @@ def deployment_info(
     info = DeploymentInfo(
         version=version,
         start_time_ms=0,
+        actor_name="abc",
         deployment_config=DeploymentConfig(
             num_replicas=num_replicas, user_config=user_config, **config_opts
         ),
@@ -2289,7 +2297,7 @@ def test_deploy_with_consistent_constructor_failure(mock_deployment_state_manage
     _constructor_failure_loop_two_replica(dsm, ds, 3)
 
     assert ds._replica_constructor_retry_counter == 6
-    assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     assert (
         ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
@@ -2484,9 +2492,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
 
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
     assert ds1._replica_constructor_retry_counter == 3
-    # An error message should show up after
-    # 3 * num_replicas startup failures.
-    assert "" == ds1.curr_status_info.message
+    assert "Retrying 6 more time(s)" in ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
     for replica in ds1._replicas.get():
@@ -2504,7 +2510,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
     assert ds1._replica_constructor_retry_counter == 6
-    assert "" == ds1.curr_status_info.message
+    assert "Retrying 3 more time(s)" in ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
     for replica in ds1._replicas.get():
@@ -2519,7 +2525,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
     assert ds1._replica_constructor_retry_counter == 9
-    assert "" == ds1.curr_status_info.message
+    assert "Retrying 0 more time(s)" in ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
     for replica in ds1._replicas.get():
@@ -2529,10 +2535,10 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
 
     # All replicas have failed to initialize 3 times. The deployment should
     # stop trying to initialize replicas.
-    assert ds1.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    assert ds1.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     check_counts(ds1, total=0)
     assert ds1._replica_constructor_retry_counter == 9
-    assert "Replica scheduling failed" in ds1.curr_status_info.message
+    assert "The deployment failed to start" in ds1.curr_status_info.message
 
 
 def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager):
@@ -2595,8 +2601,8 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager
     )
 
 
-def test_exponential_backoff(mock_deployment_state_manager):
-    """Test exponential backoff."""
+def test_deploy_failed(mock_deployment_state_manager):
+    """Once deployment failed to deploy, should not retry replicas."""
 
     create_dsm, timer, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
@@ -2613,41 +2619,14 @@ def test_exponential_backoff(mock_deployment_state_manager):
 
     _constructor_failure_loop_two_replica(dsm, ds, 3)
     assert ds._replica_constructor_retry_counter == 6
-    last_retry = timer.time()
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
 
-    for i in range(7):
-        while timer.time() - last_retry < 2**i:
-            dsm.update()
-            assert ds._replica_constructor_retry_counter == 6 + 2 * i
-            # Check that during backoff time, no replicas are created
-            check_counts(ds, total=0)
-            timer.advance(0.1)  # simulate time passing between each call to udpate
-
-        # Skip past random additional backoff time used to avoid synchronization
-        timer.advance(5)
-
-        # Set new replicas to fail consecutively
-        check_counts(ds, total=0)  # No replicas
+    # No more replicas should be retried.
+    for _ in range(20):
         dsm.update()
-        last_retry = timer.time()  # This should be time at which replicas were retried
-        check_counts(ds, total=2)  # Two new replicas
-        replica_1 = ds._replicas.get()[0]
-        replica_2 = ds._replicas.get()[1]
-        replica_1._actor.set_failed_to_start()
-        replica_2._actor.set_failed_to_start()
-        timer.advance(0.1)  # simulate time passing between each call to udpate
-
-        # Now the replica should be marked STOPPING after failure.
-        dsm.update()
-        check_counts(ds, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
-        timer.advance(0.1)  # simulate time passing between each call to udpate
-
-        # Once it's done stopping, replica should be removed.
-        replica_1._actor.set_done_stopping()
-        replica_2._actor.set_done_stopping()
-        dsm.update()
+        assert ds._replica_constructor_retry_counter == 6
         check_counts(ds, total=0)
-        timer.advance(0.1)  # simulate time passing between each call to udpate
+        timer.advance(10)  # simulate time passing between each call to udpate
 
 
 def test_recover_state_from_replica_names(mock_deployment_state_manager):
@@ -2907,6 +2886,23 @@ class TestActorReplicaWrapper:
         assert actor_replica.max_ongoing_requests == DEFAULT_MAX_ONGOING_REQUESTS
         assert actor_replica.health_check_period_s == DEFAULT_HEALTH_CHECK_PERIOD_S
         assert actor_replica.health_check_timeout_s == DEFAULT_HEALTH_CHECK_TIMEOUT_S
+
+    def test_max_concurrency_override(self):
+        actor_replica = ActorReplicaWrapper(
+            version=deployment_version("1"),
+            replica_id=ReplicaID(
+                "abc123",
+                deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
+            ),
+        )
+        max_ongoing_requests = DEFAULT_MAX_CONCURRENCY_ASYNC + 1
+        d_info, _ = deployment_info(max_ongoing_requests=max_ongoing_requests)
+        replica_scheduling_request = actor_replica.start(d_info)
+        assert (
+            "max_concurrency" in replica_scheduling_request.actor_options
+            and replica_scheduling_request.actor_options["max_concurrency"]
+            == max_ongoing_requests
+        )
 
 
 def test_get_active_node_ids(mock_deployment_state_manager):
@@ -3279,18 +3275,20 @@ class TestAutoscaling:
         if target_startup_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
             expected_message = (
                 "Deployment 'test_deployment' in application 'test_app' has 3 replicas "
-                f"that have taken more than {SLOW_STARTUP_WARNING_S}s to "
-                "initialize. This may be caused by a slow __init__ or reconfigure "
-                "method."
+                f"that have taken more than {SLOW_STARTUP_WARNING_S}s to initialize.\n"
+                "This may be caused by a slow __init__ or reconfigure method."
             )
         elif target_startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
             expected_message = (
                 "Deployment 'test_deployment' in application 'test_app' "
-                "has 3 replicas that have taken more than 30s to be scheduled. This "
-                "may be due to waiting for the cluster to auto-scale or for a runtime "
-                "environment to be installed. Resources required for each replica: "
-                '{"CPU": 0.1}, total resources available: {}. Use `ray status` for '
-                "more details."
+                "has 3 replicas that have taken more than 30s to be scheduled.\n"
+                "This may be due to waiting for the cluster to auto-scale or for "
+                "a runtime environment to be installed.\n"
+                "Resources required for each replica:\n"
+                '{"CPU": 0.1}\n'
+                "Total resources available:\n"
+                "{}\n"
+                "Use `ray status` for more details."
             )
         else:
             raise RuntimeError(f"Got unexpected status: {target_startup_status}")

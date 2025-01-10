@@ -6,7 +6,7 @@
 (core-apis)=
 
 ```{eval-rst}
-.. module:: ray
+.. currentmodule:: ray
 ```
 
 ### Writing Applications
@@ -85,6 +85,22 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.AutoscalingConfig
 ```
 
+### Schemas
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_init_args.rst
+
+   serve.schema.ServeActorDetails
+   serve.schema.ProxyDetails
+   serve.schema.ApplicationStatusOverview
+   serve.schema.ServeStatus
+   serve.schema.DeploymentStatusOverview
+   serve.schema.EncodingType
+```
+
 #### Advanced APIs
 
 ```{eval-rst}
@@ -100,6 +116,8 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.grpc_util.RayServegRPCContext
    serve.exceptions.BackPressureError
    serve.exceptions.RayServeException
+   serve.exceptions.RequestCancelledError
+   serve.exceptions.DeploymentUnavailableError
 ```
 
 (serve-cli)=
@@ -357,9 +375,12 @@ Content-Type: application/json
    :toctree: doc/
 
    schema.ServeInstanceDetails
+   schema.APIType
+   schema.ApplicationStatus
    schema.ApplicationDetails
    schema.DeploymentDetails
    schema.ReplicaDetails
+   schema.ProxyStatus
 ```
 
 ## Observability

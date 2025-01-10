@@ -70,8 +70,9 @@ def test_available_resources_per_node(ray_start_cluster_head):
         assert available_resources_per_node[head_node_id]["CPU"] == 1
         assert available_resources_per_node[worker_node_id]["CPU"] == 2
         assert available_resources_per_node[worker_node_id].get("worker", 0) == 0
+        return True
 
-    wait_for_condition(lambda: available_resources_per_node_check1)
+    wait_for_condition(available_resources_per_node_check1)
 
     cluster.remove_node(worker_node)
     cluster.wait_for_nodes()
@@ -81,8 +82,51 @@ def test_available_resources_per_node(ray_start_cluster_head):
         available_resources_per_node = ray._private.state.available_resources_per_node()
         assert len(available_resources_per_node) == 1
         assert available_resources_per_node[head_node_id]["CPU"] == 1
+        return True
 
-    wait_for_condition(lambda: available_resources_per_node_check2)
+    wait_for_condition(available_resources_per_node_check2)
+
+
+def test_total_resources_per_node(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    head_node_id = ray.get(get_node_id.remote())
+
+    worker_node = cluster.add_node(num_cpus=3, resources={"worker": 1})
+
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    class Actor:
+        def ping(self):
+            return ray.get_runtime_context().get_node_id()
+
+    actor = Actor.remote()
+    worker_node_id = ray.get(actor.ping.remote())
+
+    def total_resources_per_node_check1():
+        total_resources_per_node = ray._private.state.total_resources_per_node()
+        assert len(total_resources_per_node) == 2
+        assert total_resources_per_node[head_node_id]["CPU"] == 1
+        assert total_resources_per_node[worker_node_id]["CPU"] == 3
+        assert total_resources_per_node[worker_node_id].get("worker", 0) == 1
+        return True
+
+    wait_for_condition(total_resources_per_node_check1)
+
+    cluster.remove_node(worker_node)
+    cluster.wait_for_nodes()
+
+    def total_resources_per_node_check2():
+        # Make sure worker node is not returned
+        total_resources_per_node = ray._private.state.total_resources_per_node()
+        assert len(total_resources_per_node) == 1
+        assert total_resources_per_node[head_node_id]["CPU"] == 1
+        return True
+
+    wait_for_condition(total_resources_per_node_check2)
 
 
 def test_add_remove_cluster_resources(ray_start_cluster_head):
@@ -455,6 +499,24 @@ def test_next_job_id(ray_start_regular):
     job_id_1 = ray._private.state.next_job_id()
     job_id_2 = ray._private.state.next_job_id()
     assert job_id_1.int() + 1 == job_id_2.int()
+
+
+def test_get_cluster_config(shutdown_only):
+    ray.init(num_cpus=1)
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    cluster_config = ray._private.state.state.get_cluster_config()
+    assert cluster_config is None
+
+    cluster_config = autoscaler_pb2.ClusterConfig()
+    cluster_config.max_resources["CPU"] = 100
+    node_group_config = autoscaler_pb2.NodeGroupConfig()
+    node_group_config.name = "m5.large"
+    node_group_config.resources["CPU"] = 5
+    node_group_config.max_count = -1
+    cluster_config.node_group_configs.append(node_group_config)
+    gcs_client.report_cluster_config(cluster_config.SerializeToString())
+    assert ray._private.state.state.get_cluster_config() == cluster_config
 
 
 def test_get_draining_nodes(ray_start_cluster):

@@ -4,7 +4,7 @@
 Accelerator Support
 ===================
 
-Accelerators (e.g. GPUs) are critical for many machine learning applications.
+Accelerators like GPUs are critical for many machine learning apps.
 Ray Core natively supports many accelerators as pre-defined :ref:`resource <core-resources>` types and allows tasks and actors to specify their accelerator :ref:`resource requirements <resource-requirements>`.
 
 The accelerators natively supported by Ray Core are:
@@ -37,7 +37,7 @@ The accelerators natively supported by Ray Core are:
      - NPU
      - Experimental, supported by the community
 
-Starting Ray Nodes with Accelerators
+Starting Ray nodes with accelerators
 ------------------------------------
 
 By default, Ray sets the quantity of accelerator resources of a node to the physical quantities of accelerators auto detected by Ray.
@@ -85,6 +85,8 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             For example, ``NEURON_RT_VISIBLE_CORES=1,3 ray start --head --resources='{"neuron_cores": 2}'``
             lets Ray only see devices 1 and 3.
 
+            See the `Amazon documentation<https://awslabs.github.io/data-on-eks/docs/category/inference-on-eks>` for more examples of Ray on Neuron with EKS as an orchestration substrate.
+
     .. tab-item:: Google TPU
         :sync: Google TPU
 
@@ -117,8 +119,8 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 
 .. note::
 
-  There is nothing preventing you from specifying a larger number of
-  accelerator resources (e.g. ``num_gpus``) than the true number of accelerators on the machine given Ray resources are :ref:`logical <logical-resources>`.
+  There's nothing preventing you from specifying a larger number of
+  accelerator resources (e.g., ``num_gpus``) than the true number of accelerators on the machine given Ray resources are :ref:`logical <logical-resources>`.
   In this case, Ray acts as if the machine has the number of accelerators you specified
   for the purposes of scheduling tasks and actors that require accelerators.
   Trouble only occurs if those tasks and actors
@@ -635,4 +637,4 @@ This also lets the multi-node-type autoscaler know that there is demand for that
 
     ray.get(train.remote(1))
 
-See ``ray.util.accelerators`` for available accelerator types.
+See :ref:`ray.util.accelerators <accelerator_types>` for available accelerator types.

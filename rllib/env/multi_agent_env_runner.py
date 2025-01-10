@@ -1,20 +1,30 @@
-import gymnasium as gym
-import logging
-
 from collections import defaultdict
 from functools import partial
-from typing import DefaultDict, Dict, List, Optional
+import logging
+import time
+from typing import Collection, DefaultDict, Dict, List, Optional, Union
+
+import gymnasium as gym
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.utils import make_callback
+from ray.rllib.core import (
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+    COMPONENT_RL_MODULE,
+)
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.marl_module import ModuleID, MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
@@ -28,20 +38,26 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES,
+    NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    TIME_BETWEEN_SAMPLING,
+    WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.pre_checks.env import check_multiagent_environments
-from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util.annotations import PublicAPI
 
+torch, _ = try_import_torch()
 logger = logging.getLogger("ray.rllib")
 
 
+# TODO (sven): As soon as RolloutWorker is no longer supported, make `EnvRunner` itself
+#  a Checkpointable. Currently, only some of its subclasses are Checkpointables.
 @PublicAPI(stability="alpha")
-class MultiAgentEnvRunner(EnvRunner):
+class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     """The genetic environment runner for the multi-agent case."""
 
     @override(EnvRunner)
@@ -55,7 +71,7 @@ class MultiAgentEnvRunner(EnvRunner):
         super().__init__(config=config)
 
         # Raise an Error, if the provided config is not a multi-agent one.
-        if not self.config.is_multi_agent():
+        if not self.config.is_multi_agent:
             raise ValueError(
                 f"Cannot use this EnvRunner class ({type(self).__name__}), if your "
                 "setup is not multi-agent! Try adding multi-agent information to your "
@@ -65,13 +81,20 @@ class MultiAgentEnvRunner(EnvRunner):
 
         # Get the worker index on which this instance is running.
         self.worker_index: int = kwargs.get("worker_index")
+        self.tune_trial_id: str = kwargs.get("tune_trial_id")
 
         # Set up all metrics-related structures and counters.
         self.metrics: Optional[MetricsLogger] = None
         self._setup_metrics()
 
         # Create our callbacks object.
-        self._callbacks: DefaultCallbacks = self.config.callbacks_class()
+        self._callbacks = [cls() for cls in force_list(self.config.callbacks_class)]
+
+        # Set device.
+        self._device = get_device(
+            self.config,
+            0 if not self.worker_index else self.config.num_gpus_per_env_runner,
+        )
 
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.Wrapper] = None
@@ -79,7 +102,9 @@ class MultiAgentEnvRunner(EnvRunner):
         self.make_env()
 
         # Create the env-to-module connector pipeline.
-        self._env_to_module = self.config.build_env_to_module_connector(self.env)
+        self._env_to_module = self.config.build_env_to_module_connector(
+            self.env.unwrapped, device=self._device
+        )
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
         # call to make sure the final observation (before an episode cut) gets properly
         # processed (and maybe postprocessed and re-stored into the episode).
@@ -90,17 +115,24 @@ class MultiAgentEnvRunner(EnvRunner):
         # required in the learning step.
         self._cached_to_module = None
 
-        # Construct the RLModule.
-        self.module = self._make_module()
+        # Construct the MultiRLModule.
+        self.module: Optional[MultiRLModule] = None
+        self.make_module()
 
-        # Create the two connector pipelines: env-to-module and module-to-env.
-        self._module_to_env = self.config.build_module_to_env_connector(self.env)
+        # Create the module-to-env connector pipeline.
+        self._module_to_env = self.config.build_module_to_env_connector(
+            self.env.unwrapped
+        )
 
         self._needs_initial_reset: bool = True
         self._episode: Optional[MultiAgentEpisode] = None
         self._shared_data = None
 
         self._weights_seq_no: int = 0
+
+        # Measures the time passed between returning from `sample()`
+        # and receiving the next `sample()` request from the user.
+        self._time_after_sampling = None
 
     @override(EnvRunner)
     def sample(
@@ -138,8 +170,15 @@ class MultiAgentEnvRunner(EnvRunner):
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
+        # Log time between `sample()` requests.
+        if self._time_after_sampling is not None:
+            self.metrics.log_value(
+                key=TIME_BETWEEN_SAMPLING,
+                value=time.perf_counter() - self._time_after_sampling,
+            )
+
         # If no execution details are provided, use the config to try to infer the
-        # desired timesteps/episodes to sample and exploration behavior.
+        # desired timesteps/episodes to sample and the exploration behavior.
         if explore is None:
             explore = self.config.explore
         if num_timesteps is None and num_episodes is None:
@@ -167,11 +206,18 @@ class MultiAgentEnvRunner(EnvRunner):
             )
 
         # Make the `on_sample_end` callback.
-        self._callbacks.on_sample_end(
-            env_runner=self,
-            metrics_logger=self.metrics,
-            samples=samples,
+        make_callback(
+            "on_sample_end",
+            callbacks_objects=self._callbacks,
+            callbacks_functions=self.config.callbacks_on_sample_end,
+            kwargs=dict(
+                env_runner=self,
+                metrics_logger=self.metrics,
+                samples=samples,
+            ),
         )
+
+        self._time_after_sampling = time.perf_counter()
 
         return samples
 
@@ -209,9 +255,10 @@ class MultiAgentEnvRunner(EnvRunner):
             # leak).
             self._ongoing_episodes_for_metrics.clear()
 
-            # Reset the environment.
+            # Try resetting the environment.
             # TODO (simon): Check, if we need here the seed from the config.
-            obs, infos = self.env.reset()
+            obs, infos = self._try_env_reset()
+
             self._cached_to_module = None
 
             # Call `on_episode_start()` callbacks.
@@ -234,20 +281,12 @@ class MultiAgentEnvRunner(EnvRunner):
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
-                # Note, to get sampled actions from all agents' action
-                # spaces we need to call `MultiAgentEnv.action_space_sample()`.
-                if self.env.unwrapped._action_space_in_preferred_format:
-                    actions = self.env.action_space.sample()
-                # Otherwise, `action_space_sample()` needs to be implemented.
-                else:
-                    actions = self.env.action_space_sample()
-                # Remove all actions for agents that had no observation.
+                # Only act (randomly) for those agents that had an observation.
                 to_env = {
                     Columns.ACTIONS: [
                         {
-                            agent_id: agent_action
-                            for agent_id, agent_action in actions.items()
-                            if agent_id in self._episode.get_agents_to_act()
+                            aid: self.env.unwrapped.get_action_space(aid).sample()
+                            for aid in self._episode.get_agents_to_act()
                         }
                     ]
                 }
@@ -259,14 +298,16 @@ class MultiAgentEnvRunner(EnvRunner):
                     episodes=[self._episode],
                     explore=explore,
                     shared_data=self._shared_data,
+                    metrics=self.metrics,
                 )
                 self._cached_to_module = None
 
-                # MARLModule forward pass: Explore or not.
+                # MultiRLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME
-                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    env_steps_lifetime = (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    ) * (self.config.num_env_runners or 1)
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
                     )
@@ -276,10 +317,11 @@ class MultiAgentEnvRunner(EnvRunner):
                 # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
-                    data=to_env,
+                    batch=to_env,
                     episodes=[self._episode],
                     explore=explore,
                     shared_data=self._shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -289,13 +331,21 @@ class MultiAgentEnvRunner(EnvRunner):
             # are the ones stored permanently in the episode objects.
             actions = to_env.pop(Columns.ACTIONS)
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
-            # Step the environment.
+
+            # Try stepping the environment.
             # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
             #  Support vectorized multi-agent envs.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(
-                actions_for_env[0]
-            )
-            ts += self._increase_sampled_metrics(self.num_envs, obs, self._episode)
+            results = self._try_env_step(actions_for_env[0])
+            # If any failure occurs during stepping -> Throw away all data collected
+            # thus far and restart sampling procedure.
+            if results == ENV_STEP_FAILURE:
+                return self._sample_timesteps(
+                    num_timesteps=num_timesteps,
+                    explore=explore,
+                    random_actions=random_actions,
+                    force_reset=True,
+                )
+            obs, rewards, terminateds, truncateds, infos = results
 
             # TODO (sven): This simple approach to re-map `to_env` from a
             #  dict[col, List[MADict]] to a dict[agentID, MADict] would not work for
@@ -306,6 +356,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 ma_dict = ma_dict_list[0]
                 for agent_id, val in ma_dict.items():
                     extra_model_outputs[agent_id][col] = val
+                    extra_model_outputs[agent_id][WEIGHTS_SEQ_NO] = self._weights_seq_no
             extra_model_outputs = dict(extra_model_outputs)
 
             # Record the timestep in the episode instance.
@@ -318,6 +369,8 @@ class MultiAgentEnvRunner(EnvRunner):
                 truncateds=truncateds,
                 extra_model_outputs=extra_model_outputs,
             )
+
+            ts += self._increase_sampled_metrics(self.num_envs, obs, self._episode)
 
             # Make the `on_episode_step` callback (before finalizing the episode
             # object).
@@ -338,6 +391,7 @@ class MultiAgentEnvRunner(EnvRunner):
                         explore=explore,
                         rl_module=self.module,
                         shared_data=self._shared_data,
+                        metrics=self.metrics,
                     )
 
                 # Make the `on_episode_end` callback (before finalizing the episode,
@@ -362,7 +416,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 self._make_on_episode_callback("on_episode_created")
 
                 # Reset the environment.
-                obs, infos = self.env.reset()
+                obs, infos = self._try_env_reset()
                 # Add initial observations and infos.
                 self._episode.add_env_reset(observations=obs, infos=infos)
 
@@ -377,6 +431,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 episodes=[self._episode],
                 explore=explore,
                 shared_data=self._shared_data,
+                metrics=self.metrics,
             )
 
         # Store done episodes for metrics.
@@ -428,10 +483,6 @@ class MultiAgentEnvRunner(EnvRunner):
 
         done_episodes_to_return: List[MultiAgentEpisode] = []
 
-        # Reset the environment.
-        # TODO (simon): Check, if we need here the seed from the config.
-        obs, infos = self.env.reset()
-
         # Create a new multi-agent episode.
         _episode = self._new_episode()
         self._make_on_episode_callback("on_episode_created", _episode)
@@ -439,6 +490,9 @@ class MultiAgentEnvRunner(EnvRunner):
             "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
         }
 
+        # Try resetting the environment.
+        # TODO (simon): Check, if we need here the seed from the config.
+        obs, infos = self._try_env_reset()
         # Set initial obs and infos in the episodes.
         _episode.add_env_reset(observations=obs, infos=infos)
         self._make_on_episode_callback("on_episode_start", _episode)
@@ -449,20 +503,14 @@ class MultiAgentEnvRunner(EnvRunner):
         while eps < num_episodes:
             # Act randomly.
             if random_actions:
-                # Note, to get sampled actions from all agents' action
-                # spaces we need to call `MultiAgentEnv.action_space_sample()`.
-                if self.env.unwrapped._action_space_in_preferred_format:
-                    actions = self.env.action_space.sample()
-                # Otherwise, `action_space_sample()` needs to be implemented.
-                else:
-                    actions = self.env.action_space_sample()
-                # Remove all actions for agents that had no observation.
+                # Only act (randomly) for those agents that had an observation.
                 to_env = {
-                    Columns.ACTIONS: {
-                        agent_id: agent_action
-                        for agent_id, agent_action in actions.items()
-                        if agent_id in _episode.get_agents_to_act()
-                    },
+                    Columns.ACTIONS: [
+                        {
+                            aid: self.env.unwrapped.get_action_space(aid).sample()
+                            for aid in self._episode.get_agents_to_act()
+                        }
+                    ]
                 }
             # Compute an action using the RLModule.
             else:
@@ -472,13 +520,15 @@ class MultiAgentEnvRunner(EnvRunner):
                     episodes=[_episode],
                     explore=explore,
                     shared_data=_shared_data,
+                    metrics=self.metrics,
                 )
 
-                # MARLModule forward pass: Explore or not.
+                # MultiRLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME
-                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    env_steps_lifetime = (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    ) * (self.config.num_env_runners or 1)
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
                     )
@@ -488,10 +538,11 @@ class MultiAgentEnvRunner(EnvRunner):
                 # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
-                    data=to_env,
+                    batch=to_env,
                     episodes=[_episode],
                     explore=explore,
                     shared_data=_shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -501,13 +552,20 @@ class MultiAgentEnvRunner(EnvRunner):
             # are the ones stored permanently in the episode objects.
             actions = to_env.pop(Columns.ACTIONS)
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
-            # Step the environment.
+
+            # Try stepping the environment.
             # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
             #  Support vectorized multi-agent envs.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(
-                actions_for_env[0]
-            )
-            ts += self._increase_sampled_metrics(self.num_envs, obs, _episode)
+            results = self._try_env_step(actions_for_env[0])
+            # If any failure occurs during stepping -> Throw away all data collected
+            # thus far and restart sampling procedure.
+            if results == ENV_STEP_FAILURE:
+                return self._sample_episodes(
+                    num_episodes=num_episodes,
+                    explore=explore,
+                    random_actions=random_actions,
+                )
+            obs, rewards, terminateds, truncateds, infos = results
 
             # TODO (sven): This simple approach to re-map `to_env` from a
             #  dict[col, List[MADict]] to a dict[agentID, MADict] would not work for
@@ -518,6 +576,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 ma_dict = ma_dict_list[0]
                 for agent_id, val in ma_dict.items():
                     extra_model_outputs[agent_id][col] = val
+                    extra_model_outputs[agent_id][WEIGHTS_SEQ_NO] = self._weights_seq_no
             extra_model_outputs = dict(extra_model_outputs)
 
             # Record the timestep in the episode instance.
@@ -530,6 +589,8 @@ class MultiAgentEnvRunner(EnvRunner):
                 truncateds=truncateds,
                 extra_model_outputs=extra_model_outputs,
             )
+
+            ts += self._increase_sampled_metrics(self.num_envs, obs, _episode)
 
             # Make `on_episode_step` callback before finalizing the episode.
             self._make_on_episode_callback("on_episode_step", _episode)
@@ -559,13 +620,14 @@ class MultiAgentEnvRunner(EnvRunner):
                         explore=explore,
                         rl_module=self.module,
                         shared_data=_shared_data,
+                        metrics=self.metrics,
                     )
 
                 # Make the `on_episode_end` callback (before finalizing the episode,
                 # but after(!) the last env-to-module connector call has been made.
                 # -> All obs (even the terminal one) should have been processed now (by
                 # the connector, if applicable).
-                self._make_on_episode_callback("on_episode_end")
+                self._make_on_episode_callback("on_episode_end", _episode)
 
                 # Numpy'ize the episode.
                 if self.config.episodes_to_numpy_from_env_runner:
@@ -587,8 +649,8 @@ class MultiAgentEnvRunner(EnvRunner):
                 _episode = self._new_episode()
                 self._make_on_episode_callback("on_episode_created", _episode)
 
-                # Reset the environment.
-                obs, infos = self.env.reset()
+                # Try resetting the environment.
+                obs, infos = self._try_env_reset()
                 # Add initial observations and infos.
                 _episode.add_env_reset(observations=obs, infos=infos)
 
@@ -599,11 +661,27 @@ class MultiAgentEnvRunner(EnvRunner):
 
         return done_episodes_to_return
 
+    @override(EnvRunner)
+    def get_spaces(self):
+        # Return the already agent-to-module translated spaces from our connector
+        # pipeline.
+        return {
+            **{
+                mid: (o, self._env_to_module.action_space[mid])
+                for mid, o in self._env_to_module.observation_space.spaces.items()
+            },
+        }
+
+    @override(EnvRunner)
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
         for eps in self._done_episodes_for_metrics:
             assert eps.is_done
             episode_length = len(eps)
+            agent_steps = defaultdict(
+                int,
+                {str(aid): len(sa_eps) for aid, sa_eps in eps.agent_episodes.items()},
+            )
             episode_return = eps.get_return()
             episode_duration_s = eps.get_duration_s()
 
@@ -629,9 +707,13 @@ class MultiAgentEnvRunner(EnvRunner):
                     episode_length += len(eps2)
                     episode_return += return_eps2
                     episode_duration_s += eps2.get_duration_s()
+
                     for sa_eps in eps2.agent_episodes.values():
-                        agent_episode_returns[str(sa_eps.agent_id)] += return_eps2
-                        module_episode_returns[sa_eps.module_id] += return_eps2
+                        return_sa = sa_eps.get_return()
+                        agent_steps[str(sa_eps.agent_id)] += len(sa_eps)
+                        agent_episode_returns[str(sa_eps.agent_id)] += return_sa
+                        module_episode_returns[sa_eps.module_id] += return_sa
+
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
             self._log_episode_metrics(
@@ -640,21 +722,8 @@ class MultiAgentEnvRunner(EnvRunner):
                 episode_duration_s,
                 agent_episode_returns,
                 module_episode_returns,
+                dict(agent_steps),
             )
-
-        # TODO (simon): This results in hundreds of warnings in the logs
-        # b/c reducing over NaNs is not supported.
-        # # If no episodes at all, log NaN stats.
-        # if len(self._done_episodes_for_metrics) == 0:
-        #     self._log_episode_metrics(np.nan, np.nan, np.nan)
-
-        # Log num episodes counter for this iteration.
-        self.metrics.log_value(
-            NUM_EPISODES,
-            len(self._done_episodes_for_metrics),
-            reduce="sum",
-            clear_on_reduce=True,  # Not a lifetime count.
-        )
 
         # Now that we have logged everything, clear cache of done episodes.
         self._done_episodes_for_metrics.clear()
@@ -662,64 +731,106 @@ class MultiAgentEnvRunner(EnvRunner):
         # Return reduced metrics.
         return self.metrics.reduce()
 
-    # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
-    #  API. Replace by proper state overriding via `EnvRunner.set_state()`
-    def set_weights(
+    @override(Checkpointable)
+    def get_state(
         self,
-        weights: Dict[ModuleID, ModelWeights],
-        global_vars: Optional[Dict] = None,
-        weights_seq_no: int = 0,
-    ) -> None:
-        """Writes the weights of our multi-agent `RLModule`
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        **kwargs,
+    ) -> StateDict:
+        # Basic state dict.
+        state = {
+            NUM_ENV_STEPS_SAMPLED_LIFETIME: (
+                self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+            ),
+        }
 
-        Args:
-            weigths: A dictionary mapping `ModuleID`s to the new weigths to
-                be used in the `MultiAgentRLModule` stored in this instance.
-            global_vars: An optional global vars dictionary to set this
-                worker to. If None, do not update the global_vars.
-            weights_seq_no: If needed, a sequence number for the weights version
-                can be passed into this method. If not None, will store this seq no
-                (in self.weights_seq_no) and in future calls - if the seq no did not
-                change wrt. the last call - will ignore the call to save on performance.
+        # RLModule (MultiRLModule) component.
+        if self._check_component(COMPONENT_RL_MODULE, components, not_components):
+            state[COMPONENT_RL_MODULE] = self.module.get_state(
+                components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
+                not_components=self._get_subcomponents(
+                    COMPONENT_RL_MODULE, not_components
+                ),
+                **kwargs,
+            )
+            state[WEIGHTS_SEQ_NO] = self._weights_seq_no
 
-        .. testcode::
-            :skipif: True
+        # Env-to-module connector.
+        if self._check_component(
+            COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
+        ):
+            state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = self._env_to_module.get_state()
+        # Module-to-env connector.
+        if self._check_component(
+            COMPONENT_MODULE_TO_ENV_CONNECTOR, components, not_components
+        ):
+            state[COMPONENT_MODULE_TO_ENV_CONNECTOR] = self._module_to_env.get_state()
 
-            from ray.rllib.env import MultiAgentEnvRunner
-            # Create an `MultiAgentEnvRunner`.
-            worker = ...
-            weights = worker.get_weights()
-            # Set `global_vars` (timestep) as well.
-            worker.set_weights(weights, {"timestep": 42})
-        """
-        # Only update the weigths, if this is the first synchronization or
-        # if the weights of this `EnvRunner` lacks behind the actual ones.
-        if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-            self.module.set_state(weights)
+        return state
 
-    def get_weights(
-        self, modules=None, inference_only: bool = False
-    ) -> Dict[ModuleID, ModelWeights]:
-        """Returns the weights of our multi-agent `RLModule`.
+    @override(Checkpointable)
+    def set_state(self, state: StateDict) -> None:
+        if COMPONENT_ENV_TO_MODULE_CONNECTOR in state:
+            self._env_to_module.set_state(state[COMPONENT_ENV_TO_MODULE_CONNECTOR])
+        if COMPONENT_MODULE_TO_ENV_CONNECTOR in state:
+            self._module_to_env.set_state(state[COMPONENT_MODULE_TO_ENV_CONNECTOR])
 
-        Args:
-            modules: `ModuleID`s for which to return the weights. If `None`
-                weigths for all modules are returned. See for details
-                `MultiAgentRLModule.get_state()`.
-            inference_only: If True, will return only a specified subset of the
-                weights (e.g. only the weights needed for inference).
+        # Update RLModule state.
+        if COMPONENT_RL_MODULE in state:
+            # A missing value for WEIGHTS_SEQ_NO or a value of 0 means: Force the
+            # update.
+            weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
 
-        Returns:
-            A dictionary mapping `ModuleID`s to their corresponding weights.
-        """
+            # Only update the weigths, if this is the first synchronization or
+            # if the weights of this `EnvRunner` lacks behind the actual ones.
+            if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
+                self.module.set_state(state[COMPONENT_RL_MODULE])
 
-        return self.module.get_state(module_ids=modules, inference_only=inference_only)
+            # Update weights_seq_no, if the new one is > 0.
+            if weights_seq_no > 0:
+                self._weights_seq_no = weights_seq_no
+
+        # Update lifetime counters.
+        if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
+            self.metrics.set_value(
+                key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
+                reduce="sum",
+                with_throughput=True,
+            )
+
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self):
+        return (
+            (),  # *args
+            {"config": self.config},  # **kwargs
+        )
+
+    @override(Checkpointable)
+    def get_metadata(self):
+        metadata = Checkpointable.get_metadata(self)
+        metadata.update(
+            {
+                # TODO (sven): Maybe add serialized (JSON-writable) config here?
+            }
+        )
+        return metadata
+
+    @override(Checkpointable)
+    def get_checkpointable_components(self):
+        return [
+            (COMPONENT_RL_MODULE, self.module),
+            (COMPONENT_ENV_TO_MODULE_CONNECTOR, self._env_to_module),
+            (COMPONENT_MODULE_TO_ENV_CONNECTOR, self._module_to_env),
+        ]
 
     @override(EnvRunner)
     def assert_healthy(self):
         """Checks that self.__init__() has been completed properly.
 
-        Ensures that the instances has a `MultiAgentRLModule` and an
+        Ensures that the instances has a `MultiRLModule` and an
         environment defined.
 
         Raises:
@@ -728,13 +839,8 @@ class MultiAgentEnvRunner(EnvRunner):
         # Make sure, we have built our gym.vector.Env and RLModule properly.
         assert self.env and self.module
 
+    @override(EnvRunner)
     def make_env(self):
-        """Creates a MultiAgentEnv (is-a gymnasium env).
-
-        Note that users can change the EnvRunner's config (e.g. change
-        `self.config.env_config`) and then call this method to create new environments
-        with the updated configuration.
-        """
         # If an env already exists, try closing it first (to allow it to properly
         # cleanup).
         if self.env is not None:
@@ -745,6 +851,7 @@ class MultiAgentEnvRunner(EnvRunner):
                     "Tried closing the existing env (multi-agent), but failed with "
                     f"error: {e.args[0]}"
                 )
+            del self.env
 
         env_ctx = self.config.env_config
         if not isinstance(env_ctx, EnvContext):
@@ -755,16 +862,22 @@ class MultiAgentEnvRunner(EnvRunner):
                 remote=self.config.remote_worker_envs,
             )
 
+        # No env provided -> Error.
+        if not self.config.env:
+            raise ValueError(
+                "`config.env` is not provided! You should provide a valid environment "
+                "to your config through `config.environment([env descriptor e.g. "
+                "'CartPole-v1'])`."
+            )
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
-        if isinstance(self.config.env, str) and _global_registry.contains(
+        elif isinstance(self.config.env, str) and _global_registry.contains(
             ENV_CREATOR, self.config.env
         ):
             entry_point = partial(
                 _global_registry.get(ENV_CREATOR, self.config.env),
                 env_ctx,
             )
-
         else:
             entry_point = partial(
                 _gym_env_creator,
@@ -779,63 +892,69 @@ class MultiAgentEnvRunner(EnvRunner):
 
         # Perform actual gym.make call.
         self.env: MultiAgentEnv = gym.make("rllib-multi-agent-env-v0")
-        try:
-            check_multiagent_environments(self.env.unwrapped)
-        except Exception as e:
-            logger.exception(e.args[0])
         self.num_envs = 1
-
-        # Create the MultiAgentEnv (is-a gymnasium env).
-        assert isinstance(self.env.unwrapped, MultiAgentEnv), (
-            "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
-            "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
-        )
+        # If required, check the created MultiAgentEnv.
+        if not self.config.disable_env_checking:
+            try:
+                check_multiagent_environments(self.env.unwrapped)
+            except Exception as e:
+                logger.exception(e.args[0])
+        # If not required, still check the type (must be MultiAgentEnv).
+        else:
+            assert isinstance(self.env.unwrapped, MultiAgentEnv), (
+                "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
+                "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
+            )
 
         # Set the flag to reset all envs upon the next `sample()` call.
         self._needs_initial_reset = True
 
         # Call the `on_environment_created` callback.
-        self._callbacks.on_environment_created(
-            env_runner=self,
-            metrics_logger=self.metrics,
-            env=self.env,
-            env_context=env_ctx,
+        make_callback(
+            "on_environment_created",
+            callbacks_objects=self._callbacks,
+            callbacks_functions=self.config.callbacks_on_environment_created,
+            kwargs=dict(
+                env_runner=self,
+                metrics_logger=self.metrics,
+                env=self.env.unwrapped,
+                env_context=env_ctx,
+            ),
         )
+
+    @override(EnvRunner)
+    def make_module(self):
+        try:
+            module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
+                env=self.env.unwrapped, spaces=self.get_spaces(), inference_only=True
+            )
+            # Build the module from its spec.
+            self.module = module_spec.build()
+            # Move the RLModule to our device.
+            # TODO (sven): In order to make this framework-agnostic, we should maybe
+            #  make the MultiRLModule.build() method accept a device OR create an
+            #  additional `(Multi)RLModule.to()` override.
+            if torch:
+                self.module.foreach_module(
+                    lambda mid, mod: (
+                        mod.to(self._device)
+                        if isinstance(mod, torch.nn.Module)
+                        else mod
+                    )
+                )
+
+        # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
+        # will not have an RLModule, but might still be usable with random actions.
+        except NotImplementedError:
+            self.module = None
 
     @override(EnvRunner)
     def stop(self):
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
         self.env.close()
 
-    def _make_module(self):
-        # Create our own instance of the (single-agent) `RLModule` (which
-        # the needs to be weight-synched) each iteration.
-        # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
-        #  `RLModule`s and not `Policy`s. Like here `policies`->`modules`.
-        try:
-            policy_dict, _ = self.config.get_multi_agent_setup(
-                spaces={
-                    mid: (o, self._env_to_module.action_space[mid])
-                    for mid, o in self._env_to_module.observation_space.spaces.items()
-                },
-            )
-            ma_rlm_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
-                policy_dict=policy_dict,
-                # Built only a light version of the module in sampling and inference.
-                inference_only=True,
-            )
-
-            # Build the module from its spec.
-            return ma_rlm_spec.build()
-
-        # This error could be thrown, when only random actions are used.
-        except NotImplementedError:
-            return None
-
     def _setup_metrics(self):
         self.metrics = MetricsLogger()
-        # Initialize lifetime counts.
-        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0, reduce="sum")
 
         self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
         self._ongoing_episodes_for_metrics: DefaultDict[
@@ -844,27 +963,49 @@ class MultiAgentEnvRunner(EnvRunner):
 
     def _new_episode(self):
         return MultiAgentEpisode(
-            observation_space=self.env.observation_space,
-            action_space=self.env.action_space,
+            observation_space={
+                aid: self.env.unwrapped.get_observation_space(aid)
+                for aid in self.env.unwrapped.possible_agents
+            },
+            action_space={
+                aid: self.env.unwrapped.get_action_space(aid)
+                for aid in self.env.unwrapped.possible_agents
+            },
             agent_to_module_mapping_fn=self.config.policy_mapping_fn,
         )
 
     def _make_on_episode_callback(self, which: str, episode=None):
         episode = episode if episode is not None else self._episode
-        getattr(self._callbacks, which)(
-            episode=episode,
-            env_runner=self,
-            metrics_logger=self.metrics,
-            env=self.env,
-            rl_module=self.module,
-            env_index=0,
+        make_callback(
+            which,
+            callbacks_objects=self._callbacks,
+            callbacks_functions=getattr(self.config, f"callbacks_{which}"),
+            kwargs=dict(
+                episode=episode,
+                env_runner=self,
+                metrics_logger=self.metrics,
+                env=self.env.unwrapped,
+                rl_module=self.module,
+                env_index=0,
+            ),
         )
 
     def _increase_sampled_metrics(self, num_steps, next_obs, episode):
+        # Env steps.
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
         )
-        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED_LIFETIME,
+            num_steps,
+            reduce="sum",
+            with_throughput=True,
+        )
+        # Completed episodes.
+        if episode.is_done:
+            self.metrics.log_value(NUM_EPISODES, 1, reduce="sum", clear_on_reduce=True)
+            self.metrics.log_value(NUM_EPISODES_LIFETIME, 1, reduce="sum")
+
         # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
         for aid in next_obs:
             self.metrics.log_value(
@@ -891,7 +1032,15 @@ class MultiAgentEnvRunner(EnvRunner):
             )
         return num_steps
 
-    def _log_episode_metrics(self, length, ret, sec, agents=None, modules=None):
+    def _log_episode_metrics(
+        self,
+        length,
+        ret,
+        sec,
+        agents=None,
+        modules=None,
+        agent_steps=None,
+    ):
         # Log general episode metrics.
         self.metrics.log_dict(
             {
@@ -904,6 +1053,7 @@ class MultiAgentEnvRunner(EnvRunner):
                         "agent_episode_returns_mean": agents,
                         # Per-RLModule returns.
                         "module_episode_returns_mean": modules,
+                        "agent_steps": agent_steps,
                     }
                     if agents is not None
                     else {}
@@ -920,6 +1070,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 EPISODE_RETURN_MIN: ret,
             },
             reduce="min",
+            window=self.config.metrics_num_episodes_for_smoothing,
         )
         self.metrics.log_dict(
             {
@@ -927,4 +1078,30 @@ class MultiAgentEnvRunner(EnvRunner):
                 EPISODE_RETURN_MAX: ret,
             },
             reduce="max",
+            window=self.config.metrics_num_episodes_for_smoothing,
+        )
+
+    @Deprecated(
+        new="MultiAgentEnvRunner.get_state(components='rl_module')",
+        error=False,
+    )
+    def get_weights(self, modules=None):
+        rl_module_state = self.get_state(components=COMPONENT_RL_MODULE)[
+            COMPONENT_RL_MODULE
+        ]
+        return rl_module_state
+
+    @Deprecated(new="MultiAgentEnvRunner.set_state()", error=False)
+    def set_weights(
+        self,
+        weights: ModelWeights,
+        global_vars: Optional[Dict] = None,
+        weights_seq_no: int = 0,
+    ) -> None:
+        assert global_vars is None
+        return self.set_state(
+            {
+                COMPONENT_RL_MODULE: weights,
+                WEIGHTS_SEQ_NO: weights_seq_no,
+            }
         )

@@ -69,6 +69,8 @@ class RayParams:
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
             maxclients number.
+        redis_username: Prevents external clients without the username
+            from connecting to Redis if provided.
         redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         plasma_directory: A directory where the Plasma memory mapped files will
@@ -130,6 +132,9 @@ class RayParams:
         session_name: The name of the session of the ray cluster.
         webui: The url of the UI.
         cluster_id: The cluster ID in hex string.
+        enable_physical_mode: Whether physical mode is enabled, which applies
+            constraint to tasks' resource consumption. As of now, only memory resource
+            is supported.
     """
 
     def __init__(
@@ -161,6 +166,7 @@ class RayParams:
         external_addresses: Optional[List[str]] = None,
         num_redis_shards: Optional[int] = None,
         redis_max_clients: Optional[int] = None,
+        redis_username: Optional[str] = ray_constants.REDIS_DEFAULT_USERNAME,
         redis_password: Optional[str] = ray_constants.REDIS_DEFAULT_PASSWORD,
         plasma_directory: Optional[str] = None,
         worker_path: Optional[str] = None,
@@ -193,6 +199,7 @@ class RayParams:
         webui: Optional[str] = None,
         cluster_id: Optional[str] = None,
         node_id: Optional[str] = None,
+        enable_physical_mode: bool = False,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -219,6 +226,7 @@ class RayParams:
         self.external_addresses = external_addresses
         self.num_redis_shards = num_redis_shards
         self.redis_max_clients = redis_max_clients
+        self.redis_username = redis_username
         self.redis_password = redis_password
         self.plasma_directory = plasma_directory
         self.worker_path = worker_path
@@ -256,6 +264,7 @@ class RayParams:
         self._check_usage()
         self.cluster_id = cluster_id
         self.node_id = node_id
+        self.enable_physical_mode = enable_physical_mode
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:

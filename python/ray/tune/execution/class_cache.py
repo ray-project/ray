@@ -2,15 +2,23 @@ import os
 
 import ray
 from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+from ray.train.constants import (
+    ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR,
+    RAY_CHDIR_TO_TRIAL_DIR,
+)
+from ray.train.v2._internal.constants import V2_ENABLED_ENV_VAR
 
 DEFAULT_ENV_VARS = {
     # https://github.com/ray-project/ray/issues/28197
     "PL_DISABLE_FORK": "1"
 }
 ENV_VARS_TO_PROPAGATE = {
+    # Propagate the Ray Train V2 feature flag from the driver process
+    # to the trainable process so that Tune + Train v2 can be used together.
+    V2_ENABLED_ENV_VAR,
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     RAY_CHDIR_TO_TRIAL_DIR,
+    ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR,
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
     "AWS_SECURITY_TOKEN",

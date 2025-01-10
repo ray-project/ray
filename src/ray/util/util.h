@@ -37,6 +37,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <string>
@@ -48,6 +49,7 @@
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/process.h"
+#include "ray/util/thread_checker.h"
 
 #ifdef _WIN32
 #include <process.h>  // to ensure getpid() on Windows
@@ -61,22 +63,13 @@
 #endif
 
 // Boost forward-declarations (to avoid forcing slow header inclusions)
-namespace boost {
-
-namespace asio {
-
-namespace generic {
+namespace boost::asio::generic {
 
 template <class Protocol>
 class basic_endpoint;
-
 class stream_protocol;
 
-}  // namespace generic
-
-}  // namespace asio
-
-}  // namespace boost
+}  // namespace boost::asio::generic
 
 enum class CommandLineSyntax { System, POSIX, Windows };
 
@@ -155,37 +148,7 @@ inline int64_t current_sys_time_us() {
   return mu_since_epoch.count();
 }
 
-inline std::string GenerateUUIDV4() {
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  static std::uniform_int_distribution<> dis(0, 15);
-  static std::uniform_int_distribution<> dis2(8, 11);
-
-  std::stringstream ss;
-  int i;
-  ss << std::hex;
-  for (i = 0; i < 8; i++) {
-    ss << dis(gen);
-  }
-  ss << "-";
-  for (i = 0; i < 4; i++) {
-    ss << dis(gen);
-  }
-  ss << "-4";
-  for (i = 0; i < 3; i++) {
-    ss << dis(gen);
-  }
-  ss << "-";
-  ss << dis2(gen);
-  for (i = 0; i < 3; i++) {
-    ss << dis(gen);
-  }
-  ss << "-";
-  for (i = 0; i < 12; i++) {
-    ss << dis(gen);
-  };
-  return ss.str();
-}
+std::string GenerateUUIDV4();
 
 /// A helper function to parse command-line arguments in a platform-compatible manner.
 ///
@@ -280,16 +243,44 @@ void FillRandom(T *data) {
   }
 }
 
-inline void SetThreadName(const std::string &thread_name) {
-#if defined(__APPLE__)
-  pthread_setname_np(thread_name.c_str());
-#elif defined(__linux__)
-  pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
+inline void setEnv(const std::string &name, const std::string &value) {
+#ifdef _WIN32
+  std::string env = name + "=" + value;
+  int ret = _putenv(env.c_str());
+#else
+  int ret = setenv(name.c_str(), value.c_str(), 1);
 #endif
+  RAY_CHECK_EQ(ret, 0) << "Failed to set env var " << name << " " << value;
+}
+
+inline void unsetEnv(const std::string &name) {
+#ifdef _WIN32
+  // Use _putenv on Windows with an empty value to unset
+  std::string env = name + "=";
+  int ret = _putenv(env.c_str());
+#else
+  int ret = unsetenv(name.c_str());
+#endif
+  RAY_CHECK_EQ(ret, 0) << "Failed to unset env var " << name;
+}
+
+// Set [thread_name] to current thread; if it fails, error will be logged.
+// NOTICE: It only works for macos and linux.
+inline void SetThreadName(const std::string &thread_name) {
+  int ret = 0;
+#if defined(__APPLE__)
+  ret = pthread_setname_np(thread_name.c_str());
+#elif defined(__linux__)
+  ret = pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
+#endif
+  if (ret < 0) {
+    RAY_LOG(ERROR) << "Fails to set thread name to " << thread_name << " since "
+                   << strerror(errno);
+  }
 }
 
 inline std::string GetThreadName() {
-#if defined(__linux__)
+#if defined(__linux__) || defined(__APPLE__)
   char name[128];
   auto rc = pthread_getname_np(pthread_self(), name, sizeof(name));
   if (rc != 0) {
@@ -310,54 +301,28 @@ class ThreadPrivate {
   explicit ThreadPrivate(Ts &&...ts) : t_(std::forward<Ts>(ts)...) {}
 
   T &operator*() {
-    ThreadCheck();
+    RAY_CHECK(thread_checker_.IsOnSameThread());
     return t_;
   }
 
   T *operator->() {
-    ThreadCheck();
+    RAY_CHECK(thread_checker_.IsOnSameThread());
     return &t_;
   }
 
   const T &operator*() const {
-    ThreadCheck();
+    RAY_CHECK(thread_checker_.IsOnSameThread());
     return t_;
   }
 
   const T *operator->() const {
-    ThreadCheck();
+    RAY_CHECK(thread_checker_.IsOnSameThread());
     return &t_;
   }
 
  private:
-  void ThreadCheck() const {
-    // ThreadCheck is not a thread safe function and at the same time, multiple
-    // threads might be accessing id_ at the same time.
-    // Here we only introduce mutex to protect write instead of read for the
-    // following reasons:
-    //    - read and write at the same time for `id_` is fine since this is a
-    //      trivial object. And since we are using this to detect errors,
-    //      it doesn't matter which value it is.
-    //    - read and write of `thread_name_` is not good. But it will only be
-    //      read when we crash the program.
-    //
-    if (id_ == std::thread::id()) {
-      // Protect thread_name_
-      std::lock_guard<std::mutex> _(mutex_);
-      thread_name_ = GetThreadName();
-      RAY_LOG(DEBUG) << "First accessed in thread " << thread_name_;
-      id_ = std::this_thread::get_id();
-    }
-
-    RAY_CHECK(id_ == std::this_thread::get_id())
-        << "A variable private to thread " << thread_name_ << " was accessed in thread "
-        << GetThreadName();
-  }
-
   T t_;
-  mutable std::string thread_name_;
-  mutable std::thread::id id_;
-  mutable std::mutex mutex_;
+  mutable ThreadChecker thread_checker_;
 };
 
 class ExponentialBackOff {
@@ -413,5 +378,10 @@ void QuickExit();
 /// \param precision the precision to format the value to
 /// \return the foramtted value
 std::string FormatFloat(float value, int32_t precision);
+
+/// Converts a timeout in milliseconds to a timeout point.
+/// \param[in] timeout_ms The timeout in milliseconds.
+/// \return The timeout point, or std::nullopt if timeout_ms is -1.
+std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms);
 
 }  // namespace ray
