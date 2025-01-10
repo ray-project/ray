@@ -3,11 +3,13 @@ import os
 import posixpath
 import time
 from collections import defaultdict
+from contextlib import contextmanager
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+import requests
 
 import ray
 import ray.util.state
@@ -17,6 +19,7 @@ from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
+from ray.cluster_utils import Cluster
 from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.tests.mock_server import *  # noqa
@@ -24,8 +27,11 @@ from ray.job_submission import JobSubmissionClient
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import pytest_runtest_makereport  # noqa
-from ray.tests.conftest import _ray_start, wait_for_condition
+from ray.tests.conftest import (
+    _ray_start,
+    get_default_fixture_ray_kwargs,
+    wait_for_condition,
+)
 
 
 @pytest.fixture(scope="module")
@@ -724,9 +730,6 @@ def log_internal_stack_trace_to_stdout(restore_data_context):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
-    cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
-    if cluster_not_supported_:
-        pytest.skip("Cluster not supported")
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
     do_init = False
@@ -775,7 +778,7 @@ def create_or_update_virtual_cluster(
         print(result)
         return result
     except Exception as ex:
-        logger.info(ex)
+        print(ex)
 
 
 @pytest.fixture

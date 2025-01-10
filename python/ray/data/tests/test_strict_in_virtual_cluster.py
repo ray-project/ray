@@ -1,8 +1,10 @@
 import logging
-import requests
 import sys
-import time
+import tempfile
+from pathlib import Path
+
 import pytest
+import requests
 
 import ray
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
@@ -30,10 +32,10 @@ class JobSignalActor:
     def unready(self):
         self._ready = False
         self._barrier = False
-    
+
     def set_barrier(self):
         self._barrier = True
-    
+
     def get_barrier(self):
         return self._barrier
 
@@ -82,7 +84,7 @@ def get_virtual_cluster_nodes(webui_url, virtual_cluster_id):
 
 def get_job_actors(webui_url, job_id=None):
     resp = requests.get(
-        webui_url + f"/logical/actors",
+        webui_url + "/logical/actors",
         timeout=10,
     )
     resp.raise_for_status()
@@ -174,7 +176,8 @@ from ray.data.context import DataContext
 
 data_size = {data_size}
 signal_actor_name = "{signal_actor_name}"
-print("Job is running, data_size: ", data_size, "signal_actor_name: ", signal_actor_name)
+print("Job is running, data_size: ", data_size,
+      "signal_actor_name: ", signal_actor_name)
 ray.init(address="auto")
 signal_actor = ray.get_actor(signal_actor_name, namespace="storage")
 ray.get(signal_actor.ready.remote())
@@ -220,7 +223,8 @@ ray.get(signal_actor.unready.remote())
                 # retrieve job data and check
                 res = ray.get(signal_actor.data.remote())
                 print(
-                    f"Driver detected parallelism: {res}, expect[{i}]: {expected_parallelism[i]}"
+                    f"Driver detected parallelism: {res}, "
+                    f"expect[{i}]: {expected_parallelism[i]}"
                 )
                 assert res == expected_parallelism[i]
 
