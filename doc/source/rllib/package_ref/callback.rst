@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
 .. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rllib-callback-reference-docs:
@@ -7,14 +5,14 @@
 Callback APIs
 =============
 
-RLlib's callback APIs enable you to inject code into your experiment, your Algorithm,
-and its subcomponents.
+Callback APIs enable you to inject code into an experiment, an Algorithm,
+and the subcomponents of an Algorithm.
 
 You can either subclass :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` and implement
-one or more of its methods, for example :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`,
-or you can pass respective arguments to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks`
-method of your algorithm's config, for example
-``config.callbacks(on_algorithm_init=lambda algorithm, **kw: print('algo initialized!'))``:
+one or more of its methods, like :py:meth:`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`,
+or pass respective arguments to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks`
+method of an Algorithm's config, like
+``config.callbacks(on_algorithm_init=lambda algorithm, **kw: print('algo initialized!'))``.
 
 .. tab-set::
 
@@ -60,15 +58,15 @@ method of your algorithm's config, for example
             config.validate()
 
 
-See here for :ref:`more details on how to write and configure your own custom callbacks <rllib-callback-docs>`.
+See :ref:`Callbacks <rllib-callback-docs>` for more details on how to write and configure callbacks.
 
 
-Methods you should implement for custom behavior
-------------------------------------------------
+Methods to implement for custom behavior
+----------------------------------------
 
 .. note::
 
-    Currently, RLlib only invokes callbacks in :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+    RLlib only invokes callbacks in :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
     and :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors.
     The Ray team is considering expanding callbacks onto :py:class:`~ray.rllib.core.learner.learner.Learner`
     actors and possibly :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances as well.
@@ -91,7 +89,7 @@ RLlibCallback
 Callbacks invoked in Algorithm
 ------------------------------
 
-The following callback methods are always executed on the main Algorithm process:
+The main Algorithm process always executes the following callback methods:
 
 .. autosummary::
     :nosignatures:
@@ -111,7 +109,7 @@ The following callback methods are always executed on the main Algorithm process
 Callbacks invoked in EnvRunner
 ------------------------------
 
-The following callback methods are always executed on EnvRunner actors:
+The EnvRunner actors always execute the following callback methods:
 
 .. autosummary::
     :nosignatures:
