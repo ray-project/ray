@@ -17,7 +17,7 @@
 #include <memory>
 
 // clang-format off
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -31,6 +31,8 @@ namespace gcs {
 class GcsActorSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
+    io_context_ =
+        std::make_unique<InstrumentedIOContextWithThread>("GcsActorSchedulerTest");
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &addr) { return raylet_client_; });
@@ -41,14 +43,14 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>();
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(gcs_publisher_.get(),
                                                               gcs_table_storage_.get(),
-                                                              io_service_,
+                                                              io_context_->GetIoService(),
                                                               raylet_client_pool_.get(),
                                                               ClusterID::Nil());
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     local_node_id_ = NodeID::FromRandom();
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
-        io_service_,
+        io_context_->GetIoService(),
         scheduling::NodeID(local_node_id_.Binary()),
         NodeResources(),
         /*is_node_available_fn=*/
@@ -68,12 +70,12 @@ class GcsActorSchedulerTest : public ::testing::Test {
         /*announce_infeasible_task=*/nullptr,
         /*local_task_manager=*/*local_task_manager_);
     auto gcs_resource_manager = std::make_shared<gcs::GcsResourceManager>(
-        io_service_,
+        io_context_->GetIoService(),
         cluster_resource_scheduler_->GetClusterResourceManager(),
         *gcs_node_manager_,
         local_node_id_);
     gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
-        io_service_,
+        io_context_->GetIoService(),
         *gcs_actor_table_,
         *gcs_node_manager_,
         *cluster_task_manager_,
@@ -107,6 +109,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
           cluster_resource_manager.AddOrUpdateNode(node_id, node_resources);
         });
   }
+
+  void TearDown() override { io_context_->Stop(); }
 
   std::shared_ptr<gcs::GcsActor> NewGcsActor(
       const std::unordered_map<std::string, double> &required_placement_resources) {
@@ -145,7 +149,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   }
 
  protected:
-  instrumented_io_context io_service_;
+  std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<GcsServerMocker::MockedGcsActorTable> gcs_actor_table_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
