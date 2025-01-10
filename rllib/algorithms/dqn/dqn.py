@@ -423,7 +423,7 @@ class DQNConfig(AlgorithmConfig):
         if self.enable_rl_module_and_learner:
             # `lr_schedule` checking.
             if self.lr_schedule is not None:
-                raise ValueError(
+                self._value_error(
                     "`lr_schedule` is deprecated and must be None! Use the "
                     "`lr` setting to setup a schedule."
                 )
@@ -435,19 +435,19 @@ class DQNConfig(AlgorithmConfig):
             #  when using the new API stack.
             if self.exploration_config["type"] == "ParameterNoise":
                 if self.batch_mode != "complete_episodes":
-                    raise ValueError(
+                    self._value_error(
                         "ParameterNoise Exploration requires `batch_mode` to be "
                         "'complete_episodes'. Try setting `config.env_runners("
                         "batch_mode='complete_episodes')`."
                     )
                 if self.noisy:
-                    raise ValueError(
+                    self._value_error(
                         "ParameterNoise Exploration and `noisy` network cannot be"
                         " used at the same time!"
                     )
 
         if self.td_error_loss_fn not in ["huber", "mse"]:
-            raise ValueError("`td_error_loss_fn` must be 'huber' or 'mse'!")
+            self._value_error("`td_error_loss_fn` must be 'huber' or 'mse'!")
 
         # Check rollout_fragment_length to be compatible with n_step.
         if (
@@ -455,7 +455,7 @@ class DQNConfig(AlgorithmConfig):
             and self.rollout_fragment_length != "auto"
             and self.rollout_fragment_length < self.n_step
         ):
-            raise ValueError(
+            self._value_error(
                 f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
                 f"smaller than `n_step` ({self.n_step})! "
                 "Try setting config.env_runners(rollout_fragment_length="
@@ -485,7 +485,7 @@ class DQNConfig(AlgorithmConfig):
             and not isinstance(self.replay_buffer_config["type"], str)
             and not issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
         ):
-            raise ValueError(
+            self._value_error(
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
             )
@@ -496,7 +496,7 @@ class DQNConfig(AlgorithmConfig):
             )
             or issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
         ):
-            raise ValueError(
+            self._value_error(
                 "When using the old API stack the replay buffer must not be of type "
                 "`EpisodeReplayBuffer`! We suggest you use the following config to run "
                 "DQN on the old API stack: `config.training(replay_buffer_config={"
