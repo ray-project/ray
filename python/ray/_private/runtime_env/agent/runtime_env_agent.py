@@ -199,6 +199,8 @@ class RuntimeEnvAgent:
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
         self._env_cache: Dict[str, CreatedEnvResult] = dict()
+        # Cache the results of deserialized RuntimeEnv.
+        self._runtime_env_cache: Dict[str, RuntimeEnv] = dict()
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
@@ -425,7 +427,16 @@ class RuntimeEnvAgent:
 
         try:
             serialized_env = request.serialized_runtime_env
-            runtime_env = RuntimeEnv.deserialize(serialized_env)
+            if serialized_env not in self._env_locks:
+                # async lock to prevent the same env being concurrently installed
+                self._env_locks[serialized_env] = asyncio.Lock()
+            async with self._env_locks[serialized_env]:
+                if serialized_env in self._runtime_env_cache:
+                    runtime_env = self._runtime_env_cache[serialized_env]
+                else:
+                    runtime_env = RuntimeEnv.deserialize(serialized_env)
+                    self._runtime_env_cache[serialized_env] = runtime_env
+
         except Exception as e:
             self._logger.exception(
                 "[Increase] Failed to parse runtime env: " f"{serialized_env}"
