@@ -6,12 +6,12 @@ import warnings
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
+from ray import serve
 from ray._raylet import ObjectRefGenerator
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     RequestMetadata,
-    RequestProtocol,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
@@ -30,7 +30,6 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     calculate_remaining_timeout,
-    generate_request_id,
     get_random_string,
     inside_ray_client_context,
     is_running_in_asyncio_loop,
@@ -726,32 +725,8 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
-        _request_context = ray.serve.context._serve_request_context.get()
-
-        request_protocol = RequestProtocol.UNDEFINED
-        if (
-            self.init_options
-            and self.init_options._source == DeploymentHandleSource.PROXY
-        ):
-            if _request_context.is_http_request:
-                request_protocol = RequestProtocol.HTTP
-            elif _request_context.grpc_context:
-                request_protocol = RequestProtocol.GRPC
-
-        request_metadata = RequestMetadata(
-            request_id=_request_context.request_id
-            if _request_context.request_id
-            else generate_request_id(),
-            internal_request_id=_request_context._internal_request_id
-            if _request_context._internal_request_id
-            else generate_request_id(),
-            call_method=self.handle_options.method_name,
-            route=_request_context.route,
-            app_name=self.app_name,
-            multiplexed_model_id=self.handle_options.multiplexed_model_id,
-            is_streaming=self.handle_options.stream,
-            _request_protocol=request_protocol,
-            grpc_context=_request_context.grpc_context,
+        request_metadata = serve._private.default_impl.get_request_metadata(
+            self.init_options, self.handle_options
         )
 
         future = self._remote(request_metadata, args, kwargs)
