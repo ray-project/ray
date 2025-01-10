@@ -912,8 +912,8 @@ class RayChannelFastFailError(RayError):
     def __str__(self):
         return (
             f"Input channel {self.channel_index} returned a RayTaskError: "
-            f"{self.error}. Returning immediately before reading "
-            "all input channels."
+            f"{self.error}. Returning immediately no matter whether "
+            "all input channels are read."
         )
 
     def as_instanceof_cause(self):

@@ -8,7 +8,6 @@ from ray.exceptions import (
     RayChannelError,
     RayChannelFastFailError,
     RayChannelTimeoutError,
-    RayTaskError,
 )
 from ray.util.annotations import PublicAPI
 
@@ -27,7 +26,7 @@ def _process_return_vals(return_vals: List[Any], return_single_output: bool):
         raise return_vals
 
     for val in return_vals:
-        if isinstance(val, RayTaskError):
+        if isinstance(val, RayChannelFastFailError):
             raise val.as_instanceof_cause()
 
     if return_single_output:
