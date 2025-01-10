@@ -2174,7 +2174,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     loop.run_until_complete(main())
 
 
-def test_inflight_requests_exceeds_max_inflight_requests(ray_start_regular):
+def test_inflight_requests_exceed_capacity(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as inp:
         dag = a.sleep.bind(inp)
@@ -2182,17 +2182,22 @@ def test_inflight_requests_exceeds_max_inflight_requests(ray_start_regular):
     ref1 = compiled_dag.execute(1)
     ref2 = compiled_dag.execute(1)
     with pytest.raises(
-        ray.exceptions.RayCgraphCapacityExceeded, match=(r"2 in-flight requests: ")
+        ray.exceptions.RayCgraphCapacityExceeded,
+        match=(
+            r"You cannot execute more than 2 in-flight "
+            r"requests, and you currently have 2 in-flight "
+            r"requests. Retrieve an output using ray.get before submitting "
+            r"more requests or increase `max_inflight_executions`. "
+        ),
     ):
-        ref3 = compiled_dag.execute(1)
-        (ref3)
+        _ = compiled_dag.execute(1)
     # to show variables are being used and avoid destruction since
     # CompiledDagRef __del__ will release buffers and
     # increment _max_finished_execution_index
     (ref1, ref2)
 
 
-def test_result_buffer_exceeds_max_inflight_requests(ray_start_regular):
+def test_result_buffer_exceeds_capacity(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as inp:
         dag = a.inc.bind(inp)
@@ -2201,12 +2206,17 @@ def test_result_buffer_exceeds_max_inflight_requests(ray_start_regular):
     ref2 = compiled_dag.execute(2)
     ray.get(ref2)
     ref3 = compiled_dag.execute(3)
-    ref4 = compiled_dag.execute(4)
     with pytest.raises(
-        ray.exceptions.RayCgraphCapacityExceeded, match=(r"2 buffered results: ")
+        ray.exceptions.RayCgraphCapacityExceeded,
+        match=(
+            r".*You cannot execute more than 2 in-flight "
+            r"requests, and you currently have 2 in-flight "
+            r"requests. Retrieve an output using ray.get before submitting "
+            r"more requests or increase `max_inflight_executions`. "
+        ),
     ):
-        ray.get(ref4)
-    # same reason as comment for test_inflight_requests_exceeds_max_inflight_requests
+        _ = compiled_dag.execute(4)
+    # same reason as comment for test_inflight_requests_exceed_capacity
     (ref1, ref3)
 
 

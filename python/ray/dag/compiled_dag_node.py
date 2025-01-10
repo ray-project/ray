@@ -1905,25 +1905,14 @@ class CompiledDAG:
     def raise_if_too_many_inflight_requests(self):
         num_in_flight_requests = (
             self._execution_index - self._max_finished_execution_index
-        )
+        ) + len(self._result_buffer)
         if num_in_flight_requests >= self._max_inflight_executions:
             raise ray.exceptions.RayCgraphCapacityExceeded(
-                f"{num_in_flight_requests} in-flight requests: "
-                "the specified _max_inflight_executions of the dag is "
-                f"{self._max_inflight_executions}. Retrieve the output using "
-                "ray.get before submitting more requests or increase "
-                "`max_inflight_executions`. "
+                f"You cannot execute more than {self._max_inflight_executions} "
+                f"in-flight requests, and you currently have {num_in_flight_requests} "
+                f"in-flight requests. Retrieve an output using ray.get before "
+                "submitting more requests or increase `max_inflight_executions`. "
                 "`dag.experimental_compile(_max_inflight_executions=...)`"
-            )
-
-    def raise_if_result_buffer_at_capacity(self):
-        if len(self._result_buffer) >= self._max_inflight_executions:
-            raise ray.exceptions.RayCgraphCapacityExceeded(
-                f"{len(self._result_buffer)} buffered results: the allowed max count "
-                f"for buffered results is {self._max_inflight_executions}; call "
-                "ray.get() on previous CompiledDAGRefs to free them up "
-                "from buffer. If you would like to increase the buffer size, "
-                "set _max_inflight_executions when calling experimenetal_compile."
             )
 
     def _has_execution_results(
@@ -2050,7 +2039,6 @@ class CompiledDAG:
                 timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
-            self.raise_if_result_buffer_at_capacity()
             start_time = time.monotonic()
 
             # Fetch results from each output channel up to execution_index and cache
