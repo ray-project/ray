@@ -393,16 +393,16 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     )
 
                     # Numpy'ize the episode.
-                    if self.config.episodes_to_numpy_from_env_runner:
-                        # Any possibly compress observations.
-                        done_episodes_to_return.append(
-                            episodes[env_index].to_numpy(
-                                compress_observations=self.config.compress_observations
-                            )
-                        )
-                    # Leave episode as lists of individual (obs, action, etc..) items.
-                    else:
-                        done_episodes_to_return.append(episodes[env_index])
+                    #if self.config.episodes_to_numpy_from_env_runner:
+                    #    # Any possibly compress observations.
+                    #    done_episodes_to_return.append(
+                    #        episodes[env_index].to_numpy(
+                    #            compress_observations=self.config.compress_observations
+                    #        )
+                    #    )
+                    ## Leave episode as lists of individual (obs, action, etc..) items.
+                    #else:
+                    done_episodes_to_return.append(episodes[env_index])
 
                     # Also early-out if we reach the number of episodes within this
                     # for-loop.
