@@ -42,6 +42,14 @@ py_test(
 )
 
 py_test(
+    name = "test_strict_in_virtual_cluster",
+    size = "small",
+    srcs = ["tests/test_strict_in_virtual_cluster.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_strict_mode",
     size = "small",
     srcs = ["tests/test_strict_mode.py"],
