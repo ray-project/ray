@@ -397,11 +397,12 @@ class SynchronousReader(ReaderInterface):
                         self._unread_channels = [
                             c for c in self._input_channels if c not in read_channel_set
                         ]
-                        logger.warning(
-                            f"Input channel {i} returned a RayTaskError. "
-                            "Returning immediately."
+                        fast_fail_error = ray.exceptions.RayChannelFastFailError(
+                            i, result
                         )
-                        return [result for _ in range(len(self._input_channels))]
+                        return [
+                            fast_fail_error for _ in range(len(self._input_channels))
+                        ]
                 except ray.exceptions.RayChannelTimeoutError as e:
                     remaining_timeout = max(timeout_point - time.monotonic(), 0)
                     if remaining_timeout == 0:
@@ -468,7 +469,12 @@ class AwaitableBackgroundReader(ReaderInterface):
                         self._unread_channels = [
                             c for c in self._input_channels if c not in read_channel_set
                         ]
-                        return [result for _ in range(len(self._input_channels))]
+                        fast_fail_error = ray.exceptions.RayChannelFastFailError(
+                            i, result
+                        )
+                        return [
+                            fast_fail_error for _ in range(len(self._input_channels))
+                        ]
                 except ray.exceptions.RayChannelTimeoutError:
                     pass
                 if sys.is_finalizing():

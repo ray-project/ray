@@ -1,14 +1,18 @@
 import asyncio
+import logging
 from typing import Any, List, Optional
 
 import ray
 from ray.exceptions import (
     GetTimeoutError,
     RayChannelError,
+    RayChannelFastFailError,
     RayChannelTimeoutError,
     RayTaskError,
 )
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 
 def _process_return_vals(return_vals: List[Any], return_single_output: bool):
@@ -28,6 +32,9 @@ def _process_return_vals(return_vals: List[Any], return_single_output: bool):
 
     if return_single_output:
         assert len(return_vals) == 1
+        if isinstance(return_vals[0], RayChannelFastFailError):
+            logger.error(return_vals[0])
+            raise return_vals[0].as_instanceof_cause()
         return return_vals[0]
 
     return return_vals
