@@ -332,6 +332,9 @@ class ReaderInterface:
         # Consume the channels that were not read in the last `read` call because
         # a RayTaskError was found. If we don't do this, the read operation will read
         # stale versions of the object refs.
+        #
+        # TODO(kevin85421): Currently, a DAG with NCCL channels and fast fail enabled
+        # may not be reusable. Revisit this in the future.
         for c in self._leftover_channels:
             start_time = time.monotonic()
             c.read(timeout)
@@ -353,8 +356,11 @@ class SynchronousReader(ReaderInterface):
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
         self._consume_leftover_channels_if_needed(timeout)
-        # Do not update `remaining_timeout` to avoid causing an unexpected
-        # timeout in the following read operation.
+        # We don't update `remaining_timeout` here because in the worst case,
+        # consuming leftover channels requires reading all `_input_channels`,
+        # which users expect to complete within the original `timeout`. Updating
+        # `remaining_timeout` could cause unexpected timeouts in subsequent read
+        # operations.
         self._leftover_channels = []
 
         # It is a special case that `timeout` is set to 0, which means
