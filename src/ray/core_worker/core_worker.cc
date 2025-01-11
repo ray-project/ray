@@ -2313,19 +2313,22 @@ json CoreWorker::OverrideRuntimeEnv(const json &child,
   return result_runtime_env;
 }
 
+std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
+    const std::string &serialized_runtime_env_info) const {
+  auto factory = [this](const std::string &serialized_runtime_env_info) {
+    return OverrideTaskOrActorRuntimeEnvInfoImpl(serialized_runtime_env_info);
+  };
+  return runtime_env_json_serialization_cache_.GetOrCreate(serialized_runtime_env_info,
+                                                           std::move(factory));
+}
+
 // TODO(hjiang): Current implementation is not the most ideal version, since it acquires a
 // global lock for all operations; it's acceptable for now since no heavy-lifted operation
 // is involved (considering the overall scheduling overhead is single-digit millisecond
 // magnitude). But a better solution is LRU cache native providing a native support for
 // sharding and `GetOrCreate` API.
-std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
+std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfoImpl(
     const std::string &serialized_runtime_env_info) const {
-  if (auto cached_runtime_env_info =
-          runtime_env_json_serialization_cache_.Get(serialized_runtime_env_info);
-      cached_runtime_env_info != nullptr) {
-    return cached_runtime_env_info;
-  }
-
   // TODO(Catch-Bull,SongGuyang): task runtime env not support the field eager_install
   // yet, we will overwrite the filed eager_install when it did.
   std::shared_ptr<json> parent = nullptr;

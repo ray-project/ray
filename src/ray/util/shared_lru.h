@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <condition_variable>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -194,6 +195,69 @@ class ThreadSafeSharedLruCache final {
     return cache_.Get(std::forward<KeyLike>(key));
   }
 
+  // Get or creation for cached key-value pairs.
+  //
+  // WARNING: Currently factory cannot have exception thrown.
+  // TODO(hjiang): [factory] should support template.
+  template <typename KeyLike>
+  std::shared_ptr<Val> GetOrCreate(KeyLike &&key,
+                                   std::function<std::shared_ptr<Val>(Key)> factory) {
+    std::shared_ptr<CreationToken> creation_token;
+
+    {
+      std::unique_lock lck(mu_);
+      auto cached_val = cache_.Get(key);
+      if (cached_val != nullptr) {
+        return cached_val;
+      }
+
+      auto creation_iter = ongoing_creation_.find(key);
+
+      // Another thread has requested for the same key-value pair, simply wait for its
+      // completion.
+      if (creation_iter != ongoing_creation_.end()) {
+        creation_token = creation_iter->second;
+        ++creation_token->count;
+        creation_token->cv.wait(lck, [creation_token = creation_token.get()]() {
+          return creation_token->val != nullptr;
+        });
+
+        // Creation finished.
+        auto val = creation_token->val;
+        --creation_token->count;
+        if (creation_token->count == 0) {
+          // [creation_iter] could be invalidated here due to new insertion/deletion.
+          ongoing_creation_.erase(key);
+        }
+        return val;
+      }
+
+      // Current thread is the first one to request for the key-value pair, perform
+      // factory function.
+      creation_iter =
+          ongoing_creation_.emplace(key, std::make_shared<CreationToken>()).first;
+      creation_token = creation_iter->second;
+      creation_token->count = 1;
+    }
+
+    // Place factory out of critical section.
+    std::shared_ptr<Val> val = factory(key);
+
+    {
+      std::lock_guard lck(mu_);
+      cache_.Put(key, val);
+      creation_token->val = val;
+      creation_token->cv.notify_all();
+      int new_count = --creation_token->count;
+      if (new_count == 0) {
+        // [creation_iter] could be invalidated here due to new insertion/deletion.
+        ongoing_creation_.erase(key);
+      }
+    }
+
+    return val;
+  }
+
   // Clear the cache.
   void Clear() {
     std::lock_guard lck(mu_);
@@ -204,8 +268,19 @@ class ThreadSafeSharedLruCache final {
   size_t max_entries() const { return cache_.max_entries(); }
 
  private:
+  struct CreationToken {
+    std::condition_variable cv;
+    // Nullptr indicate creation unfinished.
+    std::shared_ptr<Val> val;
+    // Counter for ongoing creation.
+    int count = 0;
+  };
+
   std::mutex mu_;
   SharedLruCache<Key, Val> cache_;
+
+  // Ongoing creation.
+  absl::flat_hash_map<Key, std::shared_ptr<CreationToken>> ongoing_creation_;
 };
 
 // Same interfaces as `SharedLruCache`, but all cached values are
