@@ -60,11 +60,10 @@ class DAGContext:
             value higher than the expected time to execute the entire DAG.
         teardown_timeout: The maximum time in seconds to wait for the DAG to
             cleanly shut down.
-        read_iteration_timeout_s: The timeout in seconds for each read iteration
+        read_iteration_timeout: The timeout in seconds for each read iteration
             that reads one of the input channels. If the timeout is reached, the
             read operation will be interrupted and will try to read the next
-            input channel. The default value is 0.1 seconds. It must be less than
-            or equal to `get_timeout`.
+            input channel. It must be less than or equal to `get_timeout`.
         buffer_size_bytes: The initial buffer size in bytes for messages
             that can be passed between tasks in the DAG. The buffers will
             be automatically resized if larger messages are written to the
@@ -91,7 +90,7 @@ class DAGContext:
     submit_timeout: int = DEFAULT_SUBMIT_TIMEOUT_S
     get_timeout: int = DEFAULT_GET_TIMEOUT_S
     teardown_timeout: int = DEFAULT_TEARDOWN_TIMEOUT_S
-    read_iteration_timeout_s: float = DEFAULT_READ_ITERATION_TIMEOUT_S
+    read_iteration_timeout: float = DEFAULT_READ_ITERATION_TIMEOUT_S
     buffer_size_bytes: int = DEFAULT_BUFFER_SIZE_BYTES
     asyncio_max_queue_size: int = DEFAULT_ASYNCIO_MAX_QUEUE_SIZE
     max_buffered_results: int = DEFAULT_MAX_BUFFERED_RESULTS
@@ -99,10 +98,10 @@ class DAGContext:
     overlap_gpu_communication: bool = DEFAULT_OVERLAP_GPU_COMMUNICATION
 
     def __post_init__(self):
-        if self.read_iteration_timeout_s > self.get_timeout:
+        if self.read_iteration_timeout > self.get_timeout:
             raise ValueError(
                 "RAY_CGRAPH_read_iteration_timeout_s "
-                f"({self.read_iteration_timeout_s}) must be less than or equal to "
+                f"({self.read_iteration_timeout}) must be less than or equal to "
                 f"RAY_CGRAPH_get_timeout ({self.get_timeout})"
             )
 
