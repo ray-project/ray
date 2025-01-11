@@ -94,15 +94,18 @@ class ClusterResourceManager {
   bool SubtractNodeAvailableResources(scheduling::NodeID node_id,
                                       const ResourceRequest &resource_request);
 
-  /// Check if we have sufficient resource to fullfill resource request for an given node.
+  /// Check if we have available resources to fullfill resource request for an given node.
   ///
   /// \param node_id: the id of the node.
   /// \param resource_request: the request we want to check.
   /// \param ignore_object_store_memory_requirement: if true, we will ignore the
   ///  require_object_store_memory in the resource_request.
-  bool HasSufficientResource(scheduling::NodeID node_id,
+  bool HasAvailableResources(scheduling::NodeID node_id,
                              const ResourceRequest &resource_request,
                              bool ignore_object_store_memory_requirement) const;
+
+  bool HasFeasibleResources(scheduling::NodeID node_id,
+                            const ResourceRequest &resource_request) const;
 
   /// Add available resource to a given node.
   /// Return false if such node doesn't exist.

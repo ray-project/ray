@@ -373,7 +373,7 @@ class RLModule(Checkpointable, abc.ABC):
 
     framework: str = None
 
-    STATE_FILE_NAME = "module_state.pkl"
+    STATE_FILE_NAME = "module_state"
 
     def __init__(
         self,
