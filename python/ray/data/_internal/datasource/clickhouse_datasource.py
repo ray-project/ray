@@ -38,6 +38,35 @@ def _is_filter_string_safe(filter_str: str) -> bool:
 class ClickHouseDatasource(Datasource):
     """
     A Ray datasource for reading from ClickHouse.
+
+    Args:
+        table: Fully qualified table or view identifier (e.g.,
+            "default.table_name").
+        dsn: A string in DSN (Data Source Name) HTTP format (e.g.,
+            "clickhouse+http://username:password@host:8124/default").
+            For more information, see `ClickHouse Connection String doc
+            <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
+        columns: Optional List of columns to select from the data source.
+            If no columns are specified, all columns will be selected by default.
+        filter: Optional SQL filter string that will be used in the
+            WHERE statement (e.g., "label = 2 AND text IS NOT NULL").
+            The filter must be valid for use in a ClickHouse SQL WHERE clause.
+            Note: Parallel reads are not currently supported when a filter is set.
+            Specifying a filter forces the parallelism to 1 to ensure deterministic
+            and consistent results. For more information, see
+            `ClickHouse SQL WHERE Clause doc
+            <https://clickhouse.com/docs/en/sql-reference/statements/select/where>`_.
+        order_by: Optional Tuple containing a list of columns to order by
+            and a boolean indicating the order. Note: order_by is required to
+            support parallelism.
+        client_settings: Optional ClickHouse server settings to be used with the
+            session/every request. For more information, see
+            `ClickHouse Client Settings doc
+            <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
+        client_kwargs: Optional Additional keyword arguments to pass to the
+            ClickHouse client. For more information,
+            see `ClickHouse Core Settings doc
+            <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
     """
 
     NUM_SAMPLE_ROWS = 100
@@ -67,35 +96,6 @@ class ClickHouseDatasource(Datasource):
         client_settings: Optional[Dict[str, Any]] = None,
         client_kwargs: Optional[Dict[str, Any]] = None,
     ):
-        """
-        Initialize a ClickHouse Datasource.
-
-        Args:
-            table: Fully qualified table or view identifier (e.g.,
-                "default.table_name").
-            dsn: A string in DSN (Data Source Name) HTTP format (e.g.,
-                "clickhouse+http://username:password@host:8124/default").
-                For more information, see `ClickHouse Connection String doc
-                <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
-            columns: Optional List of columns to select from the data source.
-                If no columns are specified, all columns will be selected by default.
-            filter: Optional SQL filter string that will be used in the
-                WHERE statement (e.g., "label = 2 AND text IS NOT NULL").
-                The filter must be valid for use in a ClickHouse WHERE clause.
-                see `ClickHouse SQL WHERE Clause doc
-                <https://clickhouse.com/docs/en/sql-reference/statements/select/where>`_.
-            order_by: Optional Tuple containing a list of columns to order by
-                and a boolean indicating the order. Note: order_by is required to
-                support parallelism.
-            client_settings: Optional ClickHouse server settings to be used with the
-                session/every request. For more information, see
-                `ClickHouse Client Settings doc
-                <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
-            client_kwargs: Optional Additional keyword arguments to pass to the
-                ClickHouse client. For more information,
-                see `ClickHouse Core Settings doc
-                <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
-        """
         self._table = table
         self._dsn = dsn
         self._columns = columns
@@ -263,8 +263,9 @@ class ClickHouseDatasource(Datasource):
 
         Args:
             parallelism: The desired number of partitions to read the data into.
-                order_by must be set in the ClickHouseDatasource to
-                support parallelism.
+                - If ``order_by`` is not set, parallelism will be forced to 1.
+                - If ``filter`` is set, parallelism will also be forced to 1
+                  to ensure deterministic results.
 
         Returns:
             A list of read tasks to be executed.
@@ -276,17 +277,29 @@ class ClickHouseDatasource(Datasource):
             parallelism, math.ceil(num_rows_total / self.MIN_ROWS_PER_READ_TASK)
         )
         # To ensure consistent order of query results, self._order_by
+        # must be specified and self.filter must not be specified
+        # in order to support parallelism.
+        if self._filter is not None and parallelism > 1:
+            logger.warning(
+                "ClickHouse datasource does not currently support parallel reads "
+                "when a filter is set; falling back to parallelism of 1."
+            )
+            # When filter is specified and parallelism is greater than 1,
+            # we need to reduce parallelism to 1 to ensure consistent results.
+            parallelism = 1
+        # To ensure consistent order of query results, self._order_by
         # must be specified in order to support parallelism.
         if self._order_by is None and parallelism > 1:
             logger.warning(
-                "ClickHouse datasource requires dataset to be explicitly ordered to "
-                "support parallelism; falling back to parallelism of 1"
+                "ClickHouse datasource requires dataset to be explicitly ordered "
+                "to support parallelism; falling back to parallelism of 1."
             )
             # When order_by is not specified and parallelism is greater than 1,
             # we need to reduce parallelism to 1 to ensure consistent results.
-            # By doing this we ensure the downstream process is treated exactly as
-            # a non-parallelized (single block) process would be.
             parallelism = 1
+        # By reducing parallelism to 1 when either of the conditions above are met,
+        # we ensure the downstream process is treated exactly as a non-parallelized
+        # (single block) process would be, thus ensuring output consistency.
         num_rows_per_block = num_rows_total // parallelism
         num_blocks_with_extra_row = num_rows_total % parallelism
         (

@@ -326,6 +326,25 @@ class TestClickHouseDatasource:
             )
             assert f"WHERE {filter_str}" in ds._query
 
+    @pytest.mark.parametrize("parallelism", [1, 4])
+    def test_get_read_tasks_with_filter(self, datasource, parallelism):
+        datasource._filter = "label = 2 AND text IS NOT NULL"
+        batch1 = pa.record_batch([pa.array([1, 2, 3, 4, 5, 6, 7, 8])], names=["field2"])
+        batch2 = pa.record_batch(
+            [pa.array([9, 10, 11, 12, 13, 14, 15, 16])], names=["field2"]
+        )
+        mock_stream = MagicMock()
+        mock_client = mock.MagicMock()
+        mock_client.query_arrow_stream.return_value.__enter__.return_value = mock_stream
+        mock_stream.__iter__.return_value = [batch1, batch2]
+        datasource.MIN_ROWS_PER_READ_TASK = 4
+        datasource._init_client = MagicMock(return_value=mock_client)
+        datasource._get_estimate_count = MagicMock(return_value=16)
+        datasource._get_sampled_estimates = MagicMock(return_value=(100, batch1.schema))
+        read_tasks = datasource.get_read_tasks(parallelism)
+        assert len(read_tasks) == 1
+        assert read_tasks[0].metadata.num_rows == 16
+
     def test_filter_none(self):
         table_name = "default.table_name"
         dsn = "clickhouse://user:password@localhost:8123/default"

@@ -3309,7 +3309,9 @@ def read_clickhouse(
             If no columns are specified, all columns will be selected by default.
         filter: Optional SQL filter string that will be used in the WHERE statement
             (e.g., "label = 2 AND text IS NOT NULL"). The filter string must be valid for use in
-            a ClickHouse WHERE clause. For more information, see `ClickHouse SQL WHERE Clause doc
+            a ClickHouse SQL WHERE clause. Please Note: Parallel reads are not currently supported
+            when a filter is set. Specifying a filter forces the parallelism to 1 to ensure
+            deterministic and consistent results. For more information, see `ClickHouse SQL WHERE Clause doc
             <https://clickhouse.com/docs/en/sql-reference/statements/select/where>`_.
         order_by: Optional tuple containing a list of columns to order by and a boolean indicating whether the order
             should be descending (True for DESC, False for ASC). Please Note: order_by is required to support
