@@ -406,7 +406,7 @@ std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateDataToSend(
   // Aggregate the task events by TaskAttempt.
   absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
   auto to_rpc_event_fn = [this, &agg_task_events, &dropped_task_attempts_to_send](
-                             std::shared_ptr<TaskEvent> &event) {
+                             const std::shared_ptr<TaskEvent> &event) {
     if (dropped_task_attempts_to_send.contains(event->GetTaskAttempt())) {
       // We are marking this as data loss due to some missing task status updates.
       // We will not send this event to GCS.
@@ -462,7 +462,7 @@ void TaskEventBufferImpl::WriteExportData(
   // in the same order as the buffer.
   std::vector<TaskAttempt> agg_task_event_insertion_order;
   auto to_rpc_event_fn = [&agg_task_events, &agg_task_event_insertion_order](
-                             std::shared_ptr<TaskEvent> &event) {
+                             const std::shared_ptr<TaskEvent> &event) {
     // Aggregate events by task attempt before converting to proto
     auto itr = agg_task_events.find(event->GetTaskAttempt());
     if (itr == agg_task_events.end()) {
