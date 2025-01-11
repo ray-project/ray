@@ -27,6 +27,14 @@ struct function_traits_helper : public boost::function_traits<T> {
   using type = T;
 };
 
+template <typename NewR, typename T>
+struct rebind_result;
+
+template <typename NewR, typename R, typename... Args>
+struct rebind_result<NewR, R(Args...)> {
+  using type = NewR(Args...);
+};
+
 }  // namespace internal
 
 // Generalized boost::function_traits to support more callable types.
@@ -72,4 +80,8 @@ struct function_traits<T &> : function_traits<T> {};
 template <typename T>
 struct function_traits<T &&> : function_traits<T> {};
 
+// Because you can't manipulate argument packs easily, we need to do rebind to instead
+// manipulate the result type.
+template <typename NewR, typename T>
+using rebind_result_t = typename internal::rebind_result<NewR, T>::type;
 }  // namespace ray

@@ -121,8 +121,8 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status =
-      gcs_table_storage_.JobTable().Put(job_id, mutable_job_table_data, on_done);
+  Status status = gcs_table_storage_.JobTable().Put(
+      job_id, mutable_job_table_data, {on_done, io_context_});
   if (!status.ok()) {
     on_done(status);
   }
@@ -160,7 +160,8 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     done_callback(status);
   };
 
-  Status status = gcs_table_storage_.JobTable().Put(job_id, job_table_data, on_done);
+  Status status =
+      gcs_table_storage_.JobTable().Put(job_id, job_table_data, {on_done, io_context_});
   if (!status.ok()) {
     on_done(status);
   }
@@ -178,24 +179,25 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
 
   Status status = gcs_table_storage_.JobTable().Get(
       job_id,
-      [this, job_id, send_reply](const Status &status,
-                                 const std::optional<rpc::JobTableData> &result) {
-        RAY_CHECK(thread_checker_.IsOnSameThread());
+      {[this, job_id, send_reply](Status status,
+                                  std::optional<rpc::JobTableData> result) {
+         RAY_CHECK(thread_checker_.IsOnSameThread());
 
-        if (status.ok() && result) {
-          MarkJobAsFinished(*result, send_reply);
-          return;
-        }
+         if (status.ok() && result) {
+           MarkJobAsFinished(*result, send_reply);
+           return;
+         }
 
-        if (!result.has_value()) {
-          RAY_LOG(ERROR) << "Tried to mark job " << job_id
-                         << " as finished, but there was no record of it starting!";
-        } else if (!status.ok()) {
-          RAY_LOG(ERROR) << "Fails to mark job " << job_id << " as finished due to "
-                         << status;
-        }
-        send_reply(status);
-      });
+         if (!result.has_value()) {
+           RAY_LOG(ERROR) << "Tried to mark job " << job_id
+                          << " as finished, but there was no record of it starting!";
+         } else if (!status.ok()) {
+           RAY_LOG(ERROR) << "Fails to mark job " << job_id << " as finished due to "
+                          << status;
+         }
+         send_reply(status);
+       },
+       io_context_});
   if (!status.ok()) {
     send_reply(status);
   }
@@ -312,7 +314,13 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     // do async calls to:
     //
     // - N outbound RPCs, one to each jobs' core workers on GcsServer::main_service_.
-    // - One InternalKV MultiGet call on GcsServer::kv_service_.
+    // - One InternalKV MultiGet call on GcsServer::kv_service_, posted to
+    //   GcsServer::main_service_.
+    //
+    // Since all accesses are on the same thread, we don't need to do atomic operations
+    // but we kept it for legacy reasons.
+    // TODO(ryw): Define a struct with a size_t, a ThreadChecker and auto send reply on
+    // remaining tasks == 0.
     //
     // And then we wait all by examining an atomic num_finished_tasks counter and then
     // reply. The wait counter is written from 2 different thread, which requires an
@@ -420,10 +428,11 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
             size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
             try_send_reply(updated_finished_tasks);
           };
-      internal_kv_.MultiGet("job", job_api_data_keys, kv_multi_get_callback);
+      internal_kv_.MultiGet(
+          "job", job_api_data_keys, {kv_multi_get_callback, io_context_});
     }
   };
-  Status status = gcs_table_storage_.JobTable().GetAll(on_done);
+  Status status = gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
   if (!status.ok()) {
     on_done(absl::flat_hash_map<JobID, JobTableData>());
   }
@@ -472,7 +481,7 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
   };
 
   // make all jobs in current node to finished
-  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll(on_done));
+  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll({on_done, io_context_}));
 }
 
 void GcsJobManager::RecordMetrics() {
