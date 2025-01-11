@@ -5,6 +5,9 @@
 [Aa]utoscal(e|ing)
 [Bb]oolean
 [Cc]allables?
+[Cc]heckpoints?(ing)?
+[Cc]heckpointable
+classmethods?
 coeff
 config
 (DQN|dqn)
@@ -24,9 +27,10 @@ pragmas?
 (RL|rl)lib
 RNN
 RLModules?
-rollout
+[Rr]ollout
 (SAC|sac)
 SGD
+[Ss]ubcomponents?
 [Tt]ensor[Ff]low
 timesteps?
 vectorizes?

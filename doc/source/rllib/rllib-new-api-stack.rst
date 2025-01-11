@@ -13,9 +13,6 @@ RLlib's new API stack
     if you have old API stack custom code. See the :ref:`migration guide <rllib-new-api-stack-migration-guide>` for details.
 
 
-Overview
---------
-
 Starting in Ray 2.10, you can opt-in to the alpha version of the "new API stack", a fundamental overhaul from the ground
 up with respect to architecture, design principles, code base, and user facing APIs.
 The following select algorithms and setups are available.

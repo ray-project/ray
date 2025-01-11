@@ -29,7 +29,7 @@ from ray.dag.constants import (
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
 import ray
-from ray.exceptions import RayTaskError, RayChannelError
+from ray.exceptions import RayTaskError, RayChannelError, RayChannelTimeoutError
 from ray.experimental.compiled_dag_ref import (
     CompiledDAGRef,
     CompiledDAGFuture,
@@ -214,7 +214,7 @@ def do_profile_tasks(
             for operation in schedule:
                 start_t = time.perf_counter()
                 task = tasks[operation.exec_task_idx]
-                done = tasks[operation.exec_task_idx].exec_operation(
+                done = task.exec_operation(
                     self, operation.type, overlap_gpu_communication
                 )
                 end_t = time.perf_counter()
@@ -777,10 +777,10 @@ class CompiledDAG:
                 can be submitted via `execute` or `execute_async` before consuming
                 the output using `ray.get()`. If the caller submits more executions,
                 `RayCgraphCapacityExceeded` is raised.
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution. If True, the communication
-                and computation can be overlapped, which can improve the
-                performance of the DAG execution. If None, the default value
+            overlap_gpu_communication: (experimental) Whether to overlap GPU
+                communication with computation during DAG execution. If True, the
+                communication and computation can be overlapped, which can improve
+                the performance of the DAG execution. If None, the default value
                 will be used.
 
         Returns:
@@ -1858,10 +1858,18 @@ class CompiledDAG:
                             f"{teardown_timeout}s after teardown()."
                         )
                         if kill_actors:
-                            msg += " Force-killing actor."
+                            msg += (
+                                " Force-killing actor. "
+                                "Increase RAY_CGRAPH_teardown_timeout if you want "
+                                "teardown to wait longer."
+                            )
                             ray.kill(actor)
                         else:
-                            msg += " Teardown may hang."
+                            msg += (
+                                " Teardown may hang. "
+                                "Call teardown with kill_actors=True if force kill "
+                                "is desired."
+                            )
 
                         logger.warning(msg)
                         timeout = True
@@ -1898,7 +1906,7 @@ class CompiledDAG:
                     for cancel_ref in cancel_refs:
                         try:
                             ray.get(cancel_ref, timeout=30)
-                        except ray.exceptions.RayChannelError:
+                        except RayChannelError:
                             # Channel error happens when a channel is closed
                             # or timed out. In this case, do not log.
                             pass
@@ -2075,14 +2083,23 @@ class CompiledDAG:
                     "ray.get() on previous CompiledDAGRefs to free them up "
                     "from buffer."
                 )
-            self.increment_max_finished_execution_index()
             start_time = time.monotonic()
 
             # Fetch results from each output channel up to execution_index and cache
             # them separately to enable individual retrieval
+            try:
+                result = self._dag_output_fetcher.read(timeout)
+            except RayChannelTimeoutError as e:
+                raise RayChannelTimeoutError(
+                    "If the execution is expected to take a long time, increase "
+                    f"RAY_CGRAPH_get_timeout which is currently {timeout} seconds. "
+                    "Otherwise, this may indicate that the execution is hanging."
+                ) from e
+
+            self.increment_max_finished_execution_index()
             self._cache_execution_results(
                 self._max_finished_execution_index,
-                self._dag_output_fetcher.read(timeout),
+                result,
             )
 
             if timeout != -1:
@@ -2128,7 +2145,14 @@ class CompiledDAG:
             inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
         self.raise_if_too_many_inflight_requests()
-        self._dag_submitter.write(inp, self._submit_timeout)
+        try:
+            self._dag_submitter.write(inp, self._submit_timeout)
+        except RayChannelTimeoutError as e:
+            raise RayChannelTimeoutError(
+                "If the execution is expected to take a long time, increase "
+                f"RAY_CGRAPH_submit_timeout which is currently {self._submit_timeout} "
+                "seconds. Otherwise, this may indicate that execution is hanging."
+            ) from e
 
         if self._returns_list:
             ref = [
@@ -2687,10 +2711,15 @@ class CompiledDAG:
                 if dag_node.is_class_method_call:
                     # Class Method Call Node
                     method_name = dag_node.get_method_name()
-                    actor_handle = dag_node._get_actor_handle()
-                    if actor_handle:
-                        actor_id = actor_handle._actor_id.hex()
-                        label += f"Actor: {actor_id[:6]}...\nMethod: {method_name}"
+                    actor = dag_node._get_actor_handle()
+                    if actor:
+                        class_name = (
+                            actor._ray_actor_creation_function_descriptor.class_name
+                        )
+                        actor_id = actor._actor_id.hex()
+                        label += f"Actor: {class_name}\n"
+                        label += f"ID: {actor_id[:6]}...\n"
+                        label += f"Method: {method_name}"
                         fillcolor = actor_id_to_color[actor_id]
                     else:
                         label += f"Method: {method_name}"

@@ -43,7 +43,7 @@ using rpc::TablePrefix;
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
  public:
-  explicit CallbackReply(redisReply *redis_reply);
+  explicit CallbackReply(const redisReply &redis_reply);
 
   /// Whether this reply is `nil` type reply.
   bool IsNil() const;
@@ -74,10 +74,10 @@ class CallbackReply {
 
  private:
   /// Parse redis reply as string array or scan array.
-  void ParseAsStringArrayOrScanArray(redisReply *redis_reply);
+  void ParseAsStringArrayOrScanArray(const redisReply &redis_reply);
 
   /// Parse redis reply as string array.
-  void ParseAsStringArray(redisReply *redis_reply);
+  void ParseAsStringArray(const redisReply &redis_reply);
 
   /// Flag indicating the type of reply this represents.
   int reply_type_;
@@ -113,7 +113,7 @@ struct RedisRequestContext {
                       RedisAsyncContext *context,
                       std::vector<std::string> args);
 
-  static void RedisResponseFn(struct redisAsyncContext *async_context,
+  static void RedisResponseFn(redisAsyncContext *async_context,
                               void *raw_reply,
                               void *privdata);
 
