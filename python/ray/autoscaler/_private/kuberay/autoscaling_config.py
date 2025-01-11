@@ -12,7 +12,6 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
-    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.kuberay import node_provider, utils
 from ray.autoscaler._private.util import validate_config
@@ -160,15 +159,6 @@ def _generate_provider_config(ray_cluster_namespace: str) -> Dict[str, Any]:
         DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
         FOREGROUND_NODE_LAUNCH_KEY: True,
         WORKER_LIVENESS_CHECK_KEY: False,
-        # For the time being we are letting the autoscaler drain nodes,
-        # hence the following setting is set to True (the default value).
-        # This is because we are observing that with the flag set to false,
-        # The GCS may not be properly notified of node downscaling.
-        # TODO Solve this issue, flip the key back to false -- else we may have
-        # a race condition in which the autoscaler kills the Ray container
-        # Kubernetes recreates it,
-        # and then KubeRay deletes the pod, killing the container again.
-        WORKER_RPC_DRAIN_KEY: True,
     }
 
 
