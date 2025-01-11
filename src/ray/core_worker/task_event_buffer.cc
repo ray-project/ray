@@ -524,16 +524,15 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   profile_events_to_send.reserve(RayConfig::instance().task_events_send_batch_size());
   GetTaskProfileEventsToSend(&profile_events_to_send);
 
-  // Aggregate and prepare the data to send.
+  if (export_event_write_enabled_) {
+    WriteExportData(std::move(status_events_to_write_for_export),
+                    std::vector{profile_events_to_send});
+  }
+
   std::unique_ptr<rpc::TaskEventData> data =
       CreateDataToSend(std::move(status_events_to_send),
                        std::move(profile_events_to_send),
                        std::move(dropped_task_attempts_to_send));
-  if (export_event_write_enabled_) {
-    // TODO (dayshah): use after move of profile_events_to_send
-    WriteExportData(std::move(status_events_to_write_for_export),
-                    std::move(profile_events_to_send));
-  }
 
   gcs::TaskInfoAccessor *task_accessor = nullptr;
   {
