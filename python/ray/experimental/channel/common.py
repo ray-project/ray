@@ -283,7 +283,7 @@ class ReaderInterface:
         # because the reader returned immediately when a RayTaskError was found.
         # These channels must be consumed before the next read to avoid reading
         # stale data remaining from the last read.
-        self._leftover_channels: Optional[List[ChannelInterface]] = None
+        self._leftover_channels: List[ChannelInterface] = []
 
     def get_num_reads(self) -> int:
         return self._num_reads
@@ -326,18 +326,18 @@ class ReaderInterface:
         for channel in self._input_channels:
             channel.close()
 
-    def _release_channel_buffers(
-        self, channels: List[ChannelInterface], timeout: Optional[float] = None
+    def _consume_leftover_channels_if_needed(
+        self, timeout: Optional[float] = None
     ) -> None:
-        for c in channels:
+        # Consume the channels that were not read in the last `read` call because
+        # a RayTaskError was found. If we don't do this, the read operation will read
+        # stale versions of the object refs.
+        for c in self._leftover_channels:
             start_time = time.monotonic()
-            c.release_buffer(timeout)
+            c.read(timeout)
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
-
-    def release_channel_buffers(self, timeout: Optional[float] = None) -> None:
-        self._release_channel_buffers(self._input_channels, timeout)
 
 
 @DeveloperAPI
@@ -352,14 +352,10 @@ class SynchronousReader(ReaderInterface):
         pass
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
-        # Release the buffers of the channels that were not read in the last
-        # `read` call because a RayTaskError was found. If we don't do this,
-        # the read operation will read stale versions of the object refs.
-        if self._leftover_channels is not None:
-            self._release_channel_buffers(self._leftover_channels, timeout)
-            # Do not update `remaining_timeout` to avoid causing an unexpected
-            # timeout in the following read operation.
-            self._leftover_channels = None
+        self._consume_leftover_channels_if_needed(timeout)
+        # Do not update `remaining_timeout` to avoid causing an unexpected
+        # timeout in the following read operation.
+        self._leftover_channels = []
 
         # It is a special case that `timeout` is set to 0, which means
         # read once for each channel.
@@ -412,6 +408,14 @@ class SynchronousReader(ReaderInterface):
                     )
         return results
 
+    def release_channel_buffers(self, timeout: Optional[float] = None) -> None:
+        for c in self._input_channels:
+            start_time = time.monotonic()
+            c.release_buffer(timeout)
+            if timeout is not None:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
+
 
 @DeveloperAPI
 class AwaitableBackgroundReader(ReaderInterface):
@@ -439,11 +443,10 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
-        if self._leftover_channels is not None:
-            # Give it a default timeout 60 seconds to release the buffers
-            # of the channels that were not read in the last `read` call.
-            self._release_channel_buffers(self._leftover_channels, 60)
-            self._leftover_channels = None
+        # Give it a default timeout 60 seconds to release the buffers
+        # of the channels that were not read in the last `read` call.
+        self._consume_leftover_channels_if_needed(60)
+        self._leftover_channels = []
 
         results = [None for _ in range(len(self._input_channels))]
 
