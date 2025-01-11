@@ -682,9 +682,9 @@ dataproperty==1.0.1 \
     # via
     #   pytablewriter
     #   tabledata
-datasets==2.14.0 \
-    --hash=sha256:1bb3d1c992a593949a8d3e445b358ac1db4ead00e6619ea2e5e7b6dfc222dde1 \
-    --hash=sha256:93081cc3d9d0ce860c81f950a3ba23d24704da2eacbe2722092ef4f6ae0ada96
+datasets==2.19.1 \
+    --hash=sha256:0df9ef6c5e9138cdb996a07385220109ff203c204245578b69cca905eb151d3a \
+    --hash=sha256:f7a78d15896f45004ccac1c298f3c7121f92f91f6f2bfbd4e4f210f827e6e411
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
@@ -734,9 +734,9 @@ docker-pycreds==0.4.0 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   wandb
-evaluate==0.4.0 \
-    --hash=sha256:4b528de0f270cdfb077ca4877035dc17584d2c4b1cbc3fdd46afc3942ed557fd \
-    --hash=sha256:bd6a59879be9ae13b681684e56ae3e6ea657073c4413b30335e9efa9856e4f44
+evaluate==0.4.3 \
+    --hash=sha256:3a5700cf83aabee9549264e1e5666f116367c61dbd4d38352015e859a5e2098d \
+    --hash=sha256:47d8770bdea76e2c2ed0d40189273027d1a41ccea861bcc7ba12d30ec5d1e517
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
@@ -783,6 +783,7 @@ filelock==3.13.1 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    #   datasets
     #   diffusers
     #   huggingface-hub
     #   torch
@@ -1322,9 +1323,9 @@ httplib2==0.20.4 \
     #   google-apitools
     #   gsutil
     #   oauth2client
-huggingface-hub==0.19.4 \
-    --hash=sha256:176a4fc355a851c17550e7619488f383189727eab209534d7cef2114dae77b22 \
-    --hash=sha256:dba013f779da16f14b606492828f3760600a1e1801432d09fe1c33e50b825bb5
+huggingface-hub==0.27.0 \
+    --hash=sha256:8f2e834517f1f1ddf1ecc716f91b120d7333011b7485f665a9a412eacb1a2a81 \
+    --hash=sha256:902cce1a1be5739f5589e560198a65a8edcfd3b830b1666f36e4b961f0454fac
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   accelerate
@@ -2582,6 +2583,12 @@ pyarrow==14.0.2 \
     #   datasets
     #   petastorm
     #   triad
+pyarrow-hotfix==0.6 \
+    --hash=sha256:79d3e030f7ff890d408a100ac16d6f00b14d44a502d7897cd9fc3e3a534e9945 \
+    --hash=sha256:dcc9ae2d220dff0083be6a9aa8e0cdee5182ad358d4931fce825c545e5c89178
+    # via
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   datasets
 pyasn1==0.5.1 \
     --hash=sha256:4439847c58d40b1d0a573d07e3856e95333f1976294494c325775aeca506eb58 \
     --hash=sha256:6d391a96e59b23130a5cfa74d6fd7f388dbbe26cc8f1edf39fdddf08d9d6676c
@@ -3089,7 +3096,6 @@ requests==2.31.0 \
     #   huggingface-hub
     #   locust
     #   requests-oauthlib
-    #   responses
     #   tiktoken
     #   torchtext
     #   transformers
@@ -3100,12 +3106,6 @@ requests-oauthlib==2.0.0 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   google-auth-oauthlib
-responses==0.13.4 \
-    --hash=sha256:9476775d856d3c24ae660bbebe29fb6d789d4ad16acd723efbfb6ee20990b899 \
-    --hash=sha256:d8d0f655710c46fd3513b9202a7f0dcedd02ca0f8cf4976f27fa8ab5b81e656d
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   evaluate
 retry-decorator==1.1.1 \
     --hash=sha256:e1e8ad02e518fe11073f2ea7d80b6b8be19daa27a60a1838aff7c731ddcf2ebe
     # via
@@ -3483,7 +3483,6 @@ six==1.16.0 \
     #   petastorm
     #   python-dateutil
     #   pyu2f
-    #   responses
     #   rouge-score
     #   triad
     #   trueskill
@@ -3945,7 +3944,6 @@ urllib3==1.26.19 \
     #   botocore
     #   geventhttpclient
     #   requests
-    #   responses
     #   sentry-sdk
 utilsforecast==0.2.0 \
     --hash=sha256:3db4245da4e361f26c8eaeef216c2d1206b20defbb033bf11d3e66ce2b1d6ef8 \
@@ -4359,7 +4357,9 @@ zstandard==0.23.0 \
     --hash=sha256:fd30d9c67d13d891f2360b2a120186729c111238ac63b43dbd37a5a40670b8ca \
     --hash=sha256:fd7699e8fd9969f455ef2926221e0233f81a2542921471382e77a9e2f2b57f4b \
     --hash=sha256:fe3b385d996ee0822fd46528d9f0443b880d4d05528fd26a9119a54ec3f91c69
-    # via lm-eval
+    # via
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   lm-eval
 
 # WARNING: The following packages were not pinned, but pip requires them to be
 # pinned when the requirements file includes hashes. Consider using the --allow-unsafe flag.
