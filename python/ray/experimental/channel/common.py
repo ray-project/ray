@@ -354,7 +354,7 @@ class SynchronousReader(ReaderInterface):
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
         # Release the buffers of the channels that were not read in the last
         # `read` call because a RayTaskError was found. If we don't do this,
-        # the read operation will read different versions of the object refs.
+        # the read operation will read stale versions of the object refs.
         if self._leftover_channels is not None:
             self._release_channel_buffers(self._leftover_channels, timeout)
             # Do not update `remaining_timeout` to avoid causing an unexpected
@@ -535,10 +535,9 @@ class WriterInterface:
         Write the value.
 
         Args:
-            timeout: The maximum time in seconds to wait for writing.
-                None means using default timeout, 0 means immediate timeout
-                (immediate success or timeout without blocking), -1 means
-                infinite timeout (block indefinitely).
+            timeout: The maximum time in seconds to wait for writing. 0 means
+                immediate timeout (immediate success or timeout without blocking).
+                -1 and None mean infinite timeout (blocks indefinitely).
         """
         raise NotImplementedError()
 
