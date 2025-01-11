@@ -36,7 +36,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
                             GcsActorManager &gcs_actor_manager,
                             const GcsPlacementGroupManager &gcs_placement_group_manager,
                             rpc::NodeManagerClientPool &raylet_client_pool,
-                            InternalKVInterface &kv);
+                            InternalKVInterface &kv,
+                            instrumented_io_context &io_context);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -162,6 +163,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   // Handler for internal KV
   InternalKVInterface &kv_;
+  instrumented_io_context &io_context_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.

@@ -39,7 +39,8 @@ void GcsInternalKVManager::HandleInternalKVGet(
             send_reply_callback, reply, Status::NotFound("Failed to find the key"));
       }
     };
-    kv_instance_->Get(request.namespace_(), request.key(), std::move(callback));
+    kv_instance_->Get(
+        request.namespace_(), request.key(), {std::move(callback), io_context_});
   }
 }
 
@@ -64,7 +65,7 @@ void GcsInternalKVManager::HandleInternalKVMultiGet(
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
   std::vector<std::string> keys(request.keys().begin(), request.keys().end());
-  kv_instance_->MultiGet(request.namespace_(), keys, std::move(callback));
+  kv_instance_->MultiGet(request.namespace_(), keys, {std::move(callback), io_context_});
 }
 
 void GcsInternalKVManager::HandleInternalKVPut(
@@ -84,7 +85,7 @@ void GcsInternalKVManager::HandleInternalKVPut(
                       request.key(),
                       std::move(*request.mutable_value()),
                       request.overwrite(),
-                      std::move(callback));
+                      {std::move(callback), io_context_});
   }
 }
 
@@ -103,7 +104,7 @@ void GcsInternalKVManager::HandleInternalKVDel(
     kv_instance_->Del(request.namespace_(),
                       request.key(),
                       request.del_by_prefix(),
-                      std::move(callback));
+                      {std::move(callback), io_context_});
   }
 }
 
@@ -120,7 +121,8 @@ void GcsInternalKVManager::HandleInternalKVExists(
       reply->set_exists(exists);
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     };
-    kv_instance_->Exists(request.namespace_(), request.key(), std::move(callback));
+    kv_instance_->Exists(
+        request.namespace_(), request.key(), {std::move(callback), io_context_});
   }
 }
 
@@ -138,7 +140,8 @@ void GcsInternalKVManager::HandleInternalKVKeys(
       }
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     };
-    kv_instance_->Keys(request.namespace_(), request.prefix(), std::move(callback));
+    kv_instance_->Keys(
+        request.namespace_(), request.prefix(), {std::move(callback), io_context_});
   }
 }
 
