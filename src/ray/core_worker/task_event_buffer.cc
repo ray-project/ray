@@ -174,14 +174,14 @@ void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   rpc_task_events->set_task_id(task_id_.Binary());
   rpc_task_events->set_job_id(job_id_.Binary());
   rpc_task_events->set_attempt_number(attempt_number_);
-  profile_events->set_component_type(std::move(component_type_));
-  profile_events->set_component_id(std::move(component_id_));
-  profile_events->set_node_ip_address(std::move(node_ip_address_));
+  profile_events->set_component_type(component_type_);
+  profile_events->set_component_id(component_id_);
+  profile_events->set_node_ip_address(node_ip_address_);
   auto event_entry = profile_events->add_events();
-  event_entry->set_event_name(std::move(event_name_));
+  event_entry->set_event_name(event_name_);
   event_entry->set_start_time(start_time_);
   event_entry->set_end_time(end_time_);
-  event_entry->set_extra_data(std::move(extra_data_));
+  event_entry->set_extra_data(extra_data_);
 }
 
 void TaskProfileEvent::ToRpcTaskExportEvents(
@@ -192,11 +192,11 @@ void TaskProfileEvent::ToRpcTaskExportEvents(
   rpc_task_export_event_data->set_task_id(task_id_.Binary());
   rpc_task_export_event_data->set_job_id(job_id_.Binary());
   rpc_task_export_event_data->set_attempt_number(attempt_number_);
-  profile_events->set_component_type(std::move(component_type_));
-  profile_events->set_component_id(std::move(component_id_));
-  profile_events->set_node_ip_address(std::move(node_ip_address_));
+  profile_events->set_component_type(component_type_);
+  profile_events->set_component_id(component_id_);
+  profile_events->set_node_ip_address(node_ip_address_);
   auto event_entry = profile_events->add_events();
-  event_entry->set_event_name(std::move(event_name_));
+  event_entry->set_event_name(event_name_);
   event_entry->set_start_time(start_time_);
   event_entry->set_end_time(end_time_);
   event_entry->set_extra_data(std::move(extra_data_));
@@ -400,9 +400,9 @@ void TaskEventBufferImpl::GetTaskProfileEventsToSend(
 }
 
 std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateDataToSend(
-    std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_send,
-    std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send,
-    absl::flat_hash_set<TaskAttempt> &&dropped_task_attempts_to_send) {
+    const std::vector<std::shared_ptr<TaskEvent>> &status_events_to_send,
+    const std::vector<std::shared_ptr<TaskEvent>> &profile_events_to_send,
+    const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send) {
   // Aggregate the task events by TaskAttempt.
   absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
   auto to_rpc_event_fn = [this, &agg_task_events, &dropped_task_attempts_to_send](
@@ -443,7 +443,7 @@ std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateDataToSend(
     rpc::TaskAttempt rpc_task_attempt;
     rpc_task_attempt.set_task_id(task_attempt.first.Binary());
     rpc_task_attempt.set_attempt_number(task_attempt.second);
-    *(data->add_dropped_task_attempts()) = rpc_task_attempt;
+    *(data->add_dropped_task_attempts()) = std::move(rpc_task_attempt);
   }
   size_t num_profile_events_dropped = stats_counter_.Get(
       TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
@@ -454,8 +454,8 @@ std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateDataToSend(
 }
 
 void TaskEventBufferImpl::WriteExportData(
-    std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_write_for_export,
-    std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send) {
+    const std::vector<std::shared_ptr<TaskEvent>> &status_events_to_write_for_export,
+    const std::vector<std::shared_ptr<TaskEvent>> &profile_events_to_send) {
   absl::flat_hash_map<TaskAttempt, std::shared_ptr<rpc::ExportTaskEventData>>
       agg_task_events;
   // Maintain insertion order to agg_task_events so events are written
@@ -524,16 +524,12 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   profile_events_to_send.reserve(RayConfig::instance().task_events_send_batch_size());
   GetTaskProfileEventsToSend(&profile_events_to_send);
 
-  if (export_event_write_enabled_) {
-    WriteExportData(std::move(status_events_to_write_for_export),
-                    std::vector{profile_events_to_send});
-  }
-
   // Aggregate and prepare the data to send.
-  std::unique_ptr<rpc::TaskEventData> data =
-      CreateDataToSend(std::move(status_events_to_send),
-                       std::move(profile_events_to_send),
-                       std::move(dropped_task_attempts_to_send));
+  std::unique_ptr<rpc::TaskEventData> data = CreateDataToSend(
+      status_events_to_send, profile_events_to_send, dropped_task_attempts_to_send);
+  if (export_event_write_enabled_) {
+    WriteExportData(status_events_to_write_for_export, profile_events_to_send);
+  }
 
   gcs::TaskInfoAccessor *task_accessor = nullptr;
   {
