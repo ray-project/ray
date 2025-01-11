@@ -24,24 +24,36 @@ using namespace ray;
 
 class UsageStatsClientTest : public ::testing::Test {
  protected:
-  void SetUp() override { fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>(); }
-  void TearDown() override { fake_kv_.reset(); }
+  void SetUp() override {
+    fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
+    io_context_ =
+        std::make_unique<InstrumentedIOContextWithThread>("UsageStatsClientTest");
+  }
+  void TearDown() override {
+    io_context_.reset();
+    fake_kv_.reset();
+  }
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
+  std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
 };
 
 TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
-  gcs::UsageStatsClient usage_stats_client(*fake_kv_);
+  gcs::UsageStatsClient usage_stats_client(*fake_kv_, io_context_->GetIoService());
   usage_stats_client.RecordExtraUsageTag(usage::TagKey::_TEST1, "value1");
-  fake_kv_->Get(
-      "usage_stats", "extra_usage_tag__test1", [](std::optional<std::string> value) {
-        ASSERT_TRUE(value.has_value());
-        ASSERT_EQ(value.value(), "value1");
-      });
+  fake_kv_->Get("usage_stats",
+                "extra_usage_tag__test1",
+                {[](std::optional<std::string> value) {
+                   ASSERT_TRUE(value.has_value());
+                   ASSERT_EQ(value.value(), "value1");
+                 },
+                 io_context_->GetIoService()});
   // Make sure the value is overriden for the same key.
   usage_stats_client.RecordExtraUsageTag(usage::TagKey::_TEST2, "value2");
-  fake_kv_->Get(
-      "usage_stats", "extra_usage_tag__test2", [](std::optional<std::string> value) {
-        ASSERT_TRUE(value.has_value());
-        ASSERT_EQ(value.value(), "value2");
-      });
+  fake_kv_->Get("usage_stats",
+                "extra_usage_tag__test2",
+                {[](std::optional<std::string> value) {
+                   ASSERT_TRUE(value.has_value());
+                   ASSERT_EQ(value.value(), "value2");
+                 },
+                 io_context_->GetIoService()});
 }

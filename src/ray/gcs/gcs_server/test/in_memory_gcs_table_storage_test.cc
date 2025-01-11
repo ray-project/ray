@@ -23,8 +23,7 @@ namespace ray {
 class InMemoryGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
  public:
   void SetUp() override {
-    gcs_table_storage_ =
-        std::make_shared<gcs::InMemoryGcsTableStorage>(*(io_service_pool_->Get()));
+    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>();
   }
 };
 

@@ -45,7 +45,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
         [this](const rpc::Address &) { return raylet_client_; });
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
 
     RayConfig::instance().initialize(
         R"(
@@ -82,6 +82,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
   // Test export event is written when a node is added with HandleRegisterNode
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
+                                   io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
   auto node = Mocker::GenNodeInfo();
@@ -106,6 +107,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   // Test export event is written when a node is removed with HandleUnregisterNode
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
+                                   io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
   auto node = Mocker::GenNodeInfo();

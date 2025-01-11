@@ -39,7 +39,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
 
   void SetUp() override {
     store_client_ = std::make_shared<MockStoreClient>();
-    gcs_table_storage_ = std::make_shared<GcsTableStorage>(store_client_, io_context_);
+    gcs_table_storage_ = std::make_shared<GcsTableStorage>(store_client_);
     gcs_placement_group_scheduler_ =
         std::make_shared<MockGcsPlacementGroupSchedulerInterface>();
     node_manager_ = std::make_unique<MockGcsNodeManager>();

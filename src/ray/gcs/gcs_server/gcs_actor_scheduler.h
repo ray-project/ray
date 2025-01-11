@@ -419,19 +419,22 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   FRIEND_TEST(GcsActorSchedulerTest, TestSpillback);
   FRIEND_TEST(GcsActorSchedulerTest, TestReschedule);
   FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers);
-  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleFailedWithZeroNodeByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestNotEnoughClusterResources);
-  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleAndDestroyOneActor);
-  FRIEND_TEST(GcsActorSchedulerTest, TestBalancedSchedule);
-  FRIEND_TEST(GcsActorSchedulerTest, TestRejectedRequestWorkerLeaseReply);
-  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleRetryWhenLeasingByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleRetryWhenCreatingByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestNodeFailedWhenLeasingByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasingByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestWorkerFailedWhenCreatingByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestRescheduleByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedActorWorkersByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling,
+              TestScheduleFailedWithZeroNodeByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestNotEnoughClusterResources);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestScheduleAndDestroyOneActor);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestBalancedSchedule);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling,
+              TestRejectedRequestWorkerLeaseReply);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestScheduleRetryWhenLeasingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestScheduleRetryWhenCreatingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenLeasingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling,
+              TestLeasingCancelledWhenLeasingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenCreatingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestWorkerFailedWhenCreatingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestRescheduleByGcs);
+  FRIEND_TEST(GcsActorSchedulerTestWithGcsScheduling, TestReleaseUnusedActorWorkersByGcs);
 
   friend class GcsActorSchedulerMockTest;
   FRIEND_TEST(GcsActorSchedulerMockTest, KillWorkerLeak1);
