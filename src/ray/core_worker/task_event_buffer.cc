@@ -529,6 +529,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
                     std::vector{profile_events_to_send});
   }
 
+  // Aggregate and prepare the data to send.
   std::unique_ptr<rpc::TaskEventData> data =
       CreateDataToSend(std::move(status_events_to_send),
                        std::move(profile_events_to_send),
