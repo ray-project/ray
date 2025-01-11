@@ -650,11 +650,14 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
 /***********************************************************/
 /************* TESTS WITH GCS SCHEDULING BELOW *************/
 /***********************************************************/
+class GcsActorSchedulerTestWithGcsScheduling : public GcsActorSchedulerTest {
+  void SetUp() override {
+    RayConfig::instance().initialize(R"({"gcs_actor_scheduling_enabled": true})");
+    GcsActorSchedulerTest::SetUp();
+  }
+};
 
-TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNodeByGcs) {
-  // This feature flag is turned on for all of the following tests.
-  RayConfig::instance().initialize(R"({"gcs_actor_scheduling_enabled": true})");
-
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleFailedWithZeroNodeByGcs) {
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
 
   std::unordered_map<std::string, double> required_placement_resources = {
@@ -672,7 +675,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNodeByGcs) {
   ASSERT_TRUE(actor->GetNodeID().IsNil());
 }
 
-TEST_F(GcsActorSchedulerTest, TestNotEnoughClusterResources) {
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestNotEnoughClusterResources) {
   // Add a node with 64 memory units and 8 CPU.
   std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
@@ -694,7 +697,7 @@ TEST_F(GcsActorSchedulerTest, TestNotEnoughClusterResources) {
   ASSERT_TRUE(actor->GetNodeID().IsNil());
 }
 
-TEST_F(GcsActorSchedulerTest, TestScheduleAndDestroyOneActor) {
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleAndDestroyOneActor) {
   // Add a node with 64 memory units and 8 CPU.
   std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
@@ -751,7 +754,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleAndDestroyOneActor) {
               resource_view_before_scheduling.at(scheduling_node_id).GetLocalView());
 }
 
-TEST_F(GcsActorSchedulerTest, TestBalancedSchedule) {
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestBalancedSchedule) {
   // Add two nodes, each with 10 memory units and 10 CPU.
   for (int i = 0; i < 2; i++) {
     std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 10},
@@ -781,7 +784,7 @@ TEST_F(GcsActorSchedulerTest, TestBalancedSchedule) {
   }
 }
 
-TEST_F(GcsActorSchedulerTest, TestRejectedRequestWorkerLeaseReply) {
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestRejectedRequestWorkerLeaseReply) {
   // Add two nodes, each with 32 memory units and 4 CPU.
   std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 32},
                                                             {kCPU_ResourceLabel, 4}};
@@ -824,7 +827,7 @@ TEST_F(GcsActorSchedulerTest, TestRejectedRequestWorkerLeaseReply) {
   ASSERT_NE(NodeID::FromBinary(first_node->node_id()), actor->GetNodeID());
 }
 
-TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasingByGcs) {
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleRetryWhenLeasingByGcs) {
   // Add a node with 64 memory units and 8 CPU.
   std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
@@ -878,7 +881,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasingByGcs) {
   ASSERT_EQ(actor->GetWorkerID(), worker_id);
 }
 
-TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreatingByGcs) {
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestScheduleRetryWhenCreatingByGcs) {
   // Add a node with 64 memory units and 8 CPU.
   std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
@@ -925,7 +928,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreatingByGcs) {
   ASSERT_EQ(actor->GetWorkerID(), worker_id);
 }
 
-TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasingByGcs) {
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenLeasingByGcs) {
   // Add a node with 64 memory units and 8 CPU.
   std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
@@ -970,7 +973,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasingByGcs) {
   ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
 }
 
-TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasingByGcs) {
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestLeasingCancelledWhenLeasingByGcs) {
   // Add a node with 64 memory units and 8 CPU.
   std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
@@ -1010,7 +1013,7 @@ TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasingByGcs) {
   ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
 }
 
-TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs) {
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestNodeFailedWhenCreatingByGcs) {
   // Add a node with 64 memory units and 8 CPU.
   std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
@@ -1059,7 +1062,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs) {
   ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
 }
 
-TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreatingByGcs) {
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestWorkerFailedWhenCreatingByGcs) {
   // Add a node with 64 memory units and 8 CPU.
   std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
@@ -1104,7 +1107,7 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreatingByGcs) {
   ASSERT_EQ(0, cluster_task_manager_->GetPendingQueueSize());
 }
 
-TEST_F(GcsActorSchedulerTest, TestRescheduleByGcs) {
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestRescheduleByGcs) {
   // Add a node with 64 memory units and 8 CPU.
   std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
@@ -1160,7 +1163,7 @@ TEST_F(GcsActorSchedulerTest, TestRescheduleByGcs) {
   ASSERT_EQ(2, success_actors_.size());
 }
 
-TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkersByGcs) {
+TEST_F(GcsActorSchedulerTestWithGcsScheduling, TestReleaseUnusedActorWorkersByGcs) {
   // Test the case that GCS won't send `RequestWorkerLease` request to the raylet,
   // if there is still a pending `ReleaseUnusedActorWorkers` request.
 
