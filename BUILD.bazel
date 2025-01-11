@@ -493,6 +493,7 @@ ray_cc_library(
     name = "gcs_pub_sub_lib",
     srcs = [
         "src/ray/gcs/pubsub/gcs_pub_sub.cc",
+        "src/ray/gcs/pubsub/gcs_pub_sub.ant.cc",
     ],
     hdrs = [
         "src/ray/gcs/pubsub/gcs_pub_sub.h",
@@ -1833,6 +1834,34 @@ ray_cc_test(
     ],
 )
 
+ray_cc_test(
+    name = "gcs_virtual_cluster_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_virtual_cluster_manager_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "virtual_cluster_manager_test",
+    size = "small",
+    srcs = ["src/ray/raylet/virtual_cluster_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":ray_mock",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 ray_cc_library(
     name = "gcs_table_storage_lib",
     srcs = glob(
@@ -1956,6 +1985,7 @@ ray_cc_library(
     name = "gcs_client_lib",
     srcs = [
         "src/ray/gcs/gcs_client/accessor.cc",
+        "src/ray/gcs/gcs_client/accessor.ant.cc",
         "src/ray/gcs/gcs_client/gcs_client.cc",
     ],
     hdrs = [

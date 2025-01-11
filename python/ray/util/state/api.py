@@ -26,6 +26,7 @@ from ray.util.state.common import (
     ListApiOptions,
     NodeState,
     ObjectState,
+    VirtualClusterState,
     PlacementGroupState,
     PredicateType,
     RuntimeEnvState,
@@ -248,13 +249,14 @@ class StateApiClient(SubmissionClient):
             TaskState,
             List[ObjectState],
             JobState,
+            VirtualClusterState,
         ]
     ]:
         """Get resources states by id
 
         Args:
             resource_name: Resource names, i.e. 'workers', 'actors', 'nodes',
-                'placement_groups', 'tasks', 'objects'.
+                'placement_groups', 'tasks', 'objects', "vclusters".
                 'jobs' and 'runtime-envs' are not supported yet.
             id: ID for the resource, i.e. 'node_id' for nodes.
             options: Get options. See `GetApiOptions` for details.
@@ -269,6 +271,7 @@ class StateApiClient(SubmissionClient):
             - WorkerState for workers
             - TaskState for tasks
             - JobState for jobs
+            - VirtualClusterState for virtual clusters
 
             Empty list for objects if not found, or list of ObjectState for objects
 
@@ -292,6 +295,7 @@ class StateApiClient(SubmissionClient):
             StateResource.TASKS: "task_id",
             StateResource.OBJECTS: "object_id",
             StateResource.JOBS: "submission_id",
+            StateResource.VCLUSTERS: "virtual_cluster_id",
         }
         if resource not in RESOURCE_ID_KEY_NAME:
             raise ValueError(f"Can't get {resource.name} by id.")
@@ -462,6 +466,7 @@ class StateApiClient(SubmissionClient):
             RuntimeEnvState,
             WorkerState,
             ClusterEventState,
+            VirtualClusterState,
         ]
     ]:
         """List resources states
@@ -1089,6 +1094,51 @@ def list_objects(
     """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.OBJECTS,
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
+        raise_on_missing_output=raise_on_missing_output,
+        _explain=_explain,
+    )
+
+
+@DeveloperAPI
+def list_vclusters(
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+    limit: int = DEFAULT_LIMIT,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
+    raise_on_missing_output: bool = True,
+    _explain: bool = False,
+) -> List[VirtualClusterState]:
+    """List virtual clusters in the cluster.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        filters: List of tuples of filter key, predicate (=, or !=), and
+            the filter value. E.g., `("ip", "=", "0.0.0.0")`
+            String filter values are case-insensitive.
+        limit: Max number of entries returned by the state backend.
+        timeout: Max timeout value for the state APIs requests made.
+        detail: When True, more details info (specified in `VirtualClusterState`)
+            will be queried and returned. See
+            :class:`VirtualClusterState <ray.util.state.common.VirtualClusterState>`.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        List of
+        :class:`VirtualClusterState <ray.util.state.common.VirtualClusterState>`.
+
+    Raises:
+        RayStateApiException: if the CLI failed to query the data.
+    """  # noqa: E501
+    return StateApiClient(address=address).list(
+        StateResource.VCLUSTERS,
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
         ),

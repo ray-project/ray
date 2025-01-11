@@ -35,6 +35,7 @@
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
+#include "ray/raylet/virtual_cluster_manager.h"
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
@@ -923,6 +924,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<MemoryMonitor> memory_monitor_;
 
   std::unique_ptr<core::experimental::MutableObjectProvider> mutable_object_provider_;
+
+  /// The virtual cluster manager.
+  std::shared_ptr<VirtualClusterManager> virtual_cluster_manager_;
 };
 
 }  // namespace raylet

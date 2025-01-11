@@ -104,7 +104,8 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
     NodeFilter node_filter,
     const std::string &preferred_node,
     int32_t schedule_top_k_absolute,
-    float scheduler_top_k_fraction) {
+    float scheduler_top_k_fraction,
+    const SchedulingContext *scheduling_context) {
   // Nodes that are feasible and currently have available resources.
   std::vector<std::pair<scheduling::NodeID, float>> available_nodes;
   // Nodes that are feasible but currently do not have available resources.
@@ -124,6 +125,9 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
     const auto &node_id = pair.first;
     const auto &node_resources = pair.second.GetLocalView();
     if (force_spillback && node_id == preferred_node_id) {
+      continue;
+    }
+    if (!is_node_schedulable_(node_id, scheduling_context)) {
       continue;
     }
     if (IsNodeFeasible(node_id, node_filter, node_resources, resource_request)) {
@@ -195,7 +199,8 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
                         NodeFilter::kAny,
                         options.preferred_node_id,
                         options.schedule_top_k_absolute,
-                        options.scheduler_top_k_fraction);
+                        options.scheduler_top_k_fraction,
+                        options.scheduling_context.get());
   }
 
   // Try schedule on non-GPU nodes.
@@ -206,7 +211,8 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
                                    NodeFilter::kNonGpu,
                                    options.preferred_node_id,
                                    options.schedule_top_k_absolute,
-                                   options.scheduler_top_k_fraction);
+                                   options.scheduler_top_k_fraction,
+                                   options.scheduling_context.get());
   if (!best_node_id.IsNil()) {
     return best_node_id;
   }
@@ -220,7 +226,8 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
                       NodeFilter::kAny,
                       options.preferred_node_id,
                       options.schedule_top_k_absolute,
-                      options.scheduler_top_k_fraction);
+                      options.scheduler_top_k_fraction,
+                      options.scheduling_context.get());
 }
 
 }  // namespace raylet_scheduling_policy

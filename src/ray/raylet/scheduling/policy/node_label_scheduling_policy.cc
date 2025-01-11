@@ -29,7 +29,8 @@ scheduling::NodeID NodeLabelSchedulingPolicy::Schedule(
   const auto &node_label_scheduling_strategy =
       scheduling_strategy.node_label_scheduling_strategy();
   // 1. Selet feasible nodes
-  auto hard_match_nodes = SelectFeasibleNodes(resource_request);
+  auto hard_match_nodes =
+      SelectFeasibleNodes(resource_request, options.scheduling_context.get());
   if (hard_match_nodes.empty()) {
     return scheduling::NodeID::Nil();
   }
@@ -163,12 +164,14 @@ bool NodeLabelSchedulingPolicy::IsNodeLabelInValues(
 
 absl::flat_hash_map<scheduling::NodeID, const Node *>
 NodeLabelSchedulingPolicy::SelectFeasibleNodes(
-    const ResourceRequest &resource_request) const {
+    const ResourceRequest &resource_request,
+    const SchedulingContext *scheduling_context) const {
   absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
   for (const auto &pair : nodes_) {
     const auto &node_id = pair.first;
     const auto &node_resources = pair.second.GetLocalView();
-    if (is_node_alive_(node_id) && node_resources.IsFeasible(resource_request)) {
+    if (is_node_alive_(node_id) && is_node_schedulable_(node_id, scheduling_context) &&
+        node_resources.IsFeasible(resource_request)) {
       candidate_nodes.emplace(node_id, &pair.second);
     }
   }

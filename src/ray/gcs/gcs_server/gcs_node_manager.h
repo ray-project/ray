@@ -27,6 +27,7 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -51,7 +52,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   GcsNodeManager(GcsPublisher *gcs_publisher,
                  gcs::GcsTableStorage *gcs_table_storage,
                  rpc::NodeManagerClientPool *raylet_client_pool,
-                 const ClusterID &cluster_id);
+                 const ClusterID &cluster_id,
+                 GcsVirtualClusterManager &gcs_virtual_cluster_manager);
 
   /// Handle register rpc request come from raylet.
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
@@ -251,6 +253,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   rpc::NodeManagerClientPool *raylet_client_pool_ = nullptr;
   /// Cluster ID to be shared with clients when connecting.
   const ClusterID cluster_id_;
+  /// The gcs virtual cluster handler and service.
+  GcsVirtualClusterManager &gcs_virtual_cluster_manager_;
 
   // Debug info.
   enum CountType {

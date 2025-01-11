@@ -26,13 +26,17 @@ namespace raylet_scheduling_policy {
 /// requirement, the distribution might not be even.
 class RandomSchedulingPolicy : public ISchedulingPolicy {
  public:
-  RandomSchedulingPolicy(scheduling::NodeID local_node_id,
-                         const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
-                         std::function<bool(scheduling::NodeID)> is_node_available)
+  RandomSchedulingPolicy(
+      scheduling::NodeID local_node_id,
+      const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
+      std::function<bool(scheduling::NodeID)> is_node_available,
+      std::function<bool(scheduling::NodeID, const SchedulingContext *)>
+          is_node_schedulable)
       : local_node_id_(local_node_id),
         nodes_(nodes),
         gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
-        is_node_available_(is_node_available) {}
+        is_node_available_(is_node_available),
+        is_node_schedulable_(is_node_schedulable) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -46,6 +50,8 @@ class RandomSchedulingPolicy : public ISchedulingPolicy {
   std::mt19937_64 gen_;
   /// Function Checks if node is alive.
   std::function<bool(scheduling::NodeID)> is_node_available_;
+  /// Function Checks if node is schedulable.
+  std::function<bool(scheduling::NodeID, const SchedulingContext *)> is_node_schedulable_;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

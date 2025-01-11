@@ -45,6 +45,8 @@ enum ChannelType {
   RAY_LOG_CHANNEL = 8;
   /// A channel for reporting node resource usage stats.
   RAY_NODE_RESOURCE_USAGE_CHANNEL = 10;
+  /// A channel for virtual cluster changes.
+  RAY_VIRTUAL_CLUSTER_CHANNEL = 11;
 }
 
 ///
@@ -69,6 +71,7 @@ message PubMessage {
     ErrorTableData error_info_message = 12;
     LogBatch log_batch_message = 13;
     NodeResourceUsage node_resource_usage_message = 15;
+    VirtualClusterTableData virtual_cluster_message = 20;
 
     // The message that indicates the given key id is not available anymore.
     FailureMessage failure_message = 6;

@@ -35,6 +35,7 @@
 
 namespace ray {
 
+using raylet_scheduling_policy::SchedulingContext;
 using raylet_scheduling_policy::SchedulingOptions;
 using raylet_scheduling_policy::SchedulingResult;
 
@@ -50,11 +51,14 @@ class ClusterResourceScheduler {
   /// with the local node.
   /// \param is_node_available_fn: Function to determine whether a node is available.
   /// \param is_local_node_with_raylet: Whether there is a raylet on the local node.
-  ClusterResourceScheduler(instrumented_io_context &io_service,
-                           scheduling::NodeID local_node_id,
-                           const NodeResources &local_node_resources,
-                           std::function<bool(scheduling::NodeID)> is_node_available_fn,
-                           bool is_local_node_with_raylet = true);
+  ClusterResourceScheduler(
+      instrumented_io_context &io_service,
+      scheduling::NodeID local_node_id,
+      const NodeResources &local_node_resources,
+      std::function<bool(scheduling::NodeID)> is_node_available_fn,
+      bool is_local_node_with_raylet = true,
+      std::function<bool(scheduling::NodeID, const SchedulingContext *)>
+          is_node_schedulable_fn = nullptr);
 
   ClusterResourceScheduler(
       instrumented_io_context &io_service,
@@ -65,7 +69,9 @@ class ClusterResourceScheduler {
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully =
           nullptr,
-      const absl::flat_hash_map<std::string, std::string> &local_node_labels = {});
+      const absl::flat_hash_map<std::string, std::string> &local_node_labels = {},
+      std::function<bool(scheduling::NodeID, const SchedulingContext *)>
+          is_node_schedulable_fn = nullptr);
 
   /// Schedule the specified resources to the cluster nodes.
   ///
@@ -219,6 +225,9 @@ class ClusterResourceScheduler {
       bundle_scheduling_policy_;
   /// Whether there is a raylet on the local node.
   bool is_local_node_with_raylet_ = true;
+  /// Callback to check if node is schedulable.
+  std::function<bool(scheduling::NodeID, const SchedulingContext *)>
+      is_node_schedulable_fn_;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);

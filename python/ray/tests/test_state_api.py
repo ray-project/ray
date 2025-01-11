@@ -3722,6 +3722,7 @@ def test_core_state_api_usage_tags(shutdown_only):
         TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS,
         TagKey.CORE_STATE_API_LIST_NODES,
         TagKey.CORE_STATE_API_LIST_OBJECTS,
+        TagKey.CORE_STATE_API_LIST_VCLUSTERS,
         TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS,
         TagKey.CORE_STATE_API_LIST_WORKERS,
         TagKey.CORE_STATE_API_SUMMARIZE_ACTORS,

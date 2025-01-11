@@ -26,6 +26,7 @@ namespace raylet_scheduling_policy {
 // Options that controls the scheduling behavior.
 struct SchedulingContext {
   virtual ~SchedulingContext() = default;
+  std::string virtual_cluster_id;
 };
 
 struct BundleSchedulingContext : public SchedulingContext {

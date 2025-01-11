@@ -184,6 +184,12 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_OBJECTS, "1")
         return await handle_list_api(self._state_api.list_objects, req)
 
+    @routes.get("/api/v0/vclusters")
+    @RateLimitedModule.enforce_max_concurrent_calls
+    async def list_vclusters(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_VCLUSTERS, "1")
+        return await handle_list_api(self._state_api.list_vclusters, req)
+
     @routes.get("/api/v0/runtime_envs")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:

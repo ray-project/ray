@@ -153,6 +153,9 @@ namespace rpc {
 #define INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalPubSubGcsService, HANDLER, -1)
 
+#define VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(VirtualClusterInfoGcsService, HANDLER, -1)
+
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
   reply->mutable_status()->set_code((int)status.code());       \
   reply->mutable_status()->set_message(status.message());      \
@@ -719,6 +722,62 @@ class InternalPubSubGrpcService : public GrpcService {
   InternalPubSubGcsServiceHandler &service_handler_;
 };
 
+class VirtualClusterInfoGcsServiceHandler {
+ public:
+  virtual ~VirtualClusterInfoGcsServiceHandler() = default;
+
+  virtual void HandleCreateOrUpdateVirtualCluster(
+      CreateOrUpdateVirtualClusterRequest request,
+      CreateOrUpdateVirtualClusterReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRemoveVirtualCluster(RemoveVirtualClusterRequest request,
+                                          RemoveVirtualClusterReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetVirtualClusters(GetVirtualClustersRequest request,
+                                        GetVirtualClustersReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCreateJobCluster(CreateJobClusterRequest request,
+                                      CreateJobClusterReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllVirtualClusterInfo(GetAllVirtualClusterInfoRequest request,
+                                              GetAllVirtualClusterInfoReply *reply,
+                                              SendReplyCallback send_reply_callback) = 0;
+};
+
+class VirtualClusterInfoGrpcService : public GrpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  explicit VirtualClusterInfoGrpcService(instrumented_io_context &io_service,
+                                         VirtualClusterInfoGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override {
+    VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(CreateOrUpdateVirtualCluster);
+    VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(RemoveVirtualCluster);
+    VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(GetVirtualClusters);
+    VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(CreateJobCluster);
+    VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(GetAllVirtualClusterInfo);
+  }
+
+ private:
+  /// The grpc async service object.
+  VirtualClusterInfoGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  VirtualClusterInfoGcsServiceHandler &service_handler_;
+};
+
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
@@ -729,6 +788,7 @@ using InternalKVHandler = InternalKVGcsServiceHandler;
 using InternalPubSubHandler = InternalPubSubGcsServiceHandler;
 using RuntimeEnvHandler = RuntimeEnvGcsServiceHandler;
 using TaskInfoHandler = TaskInfoGcsServiceHandler;
+using VirtualClusterInfoHandler = VirtualClusterInfoGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

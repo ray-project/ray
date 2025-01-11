@@ -105,6 +105,12 @@ class PlacementGroupSpecBuilder {
     message_->set_is_detached(is_detached);
     message_->set_max_cpu_fraction_per_node(max_cpu_fraction_per_node);
     message_->set_soft_target_node_id(soft_target_node_id.Binary());
+    // This ensures that placement groups incorporate virtual cluster information during
+    // scheduling.
+    std::string virtual_cluster_id = std::getenv(kEnvVarKeyVirtualClusterID)
+                                         ? std::getenv(kEnvVarKeyVirtualClusterID)
+                                         : "";
+    message_->set_virtual_cluster_id(virtual_cluster_id);
 
     for (size_t i = 0; i < bundles.size(); i++) {
       auto resources = bundles[i];

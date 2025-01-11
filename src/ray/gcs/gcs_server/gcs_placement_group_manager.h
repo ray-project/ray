@@ -85,6 +85,8 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         current_sys_time_ms());
+    placement_group_table_data_.set_virtual_cluster_id(
+        placement_group_spec.virtual_cluster_id());
     SetupStates();
   }
 
@@ -131,6 +133,9 @@ class GcsPlacementGroup {
 
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
+
+  /// Get the Virtual Cluster ID associated with this PlacementGroup
+  const std::string &GetVirtualClusterID() const;
 
   /// Get debug string for the placement group.
   std::string DebugString() const;
@@ -217,6 +222,11 @@ class GcsPlacementGroup {
   /// The last recorded metric state.
   std::optional<rpc::PlacementGroupTableData::PlacementGroupState> last_metric_state_;
 };
+
+using PlacementGroupRegistrationListenerCallback =
+    std::function<void(const std::shared_ptr<GcsPlacementGroup> &)>;
+using PlacementGroupDestroyListenerCallback =
+    std::function<void(const std::shared_ptr<GcsPlacementGroup> &)>;
 
 /// GcsPlacementGroupManager is responsible for managing the lifecycle of all placement
 /// group. This class is not thread-safe.
@@ -391,6 +401,19 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// the returned rpc has any placement_group_data.
   virtual std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
 
+  /// Add placement group registration event listener.
+  void AddPlacementGroupRegistrationListener(
+      PlacementGroupRegistrationListenerCallback listener) {
+    RAY_CHECK(listener);
+    placement_group_registration_listeners_.emplace_back(std::move(listener));
+  }
+
+  /// Add placement group destroy event listener.
+  void AddPlacementGroupDestroyListener(PlacementGroupDestroyListenerCallback listener) {
+    RAY_CHECK(listener);
+    placement_group_destroy_listeners_.emplace_back(std::move(listener));
+  }
+
  protected:
   /// For testing/mocking only.
   explicit GcsPlacementGroupManager(instrumented_io_context &io_context,
@@ -508,6 +531,13 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   /// Total number of successfully created placement groups in the cluster lifetime.
   int64_t lifetime_num_placement_groups_created_ = 0;
+
+  /// Listeners which monitors the registration of placement group.
+  std::vector<PlacementGroupRegistrationListenerCallback>
+      placement_group_registration_listeners_;
+
+  /// Listeners which monitors the destruction of placement group.
+  std::vector<PlacementGroupDestroyListenerCallback> placement_group_destroy_listeners_;
 
   // Debug info.
   enum CountType {

@@ -71,6 +71,7 @@ class StateResource(Enum):
     OBJECTS = "objects"
     RUNTIME_ENVS = "runtime_envs"
     CLUSTER_EVENTS = "cluster_events"
+    VCLUSTERS = "vclusters"
 
 
 @unique
@@ -853,6 +854,26 @@ class ObjectState(StateSchema):
 
 
 @dataclass(init=not IS_PYDANTIC_2)
+class VirtualClusterState(StateSchema):
+    """Virtual Cluster State"""
+
+    #: The virtual cluster id.
+    virtual_cluster_id: str = state_column(filterable=True)
+    #: Whether the virtual cluster can split into many child virtual clusters or not.
+    divisible: bool = state_column(filterable=True)
+    #: Divided virtual clusters.
+    divided_clusters: list = state_column(filterable=False)
+    #: Replica Sets of virtual cluster
+    replica_sets: Optional[dict] = state_column(filterable=False, detail=True)
+    #: Only display undivided replica sets
+    undivided_replica_sets: Optional[dict] = state_column(filterable=False, detail=True)
+    #: Mapping from node id to its instance.
+    visible_node_instances: Optional[dict] = state_column(filterable=False, detail=True)
+    #: Only display undivided nodes
+    undivided_nodes: Optional[dict] = state_column(filterable=False, detail=True)
+
+
+@dataclass(init=not IS_PYDANTIC_2)
 class RuntimeEnvState(StateSchema):
     """Runtime Environment State"""
 
@@ -1539,6 +1560,8 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
         return WorkerState
     elif resource == StateResource.CLUSTER_EVENTS:
         return ClusterEventState
+    elif resource == StateResource.VCLUSTERS:
+        return VirtualClusterState
     else:
         assert False, "Unreachable"
 

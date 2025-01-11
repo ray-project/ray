@@ -571,6 +571,10 @@ class Worker:
         return self.node.cluster_id, self.current_job_id
 
     @property
+    def current_virtual_cluster_id(self):
+        return os.environ.get(ray_constants.RAY_VIRTUAL_CLUSTER_ID_ENV_VAR, "")
+
+    @property
     def runtime_env(self):
         """Get the runtime env in json format"""
         return self.core_worker.get_current_runtime_env()
