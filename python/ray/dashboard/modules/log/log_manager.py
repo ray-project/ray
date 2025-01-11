@@ -1,7 +1,7 @@
 import logging
 import re
 from collections import defaultdict
-from typing import AsyncIterable, Callable, Dict, List, Optional, Tuple
+from typing import AsyncIterable, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from ray._private.pydantic_compat import BaseModel
 
@@ -84,6 +84,7 @@ class LogsManager:
     async def stream_logs(
         self,
         options: GetLogOptions,
+        get_actor_fn: Callable[[str], Awaitable[Dict]],
     ) -> AsyncIterable[bytes]:
         """Generate a stream of logs in bytes.
 
@@ -102,7 +103,7 @@ class LogsManager:
             task_id=options.task_id,
             attempt_number=options.attempt_number,
             pid=options.pid,
-            get_actor_fn=DataSource.actors.get,
+            get_actor_fn=get_actor_fn,
             timeout=options.timeout,
             suffix=options.suffix,
             submission_id=options.submission_id,
@@ -208,7 +209,7 @@ class LogsManager:
     async def _resolve_actor_filename(
         self,
         actor_id: str,
-        get_actor_fn: Callable[[str], Dict],
+        get_actor_fn: Callable[[str], Awaitable[Dict]],
         suffix: str,
         timeout: int,
     ):
@@ -228,20 +229,20 @@ class LogsManager:
         if get_actor_fn is None:
             raise ValueError("get_actor_fn needs to be specified for actor_id")
 
-        actor_data = get_actor_fn(actor_id)
+        actor_data = await get_actor_fn(actor_id)
         if actor_data is None:
             raise ValueError(f"Actor ID {actor_id} not found.")
-
+        logger.error(f"actor_data: {actor_data}")
         # TODO(sang): Only the latest worker id can be obtained from
         # actor information now. That means, if actors are restarted,
         # there's no way for us to get the past worker ids.
-        worker_id = actor_data["address"].get("workerId")
+        worker_id = actor_data["address"].get("worker_id")
         if not worker_id:
             raise ValueError(
                 f"Worker ID for Actor ID {actor_id} not found. "
                 "Actor is not scheduled yet."
             )
-        node_id = actor_data["address"].get("rayletId")
+        node_id = actor_data["address"].get("raylet_id")
         if not node_id:
             raise ValueError(
                 f"Node ID for Actor ID {actor_id} not found. "
@@ -360,7 +361,7 @@ class LogsManager:
         task_id: Optional[str] = None,
         attempt_number: Optional[int] = None,
         pid: Optional[str] = None,
-        get_actor_fn: Optional[Callable[[str], Dict]] = None,
+        get_actor_fn: Optional[Callable[[str], Awaitable[Dict]]] = None,
         timeout: int = DEFAULT_RPC_TIMEOUT,
         suffix: str = "out",
         submission_id: Optional[str] = None,
