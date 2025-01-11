@@ -93,7 +93,7 @@ a subclass of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`.
 Callback events
 ---------------
 
-During a training iteration, the Algorithm normally walks through the following event tree, 
+During a training iteration, the Algorithm normally walks through the following event tree,
 a high-level overview of all supported events in RLlib's callbacks system:
 
 .. code-block:: text
@@ -354,4 +354,3 @@ See this more complex example that `generates and logs a PacMan heatmap (image) 
 
 See :ref:`Callbacks invoked in Algorithm <rllib-callback-reference-algorithm-bound>`
 for the exact call signatures of all available callbacks and the argument types they expect.
-

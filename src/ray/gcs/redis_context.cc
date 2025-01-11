@@ -34,23 +34,22 @@ namespace ray {
 
 namespace gcs {
 
-CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply->type) {
-  RAY_CHECK(nullptr != redis_reply);
-
+CallbackReply::CallbackReply(const redisReply &redis_reply)
+    : reply_type_(redis_reply.type) {
   switch (reply_type_) {
   case REDIS_REPLY_NIL: {
     break;
   }
   case REDIS_REPLY_ERROR: {
-    RAY_LOG(FATAL) << "Got an error in redis reply: " << redis_reply->str;
+    RAY_LOG(FATAL) << "Got an error in redis reply: " << redis_reply.str;
     break;
   }
   case REDIS_REPLY_INTEGER: {
-    int_reply_ = static_cast<int64_t>(redis_reply->integer);
+    int_reply_ = static_cast<int64_t>(redis_reply.integer);
     break;
   }
   case REDIS_REPLY_STATUS: {
-    const std::string status_str(redis_reply->str, redis_reply->len);
+    const std::string status_str(redis_reply.str, redis_reply.len);
     if (status_str == "OK") {
       status_reply_ = Status::OK();
     } else {
@@ -59,11 +58,11 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
     break;
   }
   case REDIS_REPLY_STRING: {
-    string_reply_ = std::string(redis_reply->str, redis_reply->len);
+    string_reply_ = std::string(redis_reply.str, redis_reply.len);
     break;
   }
   case REDIS_REPLY_ARRAY: {
-    if (redis_reply->elements == 0) {
+    if (redis_reply.elements == 0) {
       break;
     }
     // Array replies are used for scan or get.
@@ -78,12 +77,12 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
 
 bool CallbackReply::IsError() const { return reply_type_ == REDIS_REPLY_ERROR; }
 
-void CallbackReply::ParseAsStringArrayOrScanArray(redisReply *redis_reply) {
-  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply->type);
-  const auto array_size = static_cast<size_t>(redis_reply->elements);
+void CallbackReply::ParseAsStringArrayOrScanArray(const redisReply &redis_reply) {
+  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply.type);
+  const auto array_size = static_cast<size_t>(redis_reply.elements);
   if (array_size == 2) {
-    auto *cursor_entry = redis_reply->element[0];
-    auto *array_entry = redis_reply->element[1];
+    auto *cursor_entry = redis_reply.element[0];
+    auto *array_entry = redis_reply.element[1];
     if (REDIS_REPLY_ARRAY == array_entry->type) {
       // Parse as a scan array
       RAY_CHECK(REDIS_REPLY_STRING == cursor_entry->type);
@@ -103,12 +102,12 @@ void CallbackReply::ParseAsStringArrayOrScanArray(redisReply *redis_reply) {
   ParseAsStringArray(redis_reply);
 }
 
-void CallbackReply::ParseAsStringArray(redisReply *redis_reply) {
-  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply->type);
-  const auto array_size = static_cast<size_t>(redis_reply->elements);
+void CallbackReply::ParseAsStringArray(const redisReply &redis_reply) {
+  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply.type);
+  const auto array_size = static_cast<size_t>(redis_reply.elements);
   string_array_reply_.reserve(array_size);
   for (size_t i = 0; i < array_size; ++i) {
-    auto *entry = redis_reply->element[i];
+    auto *entry = redis_reply.element[i];
     if (entry->type == REDIS_REPLY_STRING) {
       string_array_reply_.emplace_back(std::string(entry->str, entry->len));
     } else {
@@ -172,7 +171,7 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
   }
 }
 
-void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_context,
+void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
                                           void *raw_reply,
                                           void *privdata) {
   auto *request_cxt = static_cast<RedisRequestContext *>(privdata);
@@ -192,7 +191,7 @@ void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_contex
         [request_cxt]() { request_cxt->Run(); },
         std::chrono::milliseconds(delay));
   } else {
-    auto reply = std::make_shared<CallbackReply>(redis_reply);
+    auto reply = std::make_shared<CallbackReply>(*redis_reply);
     request_cxt->io_service_.post(
         [reply, callback = std::move(request_cxt->callback_)]() {
           if (callback) {
@@ -665,7 +664,7 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
     RAY_LOG(ERROR) << "Failed to send redis command (sync): " << context_->errstr;
     return nullptr;
   }
-  std::unique_ptr<CallbackReply> callback_reply(new CallbackReply(redis_reply));
+  std::unique_ptr<CallbackReply> callback_reply(new CallbackReply(*redis_reply));
   freeReplyObject(redis_reply);
   return callback_reply;
 }
