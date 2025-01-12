@@ -37,7 +37,7 @@ ignore = [
     "C417",
     "C418",
     "C419",
-    # Autofixable rules
+    # Below are auto-fixable rules
     "I001",
     "E401",
     "E703",
