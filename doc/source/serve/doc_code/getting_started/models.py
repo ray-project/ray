@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 
 # __start_translation_model__
 # File name: model.py

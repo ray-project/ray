@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 # isort: skip_file
 
 # __xgboost_start__

@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 
 # fmt: off
 # __stopping_example_trainable_start__

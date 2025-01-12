@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 # __single_sample_begin__
 from ray import serve
 from ray.serve.handle import DeploymentHandle

@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 # fmt: off
 
 # __serve_example_begin__

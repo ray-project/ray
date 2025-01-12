@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 # __response_to_object_ref_example_start__
 # File name: response_to_object_ref.py
 import ray

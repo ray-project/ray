@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 # __owners_begin__
 import ray
 import numpy as np

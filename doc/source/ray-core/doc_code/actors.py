@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 
 # __cancel_start__
 import ray

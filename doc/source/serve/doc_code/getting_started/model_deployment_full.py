@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 
 # __deployment_full_start__
 # File name: serve_quickstart.py

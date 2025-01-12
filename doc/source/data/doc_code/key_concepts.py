@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 
 # fmt: off
 # __resource_allocation_1_begin__

@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 
 import os
 from filelock import FileLock

@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 # __chaining_example_start__
 # File name: chain.py
 from ray import serve

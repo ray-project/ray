@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 # fmt: off
 # __init_namespace_start__
 import ray

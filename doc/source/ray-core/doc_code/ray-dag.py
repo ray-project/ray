@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 
 # fmt: off
 # __dag_tasks_begin__

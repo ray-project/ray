@@ -1,4 +1,4 @@
-# ruff: noqa
+# flake8: noqa
 # isort: skip_file
 
 # __tf_train_start__
