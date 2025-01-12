@@ -4,7 +4,8 @@ exclude: |
     python/ray/serve/generated/|
     python/ray/cloudpickle/|
     python/ray/_private/runtime_env/_clonevirtualenv.py|
-    doc/external/
+    doc/external/|
+    doc/source/
   )
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
