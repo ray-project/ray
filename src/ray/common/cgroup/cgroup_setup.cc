@@ -61,19 +61,24 @@ constexpr int kCgroupFilePerm = 0600;
 
 // If system processes are running in the container, all processes will be placed in the
 // root cgroup. This function will move all PIDs under root cgroup into system cgroup.
-void MoveProcsInSystemCgroup() {
+//
+// Return whether the PIDs move successfully.
+bool MoveProcsInSystemCgroup() {
   std::ifstream in_file(kRtootCgroupProcs.data());
   std::ofstream out_file(cgroup_v2_system_folder.data());
   int pid = 0;
   while (in_file >> pid) {
     out_file << pid << std::endl;
   }
+  return out_file.good();
 }
 
-void EnableCgroupSubtreeControl(const char *subtree_control_path) {
+// Return whether cgroup control writes successfully.
+bool EnableCgroupSubtreeControl(const char *subtree_control_path) {
   std::ofstream out_file(subtree_control_path);
   // Able to add new PIDs and memory constraint to the system cgroup.
   out_file << "+memory +pids";
+  return out_file.good();
 }
 
 }  // namespace
@@ -151,8 +156,12 @@ bool SetupCgroupsPreparation(const std::string &node_id) {
     return false;
   }
 
-  MoveProcsInSystemCgroup();
-  EnableCgroupSubtreeControl(kRootCgroupSubtreeControl.data());
+  if (!MoveProcsInSystemCgroup()) {
+    return false;
+  }
+  if (!EnableCgroupSubtreeControl(kRootCgroupSubtreeControl.data())) {
+    return false;
+  }
 
   // Setup application cgroup.
   ret_code = mkdir(cgroup_v2_app_folder.data(), kCgroupFilePerm);
@@ -160,7 +169,9 @@ bool SetupCgroupsPreparation(const std::string &node_id) {
     RAY_LOG(ERROR) << "Failed to create application cgroup: " << strerror(errno);
     return false;
   }
-  EnableCgroupSubtreeControl(cgroup_v2_app_subtree_control.data());
+  if (!EnableCgroupSubtreeControl(cgroup_v2_app_subtree_control.data())) {
+    return false;
+  }
 
   return true;
 }

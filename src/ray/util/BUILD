@@ -65,3 +65,14 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
+
+ray_cc_library(
+    name = "pipe_logger",
+    hdrs = ["pipe_logger.h"],
+    srcs = ["pipe_logger.cc"],
+    deps = [
+        "@com_github_spdlog//:spdlog",
+        ":util",
+        "@com_google_absl//absl/strings",
+    ],
+)

@@ -46,7 +46,8 @@ class LocalNode : public ReporterInterface {
                           << ", v:" << version_ << ")";
           }
         },
-        1000);
+        1000,
+        "LocalNodeStateUpdate");
   }
 
   std::optional<RaySyncMessage> CreateSyncMessage(int64_t current_version,
