@@ -52,5 +52,6 @@ ignore = [
     "Q002",
 ]
 exclude = [
+    # Intentionally syntax error
     "python/ray/serve/tests/test_config_files/syntax_error.py",
 ]
