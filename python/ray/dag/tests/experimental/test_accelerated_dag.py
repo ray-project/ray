@@ -2644,6 +2644,20 @@ def test_signature_mismatch(shutdown_only):
             _ = worker.g.bind(inp)
 
 
+def test_destruction_out_of_order():
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+    compiled_dag = dag.experimental_compile()
+    # the second ref will be immediately destructed
+    # and we want to assure that the result at the
+    # first execution index is still intact
+    ref = compiled_dag.execute(1)
+    compiled_dag.execute(1)
+    time.sleep(0.1)
+    assert ray.get(ref) == 1
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Sigint not supported on Windows")
 def test_sigint_get_dagref(ray_start_cluster):
     driver_script = """

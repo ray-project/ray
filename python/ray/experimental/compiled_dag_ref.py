@@ -112,8 +112,11 @@ class CompiledDAGRef:
 
         self._ray_get_called = True
         try:
-            return_vals = self._dag._execute_until(
+            self._dag._execute_until(
                 self._execution_index, self._channel_index, timeout
+            )
+            return_vals = self._dag._get_execution_results(
+                self._execution_index, self._channel_index
             )
         except RayChannelTimeoutError:
             raise

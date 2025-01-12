@@ -2031,10 +2031,13 @@ class CompiledDAG:
         ctx = DAGContext.get_current()
         timeout = ctx.get_timeout
 
-        while self._max_finished_execution_index < execution_index:
-            self.increment_max_finished_execution_index()
+        if self._max_finished_execution_index < execution_index:
+            # to assure all previous executions are done and cached
+            # before we release buffers for this one
+            self._execute_until(execution_index - 1)
             start_time = time.monotonic()
             self._dag_output_fetcher.release_channel_buffers(timeout)
+            self._max_finished_execution_index += 1
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
@@ -2105,8 +2108,6 @@ class CompiledDAG:
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
-
-        return self._get_execution_results(execution_index, channel_index)
 
     def execute(
         self,
