@@ -74,12 +74,11 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   auto &io_context = io_context_provider_.GetDefaultIOContext();
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
-    gcs_table_storage_ = std::make_unique<InMemoryGcsTableStorage>(io_context);
+    gcs_table_storage_ = std::make_unique<InMemoryGcsTableStorage>();
     break;
   case StorageType::REDIS_PERSIST: {
     auto redis_client = CreateRedisClient(io_context);
-    gcs_table_storage_ =
-        std::make_unique<gcs::RedisGcsTableStorage>(redis_client, io_context);
+    gcs_table_storage_ = std::make_unique<gcs::RedisGcsTableStorage>(redis_client);
     // Init redis failure detector.
     gcs_redis_failure_detector_ =
         std::make_unique<GcsRedisFailureDetector>(io_context, redis_client, []() {
@@ -132,45 +131,52 @@ void GcsServer::Start() {
   // Init KV Manager. This needs to be initialized first here so that
   // it can be used to retrieve the cluster ID.
   InitKVManager();
-  gcs_init_data->AsyncLoad([this, gcs_init_data] {
-    GetOrGenerateClusterId({[this, gcs_init_data](ClusterID cluster_id) {
-                              rpc_server_.SetClusterId(cluster_id);
-                              DoStart(*gcs_init_data);
+  gcs_init_data->AsyncLoad({[this, gcs_init_data] {
+                              GetOrGenerateClusterId(
+                                  {[this, gcs_init_data](ClusterID cluster_id) {
+                                     rpc_server_.SetClusterId(cluster_id);
+                                     DoStart(*gcs_init_data);
+                                   },
+                                   io_context_provider_.GetDefaultIOContext()});
                             },
                             io_context_provider_.GetDefaultIOContext()});
-  });
 }
 
 void GcsServer::GetOrGenerateClusterId(
     Postable<void(ClusterID cluster_id)> continuation) {
+  instrumented_io_context &io_context = continuation.io_context();
   static std::string const kClusterIdNamespace = "cluster";
   kv_manager_->GetInstance().Get(
       kClusterIdNamespace,
       kClusterIdKey,
-      [this, continuation = std::move(continuation)](
-          std::optional<std::string> provided_cluster_id) mutable {
-        if (!provided_cluster_id.has_value()) {
-          ClusterID cluster_id = ClusterID::FromRandom();
-          RAY_LOG(INFO) << "No existing server cluster ID found. Generating new ID: "
-                        << cluster_id.Hex();
-          kv_manager_->GetInstance().Put(
-              kClusterIdNamespace,
-              kClusterIdKey,
-              cluster_id.Binary(),
-              false,
-              [cluster_id,
-               continuation = std::move(continuation)](bool added_entry) mutable {
-                RAY_CHECK(added_entry) << "Failed to persist new cluster ID!";
-                std::move(continuation)
-                    .Post("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
-              });
-        } else {
-          ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
-          RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
-          std::move(continuation)
-              .Post("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
-        }
-      });
+      {[this, continuation = std::move(continuation)](
+           std::optional<std::string> provided_cluster_id) mutable {
+         if (!provided_cluster_id.has_value()) {
+           instrumented_io_context &io_context = continuation.io_context();
+           ClusterID cluster_id = ClusterID::FromRandom();
+           RAY_LOG(INFO) << "No existing server cluster ID found. Generating new ID: "
+                         << cluster_id.Hex();
+           kv_manager_->GetInstance().Put(
+               kClusterIdNamespace,
+               kClusterIdKey,
+               cluster_id.Binary(),
+               false,
+               {[cluster_id,
+                 continuation = std::move(continuation)](bool added_entry) mutable {
+                  RAY_CHECK(added_entry) << "Failed to persist new cluster ID!";
+                  std::move(continuation)
+                      .Dispatch("GcsServer.GetOrGenerateClusterId.continuation",
+                                cluster_id);
+                },
+                io_context});
+         } else {
+           ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
+           RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
+           std::move(continuation)
+               .Dispatch("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
+         }
+       },
+       io_context});
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
@@ -281,10 +287,12 @@ void GcsServer::Stop() {
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_node_manager_ = std::make_unique<GcsNodeManager>(gcs_publisher_.get(),
-                                                       gcs_table_storage_.get(),
-                                                       raylet_client_pool_.get(),
-                                                       rpc_server_.GetClusterId());
+  gcs_node_manager_ =
+      std::make_unique<GcsNodeManager>(gcs_publisher_.get(),
+                                       gcs_table_storage_.get(),
+                                       io_context_provider_.GetDefaultIOContext(),
+                                       raylet_client_pool_.get(),
+                                       rpc_server_.GetClusterId());
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -408,12 +416,14 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
     });
   };
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_job_manager_ = std::make_unique<GcsJobManager>(*gcs_table_storage_,
-                                                     *gcs_publisher_,
-                                                     *runtime_env_manager_,
-                                                     *function_manager_,
-                                                     kv_manager_->GetInstance(),
-                                                     client_factory);
+  gcs_job_manager_ =
+      std::make_unique<GcsJobManager>(*gcs_table_storage_,
+                                      *gcs_publisher_,
+                                      *runtime_env_manager_,
+                                      *function_manager_,
+                                      kv_manager_->GetInstance(),
+                                      io_context_provider_.GetDefaultIOContext(),
+                                      client_factory);
   gcs_job_manager_->Initialize(gcs_init_data);
 
   // Register service.
@@ -467,6 +477,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       std::make_unique<GcsActorManager>(
           std::move(scheduler),
           gcs_table_storage_.get(),
+          io_context_provider_.GetDefaultIOContext(),
           gcs_publisher_.get(),
           *runtime_env_manager_,
           *function_manager_,
@@ -549,11 +560,13 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitFunctionManager() {
-  function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
+  function_manager_ = std::make_unique<GcsFunctionManager>(
+      kv_manager_->GetInstance(), io_context_provider_.GetDefaultIOContext());
 }
 
 void GcsServer::InitUsageStatsClient() {
-  usage_stats_client_ = std::make_unique<UsageStatsClient>(kv_manager_->GetInstance());
+  usage_stats_client_ = std::make_unique<UsageStatsClient>(
+      kv_manager_->GetInstance(), io_context_provider_.GetDefaultIOContext());
 
   gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
@@ -568,19 +581,18 @@ void GcsServer::InitKVManager() {
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
     instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)), io_context);
+        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)));
     break;
   case (StorageType::IN_MEMORY):
     instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>()),
-        io_context);
+        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>()));
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
   }
 
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance),
-                                                       config_.raylet_config_list);
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(
+      std::move(instance), config_.raylet_config_list, io_context);
 }
 
 void GcsServer::InitKVService() {
@@ -623,9 +635,10 @@ void GcsServer::InitRuntimeEnvManager() {
                 "" /* namespace */,
                 plugin_uri /* key */,
                 false /* del_by_prefix*/,
-                [callback = std::move(callback)](int64_t) {
-                  callback(/*successful=*/false);
-                });
+                {[callback = std::move(callback)](int64_t) {
+                   callback(/*successful=*/false);
+                 },
+                 io_context_provider_.GetDefaultIOContext()});
           }
         }
       });
@@ -644,8 +657,8 @@ void GcsServer::InitRuntimeEnvManager() {
 }
 
 void GcsServer::InitGcsWorkerManager() {
-  gcs_worker_manager_ =
-      std::make_unique<GcsWorkerManager>(*gcs_table_storage_, *gcs_publisher_);
+  gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
+      *gcs_table_storage_, io_context_provider_.GetDefaultIOContext(), *gcs_publisher_);
   // Register service.
   worker_info_service_.reset(new rpc::WorkerInfoGrpcService(
       io_context_provider_.GetDefaultIOContext(), *gcs_worker_manager_));
@@ -663,31 +676,36 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       kGcsAutoscalerV2EnabledKey,
       v2_enabled,
       /*overwrite=*/true,
-      [this, v2_enabled](bool new_value_put) {
-        if (!new_value_put) {
-          // NOTE(rickyx): We cannot know if an overwirte Put succeeds or fails (e.g. when
-          // GCS re-started), so we just try to get the value to check if it's correct.
-          // TODO(rickyx): We could probably load some system configs from internal kv
-          // when we initialize GCS from restart to avoid this.
-          kv_manager_->GetInstance().Get(
-              kGcsAutoscalerStateNamespace,
-              kGcsAutoscalerV2EnabledKey,
-              [v2_enabled](std::optional<std::string> value) {
-                RAY_CHECK(value.has_value()) << "Autoscaler v2 feature flag wasn't found "
-                                                "in GCS, this is unexpected.";
-                RAY_CHECK(*value == v2_enabled) << "Autoscaler v2 feature flag in GCS "
-                                                   "doesn't match the one we put.";
-              });
-        }
-      });
+      {[this, v2_enabled](bool new_value_put) {
+         if (!new_value_put) {
+           // NOTE(rickyx): We cannot know if an overwirte Put succeeds or fails (e.g.
+           // when GCS re-started), so we just try to get the value to check if it's
+           // correct.
+           // TODO(rickyx): We could probably load some system configs from internal kv
+           // when we initialize GCS from restart to avoid this.
+           kv_manager_->GetInstance().Get(
+               kGcsAutoscalerStateNamespace,
+               kGcsAutoscalerV2EnabledKey,
+               {[v2_enabled](std::optional<std::string> value) {
+                  RAY_CHECK(value.has_value())
+                      << "Autoscaler v2 feature flag wasn't found "
+                         "in GCS, this is unexpected.";
+                  RAY_CHECK(*value == v2_enabled) << "Autoscaler v2 feature flag in GCS "
+                                                     "doesn't match the one we put.";
+                },
+                this->io_context_provider_.GetDefaultIOContext()});
+         }
+       },
+       io_context_provider_.GetDefaultIOContext()});
 
-  gcs_autoscaler_state_manager_ =
-      std::make_unique<GcsAutoscalerStateManager>(config_.session_name,
-                                                  *gcs_node_manager_,
-                                                  *gcs_actor_manager_,
-                                                  *gcs_placement_group_manager_,
-                                                  *raylet_client_pool_,
-                                                  kv_manager_->GetInstance());
+  gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
+      config_.session_name,
+      *gcs_node_manager_,
+      *gcs_actor_manager_,
+      *gcs_placement_group_manager_,
+      *raylet_client_pool_,
+      kv_manager_->GetInstance(),
+      io_context_provider_.GetDefaultIOContext());
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
 
   autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(

@@ -28,13 +28,15 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     GcsActorManager &gcs_actor_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager,
     rpc::NodeManagerClientPool &raylet_client_pool,
-    InternalKVInterface &kv)
+    InternalKVInterface &kv,
+    instrumented_io_context &io_context)
     : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
       gcs_actor_manager_(gcs_actor_manager),
       gcs_placement_group_manager_(gcs_placement_group_manager),
       raylet_client_pool_(raylet_client_pool),
-      kv_(kv) {}
+      kv_(kv),
+      io_context_(io_context) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -108,9 +110,10 @@ void GcsAutoscalerStateManager::HandleReportClusterConfig(
           kGcsAutoscalerClusterConfigKey,
           request.cluster_config().SerializeAsString(),
           /*overwrite=*/true,
-          [send_reply_callback = std::move(send_reply_callback)](bool added) {
-            send_reply_callback(ray::Status::OK(), nullptr, nullptr);
-          });
+          {[send_reply_callback = std::move(send_reply_callback)](bool added) {
+             send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+           },
+           io_context_});
 }
 
 void GcsAutoscalerStateManager::HandleGetClusterStatus(
