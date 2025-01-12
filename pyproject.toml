@@ -52,8 +52,6 @@ ignore = [
     "F401",
     "Q000",
     "Q001",
-    # TODO(MortalHappiness): remove this after #49785 is merged
-    "B020",
 ]
 
 [tool.ruff.lint.flake8-quotes]
