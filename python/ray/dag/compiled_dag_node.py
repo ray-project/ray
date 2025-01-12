@@ -1910,16 +1910,17 @@ class CompiledDAG:
         monitor.start()
         return monitor
 
-    def raise_if_too_many_inflight_requests(self):
-        num_in_flight_requests = (
+    def _raise_if_too_many_inflight_executions(self):
+        num_inflight_executions = (
             self._execution_index - self._max_finished_execution_index
         ) + len(self._result_buffer)
-        if num_in_flight_requests >= self._max_inflight_executions:
+        if num_inflight_executions >= self._max_inflight_executions:
             raise ray.exceptions.RayCgraphCapacityExceeded(
-                f"You cannot execute more than {self._max_inflight_executions} "
-                f"in-flight requests, and you currently have {num_in_flight_requests} "
-                f"in-flight requests. Retrieve an output using ray.get before "
-                "submitting more requests or increase `max_inflight_executions`. "
+                "The compiled graph can't have more than "
+                f"{self._max_inflight_executions} in-flight executions, and you "
+                f"currently have {num_inflight_executions} in-flight executions. "
+                "Retrieve an output using ray.get before submitting more requests or "
+                "increase `_max_inflight_executions`. "
                 "`dag.experimental_compile(_max_inflight_executions=...)`"
             )
 
@@ -2108,7 +2109,7 @@ class CompiledDAG:
         else:
             inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
-        self.raise_if_too_many_inflight_requests()
+        self._raise_if_too_many_inflight_executions()
         try:
             self._dag_submitter.write(inp, self._submit_timeout)
         except RayChannelTimeoutError as e:
@@ -2182,7 +2183,7 @@ class CompiledDAG:
             else:
                 inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
-            self.raise_if_too_many_inflight_requests()
+            self._raise_if_too_many_inflight_executions()
             await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()

@@ -2166,10 +2166,10 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
 
 def test_inflight_requests_exceed_capacity(ray_start_regular):
     expected_error_message = (
-        r".*You cannot execute more than 2 in-flight "
-        r"requests, and you currently have 2 in-flight "
-        r"requests. Retrieve an output using ray.get before submitting "
-        r"more requests or increase `max_inflight_executions`. "
+        "The compiled graph can't have more than 2 "
+        "in-flight executions, and you currently have 2 "
+        "in-flight executions. Retrieve an output using ray.get before "
+        "submitting more requests or increase `_max_inflight_executions`. "
     )
     a = Actor.remote(0)
     with InputNode() as inp:
@@ -2211,10 +2211,10 @@ def test_inflight_requests_exceed_capacity(ray_start_regular):
 
 def test_result_buffer_exceeds_capacity(ray_start_regular):
     expected_error_message = (
-        r".*You cannot execute more than 2 in-flight "
-        r"requests, and you currently have 2 in-flight "
-        r"requests. Retrieve an output using ray.get before submitting "
-        r"more requests or increase `max_inflight_executions`. "
+        "The compiled graph can't have more than 2 "
+        "in-flight executions, and you currently have 2 "
+        "in-flight executions. Retrieve an output using ray.get before "
+        "submitting more requests or increase `_max_inflight_executions`. "
     )
     a = Actor.remote(0)
     with InputNode() as inp:
