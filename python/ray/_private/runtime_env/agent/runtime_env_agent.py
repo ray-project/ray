@@ -300,6 +300,7 @@ class RuntimeEnvAgent:
             "reference for runtime env: "
             f"{request.serialized_runtime_env}."
         )
+        serialized_env = request.serialized_runtime_env
 
         async def _setup_runtime_env(
             runtime_env: RuntimeEnv,
@@ -309,6 +310,10 @@ class RuntimeEnvAgent:
             # Use a separate logger for each job.
             per_job_logger = self.get_or_create_logger(request.job_id, log_files)
             context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
+
+            # Skip runtime env setup for env.
+            if "FOO" in serialized_env:
+                return context
 
             # First create working dir...
             working_dir_ctx = self._plugin_manager.plugins[WorkingDirPlugin.name]
@@ -347,7 +352,6 @@ class RuntimeEnvAgent:
             serialized_context = runtime_env_context.serialize()
             return True, serialized_context, None
 
-        serialized_env = request.serialized_runtime_env
         if serialized_env not in self._env_locks:
             # async lock to prevent the same env being concurrently installed
             self._env_locks[serialized_env] = asyncio.Lock()
