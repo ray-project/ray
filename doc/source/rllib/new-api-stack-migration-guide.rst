@@ -404,8 +404,8 @@ The following callback methods are no longer available on the new API stack:
   because :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pipelines handle trajectory processing entirely.
   The documentation for :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` is under development.
 
-See :ref:`<rllib-callback-docs>` for a detailed description of RLlib callback APIs.
-
+.. See :ref:`<rllib-callback-docs>` for a detailed description of RLlib callback APIs.
+    TODO (sven): ref doesn't work for some weird reason. Getting: undefined label: '<rllib-callback-docs>'
 
 .. _rllib-modelv2-to-rlmodule:
 
