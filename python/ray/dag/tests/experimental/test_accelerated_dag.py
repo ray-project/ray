@@ -207,7 +207,7 @@ def test_basic_destruction(ray_start_regular):
     del ref
 
 
-def test_out_of_order_destruction():
+def test_out_of_order_destruction(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as inp:
         dag = a.inc.bind(inp)
