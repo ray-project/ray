@@ -664,7 +664,7 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
     RAY_LOG(ERROR) << "Failed to send redis command (sync): " << context_->errstr;
     return nullptr;
   }
-  std::unique_ptr<CallbackReply> callback_reply(new CallbackReply(*redis_reply));
+  auto callback_reply = std::make_unique<CallbackReply>(*redis_reply);
   freeReplyObject(redis_reply);
   return callback_reply;
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# flake8: noqa
+# ruff: noqa
 # fmt: off
 
 # __tutorial_imports_begin__
