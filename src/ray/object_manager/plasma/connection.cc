@@ -76,6 +76,8 @@ std::shared_ptr<Client> Client::Create(PlasmaStoreMessageHandler message_handler
           client->ProcessMessages();
         }
       };
+  // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot invoke
+  // private constructors.
   std::shared_ptr<Client> self(new Client(ray_message_handler, std::move(socket)));
   // Let our manager process our new connection.
   self->ProcessMessages();

@@ -137,7 +137,7 @@ void PlaceProcessIntoDefaultCgroup(const PhysicalModeExecutionContext &ctx) {
   if (!CgroupV2Setup::SetupCgroupV2ForContext(ctx)) {
     return nullptr;
   }
-  return std::unique_ptr<CgroupV2Setup>(new CgroupV2Setup(std::move(ctx)));
+  return std::make_unique<CgroupV2Setup>(std::move(ctx));
 }
 
 CgroupV2Setup::~CgroupV2Setup() {

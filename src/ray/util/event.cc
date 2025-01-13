@@ -244,7 +244,7 @@ std::atomic<bool> RayEventContext::global_context_finished_setting_(false);
 
 RayEventContext &RayEventContext::Instance() {
   if (context_ == nullptr) {
-    context_ = std::unique_ptr<RayEventContext>(new RayEventContext());
+    context_ = std::make_unique<RayEventContext>();
   }
   return *context_;
 }

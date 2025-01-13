@@ -82,7 +82,8 @@ inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *env, jobject arg
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
         RAY_CHECK(java_value) << "Both id and value of FunctionArg are null.";
         auto value = JavaNativeRayObjectToNativeRayObject(env, java_value);
-        return std::unique_ptr<TaskArg>(new TaskArgByValue(value));
+        std::unique_ptr<TaskArg> task_arg = std::make_unique<TaskArgByValue>(value);
+        return task_arg;
       });
   return task_args;
 }
