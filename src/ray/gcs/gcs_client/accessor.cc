@@ -709,6 +709,16 @@ Status NodeInfoAccessor::GetAllNoCache(int64_t timeout_ms,
   return Status::OK();
 }
 
+StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCacheWithFilter(
+    int64_t timeout_ms, rpc::GetAllNodeInfoRequest_Filters filter) {
+  rpc::GetAllNodeInfoRequest request;
+  *request.mutable_filters() = std::move(filter);
+  rpc::GetAllNodeInfoReply reply;
+  RAY_RETURN_NOT_OK(
+      client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply, timeout_ms));
+  return VectorFromProtobuf(std::move(*reply.mutable_node_info_list()));
+}
+
 Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addresses,
                                     int64_t timeout_ms,
                                     std::vector<bool> &nodes_alive) {

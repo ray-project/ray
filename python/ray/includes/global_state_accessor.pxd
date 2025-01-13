@@ -64,7 +64,7 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
             const c_string &node_ip_address,
             c_string *node_to_connect)
         CRayStatus GetNode(
-          const c_string &node_id,
+          const c_string &node_id_str,
           c_string *node_info)
 
 cdef extern from * namespace "ray::gcs" nogil:

@@ -221,19 +221,30 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
                                           rpc::SendReplyCallback send_reply_callback) {
   int64_t limit =
       (request.limit() > 0) ? request.limit() : std::numeric_limits<int64_t>::max();
-  NodeID filter_node_id = request.filters().has_node_id()
-                              ? NodeID::FromBinary(request.filters().node_id())
-                              : NodeID::Nil();
-  std::optional<rpc::GcsNodeInfo::GcsNodeState> filter_state = std::nullopt;
-  if (request.filters().has_state()) {
-    filter_state = request.filters().state();
-  }
-  std::string filter_node_name = request.filters().node_name();
-  auto filter_fn = [&filter_node_id, &filter_node_name](const rpc::GcsNodeInfo &node) {
-    if (!filter_node_id.IsNil() && filter_node_id != NodeID::FromBinary(node.node_id())) {
+  std::optional<NodeID> filter_node_id =
+      request.filters().has_node_id()
+          ? std::make_optional(NodeID::FromBinary(request.filters().node_id()))
+          : std::nullopt;
+  std::optional<std::string> filter_node_name =
+      request.filters().has_node_name()
+          ? std::make_optional(request.filters().node_name())
+          : std::nullopt;
+  std::optional<std::string> filter_node_ip_address =
+      request.filters().has_node_ip_address()
+          ? std::make_optional(request.filters().node_ip_address())
+          : std::nullopt;
+  std::optional<std::string> filter_node_;
+  auto filter_fn = [&filter_node_id, &filter_node_name, &filter_node_ip_address](
+                       const rpc::GcsNodeInfo &node) {
+    if (filter_node_id.has_value() &&
+        *filter_node_id != NodeID::FromBinary(node.node_id())) {
       return false;
     }
-    if (!filter_node_name.empty() && filter_node_name != node.node_name()) {
+    if (filter_node_name.has_value() && *filter_node_name != node.node_name()) {
+      return false;
+    }
+    if (filter_node_ip_address.has_value() &&
+        *filter_node_ip_address != node.node_manager_address()) {
       return false;
     }
     return true;
@@ -243,18 +254,21 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   auto add_to_response =
       [limit, reply, filter_fn, &num_added, &num_filtered](
           const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
-        for (const auto &entry : nodes) {
+        for (const auto &[node_id, node_info_ptr] : nodes) {
           if (num_added >= limit) {
             break;
           }
-          if (filter_fn(*entry.second)) {
-            *reply->add_node_info_list() = *entry.second;
+          if (filter_fn(*node_info_ptr)) {
+            *reply->add_node_info_list() = *node_info_ptr;
             num_added += 1;
           } else {
             num_filtered += 1;
           }
         }
       };
+  std::optional<rpc::GcsNodeInfo::GcsNodeState> filter_state =
+      request.filters().has_state() ? std::make_optional(request.filters().state())
+                                    : std::nullopt;
   if (filter_state == std::nullopt) {
     add_to_response(alive_nodes_);
     add_to_response(dead_nodes_);
@@ -271,8 +285,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
     return;
   }
-  size_t total = alive_nodes_.size() + dead_nodes_.size();
-  reply->set_total(total);
+  reply->set_total(alive_nodes_.size() + dead_nodes_.size());
   reply->set_num_filtered(num_filtered);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
