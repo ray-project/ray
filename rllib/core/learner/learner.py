@@ -290,7 +290,10 @@ class Learner(Checkpointable):
 
         # Build learner connector pipeline used on this Learner worker.
         self._learner_connector = None
-        if not self.config._dont_build_learner_connector_on_learner:
+        # If the Algorithm uses aggregation actors to run episodes through the learner
+        # connector, its Learners don't need a connector pipelines and instead learn
+        # directly from pre-loaded batches already on the GPU.
+        if self.config.num_aggregator_actors_per_learner == 0:
             # TODO (sven): Figure out which space to provide here. For now,
             #  it doesn't matter, as the default connector piece doesn't use
             #  this information anyway.

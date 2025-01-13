@@ -149,7 +149,7 @@ class IMPALAConfig(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
         self.num_learners = 1
-        self.num_aggregator_actors_per_learner = 1
+        self.num_aggregator_actors_per_learner = 0
         self.rollout_fragment_length = 50
         self.train_batch_size = 500  # @OldAPIstack
         self.num_env_runners = 2
@@ -160,10 +160,6 @@ class IMPALAConfig(AlgorithmConfig):
 
         # IMPALA takes care of its own EnvRunner (weights, connector, metrics) synching.
         self._dont_auto_sync_env_runner_states = True
-        # IMPALA uses aggregation actors to run episodes through the learner connector.
-        # The IMPALALearner doesn't have a connector pipeline and learns directly from
-        # pre-loaded batches already on the GPU, if applicable.
-        self._dont_build_learner_connector_on_learner = True
 
         self.lr_schedule = None  # @OldAPIStack
         self.entropy_coeff_schedule = None  # @OldAPIStack
@@ -567,12 +563,14 @@ class IMPALA(Algorithm):
 
         # Create extra aggregation workers and assign each rollout worker to
         # one of them.
-        self._aggregator_episode_packs_being_built = []
+        self._episode_packs_being_built = []
         self._ma_batches_being_built: Dict[int, list] = {
             i: [] for i in range(self.config.num_learners or 1)
         }
-        if self.config.enable_rl_module_and_learner:
-            assert self.config.num_aggregator_actors_per_learner > 0
+        self._aggregator_actor_manager = None
+        if self.config.enable_rl_module_and_learner and (
+            self.config.num_aggregator_actors_per_learner > 0
+        ):
             # Get the devices of each learner.
             learner_locations = self.learner_group.foreach_learner(
                 func=lambda _learner: (_learner.node, _learner.device),
@@ -616,7 +614,7 @@ class IMPALA(Algorithm):
                     )
 
         # Create our local mixin buffer if the num of aggregation workers is 0.
-        else:
+        elif not self.config.enable_rl_module_and_learner:
             if self.config.replay_proportion > 0.0:
                 self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
                     capacity=(
@@ -627,7 +625,6 @@ class IMPALA(Algorithm):
                     replay_ratio=self.config.replay_ratio,
                     replay_mode=ReplayMode.LOCKSTEP,
                 )
-            self._aggregator_actor_manager = None
 
         # This variable is used to keep track of the statistics from the most recent
         # update of the learner group
@@ -670,33 +667,44 @@ class IMPALA(Algorithm):
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
         # `LearnerGroup.update_from_episodes()`.
-        data_packages_for_aggregators = self._pre_queue_episode_refs(episode_refs)
-        ma_batches_refs_remote_results = (
-            self._aggregator_actor_manager.fetch_ready_async_reqs(
-                timeout_seconds=0.0,
-                return_obj_refs=True,
+        if self.config.num_aggregator_actors_per_learner > 0:
+            data_packages_for_aggregators = self._pre_queue_episode_refs(
+                episode_refs, package_size=self.config.train_batch_size_per_learner
             )
-        )
-        ma_batches_refs = []
-        for call_result in ma_batches_refs_remote_results:
-            ma_batches_refs.append((call_result.actor_id, call_result.get()))
-        while data_packages_for_aggregators:
-
-            def _func(actor, p):
-                return actor.get_batch(p)
-
-            num_agg = self.config.num_aggregator_actors_per_learner * (
-                self.config.num_learners or 1
+            ma_batches_refs_remote_results = (
+                self._aggregator_actor_manager.fetch_ready_async_reqs(
+                    timeout_seconds=0.0,
+                    return_obj_refs=True,
+                )
             )
-            packs = data_packages_for_aggregators[:num_agg]
-            self._aggregator_actor_manager.foreach_actor_async(
-                func=[functools.partial(_func, p=p) for p in packs],
-            )
-            data_packages_for_aggregators = data_packages_for_aggregators[num_agg:]
+            ma_batches_refs = []
+            for call_result in ma_batches_refs_remote_results:
+                ma_batches_refs.append((call_result.actor_id, call_result.get()))
 
-        # Get n lists of m ObjRef[MABatch] (m=num_learners) to perform n calls to all
-        # learner workers with the already GPU-located batches.
-        data_packages_for_learner_group = self._pre_queue_batch_refs(ma_batches_refs)
+            while data_packages_for_aggregators:
+
+                def _func(actor, p):
+                    return actor.get_batch(p)
+
+                num_agg = self.config.num_aggregator_actors_per_learner * (
+                    self.config.num_learners or 1
+                )
+                packs = data_packages_for_aggregators[:num_agg]
+                self._aggregator_actor_manager.foreach_actor_async(
+                    func=[functools.partial(_func, p=p) for p in packs],
+                )
+                data_packages_for_aggregators = data_packages_for_aggregators[num_agg:]
+
+            # Get n lists of m ObjRef[MABatch] (m=num_learners) to perform n calls to
+            # all learner workers with the already GPU-located batches.
+            data_packages_for_learner_group = self._pre_queue_batch_refs(
+                ma_batches_refs
+            )
+
+        else:
+            data_packages_for_learner_group = self._pre_queue_episode_refs(
+                episode_refs, package_size=self.config.total_train_batch_size
+            )
 
         time.sleep(0.01)
 
@@ -726,15 +734,26 @@ class IMPALA(Algorithm):
                         default=0,
                     ),
                 }
-                learner_results = self.learner_group.update_from_batch(
-                    batch=batch_ref_or_episode_list_ref,
-                    async_update=do_async_updates,
-                    return_state=return_state,
-                    timesteps=timesteps,
-                    num_epochs=self.config.num_epochs,
-                    minibatch_size=self.config.minibatch_size,
-                    shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
-                )
+                if self.config.num_aggregator_actors_per_learner > 0:
+                    learner_results = self.learner_group.update_from_batch(
+                        batch=batch_ref_or_episode_list_ref,
+                        async_update=do_async_updates,
+                        return_state=return_state,
+                        timesteps=timesteps,
+                        num_epochs=self.config.num_epochs,
+                        minibatch_size=self.config.minibatch_size,
+                        shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
+                    )
+                else:
+                    learner_results = self.learner_group.update_from_episodes(
+                        episodes=batch_ref_or_episode_list_ref,
+                        async_update=do_async_updates,
+                        return_state=return_state,
+                        timesteps=timesteps,
+                        num_epochs=self.config.num_epochs,
+                        minibatch_size=self.config.minibatch_size,
+                        shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
+                    )
                 # TODO (sven): Rename this metric into a more fitting name: ex.
                 #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`
                 self.metrics.log_value(
@@ -859,26 +878,24 @@ class IMPALA(Algorithm):
         )
 
     def _pre_queue_episode_refs(
-        self, episode_refs: List[ObjectRef]
+        self, episode_refs: List[ObjectRef], package_size: int
     ) -> List[List[ObjectRef]]:
         # Each element in this list is itself a list of ObjRef[Episodes].
         # Each ObjRef was returned by one EnvRunner from a single sample() call.
-        episodes_for_aggregators: List[List[ObjectRef]] = []
+        episodes: List[List[ObjectRef]] = []
 
         for ref in episode_refs:
-            self._aggregator_episode_packs_being_built.append(ref)
+            self._episode_packs_being_built.append(ref)
             if (
-                len(self._aggregator_episode_packs_being_built)
+                len(self._episode_packs_being_built)
                 * self.config.num_envs_per_env_runner
                 * self.config.get_rollout_fragment_length()
-                >= self.config.train_batch_size_per_learner
+                >= package_size
             ):
-                episodes_for_aggregators.append(
-                    self._aggregator_episode_packs_being_built
-                )
-                self._aggregator_episode_packs_being_built = []
+                episodes.append(self._episode_packs_being_built)
+                self._episode_packs_being_built = []
 
-        return episodes_for_aggregators
+        return episodes
 
     def _pre_queue_batch_refs(
         self, batch_refs: List[Tuple[int, ObjectRef]]
