@@ -86,7 +86,7 @@ class SingleAgentEpisode:
 
         # Get the most recent action (single item, not batched).
         # This works regardless of the action space or whether the episode has
-        # been finalized or not (see below).
+        # been numpy'ized or not (see below).
         episode.get_actions(-1)  # same as episode.actions[-1]
 
         # Looking back from ts=1, get the previous 4 rewards AND fill with 0.0
@@ -204,7 +204,7 @@ class SingleAgentEpisode:
                 with observation data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
             observation_space: An optional gym.Space, which all individual observations
-                should abide to. If not None and this SingleAgentEpisode is finalized
+                should abide to. If not None and this SingleAgentEpisode is numpy'ized
                 (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             infos: Either a list of individual info dicts from a sampling or
@@ -216,7 +216,7 @@ class SingleAgentEpisode:
                 with info dict] data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
             action_space: An optional gym.Space, which all individual actions
-                should abide to. If not None and this SingleAgentEpisode is finalized
+                should abide to. If not None and this SingleAgentEpisode is numpy'ized
                 (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             rewards: Either a list of individual rewards from a sampling or
@@ -444,7 +444,7 @@ class SingleAgentEpisode:
         self._last_added_observation = observation
         self._last_added_infos = infos
 
-        # Only check spaces if finalized AND every n timesteps.
+        # Only check spaces if numpy'ized AND every n timesteps.
         if self.is_numpy and self.t % 100:
             if self.observation_space is not None:
                 assert self.observation_space.contains(observation), (
@@ -545,11 +545,11 @@ class SingleAgentEpisode:
                 actions=[1, 2, 3],
                 rewards=[1, 2, 3],
                 # Note: terminated/truncated have nothing to do with an episode
-                # being `finalized` or not (via the `self.to_numpy()` method)!
+                # being numpy'ized or not (via the `self.to_numpy()` method)!
                 terminated=False,
                 len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
-            # Episode has not been finalized (numpy'ized) yet.
+            # Episode has not been numpy'ized yet.
             assert not episode.is_numpy
             # We are still operating on lists.
             assert episode.get_observations([1]) == [1]
@@ -561,10 +561,10 @@ class SingleAgentEpisode:
                 reward=4,
                 terminated=True,
             )
-            # Still NOT finalized.
+            # Still NOT numpy'ized.
             assert not episode.is_numpy
 
-            # Let's finalize the episode.
+            # Numpy'ized the episode.
             episode.to_numpy()
             assert episode.is_numpy
 
@@ -622,7 +622,7 @@ class SingleAgentEpisode:
         self.observations.pop()
         self.infos.pop()
 
-        # Extend ourselves. In case, episode_chunk is already terminated (and finalized)
+        # Extend ourselves. In case, episode_chunk is already terminated and numpy'ized
         # we need to convert to lists (as we are ourselves still filling up lists).
         self.observations.extend(other.get_observations())
         self.actions.extend(other.get_actions())
@@ -1178,8 +1178,8 @@ class SingleAgentEpisode:
         Args:
             new_data: The new observation data to overwrite existing data with.
                 This may be a list of individual observation(s) in case this episode
-                is still not finalized yet. In case this episode has already been
-                finalized, this should be (possibly complex) struct matching the
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be (possibly complex) struct matching the
                 observation space and with a batch size of its leafs exactly the size
                 of the to-be-overwritten slice or segment (provided by `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
@@ -1233,8 +1233,8 @@ class SingleAgentEpisode:
         Args:
             new_data: The new action data to overwrite existing data with.
                 This may be a list of individual action(s) in case this episode
-                is still not finalized yet. In case this episode has already been
-                finalized, this should be (possibly complex) struct matching the
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be (possibly complex) struct matching the
                 action space and with a batch size of its leafs exactly the size
                 of the to-be-overwritten slice or segment (provided by `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
@@ -1288,8 +1288,8 @@ class SingleAgentEpisode:
         Args:
             new_data: The new reward data to overwrite existing data with.
                 This may be a list of individual reward(s) in case this episode
-                is still not finalized yet. In case this episode has already been
-                finalized, this should be a np.ndarray with a length exactly
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be a np.ndarray with a length exactly
                 the size of the to-be-overwritten slice or segment (provided by
                 `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
@@ -1348,8 +1348,8 @@ class SingleAgentEpisode:
                 to insert as a new key into `self.extra_model_outputs`.
             new_data: The new data to overwrite existing data with.
                 This may be a list of individual reward(s) in case this episode
-                is still not finalized yet. In case this episode has already been
-                finalized, this should be a np.ndarray with a length exactly
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be a np.ndarray with a length exactly
                 the size of the to-be-overwritten slice or segment (provided by
                 `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
@@ -1386,7 +1386,7 @@ class SingleAgentEpisode:
         )
 
     def add_temporary_timestep_data(self, key: str, data: Any) -> None:
-        """Temporarily adds (until `finalized()` called) per-timestep data to self.
+        """Temporarily adds (until `to_numpy()` called) per-timestep data to self.
 
         The given `data` is appended to a list (`self._temporary_timestep_data`), which
         is cleared upon calling `self.to_numpy()`. To get the thus-far accumulated
@@ -1403,7 +1403,7 @@ class SingleAgentEpisode:
         if self.is_numpy:
             raise ValueError(
                 "Cannot use the `add_temporary_timestep_data` API on an already "
-                f"finalized {type(self).__name__}!"
+                f"numpy'ized {type(self).__name__}!"
             )
         self._temporary_timestep_data[key].append(data)
 
@@ -1419,7 +1419,7 @@ class SingleAgentEpisode:
         if self.is_numpy:
             raise ValueError(
                 "Cannot use the `get_temporary_timestep_data` API on an already "
-                f"finalized {type(self).__name__}! All temporary data has been erased "
+                f"numpy'ized {type(self).__name__}! All temporary data has been erased "
                 f"upon `{type(self).__name__}.to_numpy()`."
             )
         try:

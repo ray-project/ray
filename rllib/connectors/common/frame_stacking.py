@@ -72,7 +72,7 @@ class _FrameStacking(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # Learner connector pipeline. Episodes have been finalized/numpy'ized.
+        # Learner connector pipeline. Episodes have been numpy'ized.
         if self._as_learner_connector:
             for sa_episode in self.single_agent_episode_iterator(
                 episodes, agents_that_stepped_only=False

@@ -383,7 +383,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # the user's connector pipeline performs (permanent) transforms
                 # on each observation (including this final one here). Without such
                 # a call and in case the structure of the observations change
-                # sufficiently, the following `finalize()` call on the episode will
+                # sufficiently, the following `to_numpy()` call on the episode will
                 # fail.
                 if self.module is not None:
                     self._env_to_module(
@@ -614,7 +614,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # the user's connector pipeline performs (permanent) transforms
                 # on each observation (including this final one here). Without such
                 # a call and in case the structure of the observations change
-                # sufficiently, the following `finalize()` call on the episode will
+                # sufficiently, the following `to_numpy()` call on the episode will
                 # fail.
                 if self.module is not None:
                     self._env_to_module(

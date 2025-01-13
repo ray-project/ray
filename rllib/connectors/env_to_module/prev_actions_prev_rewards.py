@@ -117,7 +117,7 @@ class PrevActionsPrevRewards(ConnectorV2):
         for sa_episode in self.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=True
         ):
-            # Episode is not finalized yet and thus still operates on lists of items.
+            # Episode is not numpy'ized yet and thus still operates on lists of items.
             assert not sa_episode.is_numpy
 
             augmented_obs = {self.ORIG_OBS_KEY: sa_episode.get_observations(-1)}

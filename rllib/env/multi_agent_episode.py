@@ -118,7 +118,7 @@ class MultiAgentEpisode:
                 (actions, rewards, etc.) in terms of list lengths and agent IDs.
             observation_space: An optional gym.spaces.Dict mapping agent IDs to
                 individual agents' spaces, which all (individual agents') observations
-                should abide to. If not None and this MultiAgentEpisode is finalized
+                should abide to. If not None and this MultiAgentEpisode is numpy'ized
                 (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             infos: A list of dictionaries mapping agent IDs to info dicts.
@@ -129,7 +129,7 @@ class MultiAgentEpisode:
                 (observations, rewards, etc.) in terms of list lengths and agent IDs.
             action_space: An optional gym.spaces.Dict mapping agent IDs to
                 individual agents' spaces, which all (individual agents') actions
-                should abide to. If not None and this MultiAgentEpisode is finalized
+                should abide to. If not None and this MultiAgentEpisode is numpy'ized
                 (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             rewards: A list of dictionaries mapping agent IDs to rewards.
@@ -669,7 +669,7 @@ class MultiAgentEpisode:
     def is_numpy(self) -> bool:
         """True, if the data in this episode is already stored as numpy arrays."""
         is_numpy = next(iter(self.agent_episodes.values())).is_numpy
-        # Make sure that all single agent's episodes' `finalized` flags are the same.
+        # Make sure that all single agent's episodes' `is_numpy` flags are the same.
         if not all(eps.is_numpy is is_numpy for eps in self.agent_episodes.values()):
             raise RuntimeError(
                 f"Only some SingleAgentEpisode objects in {self} are converted to "
@@ -761,7 +761,7 @@ class MultiAgentEpisode:
                 len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
 
-            # Episode has not been finalized (numpy'ized) yet.
+            # Episode has not been numpy'ized yet.
             assert not episode.is_numpy
             # We are still operating on lists.
             assert (
@@ -771,7 +771,7 @@ class MultiAgentEpisode:
                 ) == {"agent_1": [1]}
             )
 
-            # Let's finalize the episode.
+            # Numpy'ized the episode.
             episode.to_numpy()
             assert episode.is_numpy
 
@@ -1447,7 +1447,7 @@ class MultiAgentEpisode:
         return truncateds
 
     def add_temporary_timestep_data(self, key: str, data: Any) -> None:
-        """Temporarily adds (until `finalized()` called) per-timestep data to self.
+        """Temporarily adds (until `to_numpy()` called) per-timestep data to self.
 
         The given `data` is appended to a list (`self._temporary_timestep_data`), which
         is cleared upon calling `self.to_numpy()`. To get the thus-far accumulated
@@ -1464,7 +1464,7 @@ class MultiAgentEpisode:
         if self.is_numpy:
             raise ValueError(
                 "Cannot use the `add_temporary_timestep_data` API on an already "
-                f"finalized {type(self).__name__}!"
+                f"numpy'ized {type(self).__name__}!"
             )
         self._temporary_timestep_data[key].append(data)
 
@@ -1480,7 +1480,7 @@ class MultiAgentEpisode:
         if self.is_numpy:
             raise ValueError(
                 "Cannot use the `get_temporary_timestep_data` API on an already "
-                f"finalized {type(self).__name__}! All temporary data has been erased "
+                f"numpy'ized {type(self).__name__}! All temporary data has been erased "
                 f"upon `{type(self).__name__}.to_numpy()`."
             )
         try:
@@ -1694,7 +1694,7 @@ class MultiAgentEpisode:
             agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
         )
 
-        # Finalize slice if `self` is also finalized.
+        # Numpy'ize slice if `self` is also finalized.
         if self.is_numpy:
             ma_episode.to_numpy()
 

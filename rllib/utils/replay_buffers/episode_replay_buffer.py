@@ -118,7 +118,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
     @override(ReplayBufferInterface)
     def add(self, episodes: Union[List["SingleAgentEpisode"], "SingleAgentEpisode"]):
-        """Converts the incoming SampleBatch into a number of SingleAgentEpisode objects.
+        """Converts incoming SampleBatch into a number of SingleAgentEpisode objects.
 
         Then adds these episodes to the internal deque.
         """
@@ -219,7 +219,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         include_infos: bool = False,
         include_extra_model_outputs: bool = False,
         sample_episodes: Optional[bool] = False,
-        finalize: bool = False,
+        to_numpy: bool = False,
         # TODO (simon): Check, if we need here 1 as default.
         lookback: Optional[int] = 0,
         **kwargs,
@@ -266,7 +266,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 actual state of model e.g. action log-probabilities, etc.). If `True`,
                 the extra model outputs at the `"obs"` in the batch is included (the
                 timestep at which the action is computed).
-            finalize: If episodes should be finalized.
+            to_numpy: If episodes should be numpy'ized.
             lookback: A desired lookback. Any non-negative integer is valid.
 
         Returns:
@@ -285,7 +285,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 gamma=gamma,
                 include_infos=include_infos,
                 include_extra_model_outputs=include_extra_model_outputs,
-                finalize=finalize,
+                to_numpy=to_numpy,
                 lookback=lookback,
             )
         else:
@@ -432,7 +432,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         gamma: float = 0.99,
         include_infos: bool = False,
         include_extra_model_outputs: bool = False,
-        finalize: bool = False,
+        to_numpy: bool = False,
         lookback: Optional[int] = 1,
         **kwargs,
     ) -> List[SingleAgentEpisode]:
@@ -478,7 +478,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 actual state of model e.g. action log-probabilities, etc.). If `True`,
                 the extra model outputs at the `"obs"` in the batch is included (the
                 timestep at which the action is computed).
-            finalize: If episodes should be finalized.
+            to_numpy: If episodes should be numpy'ized.
             lookback: A desired lookback. Any non-negative integer is valid.
 
         Returns:
