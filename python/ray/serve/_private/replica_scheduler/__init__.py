@@ -7,5 +7,5 @@ from ray.serve._private.replica_scheduler.replica_scheduler import (  # noqa: F4
 )
 from ray.serve._private.replica_scheduler.replica_wrapper import (  # noqa: F401
     ActorReplicaWrapper,
-    ReplicaWrapper,
+    RunningReplica,
 )
