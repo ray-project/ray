@@ -34,7 +34,7 @@ constexpr std::string_view kLogLine2 = "world\n";
 
 class PipeLoggerTest : public ::testing::TestWithParam<size_t> {};
 
-TEST_P(PipeLoggerTest, LogWriteAndPersistence) {
+TEST_P(PipeLoggerTest, NoPipeWrite) {
   const size_t pipe_buffer_size = GetParam();
   setenv(kPipeLogReadBufSizeEnv.data(),
          absl::StrFormat("%d", pipe_buffer_size).data(),
@@ -42,16 +42,55 @@ TEST_P(PipeLoggerTest, LogWriteAndPersistence) {
 
   // TODO(core): We should have a better test util, which allows us to create a temporary
   // testing directory.
-  const std::string test_fname = absl::StrFormat("%s.out", GenerateUUIDV4());
+  const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
 
   std::promise<void> promise{};
   auto on_completion = [&promise]() { promise.set_value(); };
 
   // Take the default option, which doesn't have rotation enabled.
-  LogRotationOption logging_option{};
+  LogRedirectionOption logging_option{};
+  logging_option.file_path = test_file_path;
   {
-    auto log_token =
-        CreatePipeAndStreamOutput(test_fname, logging_option, std::move(on_completion));
+    auto log_token = CreatePipeAndStreamOutput(logging_option, std::move(on_completion));
+
+    ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
+              kLogLine1.length());
+    ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
+              kLogLine2.length());
+  }
+
+  // Synchronize on log flush completion.
+  promise.get_future().get();
+
+  // Check log content after completion.
+  const auto actual_content = CompleteReadFile(test_file_path);
+  const std::string expected_content = absl::StrFormat("%s%s", kLogLine1, kLogLine2);
+  EXPECT_EQ(actual_content, expected_content);
+
+  // Delete temporary file.
+  EXPECT_EQ(unlink(test_file_path.data()), 0);
+}
+
+TEST_P(PipeLoggerTest, PipeWrite) {
+  const size_t pipe_buffer_size = GetParam();
+  setenv(kPipeLogReadBufSizeEnv.data(),
+         absl::StrFormat("%d", pipe_buffer_size).data(),
+         /*overwrite=*/1);
+
+  // TODO(core): We should have a better test util, which allows us to create a temporary
+  // testing directory.
+  const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+  std::promise<void> promise{};
+  auto on_completion = [&promise]() { promise.set_value(); };
+
+  // Take the default option, which doesn't have rotation enabled.
+  LogRedirectionOption logging_option{};
+  logging_option.file_path = test_file_path;
+  logging_option.rotation_max_size = 5;
+  logging_option.rotation_max_file_count = 2;
+  {
+    auto log_token = CreatePipeAndStreamOutput(logging_option, std::move(on_completion));
 
     ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
               kLogLine1.length());
@@ -66,12 +105,15 @@ TEST_P(PipeLoggerTest, LogWriteAndPersistence) {
   promise.get_future().get();
 
   // Check log content after completion.
-  const auto actual_content = CompleteReadFile(test_fname);
-  const std::string expected_content = absl::StrFormat("%s%s", kLogLine1, kLogLine2);
-  EXPECT_EQ(actual_content, expected_content);
+  const std::string log_file_path1 = test_file_path;
+  EXPECT_EQ(CompleteReadFile(test_file_path), kLogLine2);
+
+  const std::string log_file_path2 = absl::StrFormat("%s.1", test_file_path);
+  EXPECT_EQ(CompleteReadFile(log_file_path2), kLogLine1);
 
   // Delete temporary file.
-  EXPECT_EQ(unlink(test_fname.data()), 0);
+  EXPECT_EQ(unlink(log_file_path1.data()), 0);
+  EXPECT_EQ(unlink(log_file_path2.data()), 0);
 }
 
 INSTANTIATE_TEST_SUITE_P(PipeLoggerTest, PipeLoggerTest, testing::Values(1024, 3));

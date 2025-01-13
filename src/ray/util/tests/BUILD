@@ -236,3 +236,17 @@ ray_cc_test(
     copts = COPTS,
     tags = ["team:core"],
 )
+
+ray_cc_test(
+    name = "logging_utils_test",
+    srcs = ["logging_utils_test.cc"],
+    deps = [
+        "//src/ray/util:logging_utils",
+        ":unix_test_utils",
+        "//src/ray/util",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    copts = COPTS,
+    tags = ["team:core"],
+)

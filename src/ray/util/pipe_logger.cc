@@ -17,14 +17,15 @@
 #include <condition_variable>
 #include <cstring>
 #include <deque>
+#include <iostream>
 #include <mutex>
 #include <string_view>
 #include <thread>
 
 #include "absl/strings/str_split.h"
-#include "ray/util/util.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
 
 namespace ray {
 
@@ -55,7 +56,6 @@ struct StreamDumper {
 // Read bytes from handle into [data], return number of bytes read.
 // If read fails, throw exception.
 #if defined(__APPLE__) || defined(__linux__)
-#include <unistd.h>
 size_t Read(int read_fd, char *data, size_t len) {
   // TODO(hjiang): Notice frequent read could cause performance issue.
   ssize_t bytes_read = read(read_fd, data, len);
@@ -64,7 +64,6 @@ size_t Read(int read_fd, char *data, size_t len) {
   return bytes_read;
 }
 #elif defined(_WIN32)
-#include <windows.h>
 size_t Read(HANDLE read_handle, char *data, size_t len) {
   DWORD bytes_read = 0;
   BOOL success = ReadFile(read_handle, data, len, &bytes_read, nullptr);
@@ -167,22 +166,78 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
   return stream_dumper;
 }
 
-std::shared_ptr<spdlog::logger> CreateLogger(const std::string &fname,
-                                             const LogRotationOption &log_rotate_opt) {
-  auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-      fname, log_rotate_opt.rotation_max_size, log_rotate_opt.rotation_max_file_count);
-  file_sink->set_level(spdlog::level::info);
-
-  auto logger = std::make_shared<spdlog::logger>(fname, std::move(file_sink));
+// Create a spdlog logger with all sinks specified by the given option.
+std::shared_ptr<spdlog::logger> CreateLogger(
+    const LogRedirectionOption &log_redirect_opt) {
+  std::vector<spdlog::sink_ptr> logging_sinks;
+  if (log_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max()) {
+    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+        log_redirect_opt.file_path,
+        log_redirect_opt.rotation_max_size,
+        log_redirect_opt.rotation_max_file_count);
+    file_sink->set_level(spdlog::level::info);
+    logging_sinks.emplace_back(std::move(file_sink));
+  }
+  if (log_redirect_opt.tee_to_stdout) {
+    auto stdout_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    stdout_sink->set_level(spdlog::level::info);
+    logging_sinks.emplace_back(std::move(stdout_sink));
+  }
+  if (log_redirect_opt.tee_to_stderr) {
+    auto stderr_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+    stderr_sink->set_level(spdlog::level::info);
+    logging_sinks.emplace_back(std::move(stderr_sink));
+  }
+  auto logger = std::make_shared<spdlog::logger>(
+      /*name=*/absl::StrFormat("pipe-logger-%s", log_redirect_opt.file_path),
+      std::make_move_iterator(logging_sinks.begin()),
+      std::make_move_iterator(logging_sinks.end()));
+  logger->set_level(spdlog::level::info);
   logger->set_pattern("%v");  // Only message string is logged.
   return logger;
 }
 
+// Pipe streamer is only used in certain cases:
+// 1. Log roration is requested;
+// 2. Multiple sinks are involved.
+bool ShouldUsePipeStream(const LogRedirectionOption &log_redirect_opt) {
+  const bool need_rotation =
+      log_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max();
+  return static_cast<int>(need_rotation) +
+             static_cast<int>(log_redirect_opt.tee_to_stdout) +
+             static_cast<int>(log_redirect_opt.tee_to_stderr) >
+         0;
+}
+
+// TODO(hjiang): Implement open file for windows.
+#if defined(__APPLE__) || defined(__linux__)
+RedirectionFileHandle OpenFileForRedirection(const std::string &file_path,
+                                             std::function<void()> on_completion) {
+  int fd = open(file_path.data(), O_WRONLY | O_CREAT, 0644);
+  RAY_CHECK_NE(fd, -1) << "Fails to open file " << file_path << " with failure reason "
+                       << strerror(errno);
+
+  auto termination_caller = [fd, on_completion = std::move(on_completion)]() {
+    RAY_CHECK_EQ(fsync(fd), 0) << "Fails to flush data to disk because "
+                               << strerror(errno);
+    RAY_CHECK_EQ(close(fd), 0) << "Fails to close redirection file because "
+                               << strerror(errno);
+    on_completion();
+  };
+
+  return RedirectionFileHandle{fd, /*logger=*/nullptr, std::move(termination_caller)};
+}
+#endif
+
 }  // namespace
 
-RotationFileHandle CreatePipeAndStreamOutput(const std::string &fname,
-                                             const LogRotationOption &log_rotate_opt,
-                                             std::function<void()> on_completion) {
+RedirectionFileHandle CreatePipeAndStreamOutput(
+    const LogRedirectionOption &log_redirect_opt, std::function<void()> on_completion) {
+  const bool should_use_pipe_stream = ShouldUsePipeStream(log_redirect_opt);
+  if (!should_use_pipe_stream) {
+    return OpenFileForRedirection(log_redirect_opt.file_path, std::move(on_completion));
+  }
+
 #if defined(__APPLE__) || defined(__linux__)
   int pipefd[2] = {0};
   // TODO(hjiang): We shoud have our own syscall macro.
@@ -216,16 +271,18 @@ RotationFileHandle CreatePipeAndStreamOutput(const std::string &fname,
 
 #endif
 
-  auto logger = CreateLogger(fname, log_rotate_opt);
+  auto logger = CreateLogger(log_redirect_opt);
   CreateStreamDumper(std::move(read_func),
                      std::move(close_read_handle),
                      logger,
                      std::move(on_completion));
 
 #if defined(__APPLE__) || defined(__linux__)
-  RotationFileHandle stream_token{write_fd, std::move(termination_caller)};
+  RedirectionFileHandle stream_token{
+      write_fd, std::move(logger), std::move(termination_caller)};
 #elif defined(_WIN32)
-  RotationFileHandle stream_token{write_handle, std::move(termination_caller)};
+  RedirectionFileHandle stream_token{
+      write_handle, std::move(logger), std::move(termination_caller)};
 #endif
 
   return stream_token;

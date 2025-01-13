@@ -72,6 +72,11 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "log_redirection_options",
+    hdrs = ["log_redirection_options.h"],
+)
+
+ray_cc_library(
     name = "pipe_logger",
     hdrs = ["pipe_logger.h"],
     srcs = ["pipe_logger.cc"],
@@ -80,5 +85,16 @@ ray_cc_library(
         ":util",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_library(
+    name = "logging_utils",
+    hdrs = ["logging_utils.h"],
+    srcs = ["logging_utils.cc"],
+    deps = [
+        ":log_redirection_options",
+        ":pipe_logger",
+        ":util",
     ],
 )

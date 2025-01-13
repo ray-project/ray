@@ -18,9 +18,20 @@
 
 #include <functional>
 #include <limits>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "ray/util/compat.h"
+#include "ray/util/log_redirection_options.h"
+#include "ray/util/util.h"
+#include "spdlog/logger.h"
+
+#if defined(__APPLE__) || defined(__linux__)
+#include <unistd.h>
+#elif defined(_WIN32)
+#include <windows.h>
+#endif
 
 namespace ray {
 
@@ -30,70 +41,93 @@ namespace ray {
 // finished.
 inline constexpr std::string_view kPipeLogReadBufSizeEnv = "RAY_PIPE_LOG_READ_BUF_SIZE";
 
-// Configuration for log rotation. By default no rotation enabled.
-struct LogRotationOption {
-  // Max number of bytes in a rotated file.
-  size_t rotation_max_size = std::numeric_limits<size_t>::max();
-  // Max number of files for all rotated files.
-  size_t rotation_max_file_count = 1;
-};
-
-class RotationFileHandle {
+// TODO(hjiang):
+// 1. Use `MEMFD_TYPE_NON_UNIQUE` after we split `plasma/compat.h` into a separate target,
+// otherwise we're introducing too many unnecessary dependencies.
+// 2. Add a `Flush` feature exposed to python side.
+class RedirectionFileHandle {
  public:
-  RotationFileHandle(MEMFD_TYPE_NON_UNIQUE write_handle,
-                     std::function<void()> termination_caller)
-      : write_handle_(write_handle), termination_caller_(std::move(termination_caller)) {}
-  RotationFileHandle(const RotationFileHandle &) = delete;
-  RotationFileHandle &operator=(const RotationFileHandle &) = delete;
+  RedirectionFileHandle() = default;
+  RedirectionFileHandle(MEMFD_TYPE_NON_UNIQUE write_handle,
+                        std::shared_ptr<spdlog::logger> logger,
+                        std::function<void()> termination_caller)
+      : write_handle_(write_handle),
+        logger_(std::move(logger)),
+        termination_caller_(std::move(termination_caller)) {}
+  RedirectionFileHandle(const RedirectionFileHandle &) = delete;
+  RedirectionFileHandle &operator=(const RedirectionFileHandle &) = delete;
+
+  // Synchronously flush content to storage.
+  //
+  // TODO(hjiang): Current method only flushes whatever we send to logger, but not those
+  // in the pipe; a better approach is flush pipe, send FLUSH indicator and block wait
+  // until logger sync over.
+  void Flush() {
+    if (logger_ != nullptr) {
+      logger_->flush();
+    }
+  }
 
   // Used to write to.
   //
   // TODO(hjiang): I will followup with another PR to make a `FD` class, which is not
   // copiable to avoid manual `dup`.
 #if defined(__APPLE__) || defined(__linux__)
-  RotationFileHandle(RotationFileHandle &&rhs) {
+  RedirectionFileHandle(RedirectionFileHandle &&rhs) {
+    logger_ = std::move(rhs.logger_);
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = -1;
     termination_caller_ = std::move(rhs.termination_caller_);
   }
-  RotationFileHandle &operator=(RotationFileHandle &&rhs) {
+  RedirectionFileHandle &operator=(RedirectionFileHandle &&rhs) {
     if (this == &rhs) {
       return *this;
     }
+    logger_ = std::move(rhs.logger_);
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = -1;
     termination_caller_ = std::move(rhs.termination_caller_);
     return *this;
   }
-  ~RotationFileHandle() {
+  ~RedirectionFileHandle() {
     // Only invoke termination functor when handler at a valid state.
     if (write_handle_ != -1) {
       termination_caller_();
     }
   }
+  void CompleteWrite(const char *data, size_t len) {
+    ssize_t bytes_written = write(write_handle_, data, len);
+    RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(len));
+  }
 
   int GetWriteHandle() const { return write_handle_; }
 
 #elif defined(_WIN32)
-  RotationFileHandle(RotationFileHandle &&rhs) {
-    write_handle_ = rhs.write_handle_;
-    rhs.write_handle_ = nullptr;
+  RedirectionFileHandle(RedirectionFileHandle &&rhs) {
+    logger_ = std::move(rhs.logger_);
+    write_fd_ = rhs.write_fd_;
+    rhs.write_fd_ = nullptr;
     termination_caller_ = std::move(rhs.termination_caller_);
   }
-  RotationFileHandle &operator=(RotationFileHandle &&rhs) {
+  RedirectionFileHandle &operator=(RedirectionFileHandle &&rhs) {
     if (this == &rhs) {
       return *this;
     }
+    logger_ = std::move(rhs.logger_);
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = nullptr;
     termination_caller_ = std::move(rhs.termination_caller_);
     return *this;
   }
-  ~RotationFileHandle() {
+  ~RedirectionFileHandle() {
     // Only invoke termination functor when handler at a valid state.
     if (write_handle_ != nullptr) {
       termination_caller_();
     }
+  }
+  void CompleteWrite(char *data, size_t len) {
+    DWORD bytes_written = 0;
+    WriteFile(write_handle_, data, len, &bytes_written, nullptr);
   }
 
   HANDLE GetWriteHandle() const { return write_handle_; }
@@ -103,6 +137,9 @@ class RotationFileHandle {
  private:
   MEMFD_TYPE_NON_UNIQUE write_handle_;
 
+  // Logger, which is responsible for writing content into all sinks.
+  std::shared_ptr<spdlog::logger> logger_;
+
   // Termination hook, used to flush and call completion.
   std::function<void()> termination_caller_;
 };
@@ -111,7 +148,7 @@ class RotationFileHandle {
 // There're will be two threads spawned in the background, one thread continuously reads
 // from the pipe, another one dumps whatever read from pipe to the persistent file.
 //
-// The returned [RotationFileHandle] owns the lifecycle for pipe file descriptors and
+// The returned [RedirectionFileHandle] owns the lifecycle for pipe file descriptors and
 // background threads, the resource release happens at token's destruction.
 //
 // @param on_completion: called after all content has been persisted.
@@ -120,8 +157,7 @@ class RotationFileHandle {
 //
 // Notice caller side should _NOT_ close the given file handle, it will be handled
 // internally.
-RotationFileHandle CreatePipeAndStreamOutput(const std::string &fname,
-                                             const LogRotationOption &log_rotate_opt,
-                                             std::function<void()> on_completion);
+RedirectionFileHandle CreatePipeAndStreamOutput(
+    const LogRedirectionOption &log_redirect_opt, std::function<void()> on_completion);
 
 }  // namespace ray
