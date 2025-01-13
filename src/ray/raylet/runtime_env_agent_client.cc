@@ -254,10 +254,11 @@ class SessionPool {
   std::queue<std::shared_ptr<Session>> pending_sessions_;
 };
 
-inline constexpr std::string_view HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV =
+constexpr std::string_view HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV =
     "/get_or_create_runtime_env";
-inline constexpr std::string_view HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE =
+constexpr std::string_view HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE =
     "/delete_runtime_env_if_possible";
+constexpr uint32_t kDefaultSessionPoolSize = 10000;
 
 class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
@@ -270,7 +271,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       uint32_t agent_register_timeout_ms,
       uint32_t agent_manager_retry_interval_ms,
-      uint32_t session_pool_size = 10)
+      uint32_t session_pool_size = kDefaultSessionPoolSize)
       : io_context_(io_context),
         session_pool_(session_pool_size),
         address_(address),
