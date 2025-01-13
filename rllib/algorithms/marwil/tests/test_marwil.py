@@ -1,3 +1,4 @@
+import gymnasium as gym
 import numpy as np
 from pathlib import Path
 import unittest
@@ -129,11 +130,19 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
+            .environment(
+                observation_space=gym.spaces.Box(
+                    np.array([-4.8, -np.inf, -0.41887903, -np.inf]),
+                    np.array([4.8, np.inf, 0.41887903, np.inf]),
+                    (4,),
+                    np.float32,
+                ),
+                action_space=gym.spaces.Discrete(2),
+            )
             .api_stack(
                 enable_rl_module_and_learner=True,
                 enable_env_runner_and_connector_v2=True,
             )
-            .env_runners(num_env_runners=0)
             .offline_data(
                 input_=[data_path],
                 dataset_num_iters_per_learner=1,
@@ -149,7 +158,9 @@ class TestMARWIL(unittest.TestCase):
         batch = algo.offline_data.data.take_batch(2000)
 
         # Create the prelearner and compute advantages and values.
-        offline_prelearner = OfflinePreLearner(config, algo.learner_group._learner)
+        offline_prelearner = OfflinePreLearner(
+            config=config, learner=algo.learner_group._learner
+        )
         # Note, for `ray.data`'s pipeline everything has to be a dictionary
         # therefore the batch is embedded into another dictionary.
         batch = offline_prelearner(batch)["batch"][0]

@@ -23,9 +23,9 @@ py_test_module_list(
         "test_cluster_node_info_cache.py",
         "test_constructor_failure.py",
         "test_controller.py",
-        "test_deployment_graph_handle_serde.py",
         "test_deployment_version.py",
         "test_expected_versions.py",
+        "test_http_cancellation.py",
         "test_max_queued_requests.py",
         "test_persistence.py",
         "test_proxy.py",
@@ -50,14 +50,14 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_callback.py",
-        "test_cancellation.py",
         "test_cluster.py",
         "test_controller_recovery.py",
         "test_deployment_scheduler.py",
         "test_failure.py",
         "test_grpc.py",
-        "test_handle.py",
-        "test_handle_api.py",
+        "test_handle_1.py",
+        "test_handle_2.py",
+        "test_handle_cancellation.py",
         "test_handle_streaming.py",
         "test_healthcheck.py",
         "test_http_headers.py",
@@ -291,9 +291,10 @@ py_test_module_list(
     data = glob(["test_config_files/**/*"]),
     env = {"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
     files = [
-        "test_cancellation.py",
-        "test_handle.py",
-        "test_handle_api.py",
+        "test_http_cancellation.py",
+        "test_handle_1.py",
+        "test_handle_2.py",
+        "test_handle_cancellation.py",
         "test_handle_streaming.py",
         "test_multiplex.py",
         "test_request_timeout.py",
@@ -443,3 +444,48 @@ py_test_module_list(
     ],
 )
 
+
+# Test handle API with local testing mode.
+py_test_module_list(
+    size = "small",
+    env = {"RAY_SERVE_FORCE_LOCAL_TESTING_MODE": "1"},
+    files = [
+        "test_handle_1.py",
+        "test_handle_2.py",
+        "test_handle_cancellation.py",
+        "test_handle_streaming.py",
+    ],
+    name_suffix = "_with_local_testing_mode",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+
+# Test currently off-by-default behavior to run replica sync methods in a threadpool.
+# TODO(edoakes): remove this once the FF is flipped on by default.
+py_test_module_list(
+    size = "small",
+    env = {"RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1"},
+    files = [
+        "test_replica_sync_methods.py",
+    ],
+    name_suffix = "_with_run_sync_in_threadpool",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)

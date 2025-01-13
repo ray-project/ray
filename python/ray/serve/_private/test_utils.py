@@ -3,6 +3,7 @@ import datetime
 import os
 import threading
 import time
+from contextlib import asynccontextmanager
 from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -15,7 +16,12 @@ import ray.util.state as state_api
 from ray import serve
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import DeploymentID, DeploymentStatus, RequestProtocol
+from ray.serve._private.common import (
+    CreatePlacementGroupRequest,
+    DeploymentID,
+    DeploymentStatus,
+    RequestProtocol,
+)
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
@@ -183,19 +189,12 @@ class MockActorClass:
 
 
 class MockPlacementGroup:
-    def __init__(
-        self,
-        bundles: List[Dict[str, float]],
-        strategy: str = "PACK",
-        name: str = "",
-        lifetime: Optional[str] = None,
-        _soft_target_node_id: Optional[str] = None,
-    ):
-        self._bundles = bundles
-        self._strategy = strategy
-        self._name = name
-        self._lifetime = lifetime
-        self._soft_target_node_id = _soft_target_node_id
+    def __init__(self, request: CreatePlacementGroupRequest):
+        self._bundles = request.bundles
+        self._strategy = request.strategy
+        self._soft_target_node_id = request.target_node_id
+        self._name = request.name
+        self._lifetime = "detached"
 
 
 class MockDeploymentHandle:
@@ -514,13 +513,22 @@ def ping_fruit_stand(channel, app_name):
     assert response.costs == 32
 
 
+@asynccontextmanager
 async def send_signal_on_cancellation(signal_actor: ActorHandle):
+    cancelled = False
     try:
-        await asyncio.sleep(100000)
+        yield
+        await asyncio.sleep(100)
     except asyncio.CancelledError:
+        cancelled = True
         # Clear the context var to avoid Ray recursively cancelling this method call.
         ray._raylet.async_task_id.set(None)
         await signal_actor.send.remote()
+
+    if not cancelled:
+        raise RuntimeError(
+            "CancelledError wasn't raised during `send_signal_on_cancellation` block"
+        )
 
 
 class FakeGrpcContext:

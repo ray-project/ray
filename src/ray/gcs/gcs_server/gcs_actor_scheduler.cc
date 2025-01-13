@@ -27,17 +27,17 @@ GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context,
     GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
-    std::shared_ptr<ClusterTaskManager> cluster_task_manager,
+    ClusterTaskManager &cluster_task_manager,
     GcsActorSchedulerFailureCallback schedule_failure_handler,
     GcsActorSchedulerSuccessCallback schedule_success_handler,
-    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-    rpc::ClientFactoryFn client_factory,
+    rpc::NodeManagerClientPool &raylet_client_pool,
+    rpc::CoreWorkerClientFactoryFn client_factory,
     std::function<void(const NodeID &, const rpc::ResourcesData &)>
         normal_task_resources_changed_callback)
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
       gcs_node_manager_(gcs_node_manager),
-      cluster_task_manager_(std::move(cluster_task_manager)),
+      cluster_task_manager_(cluster_task_manager),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
       raylet_client_pool_(raylet_client_pool),
@@ -97,11 +97,11 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   const auto &owner_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
   RayTask task(actor->GetCreationTaskSpecification(),
                owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
-  cluster_task_manager_->QueueAndScheduleTask(task,
-                                              /*grant_or_reject*/ false,
-                                              /*is_selected_based_on_locality*/ false,
-                                              /*reply*/ reply.get(),
-                                              send_reply_callback);
+  cluster_task_manager_.QueueAndScheduleTask(task,
+                                             /*grant_or_reject*/ false,
+                                             /*is_selected_based_on_locality*/ false,
+                                             /*reply*/ reply.get(),
+                                             send_reply_callback);
 }
 
 void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
@@ -218,7 +218,7 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const NodeID &node_id) {
     }
   }
 
-  raylet_client_pool_->Disconnect(node_id);
+  raylet_client_pool_.Disconnect(node_id);
 
   return actor_ids;
 }
@@ -414,15 +414,16 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     core_worker_clients_.GetOrConnect(leased_worker->GetAddress());
     RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(),
                                       actor->GetActorTableData(),
-                                      [this, actor, leased_worker](Status status) {
-                                        RAY_CHECK_OK(status);
-                                        if (actor->GetState() ==
-                                            rpc::ActorTableData::DEAD) {
-                                          // Actor has already been killed.
-                                          return;
-                                        }
-                                        CreateActorOnWorker(actor, leased_worker);
-                                      }));
+                                      {[this, actor, leased_worker](Status status) {
+                                         RAY_CHECK_OK(status);
+                                         if (actor->GetState() ==
+                                             rpc::ActorTableData::DEAD) {
+                                           // Actor has already been killed.
+                                           return;
+                                         }
+                                         CreateActorOnWorker(actor, leased_worker);
+                                       },
+                                       io_context_}));
   }
 }
 
@@ -448,7 +449,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
   RAY_LOG(INFO) << "Start creating actor " << actor->GetActorID() << " on worker "
                 << worker->GetWorkerID() << " at node " << actor->GetNodeID()
                 << ", job id = " << actor->GetActorID().JobId();
-  std::unique_ptr<rpc::PushTaskRequest> request(new rpc::PushTaskRequest());
+  auto request = std::make_unique<rpc::PushTaskRequest>();
   request->set_intended_worker_id(worker->GetWorkerID().Binary());
   request->mutable_task_spec()->CopyFrom(
       actor->GetCreationTaskSpecification().GetMessage());
@@ -531,7 +532,7 @@ void GcsActorScheduler::DoRetryCreatingActorOnWorker(
 
 std::shared_ptr<WorkerLeaseInterface> GcsActorScheduler::GetOrConnectLeaseClient(
     const rpc::Address &raylet_address) {
-  return raylet_client_pool_->GetOrConnectByAddress(raylet_address);
+  return raylet_client_pool_.GetOrConnectByAddress(raylet_address);
 }
 
 bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
@@ -664,13 +665,13 @@ void GcsActorScheduler::HandleWorkerLeaseRejectedReply(
 void GcsActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
   if (!actor->GetAcquiredResources().IsEmpty()) {
     ReturnActorAcquiredResources(actor);
-    cluster_task_manager_->ScheduleAndDispatchTasks();
+    cluster_task_manager_.ScheduleAndDispatchTasks();
   }
 }
 
 void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> actor) {
   auto &cluster_resource_manager =
-      cluster_task_manager_->GetClusterResourceScheduler()->GetClusterResourceManager();
+      cluster_task_manager_.GetClusterResourceScheduler().GetClusterResourceManager();
   cluster_resource_manager.AddNodeAvailableResources(
       scheduling::NodeID(actor->GetNodeID().Binary()),
       actor->GetAcquiredResources().GetResourceSet());
@@ -678,14 +679,13 @@ void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> a
 }
 
 size_t GcsActorScheduler::GetPendingActorsCount() const {
-  return cluster_task_manager_->GetInfeasibleQueueSize() +
-         cluster_task_manager_->GetPendingQueueSize();
+  return cluster_task_manager_.GetInfeasibleQueueSize() +
+         cluster_task_manager_.GetPendingQueueSize();
 }
 
 bool GcsActorScheduler::CancelInFlightActorScheduling(
     const std::shared_ptr<GcsActor> &actor) {
-  return cluster_task_manager_->CancelTask(
-      actor->GetCreationTaskSpecification().TaskId());
+  return cluster_task_manager_.CancelTask(actor->GetCreationTaskSpecification().TaskId());
 }
 
 }  // namespace gcs

@@ -1,4 +1,3 @@
-import collections
 import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
@@ -8,6 +7,7 @@ from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.autoscaler import AutoscalingActorPool
+from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -49,6 +49,7 @@ class ActorPoolMapOperator(MapOperator):
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         target_max_block_size: Optional[int],
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
@@ -79,10 +80,12 @@ class ActorPoolMapOperator(MapOperator):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
+                See :func:`ray.remote` for details.
         """
         super().__init__(
             map_transformer,
             input_op,
+            data_context,
             name,
             target_max_block_size,
             min_rows_per_bundle,
@@ -91,11 +94,11 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args,
         )
         self._ray_actor_task_remote_args = {}
-        actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
+        actor_task_errors = self.data_context.actor_task_retry_on_errors
         if actor_task_errors:
             self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
         _add_system_error_to_retry_exceptions(self._ray_actor_task_remote_args)
-        data_context = DataContext.get_current()
+        data_context = self.data_context
         if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
             # The `_generator_backpressure_num_objects` parameter should be
             # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
@@ -105,11 +108,13 @@ class ActorPoolMapOperator(MapOperator):
             )
         self._min_rows_per_bundle = min_rows_per_bundle
         self._ray_remote_args_fn = ray_remote_args_fn
-        self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
+        self._ray_remote_args = self._apply_default_remote_args(
+            self._ray_remote_args, data_context
+        )
 
         self._actor_pool = _ActorPool(compute_strategy, self._start_actor)
         # A queue of bundles awaiting dispatch to actors.
-        self._bundle_queue = collections.deque()
+        self._bundle_queue = create_bundle_queue()
         # Cached actor class.
         self._cls = None
         # Whether no more submittable bundles will be added.
@@ -133,7 +138,7 @@ class ActorPoolMapOperator(MapOperator):
         # upstream operators, leading to a spike in memory usage prior to steady state.
         logger.debug(f"{self._name}: Waiting for {len(refs)} pool actors to start...")
         try:
-            timeout = DataContext.get_current().wait_for_min_actors_s
+            timeout = self.data_context.wait_for_min_actors_s
             ray.get(refs, timeout=timeout)
         except ray.exceptions.GetTimeoutError:
             raise ray.exceptions.GetTimeoutError(
@@ -148,7 +153,7 @@ class ActorPoolMapOperator(MapOperator):
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
-        ctx = DataContext.get_current()
+        ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
         actor = self._cls.remote(
@@ -175,7 +180,7 @@ class ActorPoolMapOperator(MapOperator):
         return actor, res_ref
 
     def _add_bundled_input(self, bundle: RefBundle):
-        self._bundle_queue.append(bundle)
+        self._bundle_queue.add(bundle)
         self._metrics.on_input_queued(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.
         self._dispatch_tasks()
@@ -191,14 +196,14 @@ class ActorPoolMapOperator(MapOperator):
         while self._bundle_queue:
             # Pick an actor from the pool.
             if self._actor_locality_enabled:
-                actor = self._actor_pool.pick_actor(self._bundle_queue[0])
+                actor = self._actor_pool.pick_actor(self._bundle_queue.peek())
             else:
                 actor = self._actor_pool.pick_actor()
             if actor is None:
                 # No actors available for executing the next task.
                 break
             # Submit the map task.
-            bundle = self._bundle_queue.popleft()
+            bundle = self._bundle_queue.pop()
             self._metrics.on_input_dequeued(bundle)
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(
@@ -209,7 +214,12 @@ class ActorPoolMapOperator(MapOperator):
                 num_returns="streaming",
                 name=self.name,
                 **self._ray_actor_task_remote_args,
-            ).remote(DataContext.get_current(), ctx, *input_blocks)
+            ).remote(
+                self.data_context,
+                ctx,
+                *input_blocks,
+                **self.get_map_task_kwargs(),
+            )
 
             def _task_done_callback(actor_to_return):
                 # Return the actor that was running the task to the pool.
@@ -322,12 +332,13 @@ class ActorPoolMapOperator(MapOperator):
         return res
 
     @staticmethod
-    def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
+    def _apply_default_remote_args(
+        ray_remote_args: Dict[str, Any], data_context: DataContext
+    ) -> Dict[str, Any]:
         """Apply defaults to the actor creation remote args."""
         ray_remote_args = ray_remote_args.copy()
         if "scheduling_strategy" not in ray_remote_args:
-            ctx = DataContext.get_current()
-            ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+            ray_remote_args["scheduling_strategy"] = data_context.scheduling_strategy
         # Enable actor fault tolerance by default, with infinite actor recreations and
         # up to N retries per task. The user can customize this in map_batches via
         # extra kwargs (e.g., map_batches(..., max_restarts=0) to disable).
@@ -386,12 +397,14 @@ class _MapWorker:
         data_context: DataContext,
         ctx: TaskContext,
         *blocks: Block,
+        **kwargs: Dict[str, Any],
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
         yield from _map_task(
             self._map_transformer,
             data_context,
             ctx,
             *blocks,
+            **kwargs,
         )
 
     def __repr__(self):

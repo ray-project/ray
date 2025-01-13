@@ -12,7 +12,7 @@ import ray
 from ray import serve
 from ray._private.pydantic_compat import BaseModel, ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.api import call_app_builder_with_args_if_necessary
+from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
@@ -566,16 +566,16 @@ class TestAppBuilder:
 
     def test_prebuilt_app(self):
         a = self.A.bind()
-        assert call_app_builder_with_args_if_necessary(a, {}) == a
+        assert call_user_app_builder_with_args_if_necessary(a, {}) == a
 
         f = self.f.bind()
-        assert call_app_builder_with_args_if_necessary(f, {}) == f
+        assert call_user_app_builder_with_args_if_necessary(f, {}) == f
 
         with pytest.raises(
             ValueError,
             match="Arguments can only be passed to an application builder function",
         ):
-            call_app_builder_with_args_if_necessary(f, {"key": "val"})
+            call_user_app_builder_with_args_if_necessary(f, {"key": "val"})
 
     def test_invalid_builder(self):
         class ThisShouldBeAFunction:
@@ -588,7 +588,7 @@ class TestAppBuilder:
                 "or an application builder function"
             ),
         ):
-            call_app_builder_with_args_if_necessary(ThisShouldBeAFunction, {})
+            call_user_app_builder_with_args_if_necessary(ThisShouldBeAFunction, {})
 
     def test_invalid_signature(self):
         def builder_with_two_args(args1, args2):
@@ -598,7 +598,7 @@ class TestAppBuilder:
             TypeError,
             match="Application builder functions should take exactly one parameter",
         ):
-            call_app_builder_with_args_if_necessary(builder_with_two_args, {})
+            call_user_app_builder_with_args_if_necessary(builder_with_two_args, {})
 
     def test_builder_returns_bad_type(self):
         def return_none(args):
@@ -608,7 +608,7 @@ class TestAppBuilder:
             TypeError,
             match="Application builder functions must return a",
         ):
-            call_app_builder_with_args_if_necessary(return_none, {})
+            call_user_app_builder_with_args_if_necessary(return_none, {})
 
         def return_unbound_deployment(args):
             return self.f
@@ -617,21 +617,22 @@ class TestAppBuilder:
             TypeError,
             match="Application builder functions must return a",
         ):
-            call_app_builder_with_args_if_necessary(return_unbound_deployment, {})
+            call_user_app_builder_with_args_if_necessary(return_unbound_deployment, {})
 
     def test_basic_no_args(self):
         def build_function(args):
             return self.A.bind()
 
         assert isinstance(
-            call_app_builder_with_args_if_necessary(build_function, {}), Application
+            call_user_app_builder_with_args_if_necessary(build_function, {}),
+            Application,
         )
 
         def build_class(args):
             return self.f.bind()
 
         assert isinstance(
-            call_app_builder_with_args_if_necessary(build_class, {}), Application
+            call_user_app_builder_with_args_if_necessary(build_class, {}), Application
         )
 
     def test_args_dict(self):
@@ -645,7 +646,7 @@ class TestAppBuilder:
                 args["message"]
             )
 
-        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        app = call_user_app_builder_with_args_if_necessary(build, args_dict)
         assert isinstance(app, Application)
 
     def test_args_typed(self):
@@ -658,7 +659,7 @@ class TestAppBuilder:
                 args["message"]
             )
 
-        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        app = call_user_app_builder_with_args_if_necessary(build, args_dict)
         assert isinstance(app, Application)
 
         def build(args: Dict[str, str]):
@@ -668,7 +669,7 @@ class TestAppBuilder:
                 args["message"]
             )
 
-        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        app = call_user_app_builder_with_args_if_necessary(build, args_dict)
         assert isinstance(app, Application)
 
         class ForwardRef:
@@ -679,7 +680,7 @@ class TestAppBuilder:
                     args["message"]
                 )
 
-        app = call_app_builder_with_args_if_necessary(ForwardRef.build, args_dict)
+        app = call_user_app_builder_with_args_if_necessary(ForwardRef.build, args_dict)
         assert isinstance(app, Application)
 
         def build(args: self.TypedArgs):
@@ -690,7 +691,7 @@ class TestAppBuilder:
             assert args.num_replicas == 3
             return self.A.options(num_replicas=args.num_replicas).bind(args.message)
 
-        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        app = call_user_app_builder_with_args_if_necessary(build, args_dict)
         assert isinstance(app, Application)
 
         # Sanity check that pydantic validation works.
@@ -701,7 +702,7 @@ class TestAppBuilder:
             assert args.num_replicas is None
             return self.A.bind()
 
-        app = call_app_builder_with_args_if_necessary(
+        app = call_user_app_builder_with_args_if_necessary(
             check_missing_optional, {"message": "hiya"}
         )
         assert isinstance(app, Application)
@@ -711,7 +712,7 @@ class TestAppBuilder:
             assert False, "Shouldn't get here because validation failed."
 
         with pytest.raises(ValidationError, match="field required"):
-            call_app_builder_with_args_if_necessary(
+            call_user_app_builder_with_args_if_necessary(
                 check_missing_required, {"num_replicas": "10"}
             )
 
@@ -742,7 +743,7 @@ class TestAppBuilder:
             assert args.age == cat_dict["age"]
             return self.A.bind(f"My {args.color} cat is {args.age} years old.")
 
-        app = call_app_builder_with_args_if_necessary(build, cat_dict)
+        app = call_user_app_builder_with_args_if_necessary(build, cat_dict)
         assert isinstance(app, Application)
 
 
@@ -847,15 +848,39 @@ def test_status_constructor_error(serve_instance):
 
     serve._run(A.bind(), _blocking=False)
 
-    def check_for_failed_deployment():
+    def check_for_failed_app():
         default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         error_substr = "ZeroDivisionError: division by zero"
-        return (
+        assert (
             default_app.status == "DEPLOY_FAILED"
             and error_substr in default_app.deployments["A"].message
         )
+        assert default_app.deployments["A"].status == "DEPLOY_FAILED"
+        return True
 
-    wait_for_condition(check_for_failed_deployment)
+    wait_for_condition(check_for_failed_app)
+
+    # Instead of hanging forever, a request to the application should
+    # return a 503 error to reflect the failed deployment state.
+    # The timeout is there to prevent the test from hanging and blocking
+    # the test suite if it does fail.
+    r = requests.post("http://localhost:8000", timeout=10)
+    assert r.status_code == 503 and "unavailable" in r.text
+
+    @serve.deployment
+    class A:
+        def __init__(self):
+            pass
+
+    serve._run(A.bind(), _blocking=False)
+
+    def check_for_running_app():
+        default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert default_app.status == "RUNNING"
+        assert default_app.deployments["A"].status == "HEALTHY"
+        return True
+
+    wait_for_condition(check_for_running_app)
 
 
 @pytest.mark.skipif(

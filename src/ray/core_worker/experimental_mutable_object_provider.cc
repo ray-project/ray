@@ -14,17 +14,17 @@
 
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 
-#include "absl/strings/str_format.h"
-
 namespace ray {
 namespace core {
 namespace experimental {
 
-MutableObjectProvider::MutableObjectProvider(
-    std::shared_ptr<plasma::PlasmaClientInterface> plasma, RayletFactory factory)
+MutableObjectProvider::MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
+                                             RayletFactory factory,
+                                             std::function<Status(void)> check_signals)
     : plasma_(plasma),
-      object_manager_(std::make_shared<ray::experimental::MutableObjectManager>()),
-      raylet_client_factory_(factory) {}
+      object_manager_(std::make_shared<ray::experimental::MutableObjectManager>(
+          std::move(check_signals))),
+      raylet_client_factory_(std::move(std::move(factory))) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
   for (std::unique_ptr<boost::asio::executor_work_guard<
@@ -43,13 +43,13 @@ void MutableObjectProvider::RegisterWriterChannel(
     const ObjectID &writer_object_id, const std::vector<NodeID> &remote_reader_node_ids) {
   {
     std::unique_ptr<plasma::MutableObject> writer_object;
-    RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(writer_object_id, &writer_object));
+    RAY_CHECK_OK(plasma_.GetExperimentalMutableObject(writer_object_id, &writer_object));
     RAY_CHECK_OK(object_manager_->RegisterChannel(
         writer_object_id, std::move(writer_object), /*reader=*/false));
     // `object` is now a nullptr.
   }
 
-  if (remote_reader_node_ids.size() == 0) {
+  if (remote_reader_node_ids.empty()) {
     return;
   }
 
@@ -93,7 +93,7 @@ void MutableObjectProvider::RegisterWriterChannel(
 
 void MutableObjectProvider::RegisterReaderChannel(const ObjectID &object_id) {
   std::unique_ptr<plasma::MutableObject> object;
-  RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
+  RAY_CHECK_OK(plasma_.GetExperimentalMutableObject(object_id, &object));
   RAY_CHECK_OK(
       object_manager_->RegisterChannel(object_id, std::move(object), /*reader=*/true));
   // `object` is now a nullptr.
@@ -144,7 +144,7 @@ void MutableObjectProvider::HandlePushMutableObject(
   }
 
   std::shared_ptr<Buffer> object_backing_store;
-  if (!tmp_written_so_far) {
+  if (tmp_written_so_far == 0u) {
     // We set `metadata` to nullptr since the metadata is at the end of the object, which
     // we will not have until the last chunk is received (or until the two last chunks are
     // received, if the metadata happens to span both). The metadata will end up being
@@ -216,8 +216,8 @@ Status MutableObjectProvider::GetChannelStatus(const ObjectID &object_id,
 void MutableObjectProvider::PollWriterClosure(
     instrumented_io_context &io_context,
     const ObjectID &writer_object_id,
-    std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
-        remote_readers) {
+    const std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
+        &remote_readers) {
   // NOTE: There's only 1 PollWriterClosure at any time in a single thread.
   std::shared_ptr<RayObject> object;
   // The corresponding ReadRelease() will be automatically called when
@@ -262,16 +262,16 @@ void MutableObjectProvider::PollWriterClosure(
 }
 
 void MutableObjectProvider::RunIOContext(instrumented_io_context &io_context) {
-  // TODO(jhumphri): Decompose this.
+// TODO(jhumphri): Decompose this.
 #ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
   sigset_t mask;
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
   sigaddset(&mask, SIGTERM);
-  pthread_sigmask(SIG_BLOCK, &mask, NULL);
-#endif
+  pthread_sigmask(SIG_BLOCK, &mask, nullptr);
 
+#endif
   SetThreadName("worker.channel_io");
   io_context.run();
   RAY_LOG(INFO) << "Core worker channel io service stopped.";

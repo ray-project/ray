@@ -90,7 +90,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     def __init__(
         self,
-        event_loop: asyncio.AbstractEventLoop,
         deployment_id: DeploymentID,
         handle_source: DeploymentHandleSource,
         prefer_local_node_routing: bool = False,
@@ -105,7 +104,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             Callable[[RunningReplicaInfo], ReplicaWrapper]
         ] = None,
     ):
-        self._loop = event_loop
         self._deployment_id = deployment_id
         self._handle_source = handle_source
         self._prefer_local_node_routing = prefer_local_node_routing
@@ -130,6 +128,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # from a different loop than it uses for scheduling, so we need to construct it
         # lazily to avoid an error due to the event being attached to the wrong loop.
         self._lazily_constructed_replicas_updated_event: Optional[asyncio.Event] = None
+        self._lazily_fetched_loop: Optional[asyncio.AbstractEventLoop] = None
 
         # Colocated replicas (e.g. wrt node, AZ)
         self._colocated_replica_ids: DefaultDict[
@@ -194,6 +193,13 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self.num_scheduling_tasks_in_backoff_gauge.set(
             self.num_scheduling_tasks_in_backoff
         )
+
+    @property
+    def _event_loop(self) -> asyncio.AbstractEventLoop:
+        if self._lazily_fetched_loop is None:
+            self._lazily_fetched_loop = asyncio.get_running_loop()
+
+        return self._lazily_fetched_loop
 
     @property
     def _replicas_updated_event(self) -> asyncio.Event:
@@ -323,7 +329,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             active_replica_ids=new_replica_id_set
         )
         # Populate cache for new replicas
-        self._loop.create_task(self._probe_queue_lens(replicas_to_ping, 0))
+        self._event_loop.create_task(self._probe_queue_lens(replicas_to_ping, 0))
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
 
@@ -441,6 +447,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         # If the timeout is up and we've already tried the candidates
                         # with the fewest models loaded, fall back to all replicas.
                         candidate_replica_ids = self._replica_id_set
+                    should_backoff = True
                 elif (
                     self._prefer_local_node_routing
                     and not tried_same_node
@@ -452,6 +459,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         LocalityScope.NODE
                     ]
                     tried_same_node = True
+                    should_backoff = False
                 elif (
                     self._prefer_local_az_routing
                     and not tried_same_az
@@ -466,10 +474,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         LocalityScope.AVAILABILITY_ZONE
                     ]
                     tried_same_az = True
+                    should_backoff = False
                 else:
                     # On subsequent iterations or when there are no replicas on the same
                     # node or AZ, consider all available replicas.
                     candidate_replica_ids = self._replica_id_set
+                    should_backoff = True
 
                 if candidate_replica_ids:
                     chosen_ids = random.sample(
@@ -477,6 +487,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         k=min(2, len(candidate_replica_ids)),
                     )
                     yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
+
+                # We have a slight unintended behavior when enabled locality routing
+                # for both node and AZ. The intention is to try same node first,
+                # then try same AZ if node fails, then try everything else until a
+                # replica is found. These sequence should only help to reduce the
+                # latency of the request. No backoff and sleep should be applied, until
+                # we have fall into the case trying on all available replicas.
+                if not should_backoff:
+                    continue
 
                 if not entered_backoff:
                     entered_backoff = True
@@ -535,7 +554,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         get_queue_len_tasks = []
         for r in replicas:
-            t = self._loop.create_task(
+            t = self._event_loop.create_task(
                 r.get_queue_len(deadline_s=queue_len_response_deadline_s)
             )
             t.replica = r
@@ -647,7 +666,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         elif len(not_in_cache) > 0:
             # If there are replicas without a valid cache entry, probe them in the
             # background to populate the cache.
-            self._loop.create_task(self._probe_queue_lens(not_in_cache, backoff_index))
+            self._event_loop.create_task(
+                self._probe_queue_lens(not_in_cache, backoff_index)
+            )
 
         # `self._replicas` may have been updated since the candidates were chosen.
         # In that case, return `None` so a new one is selected.
@@ -766,7 +787,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
-            self._scheduling_tasks.remove(asyncio.current_task(loop=self._loop))
+            self._scheduling_tasks.remove(asyncio.current_task(loop=self._event_loop))
             self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
     def maybe_start_scheduling_tasks(self):
@@ -784,7 +805,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         )
         for _ in range(tasks_to_start):
             self._scheduling_tasks.add(
-                self._loop.create_task(self.fulfill_pending_requests())
+                self._event_loop.create_task(self.fulfill_pending_requests())
             )
         if tasks_to_start > 0:
             self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)

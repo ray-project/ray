@@ -10,7 +10,7 @@ from ray import ObjectRef
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-from ray.serve._private.common import NodeId, ProxyStatus
+from ray.serve._private.common import NodeId
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
     PROXY_DRAIN_CHECK_PERIOD_S,
@@ -27,7 +27,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.utils import Timer, TimerBase, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
-from ray.serve.schema import LoggingConfig, ProxyDetails
+from ray.serve.schema import LoggingConfig, ProxyDetails, ProxyStatus
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

@@ -3,9 +3,6 @@ import logging
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ray.dag.class_node import ClassNode
-from ray.dag.dag_node import DAGNodeBase
-from ray.dag.function_node import FunctionNode
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
@@ -22,7 +19,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
-class Application(DAGNodeBase):
+class Application:
     """One or more deployments bound with arguments that can be deployed together.
 
     Can be passed into another `Deployment.bind()` to compose multiple deployments in a
@@ -58,28 +55,9 @@ class Application(DAGNodeBase):
 
     """
 
-    def __init__(
-        self, *, _internal_dag_node: Optional[Union[ClassNode, FunctionNode]] = None
-    ):
-        if _internal_dag_node is None:
-            raise RuntimeError("This class should not be constructed directly.")
-
-        self._internal_dag_node = _internal_dag_node
-
-    def _get_internal_dag_node(self) -> Union[ClassNode, FunctionNode]:
-        if self._internal_dag_node is None:
-            raise RuntimeError("Application object should not be constructed directly.")
-
-        return self._internal_dag_node
-
-    @classmethod
-    def _from_internal_dag_node(cls, dag_node: Union[ClassNode, FunctionNode]):
-        return cls(_internal_dag_node=dag_node)
-
-    # Proxy all method calls to the underlying DAG node. This allows this class to be
-    # passed in place of the ClassNode or FunctionNode in the DAG building code.
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._get_internal_dag_node(), name)
+    def __init__(self, bound_deployment: "Deployment"):
+        # This is used by `build_app`, but made private so users don't use it.
+        self._bound_deployment = bound_deployment
 
 
 @PublicAPI(stability="stable")
@@ -223,32 +201,7 @@ class Deployment:
         The returned Application can be deployed using `serve.run` (or via
         config file) or bound to another deployment for composition.
         """
-
-        schema_shell = deployment_to_schema(self)
-        if inspect.isfunction(self.func_or_class):
-            dag_node = FunctionNode(
-                self.func_or_class,
-                args,  # Used to bind and resolve DAG only, can take user input
-                kwargs,  # Used to bind and resolve DAG only, can take user input
-                self._replica_config.ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_schema": schema_shell,
-                    "is_from_serve_deployment": True,
-                },
-            )
-        else:
-            dag_node = ClassNode(
-                self.func_or_class,
-                args,
-                kwargs,
-                cls_options=self._replica_config.ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_schema": schema_shell,
-                    "is_from_serve_deployment": True,
-                },
-            )
-
-        return Application._from_internal_dag_node(dag_node)
+        return Application(self.options(_init_args=args, _init_kwargs=kwargs))
 
     def options(
         self,
@@ -431,7 +384,7 @@ class Deployment:
                 self._replica_config.init_args == other._replica_config.init_args,
                 self._replica_config.init_kwargs == other._replica_config.init_kwargs,
                 self._replica_config.ray_actor_options
-                == self._replica_config.ray_actor_options,
+                == other._replica_config.ray_actor_options,
             ]
         )
 
@@ -442,9 +395,7 @@ class Deployment:
         return str(self)
 
 
-def deployment_to_schema(
-    d: Deployment,
-) -> DeploymentSchema:
+def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     """Converts a live deployment object to a corresponding structured schema.
 
     Args:

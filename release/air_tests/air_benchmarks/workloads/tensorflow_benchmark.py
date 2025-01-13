@@ -269,9 +269,7 @@ def run(
     path = str((Path(__file__).parent / "_tensorflow_prepare.py").absolute())
 
     upload_file_to_all_nodes(path)
-    # NOTE: This includes the head node ƒor the release smoke test that only
-    # runs on a single node.
-    run_command_on_all_nodes(["python", path], exclude_head=False)
+    run_command_on_all_nodes(["python", path])
 
     times_ray = []
     times_local_ray = []

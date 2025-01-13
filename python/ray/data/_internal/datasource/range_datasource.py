@@ -96,7 +96,7 @@ class RangeDatasource(Datasource):
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * element_size,
-                schema=copy(self._schema()),
+                schema=copy(self._schema),
                 input_files=None,
                 exec_stats=None,
             )
@@ -112,7 +112,7 @@ class RangeDatasource(Datasource):
 
         return read_tasks
 
-    @functools.cache
+    @functools.cached_property
     def _schema(self):
         if self._n == 0:
             return None

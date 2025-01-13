@@ -1,3 +1,6 @@
+from ray.rllib.core import ALL_MODULES  # noqa
+
+
 # Algorithm ResultDict keys.
 EVALUATION_RESULTS = "evaluation"
 ENV_RUNNER_RESULTS = "env_runners"
@@ -11,6 +14,9 @@ TIMERS = "timers"
 NUM_TRAINABLE_PARAMETERS = "num_trainable_parameters"
 NUM_NON_TRAINABLE_PARAMETERS = "num_non_trainable_parameters"
 
+# Number of times `training_step()` was called in one iteration.
+NUM_TRAINING_STEP_CALLS_PER_ITERATION = "num_training_step_calls_per_iteration"
+
 # Counters for sampling, sampling (on eval workers) and
 # training steps (env- and agent steps).
 MEAN_NUM_EPISODE_LISTS_RECEIVED = "mean_num_episode_lists_received"
@@ -19,12 +25,15 @@ NUM_AGENT_STEPS_SAMPLED_LIFETIME = "num_agent_steps_sampled_lifetime"
 NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"  # @OldAPIStack
 NUM_ENV_STEPS_SAMPLED = "num_env_steps_sampled"
 NUM_ENV_STEPS_SAMPLED_LIFETIME = "num_env_steps_sampled_lifetime"
+NUM_ENV_STEPS_SAMPLED_PER_SECOND = "num_env_steps_sampled_per_second"
 NUM_ENV_STEPS_SAMPLED_THIS_ITER = "num_env_steps_sampled_this_iter"  # @OldAPIStack
 NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
     "num_env_steps_sampled_for_evaluation_this_iter"
 )
 NUM_MODULE_STEPS_SAMPLED = "num_module_steps_sampled"
 NUM_MODULE_STEPS_SAMPLED_LIFETIME = "num_module_steps_sampled_lifetime"
+ENV_TO_MODULE_SUM_EPISODES_LENGTH_IN = "env_to_module_sum_episodes_length_in"
+ENV_TO_MODULE_SUM_EPISODES_LENGTH_OUT = "env_to_module_sum_episodes_length_out"
 
 EPISODE_DURATION_SEC_MEAN = "episode_duration_sec_mean"
 EPISODE_LEN_MEAN = "episode_len_mean"
@@ -37,7 +46,9 @@ NUM_EPISODES = "num_episodes"
 NUM_EPISODES_LIFETIME = "num_episodes_lifetime"
 TIME_BETWEEN_SAMPLING = "time_between_sampling"
 
+
 MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED = "mean_num_learner_group_update_called"
+MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED = "mean_num_learner_group_results_received"
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
 NUM_AGENT_STEPS_TRAINED_LIFETIME = "num_agent_steps_trained_lifetime"
 NUM_AGENT_STEPS_TRAINED_THIS_ITER = "num_agent_steps_trained_this_iter"  # @OldAPIStack
@@ -47,6 +58,9 @@ NUM_ENV_STEPS_TRAINED_THIS_ITER = "num_env_steps_trained_this_iter"  # @OldAPISt
 NUM_MODULE_STEPS_TRAINED = "num_module_steps_trained"
 NUM_MODULE_STEPS_TRAINED_LIFETIME = "num_module_steps_trained_lifetime"
 MODULE_TRAIN_BATCH_SIZE_MEAN = "module_train_batch_size_mean"
+LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_IN = "learner_connector_sum_episodes_length_in"
+LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_OUT = "learner_connector_sum_episodes_length_out"
+
 # Backward compatibility: Replace with num_env_steps_... or num_agent_steps_...
 STEPS_TRAINED_THIS_ITER_COUNTER = "num_steps_trained_this_iter"
 
@@ -73,8 +87,8 @@ DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY = "diff_num_grad_updates_vs_sampler_poli
 LAST_TARGET_UPDATE_TS = "last_target_update_ts"
 NUM_TARGET_UPDATES = "num_target_updates"
 
-# Performance timers (keys for Algorithm._timers).
-# ------------------------------------------------
+# Performance timers
+# ------------------
 # Duration of n `Algorithm.training_step()` calls making up one "iteration".
 # Note that n may be >1 if the user has set up a min time (sec) or timesteps per
 # iteration.
@@ -100,11 +114,10 @@ REPLAY_BUFFER_SAMPLE_TIMER = "replay_buffer_sampling_timer"
 REPLAY_BUFFER_UPDATE_PRIOS_TIMER = "replay_buffer_update_prios_timer"
 LEARNER_UPDATE_TIMER = "learner_update_timer"
 LEARN_ON_BATCH_TIMER = "learn"  # @OldAPIStack
-LEARNER_CONNECTOR_TIMER = "learner_connector_timer"
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"
+CONNECTOR_TIMERS = "connectors"
 
 # Learner.
 LEARNER_STATS_KEY = "learner_stats"
-ALL_MODULES = "__all_modules__"
 TD_ERROR_KEY = "td_error"

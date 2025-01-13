@@ -19,6 +19,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private import api as _private_api
+from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
@@ -26,7 +27,6 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -111,8 +111,8 @@ def process_dict_for_yaml_dump(data):
 def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     args_dict = dict()
     for arg in args:
-        split = arg.split("=")
-        if len(split) != 2:
+        split = arg.split("=", maxsplit=1)
+        if len(split) != 2 or len(split[1]) == 0:
             raise click.ClickException(
                 f"Invalid application argument '{arg}', "
                 "must be of the form '<key>=<val>'."
@@ -492,7 +492,7 @@ def run(
         is_config = False
         import_path = config_or_import_path
         cli_logger.print(f"Running import path: '{import_path}'.")
-        app = _private_api.call_app_builder_with_args_if_necessary(
+        app = _private_api.call_user_app_builder_with_args_if_necessary(
             import_attr(import_path), args_dict
         )
 
@@ -561,7 +561,7 @@ def run(
                     try:
                         # The module needs to be reloaded with `importlib` in order to
                         # pick up any changes.
-                        app = _private_api.call_app_builder_with_args_if_necessary(
+                        app = _private_api.call_user_app_builder_with_args_if_necessary(
                             import_attr(import_path, reload_module=True), args_dict
                         )
                         serve.run(
@@ -794,13 +794,13 @@ def build(
                 f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        deployments = pipeline_build(app, name)
+        built_app: BuiltApplication = build_app(app, name=name)
         schema = ServeApplicationSchema(
             name=name,
             route_prefix="/" if len(import_paths) == 1 else f"/{name}",
             import_path=import_path,
             runtime_env={},
-            deployments=[deployment_to_schema(d) for d in deployments],
+            deployments=[deployment_to_schema(d) for d in built_app.deployments],
         )
 
         return schema.dict(exclude_unset=True)

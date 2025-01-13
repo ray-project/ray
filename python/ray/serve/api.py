@@ -10,25 +10,29 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
-from ray.dag import DAGNode
+from ray.serve._private.build_app import build_app
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
-from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve._private.constants import (
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
 )
+from ray.serve._private.local_testing_mode import make_local_deployment_handle
+from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
     ensure_serialization_context,
     extract_self_if_method_call,
-    get_random_string,
     validate_route_prefix,
 )
 from ray.serve.config import (
@@ -195,7 +199,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
 
         if issubclass(cls, collections.abc.Callable):
             raise ValueError(
-                "Class passed to @serve.ingress may not have __call__ method."
+                "Classes passed to @serve.ingress may not have __call__ method."
             )
 
         # Sometimes there are decorators on the methods. We want to fix
@@ -426,10 +430,12 @@ def deployment(
 @PublicAPI(stability="stable")
 def _run(
     target: Application,
+    *,
     _blocking: bool = True,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+    _local_testing_mode: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -439,55 +445,51 @@ def _run(
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
 
+    if not isinstance(target, Application):
+        raise TypeError(
+            "`serve.run` expects an `Application` returned by `Deployment.bind()`."
+        )
+
+    if RAY_SERVE_FORCE_LOCAL_TESTING_MODE:
+        if not _local_testing_mode:
+            logger.info("Overriding local_testing_mode=True from environment variable.")
+
+        _local_testing_mode = True
+
     validate_route_prefix(route_prefix)
 
-    client = _private_api.serve_start(
-        http_options={"location": "EveryNode"},
-    )
-
-    # Record after Ray has been started.
-    ServeUsageTag.API_VERSION.record("v2")
-
-    if isinstance(target, Application):
-        deployments = pipeline_build(target._get_internal_dag_node(), name)
-        ingress_deployment_name = deployments[-1].name
+    if _local_testing_mode:
+        configure_component_logger(
+            component_name="local_test",
+            component_id="-",
+            logging_config=logging_config or LoggingConfig(),
+            stream_handler_only=True,
+        )
+        built_app = build_app(
+            target,
+            name=name,
+            make_deployment_handle=make_local_deployment_handle,
+        )
+        handle = built_app.deployment_handles[built_app.ingress_deployment_name]
     else:
-        msg = "`serve.run` expects an `Application` returned by `Deployment.bind()`."
-        if isinstance(target, DAGNode):
-            msg += (
-                " If you are using the DAG API, you must bind the DAG node to a "
-                "deployment like: `app = Deployment.bind(my_dag_output)`. "
-            )
-        raise TypeError(msg)
+        client = _private_api.serve_start(
+            http_options={"location": "EveryNode"},
+            global_logging_config=logging_config,
+        )
+        # Record after Ray has been started.
+        ServeUsageTag.API_VERSION.record("v2")
+        handle = client.deploy_application(
+            build_app(
+                target,
+                name=name,
+                default_runtime_env=ray.get_runtime_context().runtime_env,
+            ),
+            blocking=_blocking,
+            route_prefix=route_prefix,
+            logging_config=logging_config,
+        )
 
-    parameter_group = []
-    for deployment in deployments:
-        is_ingress = deployment._name == ingress_deployment_name
-        if deployment.logging_config is None and logging_config:
-            deployment = deployment.options(logging_config=logging_config)
-
-        deployment_parameters = {
-            "name": deployment._name,
-            "replica_config": deployment._replica_config,
-            "deployment_config": deployment._deployment_config,
-            "version": deployment._version or get_random_string(),
-            "route_prefix": route_prefix if is_ingress else None,
-            "docs_path": deployment._docs_path,
-            "ingress": is_ingress,
-        }
-        parameter_group.append(deployment_parameters)
-
-    client.deploy_application(
-        name,
-        parameter_group,
-        _blocking=_blocking,
-    )
-
-    # The deployment state is not guaranteed to be created after
-    # deploy_application returns; the application state manager will
-    # need another reconcile iteration to create it.
-    client._wait_for_deployment_created(ingress_deployment_name, name)
-    return client.get_handle(ingress_deployment_name, name, check_exists=False)
+    return handle
 
 
 @PublicAPI(stability="stable")
@@ -497,6 +499,7 @@ def run(
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+    _local_testing_mode: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -529,6 +532,7 @@ def run(
         name=name,
         route_prefix=route_prefix,
         logging_config=logging_config,
+        _local_testing_mode=_local_testing_mode,
     )
     logger.info(f"Deployed app '{name}' successfully.")
 

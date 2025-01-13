@@ -58,13 +58,16 @@ class TorchTensorWorker:
     def __init__(self):
         self.device = torch_utils.get_devices()[0]
 
-    def send(self, shape, dtype, value: int):
-        t = torch.ones(shape, dtype=dtype, device=self.device) * value
+    def send(self, shape, dtype, _):
+        t = torch.ones(shape, dtype=dtype, device=self.device) * 1
         return t
 
     def recv(self, tensor):
+        # This benchmark tests the overhead of sending a tensor between
+        # actors. To minimize the overhead of shared memory transfer,
+        # we return only a byte string.
         assert tensor.device == self.device
-        return (tensor[0].item(), tensor.shape, tensor.dtype)
+        return b"x"
 
 
 @ray.remote(num_gpus=1)
@@ -116,7 +119,7 @@ def exec_ray_dag(
     sender,
     receiver,
     use_nccl=False,
-    use_adag=True,
+    use_cgraph=True,
     static_shape=False,
     direct_return=False,
 ):
@@ -124,7 +127,7 @@ def exec_ray_dag(
     with InputNode() as inp:
         dag = sender.send.bind(SHAPE, DTYPE, inp)
 
-        if use_adag:
+        if use_cgraph:
             dag = dag.with_type_hint(
                 TorchTensorType(
                     _static_shape=static_shape,
@@ -135,25 +138,23 @@ def exec_ray_dag(
 
         dag = receiver.recv.bind(dag)
 
-    if use_adag:
+    if use_cgraph:
         dag = dag.experimental_compile()
 
         def _run():
-            i = np.random.randint(100)
-            ref = dag.execute(i)
+            ref = dag.execute(b"x")
             result = ray.get(ref)
-            assert result == (i, SHAPE, DTYPE)
+            assert result == b"x"
 
     else:
 
         def _run():
-            i = np.random.randint(100)
-            result = ray.get(dag.execute(i))
-            assert result == (i, SHAPE, DTYPE)
+            result = ray.get(dag.execute(b"x"))
+            assert result == b"x"
 
     results = timeit(label, _run)
 
-    if use_adag:
+    if use_cgraph:
         dag.teardown()
 
     # Workaround for Ray bug in reusing GPUs too quickly.
@@ -300,7 +301,7 @@ def exec_ray_core_cpu(sender_hint, receiver_hint):
     time.sleep(1)
     sender = TorchTensorWorker.options(scheduling_strategy=sender_hint).remote()
     receiver = TorchTensorWorker.options(scheduling_strategy=receiver_hint).remote()
-    return exec_ray_dag("exec_ray_core_cpu", sender, receiver, use_adag=False)
+    return exec_ray_dag("exec_ray_core_cpu", sender, receiver, use_cgraph=False)
 
 
 def exec_ray_dag_gpu_ipc_gpu():
@@ -354,7 +355,7 @@ def exec_ray_core_gpu(sender_hint, receiver_hint):
     receiver = TorchTensorWorker.options(
         num_gpus=1, scheduling_strategy=receiver_hint
     ).remote()
-    return exec_ray_dag("exec_ray_core_gpu", sender, receiver, use_adag=False)
+    return exec_ray_dag("exec_ray_core_gpu", sender, receiver, use_cgraph=False)
 
 
 def main(distributed):
@@ -374,7 +375,7 @@ def main(distributed):
     # NCCL takes a while to warm up on multi node so increase the default
     # timeout.
     ctx = DAGContext.get_current()
-    ctx.retrieval_timeout = 120
+    ctx.get_timeout = 120
 
     sender_hint, receiver_hint = None, None
     if distributed:

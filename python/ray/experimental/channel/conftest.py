@@ -6,8 +6,9 @@ from unittest import mock
 import torch
 
 import ray
+import ray.dag
 import ray.experimental.channel as ray_channel
-from ray.experimental.channel.gpu_communicator import TorchTensorAllocator
+from ray.experimental.channel.communicator import TorchTensorAllocator
 
 
 @ray.remote(num_cpus=0)
@@ -130,6 +131,10 @@ def start_nccl_mock():
         "torch.cuda.current_stream", new_callable=lambda: MockCudaStream
     )
     stream_patcher.start()
+    new_stream_patcher = mock.patch(
+        "torch.cuda.Stream", new_callable=lambda: MockCudaStream
+    )
+    new_stream_patcher.start()
     tensor_patcher = mock.patch("torch.Tensor.device", torch.device("cuda"))
     tensor_patcher.start()
     tensor_patcher = mock.patch("torch.Tensor.is_cuda", True)

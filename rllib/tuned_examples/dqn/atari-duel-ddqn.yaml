@@ -4,10 +4,10 @@
 dueling-ddqn:
     env:
         grid_search:
-            - ALE/Breakout-v5
-            - ALE/BeamRider-v5
-            - ALE/Qbert-v5
-            - ALE/SpaceInvaders-v5
+            - ale_py:ALE/Breakout-v5
+            - ale_py:ALE/BeamRider-v5
+            - ale_py:ALE/Qbert-v5
+            - ale_py:ALE/SpaceInvaders-v5
     run: DQN
     config:
         # Works for both torch and tf.

@@ -1,11 +1,49 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
+.. sphinx_rllib_readme_begin
 
 .. _rllib-index:
 
-RLlib: Industry-Grade Reinforcement Learning
-============================================
+RLlib: Industry-Grade, Scalable Reinforcement Learning
+======================================================
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. image:: images/rllib-logo.png
+    :align: center
+
+.. sphinx_rllib_readme_end
+
+.. todo (sven): redo toctree:
+    suggestion:
+    getting-started (replaces rllib-training)
+    key-concepts
+    rllib-env (single-agent)
+        ...  <- multi-agent
+        ...  <- external
+        ...  <- hierarchical
+    algorithm-configs
+        rllib-algorithms (overview of all available algos)
+    dev-guide (replaces user-guides)
+        debugging
+        scaling-guide
+        fault-tolerance
+        checkpoints
+        callbacks
+        metrics-logger
+    rllib-advanced-api
+        algorithm (general description of how algos work)
+        rllib-rlmodule
+        rllib-offline
+        single-agent-episode
+        multi-agent-episode
+        connector-v2
+        rllib-learner
+        env-runners
+    rllib-examples
+    rllib-new-api-stack  <- remove?
+    new-api-stack-migration-guide
+    package_ref/index
 
 .. toctree::
     :hidden:
@@ -13,6 +51,7 @@ RLlib: Industry-Grade Reinforcement Learning
     rllib-training
     key-concepts
     rllib-env
+    algorithm-config
     rllib-algorithms
     user-guides
     rllib-examples
@@ -21,129 +60,225 @@ RLlib: Industry-Grade Reinforcement Learning
     package_ref/index
 
 
-.. image:: images/rllib-logo.png
-    :align: center
+.. sphinx_rllib_readme_2_begin
 
-**RLlib** is an open-source library for reinforcement learning (RL),
-offering support for
-production-level, highly distributed RL workloads while maintaining
-unified and simple APIs for a large variety of industry applications.
-Whether you would like to train your agents in a **multi-agent** setup,
-purely from **offline** (historic) datasets, or using **externally
-connected simulators**, RLlib offers a simple solution for each of your decision
-making needs.
+**RLlib** is an open source library for reinforcement learning (**RL**), offering support for
+production-level, highly scalable, and fault-tolerant RL workloads, while maintaining simple and unified
+APIs for a large variety of industry applications.
 
-If you either have your problem coded (in python) as an
-`RL environment <rllib-env.html#configuring-environments>`_
-or own lots of pre-recorded, historic behavioral data to learn from, you will be
-up and running in only a few days.
+Whether training policies in a **multi-agent** setup, from historic **offline** data,
+or using **externally connected simulators**, RLlib offers simple solutions for each of
+these autonomous decision making needs and enables you to start running your experiments within hours.
 
-RLlib is already used in production by industry leaders in many different verticals,
-such as
-`climate control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
-`industrial control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
-`manufacturing and logistics <https://www.anyscale.com/events/2022/03/29/alphadow-leveraging-rays-ecosystem-to-train-and-deploy-an-rl-industrial>`_,
-`finance <https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray>`_,
+Industry leaders use RLlib in production in many different verticals, such as
 `gaming <https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games>`_,
-`automobile <https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution>`_,
 `robotics <https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for>`_,
-`boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
-and many others.
+`finance <https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray>`_,
+`climate- and industrial control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
+`manufacturing and logistics <https://www.anyscale.com/events/2022/03/29/alphadow-leveraging-rays-ecosystem-to-train-and-deploy-an-rl-industrial>`_,
+`automobile <https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution>`_,
+and
+`boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_.
+
 
 RLlib in 60 seconds
 -------------------
 
 .. figure:: images/rllib-index-header.svg
 
-It only takes a few steps to get your first RLlib workload
-up and running on your laptop.
+It only takes a few steps to get your first RLlib workload up and running on your laptop.
+Install RLlib and `PyTorch <https://pytorch.org>`__, as shown below:
 
-RLlib does not automatically install a deep-learning framework, but supports
-**TensorFlow** (both 1.x with static-graph and 2.x with eager mode) as well as
-**PyTorch**.
-Depending on your needs, make sure to install either TensorFlow or
-PyTorch (or both, as shown below):
+.. code-block:: bash
 
-.. raw:: html
-
-    <div class="termynal" data-termynal>
-        <span data-ty="input">pip install "ray[rllib]" tensorflow torch</span>
-    </div>
+    pip install "ray[rllib]" torch
 
 .. note::
 
-    For installation on computers running Apple Silicon (such as M1), please follow instructions
-    `here. <https://docs.ray.io/en/latest/ray-overview/installation.html#m1-mac-apple-silicon-support>`_
-    To be able to run our Atari examples, you should also install
-    `pip install "gym[atari]" "gym[accept-rom-license]" atari_py`.
+    For installation on computers running Apple Silicon, such as M1,
+    `follow instructions here. <https://docs.ray.io/en/latest/ray-overview/installation.html#m1-mac-apple-silicon-support>`_
 
-This is all you need to start coding against RLlib.
-Here is an example of running a PPO Algorithm on the
-`Taxi domain <https://www.gymlibrary.dev/environments/toy_text/taxi/>`_.
-We first create a `config` for the algorithm, which sets the right environment, and
-defines all training parameters we want.
-Next, we `build` the algorithm and `train` it for a total of `5` iterations.
-A training iteration includes parallel sample collection by the environment workers, as well as loss calculation on the collected batch and a model update.
-As a last step, we `evaluate` the trained Algorithm:
+.. note::
+
+    To be able to run the Atari or MuJoCo examples, you also need to do:
+    `pip install "gymnasium[atari,accept-rom-license,mujoco]"`.
+
+This is all. You can now start coding against RLlib. Here is an example for running the PPO Algorithm on the
+`Taxi domain <https://gymnasium.farama.org/environments/toy_text/taxi/>`__.
+You first create a `config` for the algorithm, which defines the RL environment and
+any other needed settings and parameters.
+
+Next, `build` the algorithm and `train` it for a total of five iterations.
+One training iteration includes parallel, distributed sample collection by the :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors,
+followed by loss calculation on the collected data, and a model update step.
+
+At the end of your script, RLlib evaluates the trained Algorithm:
 
 .. literalinclude:: doc_code/rllib_in_60s.py
     :language: python
     :start-after: __rllib-in-60s-begin__
     :end-before: __rllib-in-60s-end__
 
-Note that you can use any Farama-Foundation Gymnasium environment as `env`.
-In `rollouts` you can for instance specify the number of parallel workers to collect samples from the environment.
-The `framework` config lets you choose between "tf2", "tf" and "torch" for execution.
-You can also tweak RLlib's default `model` config,and set up a separate config for `evaluation`.
+You can use any `Farama-Foundation Gymnasium <https://github.com/Farama-Foundation/Gymnasium>`__ registered environment
+with the `env` argument.
 
-If you want to learn more about the RLlib training API,
-`you can learn more about it here <rllib-training.html#using-the-python-api>`_.
-Also, see `here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`_
+In `config.env_runners()` you can specify - amongst many other things - the number of parallel
+:py:class:`~ray.rllib.env.env_runner.EnvRunner` actors to collect samples from the environment.
+
+You can also tweak the NN architecture used by tweaking RLlib's `DefaultModelConfig`, as well as, set up a separate
+config for the evaluation :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors through the `config.evaluation()` method.
+
+`See here <rllib-training.html#using-the-python-api>`_, if you want to learn more about the RLlib training APIs.
+Also, `see here <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__
+for a simple example on how to write an action inference loop after training.
 
 If you want to get a quick preview of which **algorithms** and **environments** RLlib supports,
-click on the dropdowns below:
+click the dropdowns below:
 
 .. dropdown:: **RLlib Algorithms**
     :animate: fade-in-slide-down
 
-    *  High-throughput architectures
-
-       -  |pytorch| |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
-
-       -  |pytorch| |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
-
-    *  Gradient-based
-
-       -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
-
-       -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
-
-       -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
-
-    *  Model-based / Meta-learning / Offline
-
-       -  |pytorch| :ref:`DreamerV3 <dreamerv3>`
-
-    *  Offline
-
-       -  |pytorch| |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | **On-Policy**                                                                                                                                                              |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | :ref:`PPO (Proximal Policy Optimization) <ppo>`                         | |single_agent| | |multi_agent| | |discr_act| | |cont_act| | |multi_gpu| | |multi_node_multi_gpu| |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | **Off-Policy**                                                                                                                                                             |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | :ref:`SAC (Soft Actor Critic) <sac>`                                    | |single_agent| | |multi_agent| |             | |cont_act| | |multi_gpu| | |multi_node_multi_gpu| |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | :ref:`DQN/Rainbow (Deep Q Networks) <dqn>`                              | |single_agent| | |multi_agent| | |discr_act| |            | |multi_gpu| | |multi_node_multi_gpu| |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | **High-throughput Architectures**                                                                                                                                          |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`          | |single_agent| | |multi_agent| | |discr_act| | |cont_act| | |multi_gpu| | |multi_node_multi_gpu| |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>` | |single_agent| | |multi_agent| | |discr_act| |            | |multi_gpu| | |multi_node_multi_gpu| |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | **Model-based RL**                                                                                                                                                         |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | :ref:`DreamerV3 <dreamerv3>`                                            | |single_agent| |               | |discr_act| | |cont_act| | |multi_gpu| | |multi_node_multi_gpu| |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | **Offline RL and Imitation Learning**                                                                                                                                      |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | :ref:`BC (Behavior Cloning) <bc>`                                       | |single_agent| |               | |discr_act| | |cont_act| |             |                        |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | :ref:`CQL (Conservative Q-Learning) <cql>`                              | |single_agent| |               |             | |cont_act| |             |                        |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
+    | :ref:`MARWIL (Advantage Re-Weighted Imitation Learning) <marwil>`       | |single_agent| |               | |discr_act| | |cont_act| |             |                        |
+    +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
 
 
 .. dropdown:: **RLlib Environments**
     :animate: fade-in-slide-down
 
-    *  `RLlib Environments Overview <rllib-env.html>`__
-    *  `Farama-Foundation gymnasium <rllib-env.html#gymnasium>`__
-    *  `Vectorized <rllib-env.html#vectorized>`__
-    *  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
-    *  `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
+    +-------------------------------------------------------------------------------------------+
+    | **Farama-Foundation Environments**                                                        |
+    +-------------------------------------------------------------------------------------------+
+    | `gymnasium <https://gymnasium.farama.org/index.html>`__ |single_agent|                    |
+    |                                                                                           |
+    | .. code-block:: bash                                                                      |
+    |                                                                                           |
+    |     pip install "gymnasium[atari,accept-rom-license,mujoco]"``                            |
+    |                                                                                           |
+    | .. code-block:: python                                                                    |
+    |                                                                                           |
+    |     config.environment("CartPole-v1")  # Classic Control                                  |
+    |     config.environment("ale_py:ALE/Pong-v5")  # Atari                                     |
+    |     config.environment("Hopper-v5")  # MuJoCo                                             |
+    +-------------------------------------------------------------------------------------------+
+    | `PettingZoo <https://pettingzoo.farama.org/index.html>`__ |multi_agent|                   |
+    |                                                                                           |
+    | .. code-block:: bash                                                                      |
+    |                                                                                           |
+    |     pip install "pettingzoo[all]"                                                         |
+    |                                                                                           |
+    | .. code-block:: python                                                                    |
+    |                                                                                           |
+    |     from ray.tune.registry import register_env                                            |
+    |     from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv                       |
+    |     from pettingzoo.sisl import waterworld_v4                                             |
+    |     register_env("env", lambda _: PettingZooEnv(waterworld_v4.env()))                     |
+    |     config.environment("env")                                                             |
+    +-------------------------------------------------------------------------------------------+
+    | **RLlib Multi-Agent**                                                                     |
+    +-------------------------------------------------------------------------------------------+
+    | `RLlib's MultiAgentEnv API <rllib-env.html#multi-agent-and-hierarchical>`__ |multi_agent| |
+    |                                                                                           |
+    | .. code-block:: python                                                                    |
+    |                                                                                           |
+    |     from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole            |
+    |     from ray import tune                                                                  |
+    |     tune.register_env("env", lambda cfg: MultiAgentCartPole(cfg))                         |
+    |     config.environment("env", env_config={"num_agents": 2})                               |
+    |     config.multi_agent(                                                                   |
+    |         policies={"p0", "p1"},                                                            |
+    |         policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",                                |
+    |     )                                                                                     |
+    +-------------------------------------------------------------------------------------------+
 
-       -  `External Application Clients <rllib-env.html#external-application-clients>`__
 
-    *  `Advanced Integrations <rllib-env.html#advanced-integrations>`__
-
-Feature Overview
+Why chose RLlib?
 ----------------
+
+.. dropdown:: **Scalable and Fault-Tolerant**
+    :animate: fade-in-slide-down
+
+    RLlib workloads scale along various axes:
+
+    - The number of :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors to use.
+      This is configurable through ``config.env_runners(num_env_runners=...)`` and
+      allows you to scale the speed of your (simulator) data collection step.
+      This `EnvRunner` axis is fully **fault tolerant**, meaning you can train against
+      custom environments that are unstable or frequently stall execution and even place all
+      your `EnvRunner` actors on spot machines.
+
+    - The number of :py:class:`~ray.rllib.core.learner.Learner` actors to use for **multi-GPU training**.
+      This is configurable through ``config.learners(num_learners=...)`` and you normally
+      set this to the number of GPUs available (make sure you then also set
+      ``config.learners(num_gpus_per_learner=1)``) or - if you do not have GPUs - you can
+      use this setting for **DDP-style learning on CPUs** instead.
+
+.. dropdown:: **Multi-Agent Reinforcement Learning (MARL)**
+    :animate: fade-in-slide-down
+
+    RLlib natively supports multi-agent reinforcement learning (MARL), thereby allowing you to run
+    in any complex configuration.
+
+    - **Independent** multi-agent learning (the default): Every agent collects data for updating its own
+      policy network, interpreting other agents as part of the environment.
+    - **Collaborative** training: Train a team of agents that either all share the same policy (shared parameters)
+      or in which some agents have their own policy network(s). You can also share value functions between all
+      members of the team or some of them, as you see fit, thus allowing for global vs local objectives to be
+      optimized.
+    - **Adversarial** training: Have agents play against other agents in competitive environments. Use self-play,
+      or league based self-play to train your agents to learn how to play throughout various stages of
+      ever increasing difficulty.
+    - **Any combination of the above!** Yes, you can train teams of arbitrary sizes of agents playing against
+      other teams where the agents in each team might have individual sub-objectives and there are groups
+      of neutral agents not participating in any competition.
+
+.. dropdown:: **Offline RL and Behavior Cloning**
+    :animate: fade-in-slide-down
+
+    **Ray.Data** has been integrated into RLlib, enabling **large-scale data ingestion** for offline RL and behavior
+    cloning (BC) workloads.
+
+    See here for a basic `tuned example for the behavior cloning algo <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole_bc.py>`__
+    and here for how to `pre-train a policy with BC, then finetuning it with online PPO <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py>`__.
+
+.. dropdown:: **Support for External Env Clients**
+    :animate: fade-in-slide-down
+
+    **Support for externally connecting RL environments** is achieved through customizing the :py:class:`~ray.rllib.env.env_runner.EnvRunner` logic
+    from RLlib-owned, internal gymnasium envs to external, TCP-connected Envs that act independently and may even perform their own
+    action inference, e.g. through ONNX.
+
+    See here for an example of `RLlib acting as a server with connecting external env TCP-clients <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__.
+
+
+Learn More
+----------
 
 .. grid:: 1 2 3 3
     :gutter: 1
@@ -153,10 +288,10 @@ Feature Overview
 
         **RLlib Key Concepts**
         ^^^
-        Learn more about the core concepts of RLlib, such as environments, algorithms and
-        policies.
+        Learn more about the core concepts of RLlib, such as Algorithms, environments,
+        models, and learners.
         +++
-        .. button-ref:: rllib-core-concepts
+        .. button-ref:: rllib-key-concepts
             :color: primary
             :outline:
             :expand:
@@ -165,21 +300,7 @@ Feature Overview
 
     .. grid-item-card::
 
-        **RLlib Algorithms**
-        ^^^
-        See the many available RL algorithms of RLlib for model-free and model-based
-        RL, on-policy and off-policy training, multi-agent RL, and more.
-        +++
-        .. button-ref:: rllib-algorithms-doc
-            :color: primary
-            :outline:
-            :expand:
-
-            Algorithms
-
-    .. grid-item-card::
-
-        **RLlib Environments**
+        **RL Environments**
         ^^^
         Get started with environments supported by RLlib, such as Farama foundation's Gymnasium, Petting Zoo,
         and many custom formats for vectorized and multi-agent environments.
@@ -191,45 +312,127 @@ Feature Overview
 
             Environments
 
+    .. grid-item-card::
 
-The following is a summary of RLlib's most striking features.
-Click on the images below to see an example script for each of the listed features:
+        **Models (RLModule)**
+        ^^^
+        Learn how to configure RLlib's default models and implement your own
+        custom models through the RLModule APIs, which support arbitrary architectures
+        with PyTorch, complex multi-model setups, and multi-agent models with components
+        shared between agents.
+        +++
+        .. button-ref:: rlmodule-guide
+            :color: primary
+            :outline:
+            :expand:
 
-.. include:: feature_overview.rst
+            Models (RLModule)
+
+    .. grid-item-card::
+
+        **Algorithms**
+        ^^^
+        See the many available RL algorithms of RLlib for on-policy and off-policy training,
+        offline- and model-based RL, multi-agent RL, and more.
+        +++
+        .. button-ref:: rllib-algorithms-doc
+            :color: primary
+            :outline:
+            :expand:
+
+            Algorithms
 
 
 Customizing RLlib
 -----------------
 
-RLlib provides simple APIs to customize all aspects of your training- and experimental workflows.
+RLlib provides powerful, yet easy to use APIs for customizing all aspects of your experimental- and
+production training-workflows.
 For example, you may code your own `environments <rllib-env.html#configuring-environments>`__
-in python using Farama-Foundation's gymnasium or DeepMind's OpenSpiel, provide custom
-`TensorFlow/Keras- <rllib-models.html#tensorflow-models>`__ or ,
-`Torch models <rllib-models.html#torch-models>`_, write your own
-`policy- and loss definitions <rllib-concepts.html#policies>`__, or define
-custom `exploratory behavior <rllib-training.html#exploration-api>`_.
+in python using the `Farama Foundation's gymnasium <https://farama.org>`__ or DeepMind's OpenSpiel,
+provide custom `PyTorch models <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`_,
+write your own `optimizer setups and loss definitions <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__,
+or define custom `exploratory behavior <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py>`_.
 
-Via mapping one or more agents in your environments to (one or more) policies, multi-agent
-RL (MARL) becomes an easy-to-use low-level primitive for our users.
-
-.. figure:: images/rllib-stack.svg
+.. figure:: images/rllib-new-api-stack-simple.svg
     :align: left
-    :width: 650
+    :width: 850
 
-    **RLlib's API stack:** Built on top of Ray, RLlib offers off-the-shelf, highly distributed
-    algorithms, policies, loss functions, and default models (including the option to
-    auto-wrap a neural network with an LSTM or an attention net). Furthermore, our library
-    comes with a built-in Server/Client setup, allowing you to connect
-    hundreds of external simulators (clients) via the network to an RLlib server process,
-    which provides learning functionality and serves action queries. User customizations
-    are realized via sub-classing the existing abstractions and - by overriding certain
-    methods in those sub-classes - define custom behavior.
+    **RLlib's API stack:** Built on top of Ray, RLlib offers off-the-shelf, distributed and fault-tolerant
+    algorithms and loss functions, PyTorch default models, multi-GPU training, and multi-agent support.
+    Users customize their experiments by subclassing the existing abstractions.
+
+.. sphinx_rllib_readme_2_end
 
 
-.. |tensorflow| image:: images/tensorflow.png
+.. sphinx_rllib_readme_3_begin
+
+Citing RLlib
+------------
+
+If RLlib helps with your academic research, the Ray RLlib team encourages you to cite these papers:
+
+.. code-block::
+
+    @inproceedings{liang2021rllib,
+        title={{RLlib} Flow: Distributed Reinforcement Learning is a Dataflow Problem},
+        author={
+            Wu, Zhanghao and
+            Liang, Eric and
+            Luo, Michael and
+            Mika, Sven and
+            Gonzalez, Joseph E. and
+            Stoica, Ion
+        },
+        booktitle={Conference on Neural Information Processing Systems ({NeurIPS})},
+        year={2021},
+        url={https://proceedings.neurips.cc/paper/2021/file/2bce32ed409f5ebcee2a7b417ad9beed-Paper.pdf}
+    }
+
+    @inproceedings{liang2018rllib,
+        title={{RLlib}: Abstractions for Distributed Reinforcement Learning},
+        author={
+            Eric Liang and
+            Richard Liaw and
+            Robert Nishihara and
+            Philipp Moritz and
+            Roy Fox and
+            Ken Goldberg and
+            Joseph E. Gonzalez and
+            Michael I. Jordan and
+            Ion Stoica,
+        },
+        booktitle = {International Conference on Machine Learning ({ICML})},
+        year={2018},
+        url={https://arxiv.org/pdf/1712.09381}
+    }
+
+.. sphinx_rllib_readme_3_end
+
+
+.. sigils used on this page
+
+.. |single_agent| image:: /rllib/images/sigils/single-agent.svg
     :class: inline-figure
-    :width: 16
+    :width: 72
 
-.. |pytorch| image:: images/pytorch.png
+.. |multi_agent| image:: /rllib/images/sigils/multi-agent.svg
     :class: inline-figure
-    :width: 16
+    :width: 72
+
+.. |discr_act| image:: /rllib/images/sigils/discr-actions.svg
+    :class: inline-figure
+    :width: 72
+
+.. |cont_act| image:: /rllib/images/sigils/cont-actions.svg
+    :class: inline-figure
+    :width: 72
+
+.. |multi_gpu| image:: /rllib/images/sigils/multi-gpu.svg
+    :class: inline-figure
+    :width: 72
+
+.. |multi_node_multi_gpu| image:: /rllib/images/sigils/multi-node-multi-gpu.svg
+    :class: inline-figure
+    :alt: Only on the Anyscale Platform!
+    :width: 72

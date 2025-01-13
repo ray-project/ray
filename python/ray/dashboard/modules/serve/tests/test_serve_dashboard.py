@@ -12,11 +12,10 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
-    ProxyStatus,
     ReplicaState,
 )
 from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve.schema import ApplicationStatus, ServeInstanceDetails
+from ray.serve.schema import ApplicationStatus, ProxyStatus, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.tests.conftest import *  # noqa: F401 F403
 from ray.util.state import list_actors

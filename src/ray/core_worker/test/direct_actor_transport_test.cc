@@ -80,7 +80,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
   void PushActorTask(std::unique_ptr<rpc::PushTaskRequest> request,
                      bool skip_queue,
-                     const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
+                     rpc::ClientCallback<rpc::PushTaskReply> &&callback) override {
     received_seq_nos.push_back(request->sequence_number());
     callbacks.push_back(callback);
   }
@@ -112,7 +112,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
               return worker_client_;
             })),
         worker_client_(std::make_shared<MockWorkerClient>()),
-        store_(std::make_shared<CoreWorkerMemoryStore>()),
+        store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
         task_finisher_(std::make_shared<MockTaskFinisherInterface>()),
         io_work(io_context),
         reference_counter_(std::make_shared<MockReferenceCounter>()),
@@ -253,10 +253,16 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
 
   // Put the dependencies in the store in the same order as task submission.
   auto data = GenerateRandomObject();
+
+  // Each Put schedules a callback onto io_context, and let's run it.
   ASSERT_TRUE(store_->Put(*data, obj1));
+  ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
+
   ASSERT_TRUE(store_->Put(*data, obj2));
+  ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
+
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
 }
 
@@ -296,10 +302,12 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
     auto data = GenerateRandomObject();
     // task2 is submitted first as we allow out of order execution.
     ASSERT_TRUE(store_->Put(*data, obj2));
+    ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 1);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1));
     // then task1 is submitted
     ASSERT_TRUE(store_->Put(*data, obj1));
+    ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 2);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1, 0));
   } else {
@@ -307,8 +315,10 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
     // submission.
     auto data = GenerateRandomObject();
     ASSERT_TRUE(store_->Put(*data, obj2));
+    ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 0);
     ASSERT_TRUE(store_->Put(*data, obj1));
+    ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 2);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
   }
@@ -794,7 +804,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   bool Enabled() const override { return true; }
 
-  const std::string DebugString() override { return ""; }
+  std::string DebugString() override { return ""; }
 };
 
 class MockTaskReceiver : public TaskReceiver {
@@ -820,8 +830,8 @@ class TaskReceiverTest : public ::testing::Test {
  public:
   TaskReceiverTest()
       : worker_context_(WorkerType::WORKER, JobID::FromInt(0)),
-        worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
-        dependency_waiter_(std::make_shared<MockDependencyWaiter>()) {
+        worker_client_(std::make_shared<MockWorkerClient>()),
+        dependency_waiter_(std::make_unique<MockDependencyWaiter>()) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
                                   std::placeholders::_1,
@@ -837,12 +847,12 @@ class TaskReceiverTest : public ::testing::Test {
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_,
-                    dependency_waiter_);
+                    dependency_waiter_.get());
   }
 
   Status MockExecuteTask(
       const TaskSpecification &task_spec,
-      const std::shared_ptr<ResourceMappingType> &resource_ids,
+      std::optional<ResourceMappingType> resource_ids,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
@@ -868,7 +878,7 @@ class TaskReceiverTest : public ::testing::Test {
   instrumented_io_context main_io_service_;
   MockTaskEventBuffer task_event_buffer_;
   std::shared_ptr<MockWorkerClient> worker_client_;
-  std::shared_ptr<DependencyWaiter> dependency_waiter_;
+  std::unique_ptr<DependencyWaiter> dependency_waiter_;
 };
 
 TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
@@ -966,11 +976,14 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
 
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog,
-                                         argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      argv[0],
+      ray::RayLogLevel::INFO,
+      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   return RUN_ALL_TESTS();
 }

@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdlib>
 #include <iostream>
+#include <limits>
 
 #include "gflags/gflags.h"
 #include "ray/common/ray_config.h"
@@ -27,27 +29,46 @@ DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
+DEFINE_string(ray_log_filepath,
+              "",
+              "The log filepath to dump gcs server log, which is written via `RAY_LOG`.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
-DEFINE_string(redis_password, "", "The password of redis.");
-DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
-DEFINE_string(node_ip_address, "", "The ip address of the node.");
+DEFINE_string(redis_username, "", "The username of Redis.");
+DEFINE_string(redis_password, "", "The password of Redis.");
+DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
+DEFINE_string(node_ip_address, "", "The IP address of the node.");
 DEFINE_string(session_name,
               "",
               "session_name: The session name (ClusterID) of the cluster.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 
 int main(int argc, char *argv[]) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog,
-                                         argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  // TODO(hjiang): For the current implementation, we assume all logging are managed by
+  // spdlog, the caveat is there could be there's writing to stdout/stderr as well. The
+  // final solution is implement self-customized sink for spdlog, and redirect
+  // stderr/stdout to the file descritor. Hold until it's confirmed necessary.
+  //
+  // Backward compatibility notes:
+  // By default, GCS server flushes all logging and stdout/stderr to a single file called
+  // `gcs_server.out`, without log rotations. To keep backward compatibility at best
+  // effort, we use the same filename as output, and disable log rotation by default.
+
+  // For compatibility, by default GCS server dumps logging into a single file with no
+  // rotation.
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      argv[0],
+      ray::RayLogLevel::INFO,
+      /*log_filepath=*/FLAGS_ray_log_filepath,
+      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
-
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   RAY_LOG(INFO)
           .WithField("ray_version", kRayVersion)
@@ -63,6 +84,7 @@ int main(int argc, char *argv[]) {
   RAY_CHECK(absl::Base64Unescape(FLAGS_config_list, &config_list))
       << "config_list is not a valid base64-encoded string.";
   const std::string redis_password = FLAGS_redis_password;
+  const std::string redis_username = FLAGS_redis_username;
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
   const std::string session_name = FLAGS_session_name;
@@ -73,7 +95,8 @@ int main(int argc, char *argv[]) {
   ray::rpc::testing::init();
 
   // IO Service for main loop.
-  instrumented_io_context main_service;
+  SetThreadName("gcs_server");
+  instrumented_io_context main_service(/*enable_lag_probe=*/true);
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
   boost::asio::io_service::work work(main_service);
@@ -114,6 +137,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_port = redis_port;
   gcs_server_config.enable_redis_ssl = FLAGS_redis_enable_ssl;
   gcs_server_config.redis_password = redis_password;
+  gcs_server_config.redis_username = redis_username;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
   gcs_server_config.log_dir = log_dir;

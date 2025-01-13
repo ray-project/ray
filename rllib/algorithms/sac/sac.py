@@ -18,7 +18,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
-from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType, ResultDict
+from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -48,7 +48,18 @@ class SACConfig(AlgorithmConfig):
     """
 
     def __init__(self, algo_class=None):
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
+
         super().__init__(algo_class=algo_class or SAC)
+
         # fmt: off
         # __sphinx_doc_begin__
         # SAC-specific config settings.
@@ -105,15 +116,6 @@ class SACConfig(AlgorithmConfig):
         # .env_runners()
         # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
-        self.exploration_config = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": "StochasticSampling",
-            # Add constructor kwargs here (if any).
-        }
         self.train_batch_size_per_learner = 256
         self.train_batch_size = 256  # @OldAPIstack
         # Number of timesteps to collect from rollout workers before we start
@@ -124,12 +126,6 @@ class SACConfig(AlgorithmConfig):
         # .reporting()
         self.min_time_s_per_iteration = 1
         self.min_sample_timesteps_per_iteration = 100
-
-        # `.api_stack()`
-        self.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         # __sphinx_doc_end__
         # fmt: on
 
@@ -507,14 +503,12 @@ class SACConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
-        from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
-
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.sac.torch.sac_torch_rl_module import (
-                SACTorchRLModule,
+            from ray.rllib.algorithms.sac.torch.default_sac_torch_rl_module import (
+                DefaultSACTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=SACTorchRLModule, catalog_class=SACCatalog)
+            return RLModuleSpec(module_class=DefaultSACTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."
@@ -589,27 +583,3 @@ class SAC(DQN):
             return SACTorchPolicy
         else:
             return SACTFPolicy
-
-    @override(DQN)
-    def training_step(self) -> ResultDict:
-        """SAC training iteration function.
-
-        Each training iteration, we:
-        - Sample (MultiAgentBatch) from workers.
-        - Store new samples in replay buffer.
-        - Sample training batch (MultiAgentBatch) from replay buffer.
-        - Learn on training batch.
-        - Update remote workers' new policy weights.
-        - Update target network every `target_network_update_freq` sample steps.
-        - Return all collected metrics for the iteration.
-
-        Returns:
-            The results dict from executing the training iteration.
-        """
-        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_new_api_stack(with_noise_reset=False)
-        # Old API stack (Policy, RolloutWorker, Connector, maybe RLModule,
-        # maybe Learner).
-        else:
-            return self._training_step_old_api_stack()

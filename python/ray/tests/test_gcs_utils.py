@@ -267,7 +267,7 @@ async def test_gcs_aio_client_is_async(ray_start_regular):
     gcs_client = gcs_utils.GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
 
     await gcs_client.internal_kv_put(b"A", b"B", False, b"NS", timeout=2)
-    with async_timeout.timeout(3):
+    async with async_timeout.timeout(3):
         none, result = await asyncio.gather(
             asyncio.sleep(2), gcs_client.internal_kv_get(b"A", b"NS", timeout=2)
         )
@@ -309,7 +309,7 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     else:
         cli = redis.Redis(host, int(port))
 
-    table_names = ["KV", "INTERNAL_CONFIG", "WORKERS", "JobCounter", "NODE", "JOB"]
+    table_names = ["KV", "WORKERS", "JobCounter", "NODE", "JOB"]
     c1_keys = [f"RAYc1@{name}".encode() for name in table_names]
     c2_keys = [f"RAYc2@{name}".encode() for name in table_names]
     assert set(cli.keys()) == set(c1_keys + c2_keys)

@@ -7,7 +7,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.exceptions import RayChannelError
+from ray.exceptions import RayChannelError, RayTaskError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.conftest import (
     Barrier,
@@ -80,11 +80,8 @@ def test_p2p(ray_start_cluster):
     Test simple sender -> receiver pattern. Check that receiver receives
     correct results.
     """
-    # Barrier name should be barrier-{sender rank}-{receiver rank}.
-    # Create a barrier in both directions because we don't know which rank will
-    # get assigned to sender and receiver.
-    barrier1 = Barrier.options(name="barrier-0-1").remote()  # noqa
-    barrier2 = Barrier.options(name="barrier-1-0").remote()  # noqa
+    # Barrier name should be barrier-{lower rank}-{higher rank}.
+    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = MockedWorker.remote()
     receiver = MockedWorker.remote()
@@ -115,8 +112,6 @@ def test_p2p(ray_start_cluster):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype, send_as_dict=True)
         assert ray.get(ref) == (i, shape, dtype)
 
-    ray.kill(barrier1)
-    ray.kill(barrier2)
     compiled_dag.teardown()
 
 
@@ -138,11 +133,8 @@ def test_p2p_static_shape(ray_start_cluster, send_as_dict):
     _static_shape=True. If sender always sends tensors of
     the same shape, then it works.
     """
-    # Barrier name should be barrier-{sender rank}-{receiver rank}.
-    # Create a barrier in both directions because we don't know which rank will
-    # get assigned to sender and receiver.
-    barrier1 = Barrier.options(name="barrier-0-1").remote()  # noqa
-    barrier2 = Barrier.options(name="barrier-1-0").remote()  # noqa
+    # Barrier name should be barrier-{lower rank}-{higher rank}.
+    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = MockedWorker.remote()
     receiver = MockedWorker.remote()
@@ -181,11 +173,8 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster, send_as_dict):
     Test that when static_shape=True, an error is thrown when a tensor with a
     different shape or dtype is found.
     """
-    # Barrier name should be barrier-{sender rank}-{receiver rank}.
-    # Create a barrier in both directions because we don't know which rank will
-    # get assigned to sender and receiver.
-    barrier1 = Barrier.options(name="barrier-0-1").remote()  # noqa
-    barrier2 = Barrier.options(name="barrier-1-0").remote()  # noqa
+    # Barrier name should be barrier-{lower rank}-{higher rank}.
+    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = MockedWorker.remote()
     receiver = MockedWorker.remote()
@@ -208,7 +197,7 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster, send_as_dict):
 
     # Sending wrong shape errors.
     ref = compiled_dag.execute(i, shape=(20,), dtype=dtype)
-    with pytest.raises(RayChannelError):
+    with pytest.raises(RayTaskError):
         ray.get(ref)
 
     # Sending correct shape still errors because the DAG has already been torn
@@ -241,11 +230,8 @@ def test_p2p_direct_return(ray_start_cluster):
     """
     Test simple sender -> receiver pattern with _direct_return=True
     """
-    # Barrier name should be barrier-{sender rank}-{receiver rank}.
-    # Create a barrier in both directions because we don't know which rank will
-    # get assigned to sender and receiver.
-    barrier1 = Barrier.options(name="barrier-0-1").remote()  # noqa
-    barrier2 = Barrier.options(name="barrier-1-0").remote()  # noqa
+    # Barrier name should be barrier-{lower rank}-{higher rank}.
+    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = MockedWorker.remote()
     receiver = MockedWorker.remote()
@@ -286,11 +272,8 @@ def test_p2p_direct_return_error(capsys, ray_start_cluster):
     _direct_return=True. Test that error is thrown when
     actor task does not return a tensor directly.
     """
-    # Barrier name should be barrier-{sender rank}-{receiver rank}.
-    # Create a barrier in both directions because we don't know which rank will
-    # get assigned to sender and receiver.
-    barrier1 = Barrier.options(name="barrier-0-1").remote()  # noqa
-    barrier2 = Barrier.options(name="barrier-1-0").remote()  # noqa
+    # Barrier name should be barrier-{lower rank}-{higher rank}.
+    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = MockedWorker.remote()
     receiver = MockedWorker.remote()
@@ -315,7 +298,7 @@ def test_p2p_direct_return_error(capsys, ray_start_cluster):
 
     # Error is thrown if we do not send a tensor.
     ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=True)
-    with pytest.raises(RayChannelError):
+    with pytest.raises(RayTaskError):
         ray.get(ref)
 
     # Currently the receiver cannot catch the exception so the DAG cannot be
@@ -355,11 +338,8 @@ def test_p2p_static_shape_and_direct_return(
     are passed (check_static_shape=True) OR if non-tensor value is returned
     (check_static_shape=False).
     """
-    # Barrier name should be barrier-{sender rank}-{receiver rank}.
-    # Create a barrier in both directions because we don't know which rank will
-    # get assigned to sender and receiver.
-    barrier1 = Barrier.options(name="barrier-0-1").remote()  # noqa
-    barrier2 = Barrier.options(name="barrier-1-0").remote()  # noqa
+    # Barrier name should be barrier-{lower rank}-{higher rank}.
+    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = MockedWorker.remote()
     receiver = MockedWorker.remote()
@@ -393,7 +373,7 @@ def test_p2p_static_shape_and_direct_return(
         # Error is thrown if we do not send a tensor.
         ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=True)
 
-    with pytest.raises(RayChannelError):
+    with pytest.raises(RayTaskError):
         ray.get(ref)
 
     # Currently the receiver cannot catch either kind of

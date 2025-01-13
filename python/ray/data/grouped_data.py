@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
@@ -89,7 +90,6 @@ class GroupedData:
         self,
         agg_cls: type,
         on: Union[str, List[str]],
-        ignore_nulls: bool,
         *args,
         **kwargs,
     ):
@@ -101,7 +101,7 @@ class GroupedData:
         aggregation on the entire row for a simple Dataset.
         """
         aggs = self._dataset._build_multicolumn_aggs(
-            agg_cls, on, ignore_nulls, *args, skip_cols=self._key, **kwargs
+            agg_cls, on, *args, skip_cols=self._key, **kwargs
         )
         return self.aggregate(*aggs)
 
@@ -189,7 +189,8 @@ class GroupedData:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
 
         Returns:
             The return type is determined by the return type of ``fn``, and the return
@@ -261,7 +262,10 @@ class GroupedData:
 
         # Change the name of the wrapped function so that users see the name of their
         # function rather than `wrapped_fn` in the progress bar.
-        wrapped_fn.__name__ = fn.__name__
+        if isinstance(fn, partial):
+            wrapped_fn.__name__ = fn.func.__name__
+        else:
+            wrapped_fn.__name__ = fn.__name__
 
         # Note we set batch_size=None here, so it will use the entire block as a batch,
         # which ensures that each group will be contained within a batch in entirety.
@@ -341,7 +345,7 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Sum, on, ignore_nulls)
+        return self._aggregate_on(Sum, on, ignore_nulls=ignore_nulls)
 
     @PublicAPI(api_group=CDS_API_GROUP)
     def min(
@@ -380,7 +384,7 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Min, on, ignore_nulls)
+        return self._aggregate_on(Min, on, ignore_nulls=ignore_nulls)
 
     @PublicAPI(api_group=CDS_API_GROUP)
     def max(
@@ -419,7 +423,7 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Max, on, ignore_nulls)
+        return self._aggregate_on(Max, on, ignore_nulls=ignore_nulls)
 
     @PublicAPI(api_group=CDS_API_GROUP)
     def mean(
@@ -458,7 +462,7 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Mean, on, ignore_nulls)
+        return self._aggregate_on(Mean, on, ignore_nulls=ignore_nulls)
 
     @PublicAPI(api_group=CDS_API_GROUP)
     def std(
@@ -510,7 +514,7 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
+        return self._aggregate_on(Std, on, ignore_nulls=ignore_nulls, ddof=ddof)
 
 
 # Backwards compatibility alias.

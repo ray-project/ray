@@ -12,6 +12,7 @@ import ray
 from ray import cloudpickle
 from ray._private.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
+from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -600,20 +601,26 @@ class ApplicationState:
         # application status to set.
         deployment_statuses = self.get_deployments_statuses()
         lowest_rank_status = min(deployment_statuses, key=lambda info: info.rank)
-        if lowest_rank_status.status == DeploymentStatus.UNHEALTHY:
+        if lowest_rank_status.status == DeploymentStatus.DEPLOY_FAILED:
+            failed_deployments = [
+                s.name
+                for s in deployment_statuses
+                if s.status == DeploymentStatus.DEPLOY_FAILED
+            ]
+            return (
+                ApplicationStatus.DEPLOY_FAILED,
+                f"Failed to update the deployments {failed_deployments}.",
+            )
+        elif lowest_rank_status.status == DeploymentStatus.UNHEALTHY:
             unhealthy_deployment_names = [
                 s.name
                 for s in deployment_statuses
                 if s.status == DeploymentStatus.UNHEALTHY
             ]
-            status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
-            if self._status in [
-                ApplicationStatus.DEPLOYING,
-                ApplicationStatus.DEPLOY_FAILED,
-            ]:
-                return ApplicationStatus.DEPLOY_FAILED, status_msg
-            else:
-                return ApplicationStatus.UNHEALTHY, status_msg
+            return (
+                ApplicationStatus.UNHEALTHY,
+                f"The deployments {unhealthy_deployment_names} are UNHEALTHY.",
+            )
         elif lowest_rank_status.status == DeploymentStatus.UPDATING:
             return ApplicationStatus.DEPLOYING, ""
         elif (
@@ -1141,20 +1148,24 @@ def build_serve_application(
     )
 
     try:
-        from ray.serve._private.api import call_app_builder_with_args_if_necessary
-        from ray.serve._private.deployment_graph_build import build as pipeline_build
+        from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 
         # Import and build the application.
         args_info_str = f" with arguments {args}" if args else ""
         logger.info(f"Importing application '{name}'{args_info_str}.")
 
-        app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
-        deployments = pipeline_build(app._get_internal_dag_node(), name)
-        ingress = deployments[-1]
+        app = call_user_app_builder_with_args_if_necessary(
+            import_attr(import_path), args
+        )
 
         deploy_args_list = []
-        for deployment in deployments:
-            is_ingress = deployment.name == ingress.name
+        built_app: BuiltApplication = build_app(
+            app,
+            name=name,
+            default_runtime_env=ray.get_runtime_context().runtime_env,
+        )
+        for deployment in built_app.deployments:
+            is_ingress = deployment.name == built_app.ingress_deployment_name
             deploy_args_list.append(
                 get_deploy_args(
                     name=deployment._name,

@@ -572,6 +572,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip_3.py",
     "test_runtime_env_conda_and_pip_4.py",
     "test_runtime_env_conda_and_pip_5.py",
+    "test_runtime_env_uv.py",
   ],
   size = "large",
   tags = ["exclusive", "post_wheel_build", "team:core"],
@@ -758,6 +759,9 @@ py_test_module_list(
   name_suffix = "_debug_mode",
   tags = ["exclusive", "debug_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
+  env = {
+    "RAY_DEBUG_MODE" : "1",
+  }
 )
 
 py_test_module_list(

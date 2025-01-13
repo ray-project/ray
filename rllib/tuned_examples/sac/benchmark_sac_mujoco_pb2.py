@@ -63,11 +63,6 @@ for env, stop_criteria in benchmark_envs.items():
     config = (
         SACConfig()
         .environment(env=env)
-        # Enable new API stack and use EnvRunner.
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .env_runners(
             rollout_fragment_length="auto",
             num_env_runners=1,

@@ -10,7 +10,7 @@ from packaging import version
 import tree  # pip install dm_tree
 
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI, OldAPIStack
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
@@ -42,9 +42,7 @@ else:
     )
 
 
-# TODO (sven): Deprecate this function once we have moved completely to the Learner API.
-#  Replaced with `clip_gradients()`.
-@PublicAPI
+@OldAPIStack
 def apply_grad_clipping(
     policy: "TorchPolicy", optimizer: LocalOptimizer, loss: TensorType
 ) -> Dict[str, TensorType]:
@@ -93,11 +91,6 @@ def apply_grad_clipping(
         # No grads available
         return {}
     return {"grad_gnorm": grad_gnorm}
-
-
-@Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
-def atanh(x: TensorType) -> TensorType:
-    pass
 
 
 @PublicAPI
@@ -207,7 +200,7 @@ def compute_global_norm(gradients_list: "ParamList") -> TensorType:
     return total_norm
 
 
-@PublicAPI
+@OldAPIStack
 def concat_multi_gpu_td_errors(
     policy: Union["TorchPolicy", "TorchPolicyV2"]
 ) -> Dict[str, TensorType]:
@@ -234,11 +227,6 @@ def concat_multi_gpu_td_errors(
         "td_error": td_error,
         "mean_td_error": torch.mean(td_error),
     }
-
-
-@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=True)
-def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
-    pass
 
 
 @PublicAPI
@@ -492,7 +480,7 @@ def global_norm(tensors: List[TensorType]) -> TensorType:
     return torch.pow(sum(torch.pow(l2, 2.0) for l2 in single_l2s), 0.5)
 
 
-@PublicAPI
+@OldAPIStack
 def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     """Computes the huber loss for a given term and delta parameter.
 
@@ -517,7 +505,7 @@ def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     )
 
 
-@PublicAPI
+@OldAPIStack
 def l2_loss(x: TensorType) -> TensorType:
     """Computes half the L2 norm over a tensor's values without the sqrt.
 
@@ -530,27 +518,6 @@ def l2_loss(x: TensorType) -> TensorType:
         0.5 times the L2 norm over the given tensor's values (w/o sqrt).
     """
     return 0.5 * torch.sum(torch.pow(x, 2.0))
-
-
-@PublicAPI
-def minimize_and_clip(
-    optimizer: "torch.optim.Optimizer", clip_val: float = 10.0
-) -> None:
-    """Clips grads found in `optimizer.param_groups` to given value in place.
-
-    Ensures the norm of the gradients for each variable is clipped to
-    `clip_val`.
-
-    Args:
-        optimizer: The torch.optim.Optimizer to get the variables from.
-        clip_val: The global norm clip value. Will clip around -clip_val and
-            +clip_val.
-    """
-    # Loop through optimizer's variables and norm per variable.
-    for param_group in optimizer.param_groups:
-        for p in param_group["params"]:
-            if p.grad is not None:
-                torch.nn.utils.clip_grad_norm_(p.grad, clip_val)
 
 
 @PublicAPI
@@ -671,9 +638,11 @@ def update_target_network(
 ) -> None:
     """Updates a torch.nn.Module target network using Polyak averaging.
 
-    new_target_net_weight = (
-        tau * main_net_weight + (1.0 - tau) * current_target_net_weight
-    )
+    .. code-block:: text
+
+        new_target_net_weight = (
+            tau * main_net_weight + (1.0 - tau) * current_target_net_weight
+        )
 
     Args:
         main_net: The nn.Module to update from.

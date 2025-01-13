@@ -15,7 +15,7 @@ import pytest
 
 
 from ray._private.test_utils import run_string_as_driver
-from ray.exceptions import RayChannelError, RayChannelTimeoutError
+from ray.exceptions import ActorDiedError, RayChannelError, RayChannelTimeoutError
 import ray
 import ray._private
 import ray.cluster_utils
@@ -26,14 +26,16 @@ from ray._private.utils import (
 )
 from ray.dag import DAGContext
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    wait_for_pid_to_exit,
+)
+import signal
+import psutil
 
 
 logger = logging.getLogger(__name__)
 
-try:
-    import pydot
-except Exception:
-    logging.info("pydot is not installed, visualization tests will be skiped")
 
 pytestmark = [
     pytest.mark.skipif(
@@ -47,10 +49,10 @@ pytestmark = [
 @pytest.fixture
 def temporary_change_timeout(request):
     ctx = DAGContext.get_current()
-    original = ctx.execution_timeout
-    ctx.execution_timeout = request.param
-    yield ctx.execution_timeout
-    ctx.execution_timeout = original
+    original = ctx.submit_timeout
+    ctx.submit_timeout = request.param
+    yield ctx.submit_timeout
+    ctx.submit_timeout = original
 
 
 @ray.remote
@@ -126,7 +128,7 @@ class Actor:
         return 1, 2
 
     def get_events(self):
-        return getattr(self, "__ray_adag_events", [])
+        return getattr(self, "__ray_cgraph_events", [])
 
 
 @ray.remote
@@ -174,28 +176,35 @@ def test_basic(ray_start_regular):
         del result
 
 
-def test_two_returns_first(ray_start_regular):
+def test_basic_destruction(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        dag = o1
+        dag = a.echo.bind(i)
 
     compiled_dag = dag.experimental_compile()
-    for _ in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == 1
 
+    try:
+        for i in range(3):
+            val = np.ones(100) * i
+            ref = compiled_dag.execute(val)
+            # Since ref.get() is not called, the destructor releases its native
+            # buffer without deserializing the value. If the destructor fails to
+            # release the buffer, the subsequent DAG execution will fail due to
+            # memory leak.
+            del ref
+    except RayChannelTimeoutError:
+        pytest.fail(
+            "The native buffer associated with the CompiledDAGRef was not "
+            "released upon destruction."
+        )
 
-def test_two_returns_second(ray_start_regular):
-    a = Actor.remote(0)
-    with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        dag = o2
-
-    compiled_dag = dag.experimental_compile()
-    for _ in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == 2
+    # Ensure that subsequent DAG executions do not fail due to memory leak
+    # and the results can be retrieved by ray.get().
+    val = np.ones(100)
+    ref = compiled_dag.execute(val)
+    result = ray.get(ref)
+    assert (result == val).all()
+    del ref
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -251,6 +260,7 @@ def test_inc_two_returns(ray_start_regular, single_fetch):
         dag = MultiOutputNode([o1, o2])
 
     compiled_dag = dag.experimental_compile()
+    compiled_dag.visualize(channel_details=True)
     for i in range(3):
         refs = compiled_dag.execute(1)
         if single_fetch:
@@ -295,29 +305,25 @@ def test_multi_output_get_exception(ray_start_regular):
         ray.get(refs)
 
 
-# TODO(wxdeng): Fix segfault. If this test is run, the following tests
-# will segfault.
-# def test_two_from_three_returns(ray_start_regular):
-#     a = Actor.remote(0)
-#     with InputNode() as i:
-#         o1, o2 = a.return_two_from_three.bind(i)
-#         dag = MultiOutputNode([o1, o2])
+def test_two_from_three_returns(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two_from_three.bind(i)
+        dag = MultiOutputNode([o1, o2])
 
-#     compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
 
-#     # A value error is raised because the number of returns is not equal to
-#     # the number of outputs. Since the value error is raised in the writer,
-#     # the reader fails to read the outputs and raises a channel error.
+    # A value error is raised because the number of returns is not equal to
+    # the number of outputs. Since the value error is raised in the writer,
+    # the reader fails to read the outputs and raises a channel error.
 
-#     # TODO(wxdeng): Fix exception type. The value error should be catched.
-#     # However, two exceptions are raised in the writer and reader respectively.
+    # TODO(wxdeng): Fix exception type. The value error should be catched.
+    # However, two exceptions are raised in the writer and reader respectively.
 
-#     # with pytest.raises(RayChannelError, match="Channel closed."):
-#     # with pytest.raises(ValueError, match="Expected 2 outputs, but got 3 outputs"):
-#     with pytest.raises(Exception):
-#         ray.get(compiled_dag.execute(1))
-
-#     compiled_dag.teardown()
+    # with pytest.raises(RayChannelError, match="Channel closed."):
+    # with pytest.raises(ValueError, match="Expected 2 outputs, but got 3 outputs"):
+    with pytest.raises(Exception):
+        ray.get(compiled_dag.execute(1))
 
 
 def test_kwargs_not_supported(ray_start_regular):
@@ -517,6 +523,56 @@ def test_actor_method_bind_diff_input_attr_3(ray_start_regular):
 
     ref = compiled_dag.execute(2, 3)
     assert ray.get(ref) == 9
+
+
+class TestDAGNodeInsideContainer:
+    regex = r"Found \d+ DAGNodes from the arg .*? in .*?\.\s*"
+    r"Please ensure that the argument is a single DAGNode and that a "
+    r"DAGNode is not allowed to be placed inside any type of container\."
+
+    def test_dag_node_in_list(self, ray_start_regular):
+        actor = Actor.remote(0)
+        with pytest.raises(ValueError) as exc_info:
+            with InputNode() as inp:
+                dag = actor.echo.bind([inp])
+            dag.experimental_compile()
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
+    def test_dag_node_in_tuple(self, ray_start_regular):
+        actor = Actor.remote(0)
+        with pytest.raises(ValueError) as exc_info:
+            with InputNode() as inp:
+                dag = actor.echo.bind((inp,))
+            dag.experimental_compile()
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
+    def test_dag_node_in_dict(self, ray_start_regular):
+        actor = Actor.remote(0)
+        with pytest.raises(ValueError) as exc_info:
+            with InputNode() as inp:
+                dag = actor.echo.bind({"inp": inp})
+            dag.experimental_compile()
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
+    def test_two_dag_nodes_in_list(self, ray_start_regular):
+        actor = Actor.remote(0)
+        with pytest.raises(ValueError) as exc_info:
+            with InputNode() as inp:
+                dag = actor.echo.bind([inp, inp])
+            dag.experimental_compile()
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
+    def test_dag_node_in_class(self, ray_start_regular):
+        class OuterClass:
+            def __init__(self, ref):
+                self.ref = ref
+
+        actor = Actor.remote(0)
+        with pytest.raises(ValueError) as exc_info:
+            with InputNode() as inp:
+                dag = actor.echo.bind(OuterClass(inp))
+            dag.experimental_compile()
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
 
 
 def test_actor_method_bind_diff_input_attr_4(ray_start_regular):
@@ -999,7 +1055,7 @@ def test_get_with_zero_timeout(ray_start_regular):
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute(1)
     # Give enough time for DAG execution result to be ready
-    time.sleep(1)
+    time.sleep(2)
     # Use timeout=0 to either get result immediately or raise an exception
     result = ray.get(ref, timeout=0)
     assert result == 1
@@ -1262,7 +1318,7 @@ class TestDAGExceptionCompileMultipleTimes:
         with InputNode() as i:
             branch1 = a.echo.bind(i)
             branch2 = b.echo.bind(i)
-            dag = MultiOutputNode([branch1])
+            dag = MultiOutputNode([branch1, branch2])
         compiled_dag = dag.experimental_compile()
         compiled_dag.teardown()
         with pytest.raises(
@@ -1270,7 +1326,7 @@ class TestDAGExceptionCompileMultipleTimes:
             match="The DAG was compiled more than once. The following two "
             "nodes call `experimental_compile`: ",
         ):
-            compiled_dag = branch2.experimental_compile()
+            branch2.experimental_compile()
 
 
 def test_exceed_max_buffered_results(ray_start_regular):
@@ -1464,7 +1520,9 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular, single_fetch):
         else:
             assert ray.get(refs) == [i + 1] * len(actors)
 
-    with pytest.raises(RayChannelError, match="Channel closed."):
+    with pytest.raises(
+        ActorDiedError, match="The actor died unexpectedly before finishing this task."
+    ):
         for i in range(99):
             refs = compiled_dag.execute(1)
             if single_fetch:
@@ -1782,15 +1840,22 @@ class TestCompositeChannel:
 
 
 class TestLeafNode:
+    """
+    Leaf nodes are not allowed right now because the exception thrown by the leaf
+    node will not be propagated to the driver and silently ignored, which is undesired.
+    """
+
+    LEAF_NODE_EXCEPTION_TEMPLATE = (
+        "Compiled DAG doesn't support leaf nodes, i.e., nodes that don't have "
+        "downstream nodes and are not output nodes. There are {num_leaf_nodes} "
+        "leaf nodes in the DAG. Please add the outputs of"
+    )
+
     def test_leaf_node_one_actor(self, ray_start_regular):
         """
         driver -> a.inc
                |
                -> a.inc -> driver
-
-        The upper branch (branch 1) is a leaf node, and it will be executed
-        before the lower `a.inc` task because of the control dependency. Hence,
-        the result will be [20] because `a.inc` will be executed twice.
         """
         a = Actor.remote(0)
         with InputNode() as i:
@@ -1799,10 +1864,11 @@ class TestLeafNode:
             branch2 = a.inc.bind(input_data)
             dag = MultiOutputNode([branch2])
 
-        compiled_dag = dag.experimental_compile()
-
-        ref = compiled_dag.execute(10)
-        assert ray.get(ref) == [20]
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=1),
+        ):
+            dag.experimental_compile()
 
     def test_leaf_node_two_actors(self, ray_start_regular):
         """
@@ -1811,9 +1877,6 @@ class TestLeafNode:
                |        -> b.inc ----> driver
                |
                -> a.inc (branch 1)
-
-        The lower branch (branch 1) is a leaf node, and it will be executed
-        before the upper `a.inc` task because of the control dependency.
         """
         a = Actor.remote(0)
         b = Actor.remote(100)
@@ -1821,16 +1884,61 @@ class TestLeafNode:
             a.inc.bind(i)  # branch1: leaf node
             branch2 = b.inc.bind(i)
             dag = MultiOutputNode([a.inc.bind(branch2), b.inc.bind(branch2)])
-        compiled_dag = dag.experimental_compile()
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=1),
+        ):
+            dag.experimental_compile()
 
-        ref = compiled_dag.execute(10)
-        assert ray.get(ref) == [120, 220]
+    def test_multi_leaf_nodes(self, ray_start_regular):
+        """
+        driver -> a.inc -> a.inc (branch 1, leaf node)
+               |        |
+               |        -> a.inc -> driver
+               |
+               -> a.inc (branch 2, leaf node)
+        """
+        a = Actor.remote(0)
+        with InputNode() as i:
+            dag = a.inc.bind(i)
+            a.inc.bind(dag)  # branch1: leaf node
+            a.inc.bind(i)  # branch2: leaf node
+            dag = MultiOutputNode([a.inc.bind(dag)])
+
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=2),
+        ):
+            dag.experimental_compile()
+
+    def test_two_returns_first(self, ray_start_regular):
+        a = Actor.remote(0)
+        with InputNode() as i:
+            o1, o2 = a.return_two.bind(i)
+            dag = o1
+
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=1),
+        ):
+            dag.experimental_compile()
+
+    def test_two_returns_second(self, ray_start_regular):
+        a = Actor.remote(0)
+        with InputNode() as i:
+            o1, o2 = a.return_two.bind(i)
+            dag = o2
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=1),
+        ):
+            dag.experimental_compile()
 
 
 def test_output_node(ray_start_regular):
     """
     This test is similar to the `test_output_node` in `test_output_node.py`, but
-    this test is for the accelerated DAG.
+    this test is for Compiled Graph.
     """
 
     @ray.remote
@@ -1962,7 +2070,7 @@ def test_simulate_pipeline_parallelism(ray_start_regular, single_fetch):
 
 
 def test_channel_read_after_close(ray_start_regular):
-    # Tests that read to a channel after accelerated DAG teardown raises a
+    # Tests that read to a channel after Compiled Graph teardown raises a
     # RayChannelError exception as the channel is closed (see issue #46284).
     @ray.remote
     class Actor:
@@ -1982,7 +2090,7 @@ def test_channel_read_after_close(ray_start_regular):
 
 
 def test_channel_write_after_close(ray_start_regular):
-    # Tests that write to a channel after accelerated DAG teardown raises a
+    # Tests that write to a channel after Compiled Graph teardown raises a
     # RayChannelError exception as the channel is closed.
     @ray.remote
     class Actor:
@@ -2000,6 +2108,18 @@ def test_channel_write_after_close(ray_start_regular):
         dag.execute(1)
 
 
+def test_multiple_reads_from_same_actor(ray_start_cluster):
+    a = Actor.remote(0)
+    b = Actor.remote(10)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = b.inc.bind(x)
+        z = b.inc.bind(x)
+        dag = MultiOutputNode([y, z])
+    dag = dag.experimental_compile()
+    assert ray.get(dag.execute(1)) == [11, 12]
+
+
 def test_driver_and_actor_as_readers(ray_start_cluster):
     a = Actor.remote(0)
     b = Actor.remote(10)
@@ -2007,14 +2127,24 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
         x = a.inc.bind(inp)
         y = b.inc.bind(x)
         dag = MultiOutputNode([x, y])
+    dag = dag.experimental_compile()
+    assert ray.get(dag.execute(1)) == [1, 11]
 
-    with pytest.raises(
-        ValueError,
-        match="DAG outputs currently can only be read by the driver or "
-        "the same actor that is also the InputNode, not by both "
-        "the driver and actors.",
-    ):
-        dag.experimental_compile()
+
+def test_driver_and_intraprocess_read(ray_start_cluster):
+    """
+    This test is similar to the `test_driver_and_actor_as_readers` test, but now for x,
+    there is IntraProcessChannel to Actor a and a BufferedSharedMemoryChannel to the
+    driver and the CompositeChannel has to choose the correct channel to read from in
+    both situations.
+    """
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = a.inc.bind(x)
+        dag = MultiOutputNode([x, y])
+    dag = dag.experimental_compile()
+    assert ray.get(dag.execute(1)) == [1, 2]
 
 
 @pytest.mark.skip("Currently buffer size is set to 1 because of regression.")
@@ -2059,7 +2189,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     output_refs = []
     for i in range(MAX_INFLIGHT_EXECUTIONS):
         output_refs.append(dag.execute(i))
-    with pytest.raises(ray.exceptions.RayAdagCapacityExceeded):
+    with pytest.raises(ray.exceptions.RayCgraphCapacityExceeded):
         dag.execute(1)
     assert len(output_refs) == MAX_INFLIGHT_EXECUTIONS
     for i, ref in enumerate(output_refs):
@@ -2095,7 +2225,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
         output_refs = []
         for i in range(MAX_INFLIGHT_EXECUTIONS):
             output_refs.append(await async_dag.execute_async(i))
-        with pytest.raises(ray.exceptions.RayAdagCapacityExceeded):
+        with pytest.raises(ray.exceptions.RayCgraphCapacityExceeded):
             await async_dag.execute_async(1)
         assert len(output_refs) == MAX_INFLIGHT_EXECUTIONS
         for i, ref in enumerate(output_refs):
@@ -2113,7 +2243,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
-    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_PROFILING", True)
+    monkeypatch.setattr(ray.dag.constants, "RAY_CGRAPH_ENABLE_PROFILING", True)
 
     a = Actor.options(name="a").remote(0)
     b = Actor.options(name="b").remote(0)
@@ -2122,8 +2252,8 @@ def test_event_profiling(ray_start_regular, monkeypatch):
         y = b.inc.bind(inp)
         z = b.inc.bind(y)
         dag = MultiOutputNode([x, z])
-    adag = dag.experimental_compile()
-    ray.get(adag.execute(1))
+    cdag = dag.experimental_compile()
+    ray.get(cdag.execute(1))
 
     a_events = ray.get(a.get_events.remote())
     b_events = ray.get(b.get_events.remote())
@@ -2159,14 +2289,14 @@ class TestWorker:
 
 
 """
-Accelerated DAGs support the following two cases for the input/output of the graph:
+Compiled Graphs support the following two cases for the input/output of the graph:
 
 1. Both the input and output of the graph are the driver process.
 2. Both the input and output of the graph are the same actor process.
 
 This test suite covers the second case. The second case is useful when we use
-Ray Serve to deploy the ADAG as a backend. In this case, the Ray Serve replica,
-which is an actor, needs to be the input and output of the graph.
+Ray Serve to deploy the Compiled Graph as a backend. In this case, the Ray Serve
+replica, which is an actor, needs to be the input and output of the graph.
 """
 
 
@@ -2217,6 +2347,45 @@ def test_intra_process_channel(shutdown_only):
     replica = Replica.remote()
     ref = replica.call.remote(1)
     assert ray.get(ref) == 3
+
+
+def test_driver_as_actor_and_actor_reading(ray_start_cluster):
+    @ray.remote
+    class Replica:
+        def __init__(self):
+            self.w = TestWorker.remote()
+            self.w2 = TestWorker.remote()
+            with InputNode() as inp:
+                x = self.w.add_one.bind(inp)
+                y = self.w2.add_one.bind(x)
+                dag = MultiOutputNode([x, y])
+            self.compiled_dag = dag.experimental_compile()
+
+        def exec_and_get(self, value):
+            return ray.get(self.compiled_dag.execute(value))
+
+    replica = Replica.remote()
+    result = replica.exec_and_get.remote(1)
+    assert ray.get(result) == [2, 3]
+
+
+def test_driver_as_actor_and_intraprocess_read(ray_start_cluster):
+    @ray.remote
+    class Replica:
+        def __init__(self):
+            self.w = TestWorker.remote()
+            with InputNode() as inp:
+                x = self.w.add_one.bind(inp)
+                y = self.w.add_one.bind(x)
+                dag = MultiOutputNode([x, y])
+            self.compiled_dag = dag.experimental_compile()
+
+        def exec_and_get(self, value):
+            return ray.get(self.compiled_dag.execute(value))
+
+    replica = Replica.remote()
+    result = replica.exec_and_get.remote(1)
+    assert ray.get(result) == [2, 3]
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -2331,10 +2500,10 @@ def test_torch_tensor_type(shutdown_only):
                         inp,
                     ).with_type_hint(TorchTensorType()),
                 )
-            self._adag = dag.experimental_compile()
+            self._cdag = dag.experimental_compile()
 
         def call(self, value):
-            return ray.get(self._adag.execute(value))
+            return ray.get(self._cdag.execute(value))
 
     replica = Replica.remote()
     ref = replica.call.remote(5)
@@ -2365,8 +2534,8 @@ async def main():
         y = b.f.bind(inp)
         dag =  MultiOutputNode([x, y])
 
-    adag = dag.experimental_compile(enable_asyncio=True)
-    refs = await adag.execute_async(1)
+    cdag = dag.experimental_compile(enable_asyncio=True)
+    refs = await cdag.execute_async(1)
     outputs = []
     for ref in refs:
         outputs.append(await ref)
@@ -2413,171 +2582,101 @@ def test_multi_arg_exception_async(shutdown_only):
     loop.run_until_complete(main())
 
 
-class TestVisualization:
+def test_signature_mismatch(shutdown_only):
+    @ray.remote
+    class Worker:
+        def w(self, x):
+            return 1
 
-    """Tests for the visualize method of compiled DAGs."""
+        def f(self, x, *, y):
+            pass
 
-    # TODO(zhilong): "pip intsall pydot"
-    # and "sudo apt-get install graphviz " to run test.
-    @pytest.fixture(autouse=True)
-    def skip_if_pydot_graphviz_not_available(self):
-        # Skip the test if pydot or graphviz is not available
-        pytest.importorskip("pydot")
-        pytest.importorskip("graphviz")
+        def g(self, x, y, z=1):
+            pass
 
-    def test_visualize_basic(self, ray_start_regular):
-        """
-        Expect output or dot_source:
-            MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
-                0 -> 1 [label=SharedMemoryType]
-                1 -> 2 [label=SharedMemoryType]
-        """
+    worker = Worker.remote()
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"got an unexpected keyword argument 'y'\. The function `w` has a "
+            r"signature `\(x\)`, but the given arguments to `bind` doesn't match\. "
+            r".*args:.*kwargs:.*"
+        ),
+    ):
+        with InputNode() as inp:
+            _ = worker.w.bind(inp, y=inp)
 
-        @ray.remote
-        class Actor:
-            def echo(self, x):
-                return x
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"too many positional arguments\. The function `w` has a signature "
+            r"`\(x\)`, but the given arguments to `bind` doesn't match\. "
+            r"args:.*kwargs:.*"
+        ),
+    ):
+        with InputNode() as inp:
+            _ = worker.w.bind(inp, inp)
 
-        actor = Actor.remote()
+    with pytest.raises(
+        TypeError,
+        # Starting from Python 3.12, the error message includes "keyword-only."
+        # Therefore, we need to match both "required keyword-only argument" and
+        # "required argument."
+        match=(
+            r"missing a required (keyword-only )?argument: 'y'\. "
+            r"The function `f` has a signature `\(x, \*, y\)`, "
+            r"but the given arguments to `bind` doesn't match\. "
+            r"args:.*kwargs:.*"
+        ),
+    ):
+        with InputNode() as inp:
+            _ = worker.f.bind(inp)
 
-        with InputNode() as i:
-            dag = actor.echo.bind(i)
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"missing a required argument: 'y'\. The function `g` has a signature "
+            r"`\(x, y, z=1\)`, but the given arguments to `bind` doesn't match\. "
+            r"args:.*kwargs:.*"
+        ),
+    ):
+        with InputNode() as inp:
+            _ = worker.g.bind(inp)
 
-        compiled_dag = dag.experimental_compile()
 
-        # Call the visualize method
-        dot_source = compiled_dag.visualize(return_dot=True)
+@pytest.mark.skipif(sys.platform == "win32", reason="Sigint not supported on Windows")
+def test_sigint_get_dagref(ray_start_cluster):
+    driver_script = """
+import ray
+from ray.dag import InputNode
+import time
 
-        graphs = pydot.graph_from_dot_data(dot_source)
-        graph = graphs[0]
+ray.init()
 
-        node_names = {node.get_name() for node in graph.get_nodes()}
-        edge_pairs = {
-            (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
-        }
+@ray.remote
+class Actor:
+    def sleep(self, x):
+        while(True):
+            time.sleep(x)
 
-        expected_nodes = {"0", "1", "2"}
-        assert expected_nodes.issubset(
-            node_names
-        ), f"Expected nodes {expected_nodes} not found."
-
-        expected_edges = {("0", "1"), ("1", "2")}
-        assert expected_edges.issubset(
-            edge_pairs
-        ), f"Expected edges {expected_edges} not found."
-
-        compiled_dag.teardown()
-
-    def test_visualize_multi_return(self, ray_start_regular):
-        """
-        Expect output or dot_source:
-            MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
-                0 -> 1 [label=SharedMemoryType]
-                1 -> 2 [label=SharedMemoryType]
-                1 -> 3 [label=SharedMemoryType]
-                2 -> 4 [label=SharedMemoryType]
-                3 -> 4 [label=SharedMemoryType]
-        """
-
-        @ray.remote
-        class Actor:
-            @ray.method(num_returns=2)
-            def return_two(self, x):
-                return x, x + 1
-
-        actor = Actor.remote()
-
-        with InputNode() as i:
-            o1, o2 = actor.return_two.bind(i)
-            dag = MultiOutputNode([o1, o2])
-
-        compiled_dag = dag.experimental_compile()
-
-        # Get the DOT source
-        dot_source = compiled_dag.visualize(return_dot=True)
-
-        graphs = pydot.graph_from_dot_data(dot_source)
-        graph = graphs[0]
-
-        node_names = {node.get_name() for node in graph.get_nodes()}
-        edge_pairs = {
-            (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
-        }
-
-        expected_nodes = {"0", "1", "2", "3", "4"}
-        assert expected_nodes.issubset(
-            node_names
-        ), f"Expected nodes {expected_nodes} not found."
-
-        expected_edges = {("0", "1"), ("1", "2"), ("1", "3"), ("2", "4"), ("3", "4")}
-        assert expected_edges.issubset(
-            edge_pairs
-        ), f"Expected edges {expected_edges} not found."
-
-        compiled_dag.teardown()
-
-    def test_visualize_multi_return2(self, ray_start_regular):
-        """
-        Expect output or dot_source:
-            MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
-                0 -> 1 [label=SharedMemoryType]
-                1 -> 2 [label=SharedMemoryType]
-                1 -> 3 [label=SharedMemoryType]
-                2 -> 4 [label=SharedMemoryType]
-                3 -> 5 [label=SharedMemoryType]
-                4 -> 6 [label=SharedMemoryType]
-                5 -> 6 [label=SharedMemoryType]
-        """
-
-        @ray.remote
-        class Actor:
-            @ray.method(num_returns=2)
-            def return_two(self, x):
-                return x, x + 1
-
-            def echo(self, x):
-                return x
-
-        a = Actor.remote()
-        b = Actor.remote()
-        with InputNode() as i:
-            o1, o2 = a.return_two.bind(i)
-            o3 = b.echo.bind(o1)
-            o4 = b.echo.bind(o2)
-            dag = MultiOutputNode([o3, o4])
-
-        compiled_dag = dag.experimental_compile()
-
-        # Get the DOT source
-        dot_source = compiled_dag.visualize(return_dot=True)
-
-        graphs = pydot.graph_from_dot_data(dot_source)
-        graph = graphs[0]
-
-        node_names = {node.get_name() for node in graph.get_nodes()}
-        edge_pairs = {
-            (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
-        }
-
-        expected_nodes = {"0", "1", "2", "3", "4", "5", "6"}
-        assert expected_nodes.issubset(
-            node_names
-        ), f"Expected nodes {expected_nodes} not found."
-
-        expected_edges = {
-            ("0", "1"),
-            ("1", "2"),
-            ("1", "3"),
-            ("2", "4"),
-            ("3", "5"),
-            ("4", "6"),
-            ("5", "6"),
-        }
-        assert expected_edges.issubset(
-            edge_pairs
-        ), f"Expected edges {expected_edges} not found."
-
-        compiled_dag.teardown()
+a = Actor.remote()
+with InputNode() as inp:
+    dag = a.sleep.bind(inp)
+compiled_dag = dag.experimental_compile()
+ref = compiled_dag.execute(1)
+ray.get(ref, timeout=100)
+"""
+    driver_proc = run_string_as_driver_nonblocking(
+        driver_script, env={"RAY_CGRAPH_teardown_timeout": "5"}
+    )
+    pid = driver_proc.pid
+    # wait for graph execution to start
+    time.sleep(5)
+    proc = psutil.Process(pid)
+    assert proc.status() == psutil.STATUS_RUNNING
+    os.kill(pid, signal.SIGINT)  # ctrl+c
+    # teardown will kill actors after 5 second timeout
+    wait_for_pid_to_exit(pid, 10)
 
 
 if __name__ == "__main__":
