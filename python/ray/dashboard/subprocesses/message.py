@@ -21,7 +21,8 @@ class HealthCheckMessage:
     id: str
 
 
-ChildBoundMessage = Union[RequestMessage, HealthCheckMessage]
+# Now it only contains RequestMessage. If later we need to add more messages, use Union.
+ChildBoundMessage = RequestMessage
 
 """
 Parent bound messages.
@@ -57,11 +58,6 @@ class StreamingResponseEndMessage:
 
 
 @dataclass
-class HealthCheckResponseMessage:
-    id: str
-
-
-@dataclass
 class ErrorMessage:
     id: str
     # Will be raised in the parent's aiohttp handler coroutine.
@@ -74,6 +70,5 @@ ParentBoundMessage = Union[
     StreamingResponseStartMessage,
     StreamingResponseDataMessage,
     StreamingResponseEndMessage,
-    HealthCheckResponseMessage,
     ErrorMessage,
 ]

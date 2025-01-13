@@ -6,6 +6,7 @@ from typing import AsyncIterator, Awaitable, Callable
 import aiohttp.web
 
 from ray.dashboard.routes import BaseRouteTable
+from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 from ray.dashboard.subprocesses.message import (
     ErrorMessage,
     RequestMessage,
@@ -157,7 +158,7 @@ class SubprocessRouteTable(BaseRouteTable):
         return _non_streaming_handler
 
     @classmethod
-    def bind(cls, instance):  # "SubprocessModuleHandle"
+    def bind(cls, instance: SubprocessModuleHandle):
         # __route_method__ and __route_path__ are added to SubprocessModule's methods,
         # not the SubprocessModuleHandle's methods.
         def predicate(o):

@@ -1,12 +1,11 @@
 import asyncio
 
 import aiohttp.web
+import pytest
 
 from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 from ray.dashboard.subprocesses.message import (
     ErrorMessage,
-    HealthCheckMessage,
-    HealthCheckResponseMessage,
     RequestMessage,
     ResponseMessage,
 )
@@ -48,17 +47,17 @@ class TestModule(SubprocessModule):
     # TODO(ryw): test streaming response.
 
 
-def test_handle_can_health_check():
+@pytest.mark.asyncio
+async def test_handle_can_health_check():
     loop = asyncio.get_event_loop()
 
     subprocess_handle = SubprocessModuleHandle(
         loop, TestModule, SubprocessModuleConfig(session_name="test", config={})
     )
-    subprocess_handle.send_message(HealthCheckMessage(id="test"))
-    # No parent bound listening thread, manually check the queue.
-    response = subprocess_handle.parent_bound_queue.get()
-    assert isinstance(response, HealthCheckResponseMessage)
-    assert response.id == "test"
+    subprocess_handle.start_dispatch_parent_bound_messages_thread()
+    response = await subprocess_handle.health_check()
+    assert response.status == 200
+    assert response.body == b"ok!"
 
 
 def test_module_side_handler():
@@ -102,7 +101,7 @@ def test_module_side_handler():
     assert str(response.error) == "This is an error"
 
 
-# @pytest.mark.asyncio
+# @pytest.mark.asyncio is not compatible with aiohttp_client.
 async def test_http_server(aiohttp_client):
     """
     Tests that the http server works. It must

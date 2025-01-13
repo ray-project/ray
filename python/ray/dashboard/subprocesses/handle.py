@@ -2,14 +2,13 @@ import asyncio
 import multiprocessing
 import threading
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Optional
 
 import aiohttp.web
 
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
     ErrorMessage,
-    HealthCheckResponseMessage,
     ParentBoundMessage,
     RequestMessage,
     ResponseMessage,
@@ -82,7 +81,7 @@ class SubprocessModuleHandle:
         self.child_bound_queue.put(message)
 
     async def send_request(
-        self, method_name: str, request: aiohttp.web.Request
+        self, method_name: str, request: Optional[aiohttp.web.Request]
     ) -> asyncio.Future[aiohttp.web.Response]:
         """
         Sends a new request. Bookkeeps it in self.active_requests and sends the
@@ -95,11 +94,25 @@ class SubprocessModuleHandle:
         self.active_requests[request_id] = SubprocessModuleHandle.ActiveRequest(
             request=request, response_fut=self.loop.create_future()
         )
-        body = await request.read()
+        if request is None:
+            body = b""
+        else:
+            body = await request.read()
         self.send_message(
             RequestMessage(id=request_id, method_name=method_name, body=body)
         )
         return await self.active_requests[request_id].response_fut
+
+    async def health_check(self):
+        """
+        Do internal health check. The module should respond immediately with a 200 OK.
+        This can be used to measure module responsiveness in RTT, it also indicates
+        subprocess event loop lag.
+
+        Currently you get a 200 OK with body = b'ok!'. Later if we want we can add more
+        observability payloads.
+        """
+        return await self.send_request("_internal_health_check", request=None)
 
 
 def handle_parent_bound_message(
@@ -108,6 +121,7 @@ def handle_parent_bound_message(
     handle: SubprocessModuleHandle,
 ):
     """Handles a message from the parent bound queue."""
+    print(f"Handling parent bound message: {message}")
     if isinstance(message, ResponseMessage):
         response_fut = handle.active_requests[message.id].response_fut
         # set_result is not thread safe.
@@ -133,9 +147,6 @@ def handle_parent_bound_message(
         response_fut = handle.active_requests[message.id].response_fut
         loop.call_soon_threadsafe(response_fut.set_exception, message.error)
         del handle.active_requests[message.id]
-    elif isinstance(message, HealthCheckResponseMessage):
-        # TODO(ryw): Implement health check timeouts, and cancel the timeout here.
-        pass
     else:
         raise ValueError(f"Unknown message type: {type(message)}")
 

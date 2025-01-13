@@ -7,9 +7,8 @@ from dataclasses import dataclass
 from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
-    HealthCheckMessage,
-    HealthCheckResponseMessage,
     RequestMessage,
+    ResponseMessage,
 )
 from ray.dashboard.subprocesses.utils import assert_not_in_asyncio_loop
 
@@ -63,6 +62,7 @@ class SubprocessModule(abc.ABC):
         message: ChildBoundMessage,
     ):
         """Handles a message from the child bound queue."""
+        print(f"Handling message: {message}")
         if isinstance(message, RequestMessage):
             # Assume module has a method_name method that has signature:
             #
@@ -75,20 +75,6 @@ class SubprocessModule(abc.ABC):
             # getattr() already binds self to method, so we don't need to pass it.
             asyncio.run_coroutine_threadsafe(
                 method(message, self._parent_bound_queue), loop
-            )
-        elif isinstance(message, HealthCheckMessage):
-            # dispatch to the loop and await once to detect if the module is healthy.
-            # This goes through the loop to detect loop hangs, but does not hit the
-            # module code.
-            async def respond_health_check(queue: multiprocessing.Queue):
-                await asyncio.sleep(0)
-                try:
-                    queue.put(HealthCheckResponseMessage(id=message.id), timeout=1)
-                except Exception as e:
-                    print(f"Exception responding to health check to {queue}: {e}")
-
-            asyncio.run_coroutine_threadsafe(
-                respond_health_check(self._parent_bound_queue), loop
             )
         else:
             raise ValueError(f"Unknown message type: {type(message)}")
@@ -108,6 +94,24 @@ class SubprocessModule(abc.ABC):
                 self.handle_child_bound_message(loop, message)
             except Exception as e:
                 print(f"Error handling child bound message: {e}")
+
+    async def _internal_health_check(
+        self, message: RequestMessage, parent_bound_queue: multiprocessing.Queue
+    ) -> None:
+        """
+        Internal health check. Sends back a response to the parent queue.
+
+        Note this is NOT registered as a route, so an external HTTP request will not
+        trigger this.
+        """
+        try:
+            print(f"Internal health check: {message}")
+            parent_bound_queue.put(
+                ResponseMessage(id=message.id, status=200, body=b"ok!")
+            )
+            print(f"Sent response: {message}")
+        except Exception as e:
+            print(f"Error sending response: {e}")
 
 
 def run_module(
