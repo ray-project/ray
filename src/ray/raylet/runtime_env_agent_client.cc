@@ -20,6 +20,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 
@@ -39,6 +40,10 @@ namespace ray {
 namespace raylet {
 
 namespace {
+
+// Cached DNS resolution result.
+static std::mutex resolution_results_mu_;
+static std::optional<tcp::resolver::results_type> resolution_results_;
 
 //------------------------------------------------------------------------------
 // Simple class to make a async POST call.
@@ -92,6 +97,23 @@ class Session : public std::enable_shared_from_this<Session> {
   // This method should only be called once.
   void run(FinishedCallback finished_callback) {
     finished_callback_ = std::move(finished_callback);
+
+    tcp::resolver::results_type *resolution_results_ptr = nullptr;
+    {
+      std::lock_guard lck(resolution_results_mu_);
+      if (resolution_results_.has_value()) {
+        resolution_results_ptr = &resolution_results_.value();
+      }
+    }
+
+    // If resolution already finished, use cached results.
+    if (resolution_results_ptr != nullptr) {
+      stream_.async_connect(
+          *resolution_results_ptr,
+          beast::bind_front_handler(&Session::on_connect, shared_from_this()));
+      return;
+    }
+
     // Starts the state machine by looking up the domain name.
     resolver_.async_resolve(
         host_,
@@ -141,6 +163,13 @@ class Session : public std::enable_shared_from_this<Session> {
     if (ec) {
       Failed(ray::Status::NotFound("on_resolve " + ec.message()));
       return;
+    }
+
+    {
+      std::lock_guard lck(resolution_results_mu_);
+      if (!resolution_results_.has_value()) {
+        resolution_results_ = results;
+      }
     }
 
     stream_.expires_never();
