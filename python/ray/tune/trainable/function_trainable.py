@@ -65,6 +65,15 @@ class FunctionTrainable(Trainable):
         )
         self._last_training_result: Optional[_TrainingResult] = None
 
+        # NOTE: This environment variable is used to disable the
+        # spawning a new actor for Ray Train drivers being launched
+        # within Tune functions.
+        # There are 2 reasons for this:
+        # 1. Ray Tune already spawns an actor, so we can run the Ray Train
+        #    driver directly in the same actor.
+        # 2. This allows `ray.tune.report` to be called within Ray Train driver
+        #    callbacks, since it needs to be called on the same process as the
+        #    Tune FunctionTrainable actor.
         os.environ[RUN_CONTROLLER_AS_ACTOR_ENV_VAR] = "0"
 
     def _trainable_func(self, config: Dict[str, Any]):
