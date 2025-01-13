@@ -21,6 +21,8 @@
 
 #include "ray/common/test/testing.h"
 
+namespace ray {
+
 namespace {
 
 struct TestClass {
@@ -38,9 +40,10 @@ class Derived : public Base {
   ~Derived() override {}
 };
 
-}  // namespace
+StatusOr<int> GetErrorStatus() { return Status::Invalid("Invalid error status."); }
+StatusOr<int> GetValue() { return 1; }
 
-namespace ray {
+}  // namespace
 
 TEST(StatusOrTest, AssignTest) {
   // Assign with status.
@@ -210,6 +213,26 @@ TEST(StatusOrTest, OrElse) {
   {
     StatusOr<int> s = 10;
     EXPECT_EQ(s.or_else(f).value(), 10);
+  }
+}
+
+TEST(StatusOrTest, AssignOrReturn) {
+  // Get error status.
+  {
+    auto f = []() -> StatusOr<int> {
+      RAY_ASSIGN_OR_RETURN(int val, GetValue());
+      RAY_ASSIGN_OR_RETURN(val, GetErrorStatus());
+      return val;
+    };
+    EXPECT_EQ(f().code(), StatusCode::Invalid);
+  }
+  // Get value.
+  {
+    auto f = []() -> StatusOr<int> {
+      RAY_ASSIGN_OR_RETURN(int val, GetValue());
+      return val;
+    };
+    EXPECT_EQ(f().value(), 1);
   }
 }
 

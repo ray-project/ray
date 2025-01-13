@@ -1,3 +1,14 @@
+"""Asynchronous Proximal Policy Optimization (APPO)
+
+The algorithm is described in [1] (under the name of "IMPACT"):
+
+Detailed documentation:
+https://docs.ray.io/en/master/rllib-algorithms.html#appo
+
+[1] IMPACT: Importance Weighted Asynchronous Architectures with Clipped Target Networks.
+Luo et al. 2020
+https://arxiv.org/pdf/1912.00167
+"""
 from typing import Dict
 
 from ray.rllib.algorithms.appo.appo import (
