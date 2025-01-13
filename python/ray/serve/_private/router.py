@@ -506,41 +506,37 @@ class AsyncioRouter:
         This will block indefinitely if no replicas are available to handle the
         request, so it's up to the caller to time out or cancel the request.
         """
-        replica = await self._replica_scheduler.choose_replica_for_request(pr)
+        r = await self._replica_scheduler.choose_replica_for_request(pr)
 
         # If the queue len cache is disabled or we're sending a request to Java,
         # then directly send the query and hand the response back. The replica will
         # never reject requests in this code path.
-        if not self._enable_strict_max_ongoing_requests or replica.is_cross_language:
-            return replica.send_request(pr), replica.replica_id
+        if not self._enable_strict_max_ongoing_requests or r.is_cross_language:
+            result, _ = await r.send_request(pr, with_rejection=False)
+            return result, r.replica_id
 
         while True:
-            replica_result = None
+            result = None
             try:
-                (
-                    replica_result,
-                    queue_len_info,
-                ) = await replica.send_request_with_rejection(pr)
-                self._replica_scheduler.on_new_queue_len_info(
-                    replica.replica_id, queue_len_info
-                )
-                if queue_len_info.accepted:
-                    return replica_result, replica.replica_id
+                result, queue_info = await r.send_request(pr, with_rejection=True)
+                self._replica_scheduler.on_new_queue_len_info(r.replica_id, queue_info)
+                if queue_info.accepted:
+                    return result, r.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
                 # currently no `await` statements between getting the ref and returning,
                 # but I'm adding it defensively.
-                if replica_result is not None:
-                    replica_result.cancel()
+                if result is not None:
+                    result.cancel()
 
                 raise
             except ActorDiedError:
                 # Replica has died but controller hasn't notified the router yet.
                 # Don't consider this replica for requests in the future, and retry
                 # scheduling request.
-                self._replica_scheduler.on_replica_actor_died(replica.replica_id)
+                self._replica_scheduler.on_replica_actor_died(r.replica_id)
                 logger.warning(
-                    f"{replica.replica_id} will not be considered for future "
+                    f"{r.replica_id} will not be considered for future "
                     "requests because it has died."
                 )
             except ActorUnavailableError:
@@ -549,14 +545,14 @@ class AsyncioRouter:
                 # time being, invalidate the cache entry so that we don't try to
                 # send requests to this replica without actively probing, and retry
                 # scheduling request.
-                self._replica_scheduler.on_replica_actor_unavailable(replica.replica_id)
-                logger.warning(f"{replica.replica_id} is temporarily unavailable.")
+                self._replica_scheduler.on_replica_actor_unavailable(r.replica_id)
+                logger.warning(f"{r.replica_id} is temporarily unavailable.")
 
             # If the replica rejects the request, retry the scheduling process. The
             # request will be placed on the front of the queue to avoid tail latencies.
             # TODO(edoakes): this retry procedure is not perfect because it'll reset the
             # process of choosing candidates replicas (i.e., for locality-awareness).
-            replica = await self._replica_scheduler.choose_replica_for_request(
+            r = await self._replica_scheduler.choose_replica_for_request(
                 pr, is_retry=True
             )
 
