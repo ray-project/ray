@@ -324,13 +324,15 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 else:
                     # Then simply use the `look_back_state`, i.e. in this case the
                     # initial state as `"state_in` in training.
-                    raise NotImplementedError("TODO")
-                    state_outs = tree.map_structure(
-                        lambda a: np.repeat(
-                            a[np.newaxis, ...], len(sa_episode), axis=0
-                        ),
-                        look_back_state,
-                    )
+                    if sa_episode.is_numpy:
+                        state_outs = tree.map_structure(
+                            lambda a, _sae=sa_episode: np.repeat(
+                                a[np.newaxis, ...], len(_sae), axis=0
+                            ),
+                            look_back_state,
+                        )
+                    else:
+                        state_outs = [look_back_state for _ in range(len(sa_episode))]
                 # Explanation:
                 # B=episode len // max_seq_len
                 # [::max_seq_len]: only keep every Tth state.
@@ -342,7 +344,8 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         lambda i, o, m=max_seq_len: np.concatenate([[i], o[:-1]])[::m],
                         look_back_state,
                         state_outs,
-                    ) if sa_episode.is_numpy
+                    )
+                    if sa_episode.is_numpy
                     else ([look_back_state] + state_outs[:-1])[::max_seq_len]
                 )
                 self.add_n_batch_items(
@@ -357,7 +360,9 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         tree.map_structure(
                             lambda i, m=max_seq_len: i[::m],
                             state_outs,
-                        ) if sa_episode.is_numpy else state_outs[::max_seq_len]
+                        )
+                        if sa_episode.is_numpy
+                        else state_outs[::max_seq_len]
                     )
                     self.add_n_batch_items(
                         batch=batch,

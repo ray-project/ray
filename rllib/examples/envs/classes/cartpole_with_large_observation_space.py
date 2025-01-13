@@ -38,10 +38,12 @@ class CartPoleWithLargeObservationSpace(CartPoleEnv):
         # Tuple inside a Dict, and both (1,)-shapes as well as ()-shapes for Boxes.
         # Also add a random discrete variable here.
         spaces = {
-            str(i): gym.spaces.Tuple((
-                gym.spaces.Discrete(100),
-                gym.spaces.Box(0, 256, shape=(30,), dtype=np.float32),
-            ))
+            str(i): gym.spaces.Tuple(
+                (
+                    gym.spaces.Discrete(100),
+                    gym.spaces.Box(0, 256, shape=(30,), dtype=np.float32),
+                )
+            )
             for i in range(100)
         }
         spaces.update(
@@ -63,6 +65,5 @@ class CartPoleWithLargeObservationSpace(CartPoleEnv):
 
     def _compile_current_obs(self, original_cartpole_obs):
         return {
-            str(i): self.observation_space.spaces[str(i)].sample()
-            for i in range(100)
+            str(i): self.observation_space.spaces[str(i)].sample() for i in range(100)
         } | {"actually-useful-stuff": original_cartpole_obs}

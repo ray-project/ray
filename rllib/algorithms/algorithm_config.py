@@ -325,7 +325,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
         self.validate_env_runners_after_construction = True
-        self.episodes_to_numpy_from_env_runner = False
+        self.episodes_to_numpy = False
         self.max_requests_in_flight_per_env_runner = 1
         self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
@@ -1759,7 +1759,7 @@ class AlgorithmConfig(_Config):
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         explore: Optional[bool] = NotProvided,
-        episodes_to_numpy_from_env_runner: Optional[bool] = NotProvided,
+        episodes_to_numpy: Optional[bool] = NotProvided,
         # @OldAPIStack settings.
         exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
         create_env_on_local_worker: Optional[bool] = NotProvided,  # @OldAPIStack
@@ -1912,7 +1912,7 @@ class AlgorithmConfig(_Config):
             explore: Default exploration behavior, iff `explore=None` is passed into
                 compute_action(s). Set to False for no exploration behavior (e.g.,
                 for evaluation).
-            episodes_to_numpy_from_env_runner: Whether to numpy'ize episodes before
+            episodes_to_numpy: Whether to numpy'ize episodes before
                 returning them from an EnvRunner. False by default. If True, EnvRunners
                 call `to_numpy()` on those episode (chunks) to be returned by
                 `EnvRunners.sample()`.
@@ -2040,8 +2040,8 @@ class AlgorithmConfig(_Config):
             self.batch_mode = batch_mode
         if explore is not NotProvided:
             self.explore = explore
-        if episodes_to_numpy_from_env_runner is not NotProvided:
-            self.episodes_to_numpy_from_env_runner = episodes_to_numpy_from_env_runner
+        if episodes_to_numpy is not NotProvided:
+            self.episodes_to_numpy = episodes_to_numpy
 
         # @OldAPIStack
         if exploration_config is not NotProvided:

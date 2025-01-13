@@ -131,7 +131,7 @@ def split_and_zero_pad(
         # `current_time_row` is "full" (max_seq_len): Append as ndarray (with batch
         # axis) to `ret`.
         if current_t == max_seq_len:
-            ret.append(#current_time_row)
+            ret.append(
                 batch(
                     current_time_row,
                     individual_items_already_have_batch_dim="auto",
@@ -143,7 +143,7 @@ def split_and_zero_pad(
     # `current_time_row` is unfinished: Pad, if necessary and append to `ret`.
     if current_t > 0 and current_t < max_seq_len:
         current_time_row.extend([zero_element] * (max_seq_len - current_t))
-        ret.append(#current_time_row)
+        ret.append(
             batch(current_time_row, individual_items_already_have_batch_dim="auto")
         )
 

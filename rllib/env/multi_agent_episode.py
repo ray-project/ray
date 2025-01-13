@@ -670,9 +670,7 @@ class MultiAgentEpisode:
         """True, if the data in this episode is already stored as numpy arrays."""
         is_numpy = next(iter(self.agent_episodes.values())).is_numpy
         # Make sure that all single agent's episodes' `finalized` flags are the same.
-        if not all(
-            eps.is_numpy is is_numpy for eps in self.agent_episodes.values()
-        ):
+        if not all(eps.is_numpy is is_numpy for eps in self.agent_episodes.values()):
             raise RuntimeError(
                 f"Only some SingleAgentEpisode objects in {self} are converted to "
                 f"numpy, others are not!"
@@ -2624,4 +2622,3 @@ class MultiAgentEpisode:
     @Deprecated(new="MultiAgentEpisode.to_numpy()", error=True)
     def finalize(self):
         pass
-

@@ -401,11 +401,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 self._make_on_episode_callback("on_episode_end")
 
                 # Numpy'ize the episode.
-                if self.config.episodes_to_numpy_from_env_runner:
+                if self.config.episodes_to_numpy:
                     # Any possibly compress observations.
-                    done_episodes_to_return.append(self._episode.to_numpy(
-                        drop_zero_len_single_agent_episodes=True,
-                    ))
+                    done_episodes_to_return.append(
+                        self._episode.to_numpy(
+                            drop_zero_len_single_agent_episodes=True,
+                        )
+                    )
                 # Leave episode as lists of individual (obs, action, etc..) items.
                 else:
                     done_episodes_to_return.append(self._episode)
@@ -450,11 +452,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             self._ongoing_episodes_for_metrics[self._episode.id_].append(self._episode)
 
             # Numpy'ize the episode.
-            if self.config.episodes_to_numpy_from_env_runner:
+            if self.config.episodes_to_numpy:
                 # Any possibly compress observations.
-                ongoing_episodes_to_return.append(self._episode.to_numpy(
-                    drop_zero_len_single_agent_episodes=True,
-                ))
+                ongoing_episodes_to_return.append(
+                    self._episode.to_numpy(
+                        drop_zero_len_single_agent_episodes=True,
+                    )
+                )
             # Leave episode as lists of individual (obs, action, etc..) items.
             else:
                 ongoing_episodes_to_return.append(self._episode)
@@ -628,11 +632,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 self._make_on_episode_callback("on_episode_end", _episode)
 
                 # Numpy'ize the episode.
-                if self.config.episodes_to_numpy_from_env_runner:
+                if self.config.episodes_to_numpy:
                     # Any possibly compress observations.
-                    done_episodes_to_return.append(_episode.to_numpy(
-                        drop_zero_len_single_agent_episodes=True,
-                    ))
+                    done_episodes_to_return.append(
+                        _episode.to_numpy(
+                            drop_zero_len_single_agent_episodes=True,
+                        )
+                    )
                 # Leave episode as lists of individual (obs, action, etc..) items.
                 else:
                     done_episodes_to_return.append(_episode)
