@@ -430,6 +430,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           if (!reply.ParseFromString(body)) {
             fail_callback(Status::IOError("protobuf parse error"));
           } else {
+            RAY_CHECK(false) << "hjiang---" << reply.DebugString();
             succ_callback(std::move(reply));
           }
         },
