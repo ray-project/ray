@@ -355,6 +355,7 @@ class AlgorithmConfig(_Config):
         self.num_learners = 0
         self.num_gpus_per_learner = 0
         self.num_cpus_per_learner = 1
+        self.custom_resources_per_learner = {}
         self.local_gpu_idx = 0
         # TODO (sven): This probably works even without any restriction
         #  (allowing for any arbitrary number of requests in-flight). Test with
@@ -2126,6 +2127,9 @@ class AlgorithmConfig(_Config):
         num_learners: Optional[int] = NotProvided,
         num_cpus_per_learner: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
+        custom_resources_per_learner: Optional[
+            Dict[str, Union[float, int]]
+        ] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         max_requests_in_flight_per_learner: Optional[int] = NotProvided,
     ):
@@ -2148,6 +2152,11 @@ class AlgorithmConfig(_Config):
                 the training on main process CPUs. If `num_gpus_per_learner` is > 0,
                 then you shouldn't change `num_cpus_per_learner` (from its default
                 value of 1).
+            custom_resources_per_learner: A dict that specify custom resources allocated
+                per Learner worker. Similar to the GPU, if you declare a certain number
+                for NPU/HPU (which is already supported in ray train) greater than 0,
+                such as {"NPU": 1}, the training will run on the the corresponding
+                accelerator.
             local_gpu_idx: If `num_gpus_per_learner` > 0, and
                 `num_learners` < 2, then RLlib uses this GPU index for training. This is
                 an index into the available
@@ -2172,6 +2181,8 @@ class AlgorithmConfig(_Config):
             self.num_cpus_per_learner = num_cpus_per_learner
         if num_gpus_per_learner is not NotProvided:
             self.num_gpus_per_learner = num_gpus_per_learner
+        if custom_resources_per_learner is not NotProvided:
+            self.custom_resources_per_learner = custom_resources_per_learner
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx
         if max_requests_in_flight_per_learner is not NotProvided:
