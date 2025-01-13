@@ -158,6 +158,10 @@ if __name__ == "__main__":
         request = runtime_env_agent_pb2.GetOrCreateRuntimeEnvRequest()
         request.ParseFromString(data)
         reply = await agent.GetOrCreateRuntimeEnv(request)
+
+        if "FOO" in data:
+            raise TypeError(f"{reply}")
+
         return web.Response(
             body=reply.SerializeToString(), content_type="application/octet-stream"
         )
