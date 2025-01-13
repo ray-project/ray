@@ -187,12 +187,6 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Get all the task information from the node.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         GetTasksInfo,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
   /// Get all the object information from the node.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetObjectsInfo,
