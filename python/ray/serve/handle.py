@@ -186,21 +186,24 @@ class _DeploymentHandleBase:
 
     def _remote(
         self,
-        request_metadata: RequestMetadata,
         args: Tuple[Any],
         kwargs: Dict[str, Any],
-    ) -> concurrent.futures.Future:
-        self.request_counter.inc(
-            tags={
-                "route": request_metadata.route,
-                "application": request_metadata.app_name,
-            }
-        )
-
+    ) -> Tuple[concurrent.futures.Future, RequestMetadata]:
         if not self.is_initialized:
             self._init()
 
-        return self._router.assign_request(request_metadata, *args, **kwargs)
+        metadata = serve._private.default_impl.get_request_metadata(
+            self.init_options, self.handle_options
+        )
+
+        self.request_counter.inc(
+            tags={
+                "route": metadata.route,
+                "application": metadata.app_name,
+            }
+        )
+
+        return self._router.assign_request(metadata, *args, **kwargs), metadata
 
     def __getattr__(self, name):
         return self.options(method_name=name)
@@ -732,11 +735,8 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
-        request_metadata = serve._private.default_impl.get_request_metadata(
-            self.init_options, self.handle_options
-        )
 
-        future = self._remote(request_metadata, args, kwargs)
+        future, request_metadata = self._remote(args, kwargs)
         if self.handle_options.stream:
             response_cls = DeploymentResponseGenerator
         else:
