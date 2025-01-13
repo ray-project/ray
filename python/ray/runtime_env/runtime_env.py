@@ -391,7 +391,7 @@ class RuntimeEnv(dict):
 
             logger.warning(
                 "The `container` runtime environment field is DEPRECATED and will be "
-                "removed after July 31, 2025. Please use `image_uri` instead. See "
+                "removed after July 31, 2025. Use `image_uri` instead. See "
                 "https://docs.ray.io/en/latest/serve/advanced-guides/multi-app-container.html."  # noqa
             )
 

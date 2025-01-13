@@ -462,10 +462,10 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``{"stop-on-exit": "true", "t": "cuda,cublas,cudnn", "ftrace": ""}``
 
-- ``image_uri`` (dict): Require a given (Docker) image, and the worker process will run in a container with this image.
+- ``image_uri`` (dict): Require a given Docker image. The worker process runs in a container with this image.
   - Example: ``{"image_uri": "anyscale/ray:2.31.0-py39-cpu"}``
 
-  Note: ``image_uri`` is experimental now. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
+  Note: ``image_uri`` is experimental. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
 
 - ``config`` (dict | :class:`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): config for runtime environment. Either a dict or a RuntimeEnvConfig.
   Fields:

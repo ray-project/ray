@@ -72,7 +72,7 @@ Then, build the corresponding images and push it to your choice of container reg
 ::::{tab-set}
 :::{tab-item} Whisper
 ```bash
-# Build the image from the Dockerfile using podman
+# Build the image from the Dockerfile using Podman
 export IMG1=alice/whisper_image:latest
 podman build -t $IMG1 -f whisper.Dockerfile .
 # Push to a registry. This step is unnecessary if you are deploying Serve locally.
@@ -81,7 +81,7 @@ podman push $IMG1
 :::
 :::{tab-item} Resnet
 ```bash
-# Build the image from the Dockerfile using podman
+# Build the image from the Dockerfile using Podman
 export IMG2=alice/resnet_image:latest
 podman build -t $IMG2 -f resnet.Dockerfile .
 # Push to a registry. This step is unnecessary if you are deploying Serve locally.
@@ -93,7 +93,7 @@ podman push $IMG2
 Finally, you can specify the container image within which you want to run each application in the `image_uri` field of an application's runtime environment specification.
 
 :::{note}
-Previously the feature could be accessed through the `container` field of the runtime environment. That API is now deprecated in favor of `image_uri`.
+Previously you could access the feature through the `container` field of the runtime environment. That API is now deprecated in favor of `image_uri`.
 :::
 
 The following Serve config runs the `whisper` app with the image `IMG1`, and the `resnet` app with the image `IMG2`. `podman images` command can be used to list the names of the images. Concretely, all deployment replicas in the applications start and run in containers with the respective images.
@@ -164,6 +164,6 @@ If raylet is running inside a container, then that container needs the necessary
 * **Permission denied: '/tmp/ray/session_2023-11-28_15-27-22_167972_6026/ports_by_node.json.lock'**
   * This error likely occurs because the user running inside the Podman container is different from the host user that started the Ray cluster. The folder `/tmp/ray`, which is volume mounted into the podman container, is owned by the host user that started Ray. The container, on the other hand, is started with the flag `--userns=keep-id`, meaning the host user is mapped into the container as itself. Therefore, permissions issues should only occur if the user inside the container is different from the host user. For instance, if the user on host is `root`, and you're using a container whose base image is a standard Ray image, then by default the container starts with user `ray(1000)`, who won't be able to access the mounted `/tmp/ray` volume.
 * **ERRO[0000] 'overlay' is not supported over overlayfs: backing file system is unsupported for this graph driver**
-  * This error should only occur when you are running the Ray cluster inside a container. If you see this error when starting the replica actor, try volume mounting `/var/lib/containers` in the container that runs raylet. That is, add `-v /var/lib/containers:/var/lib/containers` to the command that starts the Docker container.
+  * This error should only occur when you're running the Ray cluster inside a container. If you see this error when starting the replica actor, try volume mounting `/var/lib/containers` in the container that runs raylet. That is, add `-v /var/lib/containers:/var/lib/containers` to the command that starts the Docker container.
 * **cannot clone: Operation not permitted; Error: cannot re-exec process**
-  * This error should only occur when you are running the Ray cluster inside a container. This error implies that you don't have the permissions to use Podman to start a container. You need to start the container that runs raylet, with privileged permissions by adding `--privileged`.
+  * This error should only occur when you're running the Ray cluster inside a container. This error implies that you don't have the permissions to use Podman to start a container. You need to start the container that runs raylet, with privileged permissions by adding `--privileged`.
