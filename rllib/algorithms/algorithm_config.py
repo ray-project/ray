@@ -2290,7 +2290,6 @@ class AlgorithmConfig(_Config):
                 Learner subclasses and in case the user doesn't want to write an extra
                 `AlgorithmConfig` subclass just to add a few settings to the base Algo's
                 own config class.
-
         Returns:
             This updated AlgorithmConfig object.
         """

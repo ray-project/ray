@@ -206,9 +206,9 @@ def find_user_process_by_port_and_status(
         process = psutil.Process(pid)
         try:
             conns = process.connections()
-            for conns in conns:
-                if conns.laddr.port == port:
-                    if statuses_to_check is None or conns.status in statuses_to_check:
+            for conn in conns:
+                if conn.laddr.port == port:
+                    if statuses_to_check is None or conn.status in statuses_to_check:
                         processes.append(process)
         except (psutil.AccessDenied, psutil.ZombieProcess, psutil.NoSuchProcess):
             continue
