@@ -221,7 +221,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         sample_episodes: Optional[bool] = False,
         to_numpy: bool = False,
         # TODO (simon): Check, if we need here 1 as default.
-        lookback: Optional[int] = 0,
+        lookback: int = 0,
+        min_batch_length_T: int = 0,
         **kwargs,
     ) -> Union[SampleBatchType, SingleAgentEpisode]:
         """Samples from a buffer in a randomized way.
@@ -268,6 +269,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 timestep at which the action is computed).
             to_numpy: If episodes should be numpy'ized.
             lookback: A desired lookback. Any non-negative integer is valid.
+            min_batch_length_T: An optional minimal length when sampling sequences. It
+                ensures that sampled sequences are at least `min_batch_length_T` time
+                steps long. This can be used to prevent empty sequences during
+                learning, when using a burn-in period for stateful `RLModule`s. In rare
+                cases, such as when episodes are very short early in training, this may
+                result in longer sampling times.
 
         Returns:
             Either a batch with transitions in each row or (if `return_episodes=True`)
@@ -287,6 +294,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 include_extra_model_outputs=include_extra_model_outputs,
                 to_numpy=to_numpy,
                 lookback=lookback,
+                min_batch_length_T=min_batch_length_T,
             )
         else:
             return self._sample_batch(
@@ -433,7 +441,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         include_infos: bool = False,
         include_extra_model_outputs: bool = False,
         to_numpy: bool = False,
-        lookback: Optional[int] = 1,
+        lookback: int = 1,
+        min_batch_length_T: int = 0,
         **kwargs,
     ) -> List[SingleAgentEpisode]:
         """Samples episodes from a buffer in a randomized way.
@@ -480,6 +489,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 timestep at which the action is computed).
             to_numpy: If episodes should be numpy'ized.
             lookback: A desired lookback. Any non-negative integer is valid.
+            min_batch_length_T: An optional minimal length when sampling sequences. It
+                ensures that sampled sequences are at least `min_batch_length_T` time
+                steps long. This can be used to prevent empty sequences during
+                learning, when using a burn-in period for stateful `RLModule`s. In rare
+                cases, such as when episodes are very short early in training, this may
+                result in longer sampling times.
 
         Returns:
             A list of 1-step long episodes containing all basic episode data and if
@@ -537,6 +552,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
             # Skip, if we are too far to the end and `episode_ts` + n_step would go
             # beyond the episode's end.
+            if min_batch_length_T > 0 and episode_ts + min_batch_length_T >= len(
+                episode
+            ):
+                continue
             if episode_ts + (batch_length_T or 0) + (actual_n_step - 1) > len(episode):
                 actual_length = len(episode)
             else:
