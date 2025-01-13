@@ -201,28 +201,32 @@ except ImportError:
             assert cf.num_learners > 0
 
             _num = cf.num_learners
-            all_learners = {
-                "CPU": _num
-                * (cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0),
-                "GPU": _num
-                * max(
-                    0,
-                    (
-                        cf.num_gpus_per_learner
-                        - 0.01 * cf.num_aggregator_actors_per_learner
+            all_learners = [
+                {
+                    "CPU": _num
+                    * (cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0),
+                    "GPU": _num
+                    * max(
+                        0,
+                        (
+                            cf.num_gpus_per_learner
+                            - 0.01 * cf.num_aggregator_actors_per_learner
+                        ),
                     ),
-                ),
-            }
+                }
+            ]
 
-            all_aggregation_actors = {}
+            all_aggregation_actors = []
             if cf.num_aggregator_actors_per_learner:
                 _num = cf.num_learners * cf.num_aggregator_actors_per_learner
-                all_aggregation_actors = {
-                    "CPU": 1 * _num,
-                    "GPU": (0.01 if cf.num_gpus_per_learner > 0 else 0) * _num,
-                }
+                all_aggregation_actors = [
+                    {
+                        "CPU": 1 * _num,
+                        "GPU": (0.01 if cf.num_gpus_per_learner > 0 else 0) * _num,
+                    }
+                ]
 
-            return [all_learners] + [all_aggregation_actors]
+            return all_learners + all_aggregation_actors
 
 
 tf1, tf, tfv = try_import_tf()
