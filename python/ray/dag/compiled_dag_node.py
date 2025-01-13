@@ -740,8 +740,6 @@ class CompiledDAG:
         submit_timeout: Optional[float] = None,
         buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
-        asyncio_max_queue_size: Optional[int] = None,
-        max_buffered_results: Optional[int] = None,
         max_inflight_executions: Optional[int] = None,
         overlap_gpu_communication: Optional[bool] = None,
     ):
@@ -759,20 +757,6 @@ class CompiledDAG:
                 be running in an event loop and must use `execute_async` to
                 invoke the DAG. Otherwise, the caller should use `execute` to
                 invoke the DAG.
-            asyncio_max_queue_size: Optional parameter to limit how many DAG
-                inputs can be queued at a time. The actual number of concurrent
-                DAG invocations may be higher than this, if there are already
-                inputs being processed by the DAG executors. If used, the
-                caller is responsible for preventing deadlock, i.e. if the
-                input queue is full, another asyncio task is reading from the
-                DAG output. It is only used when enable_asyncio=True.
-            max_buffered_results: The maximum number of execution results that
-                are allowed to be buffered. Setting a higher value allows more
-                DAGs to be executed before `ray.get()` must be called but also
-                increases the memory usage. Note that if the number of ongoing
-                executions is beyond the DAG capacity, the new execution would
-                be blocked in the first place; therefore, this limit is only
-                enforced when it is smaller than the DAG capacity.
             max_inflight_executions: The maximum number of in-flight executions that
                 can be submitted via `execute` or `execute_async` before consuming
                 the output using `ray.get()`. If the caller submits more executions,
@@ -792,11 +776,6 @@ class CompiledDAG:
 
         self._enable_asyncio: bool = enable_asyncio
         self._fut_queue = asyncio.Queue()
-        self._asyncio_max_queue_size: Optional[int] = asyncio_max_queue_size
-        # TODO(rui): consider unify it with asyncio_max_queue_size
-        self._max_buffered_results: Optional[int] = max_buffered_results
-        if self._max_buffered_results is None:
-            self._max_buffered_results = ctx.max_buffered_results
         self._max_inflight_executions = max_inflight_executions
         if self._max_inflight_executions is None:
             self._max_inflight_executions = ctx.max_inflight_executions
@@ -886,7 +865,7 @@ class CompiledDAG:
         self._communicator_ids: Set[str] = set()
         # The index of the current execution. It is incremented each time
         # the DAG is executed.
-        self._execution_index: int = 0
+        self._execution_index: int = -1
         # The maximum index of finished executions.
         # All results with higher indexes have not been generated yet.
         self._max_finished_execution_index: int = -1
@@ -924,12 +903,6 @@ class CompiledDAG:
     @property
     def communicator_ids(self) -> Set[str]:
         return self._communicator_ids
-
-    def increment_max_finished_execution_index(self) -> None:
-        """Increment the max finished execution index. It is used to
-        figure out the max number of in-flight requests to the DAG
-        """
-        self._max_finished_execution_index += 1
 
     def get_id(self) -> str:
         """
@@ -1643,7 +1616,6 @@ class CompiledDAG:
             self._dag_submitter = AwaitableBackgroundWriter(
                 self.dag_input_channels,
                 input_task.output_idxs,
-                self._asyncio_max_queue_size,
                 is_input=True,
             )
             self._dag_output_fetcher = AwaitableBackgroundReader(
@@ -1938,17 +1910,17 @@ class CompiledDAG:
         monitor.start()
         return monitor
 
-    def raise_if_too_many_inflight_requests(self):
-        num_in_flight_requests = (
+    def _raise_if_too_many_inflight_executions(self):
+        num_inflight_executions = (
             self._execution_index - self._max_finished_execution_index
-        )
-        if num_in_flight_requests > self._max_inflight_executions:
+        ) + len(self._result_buffer)
+        if num_inflight_executions >= self._max_inflight_executions:
             raise ray.exceptions.RayCgraphCapacityExceeded(
-                f"There are {num_in_flight_requests} in-flight requests which "
-                "is more than specified _max_inflight_executions of the dag: "
-                f"{self._max_inflight_executions}. Retrieve the output using "
-                "ray.get before submitting more requests or increase "
-                "`max_inflight_executions`. "
+                "The compiled graph can't have more than "
+                f"{self._max_inflight_executions} in-flight executions, and you "
+                f"currently have {num_inflight_executions} in-flight executions. "
+                "Retrieve an output using ray.get before submitting more requests or "
+                "increase `_max_inflight_executions`. "
                 "`dag.experimental_compile(_max_inflight_executions=...)`"
             )
 
@@ -2032,7 +2004,7 @@ class CompiledDAG:
         timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
-            self.increment_max_finished_execution_index()
+            self._max_finished_execution_index += 1
             start_time = time.monotonic()
             self._dag_output_fetcher.release_channel_buffers(timeout)
 
@@ -2076,13 +2048,6 @@ class CompiledDAG:
                 timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
-            if len(self._result_buffer) >= self._max_buffered_results:
-                raise ValueError(
-                    "Too many buffered results: the allowed max count for "
-                    f"buffered results is {self._max_buffered_results}; call "
-                    "ray.get() on previous CompiledDAGRefs to free them up "
-                    "from buffer."
-                )
             start_time = time.monotonic()
 
             # Fetch results from each output channel up to execution_index and cache
@@ -2096,7 +2061,7 @@ class CompiledDAG:
                     "Otherwise, this may indicate that the execution is hanging."
                 ) from e
 
-            self.increment_max_finished_execution_index()
+            self._max_finished_execution_index += 1
             self._cache_execution_results(
                 self._max_finished_execution_index,
                 result,
@@ -2144,7 +2109,7 @@ class CompiledDAG:
         else:
             inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
-        self.raise_if_too_many_inflight_requests()
+        self._raise_if_too_many_inflight_executions()
         try:
             self._dag_submitter.write(inp, self._submit_timeout)
         except RayChannelTimeoutError as e:
@@ -2154,6 +2119,8 @@ class CompiledDAG:
                 "seconds. Otherwise, this may indicate that execution is hanging."
             ) from e
 
+        self._execution_index += 1
+
         if self._returns_list:
             ref = [
                 CompiledDAGRef(self, self._execution_index, channel_index)
@@ -2162,7 +2129,6 @@ class CompiledDAG:
         else:
             ref = CompiledDAGRef(self, self._execution_index)
 
-        self._execution_index += 1
         return ref
 
     def _check_inputs(self, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> None:
@@ -2217,11 +2183,13 @@ class CompiledDAG:
             else:
                 inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
-            self.raise_if_too_many_inflight_requests()
+            self._raise_if_too_many_inflight_executions()
             await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
             await self._fut_queue.put(fut)
+
+        self._execution_index += 1
 
         if self._returns_list:
             fut = [
@@ -2231,7 +2199,6 @@ class CompiledDAG:
         else:
             fut = CompiledDAGFuture(self, self._execution_index, fut)
 
-        self._execution_index += 1
         return fut
 
     def _visualize_ascii(self) -> str:
@@ -2834,8 +2801,6 @@ def build_compiled_dag_from_ray_dag(
     submit_timeout: Optional[float] = None,
     buffer_size_bytes: Optional[int] = None,
     enable_asyncio: bool = False,
-    asyncio_max_queue_size: Optional[int] = None,
-    max_buffered_results: Optional[int] = None,
     max_inflight_executions: Optional[int] = None,
     overlap_gpu_communication: Optional[bool] = None,
 ) -> "CompiledDAG":
@@ -2843,8 +2808,6 @@ def build_compiled_dag_from_ray_dag(
         submit_timeout,
         buffer_size_bytes,
         enable_asyncio,
-        asyncio_max_queue_size,
-        max_buffered_results,
         max_inflight_executions,
         overlap_gpu_communication,
     )
