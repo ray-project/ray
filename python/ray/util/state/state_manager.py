@@ -33,8 +33,6 @@ from ray.core.generated.gcs_service_pb2 import (
 from ray.core.generated.node_manager_pb2 import (
     GetObjectsInfoReply,
     GetObjectsInfoRequest,
-    GetTasksInfoReply,
-    GetTasksInfoRequest,
 )
 from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
 from ray.core.generated.reporter_pb2 import (
@@ -445,22 +443,6 @@ class StateDataSourceClient:
         ]
 
         return list(driver_jobs.values()) + submission_jobs
-
-    @handle_grpc_network_errors
-    async def get_task_info(
-        self,
-        node_id: str,
-        timeout: int = None,
-        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
-    ) -> Optional[GetTasksInfoReply]:
-        stub = self._raylet_stubs.get(node_id)
-        if not stub:
-            raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
-
-        reply = await stub.GetTasksInfo(
-            GetTasksInfoRequest(limit=limit), timeout=timeout
-        )
-        return reply
 
     @handle_grpc_network_errors
     async def get_object_info(
