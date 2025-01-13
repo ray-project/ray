@@ -104,10 +104,10 @@ cdef extern from * namespace "ray::gcs" nogil:
       RAY_CHECK_OK(status) << "Failed to connect to redis.";
 
       auto cli = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(std::move(redis_client)), io_service);
+        std::make_unique<RedisStoreClient>(std::move(redis_client)));
 
       bool ret_val = false;
-      cli->Get("session", key, [&](std::optional<std::string> result) {
+      cli->Get("session", key, {[&](std::optional<std::string> result) {
         if (result.has_value()) {
           *data = result.value();
           ret_val = true;
@@ -116,7 +116,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                         << " from persistent storage.";
           ret_val = false;
         }
-      });
+      }, io_service});
       io_service.run_for(std::chrono::milliseconds(1000));
 
       return ret_val;
