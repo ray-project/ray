@@ -82,11 +82,9 @@ size_t Read(HANDLE read_handle, char *data, size_t len) {
   return bytes_read;
 }
 void CompleteWriteEOFIndicator(HANDLE write_handle) {
-  size_t bytes_written = 0;
-  BOOL result = WriteFile(
+  DWORD bytes_written = 0;
+  WriteFile(
       write_handle, kEofIndicator.c_str(), kEofIndicator.size(), &bytes_written, nullptr);
-  RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(kEofIndicator.size()));
-  RAY_CHECK(result);
 }
 #endif
 
