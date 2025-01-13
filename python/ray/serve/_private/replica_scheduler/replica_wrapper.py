@@ -105,11 +105,6 @@ class RunningReplica:
     def __init__(self, replica_info: RunningReplicaInfo):
         self._replica_info = replica_info
         self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
-        self._loop = asyncio.get_running_loop()
-
-        # Lazily created
-        self._channel = None
-        self._stub = None
 
         if replica_info.is_cross_language:
             self._actor_handle = JavaActorHandleProxy(replica_info.actor_handle)
