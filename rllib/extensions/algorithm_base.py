@@ -14,20 +14,30 @@ class AlgorithmBase:
         Returns:
             A list of resource bundles for the learner workers.
         """
+        # TODO (sven): Add this assert, once rayturbo uses the latest master,
+        #  which does not call this method anymore when `num_learners=0`.
+        # assert config.num_learners == 0
+        _num_agg = getattr(config, "num_aggregator_actors_per_learner", 0)
+
         if config.num_learners > 0:
-            if config.num_gpus_per_learner:
-                # to prevent learner gpus from having their corresponding CPUs
-                # being scheduled for non-learner actors, we make GPU only
-                # bundles which will be used by the learner workers.
-                learner_bundles = [
-                    {"GPU": config.num_gpus_per_learner}
-                    for _ in range(config.num_learners)
-                ]
-            elif config.num_cpus_per_learner:
-                learner_bundles = [
-                    {"CPU": config.num_cpus_per_learner}
-                    for _ in range(config.num_learners)
-                ]
+            per_learner = {
+                "CPU": (
+                    config.num_cpus_per_learner
+                    if config.num_gpus_per_learner == 0
+                    else 0
+                ),
+                "GPU": max(0, config.num_gpus_per_learner - 0.01 * _num_agg),
+            }
+
+            per_aggregation_actor = {
+                "CPU": 1,
+                "GPU": 0.01 if config.num_gpus_per_learner > 0 else 0,
+            }
+
+            _num = config.num_learners
+            return [per_learner] * _num + [per_aggregation_actor] * _num * _num_agg
+        # TODO (sven): Remove this logic, once rayturbo uses the latest master,
+        #  which does not call this method anymore when `num_learners=0`.
         else:
             learner_bundles = [
                 {
@@ -40,4 +50,4 @@ class AlgorithmBase:
                     "GPU": config.num_gpus_per_learner,
                 }
             ]
-        return learner_bundles
+            return learner_bundles
