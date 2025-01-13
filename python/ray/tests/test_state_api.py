@@ -1805,8 +1805,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
         # 4 refs (driver)
         # 4 pinned in memory for each task
         # 40 for 4 tasks * 10 objects each
-        # 1 from the previous test (refs) is for some reasons not GC'ed. (driver)
-        assert result.total == 53
+        assert result.total == 52
         # Only 1 core worker stat is returned because data is truncated.
         assert len(result.core_workers_stats) == 1
 
@@ -1816,7 +1815,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
             assert (
                 WorkerType.DESCRIPTOR.values_by_number[c.worker_type].name == "DRIVER"
             )
-            assert c.objects_total == 9
+            assert c.objects_total == 8
             assert len(c.object_refs) == 2
         return True
 
