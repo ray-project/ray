@@ -2,6 +2,7 @@ import asyncio
 
 import aiohttp.web
 
+from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 from ray.dashboard.subprocesses.message import (
     ErrorMessage,
     HealthCheckMessage,
@@ -9,12 +10,8 @@ from ray.dashboard.subprocesses.message import (
     RequestMessage,
     ResponseMessage,
 )
-from ray.dashboard.subprocesses.module import (
-    SubprocessModule,
-    SubprocessModuleConfig,
-    SubprocessRouteTable,
-)
-from ray.dashboard.subprocesses.runner import SubprocessModuleHandle
+from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleConfig
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 
 
 class TestModule(SubprocessModule):
@@ -48,7 +45,7 @@ class TestModule(SubprocessModule):
     async def make_error_403(self, request_body: bytes) -> aiohttp.web.Response:
         raise aiohttp.web.HTTPForbidden(reason="you shall not pass")
 
-    # TODO: streaming response.
+    # TODO(ryw): test streaming response.
 
 
 def test_handle_can_health_check():
