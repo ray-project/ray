@@ -47,6 +47,8 @@ class VirtualClusterManager {
   bool ContainsNodeInstance(const std::string &virtual_cluster_id,
                             const NodeID &node_id) const;
 
+  const std::string &GetLocalVirtualClusterID() const;
+
  private:
   /// The virtual clusters.
   absl::flat_hash_map<std::string, rpc::VirtualClusterTableData> virtual_clusters_;

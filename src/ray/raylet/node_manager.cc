@@ -418,34 +418,14 @@ NodeManager::NodeManager(
 
   virtual_cluster_manager_ = std::make_shared<VirtualClusterManager>(
       self_node_id_, /*local_node_cleanup_fn=*/[this]() {
-        auto tasks_canceled = cluster_task_manager_->CancelTasks(
-            [](const std::shared_ptr<internal::Work> &work) { return true; },
-            rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED,
-            "The node is removed from a virtual cluster.");
-        if (tasks_canceled) {
-          RAY_LOG(DEBUG) << "Tasks are cleaned up from cluster_task_manager because the "
-                            "node is removed from virtual cluster.";
-        }
-        tasks_canceled = local_task_manager_->CancelTasks(
-            [](const std::shared_ptr<internal::Work> &work) { return true; },
-            rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED,
-            "The node is removed from a virtual cluster.");
-        if (tasks_canceled) {
-          RAY_LOG(DEBUG) << "Tasks are cleaned up from local_task_manager because the "
-                            "node is removed from virtual cluster.";
-        }
-        if (!cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle()) {
-          for (auto iter = leased_workers_.begin(); iter != leased_workers_.end();) {
-            auto curr_iter = iter++;
-            auto worker = curr_iter->second;
-            RAY_LOG(DEBUG).WithField(worker->WorkerId())
-                << "Worker is cleaned because the node is removed from virtual cluster.";
-            DestroyWorker(
-                worker,
-                rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
-                "Worker is cleaned because the node is removed from virtual cluster.");
-          }
-        }
+        auto timer = std::make_shared<boost::asio::deadline_timer>(
+            io_service_,
+            boost::posix_time::milliseconds(
+                RayConfig::instance().local_node_cleanup_delay_interval_ms()));
+        timer->async_wait([this, timer](const boost::system::error_code e) mutable {
+          CancelMismatchedLocalTasks(
+              virtual_cluster_manager_->GetLocalVirtualClusterID());
+        });
       });
 }
 

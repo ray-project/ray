@@ -747,6 +747,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::shared_ptr<raylet::RayletClient> CreateRayletClient(
       const NodeID &node_id, rpc::ClientCallManager &client_call_manager);
 
+  /// Clean up the local (pending and running) tasks that have mismatched
+  /// virtual cluster id against the one to which the local node currently belongs.
+  ///
+  /// \param local_virtual_cluster_id The ID of the virtual cluster to which the local
+  /// node currently belongs. \return void
+  void CancelMismatchedLocalTasks(const std::string &local_virtual_cluster_id);
+
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.

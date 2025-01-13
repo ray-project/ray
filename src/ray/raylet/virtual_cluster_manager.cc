@@ -14,6 +14,8 @@
 
 #include "ray/raylet/virtual_cluster_manager.h"
 
+#include "ray/common/virtual_cluster_id.h"
+
 namespace ray {
 
 namespace raylet {
@@ -35,9 +37,11 @@ bool VirtualClusterManager::UpdateVirtualCluster(
   if (virtual_cluster_data.is_removed()) {
     if (local_virtual_cluster_id_ == input_virtual_cluster_id) {
       local_virtual_cluster_id_.clear();
-      // The virtual cluster is removed, we have to clean up
-      // the local tasks (it is a no-op in most cases).
-      local_node_cleanup_fn_();
+      if (!VirtualClusterID::FromBinary(input_virtual_cluster_id).IsJobClusterID()) {
+        // The local node's virtual cluster is removed, we have to clean up local tasks
+        // (it is a no-op in most cases).
+        local_node_cleanup_fn_();
+      }
     }
     virtual_clusters_.erase(input_virtual_cluster_id);
   } else {
@@ -82,6 +86,10 @@ bool VirtualClusterManager::ContainsNodeInstance(const std::string &virtual_clus
 
   const auto &node_instances = virtual_cluster_data.node_instances();
   return node_instances.find(node_id.Hex()) != node_instances.end();
+}
+
+const std::string &VirtualClusterManager::GetLocalVirtualClusterID() const {
+  return local_virtual_cluster_id_;
 }
 
 }  // namespace raylet
