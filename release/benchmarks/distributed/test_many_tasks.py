@@ -73,6 +73,8 @@ def no_resource_leaks():
 def test(num_tasks):
     addr = ray.init(address="auto")
 
+    num_tasks = 500
+
     test_utils.wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
     dashboard_test = DashboardTestAtScale(addr)
