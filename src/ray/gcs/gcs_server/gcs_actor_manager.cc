@@ -244,7 +244,7 @@ rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_
 void GcsActor::WriteActorExportEvent() const {
   /// Verify actor export events should be written to file
   /// and then write actor_table_data_ as an export event.
-  if (!GcsActor::IsExportAPIEnabledActor()) {
+  if (!export_event_write_enabled_) {
     return;
   }
   std::shared_ptr<rpc::ExportActorData> export_actor_data_ptr =

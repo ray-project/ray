@@ -61,7 +61,9 @@ class GcsJobManager : public rpc::JobInfoHandler {
         runtime_env_manager_(runtime_env_manager),
         function_manager_(function_manager),
         internal_kv_(internal_kv),
-        core_worker_clients_(client_factory) {}
+        core_worker_clients_(client_factory) {
+    export_event_write_enabled_ = IsExportAPIEnabledDriverJob();
+  }
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -141,6 +143,9 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   /// The cached core worker clients which are used to communicate with workers.
   rpc::CoreWorkerClientPool core_worker_clients_;
+
+  /// If true, driver job events are exported for Export API
+  bool export_event_write_enabled_ = false;
 };
 
 }  // namespace gcs
