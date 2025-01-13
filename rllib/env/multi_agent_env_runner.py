@@ -400,14 +400,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # the connector, if applicable).
                 self._make_on_episode_callback("on_episode_end")
 
+                self._prune_zero_len_sa_episodes(self._episode)
+
                 # Numpy'ize the episode.
                 if self.config.episodes_to_numpy:
-                    # Any possibly compress observations.
-                    done_episodes_to_return.append(
-                        self._episode.to_numpy(
-                            drop_zero_len_single_agent_episodes=True,
-                        )
-                    )
+                    done_episodes_to_return.append(self._episode.to_numpy())
                 # Leave episode as lists of individual (obs, action, etc..) items.
                 else:
                     done_episodes_to_return.append(self._episode)
@@ -451,14 +448,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             self._episode.validate()
             self._ongoing_episodes_for_metrics[self._episode.id_].append(self._episode)
 
+            self._prune_zero_len_sa_episodes(self._episode)
+
             # Numpy'ize the episode.
             if self.config.episodes_to_numpy:
-                # Any possibly compress observations.
-                ongoing_episodes_to_return.append(
-                    self._episode.to_numpy(
-                        drop_zero_len_single_agent_episodes=True,
-                    )
-                )
+                ongoing_episodes_to_return.append(self._episode.to_numpy())
             # Leave episode as lists of individual (obs, action, etc..) items.
             else:
                 ongoing_episodes_to_return.append(self._episode)
@@ -631,14 +625,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # the connector, if applicable).
                 self._make_on_episode_callback("on_episode_end", _episode)
 
+                self._prune_zero_len_sa_episodes(_episode)
+
                 # Numpy'ize the episode.
                 if self.config.episodes_to_numpy:
-                    # Any possibly compress observations.
-                    done_episodes_to_return.append(
-                        _episode.to_numpy(
-                            drop_zero_len_single_agent_episodes=True,
-                        )
-                    )
+                    done_episodes_to_return.append(_episode.to_numpy())
                 # Leave episode as lists of individual (obs, action, etc..) items.
                 else:
                     done_episodes_to_return.append(_episode)
@@ -1083,6 +1074,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             reduce="max",
             window=self.config.metrics_num_episodes_for_smoothing,
         )
+
+    @staticmethod
+    def _prune_zero_len_sa_episodes(episode: MultiAgentEpisode):
+        for agent_id, agent_eps in episode.agent_episodes.copy().items():
+            if len(agent_eps) == 0:
+                del episode.agent_episodes[agent_id]
 
     @Deprecated(
         new="MultiAgentEnvRunner.get_state(components='rl_module')",

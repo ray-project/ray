@@ -706,10 +706,7 @@ class MultiAgentEpisode:
         """
         return self.is_terminated or self.is_truncated
 
-    def to_numpy(
-        self,
-        drop_zero_len_single_agent_episodes: bool = False,
-    ) -> "MultiAgentEpisode":
+    def to_numpy(self) -> "MultiAgentEpisode":
         """Converts this Episode's list attributes to numpy arrays.
 
         This means in particular that this episodes' lists (per single agent) of
@@ -784,22 +781,12 @@ class MultiAgentEpisode:
                 )["agent_1"], np.ndarray)
             )
 
-        Args:
-            drop_zero_len_single_agent_episodes: If True, will remove from this
-                episode all underlying SingleAgentEpisodes that have a len of 0
-                (meaning that these SingleAgentEpisodes only have a reset obs as
-                their data thus far, making them useless for learning anything from
-                them).
-
         Returns:
              This `MultiAgentEpisode` object with the converted numpy data.
         """
 
         for agent_id, agent_eps in self.agent_episodes.copy().items():
-            if len(agent_eps) == 0 and drop_zero_len_single_agent_episodes:
-                del self.agent_episodes[agent_id]
-            else:
-                agent_eps.to_numpy()
+            agent_eps.to_numpy()
 
         return self
 

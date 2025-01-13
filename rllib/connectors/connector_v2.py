@@ -346,9 +346,6 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 else episode.agent_ids
             ):
                 sa_episode = episode.agent_episodes[agent_id]
-                if len(sa_episode) == 0:
-                    continue
-
                 # for sa_episode in episode.agent_episodes.values():
                 if zip_with_batch_column is not None:
                     key = (
