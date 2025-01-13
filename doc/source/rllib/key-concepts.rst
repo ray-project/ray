@@ -38,7 +38,7 @@ AlgorithmConfig and Algorithm
 
 .. tip::
     The following is a quick overview of **RLlib AlgorithmConfigs and Algorithms**.
-    See :ref:`here for a detailed description of the Algorithm class <rllib-algorithms-doc>`.
+    See here for a :ref:`detailed description of the Algorithm class <rllib-algorithms-doc>`.
 
 The RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class serves as a runtime for your RL experiments,
 bringing together all components required for learning an optimal solution to your :ref:`RL environment <rllib-key-concepts-environments>`.

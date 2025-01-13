@@ -41,7 +41,6 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
         rllib-learner
         env-runners
     rllib-examples
-    rllib-new-api-stack  <- remove?
     new-api-stack-migration-guide
     package_ref/index
 
@@ -55,7 +54,6 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
     rllib-algorithms
     user-guides
     rllib-examples
-    rllib-new-api-stack
     new-api-stack-migration-guide
     package_ref/index
 
