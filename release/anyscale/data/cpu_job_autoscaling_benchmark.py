@@ -1,4 +1,3 @@
-import os
 from typing import Dict
 
 import numpy as np
@@ -26,8 +25,7 @@ def main():
 
     benchmark = Benchmark()
     benchmark.run_iterate_ds("main", dataset_iter)
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/release_test_out.json")
-    benchmark.write_result(test_output_json)
+    benchmark.write_result()
 
 
 def transform_frame(row: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
