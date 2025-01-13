@@ -78,6 +78,9 @@ class _NullSentinel:
     def __ge__(self, other):
         return True
 
+    def __hash__(self):
+        return id(self)
+
 
 NULL_SENTINEL = _NullSentinel()
 
@@ -1061,11 +1064,11 @@ def iterate_with_retry(
     assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
 
     num_items_yielded = 0
-    for i in range(max_attempts):
+    for attempt in range(max_attempts):
         try:
             iterable = iterable_factory()
-            for i, item in enumerate(iterable):
-                if i < num_items_yielded:
+            for item_index, item in enumerate(iterable):
+                if item_index < num_items_yielded:
                     # Skip items that have already been yielded.
                     continue
 
@@ -1076,11 +1079,12 @@ def iterate_with_retry(
             is_retryable = match is None or any(
                 [pattern in str(e) for pattern in match]
             )
-            if is_retryable and i + 1 < max_attempts:
+            if is_retryable and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
-                backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
+                backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
                 logger.debug(
-                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
+                    f"Retrying {attempt+1} attempts to {description} "
+                    f"after {backoff} seconds."
                 )
                 time.sleep(backoff)
             else:
@@ -1102,3 +1106,19 @@ def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
     else:
         num_bytes_str = f"{round(num_bytes / 1e3)}KB"
     return num_bytes_str
+
+
+def is_nan(value):
+    try:
+        return isinstance(value, float) and np.isnan(value)
+    except TypeError:
+        return False
+
+
+def keys_equal(keys1, keys2):
+    if len(keys1) != len(keys2):
+        return False
+    for k1, k2 in zip(keys1, keys2):
+        if not ((is_nan(k1) and is_nan(k2)) or k1 == k2):
+            return False
+    return True

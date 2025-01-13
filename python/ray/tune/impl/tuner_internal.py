@@ -18,6 +18,7 @@ from typing import (
 import pyarrow.fs
 
 import ray.cloudpickle as pickle
+import ray.train
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.train import ScalingConfig
@@ -82,7 +83,7 @@ class TunerInternal:
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.train.RunConfig for more info.
+            if applicable. Refer to ray.tune.RunConfig for more info.
     """
 
     def __init__(
@@ -417,7 +418,7 @@ class TunerInternal:
             )
 
         # Both Tuner RunConfig + Trainer RunConfig --> prefer Tuner RunConfig
-        if tuner_run_config and trainer.run_config != RunConfig():
+        if tuner_run_config and trainer.run_config != ray.train.RunConfig():
             logger.info(
                 "A `RunConfig` was passed to both the `Tuner` and the "
                 f"`{trainer.__class__.__name__}`. The run config passed to "

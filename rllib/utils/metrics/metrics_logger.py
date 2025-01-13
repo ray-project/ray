@@ -116,7 +116,7 @@ class MetricsLogger:
         #  MetricsLogger) is serialized and deserialized. We will have to fix this
         #  offline RL logic first, then can remove this hack here and return to always
         #  using the RLock.
-        self._threading_lock = _DummyRLock()  # threading.RLock()
+        self._threading_lock = _DummyRLock()
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
@@ -449,6 +449,10 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
+        assert isinstance(
+            stats_dict, dict
+        ), f"`stats_dict` ({stats_dict}) must be dict!"
+
         prefix_key = force_tuple(key)
 
         def _map(path, stat_or_value):
@@ -463,7 +467,8 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
             )
 
-        tree.map_structure_with_path(_map, stats_dict)
+        with self._threading_lock:
+            tree.map_structure_with_path(_map, stats_dict)
 
     def merge_and_log_n_dicts(
         self,
@@ -693,7 +698,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         key_for_throughput: Optional[Union[str, Tuple[str, ...]]] = None,
         key_for_unit_count: Optional[Union[str, Tuple[str, ...]]] = None,
-    ) -> None:
+    ) -> Stats:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
         Additionally, measures and logs the throughput for the timed code, iff
@@ -1096,7 +1101,8 @@ class MetricsLogger:
         stats_dict = {}
 
         def _map(path, stats):
-            stats_dict[force_tuple(path)] = stats.get_state()
+            # Convert keys to strings for msgpack-friendliness.
+            stats_dict["--".join(path)] = stats.get_state()
 
         with self._threading_lock:
             tree.map_structure_with_path(_map, self.stats)
@@ -1111,7 +1117,7 @@ class MetricsLogger:
         """
         with self._threading_lock:
             for flat_key, stats_state in state["stats"].items():
-                self._set_key(flat_key, Stats.from_state(stats_state))
+                self._set_key(flat_key.split("--"), Stats.from_state(stats_state))
 
     def _check_tensor(self, key: Tuple[str], value) -> None:
         # `value` is a tensor -> Log it in our keys set.

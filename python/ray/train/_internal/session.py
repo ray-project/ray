@@ -115,11 +115,11 @@ class _TrainSession:
     def __init__(
         self,
         training_func: Callable,
-        world_rank: int,
-        local_rank: int,
-        node_rank: int,
-        local_world_size: int,
-        world_size: int,
+        world_rank: Optional[int],
+        local_rank: Optional[int],
+        node_rank: Optional[int],
+        local_world_size: Optional[int],
+        world_size: Optional[int],
         trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Dict[str, Dataset]] = None,
         metadata: Dict[str, Any] = None,
@@ -142,6 +142,7 @@ class _TrainSession:
         self.synchronous_result_reporting = synchronous_result_reporting
 
         # Ray Train worker properties
+        # Note: These are set to None for Tune function Trainables.
         self.dataset_shard = dataset_shard
         self.metadata = metadata
 
@@ -501,6 +502,9 @@ class _TrainSession:
 
 # Cache of resource dicts that have been checked by the launch hook already.
 _checked_resources: Set[frozenset] = set()
+
+# Global _TrainSession object initialized by Ray Tune function trainables
+# and Ray Train V1 workers.
 _session: Optional[_TrainSession] = None
 
 

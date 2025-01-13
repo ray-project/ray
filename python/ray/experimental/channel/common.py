@@ -54,9 +54,9 @@ def retry_and_check_interpreter_exit(f: Callable[[], None]) -> bool:
     return exiting
 
 
-# Holds the input arguments for an accelerated DAG node.
+# Holds the input arguments for Compiled Graph
 @PublicAPI(stability="alpha")
-class RayDAGArgs(NamedTuple):
+class CompiledDAGArgs(NamedTuple):
     args: Tuple[Any, ...]
     kwargs: Dict[str, Any]
 
@@ -476,7 +476,7 @@ def _adapt(raw_args: Any, key: Optional[Union[int, str]], is_input: bool):
         is_input: Whether the writer is DAG input writer or not.
     """
     if is_input:
-        if not isinstance(raw_args, RayDAGArgs):
+        if not isinstance(raw_args, CompiledDAGArgs):
             # Fast path for a single input.
             return raw_args
         else:
@@ -533,16 +533,10 @@ class AwaitableBackgroundWriter(WriterInterface):
         self,
         output_channels: List[ChannelInterface],
         output_idxs: List[Optional[Union[int, str]]],
-        max_queue_size: Optional[int] = None,
         is_input=False,
     ):
         super().__init__(output_channels, output_idxs, is_input=is_input)
-        if max_queue_size is None:
-            from ray.dag import DAGContext
-
-            ctx = DAGContext.get_current()
-            max_queue_size = ctx.asyncio_max_queue_size
-        self._queue = asyncio.Queue(max_queue_size)
+        self._queue = asyncio.Queue()
         self._background_task = None
         self._background_task_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="channel.AwaitableBackgroundWriter"

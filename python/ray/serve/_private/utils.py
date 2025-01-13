@@ -23,7 +23,7 @@ from ray._private.utils import import_attr
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
-from ray.serve._private.common import ServeComponentType
+from ray.serve._private.common import RequestMetadata, ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
@@ -542,7 +542,11 @@ def get_capacity_adjusted_num_replicas(
 
 
 def generate_request_id() -> str:
-    return str(uuid.uuid4())
+    # NOTE(edoakes): we use random.getrandbits because it reduces CPU overhead
+    # significantly. This is less cryptographically secure but should be ok for
+    # request ID generation.
+    # See https://bugs.python.org/issue45556 for discussion.
+    return str(uuid.UUID(int=random.getrandbits(128), version=4))
 
 
 def inside_ray_client_context() -> bool:
@@ -594,7 +598,7 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
         )
 
 
-async def resolve_deployment_response(obj: Any):
+async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadata):
     """Resolve `DeploymentResponse` objects to underlying object references.
 
     This enables composition without explicitly calling `_to_object_ref`.

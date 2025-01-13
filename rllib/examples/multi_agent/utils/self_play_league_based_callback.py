@@ -4,12 +4,12 @@ import re
 
 import numpy as np
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 
-class SelfPlayLeagueBasedCallback(DefaultCallbacks):
+class SelfPlayLeagueBasedCallback(RLlibCallback):
     def __init__(self, win_rate_threshold):
         super().__init__()
         # All policies in the league.
@@ -44,16 +44,31 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
         rl_module,
         **kwargs,
     ) -> None:
-        # Compute the win rate for this episode and log it with a window of 100.
-        rewards_dict = episode.get_rewards()
-        for aid, rewards in rewards_dict.items():
-            mid = episode.module_for(aid)
-            won = rewards[-1] == 1.0
-            metrics_logger.log_value(
-                f"win_rate_{mid}",
-                won,
-                window=100,
-            )
+        num_learning_policies = (
+            episode.module_for(0) in env_runner.config.policies_to_train
+        ) + (episode.module_for(1) in env_runner.config.policies_to_train)
+        # Make sure the mapping function doesn't match two non-trainables together.
+        # This would be a waste of EnvRunner resources.
+        # assert num_learning_policies > 0
+        # Ignore matches between two learning policies and don't count win-rates for
+        # these.
+        assert num_learning_policies > 0, (
+            f"agent=0 -> mod={episode.module_for(0)}; "
+            f"agent=1 -> mod={episode.module_for(1)}; "
+            f"EnvRunner.config.policies_to_train={env_runner.config.policies_to_train}"
+        )
+        if num_learning_policies == 1:
+            # Compute the win rate for this episode (only looking at non-trained
+            # opponents, such as random or frozen policies) and log it with some window.
+            rewards_dict = episode.get_rewards()
+            for aid, rewards in rewards_dict.items():
+                mid = episode.module_for(aid)
+                won = rewards[-1] == 1.0
+                metrics_logger.log_value(
+                    f"win_rate_{mid}",
+                    won,
+                    window=100,
+                )
 
     def on_train_result(self, *, algorithm, metrics_logger=None, result, **kwargs):
         local_worker = algorithm.env_runner
@@ -215,7 +230,7 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                         }
                     )
 
-                algorithm.env_runner_group.foreach_worker(
+                algorithm.env_runner_group.foreach_env_runner(
                     lambda env_runner: env_runner.config.multi_agent(
                         policy_mapping_fn=agent_to_module_mapping_fn,
                         # This setting doesn't really matter for EnvRunners (no

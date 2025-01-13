@@ -1,4 +1,4 @@
-# flake8: noqa E501
+# ruff: noqa: E501
 import dataclasses
 from typing import Dict
 
@@ -544,6 +544,10 @@ data_dashboard_config = DashboardConfig(
     name="DATA",
     default_uid="rayDataDashboard",
     panels=DATA_GRAFANA_PANELS,
-    standard_global_filters=['dataset=~"$DatasetID"', 'SessionName=~"$SessionName"'],
+    standard_global_filters=[
+        'dataset=~"$DatasetID"',
+        'SessionName=~"$SessionName"',
+        'ray_io_cluster=~"$Cluster"',
+    ],
     base_json_file_name="data_grafana_dashboard_base.json",
 )

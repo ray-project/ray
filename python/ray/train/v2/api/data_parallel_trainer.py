@@ -18,7 +18,9 @@ from ray.train.v2._internal.callbacks.metrics import (
     WorkerMetricsCallback,
 )
 from ray.train.v2._internal.constants import (
+    DEFAULT_RUN_CONTROLLER_AS_ACTOR,
     METRICS_ENABLED_ENV_VAR,
+    RUN_CONTROLLER_AS_ACTOR_ENV_VAR,
     get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
@@ -203,25 +205,14 @@ class DataParallelTrainer:
 
         # TODO: Add support for user-defined callbacks
 
-        # By default, attach the controller to the node running the driver script.
-        controller_actor_cls = ray.remote(
-            num_cpus=0,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=ray.get_runtime_context().get_node_id(), soft=False
-            ),
-            runtime_env={"env_vars": get_env_vars_to_propagate()},
-        )(TrainController)
-
-        controller = controller_actor_cls.remote(
+        result = self._initialize_and_run_controller(
             train_fn=train_fn,
             scaling_policy=create_scaling_policy(self.scaling_config),
             failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
             train_run_context=self.train_run_context,
             callbacks=callbacks,
         )
-        ray.get(controller.run.remote())
 
-        result = ray.get(controller.get_result.remote())
         if result.error:
             # NOTE: If the training run errored out, raise an error back to the
             # user's driver script.
@@ -231,6 +222,28 @@ class DataParallelTrainer:
             raise result.error
 
         return result
+
+    def _initialize_and_run_controller(self, **controller_init_kwargs) -> Result:
+        run_controller_as_actor = env_bool(
+            RUN_CONTROLLER_AS_ACTOR_ENV_VAR, DEFAULT_RUN_CONTROLLER_AS_ACTOR
+        )
+        if run_controller_as_actor:
+            # Attach the controller to the node running the driver script.
+            controller_actor_cls = ray.remote(
+                num_cpus=0,
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    node_id=ray.get_runtime_context().get_node_id(), soft=False
+                ),
+                runtime_env={"env_vars": get_env_vars_to_propagate()},
+            )(TrainController)
+
+            controller = controller_actor_cls.remote(**controller_init_kwargs)
+            ray.get(controller.run.remote())
+            return ray.get(controller.get_result.remote())
+        else:
+            controller = TrainController(**controller_init_kwargs)
+            controller.run()
+            return controller.get_result()
 
     @Deprecated
     @classmethod

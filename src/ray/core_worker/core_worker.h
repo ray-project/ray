@@ -604,14 +604,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_id The ID of the object.
   Status ExperimentalChannelSetError(const ObjectID &object_id);
 
-  /// Experimental method for mutable objects. Releases the objects, allowing them
-  /// to be written again. If the caller did not previously Get the objects,
-  /// then this first blocks until the latest value is available to read, then
-  /// releases the value.
-  ///
-  /// \param[in] object_ids The IDs of the objects.
-  Status ExperimentalChannelReadRelease(const std::vector<ObjectID> &object_ids);
-
   /// Experimental method for mutable objects. Registers a writer channel.
   ///
   /// The API is not idempotent.
@@ -1377,6 +1369,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                 const StartupToken &startup_token,
                                 NodeID *raylet_id,
                                 int *port);
+
+  Status RegisterWorkerToRayletWithPort(raylet::RayletConnection &conn,
+                                        const WorkerID &worker_id,
+                                        rpc::WorkerType worker_type,
+                                        const JobID &job_id,
+                                        int runtime_env_hash,
+                                        const Language &language,
+                                        const std::string &ip_address,
+                                        const std::string &serialized_job_config,
+                                        const StartupToken &startup_token,
+                                        int port);
 
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;

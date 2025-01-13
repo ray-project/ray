@@ -15,7 +15,7 @@ import pytest
 
 
 from ray._private.test_utils import run_string_as_driver
-from ray.exceptions import RayChannelError, RayChannelTimeoutError
+from ray.exceptions import ActorDiedError, RayChannelError, RayChannelTimeoutError
 import ray
 import ray._private
 import ray.cluster_utils
@@ -26,6 +26,12 @@ from ray._private.utils import (
 )
 from ray.dag import DAGContext
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    wait_for_pid_to_exit,
+)
+import signal
+import psutil
 
 
 logger = logging.getLogger(__name__)
@@ -299,29 +305,25 @@ def test_multi_output_get_exception(ray_start_regular):
         ray.get(refs)
 
 
-# TODO(wxdeng): Fix segfault. If this test is run, the following tests
-# will segfault.
-# def test_two_from_three_returns(ray_start_regular):
-#     a = Actor.remote(0)
-#     with InputNode() as i:
-#         o1, o2 = a.return_two_from_three.bind(i)
-#         dag = MultiOutputNode([o1, o2])
+def test_two_from_three_returns(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two_from_three.bind(i)
+        dag = MultiOutputNode([o1, o2])
 
-#     compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
 
-#     # A value error is raised because the number of returns is not equal to
-#     # the number of outputs. Since the value error is raised in the writer,
-#     # the reader fails to read the outputs and raises a channel error.
+    # A value error is raised because the number of returns is not equal to
+    # the number of outputs. Since the value error is raised in the writer,
+    # the reader fails to read the outputs and raises a channel error.
 
-#     # TODO(wxdeng): Fix exception type. The value error should be catched.
-#     # However, two exceptions are raised in the writer and reader respectively.
+    # TODO(wxdeng): Fix exception type. The value error should be catched.
+    # However, two exceptions are raised in the writer and reader respectively.
 
-#     # with pytest.raises(RayChannelError, match="Channel closed."):
-#     # with pytest.raises(ValueError, match="Expected 2 outputs, but got 3 outputs"):
-#     with pytest.raises(Exception):
-#         ray.get(compiled_dag.execute(1))
-
-#     compiled_dag.teardown()
+    # with pytest.raises(RayChannelError, match="Channel closed."):
+    # with pytest.raises(ValueError, match="Expected 2 outputs, but got 3 outputs"):
+    with pytest.raises(Exception):
+        ray.get(compiled_dag.execute(1))
 
 
 def test_kwargs_not_supported(ray_start_regular):
@@ -1110,12 +1112,6 @@ def test_dag_exception_chained(ray_start_regular, capsys):
     # Can use the DAG after exceptions are thrown.
     assert ray.get(compiled_dag.execute(1)) == 2
 
-    # Note: somehow the auto triggered teardown() from ray.shutdown()
-    # does not finish in time for this test, leading to a segfault
-    # of the following test (likely due to a dangling monitor thread
-    # upon the new Ray init).
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_dag_exception_multi_output(ray_start_regular, single_fetch, capsys):
@@ -1333,72 +1329,6 @@ class TestDAGExceptionCompileMultipleTimes:
             branch2.experimental_compile()
 
 
-def test_exceed_max_buffered_results(ray_start_regular):
-    a = Actor.remote(0)
-    with InputNode() as i:
-        dag = a.inc.bind(i)
-
-    compiled_dag = dag.experimental_compile(_max_buffered_results=1)
-
-    refs = []
-    for i in range(2):
-        ref = compiled_dag.execute(1)
-        # Hold the refs to avoid get() being called on the ref
-        # when it goes out of scope
-        refs.append(ref)
-
-    # ray.get() on the 2nd ref fails because the DAG cannot buffer 2 results.
-    with pytest.raises(
-        ValueError,
-        match=(
-            "Too many buffered results: the allowed max count for buffered "
-            "results is 1; call ray.get\(\) on previous CompiledDAGRefs to "
-            "free them up from buffer"
-        ),
-    ):
-        ray.get(ref)
-
-    del refs
-
-
-@pytest.mark.parametrize("single_fetch", [True, False])
-def test_exceed_max_buffered_results_multi_output(ray_start_regular, single_fetch):
-    a = Actor.remote(0)
-    b = Actor.remote(0)
-    with InputNode() as inp:
-        dag = MultiOutputNode([a.inc.bind(inp), b.inc.bind(inp)])
-
-    compiled_dag = dag.experimental_compile(_max_buffered_results=1)
-
-    refs = []
-    for i in range(2):
-        ref = compiled_dag.execute(1)
-        # Hold the refs to avoid get() being called on the ref
-        # when it goes out of scope
-        refs.append(ref)
-
-    if single_fetch:
-        # If there are results not fetched from an execution, that execution
-        # still counts towards the number of buffered results.
-        ray.get(refs[0][0])
-
-    # ray.get() on the 2nd ref fails because the DAG cannot buffer 2 results.
-    with pytest.raises(
-        ValueError,
-        match=(
-            "Too many buffered results: the allowed max count for buffered "
-            "results is 1; call ray.get\(\) on previous CompiledDAGRefs to "
-            "free them up from buffer"
-        ),
-    ):
-        if single_fetch:
-            ray.get(ref[0])
-        else:
-            ray.get(ref)
-
-    del refs
-
-
 def test_compiled_dag_ref_del(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as inp:
@@ -1524,7 +1454,9 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular, single_fetch):
         else:
             assert ray.get(refs) == [i + 1] * len(actors)
 
-    with pytest.raises(RayChannelError, match="Channel closed."):
+    with pytest.raises(
+        ActorDiedError, match="The actor died unexpectedly before finishing this task."
+    ):
         for i in range(99):
             refs = compiled_dag.execute(1)
             if single_fetch:
@@ -1578,16 +1510,13 @@ def test_dag_teardown_while_running(ray_start_regular):
     assert result == 0.1
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio(ray_start_regular, max_queue_size):
+def test_asyncio(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
         dag = a.echo.bind(i)
 
     loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
-    )
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main(i):
         # Use numpy so that the return value will be zero-copy deserialized. If
@@ -1601,16 +1530,13 @@ def test_asyncio(ray_start_regular, max_queue_size):
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio_out_of_order_get(ray_start_regular, max_queue_size):
+def test_asyncio_out_of_order_get(ray_start_regular):
     c = Collector.remote()
     with InputNode() as i:
         dag = c.collect.bind(i)
 
     loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
-    )
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main():
         fut_a = await compiled_dag.execute_async("a")
@@ -1624,18 +1550,15 @@ def test_asyncio_out_of_order_get(ray_start_regular, max_queue_size):
     loop.run_until_complete(main())
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
 @pytest.mark.parametrize("gather_futs", [True, False])
-def test_asyncio_multi_output(ray_start_regular, max_queue_size, gather_futs):
+def test_asyncio_multi_output(ray_start_regular, gather_futs):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
         dag = MultiOutputNode([a.echo.bind(i), b.echo.bind(i)])
 
     loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
-    )
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main(i):
         # Use numpy so that the return value will be zero-copy deserialized. If
@@ -1658,16 +1581,13 @@ def test_asyncio_multi_output(ray_start_regular, max_queue_size, gather_futs):
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio_exceptions(ray_start_regular, max_queue_size):
+def test_asyncio_exceptions(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
         dag = a.inc.bind(i)
 
     loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
-    )
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main():
         fut = await compiled_dag.execute_async(1)
@@ -1940,7 +1860,7 @@ class TestLeafNode:
 def test_output_node(ray_start_regular):
     """
     This test is similar to the `test_output_node` in `test_output_node.py`, but
-    this test is for the accelerated DAG.
+    this test is for Compiled Graph.
     """
 
     @ray.remote
@@ -2072,7 +1992,7 @@ def test_simulate_pipeline_parallelism(ray_start_regular, single_fetch):
 
 
 def test_channel_read_after_close(ray_start_regular):
-    # Tests that read to a channel after accelerated DAG teardown raises a
+    # Tests that read to a channel after Compiled Graph teardown raises a
     # RayChannelError exception as the channel is closed (see issue #46284).
     @ray.remote
     class Actor:
@@ -2092,7 +2012,7 @@ def test_channel_read_after_close(ray_start_regular):
 
 
 def test_channel_write_after_close(ray_start_regular):
-    # Tests that write to a channel after accelerated DAG teardown raises a
+    # Tests that write to a channel after Compiled Graph teardown raises a
     # RayChannelError exception as the channel is closed.
     @ray.remote
     class Actor:
@@ -2191,7 +2111,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     output_refs = []
     for i in range(MAX_INFLIGHT_EXECUTIONS):
         output_refs.append(dag.execute(i))
-    with pytest.raises(ray.exceptions.RayAdagCapacityExceeded):
+    with pytest.raises(ray.exceptions.RayCgraphCapacityExceeded):
         dag.execute(1)
     assert len(output_refs) == MAX_INFLIGHT_EXECUTIONS
     for i, ref in enumerate(output_refs):
@@ -2227,7 +2147,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
         output_refs = []
         for i in range(MAX_INFLIGHT_EXECUTIONS):
             output_refs.append(await async_dag.execute_async(i))
-        with pytest.raises(ray.exceptions.RayAdagCapacityExceeded):
+        with pytest.raises(ray.exceptions.RayCgraphCapacityExceeded):
             await async_dag.execute_async(1)
         assert len(output_refs) == MAX_INFLIGHT_EXECUTIONS
         for i, ref in enumerate(output_refs):
@@ -2244,6 +2164,97 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     loop.run_until_complete(main())
 
 
+def test_inflight_requests_exceed_capacity(ray_start_regular):
+    expected_error_message = (
+        "The compiled graph can't have more than 2 "
+        "in-flight executions, and you currently have 2 "
+        "in-flight executions. Retrieve an output using ray.get before "
+        "submitting more requests or increase `_max_inflight_executions`. "
+    )
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.sleep.bind(inp)
+    compiled_dag = dag.experimental_compile(_max_inflight_executions=2)
+    ref1 = compiled_dag.execute(1)
+    ref2 = compiled_dag.execute(1)
+    with pytest.raises(
+        ray.exceptions.RayCgraphCapacityExceeded,
+        match=(expected_error_message),
+    ):
+        _ = compiled_dag.execute(1)
+
+    # test same with asyncio
+    async def main():
+        a = Actor.remote(0)
+        with InputNode() as inp:
+            dag = a.sleep.bind(inp)
+        async_compiled_dag = dag.experimental_compile(
+            enable_asyncio=True, _max_inflight_executions=2
+        )
+        ref1 = await async_compiled_dag.execute_async(1)
+        ref2 = await async_compiled_dag.execute_async(1)
+        print(async_compiled_dag._execution_index)
+        with pytest.raises(
+            ray.exceptions.RayCgraphCapacityExceeded,
+            match=(expected_error_message),
+        ):
+            _ = await async_compiled_dag.execute_async(1)
+        (ref1, ref2)
+
+    loop = get_or_create_event_loop()
+    loop.run_until_complete(main())
+    # to show variables are being used and avoid destruction since
+    # CompiledDagRef __del__ will release buffers and
+    # increment _max_finished_execution_index
+    (ref1, ref2)
+
+
+def test_result_buffer_exceeds_capacity(ray_start_regular):
+    expected_error_message = (
+        "The compiled graph can't have more than 2 "
+        "in-flight executions, and you currently have 2 "
+        "in-flight executions. Retrieve an output using ray.get before "
+        "submitting more requests or increase `_max_inflight_executions`. "
+    )
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+    compiled_dag = dag.experimental_compile(_max_inflight_executions=2)
+    ref1 = compiled_dag.execute(1)
+    ref2 = compiled_dag.execute(2)
+    ray.get(ref2)
+    ref3 = compiled_dag.execute(3)
+    with pytest.raises(
+        ray.exceptions.RayCgraphCapacityExceeded,
+        match=(expected_error_message),
+    ):
+        _ = compiled_dag.execute(4)
+
+    # test same with asyncio
+    async def main():
+        a = Actor.remote(0)
+        with InputNode() as inp:
+            dag = a.inc.bind(inp)
+        async_compiled_dag = dag.experimental_compile(
+            enable_asyncio=True, _max_inflight_executions=2
+        )
+        ref1 = await async_compiled_dag.execute_async(1)
+        ref2 = await async_compiled_dag.execute_async(2)
+        await ref2
+        ref3 = await async_compiled_dag.execute_async(3)
+        with pytest.raises(
+            ray.exceptions.RayCgraphCapacityExceeded,
+            match=(expected_error_message),
+        ):
+            _ = await async_compiled_dag.execute_async(4)
+        (ref1, ref3)
+
+    loop = get_or_create_event_loop()
+    loop.run_until_complete(main())
+    # same reason as comment for test_inflight_requests_exceed_capacity
+    (ref1, ref3)
+
+
 def test_event_profiling(ray_start_regular, monkeypatch):
     monkeypatch.setattr(ray.dag.constants, "RAY_CGRAPH_ENABLE_PROFILING", True)
 
@@ -2254,8 +2265,8 @@ def test_event_profiling(ray_start_regular, monkeypatch):
         y = b.inc.bind(inp)
         z = b.inc.bind(y)
         dag = MultiOutputNode([x, z])
-    adag = dag.experimental_compile()
-    ray.get(adag.execute(1))
+    cdag = dag.experimental_compile()
+    ray.get(cdag.execute(1))
 
     a_events = ray.get(a.get_events.remote())
     b_events = ray.get(b.get_events.remote())
@@ -2291,14 +2302,14 @@ class TestWorker:
 
 
 """
-Accelerated DAGs support the following two cases for the input/output of the graph:
+Compiled Graphs support the following two cases for the input/output of the graph:
 
 1. Both the input and output of the graph are the driver process.
 2. Both the input and output of the graph are the same actor process.
 
 This test suite covers the second case. The second case is useful when we use
-Ray Serve to deploy the ADAG as a backend. In this case, the Ray Serve replica,
-which is an actor, needs to be the input and output of the graph.
+Ray Serve to deploy the Compiled Graph as a backend. In this case, the Ray Serve
+replica, which is an actor, needs to be the input and output of the graph.
 """
 
 
@@ -2502,10 +2513,10 @@ def test_torch_tensor_type(shutdown_only):
                         inp,
                     ).with_type_hint(TorchTensorType()),
                 )
-            self._adag = dag.experimental_compile()
+            self._cdag = dag.experimental_compile()
 
         def call(self, value):
-            return ray.get(self._adag.execute(value))
+            return ray.get(self._cdag.execute(value))
 
     replica = Replica.remote()
     ref = replica.call.remote(5)
@@ -2536,8 +2547,8 @@ async def main():
         y = b.f.bind(inp)
         dag =  MultiOutputNode([x, y])
 
-    adag = dag.experimental_compile(enable_asyncio=True)
-    refs = await adag.execute_async(1)
+    cdag = dag.experimental_compile(enable_asyncio=True)
+    refs = await cdag.execute_async(1)
     outputs = []
     for ref in refs:
         outputs.append(await ref)
@@ -2644,6 +2655,41 @@ def test_signature_mismatch(shutdown_only):
     ):
         with InputNode() as inp:
             _ = worker.g.bind(inp)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Sigint not supported on Windows")
+def test_sigint_get_dagref(ray_start_cluster):
+    driver_script = """
+import ray
+from ray.dag import InputNode
+import time
+
+ray.init()
+
+@ray.remote
+class Actor:
+    def sleep(self, x):
+        while(True):
+            time.sleep(x)
+
+a = Actor.remote()
+with InputNode() as inp:
+    dag = a.sleep.bind(inp)
+compiled_dag = dag.experimental_compile()
+ref = compiled_dag.execute(1)
+ray.get(ref, timeout=100)
+"""
+    driver_proc = run_string_as_driver_nonblocking(
+        driver_script, env={"RAY_CGRAPH_teardown_timeout": "5"}
+    )
+    pid = driver_proc.pid
+    # wait for graph execution to start
+    time.sleep(5)
+    proc = psutil.Process(pid)
+    assert proc.status() == psutil.STATUS_RUNNING
+    os.kill(pid, signal.SIGINT)  # ctrl+c
+    # teardown will kill actors after 5 second timeout
+    wait_for_pid_to_exit(pid, 10)
 
 
 if __name__ == "__main__":

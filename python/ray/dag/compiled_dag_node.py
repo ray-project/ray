@@ -29,7 +29,7 @@ from ray.dag.constants import (
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
 import ray
-from ray.exceptions import RayTaskError, RayChannelError
+from ray.exceptions import RayTaskError, RayChannelError, RayChannelTimeoutError
 from ray.experimental.compiled_dag_ref import (
     CompiledDAGRef,
     CompiledDAGFuture,
@@ -45,7 +45,7 @@ from ray.experimental.channel import (
     SynchronousWriter,
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
-    RayDAGArgs,
+    CompiledDAGArgs,
     CompositeChannel,
     IntraProcessChannel,
 )
@@ -214,7 +214,7 @@ def do_profile_tasks(
             for operation in schedule:
                 start_t = time.perf_counter()
                 task = tasks[operation.exec_task_idx]
-                done = tasks[operation.exec_task_idx].exec_operation(
+                done = task.exec_operation(
                     self, operation.type, overlap_gpu_communication
                 )
                 end_t = time.perf_counter()
@@ -727,7 +727,7 @@ class CompiledDAG:
         reader ref on the driver node if the channel backing store needs to be resized.
         However, remote functions cannot be invoked on the driver.
 
-        An accelerated DAG creates an actor from this class when the DAG is intialized.
+        A Compiled Graph creates an actor from this class when the DAG is initialized.
         The actor is on the same node as the driver. This class has an empty
         implementation, though it serves as a way for the output writer to invoke remote
         functions on the driver node.
@@ -740,8 +740,6 @@ class CompiledDAG:
         submit_timeout: Optional[float] = None,
         buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
-        asyncio_max_queue_size: Optional[int] = None,
-        max_buffered_results: Optional[int] = None,
         max_inflight_executions: Optional[int] = None,
         overlap_gpu_communication: Optional[bool] = None,
     ):
@@ -759,28 +757,14 @@ class CompiledDAG:
                 be running in an event loop and must use `execute_async` to
                 invoke the DAG. Otherwise, the caller should use `execute` to
                 invoke the DAG.
-            asyncio_max_queue_size: Optional parameter to limit how many DAG
-                inputs can be queued at a time. The actual number of concurrent
-                DAG invocations may be higher than this, if there are already
-                inputs being processed by the DAG executors. If used, the
-                caller is responsible for preventing deadlock, i.e. if the
-                input queue is full, another asyncio task is reading from the
-                DAG output. It is only used when enable_asyncio=True.
-            max_buffered_results: The maximum number of execution results that
-                are allowed to be buffered. Setting a higher value allows more
-                DAGs to be executed before `ray.get()` must be called but also
-                increases the memory usage. Note that if the number of ongoing
-                executions is beyond the DAG capacity, the new execution would
-                be blocked in the first place; therefore, this limit is only
-                enforced when it is smaller than the DAG capacity.
             max_inflight_executions: The maximum number of in-flight executions that
-                are allowed to be sent to this DAG. Before submitting more requests,
-                the caller is responsible for calling ray.get to get the result,
-                otherwise, RayAdagCapacityExceeded is raised.
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution. If True, the communication
-                and computation can be overlapped, which can improve the
-                performance of the DAG execution. If None, the default value
+                can be submitted via `execute` or `execute_async` before consuming
+                the output using `ray.get()`. If the caller submits more executions,
+                `RayCgraphCapacityExceeded` is raised.
+            overlap_gpu_communication: (experimental) Whether to overlap GPU
+                communication with computation during DAG execution. If True, the
+                communication and computation can be overlapped, which can improve
+                the performance of the DAG execution. If None, the default value
                 will be used.
 
         Returns:
@@ -792,11 +776,6 @@ class CompiledDAG:
 
         self._enable_asyncio: bool = enable_asyncio
         self._fut_queue = asyncio.Queue()
-        self._asyncio_max_queue_size: Optional[int] = asyncio_max_queue_size
-        # TODO(rui): consider unify it with asyncio_max_queue_size
-        self._max_buffered_results: Optional[int] = max_buffered_results
-        if self._max_buffered_results is None:
-            self._max_buffered_results = ctx.max_buffered_results
         self._max_inflight_executions = max_inflight_executions
         if self._max_inflight_executions is None:
             self._max_inflight_executions = ctx.max_inflight_executions
@@ -886,7 +865,7 @@ class CompiledDAG:
         self._communicator_ids: Set[str] = set()
         # The index of the current execution. It is incremented each time
         # the DAG is executed.
-        self._execution_index: int = 0
+        self._execution_index: int = -1
         # The maximum index of finished executions.
         # All results with higher indexes have not been generated yet.
         self._max_finished_execution_index: int = -1
@@ -924,12 +903,6 @@ class CompiledDAG:
     @property
     def communicator_ids(self) -> Set[str]:
         return self._communicator_ids
-
-    def increment_max_finished_execution_index(self) -> None:
-        """Increment the max finished execution index. It is used to
-        figure out the max number of in-flight requests to the DAG
-        """
-        self._max_finished_execution_index += 1
 
     def get_id(self) -> str:
         """
@@ -985,7 +958,7 @@ class CompiledDAG:
                 continue
             if (
                 len(task.downstream_task_idxs) == 0
-                and task.dag_node.is_adag_output_node
+                and task.dag_node.is_cgraph_output_node
             ):
                 assert self.output_task_idx is None, "More than one output node found"
                 self.output_task_idx = idx
@@ -1045,7 +1018,7 @@ class CompiledDAG:
                     nccl_actors_p2p.add(actor_handle)
                     custom_communicator = dag_node.type_hint.get_custom_communicator()
                     mixed_nccl_group_error_message = (
-                        "Accelerated DAGs do not support mixed usage of "
+                        "Compiled Graphs do not support mixed usage of "
                         "type hints of default NCCL group "
                         '(i.e., TorchTensor(transport="nccl"))'
                         "and custom NCCL group "
@@ -1063,7 +1036,7 @@ class CompiledDAG:
                         if self._custom_communicator_p2p is not None:
                             if self._custom_communicator_p2p != custom_communicator:
                                 raise ValueError(
-                                    "Accelerated DAGs currently only support "
+                                    "Compiled Graphs currently only support "
                                     "a single custom NCCL group, but multiple "
                                     "have been specified. Check all the "
                                     "TorchTensor(transport=nccl_group) type hints "
@@ -1160,7 +1133,7 @@ class CompiledDAG:
                 continue
             if (
                 len(task.downstream_task_idxs) == 0
-                and not task.dag_node.is_adag_output_node
+                and not task.dag_node.is_cgraph_output_node
             ):
                 leaf_nodes.append(task.dag_node)
         # Leaf nodes are not allowed because the exception thrown by the leaf
@@ -1643,7 +1616,6 @@ class CompiledDAG:
             self._dag_submitter = AwaitableBackgroundWriter(
                 self.dag_input_channels,
                 input_task.output_idxs,
-                self._asyncio_max_queue_size,
                 is_input=True,
             )
             self._dag_output_fetcher = AwaitableBackgroundReader(
@@ -1837,11 +1809,10 @@ class CompiledDAG:
         class Monitor(threading.Thread):
             def __init__(self):
                 super().__init__(daemon=True)
-                self.in_teardown = False
+                self.name = "CompiledGraphMonitorThread"
                 # Lock to make sure that we only perform teardown for this DAG
                 # once.
-                self.in_teardown_lock = threading.Lock()
-                self.name = "CompiledGraphMonitorThread"
+                self._in_teardown_lock = threading.Lock()
                 self._teardown_done = False
 
             def wait_teardown(self, kill_actors: bool = False):
@@ -1849,7 +1820,6 @@ class CompiledDAG:
 
                 ctx = DAGContext.get_current()
                 teardown_timeout = ctx.teardown_timeout
-
                 for actor, ref in outer.worker_task_refs.items():
                     timeout = False
                     try:
@@ -1860,10 +1830,18 @@ class CompiledDAG:
                             f"{teardown_timeout}s after teardown()."
                         )
                         if kill_actors:
-                            msg += " Force-killing actor."
+                            msg += (
+                                " Force-killing actor. "
+                                "Increase RAY_CGRAPH_teardown_timeout if you want "
+                                "teardown to wait longer."
+                            )
                             ray.kill(actor)
                         else:
-                            msg += " Teardown may hang."
+                            msg += (
+                                " Teardown may hang. "
+                                "Call teardown with kill_actors=True if force kill "
+                                "is desired."
+                            )
 
                         logger.warning(msg)
                         timeout = True
@@ -1882,59 +1860,48 @@ class CompiledDAG:
                         pass
 
             def teardown(self, kill_actors: bool = False):
-                do_teardown = False
-                with self.in_teardown_lock:
+                with self._in_teardown_lock:
                     if self._teardown_done:
                         return
 
-                    if not self.in_teardown:
-                        do_teardown = True
-                        self.in_teardown = True
+                    logger.info("Tearing down compiled DAG")
+                    outer._dag_submitter.close()
+                    outer._dag_output_fetcher.close()
 
-                if not do_teardown:
-                    # Teardown is already being performed.
-                    while True:
-                        with self.in_teardown_lock:
-                            if self._teardown_done:
-                                return
+                    for actor in outer.actor_refs:
+                        logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    # Cancel all actor loops in parallel.
+                    cancel_refs = [
+                        actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
+                        for actor, tasks in outer.actor_to_executable_tasks.items()
+                    ]
+                    for cancel_ref in cancel_refs:
+                        try:
+                            ray.get(cancel_ref, timeout=30)
+                        except RayChannelError:
+                            # Channel error happens when a channel is closed
+                            # or timed out. In this case, do not log.
+                            pass
+                        except Exception:
+                            logger.exception("Error cancelling worker task")
+                            pass
 
-                        time.sleep(0.1)
+                    for communicator_id in outer._communicator_ids:
+                        _destroy_communicator(communicator_id)
 
-                logger.info("Tearing down compiled DAG")
-                outer._dag_submitter.close()
-                outer._dag_output_fetcher.close()
-
-                for actor in outer.actor_refs:
-                    logger.info(f"Cancelling compiled worker on actor: {actor}")
-                # Cancel all actor loops in parallel.
-                cancel_refs = [
-                    actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
-                    for actor, tasks in outer.actor_to_executable_tasks.items()
-                ]
-                for cancel_ref in cancel_refs:
-                    try:
-                        ray.get(cancel_ref, timeout=30)
-                    except ray.exceptions.RayChannelError:
-                        # Channel error happens when a channel is closed
-                        # or timed out. In this case, do not log.
-                        pass
-                    except Exception:
-                        logger.exception("Error cancelling worker task")
-                        pass
-
-                for communicator_id in outer._communicator_ids:
-                    _destroy_communicator(communicator_id)
-
-                logger.info("Waiting for worker tasks to exit")
-                self.wait_teardown()
-                logger.info("Teardown complete")
-
-                with self.in_teardown_lock:
+                    logger.info("Waiting for worker tasks to exit")
+                    self.wait_teardown(kill_actors=kill_actors)
+                    logger.info("Teardown complete")
                     self._teardown_done = True
 
             def run(self):
                 try:
                     ray.get(list(outer.worker_task_refs.values()))
+                except KeyboardInterrupt:
+                    logger.info(
+                        "Received KeyboardInterrupt, tearing down with kill_actors=True"
+                    )
+                    self.teardown(kill_actors=True)
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     self.teardown()
@@ -1943,18 +1910,18 @@ class CompiledDAG:
         monitor.start()
         return monitor
 
-    def raise_if_too_many_inflight_requests(self):
-        num_in_flight_requests = (
+    def _raise_if_too_many_inflight_executions(self):
+        num_inflight_executions = (
             self._execution_index - self._max_finished_execution_index
-        )
-        if num_in_flight_requests > self._max_inflight_executions:
-            raise ray.exceptions.RayAdagCapacityExceeded(
-                f"There are {num_in_flight_requests} in-flight requests which "
-                "is more than specified _max_inflight_executions of the dag: "
-                f"{self._max_inflight_executions}. Retrieve the output using "
-                "ray.get before submitting more requests or increase "
-                "`max_inflight_executions`. "
-                "`adag.experimental_compile(_max_inflight_executions=...)`"
+        ) + len(self._result_buffer)
+        if num_inflight_executions >= self._max_inflight_executions:
+            raise ray.exceptions.RayCgraphCapacityExceeded(
+                "The compiled graph can't have more than "
+                f"{self._max_inflight_executions} in-flight executions, and you "
+                f"currently have {num_inflight_executions} in-flight executions. "
+                "Retrieve an output using ray.get before submitting more requests or "
+                "increase `_max_inflight_executions`. "
+                "`dag.experimental_compile(_max_inflight_executions=...)`"
             )
 
     def _has_execution_results(
@@ -2037,7 +2004,7 @@ class CompiledDAG:
         timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
-            self.increment_max_finished_execution_index()
+            self._max_finished_execution_index += 1
             start_time = time.monotonic()
             self._dag_output_fetcher.release_channel_buffers(timeout)
 
@@ -2081,21 +2048,23 @@ class CompiledDAG:
                 timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
-            if len(self._result_buffer) >= self._max_buffered_results:
-                raise ValueError(
-                    "Too many buffered results: the allowed max count for "
-                    f"buffered results is {self._max_buffered_results}; call "
-                    "ray.get() on previous CompiledDAGRefs to free them up "
-                    "from buffer."
-                )
-            self.increment_max_finished_execution_index()
             start_time = time.monotonic()
 
             # Fetch results from each output channel up to execution_index and cache
             # them separately to enable individual retrieval
+            try:
+                result = self._dag_output_fetcher.read(timeout)
+            except RayChannelTimeoutError as e:
+                raise RayChannelTimeoutError(
+                    "If the execution is expected to take a long time, increase "
+                    f"RAY_CGRAPH_get_timeout which is currently {timeout} seconds. "
+                    "Otherwise, this may indicate that the execution is hanging."
+                ) from e
+
+            self._max_finished_execution_index += 1
             self._cache_execution_results(
                 self._max_finished_execution_index,
-                self._dag_output_fetcher.read(timeout),
+                result,
             )
 
             if timeout != -1:
@@ -2132,16 +2101,25 @@ class CompiledDAG:
         self._check_inputs(args, kwargs)
         if len(args) == 1 and len(kwargs) == 0:
             # When serializing a tuple, the Ray serializer invokes pickle5, which adds
-            # several microseconds of overhead. One common case for accelerated DAGs is
+            # several microseconds of overhead. One common case for Compiled Graphs is
             # passing a single argument (oftentimes of of type `bytes`, which requires
             # no serialization). To avoid imposing this overhead on this common case, we
             # create a fast path for this case that avoids pickle5.
             inp = args[0]
         else:
-            inp = RayDAGArgs(args=args, kwargs=kwargs)
+            inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
-        self.raise_if_too_many_inflight_requests()
-        self._dag_submitter.write(inp, self._submit_timeout)
+        self._raise_if_too_many_inflight_executions()
+        try:
+            self._dag_submitter.write(inp, self._submit_timeout)
+        except RayChannelTimeoutError as e:
+            raise RayChannelTimeoutError(
+                "If the execution is expected to take a long time, increase "
+                f"RAY_CGRAPH_submit_timeout which is currently {self._submit_timeout} "
+                "seconds. Otherwise, this may indicate that execution is hanging."
+            ) from e
+
+        self._execution_index += 1
 
         if self._returns_list:
             ref = [
@@ -2151,7 +2129,6 @@ class CompiledDAG:
         else:
             ref = CompiledDAGRef(self, self._execution_index)
 
-        self._execution_index += 1
         return ref
 
     def _check_inputs(self, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> None:
@@ -2204,13 +2181,15 @@ class CompiledDAG:
                 # pickle5.
                 inp = args[0]
             else:
-                inp = RayDAGArgs(args=args, kwargs=kwargs)
+                inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
-            self.raise_if_too_many_inflight_requests()
+            self._raise_if_too_many_inflight_executions()
             await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
             await self._fut_queue.put(fut)
+
+        self._execution_index += 1
 
         if self._returns_list:
             fut = [
@@ -2220,7 +2199,6 @@ class CompiledDAG:
         else:
             fut = CompiledDAGFuture(self, self._execution_index, fut)
 
-        self._execution_index += 1
         return fut
 
     def _visualize_ascii(self) -> str:
@@ -2700,10 +2678,15 @@ class CompiledDAG:
                 if dag_node.is_class_method_call:
                     # Class Method Call Node
                     method_name = dag_node.get_method_name()
-                    actor_handle = dag_node._get_actor_handle()
-                    if actor_handle:
-                        actor_id = actor_handle._actor_id.hex()
-                        label += f"Actor: {actor_id[:6]}...\nMethod: {method_name}"
+                    actor = dag_node._get_actor_handle()
+                    if actor:
+                        class_name = (
+                            actor._ray_actor_creation_function_descriptor.class_name
+                        )
+                        actor_id = actor._actor_id.hex()
+                        label += f"Actor: {class_name}\n"
+                        label += f"ID: {actor_id[:6]}...\n"
+                        label += f"Method: {method_name}"
                         fillcolor = actor_id_to_color[actor_id]
                     else:
                         label += f"Method: {method_name}"
@@ -2818,8 +2801,6 @@ def build_compiled_dag_from_ray_dag(
     submit_timeout: Optional[float] = None,
     buffer_size_bytes: Optional[int] = None,
     enable_asyncio: bool = False,
-    asyncio_max_queue_size: Optional[int] = None,
-    max_buffered_results: Optional[int] = None,
     max_inflight_executions: Optional[int] = None,
     overlap_gpu_communication: Optional[bool] = None,
 ) -> "CompiledDAG":
@@ -2827,8 +2808,6 @@ def build_compiled_dag_from_ray_dag(
         submit_timeout,
         buffer_size_bytes,
         enable_asyncio,
-        asyncio_max_queue_size,
-        max_buffered_results,
         max_inflight_executions,
         overlap_gpu_communication,
     )

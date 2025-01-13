@@ -25,7 +25,7 @@ from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
     ReplicaScheduler,
-    ReplicaWrapper,
+    RunningReplica,
 )
 from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
 from ray.serve._private.router import (
@@ -72,7 +72,7 @@ class FakeReplicaResult(ReplicaResult):
         raise NotImplementedError
 
 
-class FakeReplica(ReplicaWrapper):
+class FakeReplica(RunningReplica):
     def __init__(
         self,
         replica_id: ReplicaID,
@@ -97,27 +97,35 @@ class FakeReplica(ReplicaWrapper):
     def get_queue_len(self, *, deadline_s: float) -> int:
         raise NotImplementedError
 
-    def send_request(self, pr: PendingRequest) -> FakeReplicaResult:
-        if pr.metadata.is_streaming:
-            return FakeReplicaResult(self._replica_id, is_generator_object=True)
+    async def send_request(
+        self, pr: PendingRequest, with_rejection: bool
+    ) -> Tuple[Optional[FakeReplicaResult], Optional[ReplicaQueueLengthInfo]]:
+        if with_rejection:
+            if self._error:
+                raise self._error
+
+            assert (
+                not self.is_cross_language
+            ), "Rejection not supported for cross language."
+            assert (
+                self._queue_len_info is not None
+            ), "Must set queue_len_info to use `send_request_with_rejection`."
+
+            return (
+                FakeReplicaResult(self._replica_id, is_generator_object=True),
+                self._queue_len_info,
+            )
         else:
-            return FakeReplicaResult(self._replica_id, is_generator_object=False)
-
-    async def send_request_with_rejection(
-        self, pr: PendingRequest
-    ) -> Tuple[Optional[FakeReplicaResult], ReplicaQueueLengthInfo]:
-        if self._error:
-            raise self._error
-
-        assert not self.is_cross_language, "Rejection not supported for cross language."
-        assert (
-            self._queue_len_info is not None
-        ), "Must set queue_len_info to use `send_request_with_rejection`."
-
-        return (
-            FakeReplicaResult(self._replica_id, is_generator_object=True),
-            self._queue_len_info,
-        )
+            if pr.metadata.is_streaming:
+                return (
+                    FakeReplicaResult(self._replica_id, is_generator_object=True),
+                    None,
+                )
+            else:
+                return (
+                    FakeReplicaResult(self._replica_id, is_generator_object=False),
+                    None,
+                )
 
 
 class FakeReplicaScheduler(ReplicaScheduler):
@@ -142,7 +150,7 @@ class FakeReplicaScheduler(ReplicaScheduler):
         return self._dropped_replicas
 
     @property
-    def curr_replicas(self) -> Dict[ReplicaID, ReplicaWrapper]:
+    def curr_replicas(self) -> Dict[ReplicaID, RunningReplica]:
         replicas = {}
         if self._replica_to_return is not None:
             replicas[self._replica_to_return.replica_id] = self._replica_to_return
@@ -153,7 +161,7 @@ class FakeReplicaScheduler(ReplicaScheduler):
 
         return replicas
 
-    def update_replicas(self, replicas: List[ReplicaWrapper]):
+    def update_replicas(self, replicas: List[RunningReplica]):
         pass
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
@@ -844,7 +852,7 @@ class TestRouterMetricsManager:
         assert not metrics_manager.should_send_scaled_to_zero_optimized_push(0)
 
         # No queued requests at the handle, should not push metrics
-        metrics_manager.deployment_config = DeploymentConfig(
+        metrics_manager._deployment_config = DeploymentConfig(
             autoscaling_config=AutoscalingConfig()
         )
         assert not metrics_manager.should_send_scaled_to_zero_optimized_push(0)
@@ -887,7 +895,7 @@ class TestRouterMetricsManager:
                 FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
                 FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             )
-            metrics_manager.deployment_config = DeploymentConfig(
+            metrics_manager._deployment_config = DeploymentConfig(
                 autoscaling_config=AutoscalingConfig()
             )
 
