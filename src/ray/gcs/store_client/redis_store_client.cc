@@ -299,7 +299,7 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
                           request();
                         }
                         if (redis_callback) {
-                          redis_callback(reply);
+                          redis_callback(std::move(reply));
                         }
                       });
   };

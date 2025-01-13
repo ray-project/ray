@@ -191,11 +191,10 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
         [request_cxt]() { request_cxt->Run(); },
         std::chrono::milliseconds(delay));
   } else {
-    auto reply = std::make_shared<CallbackReply>(*redis_reply);
     request_cxt->io_service_.post(
-        [reply, callback = std::move(request_cxt->callback_)]() {
+        [redis_reply, callback = std::move(request_cxt->callback_)]() {
           if (callback) {
-            callback(std::move(reply));
+            callback(std::make_unique<CallbackReply>(*redis_reply));
           }
         },
         "RedisRequestContext.Callback");

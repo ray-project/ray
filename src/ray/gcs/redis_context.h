@@ -104,7 +104,7 @@ class CallbackReply {
 
 /// Every callback should take in a vector of the results from the Redis
 /// operation.
-using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
+using RedisCallback = std::function<void(std::unique_ptr<CallbackReply>)>;
 
 class RedisContext;
 struct RedisRequestContext {
