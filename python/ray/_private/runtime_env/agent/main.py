@@ -15,6 +15,7 @@ from ray._private.utils import (
     get_or_create_event_loop,
 )
 from ray._private.process_watcher import create_check_raylet_task
+import asyncio
 
 
 def import_libs():
@@ -150,17 +151,33 @@ if __name__ == "__main__":
         runtime_env_agent_port=args.runtime_env_agent_port,
     )
 
+    def _parse_get_or_create_request_from_string(data: str):
+        request = runtime_env_agent_pb2.GetOrCreateRuntimeEnvRequest()
+        request.ParseFromString(data)
+        return request
+
+    async def parse_get_or_create_request_from_string_async(data: str):
+        return await asyncio.to_thread(_parse_get_or_create_request_from_string, data)
+
     # POST /get_or_create_runtime_env
     # body is serialzied protobuf GetOrCreateRuntimeEnvRequest
     # reply is serialzied protobuf GetOrCreateRuntimeEnvReply
     async def get_or_create_runtime_env(request: web.Request) -> web.Response:
         data = await request.read()
         request = runtime_env_agent_pb2.GetOrCreateRuntimeEnvRequest()
-        request.ParseFromString(data)
+        request = await parse_get_or_create_request_from_string_async(data)
         reply = await agent.GetOrCreateRuntimeEnv(request)
         return web.Response(
             body=reply.SerializeToString(), content_type="application/octet-stream"
         )
+
+    def _parse_delete_request_from_string(data: str):
+        request = runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleRequest()
+        request.ParseFromString(data)
+        return request
+
+    async def parse_delete_request_from_string_async(data: str):
+        return await asyncio.to_thread(_parse_delete_request_from_string, data)
 
     # POST /delete_runtime_env_if_possible
     # body is serialzied protobuf DeleteRuntimeEnvIfPossibleRequest
@@ -168,7 +185,7 @@ if __name__ == "__main__":
     async def delete_runtime_env_if_possible(request: web.Request) -> web.Response:
         data = await request.read()
         request = runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleRequest()
-        request.ParseFromString(data)
+        request = await parse_delete_request_from_string_async(data)
         reply = await agent.DeleteRuntimeEnvIfPossible(request)
         return web.Response(
             body=reply.SerializeToString(), content_type="application/octet-stream"
