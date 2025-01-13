@@ -26,10 +26,8 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.grpc_util import gRPCServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.replica_scheduler import (
-    ActorReplicaWrapper,
-    PowerOfTwoChoicesReplicaScheduler,
-)
+from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
+from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 from ray.serve._private.router import Router, SingletonThreadRouter
 from ray.serve._private.utils import (
     generate_request_id,
@@ -168,7 +166,7 @@ def create_router(
         use_replica_queue_len_cache=(
             not is_inside_ray_client_context and RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
         ),
-        create_replica_wrapper_func=lambda r: ActorReplicaWrapper(r),
+        create_replica_wrapper_func=lambda r: RunningReplica(r),
     )
 
     return SingletonThreadRouter(
