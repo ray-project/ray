@@ -24,6 +24,7 @@ _METRIC_FIELD_IS_MAP_ONLY_KEY = "__metric_is_map_only"
 
 _METRICS: List["MetricDefinition"] = []
 
+_NODE_UNKNOWN = "UNKNOWN"
 
 class MetricsGroup(Enum):
     INPUTS = "inputs"
@@ -108,6 +109,7 @@ class NodeMetrics:
     num_tasks_submitted: int = field(default=0)
     num_tasks_running: int = field(default=0)
     num_tasks_finished: int = field(default=0)
+    obj_store_mem_spilled: int = field(default=0)
 
 class OpRuntimesMetricsMeta(type):
     def __init__(cls, name, bases, dict):
@@ -589,6 +591,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 if locations[block].get("did_spill", False):
                     assert meta.size_bytes is not None
                     self.obj_store_mem_spilled += meta.size_bytes
+                    if meta.exec_stats.node_id is not None:
+                        node_metrics = self._per_node_metrics[meta.exec_stats.node_id]
+                    else:
+                        node_metrics = self._per_node_metrics[_NODE_UNKNOWN]
+                    node_metrics.obj_store_mem_spilled += meta.size_bytes
 
         self.obj_store_mem_freed += total_input_size
 
