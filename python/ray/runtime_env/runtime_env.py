@@ -389,6 +389,11 @@ class RuntimeEnv(dict):
                     f"Specified fields: {invalid_keys}"
                 )
 
+            logger.warning(
+                "The `container` runtime environment field is DEPRECATED and will be "
+                "removed in the near future. Please use `image_uri` instead."
+            )
+
         if self.get("image_uri"):
             image_uri_plugin_cls = get_image_uri_plugin_cls()
             invalid_keys = (
