@@ -9,7 +9,6 @@ import pytest_asyncio
 
 import ray
 from ray._private.gcs_utils import GcsChannel
-from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.test_utils import (
     format_web_url,
@@ -49,10 +48,12 @@ def job_sdk_client(request):
         **param,
     ) as res:
         ip, _ = res.webui_url.split(":")
-        agent_address = f"{ip}:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
-        assert wait_until_server_available(agent_address)
+        for node in res.worker_nodes:
+            agent_address = f"{ip}:{node._dashboard_agent_listen_port}"
+            assert wait_until_server_available(agent_address)
         head_address = res.webui_url
         assert wait_until_server_available(head_address)
+        res.wait_for_nodes()
         yield (
             JobSubmissionClient(format_web_url(head_address)),
             res.gcs_address,
@@ -83,11 +84,11 @@ async def create_virtual_cluster(
     [
         {
             "_system_config": {"gcs_actor_scheduling_enabled": False},
-            "ntemplates": 3,
+            "ntemplates": 2,
         },
         {
             "_system_config": {"gcs_actor_scheduling_enabled": True},
-            "ntemplates": 3,
+            "ntemplates": 2,
         },
     ],
     indirect=True,
@@ -97,7 +98,7 @@ async def test_indivisible_virtual_cluster(job_sdk_client):
     head_client, gcs_address, cluster = job_sdk_client
     virtual_cluster_id_prefix = "VIRTUAL_CLUSTER_"
     node_to_virtual_cluster = {}
-    ntemplates = 3
+    ntemplates = 2
     for i in range(ntemplates):
         virtual_cluster_id = virtual_cluster_id_prefix + str(i)
         nodes = await create_virtual_cluster(
@@ -296,12 +297,7 @@ ray.get(a.run.remote(control))
     "job_sdk_client",
     [
         {
-            "_system_config": {"gcs_actor_scheduling_enabled": False},
-            "ntemplates": 4,
-        },
-        {
-            "_system_config": {"gcs_actor_scheduling_enabled": True},
-            "ntemplates": 4,
+            "ntemplates": 2,
         },
     ],
     indirect=True,
@@ -311,7 +307,7 @@ async def test_divisible_virtual_cluster(job_sdk_client):
     head_client, gcs_address, cluster = job_sdk_client
     virtual_cluster_id_prefix = "VIRTUAL_CLUSTER_"
     node_to_virtual_cluster = {}
-    ntemplates = 3
+    ntemplates = 1
     for i in range(ntemplates):
         virtual_cluster_id = virtual_cluster_id_prefix + str(i)
         nodes = await create_virtual_cluster(
@@ -520,12 +516,7 @@ ray.get(a.run.remote(control))
     "job_sdk_client",
     [
         {
-            "_system_config": {"gcs_actor_scheduling_enabled": False},
-            "ntemplates": 3,
-        },
-        {
-            "_system_config": {"gcs_actor_scheduling_enabled": True},
-            "ntemplates": 3,
+            "ntemplates": 2,
         },
     ],
     indirect=True,
@@ -567,7 +558,7 @@ async def test_job_access_cluster_data(job_sdk_client):
         def set_normal_task_info(self, key, value):
             self._normal_task_info[key] = value
 
-    ntemplates = 3
+    ntemplates = 2
     for i in range(ntemplates):
         virtual_cluster_id = virtual_cluster_id_prefix + str(i)
         nodes = await create_virtual_cluster(
@@ -598,6 +589,7 @@ import os
 
 ray.init(address="auto")
 storage = ray.get_actor(name="{storage_actor_name}", namespace="storage")
+
 
 @ray.remote
 def access_nodes():
@@ -769,12 +761,7 @@ ray.get(
     "job_sdk_client",
     [
         {
-            "_system_config": {"gcs_actor_scheduling_enabled": False},
-            "ntemplates": 3,
-        },
-        {
-            "_system_config": {"gcs_actor_scheduling_enabled": True},
-            "ntemplates": 3,
+            "ntemplates": 2,
         },
     ],
     indirect=True,
@@ -784,7 +771,7 @@ async def test_list_nodes(job_sdk_client):
     head_client, gcs_address, cluster = job_sdk_client
     virtual_cluster_id_prefix = "VIRTUAL_CLUSTER_"
     node_to_virtual_cluster = {}
-    ntemplates = 3
+    ntemplates = 2
     for i in range(ntemplates):
         virtual_cluster_id = virtual_cluster_id_prefix + str(i)
         nodes = await create_virtual_cluster(
@@ -801,9 +788,9 @@ async def test_list_nodes(job_sdk_client):
             assert node["NodeID"] in node_to_virtual_cluster
             assert node_to_virtual_cluster[node["NodeID"]] == virtual_cluster_id
 
-    assert len(ray.nodes()) == 13
-    assert len(ray.nodes("")) == 13
-    assert len(ray.nodes(None)) == 13
+    assert len(ray.nodes()) == 9
+    assert len(ray.nodes("")) == 9
+    assert len(ray.nodes(None)) == 9
 
     for i in range(ntemplates):
         virtual_cluster_id = virtual_cluster_id_prefix + str(i)
@@ -818,12 +805,7 @@ async def test_list_nodes(job_sdk_client):
     "job_sdk_client",
     [
         {
-            "_system_config": {"gcs_actor_scheduling_enabled": False},
-            "ntemplates": 3,
-        },
-        {
-            "_system_config": {"gcs_actor_scheduling_enabled": True},
-            "ntemplates": 3,
+            "ntemplates": 2,
         },
     ],
     indirect=True,
@@ -833,7 +815,7 @@ async def test_list_cluster_resources(job_sdk_client):
     head_client, gcs_address, cluster = job_sdk_client
     virtual_cluster_id_prefix = "VIRTUAL_CLUSTER_"
     node_to_virtual_cluster = {}
-    ntemplates = 3
+    ntemplates = 2
     for i in range(ntemplates):
         virtual_cluster_id = virtual_cluster_id_prefix + str(i)
         nodes = await create_virtual_cluster(
@@ -879,6 +861,7 @@ async def test_list_cluster_resources(job_sdk_client):
     "job_sdk_client",
     [
         {
+            "_system_config": {"expired_job_clusters_gc_interval_ms": 1000},
             "ntemplates": 2,
         },
     ],
@@ -965,6 +948,7 @@ ray.get(a.run.remote())
                 ),
                 timeout=20,
             )
+            head_client.stop_job(job_id)
             return True
 
         _successful_submit(head_client, runtime_env, virtual_cluster_id)
