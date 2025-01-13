@@ -4,9 +4,6 @@ from collections import defaultdict
 from typing import AsyncIterable, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from ray._private.pydantic_compat import BaseModel
-
-# TODO(sang): Remove the usage of this class.
-from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
 from ray.util.state.common import (
     DEFAULT_RPC_TIMEOUT,

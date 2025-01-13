@@ -31,7 +31,6 @@ from ray.util.state.common import (
     DEFAULT_LOG_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     GetLogOptions,
-    ListApiOptions,
     protobuf_message_to_dict,
 )
 from ray.util.state.exception import DataSourceUnavailable

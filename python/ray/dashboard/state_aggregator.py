@@ -92,6 +92,7 @@ class StateAPIManager:
         def transform(reply) -> ListApiResponse:
             result = []
             for message in reply.actor_table_data:
+                # TODO(ryw): merge with actor_table_data_to_dict in actor_head.py ?
                 data = protobuf_message_to_dict(
                     message=message,
                     fields_to_decode=[
