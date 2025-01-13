@@ -270,7 +270,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       uint32_t agent_register_timeout_ms,
       uint32_t agent_manager_retry_interval_ms,
-      uint32_t session_pool_size = 1000)
+      uint32_t session_pool_size = 100000)
       : io_context_(io_context),
         session_pool_(session_pool_size),
         address_(address),
