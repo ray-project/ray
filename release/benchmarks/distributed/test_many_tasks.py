@@ -14,11 +14,15 @@ from ray._private.state_api_test_utils import (
 
 sleep_time = 300
 
+env_vars = dict()
+for idx in range(100):
+    env_vars[f"foo{idx}"] = f"bar{idx}"
+
 
 def test_max_running_tasks(num_tasks):
     cpus_per_task = 0.25
 
-    @ray.remote(num_cpus=cpus_per_task)
+    @ray.remote(num_cpus=cpus_per_task, runtime_env={"env_vars": env_vars})
     def task():
         time.sleep(sleep_time)
 
