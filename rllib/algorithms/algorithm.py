@@ -4002,6 +4002,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         ):
             return
 
+        # Add parameters, if necessary.
+        if config["replay_buffer_config"]["type"] == "EpisodeReplayBuffer":
+            # TODO (simon): If all episode buffers have metrics, check for sublassing.
+            config["replay_buffer_config"][
+                "metrics_num_episodes_for_smoothing"
+            ] = self.config.metrics_num_episodes_for_smoothing
+
         return from_config(ReplayBuffer, config["replay_buffer_config"])
 
     @OldAPIStack
