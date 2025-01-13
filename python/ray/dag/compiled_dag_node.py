@@ -2048,7 +2048,7 @@ class CompiledDAG:
         execution_index: int,
         channel_index: Optional[int] = None,
         timeout: Optional[float] = None,
-    ) -> List[Any]:
+    ):
         """Repeatedly execute this DAG until the given execution index,
         and buffer all results up to that index. If the DAG has already
         been executed up to the given index, it will do nothing.
