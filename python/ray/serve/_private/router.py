@@ -735,11 +735,13 @@ class SharedRouterLongPollClient:
         logger.info(f"Started {shared}.")
         return shared
 
-    def update_running_replicas(
-        self, running_replicas: List[RunningReplicaInfo], deployment_id: DeploymentID
+    def update_deployment_targets(
+        self,
+        deployment_target_info: DeploymentTargetInfo,
+        deployment_id: DeploymentID,
     ) -> None:
         for router in self.routers[deployment_id]:
-            router.update_running_replicas(running_replicas)
+            router.update_deployment_targets(deployment_target_info)
             router.long_poll_client.stop()
 
     def update_deployment_config(
@@ -763,8 +765,8 @@ class SharedRouterLongPollClient:
         # Register the new listeners on the long poll client.
         # Some of these listeners may already exist, but it's safe to add them again.
         key_listeners = {
-            (LongPollNamespace.RUNNING_REPLICAS, deployment_id): partial(
-                self.update_running_replicas, deployment_id=deployment_id
+            (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id): partial(
+                self.update_deployment_targets, deployment_id=deployment_id
             )
             for deployment_id in self.routers.keys()
         } | {
