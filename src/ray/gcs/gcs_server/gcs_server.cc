@@ -372,7 +372,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
                 // per-node reporting, remove this if it is not needed anymore.
                 gcs_resource_manager_->UpdateResourceLoads(load_and_usage.resources());
                 gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(
-                    load_and_usage.resources());
+                    std::move(load_and_usage.resources()));
               } else {
                 RAY_LOG_EVERY_N(WARNING, 10)
                     << "Failed to get the resource load: " << status.ToString();
