@@ -434,7 +434,10 @@ class AsyncioRouter:
         )
 
     async def _resolve_request_arguments(
-        self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
+        self,
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+        request_kwargs: Dict[str, Any],
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
         """Asynchronously resolve and replace top-level request args and kwargs."""
         new_args = list(request_args)
@@ -443,14 +446,14 @@ class AsyncioRouter:
         # Map from index -> task for resolving positional arg
         resolve_arg_tasks = {}
         for i, obj in enumerate(request_args):
-            task = await self._resolve_request_arg_func(obj)
+            task = await self._resolve_request_arg_func(obj, request_metadata)
             if task is not None:
                 resolve_arg_tasks[i] = task
 
         # Map from key -> task for resolving key-word arg
         resolve_kwarg_tasks = {}
         for k, obj in request_kwargs.items():
-            task = await self._resolve_request_arg_func(obj)
+            task = await self._resolve_request_arg_func(obj, request_metadata)
             if task is not None:
                 resolve_kwarg_tasks[k] = task
 
@@ -589,7 +592,7 @@ class AsyncioRouter:
             replica_result = None
             try:
                 request_args, request_kwargs = await self._resolve_request_arguments(
-                    request_args, request_kwargs
+                    request_meta, request_args, request_kwargs
                 )
                 replica_result, replica_id = await self.schedule_and_send_request(
                     PendingRequest(
