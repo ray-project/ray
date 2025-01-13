@@ -422,7 +422,7 @@ class NodeInfoAccessor {
   ///
   /// \return All nodes that match the given filter from the gcs without the cache.
   virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCacheWithFilter(
-      int64_t timeout_ms, rpc::GetAllNodeInfoRequest_Filters filter);
+      int64_t timeout_ms, rpc::GetAllNodeInfoRequest_Filters filters);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///

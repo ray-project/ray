@@ -209,7 +209,7 @@ class GlobalStateAccessor {
   /// \param[out] node_info The output parameter to store the node info. To support
   /// multi-language, we serialize each GcsNodeInfo and return the serialized string.
   /// Where used, it needs to be deserialized with protobuf function.
-  ray::Status GetNode(const std::string &node_id_str, std::string *node_info)
+  ray::Status GetNode(const std::string &node_id_hex_str, std::string *node_info)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get the node to connect for a Ray driver.
