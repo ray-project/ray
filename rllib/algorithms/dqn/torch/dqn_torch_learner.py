@@ -50,17 +50,33 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
         # for which we add an (artificial) timestep to each episode to
         # simplify the actual computation.
         if Columns.LOSS_MASK in batch:
-            mask = batch[Columns.LOSS_MASK]
+            mask = batch[Columns.LOSS_MASK].clone()
+            # Check, if a burn-in should be used to recover from a poor state.
+            if self.config.burn_in_len > 0:
+                # Train only on the timesteps after the burn-in period.
+                mask[:, : self.config.burn_in_len] = False
             num_valid = torch.sum(mask)
 
             def possibly_masked_mean(data_):
                 return torch.sum(data_[mask]) / num_valid
 
             def possibly_masked_min(data_):
-                return torch.max(data_[mask])
+                # Prevent minimum over empty tensors, which can happened
+                # when all elements in the mask are `False`.
+                return (
+                    torch.tensor(float("nan"))
+                    if data_[mask].numel() == 0
+                    else torch.min(data_[mask])
+                )
 
             def possibly_masked_max(data_):
-                return torch.max(data_[mask])
+                # Prevent maximum over empty tensors, which can happened
+                # when all elements in the mask are `False`.
+                return (
+                    torch.tensor(float("nan"))
+                    if data_[mask].numel() == 0
+                    else torch.max(data_[mask])
+                )
 
         else:
             possibly_masked_mean = torch.mean
