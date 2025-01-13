@@ -2492,6 +2492,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     const std::string &serialized_retry_exception_allowlist,
     const std::string &call_site,
     const TaskID current_task_id) {
+  const auto start = std::chrono::high_resolution_clock::now();
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -2559,6 +2560,11 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
         },
         "CoreWorker.SubmitTask");
   }
+  const auto end = std::chrono::high_resolution_clock::now();
+  const auto duration =
+      std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+  RAY_LOG(ERROR) << "hjiang async submit task takes " << duration.count() << " millisec";
+
   return returned_refs;
 }
 
