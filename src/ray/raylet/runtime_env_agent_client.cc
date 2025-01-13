@@ -417,6 +417,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
     std::string payload = request.SerializeAsString();
 
+    const auto start = std::chrono::high_resolution_clock::now();
     auto session = Session::Create(
         io_context_,
         address_,
@@ -425,11 +426,16 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV,
         std::move(payload),
         /*succ_callback=*/
-        [succ_callback, fail_callback](std::string body) {
+        [succ_callback, fail_callback, start](std::string body) {
           rpc::GetOrCreateRuntimeEnvReply reply;
           if (!reply.ParseFromString(body)) {
             fail_callback(Status::IOError("protobuf parse error"));
           } else {
+            const auto end = std::chrono::high_resolution_clock::now();
+            const auto duration =
+                std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+            RAY_LOG(ERROR) << "hjiang get or create runtime env takes "
+                           << duration.count() << " millisec";
             succ_callback(std::move(reply));
           }
         },
@@ -442,6 +448,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   // Body = proto rpc::DeleteRuntimeEnvIfPossibleRequest
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
                                   DeleteRuntimeEnvIfPossibleCallback callback) override {
+    const auto start = std::chrono::high_resolution_clock::now();
     RetryInvokeOnNotFoundWithDeadline<rpc::DeleteRuntimeEnvIfPossibleReply>(
         [=](SuccCallback<rpc::DeleteRuntimeEnvIfPossibleReply> succ_callback,
             FailCallback fail_callback) {
@@ -459,6 +466,11 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
             RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
             callback(false);
           } else {
+            const auto end = std::chrono::high_resolution_clock::now();
+            const auto duration =
+                std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+            RAY_LOG(ERROR) << "hjiang delete runtime env takes " << duration.count()
+                           << " millisec";
             callback(true);
           }
         },
