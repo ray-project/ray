@@ -404,7 +404,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 if self.config.episodes_to_numpy_from_env_runner:
                     # Any possibly compress observations.
                     done_episodes_to_return.append(self._episode.to_numpy(
-                        compress_observations=self.config.compress_observations,
                         drop_zero_len_single_agent_episodes=True,
                     ))
                 # Leave episode as lists of individual (obs, action, etc..) items.
@@ -454,7 +453,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             if self.config.episodes_to_numpy_from_env_runner:
                 # Any possibly compress observations.
                 ongoing_episodes_to_return.append(self._episode.to_numpy(
-                    compress_observations=self.config.compress_observations,
                     drop_zero_len_single_agent_episodes=True,
                 ))
             # Leave episode as lists of individual (obs, action, etc..) items.
@@ -633,7 +631,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 if self.config.episodes_to_numpy_from_env_runner:
                     # Any possibly compress observations.
                     done_episodes_to_return.append(_episode.to_numpy(
-                        compress_observations=self.config.compress_observations,
                         drop_zero_len_single_agent_episodes=True,
                     ))
                 # Leave episode as lists of individual (obs, action, etc..) items.

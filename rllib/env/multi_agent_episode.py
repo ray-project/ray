@@ -658,6 +658,14 @@ class MultiAgentEpisode:
         #  action/reward caches, etc..
 
     @property
+    def is_reset(self) -> bool:
+        """Returns True if `self.add_env_reset()` has already been called."""
+        return any(
+            len(sa_episode.observations) > 0
+            for sa_episode in self.agent_episodes.values()
+        )
+
+    @property
     def is_numpy(self) -> bool:
         """True, if the data in this episode is already stored as numpy arrays."""
         is_numpy = next(iter(self.agent_episodes.values())).is_numpy
@@ -700,7 +708,7 @@ class MultiAgentEpisode:
         """
         return self.is_terminated or self.is_truncated
 
-    def finalize(
+    def to_numpy(
         self,
         drop_zero_len_single_agent_episodes: bool = False,
     ) -> "MultiAgentEpisode":

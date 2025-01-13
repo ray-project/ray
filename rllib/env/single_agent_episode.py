@@ -588,9 +588,6 @@ class SingleAgentEpisode:
             for k, v in self.extra_model_outputs.items():
                 self.extra_model_outputs[k].finalize()
 
-        # Erase all temporary timestep data caches.
-        self._temporary_timestep_data.clear()
-
         return self
 
     def concat_episode(self, other: "SingleAgentEpisode") -> None:
@@ -690,6 +687,9 @@ class SingleAgentEpisode:
             if len_lookback_buffer > 0
             else slice(None, 0)
         )
+
+        # Erase all temporary timestep data caches in `self`.
+        self._temporary_timestep_data.clear()
 
         return SingleAgentEpisode(
             # Same ID.

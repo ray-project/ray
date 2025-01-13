@@ -15,14 +15,15 @@ class CartPoleWithLargeObservationSpace(CartPoleEnv):
 
     gym.spaces.Dict({
         "1": gym.spaces.Tuple((
-            gym.spaces.Discrete(1000),
-            gym.spaces.Box(0, 256, shape=(3000,), dtype=float32),
+            gym.spaces.Discrete(100),
+            gym.spaces.Box(0, 256, shape=(30,), dtype=float32),
         )),
         "2": gym.spaces.Tuple((
-            gym.spaces.Discrete(1000),
-            gym.spaces.Box(0, 256, shape=(3000,), dtype=float32),
+            gym.spaces.Discrete(100),
+            gym.spaces.Box(0, 256, shape=(30,), dtype=float32),
         )),
-        "3": gym.spaces.Box(-inf, inf, (4,), float32),
+        "3": ...
+        "actual-obs": gym.spaces.Box(-inf, inf, (4,), float32),
     })
     """
 
@@ -36,21 +37,21 @@ class CartPoleWithLargeObservationSpace(CartPoleEnv):
         # Test as many quirks and oddities as possible: Dict, Dict inside a Dict,
         # Tuple inside a Dict, and both (1,)-shapes as well as ()-shapes for Boxes.
         # Also add a random discrete variable here.
-        self.observation_space = gym.spaces.Dict(
+        spaces = {
+            str(i): gym.spaces.Tuple((
+                gym.spaces.Discrete(100),
+                gym.spaces.Box(0, 256, shape=(30,), dtype=np.float32),
+            ))
+            for i in range(100)
+        }
+        spaces.update(
             {
-                "dead-weight": gym.spaces.Tuple((
-                    gym.spaces.Discrete(1000),
-                    gym.spaces.Box(0, 256, shape=(3000,), dtype=np.float32),
-                )),
-                "more-dead-weight": gym.spaces.Tuple((
-                    gym.spaces.Discrete(1000),
-                    gym.spaces.Box(0, 256, shape=(3000,), dtype=np.float32),
-                )),
                 "actually-useful-stuff": (
                     gym.spaces.Box(low[0], high[0], (4,), np.float32)
-                ),
+                )
             }
         )
+        self.observation_space = gym.spaces.Dict(spaces)
 
     def step(self, action):
         next_obs, reward, done, truncated, info = super().step(action)
@@ -62,10 +63,6 @@ class CartPoleWithLargeObservationSpace(CartPoleEnv):
 
     def _compile_current_obs(self, original_cartpole_obs):
         return {
-            "dead-weight": self.observation_space.spaces["dead-weight"].sample(),
-            "more-dead-weight": (
-                self.observation_space.spaces["more-dead-weight"].sample()
-            ),
-            # original_cartpole_obs is [x-pos, x-veloc, angle, angle-veloc]
-            "actually-useful-stuff": original_cartpole_obs,
-        }
+            str(i): self.observation_space.spaces[str(i)].sample()
+            for i in range(100)
+        } | {"actually-useful-stuff": original_cartpole_obs}

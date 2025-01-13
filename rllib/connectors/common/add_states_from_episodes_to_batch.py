@@ -331,34 +331,38 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         ),
                         look_back_state,
                     )
+                # Explanation:
+                # B=episode len // max_seq_len
+                # [::max_seq_len]: only keep every Tth state.
+                # [:-1]: Shift state outs by one; ignore very last
+                # STATE_OUT, but therefore add the lookback/init state at
+                # the beginning.
+                items_to_add = (
+                    tree.map_structure(
+                        lambda i, o, m=max_seq_len: np.concatenate([[i], o[:-1]])[::m],
+                        look_back_state,
+                        state_outs,
+                    ) if sa_episode.is_numpy
+                    else ([look_back_state] + state_outs[:-1])[::max_seq_len]
+                )
                 self.add_n_batch_items(
                     batch=batch,
                     column=Columns.STATE_IN,
-                    # items_to_add.shape=(B,[state-dim])
-                    # B=episode len // max_seq_len
-                    # Explanation:
-                    # [::max_seq_len]: only keep every Tth state.
-                    # [:-1]: Shift state outs by one, ignore very last
-                    # STATE_OUT (but therefore add the lookback/init state at
-                    # the beginning).
-                    items_to_add=([look_back_state] + state_outs[:-1])[::max_seq_len],
-                    #tree.map_structure(
-                    #    lambda i, o, m=max_seq_len: np.concatenate([[i], o[:-1]])[::m],
-                    #    look_back_state,
-                    #    state_outs,
-                    #),
+                    items_to_add=items_to_add,
                     num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
                     single_agent_episode=sa_episode,
                 )
                 if Columns.NEXT_OBS in batch:
+                    items_to_add = (
+                        tree.map_structure(
+                            lambda i, m=max_seq_len: i[::m],
+                            state_outs,
+                        ) if sa_episode.is_numpy else state_outs[::max_seq_len]
+                    )
                     self.add_n_batch_items(
                         batch=batch,
                         column=Columns.NEXT_STATE_IN,
-                        items_to_add=state_outs[::max_seq_len],
-                        #tree.map_structure(
-                        #    lambda i, m=max_seq_len: i[::m],
-                        #    state_outs,
-                        #),
+                        items_to_add=items_to_add,
                         num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
                         single_agent_episode=sa_episode,
                     )

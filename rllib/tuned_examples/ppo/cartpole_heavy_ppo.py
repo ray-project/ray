@@ -16,7 +16,10 @@ args = parser.parse_args()
 config = (
     PPOConfig()
     .environment(CartPoleWithLargeObservationSpace)
-    .env_runners(env_to_module_connector=lambda env: FlattenObservations())
+    .env_runners(
+        env_to_module_connector=lambda env: FlattenObservations(),
+        episodes_to_numpy_from_env_runner=False,
+    )
     .training(
         lr=0.0003,
         num_epochs=6,
