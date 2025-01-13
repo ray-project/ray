@@ -23,11 +23,23 @@ class ReplicaWrapper(ABC):
     """
 
     @abstractmethod
-    def send_request_java(self, pr: PendingRequest):
+    def send_request_java(self, pr: PendingRequest) -> ReplicaResult:
+        """Send request to Java replica."""
         pass
 
     @abstractmethod
-    def send_request_python(self, pr: PendingRequest, *, with_rejection: bool):
+    def send_request_python(
+        self, pr: PendingRequest, *, with_rejection: bool
+    ) -> Tuple[ReplicaResult, Optional[ReplicaQueueLengthInfo]]:
+        """Send request to Python replica.
+
+        If sending request with rejection, the replica will yield a
+        system message (ReplicaQueueLengthInfo) before executing the
+        actual request. This can cause it to reject the request. The
+        result will *always* be a generator, so for non-streaming
+        requests it's up to the caller to resolve it to its first (and
+        only) ObjectRef.
+        """
         pass
 
 
@@ -166,18 +178,8 @@ class RunningReplica:
 
     async def send_request(
         self, pr: PendingRequest, with_rejection: bool
-    ) -> Tuple[Optional[ReplicaResult], ReplicaQueueLengthInfo]:
-        """Send request to this replica.
-
-        The replica will yield a system message (ReplicaQueueLengthInfo) before
-        executing the actual request. This can cause it to reject the request.
-
-        The result will *always* be a generator, so for non-streaming requests it's up
-        to the caller to resolve it to its first (and only) ObjectRef.
-
-        Only supported for Python replicas.
-        """
-
+    ) -> Tuple[Optional[ReplicaResult], Optional[ReplicaQueueLengthInfo]]:
+        """Send request to this replica."""
         wrapper = self._get_replica_wrapper(pr)
         if self._replica_info.is_cross_language:
             assert not with_rejection, "Request rejection not supported for Java."
