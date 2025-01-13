@@ -155,6 +155,10 @@ if __name__ == "__main__":
     # reply is serialzied protobuf GetOrCreateRuntimeEnvReply
     async def get_or_create_runtime_env(request: web.Request) -> web.Response:
         data = await request.read()
+
+        if "FOO" in data:
+            return web.Response(body="", content_type="application/octet-stream")
+
         request = runtime_env_agent_pb2.GetOrCreateRuntimeEnvRequest()
         request.ParseFromString(data)
         reply = await agent.GetOrCreateRuntimeEnv(request)
