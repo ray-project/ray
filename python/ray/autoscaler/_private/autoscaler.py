@@ -27,7 +27,6 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
-    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
@@ -308,14 +307,6 @@ class StandardAutoscaler:
             WORKER_LIVENESS_CHECK_KEY, True
         )
         logger.info(f"{WORKER_LIVENESS_CHECK_KEY}:{self.worker_liveness_check}")
-
-        # By default, before worker node termination, the autoscaler sends an RPC to the
-        # GCS asking to kill the worker node.
-        # The worker_rpc_drain flag allows disabling this behavior in settings where
-        # another component, such as a Kubernetes operator, is responsible for worker
-        # lifecycle.
-        self.worker_rpc_drain = self.config["provider"].get(WORKER_RPC_DRAIN_KEY, True)
-        logger.info(f"{WORKER_RPC_DRAIN_KEY}:{self.worker_rpc_drain}")
 
         # Node launchers
         self.foreground_node_launcher: Optional[BaseNodeLauncher] = None
@@ -619,10 +610,8 @@ class StandardAutoscaler:
         if not self.nodes_to_terminate:
             return
 
-        # Do Ray-internal preparation for termination, unless this behavior is
-        # explicitly disabled.
-        if self.worker_rpc_drain:
-            self.drain_nodes_via_gcs(self.nodes_to_terminate)
+        # Drain the nodes
+        self.drain_nodes_via_gcs(self.nodes_to_terminate)
         # Terminate the nodes
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:
