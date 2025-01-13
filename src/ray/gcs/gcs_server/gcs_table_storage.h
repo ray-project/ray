@@ -263,7 +263,7 @@ class GcsTableStorage {
 
   Status AsyncGetNextJobID(Postable<void(int)> callback) {
     RAY_CHECK(store_client_);
-    return store_client_->AsyncGetNextJobID(callback);
+    return store_client_->AsyncGetNextJobID(std::move(callback));
   }
 
  protected:

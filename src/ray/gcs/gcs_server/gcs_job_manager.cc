@@ -449,7 +449,8 @@ void GcsJobManager::HandleReportJobError(rpc::ReportJobErrorRequest request,
 void GcsJobManager::HandleGetNextJobID(rpc::GetNextJobIDRequest request,
                                        rpc::GetNextJobIDReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  auto callback = [reply, send_reply_callback](int job_id) {
+  auto callback = [reply,
+                   send_reply_callback = std::move(send_reply_callback)](int job_id) {
     reply->set_job_id(job_id);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };

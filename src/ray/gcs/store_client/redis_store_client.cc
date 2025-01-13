@@ -452,7 +452,7 @@ Status RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
   cxt->RunArgvAsync(command.ToRedisArgs(),
                     [callback = std::move(callback)](
                         const std::shared_ptr<CallbackReply> &reply) mutable {
-                      auto job_id = reply->ReadAsInteger();
+                      auto job_id = static_cast<int>(reply->ReadAsInteger());
                       std::move(callback).Post("GcsStore.GetNextJobID", job_id);
                     });
 
