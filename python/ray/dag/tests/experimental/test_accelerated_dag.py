@@ -207,6 +207,20 @@ def test_basic_destruction(ray_start_regular):
     del ref
 
 
+def test_out_of_order_destruction():
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(1)
+    ref2 = compiled_dag.execute(1)
+    del ref2
+    # Test that ray.get() on ref still works properly even if
+    # ref2 (corresponding to a later execution) is destructed first
+    time.sleep(0.1)
+    assert ray.get(ref) == 1
+
+
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_two_returns_one_reader(ray_start_regular, single_fetch):
     a = Actor.remote(0)
@@ -2642,21 +2656,6 @@ def test_signature_mismatch(shutdown_only):
     ):
         with InputNode() as inp:
             _ = worker.g.bind(inp)
-
-
-def test_destruction_out_of_order():
-    a = Actor.remote(0)
-    with InputNode() as inp:
-        dag = a.inc.bind(inp)
-    compiled_dag = dag.experimental_compile()
-    # the second ref will be destructed
-    # and we want to assure that the result at the
-    # first execution index is still intact
-    ref = compiled_dag.execute(1)
-    ref2 = compiled_dag.execute(1)
-    del ref2
-    time.sleep(0.1)
-    assert ray.get(ref) == 1
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Sigint not supported on Windows")
