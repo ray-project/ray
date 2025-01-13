@@ -1,8 +1,9 @@
 import asyncio
+import concurrent.futures
 import multiprocessing
 import threading
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Awaitable, Dict, Optional
 
 import aiohttp.web
 
@@ -12,9 +13,9 @@ from ray.dashboard.subprocesses.message import (
     ParentBoundMessage,
     RequestMessage,
     ResponseMessage,
-    StreamingResponseDataMessage,
-    StreamingResponseEndMessage,
-    StreamingResponseStartMessage,
+    StreamResponseDataMessage,
+    StreamResponseEndMessage,
+    StreamResponseStartMessage,
 )
 from ray.dashboard.subprocesses.module import (
     SubprocessModule,
@@ -38,7 +39,20 @@ class SubprocessModuleHandle:
     @dataclass
     class ActiveRequest:
         request: aiohttp.web.Request
-        response_fut: asyncio.Future[aiohttp.web.Response]
+        response_fut: Awaitable[aiohttp.web.Response]
+        # Only exists when the module decides this is a streaming response.
+        # To keep the data sent in order, we use future to synchronize. This assumes
+        # the Messages received from the Queue are in order.
+        # StreamResponseStartMessage expects this to be None. It creates the future,
+        # and in async, prepares a StreamResponse and resolves the future.
+        # StreamResponseDataMessage expects a future. It *replaces* the future with a
+        # new future by a coroutine that awaits the previous future, writes the data and
+        # resolves the new future.
+        # StreamResponseEndMessage expects a future. It resolves the future and sets
+        # the stream_response to None.
+        stream_response: Optional[
+            concurrent.futures.Future[aiohttp.web.StreamResponse]
+        ] = None
 
     def __init__(
         self,
@@ -82,7 +96,7 @@ class SubprocessModuleHandle:
 
     async def send_request(
         self, method_name: str, request: Optional[aiohttp.web.Request]
-    ) -> asyncio.Future[aiohttp.web.Response]:
+    ) -> Awaitable[aiohttp.web.Response]:
         """
         Sends a new request. Bookkeeps it in self.active_requests and sends the
         request to the module. Returns a Future that will be resolved with the response
@@ -114,6 +128,38 @@ class SubprocessModuleHandle:
         """
         return await self.send_request("_internal_health_check", request=None)
 
+    @staticmethod
+    async def handle_stream_response_start(
+        request: aiohttp.web.Request, first_data: bytes
+    ) -> aiohttp.web.StreamResponse:
+        # TODO: error handling
+        response = aiohttp.web.StreamResponse()
+        response.content_type = "text/plain"
+        await response.prepare(request)
+        await response.write(first_data)
+        return response
+
+    @staticmethod
+    async def handle_stream_response_data(
+        prev_fut: Awaitable[aiohttp.web.StreamResponse], data: bytes
+    ) -> aiohttp.web.StreamResponse:
+        # TODO: error handling
+        response = await asyncio.wrap_future(prev_fut)
+        await response.write(data)
+        return response
+
+    @staticmethod
+    async def handle_stream_response_end(
+        prev_fut: Awaitable[aiohttp.web.StreamResponse],
+        response_fut: Awaitable[aiohttp.web.Response],
+    ) -> None:
+        try:
+            response = await asyncio.wrap_future(prev_fut)
+            await response.write_eof()
+            response_fut.set_result(response)
+        except Exception as e:
+            response_fut.set_exception(e)
+
 
 def handle_parent_bound_message(
     loop: asyncio.AbstractEventLoop,
@@ -121,7 +167,6 @@ def handle_parent_bound_message(
     handle: SubprocessModuleHandle,
 ):
     """Handles a message from the parent bound queue."""
-    print(f"Handling parent bound message: {message}")
     if isinstance(message, ResponseMessage):
         response_fut = handle.active_requests[message.id].response_fut
         # set_result is not thread safe.
@@ -133,15 +178,36 @@ def handle_parent_bound_message(
             ),
         )
         del handle.active_requests[message.id]
-    elif isinstance(message, StreamingResponseStartMessage):
-        # TODO(ryw): Implement streaming response. Problem is we need to keep the state
-        # machine in order, so we need to "await" the start to resolve before we send
-        # the data, and then await the data to resolve before we send a second data.
-        raise NotImplementedError("Streaming response is not implemented yet")
-    elif isinstance(message, StreamingResponseDataMessage):
-        raise NotImplementedError("Streaming response is not implemented yet")
-    elif isinstance(message, StreamingResponseEndMessage):
-        raise NotImplementedError("Streaming response is not implemented yet")
+    elif isinstance(message, StreamResponseStartMessage):
+        active_request = handle.active_requests[message.id]
+        assert active_request.stream_response is None
+        active_request.stream_response = asyncio.run_coroutine_threadsafe(
+            SubprocessModuleHandle.handle_stream_response_start(
+                active_request.request, message.body
+            ),
+            loop,
+        )
+    elif isinstance(message, StreamResponseDataMessage):
+        active_request = handle.active_requests[message.id]
+        assert active_request.stream_response is not None
+        active_request.stream_response = asyncio.run_coroutine_threadsafe(
+            SubprocessModuleHandle.handle_stream_response_data(
+                active_request.stream_response, message.body
+            ),
+            loop,
+        )
+    elif isinstance(message, StreamResponseEndMessage):
+        active_request = handle.active_requests[message.id]
+        assert active_request.stream_response is not None
+        asyncio.run_coroutine_threadsafe(
+            SubprocessModuleHandle.handle_stream_response_end(
+                active_request.stream_response,
+                active_request.response_fut,
+            ),
+            loop,
+        )
+        del handle.active_requests[message.id]
+
     elif isinstance(message, ErrorMessage):
         # Propagate the error to aiohttp.
         response_fut = handle.active_requests[message.id].response_fut

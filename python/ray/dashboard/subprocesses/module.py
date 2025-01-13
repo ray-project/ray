@@ -62,7 +62,6 @@ class SubprocessModule(abc.ABC):
         message: ChildBoundMessage,
     ):
         """Handles a message from the child bound queue."""
-        print(f"Handling message: {message}")
         if isinstance(message, RequestMessage):
             # Assume module has a method_name method that has signature:
             #
@@ -105,11 +104,9 @@ class SubprocessModule(abc.ABC):
         trigger this.
         """
         try:
-            print(f"Internal health check: {message}")
             parent_bound_queue.put(
                 ResponseMessage(id=message.id, status=200, body=b"ok!")
             )
-            print(f"Sent response: {message}")
         except Exception as e:
             print(f"Error sending response: {e}")
 

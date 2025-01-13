@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from typing import List
 
 import aiohttp.web
 import pytest
@@ -10,7 +11,7 @@ from ray.dashboard.subprocesses.message import (
     RequestMessage,
     ResponseMessage,
 )
-from ray.dashboard.subprocesses.module import SubprocessModuleConfig
+from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleConfig
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 from ray.dashboard.subprocesses.tests.utils import TestModule
 
@@ -69,6 +70,23 @@ def test_module_side_handler():
     assert str(response.error) == "This is an error"
 
 
+async def start_http_server_app(modules: List[type(SubprocessModule)]):
+    loop = asyncio.get_event_loop()
+    handles = [
+        SubprocessModuleHandle(
+            loop, module, SubprocessModuleConfig(session_name="test", config={})
+        )
+        for module in modules
+    ]
+    for handle in handles:
+        handle.start_dispatch_parent_bound_messages_thread()
+        SubprocessRouteTable.bind(handle)
+
+    app = aiohttp.web.Application()
+    app.add_routes(routes=SubprocessRouteTable.bound_routes())
+    return app
+
+
 # @pytest.mark.asyncio is not compatible with aiohttp_client.
 async def test_http_server(aiohttp_client):
     """
@@ -77,17 +95,7 @@ async def test_http_server(aiohttp_client):
     2. add_routes
     3. run
     """
-    loop = asyncio.get_event_loop()
-    subprocess = SubprocessModuleHandle(
-        loop, TestModule, SubprocessModuleConfig(session_name="test", config={})
-    )
-    subprocess.start_dispatch_parent_bound_messages_thread()
-
-    SubprocessRouteTable.bind(subprocess)
-
-    app = aiohttp.web.Application()
-    app.add_routes(routes=SubprocessRouteTable.bound_routes())
-
+    app = await start_http_server_app([TestModule])
     client = await aiohttp_client(app)
 
     # Test HTTP
@@ -106,6 +114,16 @@ async def test_http_server(aiohttp_client):
     response = await client.put("/error_403")
     assert response.status == 403
     assert "you shall not pass" in await response.text()
+
+
+async def test_streamed_iota(aiohttp_client):
+    # TODO(ryw): also test streams that raise exceptions.
+    app = await start_http_server_app([TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.post("/streamed_iota", data=b"10")
+    assert response.status == 200
+    assert await response.text() == "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n"
 
 
 if __name__ == "__main__":

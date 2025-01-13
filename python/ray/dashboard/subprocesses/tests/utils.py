@@ -1,4 +1,5 @@
 import asyncio
+from typing import AsyncIterator
 
 import aiohttp
 
@@ -41,4 +42,12 @@ class TestModule(SubprocessModule):
     async def make_error_403(self, request_body: bytes) -> aiohttp.web.Response:
         raise aiohttp.web.HTTPForbidden(reason="you shall not pass")
 
-    # TODO(ryw): test streaming response.
+    @SubprocessRouteTable.post("/streamed_iota", streaming=True)
+    async def streamed_iota(self, request_body: bytes) -> AsyncIterator[bytes]:
+        """
+        Streams the numbers 0 to N.
+        """
+        n = int(request_body)
+        for i in range(n):
+            await asyncio.sleep(0.001)
+            yield f"{i}\n".encode()

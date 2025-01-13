@@ -12,9 +12,9 @@ from ray.dashboard.subprocesses.message import (
     ErrorMessage,
     RequestMessage,
     ResponseMessage,
-    StreamingResponseDataMessage,
-    StreamingResponseEndMessage,
-    StreamingResponseStartMessage,
+    StreamResponseDataMessage,
+    StreamResponseEndMessage,
+    StreamResponseStartMessage,
 )
 from ray.dashboard.subprocesses.module import SubprocessModule
 
@@ -107,14 +107,14 @@ class SubprocessRouteTable(BaseRouteTable):
                 async for chunk in async_iter:
                     if not start_message_sent:
                         parent_bound_queue.put(
-                            StreamingResponseStartMessage(id=message.id, body=chunk)
+                            StreamResponseStartMessage(id=message.id, body=chunk)
                         )
                         start_message_sent = True
                     else:
                         parent_bound_queue.put(
-                            StreamingResponseDataMessage(id=message.id, body=chunk)
+                            StreamResponseDataMessage(id=message.id, body=chunk)
                         )
-                parent_bound_queue.put(StreamingResponseEndMessage(id=message.id))
+                parent_bound_queue.put(StreamResponseEndMessage(id=message.id))
             except aiohttp.web.HTTPException as e:
                 # aiohttp.web.HTTPException cannot be pickled. Instead we send a
                 # ResponseMessage with status and body.

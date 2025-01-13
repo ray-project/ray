@@ -40,20 +40,20 @@ class ResponseMessage:
 
 
 @dataclass
-class StreamingResponseStartMessage:
+class StreamResponseStartMessage:
     # TODO(ryw): if needed, add header: Dict[str, str]
     id: str
     body: bytes
 
 
 @dataclass
-class StreamingResponseDataMessage:
+class StreamResponseDataMessage:
     id: str
     body: bytes
 
 
 @dataclass
-class StreamingResponseEndMessage:
+class StreamResponseEndMessage:
     id: str
 
 
@@ -67,8 +67,8 @@ class ErrorMessage:
 
 ParentBoundMessage = Union[
     ResponseMessage,
-    StreamingResponseStartMessage,
-    StreamingResponseDataMessage,
-    StreamingResponseEndMessage,
+    StreamResponseStartMessage,
+    StreamResponseDataMessage,
+    StreamResponseEndMessage,
     ErrorMessage,
 ]
