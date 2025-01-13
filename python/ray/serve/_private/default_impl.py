@@ -285,10 +285,49 @@ def create_replica_impl(**kwargs):  # noqa: F811
     return AnyscaleReplica(**kwargs)
 
 
-def create_init_handle_options(**kwargs):  # noqa: F811
-    from ray.anyscale.serve._private.handle_options import _AnyscaleInitHandleOptions
+def create_dynamic_handle_options(**kwargs):  # noqa: F811
+    from ray.anyscale.serve._private.handle_options import AnyscaleDynamicHandleOptions
 
-    return _AnyscaleInitHandleOptions.create(**kwargs)
+    return AnyscaleDynamicHandleOptions(**kwargs)
+
+
+def create_init_handle_options(**kwargs):  # noqa: F811
+    from ray.anyscale.serve._private.handle_options import AnyscaleInitHandleOptions
+
+    return AnyscaleInitHandleOptions.create(**kwargs)
+
+
+def get_request_metadata(init_options, handle_options):  # noqa: F811
+    from ray.anyscale.serve._private.handle_options import AnyscaleDynamicHandleOptions
+
+    assert isinstance(handle_options, AnyscaleDynamicHandleOptions)
+
+    _request_context = ray.serve.context._serve_request_context.get()
+
+    request_protocol = RequestProtocol.UNDEFINED
+    if init_options and init_options._source == DeploymentHandleSource.PROXY:
+        if _request_context.is_http_request:
+            request_protocol = RequestProtocol.HTTP
+        elif _request_context.grpc_context:
+            request_protocol = RequestProtocol.GRPC
+
+    return RequestMetadata(
+        request_id=_request_context.request_id
+        if _request_context.request_id
+        else generate_request_id(),
+        internal_request_id=_request_context._internal_request_id
+        if _request_context._internal_request_id
+        else generate_request_id(),
+        call_method=handle_options.method_name,
+        route=_request_context.route,
+        app_name=_request_context.app_name,
+        multiplexed_model_id=handle_options.multiplexed_model_id,
+        is_streaming=handle_options.stream,
+        _request_protocol=request_protocol,
+        grpc_context=_request_context.grpc_context,
+        _by_reference=handle_options._by_reference,
+        _on_separate_loop=init_options._run_router_in_separate_loop,
+    )
 
 
 def create_router(  # noqa: F811
@@ -297,11 +336,10 @@ def create_router(  # noqa: F811
     handle_options: Any,
 ):
     import asyncio
-    from functools import partial
 
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.anyscale.serve._private.replica_scheduler.replica_wrapper import (
-        gRPCReplicaWrapper,
+        AnyscaleRunningReplica,
     )
     from ray.anyscale.serve._private.router import CurrentLoopRouter
     from ray.anyscale.serve.utils import (
@@ -314,14 +352,6 @@ def create_router(  # noqa: F811
     node_id, availability_zone = _get_node_id_and_az()
     controller_handle = _get_global_client()._controller
     is_inside_ray_client_context = inside_ray_client_context()
-
-    def create_replica_wrapper_func(r):
-        if handle_options._by_reference:
-            return ActorReplicaWrapper(r)
-        else:
-            return gRPCReplicaWrapper(
-                r, on_separate_loop=handle_options._run_router_in_separate_loop
-            )
 
     replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
         deployment_id,
@@ -338,7 +368,7 @@ def create_router(  # noqa: F811
         use_replica_queue_len_cache=(
             not is_inside_ray_client_context and RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
         ),
-        create_replica_wrapper_func=create_replica_wrapper_func,
+        create_replica_wrapper_func=lambda r: AnyscaleRunningReplica(r),
     )
 
     if handle_options._run_router_in_separate_loop:
@@ -370,10 +400,7 @@ def create_router(  # noqa: F811
             not is_inside_ray_client_context
             and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
         ),
-        resolve_request_arg_func=partial(
-            resolve_deployment_resp_and_ray_objects,
-            by_reference=handle_options._by_reference,
-        ),
+        resolve_request_arg_func=resolve_deployment_resp_and_ray_objects,
     )
 
 
@@ -418,8 +445,10 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):  # noqa: F811
         handle._init(
             _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
             _source=DeploymentHandleSource.PROXY,
-            _by_reference=not ANYSCALE_RAY_SERVE_PROXY_USE_GRPC,
             _run_router_in_separate_loop=ANYSCALE_RAY_SERVE_GRPC_RUN_PROXY_ROUTER_SEPARATE_LOOP,  # noqa
         )
 
-    return handle.options(stream=not info.app_is_cross_language)
+    return handle.options(
+        stream=not info.app_is_cross_language,
+        _by_reference=not ANYSCALE_RAY_SERVE_PROXY_USE_GRPC,
+    )

@@ -7,6 +7,7 @@ import pytest
 from ray import ActorID, cloudpickle
 from ray._private.test_utils import wait_for_condition
 from ray.anyscale.serve._private.replica_result import gRPCReplicaResult
+from ray.serve._private.common import RequestMetadata
 from ray.serve.generated import serve_proprietary_pb2
 
 
@@ -88,10 +89,14 @@ class TestSameLoop:
 
         return gRPCReplicaResult(
             fake_call,
+            metadata=RequestMetadata(
+                request_id="",
+                internal_request_id="",
+                is_streaming=False,
+                _on_separate_loop=False,
+            ),
             actor_id=ActorID(b"2" * 16),
-            is_streaming=False,
             loop=asyncio.get_running_loop(),
-            on_separate_loop=False,
         )
 
     async def test_unary(self):
@@ -132,10 +137,14 @@ class TestSeparateLoop:
         fake_call = FakegRPCUnaryCall(data)
         replica_result = gRPCReplicaResult(
             fake_call,
+            metadata=RequestMetadata(
+                request_id="",
+                internal_request_id="",
+                is_streaming=False,
+                _on_separate_loop=True,
+            ),
             actor_id=ActorID(b"2" * 16),
-            is_streaming=False,
             loop=loop,
-            on_separate_loop=True,
         )
         return replica_result
 
@@ -155,10 +164,14 @@ class TestSeparateLoop:
             fake_call = FakegRPCStreamCall([(d, False) for d in data], event=event)
         return gRPCReplicaResult(
             fake_call,
+            metadata=RequestMetadata(
+                request_id="",
+                internal_request_id="",
+                is_streaming=is_streaming,
+                _on_separate_loop=on_separate_loop,
+            ),
             actor_id=ActorID(b"2" * 16),
-            is_streaming=is_streaming,
             loop=loop,
-            on_separate_loop=on_separate_loop,
         )
 
     def test_unary_sync(self, create_asyncio_event_loop_in_thread):

@@ -1,10 +1,9 @@
 import asyncio
 import pickle
-from typing import Optional, Tuple
+from typing import Tuple
 
 import grpc
 
-import ray
 from ray import cloudpickle
 from ray.anyscale.serve._private.constants import (
     ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
@@ -12,41 +11,23 @@ from ray.anyscale.serve._private.constants import (
 from ray.anyscale.serve._private.replica_result import gRPCReplicaResult
 from ray.exceptions import ActorUnavailableError
 from ray.serve._private.common import ReplicaQueueLengthInfo, RunningReplicaInfo
-from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler.common import PendingRequest
-from ray.serve._private.replica_scheduler.replica_wrapper import ReplicaWrapper
+from ray.serve._private.replica_scheduler.replica_wrapper import (
+    ActorReplicaWrapper,
+    ReplicaWrapper,
+    RunningReplica,
+)
 from ray.serve.generated import serve_proprietary_pb2, serve_proprietary_pb2_grpc
 
 
 class gRPCReplicaWrapper(ReplicaWrapper):
-    def __init__(self, replica_info: RunningReplicaInfo, *, on_separate_loop: bool):
-        super().__init__(replica_info)
-
-        assert (
-            not replica_info.is_cross_language
-        ), "gRPC requests not supported for Java."
-
-        self._channel = grpc.aio.insecure_channel(
-            f"{replica_info.node_ip}:{replica_info.port}",
-            options=[
-                (
-                    "grpc.max_receive_message_length",
-                    ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
-                )
-            ],
-        )
-        self._stub = serve_proprietary_pb2_grpc.ASGIServiceStub(self._channel)
+    def __init__(self, stub, actor_id):
+        self._stub = stub
+        self._actor_id = actor_id
         self._loop = asyncio.get_running_loop()
-        self._on_separate_loop = on_separate_loop
 
-    async def get_queue_len(self, *, deadline_s: float) -> int:
-        # We can continue to use Ray remote calls to probe a replica's queue length
-        obj_ref = self._actor_handle.get_num_ongoing_requests.remote()
-        try:
-            return await obj_ref
-        except asyncio.CancelledError:
-            ray.cancel(obj_ref)
-            raise
+    def send_request_java(self, pr: PendingRequest):
+        raise RuntimeError("gRPC requests not supported for Java.")
 
     def _send_request_python(
         self, pr: PendingRequest, *, with_rejection: bool
@@ -68,15 +49,6 @@ class gRPCReplicaWrapper(ReplicaWrapper):
         else:
             return self._stub.HandleRequest(asgi_request)
 
-    def send_request(self, pr: PendingRequest) -> ReplicaResult:
-        return gRPCReplicaResult(
-            self._send_request_python(pr, with_rejection=False),
-            actor_id=self._actor_handle._actor_id,
-            is_streaming=pr.metadata.is_streaming,
-            loop=self._loop,
-            on_separate_loop=self._on_separate_loop,
-        )
-
     async def _parse_initial_metadata(
         self, call: grpc.aio.Call
     ) -> ReplicaQueueLengthInfo:
@@ -97,24 +69,23 @@ class gRPCReplicaWrapper(ReplicaWrapper):
             num_ongoing_requests=int(num_ongoing_requests),
         )
 
-    async def send_request_with_rejection(
-        self, pr: PendingRequest
-    ) -> Tuple[Optional[ReplicaResult], ReplicaQueueLengthInfo]:
-        call = self._send_request_python(pr, with_rejection=True)
+    async def send_request_python(
+        self, pr: PendingRequest, with_rejection: bool
+    ) -> Tuple[grpc.aio.Call, ReplicaQueueLengthInfo]:
+        call = self._send_request_python(pr, with_rejection=with_rejection)
+
+        if not with_rejection:
+            return (
+                gRPCReplicaResult(call, pr.metadata, self._actor_id, loop=self._loop),
+                None,
+            )
+
         try:
             queue_len_info = await self._parse_initial_metadata(call)
-
-            if not queue_len_info.accepted:
-                return None, queue_len_info
-            else:
-                replica_result = gRPCReplicaResult(
-                    call,
-                    actor_id=self._actor_handle._actor_id,
-                    is_streaming=pr.metadata.is_streaming,
-                    loop=self._loop,
-                    on_separate_loop=self._on_separate_loop,
-                )
-                return replica_result, queue_len_info
+            return (
+                gRPCReplicaResult(call, pr.metadata, self._actor_id, loop=self._loop),
+                queue_len_info,
+            )
         except asyncio.CancelledError as e:
             # HTTP client disconnected or request was explicitly canceled.
             call.cancel()
@@ -132,7 +103,48 @@ class gRPCReplicaWrapper(ReplicaWrapper):
             if e.code() == grpc.StatusCode.UNAVAILABLE:
                 raise ActorUnavailableError(
                     "Actor is unavailable.",
-                    self._actor_handle._actor_id.binary(),
+                    self._actor_id.binary(),
                 )
 
             raise e from None
+
+
+class AnyscaleRunningReplica(RunningReplica):
+    def __init__(self, replica_info: RunningReplicaInfo):
+        super().__init__(replica_info)
+
+        # Lazily created
+        self._channel = None
+        self._stub = None
+
+        # Replica wrappers
+        self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
+        self._grpc_replica_wrapper = None
+
+    @property
+    def stub(self) -> bool:
+        if self._stub is None:
+            self._channel = grpc.aio.insecure_channel(
+                f"{self._replica_info.node_ip}:{self._replica_info.port}",
+                options=[
+                    (
+                        "grpc.max_receive_message_length",
+                        ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+                    )
+                ],
+            )
+            self._stub = serve_proprietary_pb2_grpc.ASGIServiceStub(self._channel)
+
+        return self._stub
+
+    def _get_replica_wrapper(self, pr: PendingRequest) -> ReplicaWrapper:
+        if self._grpc_replica_wrapper is None:
+            self._grpc_replica_wrapper = gRPCReplicaWrapper(
+                self.stub, self._actor_handle._actor_id
+            )
+
+        return (
+            self._actor_replica_wrapper
+            if pr.metadata._by_reference
+            else self._grpc_replica_wrapper
+        )

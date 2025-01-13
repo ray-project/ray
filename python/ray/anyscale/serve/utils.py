@@ -6,6 +6,7 @@ import ray
 from ray.anyscale.serve._private.tracing_utils import (
     get_trace_context as private_get_trace_context,
 )
+from ray.serve._private.common import RequestMetadata
 from ray.serve._private.utils import GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
 
 
@@ -31,7 +32,9 @@ def asyncio_grpc_exception_handler(loop, context):
     loop.default_exception_handler(context)
 
 
-async def resolve_deployment_resp_and_ray_objects(obj: Any, by_reference: bool):
+async def resolve_deployment_resp_and_ray_objects(
+    obj: Any, request_metadata: RequestMetadata
+):
     """Resolve `DeploymentResponse` objects to underlying object references.
 
     This enables composition without explicitly calling `_to_object_ref`.
@@ -41,14 +44,14 @@ async def resolve_deployment_resp_and_ray_objects(obj: Any, by_reference: bool):
     if isinstance(obj, DeploymentResponseGenerator):
         raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
     elif isinstance(obj, DeploymentResponse):
-        if by_reference:
+        if request_metadata._by_reference:
             # If sending requests by reference, launch async task to
             # convert DeploymentResponse to an object ref
             return asyncio.create_task(obj._to_object_ref())
         else:
             # Otherwise, resolve DeploymentResponse directly to result
             return asyncio.create_task(obj.__await__())
-    elif not by_reference and isinstance(obj, ray.ObjectRef):
+    elif not request_metadata._by_reference and isinstance(obj, ray.ObjectRef):
         # If the router is sending requests by value (i.e. using gRPC),
         # resolve all Ray objects to mirror Ray behavior
         return asyncio.wrap_future(obj.future())

@@ -19,9 +19,8 @@ def test_init_by_reference(
         return "hi"
 
     h = serve.run(f.bind())
-    h._init(_by_reference=by_reference)
 
-    resp = h.remote()
+    resp = h.options(_by_reference=by_reference).remote()
     assert resp.result() == "hi"
     assert isinstance(resp._replica_result, expected_result)
 

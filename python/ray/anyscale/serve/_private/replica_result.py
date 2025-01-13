@@ -12,6 +12,7 @@ import ray
 from ray import cloudpickle
 from ray.anyscale.serve.context import _add_in_flight_request, _remove_in_flight_request
 from ray.exceptions import ActorUnavailableError, RayTaskError
+from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.http_util import MessageQueue
 from ray.serve._private.replica_result import ReplicaResult
@@ -39,17 +40,16 @@ class gRPCReplicaResult(ReplicaResult):
     def __init__(
         self,
         call: grpc.aio.Call,
+        metadata: RequestMetadata,
         actor_id: ray.ActorID,
-        is_streaming: bool,
-        loop: asyncio.AbstractEventLoop,
-        on_separate_loop: bool,
+        loop: asyncio.AbstractEventLoop = None,
     ):
         self._call: grpc.aio.Call = call
         self._actor_id: ray.ActorID = actor_id
         self._result_queue: MessageQueue = MessageQueue()
         # This is the asyncio event loop that the gRPC Call object is attached to
-        self._grpc_call_loop = loop
-        self._is_streaming = is_streaming
+        self._grpc_call_loop = loop or asyncio._get_running_loop()
+        self._is_streaming = metadata.is_streaming
 
         self._gen = None
         self._fut = None
@@ -59,12 +59,12 @@ class gRPCReplicaResult(ReplicaResult):
         # a separate thread/event loop, and vice versa not using a queue
         # means the router is running on the main event loop, where the
         # DeploymentHandle lives.
-        self._calling_from_same_loop = not on_separate_loop
+        self._calling_from_same_loop = not metadata._on_separate_loop
         if hasattr(self._call, "__aiter__"):
             self._gen = self._call.__aiter__()
             # If the grpc call IS streaming, AND it was created on a
             # a separate loop, then use a queue to fetch the objects
-            self._use_queue = on_separate_loop
+            self._use_queue = metadata._on_separate_loop
         else:
             self._use_queue = False
 

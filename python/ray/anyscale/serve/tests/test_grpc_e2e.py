@@ -31,12 +31,12 @@ class Ingress:
         self._handle._init(**handle_options)
 
     async def __call__(self):
-        return await self._handle.remote()
+        return await self._handle.options(_by_reference=False).remote()
 
 
 @pytest.mark.parametrize(
     "ray_instance",
-    [{"RAY_SERVE_LOG_TO_STDERR": "0"}],
+    [{"RAY_SERVE_LOG_TO_STDERR": "1"}],
     indirect=True,
 )
 def test_no_spammy_errors_in_composed_app(ray_instance, tmp_dir):
@@ -49,14 +49,11 @@ def test_no_spammy_errors_in_composed_app(ray_instance, tmp_dir):
     h = serve.run(
         Ingress.options(logging_config=logging_config).bind(
             Downstream.options(logging_config=logging_config).bind(),
-            # Ensure handle that Ingress holds to Downstream is using gRPC
-            _by_reference=False,
         )
     )
-    h._init(_by_reference=False)
 
     for _ in range(10):
-        assert h.remote().result() == "hi"
+        assert h.options(_by_reference=False).remote().result() == "hi"
 
     for log_file in os.listdir(logs_dir):
         if not log_file.startswith("replica_default"):
@@ -126,19 +123,17 @@ def test_same_loop_handle(serve_instance):
     # setting _run_router_in_separate_loop=False should error.
     h = serve.run(Downstream.bind())
     with pytest.raises(RuntimeError, match="No event loop running"):
-        h._init(_by_reference=False, _run_router_in_separate_loop=False)
+        h._init(_run_router_in_separate_loop=False)
 
     # However setting _run_router_in_separate_loop=False in a replica
     # should work since there is a running asyncio event loop.
     h = serve.run(
         Ingress.bind(
             Downstream.bind(),
-            _by_reference=False,
             _run_router_in_separate_loop=False,
         )
     )
-    h._init(_by_reference=False)
-    assert h.remote().result() == "hi"
+    assert h.options(_by_reference=False).remote().result() == "hi"
 
 
 if __name__ == "__main__":

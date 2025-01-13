@@ -1,7 +1,6 @@
 import asyncio
 import pickle
 import sys
-from typing import Tuple
 
 import grpc
 import pytest
@@ -10,9 +9,8 @@ import ray
 from ray import cloudpickle
 from ray._private.test_utils import SignalActor
 from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorHandle
 from ray.anyscale.serve._private.replica_scheduler.replica_wrapper import (
-    gRPCReplicaWrapper,
+    AnyscaleRunningReplica,
 )
 from ray.serve._private.common import (
     DeploymentID,
@@ -119,44 +117,34 @@ class FakeReplicaActor:
 
 
 @pytest.fixture
-def setup_fake_replica(ray_instance, request) -> Tuple[gRPCReplicaWrapper, ActorHandle]:
+def setup_fake_replica(ray_instance, request) -> RunningReplicaInfo:
     actor_handle = FakeReplicaActor.remote()
     port = ray.get(actor_handle.start.remote())
 
-    async def create_replica_wrapper():
-        return gRPCReplicaWrapper(
-            RunningReplicaInfo(
-                ReplicaID(
-                    "fake_replica",
-                    deployment_id=DeploymentID(name="fake_deployment"),
-                ),
-                node_id=None,
-                # Just use local node IP
-                node_ip="127.0.0.1",
-                availability_zone=None,
-                actor_handle=actor_handle,
-                max_ongoing_requests=10,
-                is_cross_language=False,
-                # Get grpc port from FakeReplicaActor
-                port=port,
-            ),
-            **request.param,
-        )
-
-    return create_replica_wrapper, actor_handle
+    return RunningReplicaInfo(
+        ReplicaID(
+            "fake_replica",
+            deployment_id=DeploymentID(name="fake_deployment"),
+        ),
+        node_id=None,
+        # Just use local node IP
+        node_ip="127.0.0.1",
+        availability_zone=None,
+        actor_handle=actor_handle,
+        max_ongoing_requests=10,
+        is_cross_language=False,
+        # Get grpc port from FakeReplicaActor
+        port=port,
+    )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_streaming", [False, True])
-@pytest.mark.parametrize(
-    "setup_fake_replica",
-    [{"on_separate_loop": False}, {"on_separate_loop": True}],
-    indirect=True,
-)
-async def test_to_object_ref_not_supported(setup_fake_replica, is_streaming: bool):
-    create_replica_wrapper, _ = setup_fake_replica
-    replica = await create_replica_wrapper()
-
+@pytest.mark.parametrize("on_separate_loop", [True, False])
+async def test_to_object_ref_not_supported(
+    setup_fake_replica: RunningReplicaInfo, is_streaming: bool, on_separate_loop: bool
+):
+    replica = AnyscaleRunningReplica(setup_fake_replica)
     pr = PendingRequest(
         args=["Hello"],
         kwargs={"is_streaming": is_streaming},
@@ -164,10 +152,12 @@ async def test_to_object_ref_not_supported(setup_fake_replica, is_streaming: boo
             request_id="abc",
             internal_request_id="def",
             is_streaming=is_streaming,
+            _by_reference=False,  # use gRPC transport
+            _on_separate_loop=on_separate_loop,
         ),
     )
     err_msg = "Converting by-value DeploymentResponses to ObjectRefs is not supported."
-    replica_result = replica.send_request(pr)
+    replica_result, _ = await replica.send_request(pr, with_rejection=False)
     if is_streaming:
         with pytest.raises(RuntimeError, match=err_msg):
             replica_result.to_object_ref_gen()
@@ -181,15 +171,11 @@ async def test_to_object_ref_not_supported(setup_fake_replica, is_streaming: boo
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_streaming", [False, True])
-@pytest.mark.parametrize(
-    "setup_fake_replica",
-    [{"on_separate_loop": False}, {"on_separate_loop": True}],
-    indirect=True,
-)
-async def test_send_request(setup_fake_replica, is_streaming: bool):
-    create_replica_wrapper, _ = setup_fake_replica
-    replica = await create_replica_wrapper()
-
+@pytest.mark.parametrize("on_separate_loop", [True, False])
+async def test_send_request(
+    setup_fake_replica: RunningReplicaInfo, is_streaming: bool, on_separate_loop: bool
+):
+    replica = AnyscaleRunningReplica(setup_fake_replica)
     pr = PendingRequest(
         args=["Hello"],
         kwargs={"is_streaming": is_streaming},
@@ -197,9 +183,11 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
             request_id="abc",
             internal_request_id="def",
             is_streaming=is_streaming,
+            _by_reference=False,  # use gRPC transport
+            _on_separate_loop=on_separate_loop,
         ),
     )
-    replica_result = replica.send_request(pr)
+    replica_result, _ = await replica.send_request(pr, with_rejection=False)
     if is_streaming:
         for i in range(5):
             assert await replica_result.__anext__() == f"Hello-{i}"
@@ -210,16 +198,15 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("accepted", [False, True])
 @pytest.mark.parametrize("is_streaming", [False, True])
-@pytest.mark.parametrize(
-    "setup_fake_replica",
-    [{"on_separate_loop": False}, {"on_separate_loop": True}],
-    indirect=True,
-)
+@pytest.mark.parametrize("on_separate_loop", [True, False])
 async def test_send_request_with_rejection(
-    setup_fake_replica, accepted: bool, is_streaming: bool
+    setup_fake_replica: RunningReplicaInfo,
+    accepted: bool,
+    is_streaming: bool,
+    on_separate_loop: bool,
 ):
-    create_replica_wrapper, actor_handle = setup_fake_replica
-    replica = await create_replica_wrapper()
+    actor_handle = setup_fake_replica.actor_handle
+    replica = AnyscaleRunningReplica(setup_fake_replica)
     ray.get(
         actor_handle.set_replica_queue_length_info.remote(
             ReplicaQueueLengthInfo(accepted=accepted, num_ongoing_requests=10),
@@ -233,9 +220,11 @@ async def test_send_request_with_rejection(
             request_id="abc",
             internal_request_id="def",
             is_streaming=is_streaming,
+            _by_reference=False,  # use gRPC transport
+            _on_separate_loop=on_separate_loop,
         ),
     )
-    replica_result, info = await replica.send_request_with_rejection(pr)
+    replica_result, info = await replica.send_request(pr, with_rejection=True)
     assert info.accepted == accepted
     assert info.num_ongoing_requests == 10
     if not accepted:
@@ -248,19 +237,15 @@ async def test_send_request_with_rejection(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "setup_fake_replica",
-    [{"on_separate_loop": False}, {"on_separate_loop": True}],
-    indirect=True,
-)
-async def test_send_request_with_rejection_cancellation(setup_fake_replica):
+@pytest.mark.parametrize("on_separate_loop", [True, False])
+async def test_send_request_with_rejection_cancellation(
+    setup_fake_replica: RunningReplicaInfo, on_separate_loop: bool
+):
     """
     Verify that the downstream actor method call is cancelled if the call to send the
     request to the replica is cancelled.
     """
-    create_replica_wrapper, _ = setup_fake_replica
-    replica = await create_replica_wrapper()
-
+    replica = AnyscaleRunningReplica(setup_fake_replica)
     executing_signal_actor = SignalActor.remote()
     cancelled_signal_actor = SignalActor.remote()
 
@@ -273,13 +258,15 @@ async def test_send_request_with_rejection_cancellation(setup_fake_replica):
         metadata=RequestMetadata(
             request_id="abc",
             internal_request_id="def",
+            _by_reference=False,  # use gRPC transport
+            _on_separate_loop=on_separate_loop,
         ),
     )
 
     # Send request should hang because the downstream actor method call blocks
     # before sending the system message.
     send_request_task = get_or_create_event_loop().create_task(
-        replica.send_request_with_rejection(pr)
+        replica.send_request(pr, with_rejection=True)
     )
 
     # Check that the downstream actor method call has started.
