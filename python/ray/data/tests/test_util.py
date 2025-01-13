@@ -202,8 +202,9 @@ def test_iterate_with_retry():
         attempt.
         """
 
-        def __init__(self):
+        def __init__(self, fail_at_index=3):
             self._index = -1
+            self._fail_at_index = fail_at_index
 
         def __iter__(self):
             return self
@@ -211,17 +212,24 @@ def test_iterate_with_retry():
         def __next__(self):
             self._index += 1
 
-            if self._index >= 3:
+            if self._index >= 10:
                 raise StopIteration
 
             nonlocal has_raised_error
-            if self._index == 1 and not has_raised_error:
+            if self._index == self._fail_at_index and not has_raised_error:
                 has_raised_error = True
                 raise RuntimeError("Transient error")
 
             return self._index
 
-    assert list(iterate_with_retry(MockIterable, description="get item")) == [0, 1, 2]
+    expected = list(range(10))
+    assert list(iterate_with_retry(MockIterable, description="get item")) == expected
+
+    has_raised_error = False
+    assert (
+        list(iterate_with_retry(MockIterable, description="get item", max_attempts=2))
+        == expected
+    )
 
 
 def test_find_partition_index_single_column_ascending():
