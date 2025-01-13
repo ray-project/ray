@@ -3,6 +3,7 @@ from collections import defaultdict
 import copy
 import logging
 import numpy
+import platform
 from typing import (
     Any,
     Callable,
@@ -229,6 +230,9 @@ class Learner(Checkpointable):
         self.config = config.copy(copy_frozen=False)
         self._module_spec: Optional[MultiRLModuleSpec] = module_spec
         self._module_obj: Optional[MultiRLModule] = module
+
+        # Make node and device of this Learner available.
+        self._node = platform.node()
         self._device = None
 
         # Set a seed, if necessary.
@@ -285,15 +289,20 @@ class Learner(Checkpointable):
             return
 
         # Build learner connector pipeline used on this Learner worker.
-        # TODO (sven): Figure out which space to provide here. For now,
-        #  it doesn't matter, as the default connector piece doesn't use
-        #  this information anyway.
-        #  module_spec = self._module_spec.as_multi_rl_module_spec()
-        self._learner_connector = self.config.build_learner_connector(
-            input_observation_space=None,
-            input_action_space=None,
-            device=self._device,
-        )
+        self._learner_connector = None
+        # If the Algorithm uses aggregation actors to run episodes through the learner
+        # connector, its Learners don't need a connector pipelines and instead learn
+        # directly from pre-loaded batches already on the GPU.
+        if self.config.num_aggregator_actors_per_learner == 0:
+            # TODO (sven): Figure out which space to provide here. For now,
+            #  it doesn't matter, as the default connector piece doesn't use
+            #  this information anyway.
+            #  module_spec = self._module_spec.as_multi_rl_module_spec()
+            self._learner_connector = self.config.build_learner_connector(
+                input_observation_space=None,
+                input_action_space=None,
+                device=self._device,
+            )
 
         # Build the module to be trained by this learner.
         self._module = self._make_module()
@@ -316,6 +325,14 @@ class Learner(Checkpointable):
     def module(self) -> MultiRLModule:
         """The MultiRLModule that is being trained."""
         return self._module
+
+    @property
+    def node(self) -> Any:
+        return self._node
+
+    @property
+    def device(self) -> Any:
+        return self._device
 
     def register_optimizer(
         self,
@@ -1327,8 +1344,8 @@ class Learner(Checkpointable):
             episodes = ray.get(episodes)
             episodes = tree.flatten(episodes)
 
-        # Call the learner connector.
-        if episodes is not None:
+        # Call the learner connector on the given `episodes` (if we have one).
+        if episodes is not None and self._learner_connector is not None:
             # Call the learner connector pipeline.
             shared_data = {}
             batch = self._learner_connector(

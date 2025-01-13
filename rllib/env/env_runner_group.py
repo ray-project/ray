@@ -853,9 +853,9 @@ class EnvRunnerGroup:
 
     @DeveloperAPI
     def stop(self) -> None:
-        """Calls `stop` on all rollout workers (including the local one)."""
+        """Calls `stop` on all EnvRunners (including the local one)."""
         try:
-            # Make sure we stop all workers, include the ones that were just
+            # Make sure we stop all EnvRunners, include the ones that were just
             # restarted / recovered or that are tagged unhealthy (at least, we should
             # try).
             self.foreach_env_runner(
