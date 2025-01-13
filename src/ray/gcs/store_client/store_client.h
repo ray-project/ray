@@ -101,10 +101,11 @@ class StoreClient {
                                   const std::vector<std::string> &keys,
                                   Postable<void(int64_t)> callback) = 0;
 
-  /// Get next job id by `INCR` "JobCounter" key synchronously.
+  /// Get next job id by `INCR` "JobCounter" key asynchronously.
   ///
-  /// \return Next job id in integer representation.
-  virtual int GetNextJobID() = 0;
+  /// \param callback returns the next job id in integer representation.
+  /// \return Status
+  virtual Status AsyncGetNextJobID(Postable<void(int)> callback) = 0;
 
   /// Get all the keys match the prefix from the given table asynchronously.
   ///
