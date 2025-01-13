@@ -3,7 +3,10 @@ load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
-COPTS_WITHOUT_LOG = select({
+COPTS_WITHOUT_LOG = [
+    "-Wunused-result",
+    "-Wconversion-null",
+] + select({
     "//:opt": ["-DBAZEL_OPT"],
     "//conditions:default": [],
 }) + select({
@@ -18,10 +21,7 @@ COPTS_WITHOUT_LOG = select({
         "-Wno-microsoft-unqualified-friend",  # This shouldn't normally be enabled, but otherwise we get: google/protobuf/map_field.h: warning: unqualified friend declaration referring to type outside of the nearest enclosing namespace is a Microsoft extension; add a nested name specifier (for: friend class DynamicMessage)
     ],
     "//conditions:default": [],
-}) + [
-    "-Wunused-result",
-    "-Wconversion-null",
-]
+})
 
 COPTS = COPTS_WITHOUT_LOG
 
