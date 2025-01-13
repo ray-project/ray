@@ -2051,8 +2051,7 @@ class CompiledDAG:
     ) -> List[Any]:
         """Repeatedly execute this DAG until the given execution index,
         and buffer all results up to that index. If the DAG has already
-        been executed up to the given index, just return the result
-        corresponding to the given index and channel.
+        been executed up to the given index, it will do nothing.
 
         Args:
             execution_index: The execution index to execute until.
@@ -2060,14 +2059,10 @@ class CompiledDAG:
                 Channel indexing is consistent with the order of
                 self.dag_output_channels. None means wrapping results from all output
                 channels into a single list.
-            timeout: The maximum time in seconds to wait for the result.
+            timeout: The maximum time in seconds to wait for the execution.
                 None means using default timeout (DAGContext.get_timeout),
                 0 means immediate timeout (immediate success or timeout without
                 blocking), -1 means infinite timeout (block indefinitely).
-
-        Returns:
-            The execution result corresponding to the given execution index and
-            channel index.
 
         TODO(rui): catch the case that user holds onto the CompiledDAGRefs
         """

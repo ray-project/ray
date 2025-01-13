@@ -2649,11 +2649,12 @@ def test_destruction_out_of_order():
     with InputNode() as inp:
         dag = a.inc.bind(inp)
     compiled_dag = dag.experimental_compile()
-    # the second ref will be immediately destructed
+    # the second ref will be destructed
     # and we want to assure that the result at the
     # first execution index is still intact
     ref = compiled_dag.execute(1)
-    compiled_dag.execute(1)
+    ref2 = compiled_dag.execute(1)
+    del ref2
     time.sleep(0.1)
     assert ray.get(ref) == 1
 
