@@ -17,16 +17,29 @@ logger = logging.getLogger(__name__)
 class BaseRouteTable(abc.ABC):
     """A base class to bind http route to a target instance. Subclass should implement
     the _register_route method. It should define how the handler interacts with
-    _BindInfo.instance."""
+    _BindInfo.instance.
 
-    _bind_map = collections.defaultdict(dict)
-    _routes = aiohttp.web.RouteTableDef()
+    Subclasses must declare their own _bind_map and _routes properties to avoid
+    conflicts.
+    """
 
     class _BindInfo:
         def __init__(self, filename, lineno, instance):
             self.filename = filename
             self.lineno = lineno
             self.instance = instance
+
+    @classmethod
+    @property
+    @abc.abstractmethod
+    def _bind_map(cls):
+        pass
+
+    @classmethod
+    @property
+    @abc.abstractmethod
+    def _routes(cls):
+        pass
 
     @classmethod
     @abc.abstractmethod
@@ -100,6 +113,9 @@ def method_route_table_factory():
         """A helper class to bind http route to class method. Each _BindInfo.instance
         is a class instance, and for an inbound request, we invoke the async handler
         method."""
+
+        _bind_map = collections.defaultdict(dict)
+        _routes = aiohttp.web.RouteTableDef()
 
         @classmethod
         def _register_route(cls, method, path, **kwargs):

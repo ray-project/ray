@@ -1,3 +1,4 @@
+import collections
 import functools
 import inspect
 import multiprocessing
@@ -71,6 +72,9 @@ class SubprocessRouteTable(BaseRouteTable):
         resolves the Future with the response.
     7. aiohttp receives the response and sends it back to the client.
     """
+
+    _bind_map = collections.defaultdict(dict)
+    _routes = aiohttp.web.RouteTableDef()
 
     @staticmethod
     def _decorated_streaming_handler(
