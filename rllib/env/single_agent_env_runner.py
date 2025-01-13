@@ -307,6 +307,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=episodes,
                     explore=explore,
                     shared_data=shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -366,6 +367,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     explore=explore,
                     rl_module=self.module,
                     shared_data=shared_data,
+                    metrics=self.metrics,
                 )
 
             for env_index in range(self.num_envs):
@@ -728,6 +730,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 episodes=episodes,
                 explore=explore,
                 shared_data=shared_data,
+                metrics=self.metrics,
             )
 
         # Call `on_episode_start()` callbacks (always after reset).

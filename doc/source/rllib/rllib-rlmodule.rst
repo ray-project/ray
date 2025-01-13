@@ -43,7 +43,7 @@ In the new API stack, activated by default, RLlib exclusively uses RLModules.
 If you're working with a legacy config or want to migrate ``ModelV2`` or ``Policy`` classes to the
 new API stack, see the :ref:`new API stack migration guide <rllib-new-api-stack-migration-guide>` for more information.
 
-If configured your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` to the old API stack, use the
+If you configured the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` to the old API stack, use the
 :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.api_stack` method to switch:
 
 .. testcode::
@@ -502,7 +502,7 @@ If you don't return the ``actions`` key from your forward method:
     RLlib always makes the generated distributions from returned key ``action_dist_inputs`` deterministic first through
     the :py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` utility before a possible action sample step.
     For example, RLlib reduces the sampling from a Categorical distribution to selecting the ``argmax``
-    actions from the distribution's logits or probabilities.
+    actions from the distribution logits or probabilities.
     If you return the "actions" key, RLlib skips that sampling step.
 
 
@@ -699,10 +699,10 @@ and outputs embedding vectors that then serve as input for the two policy heads 
             :end-before: __sphinx_doc_encoder_end__
 
 
-To plug in the custom MultiRLModule, :ref:`from the first tab <rllib-rlmodule-guide-implementing-custom-multi-rl-modules>`,
+To plug in the :ref:`custom MultiRLModule <rllib-rlmodule-guide-implementing-custom-multi-rl-modules>` from the first tab,
 into your algorithm's config, create a :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec`
 with the new class and its constructor settings. Also, create one :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec`
-for each agent and the shared encoder RLModule, because RLlib requires their observation- and action spaces and their
+for each agent and the shared encoder RLModule, because RLlib requires their observation and action spaces and their
 model hyper-parameters:
 
 .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
@@ -781,7 +781,7 @@ Loading an RLModule checkpoint into a running Algorithm
     from ray.rllib.algorithms.ppo import PPOConfig
 
     # Create a new Algorithm (with the changed module config: 32 units instead of the
-    # default 256; otherwise loading the state of ``module`` will fail due to a shape
+    # default 256; otherwise loading the state of ``module`` fails due to a shape
     # mismatch).
     config = (
         PPOConfig()
@@ -791,8 +791,8 @@ Loading an RLModule checkpoint into a running Algorithm
     ppo = config.build()
 
 
-Now you can load the saved RLModule state (from the preceding ``module.save_to_path()``) directly
-into the running Algorithm's RLModules. Note that all RLModules within the algorithm get updated, the ones
+Now you can load the saved RLModule state from the preceding ``module.save_to_path()``, directly
+into the running Algorithm RLModules. Note that all RLModules within the algorithm get updated, the ones
 in the Learner workers and the ones in the EnvRunners.
 
 .. testcode::
