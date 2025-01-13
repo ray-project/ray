@@ -409,7 +409,8 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id_str,
     filter.set_node_id(node_id.Binary());
     {
       absl::ReaderMutexLock lock(&mutex_);
-      auto timeout_ms = std::max(end_time_point - current_time_ms(), 0LL);
+      auto timeout_ms =
+          std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
       node_infos_status =
           gcs_client_->Nodes().GetAllNoCacheWithFilter(timeout_ms, std::move(filter));
     }
@@ -447,7 +448,8 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
   while (true) {
     {
       absl::ReaderMutexLock lock(&mutex_);
-      auto timeout_ms = std::max(end_time_point - current_time_ms(), 0LL);
+      auto timeout_ms =
+          std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
       node_infos_status =
           gcs_client_->Nodes().GetAllNoCacheWithFilter(timeout_ms, filter);
       RAY_RETURN_NOT_OK(node_infos_status.status());
@@ -475,7 +477,8 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       filter.set_node_ip_address("127.0.0.1");
       {
         absl::ReaderMutexLock lock(&mutex_);
-        auto timeout_ms = std::max(end_time_point - current_time_ms(), 0LL);
+        auto timeout_ms =
+            std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
         node_infos_status =
             gcs_client_->Nodes().GetAllNoCacheWithFilter(timeout_ms, filter);
         RAY_RETURN_NOT_OK(node_infos_status.status());
