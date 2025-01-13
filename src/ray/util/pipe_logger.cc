@@ -241,7 +241,7 @@ RotationFileHandle CreatePipeAndStreamOutput(const std::string &fname,
 
 #if defined(__APPLE__) || defined(__linux__)
   RotationFileHandle stream_token{write_fd, std::move(termination_caller)};
-#else  // __linux__
+#elif defined(_WIN32)
   RotationFileHandle stream_token{write_handle, std::move(termination_caller)};
 #endif
 

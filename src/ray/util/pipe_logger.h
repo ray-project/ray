@@ -40,6 +40,9 @@ struct LogRotationOption {
 
 class RotationFileHandle {
  public:
+  RotationFileHandle(MEMFD_TYPE_NON_UNIQUE write_handle,
+                     std::function<void()> termination_caller)
+      : write_handle_(write_handle), termination_caller_(std::move(termination_caller)) {}
   RotationFileHandle(const RotationFileHandle &) = delete;
   RotationFileHandle &operator=(const RotationFileHandle &) = delete;
 
@@ -48,9 +51,6 @@ class RotationFileHandle {
   // TODO(hjiang): I will followup with another PR to make a `FD` class, which is not
   // copiable to avoid manual `dup`.
 #if defined(__APPLE__) || defined(__linux__)
-  RotationFileHandle(MEMFD_TYPE_NON_UNIQUE write_handle,
-                     std::function<void()> termination_caller)
-      : write_handle_(write_handle), termination_caller_(std::move(termination_caller)) {}
   RotationFileHandle(RotationFileHandle &&rhs) {
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = -1;
