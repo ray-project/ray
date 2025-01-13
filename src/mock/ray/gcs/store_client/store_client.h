@@ -54,7 +54,7 @@ class MockStoreClient : public StoreClient {
                const std::vector<std::string> &keys,
                Postable<void(int64_t)> callback),
               (override));
-  MOCK_METHOD(int, GetNextJobID, (), (override));
+  MOCK_METHOD(Status, AsyncGetNextJobID, (Postable<void(int)> callback), (override));
   MOCK_METHOD(Status,
               AsyncGetKeys,
               (const std::string &table_name,

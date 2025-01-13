@@ -102,7 +102,9 @@ Status ObservableStoreClient::AsyncBatchDelete(const std::string &table_name,
       }));
 }
 
-int ObservableStoreClient::GetNextJobID() { return delegate_->GetNextJobID(); }
+Status ObservableStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
+  return delegate_->AsyncGetNextJobID(std::move(callback));
+}
 
 Status ObservableStoreClient::AsyncGetKeys(
     const std::string &table_name,

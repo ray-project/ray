@@ -110,8 +110,10 @@ Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
   return Status::OK();
 }
 
-int InMemoryStoreClient::GetNextJobID() {
-  return job_id_.fetch_add(1, std::memory_order_acq_rel);
+Status InMemoryStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
+  auto job_id = job_id_.fetch_add(1, std::memory_order_acq_rel);
+  std::move(callback).Post("GcsInMemoryStore.GetNextJobID", job_id);
+  return Status::OK();
 }
 
 InMemoryStoreClient::InMemoryTable &InMemoryStoreClient::GetOrCreateMutableTable(
