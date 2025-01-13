@@ -1,4 +1,4 @@
-text: Below are examples for using Ray Data for batch inference workloads with a variety of frameworks and use cases.
+text: Below are examples for using Ray Data for batch inference workloads or large-scale data processing with a variety of frameworks and use cases.
 columns_to_show:
   - frameworks
 groupby: skill_level
@@ -29,3 +29,11 @@ examples:
     frameworks:
       - xgboost
     link: ../train/examples/xgboost/xgboost_example
+  - title: Distributed Data Processing with Data-Juicer
+    skill_level: beginner
+    frameworks:
+      - Data-Juicer
+    use_cases:
+      - large language models
+      - generative ai
+    link: examples/data_juicer_distributed_data_processing

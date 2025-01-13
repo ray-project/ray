@@ -491,6 +491,7 @@ class Framework(ExampleEnum):
     HOROVOD = "Horovod"
     XGBOOST = "XGBoost"
     HUGGINGFACE = "Hugging Face"
+    DATAJUICER = "Data-Juicer"
     ANY = "Any"
 
     @classmethod
