@@ -138,11 +138,6 @@ class Session : public std::enable_shared_from_this<Session> {
   }
 
   void on_resolve(beast::error_code ec, tcp::resolver::results_type results) {
-    if (ec) {
-      Failed(ray::Status::NotFound("on_resolve " + ec.message()));
-      return;
-    }
-
     stream_.expires_never();
     // Make the connection on the IP address we get from a lookup
     stream_.async_connect(
@@ -150,11 +145,6 @@ class Session : public std::enable_shared_from_this<Session> {
   }
 
   void on_connect(beast::error_code ec, tcp::resolver::results_type::endpoint_type) {
-    if (ec) {
-      Failed(ray::Status::NotFound(absl::StrCat("on_connect ", ec.message())));
-      return;
-    }
-
     stream_.expires_never();
     // Send the HTTP request to the remote host
     http::async_write(
@@ -162,11 +152,6 @@ class Session : public std::enable_shared_from_this<Session> {
   }
 
   void on_write(beast::error_code ec, std::size_t bytes_transferred) {
-    if (ec) {
-      Failed(ray::Status::Disconnected(absl::StrCat(
-          "on_write ", ec.message(), ", bytes_transferred ", bytes_transferred)));
-      return;
-    }
     stream_.expires_never();
     // Receive the HTTP response
     http::async_read(stream_,
@@ -176,27 +161,7 @@ class Session : public std::enable_shared_from_this<Session> {
   }
 
   void on_read(beast::error_code ec, std::size_t bytes_transferred) {
-    if (ec) {
-      Failed(ray::Status::Disconnected(absl::StrCat(
-          "on_read ", ec.message(), ", bytes_transferred ", bytes_transferred)));
-      return;
-    }
-
-    if (http::to_status_class(res_.result()) == http::status_class::successful) {
-      Succeeded(std::move(res_).body());
-    } else {
-      Failed(ray::Status::IOError(absl::StrCat("HTTP request returns non-ok status code ",
-                                               res_.result_int(),
-                                               ", body",
-                                               std::move(res_).body())));
-    }
-
-    // Gracefully close the socket
-    stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
-    // not_connected happens sometimes so don't bother reporting it.
-    if (ec && ec != beast::errc::not_connected) {
-      RAY_LOG(INFO) << "on_read error after response body received: " << ec.message();
-    }
+    Succeeded(std::move(res_).body());
   }
 
   tcp::resolver resolver_;
