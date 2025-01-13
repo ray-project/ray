@@ -1,9 +1,9 @@
 import abc
 from collections import defaultdict
 import copy
-from functools import partial
 import logging
 import numpy
+import platform
 from typing import (
     Any,
     Callable,
@@ -60,7 +60,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED_LIFETIME,
-    LEARNER_CONNECTOR_TIMER,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
     WEIGHTS_SEQ_NO,
 )
@@ -231,6 +230,9 @@ class Learner(Checkpointable):
         self.config = config.copy(copy_frozen=False)
         self._module_spec: Optional[MultiRLModuleSpec] = module_spec
         self._module_obj: Optional[MultiRLModule] = module
+
+        # Make node and device of this Learner available.
+        self._node = platform.node()
         self._device = None
 
         # Set a seed, if necessary.
@@ -287,15 +289,20 @@ class Learner(Checkpointable):
             return
 
         # Build learner connector pipeline used on this Learner worker.
-        # TODO (sven): Figure out which space to provide here. For now,
-        #  it doesn't matter, as the default connector piece doesn't use
-        #  this information anyway.
-        #  module_spec = self._module_spec.as_multi_rl_module_spec()
-        self._learner_connector = self.config.build_learner_connector(
-            input_observation_space=None,
-            input_action_space=None,
-            device=self._device,
-        )
+        self._learner_connector = None
+        # If the Algorithm uses aggregation actors to run episodes through the learner
+        # connector, its Learners don't need a connector pipelines and instead learn
+        # directly from pre-loaded batches already on the GPU.
+        if self.config.num_aggregator_actors_per_learner == 0:
+            # TODO (sven): Figure out which space to provide here. For now,
+            #  it doesn't matter, as the default connector piece doesn't use
+            #  this information anyway.
+            #  module_spec = self._module_spec.as_multi_rl_module_spec()
+            self._learner_connector = self.config.build_learner_connector(
+                input_observation_space=None,
+                input_action_space=None,
+                device=self._device,
+            )
 
         # Build the module to be trained by this learner.
         self._module = self._make_module()
@@ -303,6 +310,9 @@ class Learner(Checkpointable):
         # Configure, construct, and register all optimizers needed to train
         # `self.module`.
         self.configure_optimizers()
+
+        # Log the number of trainable/non-trainable parameters.
+        self._log_trainable_parameters()
 
         self._is_built = True
 
@@ -315,6 +325,14 @@ class Learner(Checkpointable):
     def module(self) -> MultiRLModule:
         """The MultiRLModule that is being trained."""
         return self._module
+
+    @property
+    def node(self) -> Any:
+        return self._node
+
+    @property
+    def device(self) -> Any:
+        return self._device
 
     def register_optimizer(
         self,
@@ -1326,30 +1344,30 @@ class Learner(Checkpointable):
             episodes = ray.get(episodes)
             episodes = tree.flatten(episodes)
 
-        # Call the learner connector.
-        if episodes is not None:
+        # Call the learner connector on the given `episodes` (if we have one).
+        if episodes is not None and self._learner_connector is not None:
             # Call the learner connector pipeline.
-            with self.metrics.log_time((ALL_MODULES, LEARNER_CONNECTOR_TIMER)):
-                shared_data = {}
-                batch = self._learner_connector(
-                    rl_module=self.module,
-                    batch=batch if batch is not None else {},
-                    episodes=episodes,
-                    shared_data=shared_data,
-                )
-                # Convert to a batch.
-                # TODO (sven): Try to not require MultiAgentBatch anymore.
-                batch = MultiAgentBatch(
-                    {
-                        module_id: (
-                            SampleBatch(module_data, _zero_padded=True)
-                            if shared_data.get(f"_zero_padded_for_mid={module_id}")
-                            else SampleBatch(module_data)
-                        )
-                        for module_id, module_data in batch.items()
-                    },
-                    env_steps=sum(len(e) for e in episodes),
-                )
+            shared_data = {}
+            batch = self._learner_connector(
+                rl_module=self.module,
+                batch=batch if batch is not None else {},
+                episodes=episodes,
+                shared_data=shared_data,
+                metrics=self.metrics,
+            )
+            # Convert to a batch.
+            # TODO (sven): Try to not require MultiAgentBatch anymore.
+            batch = MultiAgentBatch(
+                {
+                    module_id: (
+                        SampleBatch(module_data, _zero_padded=True)
+                        if shared_data.get(f"_zero_padded_for_mid={module_id}")
+                        else SampleBatch(module_data)
+                    )
+                    for module_id, module_data in batch.items()
+                },
+                env_steps=sum(len(e) for e in episodes),
+            )
         # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
         elif isinstance(batch, SampleBatch):
             assert len(self.module) == 1
@@ -1377,12 +1395,7 @@ class Learner(Checkpointable):
         self._log_steps_trained_metrics(batch)
 
         if minibatch_size:
-            if self._learner_connector is not None:
-                batch_iter = partial(
-                    MiniBatchCyclicIterator, _uses_new_env_runners=True
-                )
-            else:
-                batch_iter = MiniBatchCyclicIterator
+            batch_iter = MiniBatchCyclicIterator
         elif num_epochs > 1:
             # `minibatch_size` was not set but `num_epochs` > 1.
             # Under the old training stack, users could do multiple epochs
@@ -1595,6 +1608,15 @@ class Learner(Checkpointable):
                 f"`params` ({params}) must be a list of framework-specific parameters "
                 "(variables)!"
             )
+
+    def _log_trainable_parameters(self) -> None:
+        """Logs the number of trainable and non-trainable parameters to self.metrics.
+
+        Use MetricsLogger (self.metrics) tuple-keys:
+        (ALL_MODULES, NUM_TRAINABLE_PARAMETERS) and
+        (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS) with EMA.
+        """
+        pass
 
     def _check_is_built(self, error: bool = True) -> bool:
         if self.module is None:

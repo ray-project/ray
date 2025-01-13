@@ -51,10 +51,10 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
 
     def __init__(
         self,
-        dashboard_head,
+        config: dashboard_utils.DashboardHeadModuleConfig,
     ):
         """Initialize for handling RESTful requests from State API Client"""
-        dashboard_utils.DashboardHeadModule.__init__(self, dashboard_head)
+        dashboard_utils.DashboardHeadModule.__init__(self, config)
         # We don't allow users to configure too high a rate limit
         RateLimitedModule.__init__(
             self,
@@ -189,14 +189,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS, "1")
         return await handle_list_api(self._state_api.list_runtime_envs, req)
-
-    @routes.get("/api/v0/cluster_events")
-    @RateLimitedModule.enforce_max_concurrent_calls
-    async def list_cluster_events(
-        self, req: aiohttp.web.Request
-    ) -> aiohttp.web.Response:
-        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
-        return await handle_list_api(self._state_api.list_cluster_events, req)
 
     @routes.get("/api/v0/logs")
     @RateLimitedModule.enforce_max_concurrent_calls
@@ -380,9 +372,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         )
 
     async def run(self, server):
-        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
+        gcs_channel = self.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
-            gcs_channel, self._dashboard_head.gcs_aio_client
+            gcs_channel, self.gcs_aio_client
         )
         self._state_api = StateAPIManager(
             self._state_api_data_source_client,

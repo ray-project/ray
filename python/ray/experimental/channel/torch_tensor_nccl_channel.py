@@ -158,11 +158,17 @@ class TorchTensorNcclChannel(ChannelInterface):
         )
 
     def ensure_registered_as_writer(self):
+        if self._local_channel is not None:
+            self._local_channel.ensure_registered_as_writer()
         self._gpu_data_channel.ensure_registered_as_writer()
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self):
+        reader = utils.get_self_actor()
+        if reader == self._writer:
+            self._local_channel.ensure_registered_as_reader()
+            return
         self._gpu_data_channel.ensure_registered_as_reader()
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.ensure_registered_as_reader()
@@ -221,14 +227,19 @@ class TorchTensorNcclChannel(ChannelInterface):
         (3) on the first `write` call. The reader is expected to reuse the sent
         data for subsequent messages.
         """
+        self.ensure_registered_as_writer()
+
         if self._local_channel is not None:
             self._local_channel.write(value)
 
         if isinstance(value, ray.exceptions.RayTaskError):
             if self._typ.static_shape or self._typ.direct_return:
                 # Raise a fatal error to teardown the DAG.
+                # This error will also be caught from `CompiledDAGRef.get()`
+                # and raised to the user
                 # TODO(swang): Write exceptions to the tensor metadata or
-                # non-tensor data channel if it is available.
+                # non-tensor data channel if it is available to make these
+                # exceptions recoverable.
                 raise value
 
         if self._cpu_data_channel is None:
@@ -237,12 +248,12 @@ class TorchTensorNcclChannel(ChannelInterface):
             # directly without trying to serialize it first.
             import torch
 
+            # These ValueErrors will also be caught from `CompiledDAGRef.get()`
+            # and raised to the user
             if not isinstance(value, torch.Tensor):
-                # TODO(swang): These errors are currently fatal for the DAG
-                # because there is no way for the receiver to receive the
-                # exception. This could be improved by sending the exception
-                # through the gpu_data_channel's CPU-based metadata channel,
-                # if one exists.
+                # TODO(swang): These errors are currently fatal for the DAG.
+                # This could be improved by sending the exception through the
+                # gpu_data_channel's CPU-based metadata channel, if one exists.
                 raise ValueError(
                     "Task annotated with _direct_return=True must "
                     "return a CUDA torch.Tensor, instead found value "
@@ -304,6 +315,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         If _direct_return=True was specified, then we skip step (2) and (3) and
         directly return the data received in (1).
         """
+        self.ensure_registered_as_reader()
+
         # If the reader is the same actor as the writer, then we can use the
         # local channel to read the data.
         reader = utils.get_self_actor()
@@ -532,6 +545,8 @@ class _TorchTensorNcclChannel(ChannelInterface):
         first message. The reader is expected to reuse the sent metadata for
         subsequent messages.
         """
+        self.ensure_registered_as_writer()
+
         import torch
 
         for tensor in tensors:
@@ -594,6 +609,8 @@ class _TorchTensorNcclChannel(ChannelInterface):
         tensor metadata. The GPU recv may exceed the timeout without throwing
         an error.
         """
+        self.ensure_registered_as_reader()
+
         meta_list: List[_TorchTensorMetadata] = self._get_recv_tensors_metadata(timeout)
 
         bufs: List["torch.Tensor"] = []
