@@ -158,11 +158,17 @@ class TorchTensorNcclChannel(ChannelInterface):
         )
 
     def ensure_registered_as_writer(self):
+        if self._local_channel is not None:
+            self._local_channel.ensure_registered_as_writer()
         self._gpu_data_channel.ensure_registered_as_writer()
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self):
+        reader = utils.get_self_actor()
+        if reader == self._writer:
+            self._local_channel.ensure_registered_as_reader()
+            return
         self._gpu_data_channel.ensure_registered_as_reader()
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.ensure_registered_as_reader()
@@ -221,6 +227,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         (3) on the first `write` call. The reader is expected to reuse the sent
         data for subsequent messages.
         """
+        self.ensure_registered_as_writer()
+
         if self._local_channel is not None:
             self._local_channel.write(value)
 
@@ -307,6 +315,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         If _direct_return=True was specified, then we skip step (2) and (3) and
         directly return the data received in (1).
         """
+        self.ensure_registered_as_reader()
+
         # If the reader is the same actor as the writer, then we can use the
         # local channel to read the data.
         reader = utils.get_self_actor()
@@ -535,6 +545,8 @@ class _TorchTensorNcclChannel(ChannelInterface):
         first message. The reader is expected to reuse the sent metadata for
         subsequent messages.
         """
+        self.ensure_registered_as_writer()
+
         import torch
 
         for tensor in tensors:
@@ -597,6 +609,8 @@ class _TorchTensorNcclChannel(ChannelInterface):
         tensor metadata. The GPU recv may exceed the timeout without throwing
         an error.
         """
+        self.ensure_registered_as_reader()
+
         meta_list: List[_TorchTensorMetadata] = self._get_recv_tensors_metadata(timeout)
 
         bufs: List["torch.Tensor"] = []
