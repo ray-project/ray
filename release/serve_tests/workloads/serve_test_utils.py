@@ -281,7 +281,8 @@ def run_wrk_on_all_nodes(
     all_metrics = defaultdict(list)
     all_wrk_stdout = []
     rst_ray_refs = []
-    for node in ray.nodes():
+    nodes = ray.nodes()
+    for node in nodes:
         if exclude_head and node["Resources"].get("node:__internal_head__") == 1.0:
             continue
 
@@ -303,6 +304,9 @@ def run_wrk_on_all_nodes(
         return
 
     for i, decoded_output in enumerate(ray.get(rst_ray_refs)):
+        if not decoded_output:
+            print(f"No output {nodes[i]}")
+            continue
         if debug:
             print(f"decoded_output {i}: {decoded_output}")
         all_wrk_stdout.append(decoded_output)
