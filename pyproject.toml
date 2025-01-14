@@ -47,7 +47,6 @@ ignore = [
     # Below are auto-fixable rules
     "I001",
     "E714",
-    "B009",
     "F401",
 ]
 
