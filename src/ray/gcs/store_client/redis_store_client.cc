@@ -285,7 +285,7 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
       }
     }
     // Send the actual request
-    auto cxt = redis_client_->GetPrimaryContext();
+    auto *cxt = redis_client_->GetPrimaryContext();
     cxt->RunArgvAsync(command.ToRedisArgs(),
                       [this,
                        concurrency_keys,  // Copied!
@@ -398,7 +398,7 @@ void RedisStoreClient::RedisScanner::Scan() {
   }
   command.args.push_back("COUNT");
   command.args.push_back(std::to_string(batch_count));
-  auto primary_context = redis_client_->GetPrimaryContext();
+  auto *primary_context = redis_client_->GetPrimaryContext();
   primary_context->RunArgvAsync(
       command.ToRedisArgs(),
       // self_ref to keep the scanner alive until the callback is called, even if it
@@ -440,16 +440,23 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
   }
 }
 
-int RedisStoreClient::GetNextJobID() {
+Status RedisStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
   // Note: This is not a HASH! It's a simple key-value pair.
   // Key: "RAYexternal_storage_namespace@JobCounter"
   // Value: The next job ID.
   RedisCommand command = {
       "INCRBY", RedisKey{external_storage_namespace_, "JobCounter"}, {"1"}};
 
-  auto cxt = redis_client_->GetPrimaryContext();
-  auto reply = cxt->RunArgvSync(command.ToRedisArgs());
-  return static_cast<int>(reply->ReadAsInteger());
+  auto *cxt = redis_client_->GetPrimaryContext();
+
+  cxt->RunArgvAsync(command.ToRedisArgs(),
+                    [callback = std::move(callback)](
+                        const std::shared_ptr<CallbackReply> &reply) mutable {
+                      auto job_id = static_cast<int>(reply->ReadAsInteger());
+                      std::move(callback).Post("GcsStore.GetNextJobID", job_id);
+                    });
+
+  return Status::OK();
 }
 
 Status RedisStoreClient::AsyncGetKeys(const std::string &table_name,
@@ -511,7 +518,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   auto status = cli->Connect(io_service);
   RAY_CHECK_OK(status) << "Failed to connect to redis";
 
-  auto context = cli->GetPrimaryContext();
+  auto *context = cli->GetPrimaryContext();
   // Delete all such keys by using empty table name.
   RedisKey redis_key{external_storage_namespace, /*table_name=*/""};
   std::vector<std::string> cmd{"KEYS",

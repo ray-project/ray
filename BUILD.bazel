@@ -361,7 +361,6 @@ ray_cc_library(
         "src/ray/object_manager/common.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/common.h",
-        "src/ray/object_manager/plasma/compat.h",
         "src/ray/object_manager/plasma/connection.h",
         "src/ray/object_manager/plasma/malloc.h",
         "src/ray/object_manager/plasma/plasma.h",
@@ -386,6 +385,7 @@ ray_cc_library(
         ":ray_common",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:compat",
         "@msgpack",
     ],
 )
@@ -2045,6 +2045,7 @@ ray_cc_test(
     tags = [
         "no_tsan",
         "team:core",
+        "exclusive",
     ],
     deps = [
         ":gcs_client_lib",
@@ -2592,7 +2593,6 @@ filegroup(
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:instance_manager_py_proto",
-        "//src/ray/protobuf:job_agent_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
