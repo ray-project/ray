@@ -36,6 +36,7 @@ import torch
 
 import ray
 from ray.air.constants import TRAINING_ITERATION
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
@@ -65,6 +66,7 @@ from open_spiel.python.rl_environment import Environment  # noqa: E402
 parser = add_rllib_example_script_args(default_timesteps=2000000)
 parser.set_defaults(
     env="markov_soccer",
+    num_env_runners=2,
     checkpoint_freq=1,
     checkpoint_at_end=True,
 )
@@ -139,7 +141,11 @@ if __name__ == "__main__":
                         RandomRLModule
                         if mid in ["main_exploiter_0", "league_exploiter_0"]
                         else None
-                    )
+                    ),
+                    model_config=DefaultModelConfig(
+                        fcnet_hiddens=[1024, 1024],
+                        # fcnet_activation="tanh",
+                    ),
                 )
                 for mid in names
             }
@@ -173,7 +179,6 @@ if __name__ == "__main__":
             )
         )
         .env_runners(
-            num_env_runners=(args.num_env_runners or 2),
             num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
         )
         .training(
