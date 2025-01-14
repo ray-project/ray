@@ -3286,7 +3286,7 @@ class TestAutoscaling:
                 "a runtime environment to be installed. "
                 "Resources required for each replica: "
                 '{"CPU": 0.1}, '
-                "Total resources available: "
+                "total resources available: "
                 "{}. "
                 "Use `ray status` for more details."
             )
