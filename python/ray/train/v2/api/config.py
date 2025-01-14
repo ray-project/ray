@@ -9,7 +9,7 @@ from ray.train.v2._internal.util import date_str
 
 if TYPE_CHECKING:
     from ray.train import SyncConfig
-    from ray.train.v2.api.callback import UserCallback
+    from ray.train.v2.api.callback import RayTrainCallback
     from ray.tune.experimental.output import AirVerbosity
     from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.stopper import Stopper
@@ -127,7 +127,7 @@ class RunConfig(RunConfigV1):
             will invoke during training.
     """
 
-    callbacks: Optional[List["UserCallback"]] = None
+    callbacks: Optional[List["RayTrainCallback"]] = None
     sync_config: Union[Optional["SyncConfig"], str] = _DEPRECATED
     verbose: Union[Optional[Union[int, "AirVerbosity", "Verbosity"]], str] = _DEPRECATED
     stop: Union[
@@ -162,6 +162,12 @@ class RunConfig(RunConfigV1):
         if not self.name:
             self.name = f"ray_train_run-{date_str()}"
 
-        # TODO(justinvyu): Validate callbacks and raise an error if a Tune callback
-        # is passed in.
         self.callbacks = self.callbacks or []
+
+        # TODO(justinvyu): Improve this error message and add a migration guide if
+        # the user is passing in a Tune callback.
+        if not all(isinstance(cb, RayTrainCallback) for cb in self.callbacks):
+            raise ValueError(
+                "All callbacks must be instances of `RayTrainCallback`."
+            )
+

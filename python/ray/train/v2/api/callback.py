@@ -5,6 +5,7 @@ from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class RayTrainCallback:
     """Base Ray Train callback interface."""
 
