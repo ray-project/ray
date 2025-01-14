@@ -9,7 +9,7 @@ from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 from ray.dashboard.subprocesses.message import (
     ErrorMessage,
     RequestMessage,
-    ResponseMessage,
+    UnaryResponseMessage,
 )
 from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleConfig
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
@@ -23,7 +23,7 @@ async def test_handle_can_health_check():
     subprocess_handle = SubprocessModuleHandle(
         loop, TestModule, SubprocessModuleConfig(session_name="test", config={})
     )
-    subprocess_handle.start_dispatch_parent_bound_messages_thread()
+    subprocess_handle.start()
     response = await subprocess_handle.health_check()
     assert response.status == 200
     assert response.body == b"ok!"
@@ -40,27 +40,27 @@ def test_module_side_handler():
         loop, TestModule, SubprocessModuleConfig(session_name="test", config={})
     )
     # No parent bound listening thread, manually check the queue.
-    subprocess.send_message(
+    subprocess._send_message(
         RequestMessage(id="request_for_test", method_name="test", body=b"")
     )
     response = subprocess.parent_bound_queue.get()
-    assert isinstance(response, ResponseMessage)
+    assert isinstance(response, UnaryResponseMessage)
     assert response.id == "request_for_test"
     assert response.status == 200
     assert response.body == b"Hello, World from GET /test, run_finished: True"
 
-    subprocess.send_message(
+    subprocess._send_message(
         RequestMessage(
             id="request_for_echo", method_name="echo", body=b"a new dashboard"
         )
     )
     response = subprocess.parent_bound_queue.get()
-    assert isinstance(response, ResponseMessage)
+    assert isinstance(response, UnaryResponseMessage)
     assert response.id == "request_for_echo"
     assert response.status == 200
     assert response.body == b"Hello, World from POST /echo from a new dashboard"
 
-    subprocess.send_message(
+    subprocess._send_message(
         RequestMessage(id="request_for_error", method_name="make_error", body=b"")
     )
     response = subprocess.parent_bound_queue.get()
@@ -79,7 +79,7 @@ async def start_http_server_app(modules: List[type(SubprocessModule)]):
         for module in modules
     ]
     for handle in handles:
-        handle.start_dispatch_parent_bound_messages_thread()
+        handle.start()
         SubprocessRouteTable.bind(handle)
 
     app = aiohttp.web.Application()

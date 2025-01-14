@@ -11,7 +11,7 @@ from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 from ray.dashboard.subprocesses.message import (
     ErrorMessage,
     RequestMessage,
-    ResponseMessage,
+    UnaryResponseMessage,
     StreamResponseDataMessage,
     StreamResponseEndMessage,
     StreamResponseStartMessage,
@@ -117,9 +117,9 @@ class SubprocessRouteTable(BaseRouteTable):
                 parent_bound_queue.put(StreamResponseEndMessage(id=message.id))
             except aiohttp.web.HTTPException as e:
                 # aiohttp.web.HTTPException cannot be pickled. Instead we send a
-                # ResponseMessage with status and body.
+                # UnaryResponseMessage with status and body.
                 parent_bound_queue.put(
-                    ResponseMessage(
+                    UnaryResponseMessage(
                         id=message.id,
                         status=e.status,
                         body=e.text,
@@ -142,15 +142,15 @@ class SubprocessRouteTable(BaseRouteTable):
         ) -> None:
             try:
                 response = await handler(self, message.body)
-                reply_message = ResponseMessage(
+                reply_message = UnaryResponseMessage(
                     id=message.id,
                     status=response.status,
                     body=response.body,
                 )
             except aiohttp.web.HTTPException as e:
                 # aiohttp.web.HTTPException cannot be pickled. Instead we send a
-                # ResponseMessage with status and body.
-                reply_message = ResponseMessage(
+                # UnaryResponseMessage with status and body.
+                reply_message = UnaryResponseMessage(
                     id=message.id,
                     status=e.status,
                     body=e.text,

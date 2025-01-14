@@ -8,7 +8,7 @@ from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
     RequestMessage,
-    ResponseMessage,
+    UnaryResponseMessage,
 )
 from ray.dashboard.subprocesses.utils import assert_not_in_asyncio_loop
 
@@ -105,7 +105,7 @@ class SubprocessModule(abc.ABC):
         """
         try:
             parent_bound_queue.put(
-                ResponseMessage(id=message.id, status=200, body=b"ok!")
+                UnaryResponseMessage(id=message.id, status=200, body=b"ok!")
             )
         except Exception as e:
             print(f"Error sending response: {e}")

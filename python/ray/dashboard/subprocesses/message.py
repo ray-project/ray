@@ -30,7 +30,7 @@ Parent bound messages.
 
 
 @dataclass
-class ResponseMessage:
+class UnaryResponseMessage:
     id: str
     # aiohttp.web.Response is explicitly not serializable, so we use bytes instead.
     status: int
@@ -66,7 +66,7 @@ class ErrorMessage:
 
 
 ParentBoundMessage = Union[
-    ResponseMessage,
+    UnaryResponseMessage,
     StreamResponseStartMessage,
     StreamResponseDataMessage,
     StreamResponseEndMessage,

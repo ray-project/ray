@@ -12,7 +12,7 @@ from ray.dashboard.subprocesses.message import (
     ErrorMessage,
     ParentBoundMessage,
     RequestMessage,
-    ResponseMessage,
+    UnaryResponseMessage,
     StreamResponseDataMessage,
     StreamResponseEndMessage,
     StreamResponseStartMessage,
@@ -34,6 +34,13 @@ class SubprocessModuleHandle:
     """
     A handle to a module created as a subprocess. Can send messages to the module and
     receive responses. On destruction, the subprocess is terminated.
+
+    Lifecycle:
+    1. In SubprocessModuleHandle creation, the subprocess is started, and 2 queues are
+       created.
+    2. user must call SubprocessModuleHandle.start() before it can handle parent bound
+       messages.
+    3.
     """
 
     @dataclass
@@ -85,16 +92,8 @@ class SubprocessModuleHandle:
         )
         self.process.start()
 
-    def start_dispatch_parent_bound_messages_thread(self):
-        self.dispatch_parent_bound_messages_thread = threading.Thread(
-            target=dispatch_parent_bound_messages,
-            args=(self.loop, self.parent_bound_queue, self),
-            daemon=True,
-        )
-        self.dispatch_parent_bound_messages_thread.start()
-
-    def send_message(self, message: ChildBoundMessage):
-        self.child_bound_queue.put(message)
+    def start(self):
+        self._start_dispatch_parent_bound_messages_thread()
 
     async def send_request(
         self, method_name: str, request: Optional[aiohttp.web.Request]
@@ -115,7 +114,7 @@ class SubprocessModuleHandle:
             body = b""
         else:
             body = await request.read()
-        self.send_message(
+        self._send_message(
             RequestMessage(id=request_id, method_name=method_name, body=body)
         )
         return await new_active_request.response_fut
@@ -130,6 +129,18 @@ class SubprocessModuleHandle:
         observability payloads.
         """
         return await self.send_request("_internal_health_check", request=None)
+
+    # PRIVATE METHODS
+    def _start_dispatch_parent_bound_messages_thread(self):
+        self.dispatch_parent_bound_messages_thread = threading.Thread(
+            target=dispatch_parent_bound_messages,
+            args=(self.loop, self.parent_bound_queue, self),
+            daemon=True,
+        )
+        self.dispatch_parent_bound_messages_thread.start()
+
+    def _send_message(self, message: ChildBoundMessage):
+        self.child_bound_queue.put(message)
 
     @staticmethod
     async def handle_stream_response_start(
@@ -170,7 +181,7 @@ def handle_parent_bound_message(
     handle: SubprocessModuleHandle,
 ):
     """Handles a message from the parent bound queue."""
-    if isinstance(message, ResponseMessage):
+    if isinstance(message, UnaryResponseMessage):
         active_request = handle.active_requests.pop_or_raise(message.id)
         # set_result is not thread safe.
         loop.call_soon_threadsafe(
