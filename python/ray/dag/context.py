@@ -11,6 +11,9 @@ _context_lock = threading.Lock()
 DEFAULT_SUBMIT_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_submit_timeout", 10))
 DEFAULT_GET_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_get_timeout", 10))
 DEFAULT_TEARDOWN_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_teardown_timeout", 30))
+DEFAULT_READ_ITERATION_TIMEOUT_S = float(
+    os.environ.get("RAY_CGRAPH_read_iteration_timeout_s", 0.1)
+)
 # Default buffer size is 1MB.
 DEFAULT_BUFFER_SIZE_BYTES = int(os.environ.get("RAY_CGRAPH_buffer_size_bytes", 1e6))
 # The default number of in-flight executions that can be submitted before consuming the
@@ -48,6 +51,10 @@ class DAGContext:
             value higher than the expected time to execute the entire DAG.
         teardown_timeout: The maximum time in seconds to wait for the DAG to
             cleanly shut down.
+        read_iteration_timeout: The timeout in seconds for each read iteration
+            that reads one of the input channels. If the timeout is reached, the
+            read operation will be interrupted and will try to read the next
+            input channel. It must be less than or equal to `get_timeout`.
         buffer_size_bytes: The initial buffer size in bytes for messages
             that can be passed between tasks in the DAG. The buffers will
             be automatically resized if larger messages are written to the
@@ -65,9 +72,18 @@ class DAGContext:
     submit_timeout: int = DEFAULT_SUBMIT_TIMEOUT_S
     get_timeout: int = DEFAULT_GET_TIMEOUT_S
     teardown_timeout: int = DEFAULT_TEARDOWN_TIMEOUT_S
+    read_iteration_timeout: float = DEFAULT_READ_ITERATION_TIMEOUT_S
     buffer_size_bytes: int = DEFAULT_BUFFER_SIZE_BYTES
     max_inflight_executions: int = DEFAULT_MAX_INFLIGHT_EXECUTIONS
     overlap_gpu_communication: bool = DEFAULT_OVERLAP_GPU_COMMUNICATION
+
+    def __post_init__(self):
+        if self.read_iteration_timeout > self.get_timeout:
+            raise ValueError(
+                "RAY_CGRAPH_read_iteration_timeout_s "
+                f"({self.read_iteration_timeout}) must be less than or equal to "
+                f"RAY_CGRAPH_get_timeout ({self.get_timeout})"
+            )
 
     @staticmethod
     def get_current() -> "DAGContext":
