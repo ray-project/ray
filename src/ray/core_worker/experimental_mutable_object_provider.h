@@ -32,9 +32,7 @@ class MutableObjectProvider {
   using RayletFactory = std::function<std::shared_ptr<MutableObjectReaderInterface>(
       const NodeID &, rpc::ClientCallManager &)>;
 
-  MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
-                        RayletFactory factory,
-                        std::function<Status(void)> check_signals);
+  MutableObjectProvider(plasma::PlasmaClientInterface &plasma, RayletFactory factory);
 
   ~MutableObjectProvider();
 

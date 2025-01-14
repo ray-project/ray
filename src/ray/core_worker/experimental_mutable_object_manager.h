@@ -99,9 +99,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
     std::unique_ptr<plasma::MutableObject> mutable_object;
   } ABSL_CACHELINE_ALIGNED;
 
-  explicit MutableObjectManager(std::function<Status()> check_signals = nullptr)
-      : check_signals_(std::move(check_signals)) {}
-
+  MutableObjectManager() = default;
   ~MutableObjectManager();
 
   /// Registers a channel for `object_id`.
@@ -282,9 +280,6 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   // The calling threads are all readers and writers, along with the thread that calls the
   // destructor.
   absl::Mutex destructor_lock_;
-
-  // Function passed in to be called to check for signals (e.g., Ctrl-C).
-  std::function<Status(void)> check_signals_;
 };
 
 }  // namespace experimental

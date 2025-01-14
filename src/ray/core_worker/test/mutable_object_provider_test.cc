@@ -152,8 +152,7 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
 
   MutableObjectProvider provider(
       *plasma,
-      /*factory=*/absl::bind_front(GetTestInterface, interface),
-      nullptr);
+      /*factory=*/absl::bind_front(GetTestInterface, interface));
   provider.RegisterWriterChannel(object_id, {node_id});
 
   std::shared_ptr<Buffer> data;
@@ -179,8 +178,7 @@ TEST(MutableObjectProvider, MutableObjectBufferReadRelease) {
   ObjectID object_id = ObjectID::FromRandom();
   auto plasma = std::make_unique<TestPlasma>();
   MutableObjectProvider provider(*plasma,
-                                 /*factory=*/nullptr,
-                                 nullptr);
+                                 /*factory=*/nullptr);
   provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
@@ -219,8 +217,7 @@ TEST(MutableObjectProvider, HandlePushMutableObject) {
 
   MutableObjectProvider provider(
       *plasma,
-      /*factory=*/absl::bind_front(GetTestInterface, interface),
-      nullptr);
+      /*factory=*/absl::bind_front(GetTestInterface, interface));
   provider.HandleRegisterMutableObject(object_id, /*num_readers=*/1, local_object_id);
 
   ray::rpc::PushMutableObjectRequest request;
@@ -241,8 +238,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetError) {
   ObjectID object_id = ObjectID::FromRandom();
   auto plasma = std::make_unique<TestPlasma>();
   MutableObjectProvider provider(*plasma,
-                                 /*factory=*/nullptr,
-                                 nullptr);
+                                 /*factory=*/nullptr);
   provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
@@ -297,8 +293,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeWriteRelease) {
   ObjectID object_id = ObjectID::FromRandom();
   auto plasma = std::make_unique<TestPlasma>();
   MutableObjectProvider provider(*plasma,
-                                 /*factory=*/nullptr,
-                                 nullptr);
+                                 /*factory=*/nullptr);
   provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
@@ -353,8 +348,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeReadRelease) {
   ObjectID object_id = ObjectID::FromRandom();
   auto plasma = std::make_unique<TestPlasma>();
   MutableObjectProvider provider(*plasma,
-                                 /*factory=*/nullptr,
-                                 nullptr);
+                                 /*factory=*/nullptr);
   provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;

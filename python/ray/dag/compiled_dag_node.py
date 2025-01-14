@@ -1890,18 +1890,13 @@ class CompiledDAG:
                         _destroy_communicator(communicator_id)
 
                     logger.info("Waiting for worker tasks to exit")
-                    self.wait_teardown(kill_actors=kill_actors)
+                    self.wait_teardown()
                     logger.info("Teardown complete")
                     self._teardown_done = True
 
             def run(self):
                 try:
                     ray.get(list(outer.worker_task_refs.values()))
-                except KeyboardInterrupt:
-                    logger.info(
-                        "Received KeyboardInterrupt, tearing down with kill_actors=True"
-                    )
-                    self.teardown(kill_actors=True)
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     self.teardown()
