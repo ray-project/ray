@@ -330,7 +330,7 @@ class ReaderInterface:
         self, timeout: Optional[float] = None
     ) -> None:
         # Consume the channels that were not read in the last `read` call because
-        # a RayTaskError was found. If we don't do this, the read operation will read
+        # a RayTaskError was returned from another channel. If we don't do this, the read operation will read
         # stale versions of the object refs.
         #
         # TODO(kevin85421): Currently, a DAG with NCCL channels and fast fail enabled
