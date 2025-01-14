@@ -82,11 +82,9 @@ size_t Read(HANDLE read_handle, char *data, size_t len) {
   return bytes_read;
 }
 void CompleteWriteEOFIndicator(HANDLE write_handle) {
-  size_t bytes_written = 0;
-  BOOL result = WriteFile(
+  DWORD bytes_written = 0;
+  WriteFile(
       write_handle, kEofIndicator.c_str(), kEofIndicator.size(), &bytes_written, nullptr);
-  RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(kEofIndicator.size()));
-  RAY_CHECK(result);
 }
 #endif
 
@@ -243,7 +241,7 @@ RotationFileHandle CreatePipeAndStreamOutput(const std::string &fname,
 
 #if defined(__APPLE__) || defined(__linux__)
   RotationFileHandle stream_token{write_fd, std::move(termination_caller)};
-#else  // __linux__
+#elif defined(_WIN32)
   RotationFileHandle stream_token{write_handle, std::move(termination_caller)};
 #endif
 
