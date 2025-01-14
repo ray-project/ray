@@ -47,10 +47,7 @@ ignore = [
     # Below are auto-fixable rules
     "I001",
     "E714",
-    "B009",
     "F401",
-    "Q000",
-    "Q001",
 ]
 
 [tool.ruff.lint.flake8-quotes]

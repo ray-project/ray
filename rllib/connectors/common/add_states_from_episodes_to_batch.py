@@ -160,7 +160,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         output_batch = connector(
             rl_module=rl_module,
             batch={},
-            episodes=[episode.finalize()],
+            episodes=[episode.to_numpy()],
             shared_data={},
         )
         check(
@@ -280,11 +280,8 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             agents_that_stepped_only=not self._as_learner_connector,
         ):
             if self._as_learner_connector:
-                assert sa_episode.is_finalized
-
                 # Multi-agent case: Extract correct single agent RLModule (to get the
                 # state for individually).
-                sa_module = rl_module
                 if sa_episode.module_id is not None:
                     sa_module = rl_module[sa_episode.module_id]
                 else:
@@ -327,38 +324,50 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 else:
                     # Then simply use the `look_back_state`, i.e. in this case the
                     # initial state as `"state_in` in training.
-                    state_outs = tree.map_structure(
-                        lambda a: np.repeat(
-                            a[np.newaxis, ...], len(sa_episode), axis=0
-                        ),
-                        look_back_state,
-                    )
-                self.add_n_batch_items(
-                    batch=batch,
-                    column=Columns.STATE_IN,
-                    # items_to_add.shape=(B,[state-dim])
-                    # B=episode len // max_seq_len
-                    items_to_add=tree.map_structure(
-                        # Explanation:
-                        # [::max_seq_len]: only keep every Tth state.
-                        # [:-1]: Shift state outs by one, ignore very last
-                        # STATE_OUT (but therefore add the lookback/init state at
-                        # the beginning).
+                    if sa_episode.is_numpy:
+                        state_outs = tree.map_structure(
+                            lambda a, _sae=sa_episode: np.repeat(
+                                a[np.newaxis, ...], len(_sae), axis=0
+                            ),
+                            look_back_state,
+                        )
+                    else:
+                        state_outs = [look_back_state for _ in range(len(sa_episode))]
+                # Explanation:
+                # B=episode len // max_seq_len
+                # [::max_seq_len]: only keep every Tth state.
+                # [:-1]: Shift state outs by one; ignore very last
+                # STATE_OUT, but therefore add the lookback/init state at
+                # the beginning.
+                items_to_add = (
+                    tree.map_structure(
                         lambda i, o, m=max_seq_len: np.concatenate([[i], o[:-1]])[::m],
                         look_back_state,
                         state_outs,
-                    ),
+                    )
+                    if sa_episode.is_numpy
+                    else ([look_back_state] + state_outs[:-1])[::max_seq_len]
+                )
+                self.add_n_batch_items(
+                    batch=batch,
+                    column=Columns.STATE_IN,
+                    items_to_add=items_to_add,
                     num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
                     single_agent_episode=sa_episode,
                 )
                 if Columns.NEXT_OBS in batch:
+                    items_to_add = (
+                        tree.map_structure(
+                            lambda i, m=max_seq_len: i[::m],
+                            state_outs,
+                        )
+                        if sa_episode.is_numpy
+                        else state_outs[::max_seq_len]
+                    )
                     self.add_n_batch_items(
                         batch=batch,
                         column=Columns.NEXT_STATE_IN,
-                        items_to_add=tree.map_structure(
-                            lambda i, m=max_seq_len: i[::m],
-                            state_outs,
-                        ),
+                        items_to_add=items_to_add,
                         num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
                         single_agent_episode=sa_episode,
                     )
@@ -382,7 +391,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         single_agent_episode=sa_episode,
                     )
             else:
-                assert not sa_episode.is_finalized
+                assert not sa_episode.is_numpy
 
                 # Multi-agent case: Extract correct single agent RLModule (to get the
                 # state for individually).

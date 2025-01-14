@@ -13,7 +13,6 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.utils import AggregatorActor
 from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
@@ -25,7 +24,6 @@ from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
-from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
@@ -567,54 +565,9 @@ class IMPALA(Algorithm):
         self._ma_batches_being_built: Dict[int, list] = {
             i: [] for i in range(self.config.num_learners or 1)
         }
-        self._aggregator_actor_manager = None
-        if self.config.enable_rl_module_and_learner and (
-            self.config.num_aggregator_actors_per_learner > 0
-        ):
-            # Get the devices of each learner.
-            learner_locations = self.learner_group.foreach_learner(
-                func=lambda _learner: (_learner.node, _learner.device),
-            )
-            rl_module_spec = self.config.get_multi_rl_module_spec(
-                spaces=self.env_runner_group.get_spaces(),
-                inference_only=False,
-            )
-            agg_cls = ray.remote(
-                num_cpus=1,
-                num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
-                max_restarts=-1,
-            )(AggregatorActor)
-            self._aggregator_actor_manager = FaultTolerantActorManager(
-                [
-                    agg_cls.remote(self.config, rl_module_spec)
-                    for _ in range(
-                        (self.config.num_learners or 1)
-                        * self.config.num_aggregator_actors_per_learner
-                    )
-                ],
-                max_remote_requests_in_flight_per_actor=(
-                    self.config.max_requests_in_flight_per_aggregator_actor
-                ),
-            )
-            aggregator_locations = self._aggregator_actor_manager.foreach_actor(
-                func=lambda actor: (actor._node, actor._device)
-            )
-            self._aggregator_actor_to_learner = {}
-            for agg_idx, aggregator_location in enumerate(aggregator_locations):
-                for learner_idx, learner_location in enumerate(learner_locations):
-                    if learner_location.get() == aggregator_location.get():
-                        self._aggregator_actor_to_learner[agg_idx] = learner_idx
-                        break
-                if agg_idx not in self._aggregator_actor_to_learner:
-                    raise RuntimeError(
-                        "No Learner worker found that matches aggregation worker "
-                        f"#{agg_idx}'s node ({aggregator_location[0]}) and device "
-                        f"({aggregator_location[1]})! The Learner workers' locations "
-                        f"are {learner_locations}."
-                    )
 
         # Create our local mixin buffer if the num of aggregation workers is 0.
-        elif not self.config.enable_rl_module_and_learner:
+        if not self.config.enable_rl_module_and_learner:
             if self.config.replay_proportion > 0.0:
                 self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
                     capacity=(
@@ -675,6 +628,7 @@ class IMPALA(Algorithm):
                 self._aggregator_actor_manager.fetch_ready_async_reqs(
                     timeout_seconds=0.0,
                     return_obj_refs=True,
+                    tags="batches",
                 )
             )
             ma_batches_refs = []
@@ -692,6 +646,7 @@ class IMPALA(Algorithm):
                 packs = data_packages_for_aggregators[:num_agg]
                 self._aggregator_actor_manager.foreach_actor_async(
                     func=[functools.partial(_func, p=p) for p in packs],
+                    tag="batches",
                 )
                 data_packages_for_aggregators = data_packages_for_aggregators[num_agg:]
 
