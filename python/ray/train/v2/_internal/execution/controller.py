@@ -19,16 +19,15 @@ from ray.train.v2._internal.exceptions import (
 from ray.train.v2._internal.execution.callback import (
     Callback,
     ControllerCallback,
+    ReportCallback,
     TrainContextCallback,
     WorkerCallback,
     WorkerGroupCallback,
 )
-from ray.train.v2._internal.execution.checkpoint.checkpoint_handler import (
-    CheckpointHandler,
-)
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
+from ray.train.v2._internal.execution.checkpoint.report_handler import ReportHandler
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
@@ -111,8 +110,12 @@ class TrainController:
             checkpoint_config=self._run_config.checkpoint_config,
             storage_context=self._storage_context,
         )
-
-        self._checkpoint_handler = CheckpointHandler(self._checkpoint_manager)
+        self._report_handler = ReportHandler(
+            report_callbacks=(
+                [self._checkpoint_manager]
+                + [c for c in self._callbacks if isinstance(c, ReportCallback)]
+            )
+        )
 
         # Group callbacks by the hooks they're subscribed to.
         self._controller_callbacks = [self._scaling_policy] + [
@@ -120,7 +123,7 @@ class TrainController:
         ]
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
-        worker_group_callbacks_to_propagate = [self._checkpoint_handler] + [
+        worker_group_callbacks_to_propagate = [self._report_handler] + [
             c
             for c in self._callbacks
             if isinstance(

@@ -6,12 +6,10 @@ import pytest
 from ray.air.config import CheckpointConfig
 from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult
-from ray.train.v2._internal.execution.checkpoint.checkpoint_handler import (
-    CheckpointHandler,
-)
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
+from ray.train.v2._internal.execution.checkpoint.report_handler import ReportHandler
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupStatus,
@@ -51,10 +49,8 @@ def generate_worker_group_status(num_workers, num_ckpt, num_dummy, num_none):
         (10, 1, 8, 1, 0),  # one worker with checkpoint, one worker with None
     ],
 )
-def test_checkpoint_handler(
-    tmp_path, num_workers, num_ckpt, num_dummy, num_none, expected
-):
-    """Test the CheckpointHandler class. expected is the number of
+def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, expected):
+    """Test the ReportHandler class. expected is the number of
     times that the CheckpointManager.register_checkpoint is called.
     """
     checkpoint_manager = CheckpointManager(
@@ -63,7 +59,7 @@ def test_checkpoint_handler(
         ),
         checkpoint_config=CheckpointConfig(),
     )
-    checkpoint_handler = CheckpointHandler(checkpoint_manager)
+    checkpoint_handler = ReportHandler(report_callbacks=[checkpoint_manager])
 
     worker_group = DummyWorkerGroup()
     worker_group.start(

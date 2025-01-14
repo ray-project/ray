@@ -5,11 +5,11 @@ from ray.air.config import FailureConfig as FailureConfigV1
 from ray.air.config import RunConfig as RunConfigV1
 from ray.air.config import ScalingConfig as ScalingConfigV1
 from ray.train.v2._internal.constants import _DEPRECATED
-from ray.train.v2._internal.execution.callback import Callback
 from ray.train.v2._internal.util import date_str
 
 if TYPE_CHECKING:
     from ray.train import SyncConfig
+    from ray.train.v2.api.callback import UserCallback
     from ray.tune.experimental.output import AirVerbosity
     from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.stopper import Stopper
@@ -123,9 +123,11 @@ class RunConfig(RunConfigV1):
             prefix stripped (e.g., `s3://bucket/path` -> `bucket/path`).
         failure_config: Failure mode configuration.
         checkpoint_config: Checkpointing configuration.
+        callbacks: [DeveloperAPI] A list of callbacks that the Ray Train controller
+            will invoke during training.
     """
 
-    callbacks: Optional[List["Callback"]] = None
+    callbacks: Optional[List["UserCallback"]] = None
     sync_config: Union[Optional["SyncConfig"], str] = _DEPRECATED
     verbose: Union[Optional[Union[int, "AirVerbosity", "Verbosity"]], str] = _DEPRECATED
     stop: Union[
@@ -136,9 +138,6 @@ class RunConfig(RunConfigV1):
 
     def __post_init__(self):
         super().__post_init__()
-
-        if self.callbacks is not None:
-            raise NotImplementedError("`RunConfig(callbacks)` is not supported yet.")
 
         # TODO(justinvyu): Add link to migration guide.
         run_config_deprecation_message = (
@@ -162,3 +161,7 @@ class RunConfig(RunConfigV1):
 
         if not self.name:
             self.name = f"ray_train_run-{date_str()}"
+
+        # TODO(justinvyu): Validate callbacks and raise an error if a Tune callback
+        # is passed in.
+        self.callbacks = self.callbacks or []
