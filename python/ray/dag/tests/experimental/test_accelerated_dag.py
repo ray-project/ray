@@ -211,7 +211,7 @@ def test_out_of_order_destruction(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as inp:
         dag = a.inc.bind(inp)
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_max_inflight_executions=3)
     ref = compiled_dag.execute(1)
     ref2 = compiled_dag.execute(1)
     del ref2
@@ -219,6 +219,26 @@ def test_out_of_order_destruction(ray_start_regular):
     # ref2 (corresponding to a later execution) is destructed first
     time.sleep(0.1)
     assert ray.get(ref) == 1
+
+    ref = compiled_dag.execute(2)
+    ref2 = compiled_dag.execute(2)
+    ref3 = compiled_dag.execute(2)
+    del ref2
+    # Test that ray.get() works correctly if preceding ref was destructed
+    assert ray.get(ref3) == 8
+    del ref
+
+    ref = compiled_dag.execute(3)
+    ref2 = compiled_dag.execute(3)
+    ref3 = compiled_dag.execute(3)
+    del ref2
+    del ref3
+    ray.get(ref)
+    ref4 = compiled_dag.execute(3)
+    # Test that max_inflight error is not raised as ref2 and ref3
+    # should be destructed and not counted in the inflight executions
+    ref5 = compiled_dag.execute(3)
+    assert ray.get(ref5) == 23
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])

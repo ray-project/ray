@@ -97,11 +97,18 @@ class CompiledDAGRef:
         if self._dag.is_teardown:
             return
 
-        # If not yet, release native buffers to avoid execution result leak. Note that
+        # If we've already cached the result in the buffer, get it to remove it from the buffer.
+        # Else release native buffers to avoid execution result leak. Note that
         # we skip python-based deserialization as the values stored in the buffers are
         # not used.
         if not self._ray_get_called:
-            self._dag.release_output_channel_buffers(self._execution_index)
+            if self._execution_index in self._dag._result_buffer:
+                self._dag._get_execution_results(
+                    self._execution_index, self._channel_index
+                )
+            else:
+                self._dag._destructed_execution_idxs.add(self._execution_index)
+                self._dag._try_release_buffers()
 
     def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:
