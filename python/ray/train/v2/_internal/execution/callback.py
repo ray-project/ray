@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     )
 
 
-
 @DeveloperAPI
 class WorkerGroupCallback(RayTrainCallback):
     def before_init_train_context(

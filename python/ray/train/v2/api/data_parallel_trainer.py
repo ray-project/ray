@@ -209,7 +209,9 @@ class DataParallelTrainer:
 
         # Append all other callbacks to the full list. This allows custom workarounds
         # built on top of internal callbacks to work.
-        callbacks.extend(self.run_config.callbacks)
+        callbacks.extend(
+            [cb for cb in self.run_config.callbacks if not isinstance(cb, UserCallback)]
+        )
 
         result = self._initialize_and_run_controller(
             train_fn=train_fn,

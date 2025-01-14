@@ -7,6 +7,7 @@ from ray.util.annotations import DeveloperAPI
 
 class RayTrainCallback:
     """Base Ray Train callback interface."""
+
     pass
 
 
