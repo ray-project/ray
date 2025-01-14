@@ -34,8 +34,8 @@ class SubprocessModule(abc.ABC):
     def __init__(
         self,
         config: SubprocessModuleConfig,
-        child_bound_queue: multiprocessing.Queue,
-        parent_bound_queue: multiprocessing.Queue,
+        child_bound_queue: multiprocessing.Queue[ChildBoundMessage],
+        parent_bound_queue: multiprocessing.Queue[ParentBoundMessage],
     ):
         """
         Initialize current module when DashboardHead loading modules.
