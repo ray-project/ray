@@ -1,8 +1,8 @@
 import time
+from collections import defaultdict
 from dataclasses import Field, dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
-from collections import defaultdict
 
 import ray
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
@@ -25,6 +25,7 @@ _METRIC_FIELD_IS_MAP_ONLY_KEY = "__metric_is_map_only"
 _METRICS: List["MetricDefinition"] = []
 
 _NODE_UNKNOWN = "UNKNOWN"
+
 
 class MetricsGroup(Enum):
     INPUTS = "inputs"
@@ -110,6 +111,7 @@ class NodeMetrics:
     num_tasks_running: int = field(default=0)
     num_tasks_finished: int = field(default=0)
     obj_store_mem_spilled: int = field(default=0)
+
 
 class OpRuntimesMetricsMeta(type):
     def __init__(cls, name, bases, dict):

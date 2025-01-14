@@ -2,9 +2,10 @@ import collections
 import logging
 import threading
 import time
+from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from dataclasses import dataclass, fields
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 from uuid import uuid4
 
 import numpy as np
@@ -14,6 +15,7 @@ from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     MetricsGroup,
+    NodeMetrics,
     OpRuntimeMetrics,
 )
 from ray.data._internal.util import capfirst
@@ -27,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
+
+_PER_NODE_SUFFIX = "_per_node"
 
 
 StatsDict = Dict[str, List[BlockStats]]
@@ -249,6 +253,9 @@ class _StatsActor:
             )
         )
 
+        # Per Node metrics
+        self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
+
         iter_tag_keys = ("dataset",)
         self.iter_total_blocked_s = Gauge(
             "data_iter_total_blocked_seconds",
@@ -279,6 +286,17 @@ class _StatsActor:
                 metric_name,
                 description=metric_description,
                 tag_keys=tag_keys,
+            )
+        return metrics
+
+    def _create_prometheus_metrics_for_per_node_metrics(self) -> Dict[str, Gauge]:
+        metrics = {}
+        for field in fields(NodeMetrics):
+            metric_name = f"data_{field.name}{_PER_NODE_SUFFIX}"
+            metrics[field.name] = Gauge(
+                metric_name,
+                description="",
+                tag_keys=("dataset", "node"),
             )
         return metrics
 
@@ -334,6 +352,7 @@ class _StatsActor:
         op_metrics: List[Dict[str, Union[int, float]]],
         operator_tags: List[str],
         state: Dict[str, Any],
+        per_node_metrics: Optional[Dict[str, Dict[str, Union[int, float]]]] = None,
     ):
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
@@ -363,6 +382,13 @@ class _StatsActor:
 
             for field_name, prom_metric in self.execution_metrics_misc.items():
                 prom_metric.set(stats.get(field_name, 0), tags)
+
+        if per_node_metrics is not None:
+            for node_id, node_metrics in per_node_metrics.items():
+                tags = self._create_tags(dataset_tag=dataset_tag, node_tag=node_id)
+                for metric_name, metric_value in node_metrics.items():
+                    prom_metric = self.per_node_metrics[metric_name]
+                    prom_metric.set(metric_value, tags)
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
@@ -404,10 +430,17 @@ class _StatsActor:
             return self.datasets
         return {k: v for k, v in self.datasets.items() if v["job_id"] == job_id}
 
-    def _create_tags(self, dataset_tag: str, operator_tag: Optional[str] = None):
+    def _create_tags(
+        self,
+        dataset_tag: str,
+        operator_tag: Optional[str] = None,
+        node_tag: Optional[str] = None,
+    ):
         tags = {"dataset": dataset_tag}
         if operator_tag is not None:
             tags["operator"] = operator_tag
+        if node_tag is not None:
+            tags["node"] = node_tag
         return tags
 
 
@@ -549,6 +582,25 @@ class _StatsManager:
 
     # Execution methods
 
+    def _generate_per_node_metrics(
+        self, op_metrics: List[OpRuntimeMetrics]
+    ) -> Mapping[str, Mapping[str, Union[int, float]]]:
+        aggregated_by_node = defaultdict(lambda: defaultdict(int))
+        for metrics in op_metrics:
+            for node_id, node_metrics in metrics._per_node_metrics.items():
+                agg_node_metrics = aggregated_by_node[node_id]
+                agg_node_metrics[
+                    "num_tasks_submitted"
+                ] += node_metrics.num_tasks_submitted
+                agg_node_metrics["num_tasks_running"] += node_metrics.num_tasks_running
+                agg_node_metrics[
+                    "num_tasks_finished"
+                ] += node_metrics.num_tasks_finished
+                agg_node_metrics[
+                    "obj_store_mem_spilled"
+                ] += node_metrics.obj_store_mem_spilled
+        return aggregated_by_node
+
     def update_execution_metrics(
         self,
         dataset_tag: str,
@@ -558,7 +610,8 @@ class _StatsManager:
         force_update: bool = False,
     ):
         op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
-        args = (dataset_tag, op_metrics_dicts, operator_tags, state)
+        per_node_metrics = self._generate_per_node_metrics(op_metrics)
+        args = (dataset_tag, op_metrics_dicts, operator_tags, state, per_node_metrics)
         if force_update:
             self._stats_actor().update_execution_metrics.remote(*args)
         else:
