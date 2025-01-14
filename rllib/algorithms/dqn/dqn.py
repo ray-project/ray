@@ -179,6 +179,8 @@ class DQNConfig(AlgorithmConfig):
         self.training_intensity = None
         self.td_error_loss_fn = "huber"
         self.categorical_distribution_temperature = 1.0
+        # The burn-in for stateful `RLModule`s.
+        self.burn_in_len = 0
 
         # Replay buffer configuration.
         self.replay_buffer_config = {
@@ -235,6 +237,7 @@ class DQNConfig(AlgorithmConfig):
         training_intensity: Optional[float] = NotProvided,
         td_error_loss_fn: Optional[str] = NotProvided,
         categorical_distribution_temperature: Optional[float] = NotProvided,
+        burn_in_len: Optional[int] = NotProvided,
         **kwargs,
     ) -> "DQNConfig":
         """Sets the training related configuration.
@@ -336,6 +339,14 @@ class DQNConfig(AlgorithmConfig):
                 by Categorical action distribution. A valid temperature is in the range
                 of [0, 1]. Note that this mostly affects evaluation since TD error uses
                 argmax for return calculation.
+            burn_in_len: The burn-in period for a stateful RLModule. It allows the
+                Learner to utilize the initial `burn_in_len` steps in a replay sequence
+                solely for unrolling the network and establishing a typical starting
+                state. The network is then updated on the remaining steps of the
+                sequence. This process helps mitigate issues stemming from a poor
+                initial state - zero or an outdated recorded state. Consider setting
+                this parameter to a positive integer if your stateful RLModule faces
+                convergence challenges or exhibits signs of catastrophic forgetting.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -400,6 +411,8 @@ class DQNConfig(AlgorithmConfig):
             self.categorical_distribution_temperature = (
                 categorical_distribution_temperature
             )
+        if burn_in_len is not NotProvided:
+            self.burn_in_len = burn_in_len
 
         return self
 
@@ -411,7 +424,7 @@ class DQNConfig(AlgorithmConfig):
         if self.enable_rl_module_and_learner:
             # `lr_schedule` checking.
             if self.lr_schedule is not None:
-                raise ValueError(
+                self._value_error(
                     "`lr_schedule` is deprecated and must be None! Use the "
                     "`lr` setting to setup a schedule."
                 )
@@ -423,19 +436,19 @@ class DQNConfig(AlgorithmConfig):
             #  when using the new API stack.
             if self.exploration_config["type"] == "ParameterNoise":
                 if self.batch_mode != "complete_episodes":
-                    raise ValueError(
+                    self._value_error(
                         "ParameterNoise Exploration requires `batch_mode` to be "
                         "'complete_episodes'. Try setting `config.env_runners("
                         "batch_mode='complete_episodes')`."
                     )
                 if self.noisy:
-                    raise ValueError(
+                    self._value_error(
                         "ParameterNoise Exploration and `noisy` network cannot be"
                         " used at the same time!"
                     )
 
         if self.td_error_loss_fn not in ["huber", "mse"]:
-            raise ValueError("`td_error_loss_fn` must be 'huber' or 'mse'!")
+            self._value_error("`td_error_loss_fn` must be 'huber' or 'mse'!")
 
         # Check rollout_fragment_length to be compatible with n_step.
         if (
@@ -443,11 +456,22 @@ class DQNConfig(AlgorithmConfig):
             and self.rollout_fragment_length != "auto"
             and self.rollout_fragment_length < self.n_step
         ):
-            raise ValueError(
+            self._value_error(
                 f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
                 f"smaller than `n_step` ({self.n_step})! "
                 "Try setting config.env_runners(rollout_fragment_length="
                 f"{self.n_step})."
+            )
+
+        # Check, if the `max_seq_len` is longer then the burn-in.
+        if (
+            "max_seq_len" in self.model_config
+            and 0 < self.model_config["max_seq_len"] <= self.burn_in_len
+        ):
+            raise ValueError(
+                f"Your defined `burn_in_len`={self.burn_in_len} is larger or equal "
+                f"`max_seq_len`={self.model_config['max_seq_len']}! Either decrease "
+                "the `burn_in_len` or increase your `max_seq_len`."
             )
 
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
@@ -462,7 +486,7 @@ class DQNConfig(AlgorithmConfig):
             and not isinstance(self.replay_buffer_config["type"], str)
             and not issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
         ):
-            raise ValueError(
+            self._value_error(
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
             )
@@ -473,7 +497,7 @@ class DQNConfig(AlgorithmConfig):
             )
             or issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
         ):
-            raise ValueError(
+            self._value_error(
                 "When using the old API stack the replay buffer must not be of type "
                 "`EpisodeReplayBuffer`! We suggest you use the following config to run "
                 "DQN on the old API stack: `config.training(replay_buffer_config={"
@@ -656,6 +680,11 @@ class DQN(Algorithm):
                         batch_length_T=self.env_runner.module.is_stateful()
                         * self.config.model_config.get("max_seq_len", 0),
                         lookback=int(self.env_runner.module.is_stateful()),
+                        # TODO (simon): Implement `burn_in_len` in SAC and remove this
+                        # if-else clause.
+                        min_batch_length_T=self.config.burn_in_len
+                        if hasattr(self.config, "burn_in_len")
+                        else 0,
                         gamma=self.config.gamma,
                         beta=self.config.replay_buffer_config.get("beta"),
                         sample_episodes=True,

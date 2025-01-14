@@ -25,8 +25,8 @@ namespace ray {
 namespace internal {
 
 NativeRayRuntime::NativeRayRuntime() {
-  object_store_ = std::unique_ptr<ObjectStore>(new NativeObjectStore());
-  task_submitter_ = std::unique_ptr<TaskSubmitter>(new NativeTaskSubmitter());
+  object_store_ = std::make_unique<NativeObjectStore>();
+  task_submitter_ = std::make_unique<NativeTaskSubmitter>();
   task_executor_ = std::make_unique<TaskExecutor>();
 
   auto bootstrap_address = ConfigInternal::Instance().bootstrap_ip;
