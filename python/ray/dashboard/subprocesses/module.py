@@ -123,7 +123,9 @@ class SubprocessModule(abc.ABC):
         """
         try:
             parent_bound_queue.put(
-                UnaryResponseMessage(id=message.id, status=200, body=b"ok!")
+                UnaryResponseMessage(
+                    request_id=message.request_id, status=200, body=b"ok!"
+                )
             )
         except Exception as e:
             logger.error(
@@ -154,7 +156,9 @@ def run_module(
         backup_count=config.logging_rotate_backup_count,
     )
 
-    loop = get_or_create_event_loop()
+    assert_not_in_asyncio_loop()
+
+    loop = asyncio.new_event_loop()
     module = cls(config, child_bound_queue, parent_bound_queue)
 
     loop.run_until_complete(module.run())

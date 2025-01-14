@@ -55,31 +55,33 @@ def test_module_side_handler(default_module_config):
     subprocess = SubprocessModuleHandle(loop, TestModule, default_module_config)
     # No parent bound listening thread, manually check the queue.
     subprocess._send_message(
-        RequestMessage(id="request_for_test", method_name="test", body=b"")
+        RequestMessage(request_id="request_for_test", method_name="test", body=b"")
     )
     response = subprocess.parent_bound_queue.get()
     assert isinstance(response, UnaryResponseMessage)
-    assert response.id == "request_for_test"
+    assert response.request_id == "request_for_test"
     assert response.status == 200
     assert response.body == b"Hello, World from GET /test, run_finished: True"
 
     subprocess._send_message(
         RequestMessage(
-            id="request_for_echo", method_name="echo", body=b"a new dashboard"
+            request_id="request_for_echo", method_name="echo", body=b"a new dashboard"
         )
     )
     response = subprocess.parent_bound_queue.get()
     assert isinstance(response, UnaryResponseMessage)
-    assert response.id == "request_for_echo"
+    assert response.request_id == "request_for_echo"
     assert response.status == 200
     assert response.body == b"Hello, World from POST /echo from a new dashboard"
 
     subprocess._send_message(
-        RequestMessage(id="request_for_error", method_name="make_error", body=b"")
+        RequestMessage(
+            request_id="request_for_error", method_name="make_error", body=b""
+        )
     )
     response = subprocess.parent_bound_queue.get()
     assert isinstance(response, ErrorMessage)
-    assert response.id == "request_for_error"
+    assert response.request_id == "request_for_error"
     assert isinstance(response.error, ValueError)
     assert str(response.error) == "This is an error"
 

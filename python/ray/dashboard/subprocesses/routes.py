@@ -107,26 +107,34 @@ class SubprocessRouteTable(BaseRouteTable):
                 async for chunk in async_iter:
                     if not start_message_sent:
                         parent_bound_queue.put(
-                            StreamResponseStartMessage(id=message.id, body=chunk)
+                            StreamResponseStartMessage(
+                                request_id=message.request_id, body=chunk
+                            )
                         )
                         start_message_sent = True
                     else:
                         parent_bound_queue.put(
-                            StreamResponseDataMessage(id=message.id, body=chunk)
+                            StreamResponseDataMessage(
+                                request_id=message.request_id, body=chunk
+                            )
                         )
-                parent_bound_queue.put(StreamResponseEndMessage(id=message.id))
+                parent_bound_queue.put(
+                    StreamResponseEndMessage(request_id=message.request_id)
+                )
             except aiohttp.web.HTTPException as e:
                 # aiohttp.web.HTTPException cannot be pickled. Instead we send a
                 # UnaryResponseMessage with status and body.
                 parent_bound_queue.put(
                     UnaryResponseMessage(
-                        id=message.id,
+                        request_id=message.request_id,
                         status=e.status,
                         body=e.text,
                     )
                 )
             except Exception as e:
-                parent_bound_queue.put(ErrorMessage(id=message.id, error=e))
+                parent_bound_queue.put(
+                    ErrorMessage(request_id=message.request_id, error=e)
+                )
 
         return _streaming_handler
 
@@ -143,7 +151,7 @@ class SubprocessRouteTable(BaseRouteTable):
             try:
                 response = await handler(self, message.body)
                 reply_message = UnaryResponseMessage(
-                    id=message.id,
+                    request_id=message.request_id,
                     status=response.status,
                     body=response.body,
                 )
@@ -151,12 +159,12 @@ class SubprocessRouteTable(BaseRouteTable):
                 # aiohttp.web.HTTPException cannot be pickled. Instead we send a
                 # UnaryResponseMessage with status and body.
                 reply_message = UnaryResponseMessage(
-                    id=message.id,
+                    request_id=message.request_id,
                     status=e.status,
                     body=e.text,
                 )
             except Exception as e:
-                reply_message = ErrorMessage(id=message.id, error=e)
+                reply_message = ErrorMessage(request_id=message.request_id, error=e)
             parent_bound_queue.put(reply_message)
 
         return _non_streaming_handler

@@ -120,7 +120,7 @@ class SubprocessModuleHandle:
         else:
             body = await request.read()
         self._send_message(
-            RequestMessage(id=request_id, method_name=method_name, body=body)
+            RequestMessage(request_id=request_id, method_name=method_name, body=body)
         )
         return await new_active_request.response_fut
 
@@ -187,7 +187,7 @@ def handle_parent_bound_message(
 ):
     """Handles a message from the parent bound queue."""
     if isinstance(message, UnaryResponseMessage):
-        active_request = handle.active_requests.pop_or_raise(message.id)
+        active_request = handle.active_requests.pop_or_raise(message.request_id)
         # set_result is not thread safe.
         loop.call_soon_threadsafe(
             active_request.response_fut.set_result,
@@ -197,7 +197,7 @@ def handle_parent_bound_message(
             ),
         )
     elif isinstance(message, StreamResponseStartMessage):
-        active_request = handle.active_requests.get_or_raise(message.id)
+        active_request = handle.active_requests.get_or_raise(message.request_id)
         assert active_request.stream_response is None
         # This assignment is thread safe, because a next read will come from another
         # handle_parent_bound_message call for a Stream.*Message, which will run on
@@ -209,7 +209,7 @@ def handle_parent_bound_message(
             loop,
         )
     elif isinstance(message, StreamResponseDataMessage):
-        active_request = handle.active_requests.get_or_raise(message.id)
+        active_request = handle.active_requests.get_or_raise(message.request_id)
         assert active_request.stream_response is not None
         active_request.stream_response = asyncio.run_coroutine_threadsafe(
             SubprocessModuleHandle.handle_stream_response_data(
@@ -218,7 +218,7 @@ def handle_parent_bound_message(
             loop,
         )
     elif isinstance(message, StreamResponseEndMessage):
-        active_request = handle.active_requests.pop_or_raise(message.id)
+        active_request = handle.active_requests.pop_or_raise(message.request_id)
         assert active_request.stream_response is not None
         asyncio.run_coroutine_threadsafe(
             SubprocessModuleHandle.handle_stream_response_end(
@@ -229,7 +229,7 @@ def handle_parent_bound_message(
         )
     elif isinstance(message, ErrorMessage):
         # Propagate the error to aiohttp.
-        active_request = handle.active_requests.pop_or_raise(message.id)
+        active_request = handle.active_requests.pop_or_raise(message.request_id)
         loop.call_soon_threadsafe(
             active_request.response_fut.set_exception, message.error
         )

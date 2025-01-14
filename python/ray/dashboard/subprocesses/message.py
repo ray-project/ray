@@ -8,17 +8,13 @@ Child bound messages.
 
 @dataclass
 class RequestMessage:
-    id: str
+    # Request ID. Must be unique for each Module process.
+    request_id: int
     # Name of the Module method to call, not the REST method name.
     method_name: str
     # aiohttp.web.Request is explicitly not serializable, so we use bytes instead.
     # TODO(ryw): add headers if needed
     body: bytes
-
-
-@dataclass
-class HealthCheckMessage:
-    id: str
 
 
 # Now it only contains RequestMessage. If later we need to add more messages, use Union.
@@ -31,7 +27,7 @@ Parent bound messages.
 
 @dataclass
 class UnaryResponseMessage:
-    id: str
+    request_id: int
     # aiohttp.web.Response is explicitly not serializable, so we use bytes instead.
     status: int
     # TODO(ryw): add headers if needed
@@ -42,24 +38,24 @@ class UnaryResponseMessage:
 @dataclass
 class StreamResponseStartMessage:
     # TODO(ryw): if needed, add header: Dict[str, str]
-    id: str
+    request_id: int
     body: bytes
 
 
 @dataclass
 class StreamResponseDataMessage:
-    id: str
+    request_id: int
     body: bytes
 
 
 @dataclass
 class StreamResponseEndMessage:
-    id: str
+    request_id: int
 
 
 @dataclass
 class ErrorMessage:
-    id: str
+    request_id: int
     # Will be raised in the parent's aiohttp handler coroutine.
     # Must be serializable.
     error: Exception
