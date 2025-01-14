@@ -631,11 +631,11 @@ class AlgorithmConfig(_Config):
         # Worst naming convention ever: NEVER EVER use reserved key-words...
         if "lambda_" in config:
             assert hasattr(self, "lambda_")
-            config["lambda"] = getattr(self, "lambda_")
+            config["lambda"] = self.lambda_
             config.pop("lambda_")
         if "input_" in config:
             assert hasattr(self, "input_")
-            config["input"] = getattr(self, "input_")
+            config["input"] = self.input_
             config.pop("input_")
 
         # Convert `policies` (PolicySpecs?) into dict.
