@@ -248,8 +248,8 @@ def dispatch_parent_bound_messages(
     """
     assert_not_in_asyncio_loop()
     while True:
-        message = parent_bound_queue.get()
         try:
+            message = parent_bound_queue.get()
             handle_parent_bound_message(loop, message, handle)
         except Exception as e:
             logger.warning(
