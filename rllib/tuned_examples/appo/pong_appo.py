@@ -53,7 +53,6 @@ config = (
     .env_runners(
         env_to_module_connector=_make_env_to_module_connector,
         num_envs_per_env_runner=5,
-        max_requests_in_flight_per_env_runner=1,
     )
     .training(
         learner_connector=_make_learner_connector,
