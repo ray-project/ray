@@ -39,7 +39,7 @@ except ImportError:
     get_current = None
     attach = None
 
-TRACE_STACK: ContextVar[List[Any]] = ContextVar("trace_stack", default=[])
+TRACE_STACK: ContextVar[List[Any]] = ContextVar("trace_stack")
 
 
 # Default tracing exporter needs to map to DEFAULT_TRACING_EXPORTER_IMPORT_PATH
@@ -276,21 +276,19 @@ def get_trace_context() -> Optional[Dict[str, str]]:
 def set_span_attributes(attributes):
     """Set attributes for the current span in context."""
     if TRACE_STACK:
-        trace_stack = TRACE_STACK.get()
+        trace_stack = TRACE_STACK.get([])
         if trace_stack:
             trace_stack[-1].set_attributes(attributes)
 
 
-def set_trace_status(is_ok: bool, status_message: str = ""):
+def set_trace_status(is_error: bool, description: str = ""):
     """Set the status for the current span in context."""
-    if TRACE_STACK:
-        trace_stack = TRACE_STACK.get()
-        if trace_stack:
-            status_code = StatusCode.OK if is_ok else StatusCode.ERROR
-
-            trace_stack[-1].set_status(
-                Status(status_code=status_code, description=status_message)
-            )
+    trace_stack = TRACE_STACK.get([])
+    if trace_stack:
+        status_code = StatusCode.ERROR if is_error else StatusCode.OK
+        trace_stack[-1].set_status(
+            Status(status_code=status_code, description=description)
+        )
 
 
 def is_tracing_enabled() -> bool:
@@ -299,16 +297,17 @@ def is_tracing_enabled() -> bool:
 
 def _append_trace_stack(span):
     """Append span to global trace stack."""
-    trace_stack = TRACE_STACK.get()
+    trace_stack = TRACE_STACK.get([])
     trace_stack.append(span)
     TRACE_STACK.set(trace_stack)
 
 
 def _pop_trace_stack():
     """Pop span to global trace stack."""
-    trace_stack = TRACE_STACK.get()
-    trace_stack.pop()
-    TRACE_STACK.set(trace_stack)
+    trace_stack = TRACE_STACK.get([])
+    if trace_stack:
+        trace_stack.pop()
+        TRACE_STACK.set(trace_stack)
 
 
 def _validate_tracing_exporter(func: Callable) -> None:

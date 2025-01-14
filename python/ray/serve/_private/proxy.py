@@ -775,7 +775,7 @@ class gRPCProxy(GenericProxy):
 
         # The status code should always be set.
         assert status is not None
-        set_trace_status(status.is_error, status_message=status.message)
+        set_trace_status(is_error=status.is_error, description=status.code)
         yield status
 
 
@@ -1142,7 +1142,7 @@ class HTTPProxy(GenericProxy):
 
         # The status code should always be set.
         assert status is not None
-        set_trace_status(status.is_error, status.message)
+        set_trace_status(is_error=status.is_error, description=status.code)
         yield status
 
 

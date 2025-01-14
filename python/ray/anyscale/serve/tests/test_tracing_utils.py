@@ -3,6 +3,8 @@ import os
 import re
 import shutil
 from pathlib import Path
+from threading import Thread
+from typing import Set
 from unittest.mock import patch
 
 import grpc
@@ -16,9 +18,12 @@ import ray
 from ray import serve
 from ray.anyscale.serve._private.tracing_utils import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
+    TRACE_STACK,
+    _append_trace_stack,
     _load_span_processors,
     _validate_tracing_exporter,
     _validate_tracing_exporter_processors,
+    set_trace_status,
     setup_tracing,
 )
 from ray.anyscale.serve.utils import get_trace_context
@@ -35,6 +40,7 @@ try:
     from opentelemetry.trace.propagation.tracecontext import (
         TraceContextTextMapPropagator,
     )
+    from opentelemetry.trace.status import StatusCode
 except ImportError:
     raise ModuleNotFoundError(
         "`opentelemetry` or `opentelemetry.sdk.trace.export` not found"
@@ -58,6 +64,14 @@ def serve_and_ray_shutdown():
     ray.shutdown()
     yield
     serve.shutdown()
+
+
+class FakeSpan:
+    def __init__(self):
+        self.status = None
+
+    def set_status(self, status):
+        self.status = status
 
 
 def test_disable_tracing_exporter():
@@ -514,6 +528,84 @@ def validate_span_associations_in_trace(spans):
 
     # All spans should have been visited.
     assert not span_nodes
+
+
+def test_set_trace_status_empty_stack():
+    """test calling set_trace_status with an empty trace stack.
+
+    When there is nothing in the trace stack, calling set_trace_status does nothing
+    and does not error.
+    """
+
+    set_trace_status(is_error=True, description="error")
+    trace_stack = TRACE_STACK.get([])
+    assert trace_stack == []
+
+
+def test_set_trace_status_error():
+    """test calling set_trace_status with error status.
+
+    When there is a trace stack, calling set_trace_status with error updates
+    the correct status.
+    """
+    error_message = "error"
+    TRACE_STACK.set([FakeSpan()])
+    set_trace_status(is_error=True, description=error_message)
+    trace_stack = TRACE_STACK.get([])
+    assert len(trace_stack) == 1
+    assert trace_stack[0].status.status_code == StatusCode.ERROR
+    assert trace_stack[0].status.description == error_message
+
+
+def test_set_trace_status_ok():
+    """test calling set_trace_status with ok status.
+
+    When there is a trace stack, calling set_trace_status with ok updates
+    the correct status.
+    """
+    ok_message = "ok"
+    TRACE_STACK.set([FakeSpan()])
+    set_trace_status(is_error=False, description=ok_message)
+    trace_stack = TRACE_STACK.get([])
+    assert len(trace_stack) == 1
+    assert trace_stack[0].status.status_code == StatusCode.OK
+    # Note: when the status is OK, the description is not set.
+    assert trace_stack[0].status.description is None
+
+
+def test_append_trace_stack_multithread():
+    """test calling _append_trace_stack in multiple threads.
+
+    When multiple threads call _append_trace_stack, TRACE_STACK should only be updated
+    to contain the task name of the thread that called _append_trace_stack.
+    """
+    number_of_tasks = 10
+    passing = set()
+
+    def try_append_trace_stack(_task_name: str, _passing: Set[str]):
+        """
+        Helper to call `_append_trace_stack()` in a thread. It checks TRACE_STACK in
+        the current thread starts out empty and the correct task name is added to it
+        after `_append_trace_stack()` is called. If both checks out, the task name will
+        be added to the _passing.
+        """
+        trace_stack_before = TRACE_STACK.get([])
+        assert trace_stack_before == []
+        _append_trace_stack(_task_name)
+        trace_stack_after = TRACE_STACK.get()
+        assert trace_stack_after == [_task_name]
+        passing.add(_task_name)
+
+    tasks = []
+    for i in range(number_of_tasks):
+        t = Thread(target=try_append_trace_stack, args=(f"task{i}", passing))
+        t.start()
+        tasks.append(t)
+
+    for task in tasks:
+        task.join()
+
+    assert len(passing) == number_of_tasks
 
 
 if __name__ == "__main__":
