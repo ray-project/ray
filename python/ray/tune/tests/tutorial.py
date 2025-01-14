@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 # isort: skip_file
 # Original Code: https://github.com/pytorch/examples/blob/master/mnist/main.py
 

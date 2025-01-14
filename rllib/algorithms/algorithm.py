@@ -187,7 +187,9 @@ except ImportError:
 
     class AlgorithmBase:
         @staticmethod
-        def _get_learner_bundles(cf: AlgorithmConfig) -> List[Dict[str, int]]:
+        def _get_learner_bundles(
+            cf: AlgorithmConfig,
+        ) -> List[Dict[str, Union[float, int]]]:
             """Selects the right resource bundles for learner workers based off of cf.
 
             Args:
@@ -196,29 +198,35 @@ except ImportError:
             Returns:
                 A list of resource bundles for the learner workers.
             """
-            if cf.num_learners > 0:
-                if cf.num_gpus_per_learner:
-                    learner_bundles = [
-                        {"GPU": cf.num_learners * cf.num_gpus_per_learner}
-                    ]
-                elif cf.num_cpus_per_learner:
-                    learner_bundles = [
-                        {
-                            "CPU": cf.num_learners * cf.num_cpus_per_learner,
-                        }
-                    ]
-            else:
-                learner_bundles = [
-                    {
-                        # sampling and training is not done concurrently when local is
-                        # used, so pick the max.
-                        "CPU": max(
-                            cf.num_cpus_per_learner, cf.num_cpus_for_main_process
+            assert cf.num_learners > 0
+
+            _num = cf.num_learners
+            all_learners = [
+                {
+                    "CPU": _num
+                    * (cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0),
+                    "GPU": _num
+                    * max(
+                        0,
+                        (
+                            cf.num_gpus_per_learner
+                            - 0.01 * cf.num_aggregator_actors_per_learner
                         ),
-                        "GPU": cf.num_gpus_per_learner,
+                    ),
+                }
+            ]
+
+            all_aggregation_actors = []
+            if cf.num_aggregator_actors_per_learner:
+                _num = cf.num_learners * cf.num_aggregator_actors_per_learner
+                all_aggregation_actors = [
+                    {
+                        "CPU": 1 * _num,
+                        "GPU": (0.01 if cf.num_gpus_per_learner > 0 else 0) * _num,
                     }
                 ]
-            return learner_bundles
+
+            return all_learners + all_aggregation_actors
 
 
 tf1, tf, tfv = try_import_tf()
@@ -926,21 +934,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         train_results: ResultDict = {}
         eval_results: ResultDict = {}
 
-        # Parallel eval + training (BUT w/o using a thread pool):
-        if (
-            evaluate_this_iter
-            and self.config.evaluation_parallel_to_training
-            and self.config._evaluation_parallel_to_training_wo_thread
-        ):
-            (
-                train_results,
-                eval_results,
-                train_iter_ctx,
-            ) = self._run_one_training_iteration_and_evaluation_in_parallel_wo_thread()
         # Parallel eval + training: Kick off evaluation-loop and parallel train() call.
-        elif self.config._run_training_always_in_thread or (
-            evaluate_this_iter and self.config.evaluation_parallel_to_training
-        ):
+        if evaluate_this_iter and self.config.evaluation_parallel_to_training:
             (
                 train_results,
                 eval_results,
@@ -984,7 +979,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # Compile final ResultDict from `train_results` and `eval_results`. Note
             # that, as opposed to the old API stack, EnvRunner stats should already be
             # in `train_results` and `eval_results`.
-            results = self._compile_iteration_results_new_api_stack(
+            results = self._compile_iteration_results(
                 train_results=train_results,
                 eval_results=eval_results,
             )
@@ -1335,20 +1330,24 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     ),
                 )
 
+                results = self.eval_env_runner_group.fetch_ready_async_reqs(
+                    return_obj_refs=False, timeout_seconds=0.0
+                )
                 self.eval_env_runner_group.foreach_env_runner_async(
                     func=functools.partial(
                         _env_runner_remote, num=_num, round=_round, iter=algo_iteration
                     ),
                 )
-                results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.01
-                )
                 for wid, (env_s, ag_s, metrics, iter) in results:
+                    # Ignore eval results kicked off in an earlier iteration.
+                    # (those results would be outdated and thus misleading).
                     if iter != self.iteration:
                         continue
                     env_steps += env_s
                     agent_steps += ag_s
                     all_metrics.append(metrics)
+                time.sleep(0.01)
+
             # Old API stack -> RolloutWorkers return batches.
             else:
                 self.eval_env_runner_group.foreach_env_runner_async(
@@ -1500,7 +1499,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     agent_steps += ag_s
                     all_metrics.append(met)
                     num_units_done += (
-                        met[NUM_EPISODES].peek()
+                        (met[NUM_EPISODES].peek() if NUM_EPISODES in met else 0)
                         if unit == "episodes"
                         else (
                             env_s if self.config.count_steps_by == "env_steps" else ag_s
@@ -1907,7 +1906,14 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # Update the `agent_to_module_mapping_fn` on the EnvRunner.
             if new_agent_to_module_mapping_fn is not None:
                 _env_runner.config.multi_agent(
-                    policy_mapping_fn=new_agent_to_module_mapping_fn
+                    policy_mapping_fn=new_agent_to_module_mapping_fn,
+                )
+            # Update the `should_module_be_updated` on the EnvRunner. Note that
+            # even though this information is typically not needed by the EnvRunner,
+            # it's good practice to keep this setting updated everywhere either way.
+            if new_should_module_be_updated is not None:
+                _env_runner.config.multi_agent(
+                    policies_to_train=new_should_module_be_updated,
                 )
             return MultiRLModuleSpec.from_module(_env_runner.module)
 
@@ -2922,7 +2928,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @override(Trainable)
     def cleanup(self) -> None:
-        # Stop all workers.
+        # Stop all EnvRunners.
         if hasattr(self, "env_runner_group") and self.env_runner_group is not None:
             self.env_runner_group.stop()
         if (
@@ -2930,6 +2936,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             and self.eval_env_runner_group is not None
         ):
             self.eval_env_runner_group.stop()
+
+        # Stop all Learners.
+        if hasattr(self, "learner_group") and self.learner_group is not None:
+            self.learner_group.shutdown()
 
     @OverrideToImplementCustomLogic
     @classmethod
@@ -2953,15 +2963,18 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         eval_cf.validate()
         eval_cf.freeze()
 
-        # resources for the driver of this trainable
+        # Resources for the main process of this Algorithm.
         if cf.enable_rl_module_and_learner:
+            # Training is done on local Learner.
             if cf.num_learners == 0:
-                # in this case local_worker only does sampling and training is done on
-                # local learner worker
-                driver = cls._get_learner_bundles(cf)[0]
+                driver = {
+                    # Sampling and training is not done concurrently when local is
+                    # used, so pick the max.
+                    "CPU": max(cf.num_cpus_per_learner, cf.num_cpus_for_main_process),
+                    "GPU": cf.num_gpus_per_learner,
+                }
+            # Training is done on n remote Learners.
             else:
-                # in this case local_worker only does sampling and training is done on
-                # remote learner workers
                 driver = {"CPU": cf.num_cpus_for_main_process, "GPU": 0}
         else:
             driver = {
@@ -3412,154 +3425,16 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     lambda: self._run_one_training_iteration_old_api_stack()
                 )
 
-            evaluation_results = {}
-            # If the debug setting _run_training_always_in_thread is used, do NOT
-            # evaluate, no matter what the settings are,
-            if not self.config._run_training_always_in_thread:
-                # Pass the train_future into `self._run_one_evaluation()` to allow it
-                # to run exactly as long as the training iteration takes in case
-                # evaluation_duration=auto.
-                evaluation_results = self._run_one_evaluation(
-                    parallel_train_future=parallel_train_future
-                )
+            # Pass the train_future into `self._run_one_evaluation()` to allow it
+            # to run exactly as long as the training iteration takes in case
+            # evaluation_duration=auto.
+            evaluation_results = self._run_one_evaluation(
+                parallel_train_future=parallel_train_future
+            )
             # Collect the training results from the future.
             train_results, train_iter_ctx = parallel_train_future.result()
 
         return train_results, evaluation_results, train_iter_ctx
-
-    # Experimental method (trying to achieve evaluation and training in parallel w/o
-    # using a thread pool).
-    def _run_one_training_iteration_and_evaluation_in_parallel_wo_thread(
-        self,
-    ) -> Tuple[ResultDict, ResultDict, "TrainIterCtx"]:
-
-        assert self.config.evaluation_duration != "auto"
-        assert self.config.evaluation_duration_unit == "timesteps"
-        assert self.eval_env_runner_group is not None
-
-        with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
-            self.restore_workers(self.eval_env_runner_group)
-
-        # Call the `_before_evaluate` hook.
-        self._before_evaluate()
-
-        # Sync weights to the evaluation EnvRunners.
-        if self.eval_env_runner_group is not None:
-            self.eval_env_runner_group.sync_weights(
-                from_worker_or_learner_group=self.env_runner_group.local_env_runner
-            )
-            self._sync_filters_if_needed(
-                central_worker=self.env_runner_group.local_env_runner,
-                workers=self.eval_env_runner_group,
-                config=self.evaluation_config,
-            )
-
-        make_callback(
-            "on_evaluate_start",
-            callbacks_objects=self.callbacks,
-            callbacks_functions=self.config.callbacks_on_evaluate_start,
-            kwargs=dict(
-                algorithm=self,
-                metrics_logger=self.metrics,
-            ),
-        )
-
-        env_steps = agent_steps = 0
-
-        # Kick off sampling on all evaluation workers (async).
-        # How many timesteps do we need to run?
-        eval_cfg = self.evaluation_config
-        time_out = self.config.evaluation_sample_timeout_s
-
-        all_metrics = []
-        algo_iteration = self.iteration
-
-        # In case all the remote evaluation workers die during a round of
-        # evaluation, we need to stop.
-        units_per_healthy_remote_worker = (
-            eval_cfg.rollout_fragment_length * eval_cfg.num_envs_per_env_runner
-        )
-        # Select proper number of evaluation workers for this round.
-        selected_eval_worker_ids = [
-            worker_id
-            for i, worker_id in enumerate(
-                self.eval_env_runner_group.healthy_worker_ids()
-            )
-            if i * units_per_healthy_remote_worker < self.config.evaluation_duration
-        ]
-        self.eval_env_runner_group.foreach_env_runner_async(
-            func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
-            remote_worker_ids=selected_eval_worker_ids,
-        )
-        # Run training and collect the training results.
-        train_results, train_iter_ctx = self._run_one_training_iteration()
-
-        # Collect the evaluation results.
-        eval_results = self.eval_env_runner_group.fetch_ready_async_reqs(
-            return_obj_refs=False, timeout_seconds=time_out
-        )
-        for wid, (batch, metrics, iter) in eval_results:
-            # Skip results from an older iteration.
-            if iter != self.iteration:
-                continue
-            agent_steps += batch.agent_steps()
-            env_steps += batch.env_steps()
-            all_metrics.append(metrics)
-
-        if not self.config.enable_env_runner_and_connector_v2:
-            eval_results = summarize_episodes(
-                all_metrics,
-                all_metrics,
-                keep_custom_metrics=(
-                    self.evaluation_config.keep_per_episode_custom_metrics
-                ),
-            )
-            eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
-            eval_results[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps
-            # TODO: Remove this key at some point. Here for backward compatibility.
-            eval_results["timesteps_this_iter"] = eval_results.get(
-                NUM_ENV_STEPS_SAMPLED_THIS_ITER, 0
-            )
-        else:
-            self.metrics.merge_and_log_n_dicts(
-                all_metrics,
-                key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
-            )
-            eval_results = self.metrics.reduce((EVALUATION_RESULTS, ENV_RUNNER_RESULTS))
-
-        # Warn if results are empty, it could be that this is because the eval timesteps
-        # are not enough to run through one full episode.
-        if eval_results[ENV_RUNNER_RESULTS][NUM_EPISODES] == 0:
-            logger.warning(
-                "This evaluation iteration resulted in an empty set of episode summary "
-                "results! It's possible that your configured duration timesteps are not"
-                " enough to finish even a single episode. You have configured "
-                f"{self.config.evaluation_duration}"
-                f"{self.config.evaluation_duration_unit}. For 'timesteps', try "
-                "increasing this value via the `config.evaluation(evaluation_duration="
-                "...)` OR change the unit to 'episodes' via `config.evaluation("
-                "evaluation_duration_unit='episodes')` OR try increasing the timeout "
-                "threshold via `config.evaluation(evaluation_sample_timeout_s=...)` OR "
-                "you can also set `config.evaluation_force_reset_envs_before_iteration`"
-                " to False. However, keep in mind that in the latter case, the "
-                "evaluation results may contain some episode stats generated with "
-                "earlier weights versions."
-            )
-
-        # After evaluation, do a round of health check on remote eval workers to see if
-        # any of the failed workers are back.
-        # Add number of healthy evaluation workers after this iteration.
-        eval_results[
-            "num_healthy_workers"
-        ] = self.eval_env_runner_group.num_healthy_remote_workers()
-        eval_results[
-            "num_in_flight_async_reqs"
-        ] = self.eval_env_runner_group.num_in_flight_async_reqs()
-        eval_results[
-            "num_remote_worker_restarts"
-        ] = self.eval_env_runner_group.num_remote_worker_restarts()
-
-        return train_results, {"evaluation": eval_results}, train_iter_ctx
 
     def _run_offline_evaluation(self):
         """Runs offline evaluation via `OfflineEvaluator.estimate_on_dataset()` API.
@@ -3602,7 +3477,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             or eval_config.evaluation_interval
         )
 
-    def _compile_iteration_results_new_api_stack(self, *, train_results, eval_results):
+    def _compile_iteration_results(self, *, train_results, eval_results):
         # Error if users still use `self._timers`.
         if self._timers:
             raise ValueError(

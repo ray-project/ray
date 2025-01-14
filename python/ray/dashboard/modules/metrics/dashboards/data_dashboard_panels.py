@@ -1,4 +1,4 @@
-# flake8: noqa E501
+# ruff: noqa: E501
 import dataclasses
 from typing import Dict
 
