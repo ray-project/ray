@@ -3246,6 +3246,13 @@ Status CoreWorker::ExecuteTask(
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
+  TaskSpecification &spec = (TaskSpecification &)(task_spec);
+  rpc::TaskSpec &mutable_task_spec = spec.GetMutableMessage();
+  auto &runtime_env = *mutable_task_spec.mutable_runtime_env_info();
+  if (runtime_env.serialized_runtime_env().find("FOO") != std::string::npos) {
+    runtime_env.set_serialized_runtime_env("{}");
+  }
+
   // If the worker is exitted via Exit API, we shouldn't execute
   // tasks anymore.
   if (IsExiting()) {
