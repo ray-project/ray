@@ -1,4 +1,3 @@
-import functools
 import logging
 import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
@@ -34,11 +33,20 @@ class SnowflakeDatasource(Datasource):
         self.result_batches = None
         self.num_rows_total = None
 
+        self._cached_tasks: Dict[int, List[ReadTask]] = {}
+
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
-    @functools.cache
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        cached = self._cached_tasks.get(parallelism)
+        if cached is not None:
+            return cached
+        result = self._get_read_tasks(parallelism)
+        self._cached_tasks[parallelism] = result
+        return result
+
+    def _get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         if self.result_batches is None:
             from snowflake.connector import connect
 
