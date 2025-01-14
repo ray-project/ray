@@ -17,7 +17,6 @@ from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupTimeoutError,
 )
 from ray.train.v2._internal.execution.callback import (
-    Callback,
     ControllerCallback,
     ReportCallback,
     TrainContextCallback,
@@ -43,6 +42,7 @@ from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGro
 from ray.train.v2._internal.logging.logging import configure_controller_logger
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.result import Result
+from ray.train.v2.api.callback import RayTrainCallback
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ class TrainController:
         train_run_context: TrainRunContext,
         scaling_policy: ScalingPolicy,
         failure_policy: FailurePolicy,
-        callbacks: Optional[List[Callback]] = None,
+        callbacks: Optional[List[RayTrainCallback]] = None,
         # TODO: [Deprecation]
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
