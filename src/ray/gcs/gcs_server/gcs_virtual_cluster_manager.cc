@@ -455,6 +455,9 @@ Status GcsVirtualClusterManager::FlushAndPublish(
 
 void GcsVirtualClusterManager::OnDetachedActorRegistration(
     const std::string &virtual_cluster_id, const ActorID &actor_id) {
+  if (virtual_cluster_id.empty()) {
+    return;
+  }
   auto virtual_cluster = GetVirtualCluster(virtual_cluster_id);
   if (virtual_cluster == nullptr) {
     RAY_LOG(ERROR) << "Failed to process the registration of detached actor " << actor_id
@@ -471,6 +474,9 @@ void GcsVirtualClusterManager::OnDetachedActorRegistration(
 
 void GcsVirtualClusterManager::OnDetachedActorDestroy(
     const std::string &virtual_cluster_id, const ActorID &actor_id) {
+  if (virtual_cluster_id.empty()) {
+    return;
+  }
   auto virtual_cluster = GetVirtualCluster(virtual_cluster_id);
   if (virtual_cluster == nullptr) {
     RAY_LOG(ERROR) << "Failed to process the destroy of detached actor " << actor_id
@@ -498,6 +504,9 @@ void GcsVirtualClusterManager::OnDetachedActorDestroy(
 
 void GcsVirtualClusterManager::OnDetachedPlacementGroupRegistration(
     const std::string &virtual_cluster_id, const PlacementGroupID &placement_group_id) {
+  if (virtual_cluster_id.empty()) {
+    return;
+  }
   auto virtual_cluster = GetVirtualCluster(virtual_cluster_id);
   if (virtual_cluster == nullptr) {
     RAY_LOG(ERROR) << "Failed to process the registration of detached placement group "
@@ -514,6 +523,9 @@ void GcsVirtualClusterManager::OnDetachedPlacementGroupRegistration(
 
 void GcsVirtualClusterManager::OnDetachedPlacementGroupDestroy(
     const std::string &virtual_cluster_id, const PlacementGroupID &placement_group_id) {
+  if (virtual_cluster_id.empty()) {
+    return;
+  }
   auto virtual_cluster = GetVirtualCluster(virtual_cluster_id);
   if (virtual_cluster == nullptr) {
     RAY_LOG(ERROR) << "Failed to process the destroy of detached placement group "
