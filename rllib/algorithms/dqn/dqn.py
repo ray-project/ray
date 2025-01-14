@@ -661,6 +661,7 @@ class DQN(Algorithm):
                         sample_episodes=True,
                     )
 
+                    # Get the replay buffer metrics.
                     replay_buffer_results = self.local_replay_buffer.get_metrics()
                     self.metrics.merge_and_log_n_dicts(
                         [replay_buffer_results], key=REPLAY_BUFFER_RESULTS

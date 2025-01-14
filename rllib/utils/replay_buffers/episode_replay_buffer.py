@@ -1,5 +1,6 @@
 from collections import deque
 import copy
+import hashlib
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -8,29 +9,41 @@ import scipy
 from ray.rllib.core import DEFAULT_AGENT_ID
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils import force_list
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.metrics import (
-    NUM_AGENT_EPISODES,
+    ACTUAL_N_STEP,
+    AGENT_ACTUAL_N_STEP,
+    AGENT_STEP_UTILIZATION,
+    ENV_STEP_UTILIZATION,
+    NUM_AGENT_EPISODES_STORED,
     NUM_AGENT_EPISODES_ADDED,
     NUM_AGENT_EPISODES_ADDED_LIFETIME,
     NUM_AGENT_EPISODES_EVICTED,
     NUM_AGENT_EPISODES_EVICTED_LIFETIME,
     NUM_AGENT_EPISODES_PER_SAMPLE,
-    NUM_AGENT_STEPS,
+    NUM_AGENT_STEPS_STORED,
     NUM_AGENT_STEPS_ADDED,
     NUM_AGENT_STEPS_ADDED_LIFETIME,
     NUM_AGENT_STEPS_EVICTED,
     NUM_AGENT_STEPS_EVICTED_LIFETIME,
+    NUM_AGENT_STEPS_PER_SAMPLE,
+    NUM_AGENT_STEPS_PER_SAMPLE_LIFETIME,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-    NUM_ENV_STEPS,
+    NUM_ENV_STEPS_STORED,
     NUM_ENV_STEPS_ADDED,
     NUM_ENV_STEPS_ADDED_LIFETIME,
     NUM_ENV_STEPS_EVICTED,
     NUM_ENV_STEPS_EVICTED_LIFETIME,
+    NUM_ENV_STEPS_PER_SAMPLE,
+    NUM_ENV_STEPS_PER_SAMPLE_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_EPISODES,
+    NUM_EPISODES_STORED,
     NUM_EPISODES_ADDED,
     NUM_EPISODES_ADDED_LIFETIME,
     NUM_EPISODES_EVICTED,
@@ -39,9 +52,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
-from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.utils import force_list
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import SampleBatchType, ResultDict
 
 
 class EpisodeReplayBuffer(ReplayBufferInterface):
@@ -159,10 +170,13 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         Then adds these episodes to the internal deque.
         """
         episodes = force_list(episodes)
-        num_timesteps_added = 0
+
+        # Set up some counters for metrics.
+        num_env_steps_added = 0
         num_episodes_added = 0
         num_episodes_evicted = 0
         num_env_steps_evicted = 0
+
         for eps in episodes:
             # Make sure we don't change what's coming in from the user.
             # TODO (sven): It'd probably be better to make sure in the EnvRunner to not
@@ -178,7 +192,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             # variables and instead peek into the metrics.
             self._num_timesteps += eps_len
             self._num_timesteps_added += eps_len
-            num_timesteps_added += eps_len
+            num_env_steps_added += eps_len
 
             # Ongoing episode, concat to existing record.
             if eps.id_ in self.episode_id_to_index:
@@ -253,25 +267,44 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 self._num_episodes_evicted += 1
 
         self._update_add_metrics(
-            num_timesteps_added,
+            num_env_steps_added,
             num_episodes_added,
             num_episodes_evicted,
             num_env_steps_evicted,
         )
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def _update_add_metrics(
         self,
         num_timesteps_added: int,
         num_episodes_added: int,
         num_episodes_evicted: int,
         num_env_steps_evicted: int,
+        **kwargs,
     ) -> None:
+        """Updates the replay buffer's adding metrics.
 
+        Args:
+            num_timesteps_added: The total number of environment steps added to the
+                buffer in the `EpisodeReplayBuffer.add` call.
+            num_episodes_added: The total number of episodes added to the
+                buffer in the `EpisodeReplayBuffer.add` call.
+            num_episodes_evicted: The total number of environment steps evicted from
+                the buffer in the `EpisodeReplayBuffer.add` call. Note, this
+                does not include the number of episodes evicted before ever
+                added to the buffer (i.e. can happen in case a lot of episodes
+                were added and the buffer's capacity is not large enough).
+            num_env_steps_evicted: he total number of environment steps evicted from
+                the buffer in the `EpisodeReplayBuffer.add` call. Note, this
+                does not include the number of steps evicted before ever
+                added to the buffer (i.e. can happen in case a lot of episodes
+                were added and the buffer's capacity is not large enough).
+        """
         # Get the actual number of agent steps residing in the buffer.
         # TODO (simon): Write the same counters and getters as for the
         # multi-agent buffers.
         self.metrics.log_value(
-            (NUM_AGENT_STEPS, DEFAULT_AGENT_ID),
+            (NUM_AGENT_STEPS_STORED, DEFAULT_AGENT_ID),
             self.get_num_timesteps(),
             reduce="mean",
             window=self._metrics_num_episodes_for_smoothing,
@@ -301,7 +334,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         )
         # Whole buffer step metrics.
         self.metrics.log_value(
-            NUM_ENV_STEPS,
+            NUM_ENV_STEPS_STORED,
             self.get_num_timesteps(),
             reduce="mean",
             window=self._metrics_num_episodes_for_smoothing,
@@ -333,7 +366,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
         # Number of episodes in the buffer.
         self.metrics.log_value(
-            (NUM_AGENT_EPISODES, DEFAULT_AGENT_ID),
+            (NUM_AGENT_EPISODES_STORED, DEFAULT_AGENT_ID),
             self.get_num_episodes(),
             reduce="mean",
             window=self._metrics_num_episodes_for_smoothing,
@@ -365,7 +398,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
         # Whole buffer episode metrics.
         self.metrics.log_value(
-            NUM_EPISODES,
+            NUM_EPISODES_STORED,
             self.get_num_episodes(),
             reduce="mean",
             window=self._metrics_num_episodes_for_smoothing,
@@ -529,6 +562,9 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         is_last = [[False] * batch_length_T for _ in range(batch_size_B)]
         is_terminated = [[False] * batch_length_T for _ in range(batch_size_B)]
         is_truncated = [[False] * batch_length_T for _ in range(batch_size_B)]
+
+        # Store the unique episode buffer indexes to determine from
+        # how many episodes the sample was sampled.
         sampled_episode_idxs = set()
 
         B = 0
@@ -595,6 +631,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 # Start filling the next row.
                 B += 1
                 T = 0
+            # Add the episode buffer index to the set of episode indexes.
             sampled_episode_idxs.add(episode_idx)
 
         # Update our sampled counter.
@@ -713,7 +750,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self._last_sampled_indices = []
 
         sampled_episodes = []
+        # Record all the env step buffer indices that are contained in the sample.
+        sampled_env_step_idxs = set()
+        # Record all the episode buffer indices that are contained in the sample.
         sampled_episode_idxs = set()
+        # Record all n-steps that have been used.
+        sampled_n_steps = []
 
         B = 0
         while B < batch_size_B:
@@ -797,7 +839,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                     ),
                     len_lookback_buffer=lookback,
                 )
-
+            # Record a has for the episode ID and timestep inside of the episode.
+            sampled_env_step_idxs.add(
+                hashlib.sha256(f"{episode.id_}-{episode_ts}".encode()).hexdigest()
+            )
             # Remove reference to sampled episode.
             del episode
 
@@ -815,9 +860,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             # Append the sampled episode.
             sampled_episodes.append(sampled_episode)
             sampled_episode_idxs.add(episode_idx)
+            sampled_n_steps.append(actual_n_step)
 
             # Increment counter.
-            B += (actual_length - episode_ts + 1) or 1
+            B += (actual_length - episode_ts - (actual_n_step - 1) + 1) or 1
 
         # Update the metric.
         self.sampled_timesteps += batch_size_B
@@ -826,21 +872,62 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self._update_sample_metrics(
             batch_size_B,
             len(sampled_episode_idxs),
+            len(sampled_env_step_idxs),
+            sum(sampled_n_steps) / batch_size_B,
         )
 
         return sampled_episodes
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def _update_sample_metrics(
         self,
         num_env_steps_sampled: int,
         num_episodes_per_sample: int,
+        num_env_steps_per_sample: int,
+        sampled_n_step: Optional[float],
+        **kwargs: Dict[str, Any],
     ) -> None:
+        """Updates the replay buffer's sample metrics.
 
+        Args:
+            num_env_steps_sampled: The number of environment steps sampled
+                this iteration in the `sample` method.
+            num_episodes_per_sample: The number of unique episodes in the
+                sample.
+            num_env_steps_per_sample: The number of unique environment steps
+                in the sample.
+            sampled_n_step: The mean n-step used in the sample. Note, this
+                is constant, if the n-step is not sampled.
+        """
+        if sampled_n_step:
+            self.metrics.log_value(
+                ACTUAL_N_STEP,
+                sampled_n_step,
+                reduce="mean",
+                window=self._metrics_num_episodes_for_smoothing,
+            )
+            self.metrics.log_value(
+                (AGENT_ACTUAL_N_STEP, DEFAULT_AGENT_ID),
+                sampled_n_step,
+                reduce="mean",
+                window=self._metrics_num_episodes_for_smoothing,
+            )
         self.metrics.log_value(
             (NUM_AGENT_EPISODES_PER_SAMPLE, DEFAULT_AGENT_ID),
             num_episodes_per_sample,
             reduce="sum",
             clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            (NUM_AGENT_STEPS_PER_SAMPLE, DEFAULT_AGENT_ID),
+            num_env_steps_per_sample,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            (NUM_AGENT_STEPS_PER_SAMPLE_LIFETIME, DEFAULT_AGENT_ID),
+            num_env_steps_per_sample,
+            reduce="sum",
         )
         self.metrics.log_value(
             (NUM_AGENT_STEPS_SAMPLED, DEFAULT_AGENT_ID),
@@ -855,12 +942,30 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             num_env_steps_sampled,
             reduce="sum",
         )
+        self.metrics.log_value(
+            (AGENT_STEP_UTILIZATION, DEFAULT_AGENT_ID),
+            self.metrics.peek((NUM_AGENT_STEPS_PER_SAMPLE_LIFETIME, DEFAULT_AGENT_ID))
+            / self.metrics.peek((NUM_AGENT_STEPS_SAMPLED_LIFETIME, DEFAULT_AGENT_ID)),
+            reduce="mean",
+            window=self._metrics_num_episodes_for_smoothing,
+        )
         # Whole buffer sampled env steps metrics.
         self.metrics.log_value(
             NUM_EPISODES_PER_SAMPLE,
             num_episodes_per_sample,
             reduce="sum",
             clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            NUM_ENV_STEPS_PER_SAMPLE,
+            num_env_steps_per_sample,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            NUM_ENV_STEPS_PER_SAMPLE_LIFETIME,
+            num_env_steps_per_sample,
+            reduce="sum",
         )
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED,
@@ -872,6 +977,13 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
             num_env_steps_sampled,
             reduce="sum",
+        )
+        self.metrics.log_value(
+            ENV_STEP_UTILIZATION,
+            self.metrics.peek(NUM_ENV_STEPS_PER_SAMPLE_LIFETIME)
+            / self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
+            reduce="mean",
+            window=self._metrics_num_episodes_for_smoothing,
         )
 
     # TODO (simon): Check, if we can instead peek into the metrics
@@ -897,7 +1009,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         return self._num_timesteps_added
 
     def get_metrics(self) -> ResultDict:
-
+        """Returns the metrics of the buffer and reduces them."""
         return self.metrics.reduce()
 
     @override(ReplayBufferInterface)
