@@ -31,7 +31,6 @@ ignore = [
     # The following are rules ignored in ruff
     "E721",
     "E741",
-    "F602",
     "F841",
     "B018",
     "B023",
