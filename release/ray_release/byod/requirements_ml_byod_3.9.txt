@@ -711,9 +711,9 @@ deepspeed==0.12.3 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
-diffusers==0.12.1 \
-    --hash=sha256:9d1c078ebec37a1410a52b5dfb0fd9b32675c54f4ef8d13bdad5cfa130381db6 \
-    --hash=sha256:baabdf8cc36dcc0e282dae750d43d8feaa4892aea986b606e5b33b7745a91d4e
+diffusers==0.25.1 \
+    --hash=sha256:1aae411df4e8b6ae3d0ee8902a2af561ac7fa2e0d7656f105bfdf41d1bad4616 \
+    --hash=sha256:23a1865a5a4f6685e9d7450ff6a4c45f37a0a0534c5cb3e81deff6e9ee43d4ad
     # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 dill==0.3.7 \
     --hash=sha256:76b122c08ef4ce2eedcd4d1abd8e641114bfc6c2867f49f3c41facf65bf19f5e \
@@ -3246,6 +3246,7 @@ safetensors==0.4.3 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   accelerate
+    #   diffusers
     #   peft
     #   transformers
 scikit-learn==1.3.2 \

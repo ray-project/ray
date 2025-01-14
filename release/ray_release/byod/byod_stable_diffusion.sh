@@ -4,4 +4,4 @@
 
 set -exo pipefail
 
-pip3 install transformers==4.31.0 diffusers==0.21.3
+pip3 install transformers==4.36.2 diffusers==0.25.1

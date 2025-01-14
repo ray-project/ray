@@ -9,7 +9,7 @@ crc32c
 datasets
 decord
 deepspeed>=0.12.3
-diffusers==0.12.1
+diffusers==0.25.1
 evaluate
 fairscale
 fastapi
