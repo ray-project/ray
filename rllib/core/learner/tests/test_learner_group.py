@@ -105,7 +105,7 @@ FAKE_MA_EPISODES = [
         len_lookback_buffer=0,  # all data part of actual episode
     ),
 ]
-FAKE_MA_EPISODES[0].finalize()
+FAKE_MA_EPISODES[0].to_numpy()
 
 FAKE_MA_EPISODES_WO_P1 = [
     MultiAgentEpisode(
@@ -118,7 +118,7 @@ FAKE_MA_EPISODES_WO_P1 = [
         len_lookback_buffer=0,  # all data part of actual episode
     ),
 ]
-FAKE_MA_EPISODES_WO_P1[0].finalize()
+FAKE_MA_EPISODES_WO_P1[0].to_numpy()
 
 
 class TestLearnerGroupSyncUpdate(unittest.TestCase):

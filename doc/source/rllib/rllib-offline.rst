@@ -1353,7 +1353,7 @@ The following example demonstrates how to use a custom :py:class:`~ray.rllib.off
             is_multi_agent: bool,
             batch: Dict[str, Union[list, np.ndarray]],
             schema: Dict[str, str] = SCHEMA,
-            finalize: bool = False,
+            to_numpy: bool = False,
             input_compress_columns: Optional[List[str]] = None,
             observation_space: gym.Space = None,
             action_space: gym.Space = None,
@@ -1404,9 +1404,9 @@ The following example demonstrates how to use a custom :py:class:`~ray.rllib.off
                     t_started=0,
                 )
 
-                # If episodes should be finalized. Some connectors need this.
-                if finalize:
-                    episode.finalize()
+                # If episodes should be numpy'ized. Some connectors need this.
+                if to_numpy:
+                    episode.to_numpy()
 
                 # Append the episode to the list of episodes.
                 episodes.append(episode)
@@ -1430,7 +1430,7 @@ The following example demonstrates how to use a custom :py:class:`~ray.rllib.off
     episodes = TextOfflinePreLearner._map_to_episodes(
         is_multi_agent=False,
         batch=batch,
-        finalize=True,
+        to_numpy=True,
         schema=None,
         input_compress_columns=False,
         action_space=None,
@@ -1527,7 +1527,7 @@ The preceding example illustrates the flexibility of RLlib's Offline RL API for 
             episodes = TextOfflinePreLearner._map_to_episodes(
                 is_multi_agent=False,
                 batch=batch,
-                finalize=True,
+                to_numpy=True,
                 schema=None,
                 input_compress_columns=False,
                 action_space=self.spaces[0],
@@ -1564,7 +1564,7 @@ The preceding example illustrates the flexibility of RLlib's Offline RL API for 
             is_multi_agent: bool,
             batch: Dict[str, Union[list, np.ndarray]],
             schema: Dict[str, str] = SCHEMA,
-            finalize: bool = False,
+            to_numpy: bool = False,
             input_compress_columns: Optional[List[str]] = None,
             observation_space: gym.Space = None,
             action_space: gym.Space = None,
@@ -1615,9 +1615,9 @@ The preceding example illustrates the flexibility of RLlib's Offline RL API for 
                     t_started=0,
                 )
 
-                # If episodes should be finalized. Some connectors need this.
-                if finalize:
-                    episode.finalize()
+                # If episodes should be numpy'ized. Some connectors need this.
+                if to_numpy:
+                    episode.to_numpy()
 
                 # Append the episode to the list of episodes.
                 episodes.append(episode)

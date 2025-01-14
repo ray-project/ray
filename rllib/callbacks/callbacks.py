@@ -356,7 +356,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
 
         Note that on the new API stack, this callback is also called after the final
         step of an episode, meaning when terminated/truncated are returned as True
-        from the `env.step()` call, but is still provided with the non-finalized
+        from the `env.step()` call, but is still provided with the non-numpy'ized
         episode object (meaning the data has NOT been converted to numpy arrays yet).
 
         The exact time of the call of this callback is after `env.step([action])` and
@@ -416,7 +416,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
 
         - ---> This callback `on_episode_end()` is fired. <---
 
-        - The episode is finalized (i.e. lists of obs/rewards/actions/etc.. are
+        - The episode is numpy'ized (i.e. lists of obs/rewards/actions/etc.. are
           converted into numpy arrays).
 
         Args:
@@ -424,7 +424,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 (after `env.step()` that returned terminated=True OR truncated=True and
                 after the returned obs, rewards, etc.. have been logged to the episode
                 object). Note that this method is still called before(!) the episode
-                object is finalized, meaning all its timestep data is still present in
+                object is numpy'ized, meaning all its timestep data is still present in
                 lists of individual timestep data.
             env_runner: Reference to the EnvRunner running the env and episode.
             metrics_logger: The MetricsLogger object inside the `env_runner`. Can be

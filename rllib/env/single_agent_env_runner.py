@@ -392,8 +392,13 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                         "on_episode_end", env_index, episodes
                     )
 
-                    # Then finalize (numpy'ize) the episode.
-                    done_episodes_to_return.append(episodes[env_index].finalize())
+                    # Numpy'ize the episode.
+                    if self.config.episodes_to_numpy:
+                        # Any possibly compress observations.
+                        done_episodes_to_return.append(episodes[env_index].to_numpy())
+                    # Leave episode as lists of individual (obs, action, etc..) items.
+                    else:
+                        done_episodes_to_return.append(episodes[env_index])
 
                     # Also early-out if we reach the number of episodes within this
                     # for-loop.
@@ -434,8 +439,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     continue
                 eps.validate()
                 self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-                # Return finalized (numpy'ized) Episodes.
-                ongoing_episodes_to_return.append(eps.finalize())
+
+                # Numpy'ize the episode.
+                if self.config.episodes_to_numpy:
+                    # Any possibly compress observations.
+                    ongoing_episodes_to_return.append(eps.to_numpy())
+                # Leave episode as lists of individual (obs, action, etc..) items.
+                else:
+                    ongoing_episodes_to_return.append(eps)
 
             # Continue collecting into the cut Episode chunks.
             self._episodes = ongoing_episodes_continuations
