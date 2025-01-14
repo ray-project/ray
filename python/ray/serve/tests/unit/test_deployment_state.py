@@ -3285,9 +3285,9 @@ class TestAutoscaling:
                 "This may be due to waiting for the cluster to auto-scale or for "
                 "a runtime environment to be installed. "
                 "Resources required for each replica: "
-                '{"CPU": 0.1} '
+                '{"CPU": 0.1}, '
                 "Total resources available: "
-                "{} "
+                "{}. "
                 "Use `ray status` for more details."
             )
         else:

@@ -2164,10 +2164,8 @@ class DeploymentState:
                     f"have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
                     "This may be due to waiting for the cluster to auto-scale or for a "
                     "runtime environment to be installed. "
-                    "Resources required for each replica: "
-                    f"{required} "
-                    "Total resources available: "
-                    f"{available} "
+                    f"Resources required for each replica: {required}, "
+                    f"total resources available: {available}. "
                     "Use `ray status` for more details."
                 )
                 logger.warning(message)
