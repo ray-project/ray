@@ -354,7 +354,7 @@ def setup_compact_scheduling(request, monkeypatch):
     monkeypatch.setenv("RAY_health_check_period_ms", "1000")
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "0.01")
 
-    params = getattr(request, "param") if hasattr(request, "param") else None
+    params = request.param if hasattr(request, "param") else None
     cluster = AutoscalingCluster(
         **{
             "head_resources": {"CPU": 0},

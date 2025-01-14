@@ -13,7 +13,7 @@ def autoscaling_cluster(request, monkeypatch):
     with monkeypatch.context() as m:
         m.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "0.01")
 
-        params = getattr(request, "param") if hasattr(request, "param") else None
+        params = request.param if hasattr(request, "param") else None
         cluster = AutoscalingCluster(
             **(
                 params
