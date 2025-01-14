@@ -1013,6 +1013,13 @@ SORTED_WNIDS = sorted(IMAGENET_WNID_TO_LABEL.keys())
 IMAGENET_WNID_TO_ID = {wnid: SORTED_WNIDS.index(wnid) for wnid in SORTED_WNIDS}
 
 IMG_S3_ROOT = "s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/train"
+
+PARQUET_SPLIT_S3_ROOT = "s3://ray-benchmark-data-internal/imagenet/parquet_split"
+PARQUET_SPLIT_S3_DIRS = {
+    split: f"{PARQUET_SPLIT_S3_ROOT}/{split}"
+    for split in ["train", "val", "test"]
+}
+
 PARQUET_S3_DIR = "s3://anyscale-imagenet/parquet"
 PARQUET_S3_ROOT = f"{PARQUET_S3_DIR}/d76458f84f2544bdaac158d1b6b842da"
 

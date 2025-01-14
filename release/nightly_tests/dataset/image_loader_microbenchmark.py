@@ -1,3 +1,6 @@
+import io
+from typing import Dict
+
 import ray
 import torch
 import torchvision
@@ -159,7 +162,7 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
     return df
 
 
-def get_transform(to_torch_tensor):
+def get_transform(to_torch_tensor: bool = True, ):
     # Note(swang): This is a different order from tf.data.
     # torch: decode -> randCrop+resize -> randFlip
     # tf.data: decode -> randCrop -> randFlip -> resize

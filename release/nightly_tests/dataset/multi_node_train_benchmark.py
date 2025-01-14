@@ -1,6 +1,5 @@
 import ray
 from ray import train
-from ray.train import DataConfig, ScalingConfig, RunConfig, Checkpoint
 from ray.train.torch import TorchTrainer
 from ray.data.datasource.partitioning import Partitioning
 import tempfile
@@ -30,6 +29,7 @@ from dataset_benchmark_util import (
     IMG_S3_ROOT,
     get_mosaic_epoch_size,
     IMAGENET_WNID_TO_ID,
+    PARQUET_SPLIT_S3_DIRS,
 )
 
 
@@ -48,7 +48,8 @@ def parse_args():
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--data-root", type=str, help="Root of data directory")
+    parser.add_argument("--data-root", type=str, help="Root of the training data directory")
+    parser.add_argument("--val-data-root", type=str, default=None, help="Root of the validation data directory")
     parser.add_argument(
         "--file-type",
         default="image",
@@ -217,9 +218,11 @@ def parse_args():
         if args.file_type == "image":
             args.data_root = IMG_S3_ROOT
         elif args.file_type == "parquet":
-            args.data_root = get_prop_parquet_paths(
-                num_workers=args.num_workers, target_worker_gb=args.target_worker_gb
-            )
+            # args.data_root = get_prop_parquet_paths(
+            #     num_workers=args.num_workers, target_worker_gb=args.target_worker_gb
+            # )
+            args.data_root = PARQUET_SPLIT_S3_DIRS["train"]
+            args.val_data_root = args.val_data_root or PARQUET_SPLIT_S3_DIRS["val"]
         else:
             raise Exception(
                 f"Unknown file type {args.file_type}; "
@@ -227,9 +230,9 @@ def parse_args():
             )
         if args.repeat_ds > 1:
             args.data_root = [args.data_root] * args.repeat_ds
-    if args.file_type == "parquet" or args.use_torch or args.use_mosaic:
+
+    if args.use_torch or args.use_mosaic:
         # Training model is only supported for images currently.
-        # Parquet files do not have labels.
         args.skip_train_model = True
     if args.batch_size == -1:
         args.batch_size = None
@@ -276,6 +279,7 @@ def train_loop_per_worker():
 
     # Get the configured data loading solution.
     batch_iter = None
+    batch_iter_val = None
 
     if args.use_torch:
         batch_iter = get_torch_data_loader(
@@ -304,19 +308,14 @@ def train_loop_per_worker():
 
     all_workers_time_list_across_epochs = []
     validation_accuracy_per_epoch = []
-    # Validation loop with non-random cropped dataset
-    # is only supported for image dataset.
-    run_validation_set = (
-        args.use_ray_data and not args.skip_train_model and args.file_type == "image"
-    )
 
     # Begin training over the configured number of epochs.
     for epoch in range(args.num_epochs):
         # Ray Data needs to call iter_torch_batches on each epoch.
         if args.use_ray_data:
             ds_shard, batch_iter = _get_ray_data_batch_iterator(args, worker_rank)
-            if run_validation_set:
-                val_ds = train.get_dataset_shard("val")
+            val_ds = train.get_dataset_shard("val")
+            if val_ds:
                 batch_iter_val = val_ds.iter_torch_batches(
                     batch_size=args.batch_size,
                     prefetch_batches=args.prefetch_batches,
@@ -377,7 +376,7 @@ def train_loop_per_worker():
         end_t = time.time()
 
         epoch_accuracy_val = None
-        if run_validation_set:
+        if batch_iter_val is not None:
             print(f"Starting validation set for epoch {epoch+1}")
             num_correct_val = 0
             num_rows_val = 0
@@ -401,7 +400,7 @@ def train_loop_per_worker():
 
         with tempfile.TemporaryDirectory() as tmpdir:
             torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
-            checkpoint = Checkpoint.from_directory(tmpdir)
+            checkpoint = ray.train.Checkpoint.from_directory(tmpdir)
             train.report(
                 dict(
                     epoch_accuracy=epoch_accuracy_val,
@@ -657,7 +656,10 @@ def benchmark_code(
                 val_dataset = val_dataset.map(wnid_to_index)
             elif args.file_type == "parquet":
                 ray_dataset = ray.data.read_parquet(
-                    args.data_root,
+                    args.data_root, columns=["image", "label"]
+                )
+                val_dataset = ray.data.read_parquet(
+                    args.val_data_root, columns=["image", "label"]
                 )
             else:
                 raise Exception(f"Unknown file type {args.file_type}")
@@ -671,12 +673,14 @@ def benchmark_code(
                 ray_datasets_dict["val"] = val_dataset
             elif args.file_type == "parquet":
                 ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
+                val_dataset = val_dataset.map(decode_image_crop_and_flip)
+                ray_datasets_dict["val"] = val_dataset
             if cache_output_ds:
                 ray_dataset = ray_dataset.materialize()
             ray_datasets_dict[ds_name] = ray_dataset
 
     # 3) Train TorchTrainer on processed data
-    options = DataConfig.default_ingest_options()
+    options = ray.train.DataConfig.default_ingest_options()
     if args.disable_locality_with_output:
         options.locality_with_output = False
     options.preserve_order = args.preserve_order
@@ -698,7 +702,7 @@ def benchmark_code(
     torch_trainer = TorchTrainer(
         train_loop_per_worker,
         datasets=ray_datasets_dict,
-        scaling_config=ScalingConfig(
+        scaling_config=ray.train.ScalingConfig(
             num_workers=args.num_workers,
             use_gpu=args.use_gpu,
         ),
@@ -706,9 +710,9 @@ def benchmark_code(
             datasets_to_split=[] if args.split_input else "all",
             execution_options=options,
         ),
-        run_config=RunConfig(
+        run_config=ray.train.RunConfig(
             storage_path="/mnt/cluster_storage",
-            failure_config=train.FailureConfig(args.num_retries),
+            failure_config=ray.train.FailureConfig(args.num_retries),
         ),
     )
 
