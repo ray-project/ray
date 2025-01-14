@@ -1,6 +1,4 @@
 # ruff: noqa: E501
-import dataclasses
-from typing import Dict
 
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,

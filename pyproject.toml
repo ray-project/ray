@@ -48,7 +48,6 @@ ignore = [
     "I001",
     "E714",
     "B009",
-    "F401",
 ]
 
 [tool.ruff.lint.flake8-quotes]
