@@ -156,33 +156,21 @@ class Actor:
     async def run(self, control):
         node_id = ray.get_runtime_context().get_node_id()
         await control.add_node.remote(node_id)
-
-        while True:
-            node_id = ray.util.placement_group_table(self._pg)["bundles_to_node_id"][0]
-            if node_id == "":
-                await asyncio.sleep(1)
-                continue
-            break
-
+        node_id = ray.util.placement_group_table(self._pg)["bundles_to_node_id"][0]
         await control.add_node.remote(node_id)
-
         await control.ready.remote()
         while True:
             await asyncio.sleep(1)
 
     async def get_node_id(self):
-        while True:
-            node_id = ray.util.placement_group_table(pg)["bundles_to_node_id"][0]
-            if node_id == "":
-                await asyncio.sleep(1)
-                continue
-            break
+        node_id = ray.util.placement_group_table(pg)["bundles_to_node_id"][0]
         return (ray.get_runtime_context().get_node_id(), node_id)
 
 
 pg = ray.util.placement_group(
     bundles=[{{"CPU": 1}}], name="{pg_name}", lifetime="detached"
 )
+ray.get(pg.ready())
 
 
 @ray.remote
@@ -374,33 +362,21 @@ class Actor:
     async def run(self, control):
         node_id = ray.get_runtime_context().get_node_id()
         await control.add_node.remote(node_id)
-
-        while True:
-            node_id = ray.util.placement_group_table(self._pg)["bundles_to_node_id"][0]
-            if node_id == "":
-                await asyncio.sleep(1)
-                continue
-            break
-
+        node_id = ray.util.placement_group_table(self._pg)["bundles_to_node_id"][0]
         await control.add_node.remote(node_id)
-
         await control.ready.remote()
         while True:
             await asyncio.sleep(1)
 
     async def get_node_id(self):
-        while True:
-            node_id = ray.util.placement_group_table(pg)["bundles_to_node_id"][0]
-            if node_id == "":
-                await asyncio.sleep(1)
-                continue
-            break
+        node_id = ray.util.placement_group_table(pg)["bundles_to_node_id"][0]
         return (ray.get_runtime_context().get_node_id(), node_id)
 
 
 pg = ray.util.placement_group(
     bundles=[{{"CPU": 1}}], name="{pg_name}", lifetime="detached"
 )
+ray.get(pg.ready())
 
 
 @ray.remote
