@@ -16,9 +16,7 @@
 
 #pragma once
 
-#if !defined(__APPLE__) && !defined(__linux__)
-#error "This header file can only be used in unix"
-#endif
+#if defined(__APPLE__) || defined(__linux__)
 
 #include <string>
 
@@ -29,3 +27,5 @@ namespace ray {
 std::string CompleteReadFile(const std::string &fname);
 
 }  // namespace ray
+
+#endif
