@@ -302,7 +302,7 @@ def require_packages(packages: List[str]):
                         "`pip install` them or add them to "
                         "`runtime_env`."
                     )
-                setattr(func, "_require_packages_checked", True)
+                func._require_packages_checked = True
 
         if inspect.iscoroutinefunction(func):
 
