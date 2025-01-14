@@ -20,6 +20,8 @@
 #include <limits>
 #include <string>
 
+#include "ray/util/compat.h"
+
 namespace ray {
 
 // Environmenr variable, which indicates the pipe size of read.
@@ -36,12 +38,11 @@ struct LogRotationOption {
   size_t rotation_max_file_count = 1;
 };
 
-// TODO(hjiang): Use `MEMFD_TYPE_NON_UNIQUE` after we split `plasma/compat.h` into a
-// separate target, otherwise we're introducing too many unnecessary dependencies.
 class RotationFileHandle {
  public:
-  RotationFileHandle(int write_fd, std::function<void()> termination_caller)
-      : write_fd_(write_fd), termination_caller_(std::move(termination_caller)) {}
+  RotationFileHandle(MEMFD_TYPE_NON_UNIQUE write_handle,
+                     std::function<void()> termination_caller)
+      : write_handle_(write_handle), termination_caller_(std::move(termination_caller)) {}
   RotationFileHandle(const RotationFileHandle &) = delete;
   RotationFileHandle &operator=(const RotationFileHandle &) = delete;
 
@@ -51,57 +52,56 @@ class RotationFileHandle {
   // copiable to avoid manual `dup`.
 #if defined(__APPLE__) || defined(__linux__)
   RotationFileHandle(RotationFileHandle &&rhs) {
-    write_fd_ = rhs.write_fd_;
-    rhs.write_fd_ = -1;
+    write_handle_ = rhs.write_handle_;
+    rhs.write_handle_ = -1;
     termination_caller_ = std::move(rhs.termination_caller_);
   }
   RotationFileHandle &operator=(RotationFileHandle &&rhs) {
     if (this == &rhs) {
       return *this;
     }
-    write_fd_ = rhs.write_fd_;
-    rhs.write_fd_ = -1;
+    write_handle_ = rhs.write_handle_;
+    rhs.write_handle_ = -1;
     termination_caller_ = std::move(rhs.termination_caller_);
     return *this;
   }
   ~RotationFileHandle() {
     // Only invoke termination functor when handler at a valid state.
-    if (write_fd_ != -1) {
+    if (write_handle_ != -1) {
       termination_caller_();
     }
   }
 
-  int GetWriteHandle() const { return write_fd_; }
+  int GetWriteHandle() const { return write_handle_; }
 
- private:
-  int write_fd_;
 #elif defined(_WIN32)
   RotationFileHandle(RotationFileHandle &&rhs) {
-    write_fd_ = rhs.write_fd_;
-    rhs.write_fd_ = nullptr;
+    write_handle_ = rhs.write_handle_;
+    rhs.write_handle_ = nullptr;
     termination_caller_ = std::move(rhs.termination_caller_);
   }
   RotationFileHandle &operator=(RotationFileHandle &&rhs) {
     if (this == &rhs) {
       return *this;
     }
-    write_fd_ = rhs.write_fd_;
-    rhs.write_fd_ = nullptr;
+    write_handle_ = rhs.write_handle_;
+    rhs.write_handle_ = nullptr;
     termination_caller_ = std::move(rhs.termination_caller_);
     return *this;
   }
   ~RotationFileHandle() {
     // Only invoke termination functor when handler at a valid state.
-    if (write_fd_ != nullptr) {
+    if (write_handle_ != nullptr) {
       termination_caller_();
     }
   }
 
   HANDLE GetWriteHandle() const { return write_handle_; }
 
- private:
-  HANDLE write_handle_;
 #endif
+
+ private:
+  MEMFD_TYPE_NON_UNIQUE write_handle_;
 
   // Termination hook, used to flush and call completion.
   std::function<void()> termination_caller_;

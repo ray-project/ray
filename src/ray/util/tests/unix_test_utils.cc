@@ -18,6 +18,8 @@
 
 #include "ray/util/util.h"
 
+#if defined(__APPLE__) || defined(__linux__)
+
 namespace ray {
 
 std::string CompleteReadFile(const std::string &fname) {
@@ -40,3 +42,5 @@ std::string CompleteReadFile(const std::string &fname) {
 }
 
 }  // namespace ray
+
+#endif

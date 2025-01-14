@@ -227,9 +227,9 @@ ray_cc_test(
     name = "pipe_logger_test",
     srcs = ["pipe_logger_test.cc"],
     deps = [
-        "//src/ray/util:pipe_logger",
         ":unix_test_utils",
         "//src/ray/util",
+        "//src/ray/util:pipe_logger",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",

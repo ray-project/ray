@@ -361,7 +361,6 @@ ray_cc_library(
         "src/ray/object_manager/common.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/common.h",
-        "src/ray/object_manager/plasma/compat.h",
         "src/ray/object_manager/plasma/connection.h",
         "src/ray/object_manager/plasma/malloc.h",
         "src/ray/object_manager/plasma/plasma.h",
@@ -386,6 +385,7 @@ ray_cc_library(
         ":ray_common",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:compat",
         "@msgpack",
     ],
 )

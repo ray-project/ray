@@ -67,12 +67,18 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "compat",
+    hdrs = ["compat.h"],
+)
+
+ray_cc_library(
     name = "pipe_logger",
     hdrs = ["pipe_logger.h"],
     srcs = ["pipe_logger.cc"],
     deps = [
-        "@com_github_spdlog//:spdlog",
+        ":compat",
         ":util",
+        "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/strings",
     ],
 )
