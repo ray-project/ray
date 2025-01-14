@@ -1,5 +1,6 @@
 import abc
 import asyncio
+import logging
 import multiprocessing
 import threading
 from dataclasses import dataclass
@@ -10,7 +11,13 @@ from ray.dashboard.subprocesses.message import (
     RequestMessage,
     UnaryResponseMessage,
 )
-from ray.dashboard.subprocesses.utils import assert_not_in_asyncio_loop
+from ray.dashboard.subprocesses.utils import (
+    assert_not_in_asyncio_loop,
+    module_logging_filename,
+)
+from ray._private.ray_logging import setup_component_logger
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -20,8 +27,17 @@ class SubprocessModuleConfig:
     Pickleable.
     """
 
-    session_name: str
-    config: dict
+    # Logger configs. Will be set up in subprocess entrypoint `run_module`.
+    logging_level: str
+    logging_format: str
+    log_dir: str
+    # Name of the "base" log file. Its stem is appended with the Module.__name__.
+    # e.g. when logging_filename = "dashboard.log", and Module is JobHead,
+    # we will set up logger with name "dashboard-JobHead.log". This name will again be
+    # appended with .1 and .2 for rotation.
+    logging_filename: str
+    logging_rotate_bytes: int
+    logging_rotate_backup_count: int
 
 
 class SubprocessModule(abc.ABC):
@@ -92,7 +108,9 @@ class SubprocessModule(abc.ABC):
             try:
                 self.handle_child_bound_message(loop, message)
             except Exception as e:
-                print(f"Error handling child bound message: {e}")
+                logger.exception(
+                    f"Error handling child bound message {message}. This request will hang forever."
+                )
 
     async def _internal_health_check(
         self, message: RequestMessage, parent_bound_queue: multiprocessing.Queue
@@ -108,7 +126,9 @@ class SubprocessModule(abc.ABC):
                 UnaryResponseMessage(id=message.id, status=200, body=b"ok!")
             )
         except Exception as e:
-            print(f"Error sending response: {e}")
+            logger.error(
+                f"Error sending response: {e}. This means we will never reply the parent's health check request. The parent will think the module is dead."
+            )
 
 
 def run_module(
@@ -123,6 +143,17 @@ def run_module(
     to the module. Only listen to the parent queue AFTER the module is prepared by
     `module.run()`.
     """
+    module_name = cls.__name__
+    logging_filename = module_logging_filename(module_name, config.logging_filename)
+    setup_component_logger(
+        logging_level=config.logging_level,
+        logging_format=config.logging_format,
+        log_dir=config.log_dir,
+        filename=logging_filename,
+        max_bytes=config.logging_rotate_bytes,
+        backup_count=config.logging_rotate_backup_count,
+    )
+
     loop = get_or_create_event_loop()
     module = cls(config, child_bound_queue, parent_bound_queue)
 

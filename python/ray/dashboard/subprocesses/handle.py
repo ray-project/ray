@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import logging
 import multiprocessing
 import threading
 from dataclasses import dataclass
@@ -29,6 +30,8 @@ This file contains code run in the parent process. It can start a subprocess and
 messages to it.
 """
 
+logger = logging.getLogger(__name__)
+
 
 class SubprocessModuleHandle:
     """
@@ -40,7 +43,9 @@ class SubprocessModuleHandle:
        created.
     2. user must call SubprocessModuleHandle.start() before it can handle parent bound
        messages.
-    3.
+    3. SubprocessRouteTable.bind(handle)
+    4. app.add_routes(routes=SubprocessRouteTable.bound_routes())
+    5. run the app.
     """
 
     @dataclass
@@ -247,9 +252,11 @@ def dispatch_parent_bound_messages(
         try:
             handle_parent_bound_message(loop, message, handle)
         except Exception as e:
-            print(
+            logger.warning(
                 f"Error handling parent bound message from module {handle.cls.__name__}"
                 f": {e}. This may result in a http request never being responded to."
             )
 
-    print(f"Dispatching messages thread for module {handle.cls.__name__} is exiting")
+    logger.info(
+        f"Dispatching messages thread for module {handle.cls.__name__} is exiting"
+    )

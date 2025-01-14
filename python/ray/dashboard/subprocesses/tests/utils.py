@@ -1,10 +1,14 @@
 import asyncio
+import json
+import logging
 from typing import AsyncIterator
 
 import aiohttp
 
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
+
+logger = logging.getLogger(__name__)
 
 
 class TestModule(SubprocessModule):
@@ -17,7 +21,7 @@ class TestModule(SubprocessModule):
         self.run_finished = False
 
     async def run(self):
-        print("TestModule is running")
+        logger.info("TestModule is running")
         self.run_finished = True
 
     @SubprocessRouteTable.get("/test")
@@ -51,3 +55,8 @@ class TestModule(SubprocessModule):
         for i in range(n):
             await asyncio.sleep(0.001)
             yield f"{i}\n".encode()
+
+    @SubprocessRouteTable.post("/logging_in_module")
+    async def logging_in_module(self, request_body: bytes) -> aiohttp.web.Response:
+        logger.info("In /logging_in_module, Not all those who wander are lost.")
+        return aiohttp.web.Response(text="done!")
