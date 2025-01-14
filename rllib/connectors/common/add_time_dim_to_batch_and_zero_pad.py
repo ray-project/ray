@@ -11,7 +11,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.zero_padding import (
     create_mask_and_seq_lens,
     split_and_zero_pad,
@@ -56,29 +55,33 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
     If the RLModule is stateful, an extra time dim at axis=1 is added to all data in the
     batch.
 
-    Also, all other data (observations, rewards, etc.. if applicable) will be properly
+    Also, all data (observations, rewards, etc.. if applicable) will be properly
     reshaped into (B, T=max_seq_len (learner) or 1 (env-to-module), ...) and will be
     zero-padded, if necessary.
 
     This ConnectorV2:
     - Operates on a list of Episode objects.
-    - Gets the most recent STATE_OUT from all the given episodes and adds them under
-    the STATE_IN key to the batch under construction.
+    - Adds a time dim at axis=1 to all columns already in the batch.
+    - In case of a learner connector pipeline, zero-pads the data according to the
+    module's `self.model_config["max_seq_len"]` setting and reshapes all data to
+    (B, T, ...). The connector also adds SEQ_LENS information and loss mask
+    information to the batch based on the added zero-padding.
     - Does NOT alter any data in the given episodes.
     - Can be used in EnvToModule and Learner connector pipelines.
 
     .. testcode::
 
-        from ray.rllib.connectors.common import AddStatesFromEpisodesToBatch
+        from ray.rllib.connectors.common import AddTimeDimToBatchAndZeroPad
         from ray.rllib.core.columns import Columns
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
         from ray.rllib.utils.test_utils import check
+
 
         # Create a simple dummy class, pretending to be an RLModule with
         # `get_initial_state`, `is_stateful` and `model_config` property defined:
         class MyStateModule:
             # dummy config
-            model_config = {"max_seq_len": 2}
+            model_config = {"max_seq_len": 3}
 
             def is_stateful(self):
                 return True
@@ -87,92 +90,61 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
                 return 0.0
 
 
-        # Create an empty episode. The connector should use the RLModule's initial state
-        # to populate STATE_IN for the next forward pass.
-        episode = SingleAgentEpisode()
+        # Create an already reset episode. Expect the connector to add a time-dim to the
+        # reset observation.
+        episode = SingleAgentEpisode(observations=[0])
 
         rl_module = MyStateModule()
-        rl_module_init_state = rl_module.get_initial_state()
 
-        # Create an instance of this class (as a env-to-module connector).
-        connector = AddStatesFromEpisodesToBatch(as_learner_connector=False)
+        # Create an instance of this class (as an env-to-module connector).
+        connector = AddTimeDimToBatchAndZeroPad(as_learner_connector=False)
 
         # Call the connector.
         output_batch = connector(
             rl_module=rl_module,
-            batch={},
+            batch={Columns.OBS: [0]},
             episodes=[episode],
             shared_data={},
         )
-        # The output data's STATE_IN key should now contain the RLModule's initial state
-        # plus the one state out found in the episode in a "per-episode organized"
-        # fashion.
-        check(
-            output_batch[Columns.STATE_IN],
-            {
-                (episode.id_,): [rl_module_init_state],
-            },
-        )
+        # The output data's OBS key should now be reshaped to (B, T)
+        check(output_batch[Columns.OBS], [[0]])
 
         # Create a SingleAgentEpisodes containing 5 observations,
-        # 4 actions and 4 rewards, and 4 STATE_OUTs.
-        # The same connector should now use the episode-stored last STATE_OUT as
-        # STATE_IN for the next forward pass.
+        # 4 actions and 4 rewards.
         episode = SingleAgentEpisode(
             observations=[0, 1, 2, 3, 4],
             actions=[1, 2, 3, 4],
             rewards=[1.0, 2.0, 3.0, 4.0],
-            # STATE_OUT in episode will show up under STATE_IN in the batch.
-            extra_model_outputs={
-                Columns.STATE_OUT: [-4.0, -3.0, -2.0, -1.0],
-            },
-            len_lookback_buffer = 0,
+            len_lookback_buffer=0,
         )
 
         # Call the connector.
         output_batch = connector(
             rl_module=rl_module,
-            batch={},
+            batch={Columns.OBS: [4]},
             episodes=[episode],
             shared_data={},
         )
-        # The output data's STATE_IN key should now contain the episode's last
-        # STATE_OUT, NOT the RLModule's initial state in a "per-episode organized"
-        # fashion.
+        # The output data's OBS, ACTIONS, and REWARDS keys should now all have a time
+        # rank.
         check(
-            output_batch[Columns.STATE_IN],
-            {
-                # Expect the episode's last STATE_OUT.
-                (episode.id_,): [-1.0],
-            },
+            # Expect the episode's last OBS.
+            output_batch[Columns.OBS], [[4]],
         )
 
-        # Create a new connector as a learner connector with a RNN seq len of 2 (for
+        # Create a new connector as a learner connector with a RNN seq len of 4 (for
         # testing purposes only). Passing the same data through this learner connector,
-        # we expect the STATE_IN data to contain a) the initial module state and then
-        # every 2nd STATE_OUT stored in the episode.
-        connector = AddStatesFromEpisodesToBatch(as_learner_connector=True)
+        # we expect the data to also be zero-padded.
+        connector = AddTimeDimToBatchAndZeroPad(as_learner_connector=True)
 
         # Call the connector.
         output_batch = connector(
             rl_module=rl_module,
-            batch={},
-            episodes=[episode.to_numpy()],
+            batch={Columns.OBS: {(episode.id_,): [0, 1, 2, 3]}},
+            episodes=[episode],
             shared_data={},
         )
-        check(
-            output_batch[Columns.STATE_IN],
-            {
-                # Expect initial module state + every 2nd STATE_OUT from episode, but
-                # not the very last one (just like the very last observation, this data
-                # is NOT passed through the forward_train, b/c there is nothing to learn
-                # at that timestep, unless we need to compute e.g. bootstrap value
-                # predictions).
-                # Also note that the different STATE_IN timesteps are already present
-                # as one batched item per episode in the list.
-                (episode.id_,): [[rl_module_init_state, -3.0]],
-            },
-        )
+        check(output_batch[Columns.OBS], {(episode.id_,): [[0, 1, 2], [3, 0, 0]]})
     """
 
     def __init__(
@@ -270,14 +242,13 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
                         )
                     ] = True
 
-        for sa_episode in self.single_agent_episode_iterator(
-            episodes,
-            # If Learner connector, get all episodes (for train batch).
-            # If EnvToModule, get only those ongoing episodes that just had their
-            # agent step (b/c those are the ones we need to compute actions for next).
-            agents_that_stepped_only=not self._as_learner_connector,
-        ):
-            if self._as_learner_connector:
+            for sa_episode in self.single_agent_episode_iterator(
+                # If Learner connector, get all episodes (for train batch).
+                # If EnvToModule, get only those ongoing episodes that just had their
+                # agent step (b/c those are the ones we need to compute actions for next).
+                episodes,
+                agents_that_stepped_only=False,
+            ):
                 # Multi-agent case: Extract correct single agent RLModule (to get its
                 # individual state).
                 if sa_episode.module_id is not None:
@@ -316,7 +287,9 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
         return batch
 
     def _get_max_seq_len(self, rl_module, module_id=None):
-        if module_id:
+        if not isinstance(rl_module, MultiRLModule):
+            mod = rl_module
+        elif module_id:
             mod = rl_module[module_id]
         else:
             mod = next(iter(rl_module.values()))

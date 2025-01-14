@@ -12,10 +12,6 @@ from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.postprocessing.zero_padding import (
-    create_mask_and_seq_lens,
-)
-from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -34,6 +30,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
     [
         [0 or more user defined ConnectorV2 pieces],
         AddObservationsFromEpisodesToBatch,
+        AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
@@ -44,6 +41,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         [0 or more user defined ConnectorV2 pieces],
         AddObservationsFromEpisodesToBatch,
         AddColumnsFromEpisodesToTrainBatch,
+        AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
@@ -159,7 +157,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         output_batch = connector(
             rl_module=rl_module,
             batch={},
-            episodes=[episode.to_numpy()],
+            episodes=[episode],
             shared_data={},
         )
         check(
@@ -172,7 +170,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 # predictions).
                 # Also note that the different STATE_IN timesteps are already present
                 # as one batched item per episode in the list.
-                (episode.id_,): [[rl_module_init_state, -3.0]],
+                (episode.id_,): [rl_module_init_state, -3.0],
             },
         )
     """
