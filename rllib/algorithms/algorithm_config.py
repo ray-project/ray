@@ -325,6 +325,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
         self.validate_env_runners_after_construction = True
+        self.episodes_to_numpy = True
         self.max_requests_in_flight_per_env_runner = 1
         self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
@@ -399,6 +400,9 @@ class AlgorithmConfig(_Config):
         self.learner_config_dict = {}
         self.optimizer = {}  # @OldAPIStack
         self._learner_class = None
+        # New API stack's aggregator actors.
+        self.num_aggregator_actors_per_learner = 0
+        self.max_requests_in_flight_per_aggregator_actor = 100
 
         # `self.callbacks()`
         # TODO (sven): Set this default to None, once the old API stack has been
@@ -531,13 +535,6 @@ class AlgorithmConfig(_Config):
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
-        # TODO (sven): Remove these settings again in the future. We only need them
-        #  to debug a quite complex, production memory leak, possibly related to
-        #  evaluation in parallel (when `training_step` is getting called inside a
-        #  thread). It's also possible that the leak is not caused by RLlib itself,
-        #  but by Ray core, but we need more data to narrow this down.
-        self._run_training_always_in_thread = False
-        self._evaluation_parallel_to_training_wo_thread = False
 
         # `self.fault_tolerance()`
         self.restart_failed_env_runners = True
@@ -635,11 +632,11 @@ class AlgorithmConfig(_Config):
         # Worst naming convention ever: NEVER EVER use reserved key-words...
         if "lambda_" in config:
             assert hasattr(self, "lambda_")
-            config["lambda"] = getattr(self, "lambda_")
+            config["lambda"] = self.lambda_
             config.pop("lambda_")
         if "input_" in config:
             assert hasattr(self, "input_")
-            config["input"] = getattr(self, "input_")
+            config["input"] = self.input_
             config.pop("input_")
 
         # Convert `policies` (PolicySpecs?) into dict.
@@ -1758,6 +1755,7 @@ class AlgorithmConfig(_Config):
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         explore: Optional[bool] = NotProvided,
+        episodes_to_numpy: Optional[bool] = NotProvided,
         # @OldAPIStack settings.
         exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
         create_env_on_local_worker: Optional[bool] = NotProvided,  # @OldAPIStack
@@ -1910,6 +1908,10 @@ class AlgorithmConfig(_Config):
             explore: Default exploration behavior, iff `explore=None` is passed into
                 compute_action(s). Set to False for no exploration behavior (e.g.,
                 for evaluation).
+            episodes_to_numpy: Whether to numpy'ize episodes before
+                returning them from an EnvRunner. False by default. If True, EnvRunners
+                call `to_numpy()` on those episode (chunks) to be returned by
+                `EnvRunners.sample()`.
             exploration_config: A dict specifying the Exploration object's config.
             remote_worker_envs: If using num_envs_per_env_runner > 1, whether to create
                 those new envs in remote processes instead of in the same worker.
@@ -2034,6 +2036,10 @@ class AlgorithmConfig(_Config):
             self.batch_mode = batch_mode
         if explore is not NotProvided:
             self.explore = explore
+        if episodes_to_numpy is not NotProvided:
+            self.episodes_to_numpy = episodes_to_numpy
+
+        # @OldAPIStack
         if exploration_config is not NotProvided:
             # Override entire `exploration_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
@@ -2199,6 +2205,8 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
+        num_aggregator_actors_per_learner: Optional[int] = NotProvided,
+        max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         # Deprecated args.
         num_sgd_iter=DEPRECATED_VALUE,
         max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
@@ -2290,6 +2298,15 @@ class AlgorithmConfig(_Config):
                 Learner subclasses and in case the user doesn't want to write an extra
                 `AlgorithmConfig` subclass just to add a few settings to the base Algo's
                 own config class.
+            num_aggregator_actors_per_learner: The number of aggregator actors per
+                Learner (if num_learners=0, one local learner is created). Must be at
+                least 1. Aggregator actors perform the task of a) converting episodes
+                into a train batch and b) move that train batch to the same GPU that
+                the corresponding learner is located on. Good values are 1 or 2, but
+                this strongly depends on your setup and `EnvRunner` throughput.
+            max_requests_in_flight_per_aggregator_actor: How many in-flight requests
+                are allowed per aggregator actor before new requests are dropped?
+
         Returns:
             This updated AlgorithmConfig object.
         """
@@ -2366,6 +2383,12 @@ class AlgorithmConfig(_Config):
             )
         if learner_config_dict is not NotProvided:
             self.learner_config_dict.update(learner_config_dict)
+        if num_aggregator_actors_per_learner is not NotProvided:
+            self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
+        if max_requests_in_flight_per_aggregator_actor is not NotProvided:
+            self.max_requests_in_flight_per_aggregator_actor = (
+                max_requests_in_flight_per_aggregator_actor
+            )
 
         return self
 
@@ -3330,8 +3353,6 @@ class AlgorithmConfig(_Config):
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
-        _run_training_always_in_thread: Optional[bool] = NotProvided,
-        _evaluation_parallel_to_training_wo_thread: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -3350,15 +3371,6 @@ class AlgorithmConfig(_Config):
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials have
                 identical results. This makes experiments reproducible.
-            _run_training_always_in_thread: Runs the n `training_step()` calls per
-                iteration always in a separate thread (just as we would do with
-                `evaluation_parallel_to_training=True`, but even without evaluation
-                going on and even without evaluation workers being created in the
-                Algorithm).
-            _evaluation_parallel_to_training_wo_thread: Only relevant if
-                `evaluation_parallel_to_training` is True. Then, in order to achieve
-                parallelism, RLlib doesn't use a thread pool (as it usually does in
-                this situation).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -3375,12 +3387,6 @@ class AlgorithmConfig(_Config):
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
-        if _run_training_always_in_thread is not NotProvided:
-            self._run_training_always_in_thread = _run_training_always_in_thread
-        if _evaluation_parallel_to_training_wo_thread is not NotProvided:
-            self._evaluation_parallel_to_training_wo_thread = (
-                _evaluation_parallel_to_training_wo_thread
-            )
 
         return self
 
@@ -3770,6 +3776,17 @@ class AlgorithmConfig(_Config):
         # `self._rl_module_spec` has not been user defined -> return default one.
         else:
             return default_rl_module_spec
+
+    @property
+    def train_batch_size_per_learner(self):
+        # If not set explicitly, try to infer the value.
+        if self._train_batch_size_per_learner is None:
+            return self.train_batch_size // (self.num_learners or 1)
+        return self._train_batch_size_per_learner
+
+    @train_batch_size_per_learner.setter
+    def train_batch_size_per_learner(self, value):
+        self._train_batch_size_per_learner = value
 
     @property
     def train_batch_size_per_learner(self) -> int:
@@ -4419,7 +4436,10 @@ class AlgorithmConfig(_Config):
             "\nTo suppress all validation errors, set "
             "`config.experimental(_validate_config=False)` at your own risk."
         )
-        raise ValueError(msg)
+        if self._validate_config:
+            raise ValueError(msg)
+        else:
+            logger.warning(errmsg)
 
     def _validate_env_runner_settings(self) -> None:
         allowed_vectorize_modes = set(

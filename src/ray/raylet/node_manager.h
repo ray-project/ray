@@ -624,11 +624,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `GetTasksInfo` request.
-  void HandleGetTasksInfo(rpc::GetTasksInfoRequest request,
-                          rpc::GetTasksInfoReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `GetTaskFailureCause` request.
   void HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
                                  rpc::GetTaskFailureCauseReply *reply,
