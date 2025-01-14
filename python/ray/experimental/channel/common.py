@@ -329,9 +329,13 @@ class ReaderInterface:
     def _consume_leftover_channels_if_needed(
         self, timeout: Optional[float] = None
     ) -> None:
-        # Consume the channels that were not read in the last `read` call because
-        # a RayTaskError was returned from another channel. If we don't do this, the read operation will read
-        # stale versions of the object refs.
+        # Consume the channels that were not read in the last `read` call because a
+        # RayTaskError was returned from another channel. If we don't do this, the
+        # read operation will read stale versions of the object refs.
+        #
+        # If a RayTaskError is returned from a leftover channel, it will be ignored.
+        # If a read operation times out, a RayChannelTimeoutError exception will be
+        # raised.
         #
         # TODO(kevin85421): Currently, a DAG with NCCL channels and fast fail enabled
         # may not be reusable. Revisit this in the future.
@@ -341,6 +345,7 @@ class ReaderInterface:
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
+        self._leftover_channels = []
 
 
 @DeveloperAPI
@@ -361,7 +366,6 @@ class SynchronousReader(ReaderInterface):
         # which users expect to complete within the original `timeout`. Updating
         # `remaining_timeout` could cause unexpected timeouts in subsequent read
         # operations.
-        self._leftover_channels = []
 
         # It is a special case that `timeout` is set to 0, which means
         # read once for each channel.
@@ -452,7 +456,6 @@ class AwaitableBackgroundReader(ReaderInterface):
         # Give it a default timeout 60 seconds to release the buffers
         # of the channels that were not read in the last `read` call.
         self._consume_leftover_channels_if_needed(60)
-        self._leftover_channels = []
 
         results = [None for _ in range(len(self._input_channels))]
 
