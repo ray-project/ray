@@ -27,10 +27,9 @@ from ray.dashboard.utils import (
     CustomEncoder,
     DashboardAgentModule,
     DashboardHeadModule,
-    method_route_table_factory,
-    rest_response,
     to_google_style,
 )
+from ray.dashboard.routes import method_route_table_factory, rest_response
 
 try:
     create_task = asyncio.create_task
