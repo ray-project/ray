@@ -22,7 +22,7 @@ from ray.dashboard.subprocesses.module import (
     SubprocessModuleConfig,
     run_module,
 )
-from ray.dashboard.subprocesses.utils import assert_not_in_asyncio_loop
+from ray.dashboard.subprocesses.utils import assert_not_in_asyncio_loop, ThreadSafeDict
 
 """
 This file contains code run in the parent process. It can start a subprocess and send
@@ -68,7 +68,9 @@ class SubprocessModuleHandle:
 
         self.dispatch_parent_bound_messages_thread = None
 
-        self.active_requests: Dict[int, SubprocessModuleHandle.ActiveRequest] = {}
+        self.active_requests = ThreadSafeDict[
+            int, SubprocessModuleHandle.ActiveRequest
+        ]()
         self.next_request_id = 0
 
         self.process = multiprocessing.Process(
@@ -105,9 +107,10 @@ class SubprocessModuleHandle:
         request_id = self.next_request_id
         self.next_request_id += 1
 
-        self.active_requests[request_id] = SubprocessModuleHandle.ActiveRequest(
+        new_active_request = SubprocessModuleHandle.ActiveRequest(
             request=request, response_fut=self.loop.create_future()
         )
+        self.active_requests.put_new(request_id, new_active_request)
         if request is None:
             body = b""
         else:
@@ -115,7 +118,7 @@ class SubprocessModuleHandle:
         self.send_message(
             RequestMessage(id=request_id, method_name=method_name, body=body)
         )
-        return await self.active_requests[request_id].response_fut
+        return await new_active_request.response_fut
 
     async def health_check(self):
         """
@@ -168,19 +171,21 @@ def handle_parent_bound_message(
 ):
     """Handles a message from the parent bound queue."""
     if isinstance(message, ResponseMessage):
-        response_fut = handle.active_requests[message.id].response_fut
+        active_request = handle.active_requests.pop_or_raise(message.id)
         # set_result is not thread safe.
         loop.call_soon_threadsafe(
-            response_fut.set_result,
+            active_request.response_fut.set_result,
             aiohttp.web.Response(
                 status=message.status,
                 body=message.body,
             ),
         )
-        del handle.active_requests[message.id]
     elif isinstance(message, StreamResponseStartMessage):
-        active_request = handle.active_requests[message.id]
+        active_request = handle.active_requests.get_or_raise(message.id)
         assert active_request.stream_response is None
+        # This assignment is thread safe, because a next read will come from another
+        # handle_parent_bound_message call for a Stream.*Message, which will run on
+        # the same thread and hence will happen-after this assignment.
         active_request.stream_response = asyncio.run_coroutine_threadsafe(
             SubprocessModuleHandle.handle_stream_response_start(
                 active_request.request, message.body
@@ -188,7 +193,7 @@ def handle_parent_bound_message(
             loop,
         )
     elif isinstance(message, StreamResponseDataMessage):
-        active_request = handle.active_requests[message.id]
+        active_request = handle.active_requests.get_or_raise(message.id)
         assert active_request.stream_response is not None
         active_request.stream_response = asyncio.run_coroutine_threadsafe(
             SubprocessModuleHandle.handle_stream_response_data(
@@ -197,7 +202,7 @@ def handle_parent_bound_message(
             loop,
         )
     elif isinstance(message, StreamResponseEndMessage):
-        active_request = handle.active_requests[message.id]
+        active_request = handle.active_requests.pop_or_raise(message.id)
         assert active_request.stream_response is not None
         asyncio.run_coroutine_threadsafe(
             SubprocessModuleHandle.handle_stream_response_end(
@@ -206,13 +211,12 @@ def handle_parent_bound_message(
             ),
             loop,
         )
-        del handle.active_requests[message.id]
-
     elif isinstance(message, ErrorMessage):
         # Propagate the error to aiohttp.
-        response_fut = handle.active_requests[message.id].response_fut
-        loop.call_soon_threadsafe(response_fut.set_exception, message.error)
-        del handle.active_requests[message.id]
+        active_request = handle.active_requests.pop_or_raise(message.id)
+        loop.call_soon_threadsafe(
+            active_request.response_fut.set_exception, message.error
+        )
     else:
         raise ValueError(f"Unknown message type: {type(message)}")
 
