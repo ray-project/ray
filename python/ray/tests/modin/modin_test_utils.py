@@ -37,8 +37,8 @@ def df_categories_equals(df1, df2):
     if not hasattr(df1, "select_dtypes"):
         if isinstance(df1, pandas.CategoricalDtype):
             return categories_equals(df1, df2)
-        elif isinstance(getattr(df1, "dtype"), pandas.CategoricalDtype) and isinstance(
-            getattr(df1, "dtype"), pandas.CategoricalDtype
+        elif isinstance(df1.dtype, pandas.CategoricalDtype) and isinstance(
+            df1.dtype, pandas.CategoricalDtype
         ):
             return categories_equals(df1.dtype, df2.dtype)
         else:

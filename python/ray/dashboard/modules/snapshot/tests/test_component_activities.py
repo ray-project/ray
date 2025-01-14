@@ -25,7 +25,7 @@ def set_ray_cluster_activity_hook(request):
     Fixture that sets RAY_CLUSTER_ACTIVITY_HOOK environment variable
     for test_e2e_component_activities_hook.
     """
-    external_hook = getattr(request, "param")
+    external_hook = request.param
     assert (
         external_hook
     ), "Please pass value of RAY_CLUSTER_ACTIVITY_HOOK env var to this fixture"
