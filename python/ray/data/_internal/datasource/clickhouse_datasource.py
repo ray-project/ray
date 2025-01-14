@@ -10,14 +10,69 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
+def _is_filter_string_safe(filter_str: str) -> bool:
+    in_string = False
+    escape_next = False
+    for c in filter_str:
+        if in_string:
+            # If we're inside a string, check if we're closing it.
+            if c == "'" and not escape_next:
+                in_string = False
+            escape_next = (c == "\\") and not escape_next
+        else:
+            # If we're not in a string, entering one if we see a single quote
+            if c == "'":
+                in_string = True
+                escape_next = False
+            # Disallow semicolon if we're not in a string
+            elif c == ";":
+                return False
+            else:
+                escape_next = False
+    # If we end inside a string, it's suspicious, but let's allow
+    # it to be further validated by the DB. Just return True here.
+    return True
+
+
 @DeveloperAPI
 class ClickHouseDatasource(Datasource):
     """
     A Ray datasource for reading from ClickHouse.
+
+    Args:
+        table: Fully qualified table or view identifier (e.g.,
+            "default.table_name").
+        dsn: A string in DSN (Data Source Name) HTTP format (e.g.,
+            "clickhouse+http://username:password@host:8124/default").
+            For more information, see `ClickHouse Connection String doc
+            <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
+        columns: Optional List of columns to select from the data source.
+            If no columns are specified, all columns will be selected by default.
+        filter: Optional SQL filter string that will be used in the
+            WHERE statement (e.g., "label = 2 AND text IS NOT NULL").
+            The filter must be valid for use in a ClickHouse SQL WHERE clause.
+            Note: Parallel reads are not currently supported when a filter is set.
+            Specifying a filter forces the parallelism to 1 to ensure deterministic
+            and consistent results. For more information, see
+            `ClickHouse SQL WHERE Clause doc
+            <https://clickhouse.com/docs/en/sql-reference/statements/select/where>`_.
+        order_by: Optional Tuple containing a list of columns to order by
+            and a boolean indicating the order. Note: order_by is required to
+            support parallelism.
+        client_settings: Optional ClickHouse server settings to be used with the
+            session/every request. For more information, see
+            `ClickHouse Client Settings doc
+            <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
+        client_kwargs: Optional Additional keyword arguments to pass to the
+            ClickHouse client. For more information,
+            see `ClickHouse Core Settings doc
+            <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
     """
 
     NUM_SAMPLE_ROWS = 100
     MIN_ROWS_PER_READ_TASK = 50
+    _BASE_QUERY = "SELECT {select_clause} FROM {table}"
+    _EXPLAIN_FILTERS_QUERY = "EXPLAIN SELECT 1 FROM {table} WHERE {filter_clause}"
     _SIZE_ESTIMATE_QUERY = "SELECT SUM(byteSize(*)) AS estimate FROM ({query})"
     _COUNT_ESTIMATE_QUERY = "SELECT COUNT(*) AS estimate FROM ({query})"
     _SAMPLE_BLOCK_QUERY = "{query} LIMIT {limit_row_count}"
@@ -36,37 +91,15 @@ class ClickHouseDatasource(Datasource):
         table: str,
         dsn: str,
         columns: Optional[List[str]] = None,
+        filter: Optional[str] = None,
         order_by: Optional[Tuple[List[str], bool]] = None,
         client_settings: Optional[Dict[str, Any]] = None,
         client_kwargs: Optional[Dict[str, Any]] = None,
     ):
-        """
-        Initialize a ClickHouse Datasource.
-
-        Args:
-            table: Fully qualified table or view identifier (e.g.,
-                "default.table_name").
-            dsn: A string in DSN (Data Source Name) HTTP format (e.g.,
-                "clickhouse+http://username:password@host:8124/default").
-                For more information, see `ClickHouse Connection String doc
-                <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
-            columns: Optional List of columns to select from the data source.
-                If no columns are specified, all columns will be selected by default.
-            order_by: Optional Tuple containing a list of columns to order by
-                and a boolean indicating the order. Note: order_by is required to
-                support parallelism.
-            client_settings: Optional ClickHouse server settings to be used with the
-                session/every request. For more information, see
-                `ClickHouse Client Settings doc
-                <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
-            client_kwargs: Optional Additional keyword arguments to pass to the
-                ClickHouse client. For more information,
-                see `ClickHouse Core Settings doc
-                <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
-        """
         self._table = table
         self._dsn = dsn
         self._columns = columns
+        self._filter = filter
         self._order_by = order_by
         self._client_settings = client_settings or {}
         self._client_kwargs = client_kwargs or {}
@@ -82,9 +115,38 @@ class ClickHouseDatasource(Datasource):
             **self._client_kwargs or {},
         )
 
+    def _validate_filter(self):
+        if not self._filter:
+            return
+        # Minimal lexical check (regex or manual approach for semicolons, etc.).
+        if not _is_filter_string_safe(self._filter):
+            raise ValueError(
+                f"Invalid characters outside of "
+                f"string literals in filter: {self._filter}"
+            )
+        # Test "EXPLAIN" query to confirm parse-ability and catch expression errors.
+        client = self._init_client()
+        try:
+            test_query = self._EXPLAIN_FILTERS_QUERY.format(
+                table=self._table,
+                filter_clause=self._filter,
+            )
+            client.query(test_query)
+        except Exception as e:
+            raise ValueError(
+                f"Invalid filter expression: {self._filter}. Error: {e}",
+            )
+        finally:
+            client.close()
+
     def _generate_query(self) -> str:
-        select_clause = ", ".join(self._columns) if self._columns else "*"
-        query = f"SELECT {select_clause} FROM {self._table}"
+        query = self._BASE_QUERY.format(
+            select_clause=", ".join(self._columns) if self._columns else "*",
+            table=self._table,
+        )
+        if self._filter:
+            self._validate_filter()
+            query += f" WHERE {self._filter}"
         if self._order_by:
             columns, desc = self._order_by
             direction = " DESC" if desc else ""
@@ -191,7 +253,7 @@ class ClickHouseDatasource(Datasource):
 
         Returns:
             Estimated in-memory data size in bytes, or
-             None if the estimation cannot be performed.
+            None if the estimation cannot be performed.
         """
         return self._get_estimate_size()
 
@@ -201,8 +263,9 @@ class ClickHouseDatasource(Datasource):
 
         Args:
             parallelism: The desired number of partitions to read the data into.
-                order_by must be set in the ClickHouseDatasource to
-                support parallelism.
+                - If ``order_by`` is not set, parallelism will be forced to 1.
+                - If ``filter`` is set, parallelism will also be forced to 1
+                  to ensure deterministic results.
 
         Returns:
             A list of read tasks to be executed.
@@ -214,17 +277,29 @@ class ClickHouseDatasource(Datasource):
             parallelism, math.ceil(num_rows_total / self.MIN_ROWS_PER_READ_TASK)
         )
         # To ensure consistent order of query results, self._order_by
+        # must be specified and self.filter must not be specified
+        # in order to support parallelism.
+        if self._filter is not None and parallelism > 1:
+            logger.warning(
+                "ClickHouse datasource does not currently support parallel reads "
+                "when a filter is set; falling back to parallelism of 1."
+            )
+            # When filter is specified and parallelism is greater than 1,
+            # we need to reduce parallelism to 1 to ensure consistent results.
+            parallelism = 1
+        # To ensure consistent order of query results, self._order_by
         # must be specified in order to support parallelism.
         if self._order_by is None and parallelism > 1:
             logger.warning(
-                "ClickHouse datasource requires dataset to be explicitly ordered to "
-                "support parallelism; falling back to parallelism of 1"
+                "ClickHouse datasource requires dataset to be explicitly ordered "
+                "to support parallelism; falling back to parallelism of 1."
             )
             # When order_by is not specified and parallelism is greater than 1,
             # we need to reduce parallelism to 1 to ensure consistent results.
-            # By doing this we ensure the downstream process is treated exactly as
-            # a non-parallelized (single block) process would be.
             parallelism = 1
+        # By reducing parallelism to 1 when either of the conditions above are met,
+        # we ensure the downstream process is treated exactly as a non-parallelized
+        # (single block) process would be, thus ensuring output consistency.
         num_rows_per_block = num_rows_total // parallelism
         num_blocks_with_extra_row = num_rows_total % parallelism
         (
@@ -266,9 +341,9 @@ class ClickHouseDatasource(Datasource):
         read_tasks = []
         offset = 0
         for i in range(parallelism):
-            num_rows = num_rows_per_block
+            this_block_size = num_rows_per_block
             if i < num_blocks_with_extra_row:
-                num_rows += 1
-            read_tasks.append(_get_read_task(num_rows, offset, True))
-            offset += num_rows
+                this_block_size += 1
+            read_tasks.append(_get_read_task(this_block_size, offset, True))
+            offset += this_block_size
         return read_tasks
