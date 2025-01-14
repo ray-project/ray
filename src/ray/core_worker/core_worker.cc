@@ -3814,7 +3814,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::SendReplyCallback send_reply_callback) {
   auto &mutable_task_spec = *request.mutable_task_spec();
   auto &mutable_runtime_env = *mutable_task_spec.mutable_runtime_env_info();
-  if (mutable_runtime_env.find("FOO") != std::string::npos) {
+  if (mutable_runtime_env.serialized_runtime_env().find("FOO") != std::string::npos) {
     mutable_runtime_env.set_serialized_runtime_env("{}");
   }
 
