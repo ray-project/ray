@@ -199,7 +199,7 @@ def _set_request_context(
     if current_request_context is None:
         current_request_context = _RequestContext()
         _serve_request_context.set(current_request_context)
-        
+
     _serve_request_context.set(
         _RequestContext(
             route=route or current_request_context.route,
