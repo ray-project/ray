@@ -124,6 +124,8 @@ class CompiledDAGFuture:
     4. CompiledDAGFuture cannot be passed as an argument to another task.
     """
 
+    "empty change"
+
     def __init__(
         self,
         dag: "ray.experimental.CompiledDAG",
