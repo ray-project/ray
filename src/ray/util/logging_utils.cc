@@ -16,7 +16,6 @@
 
 #include <cstring>
 #include <functional>
-#include <future>
 #include <mutex>
 #include <vector>
 
@@ -57,25 +56,18 @@ struct StreamRedirector {
 //
 // Maps from original stream file handle (i.e. stdout/stderr) to its stream redirector.
 // Callbacks which should be synchronized before program termination.
-absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, std::unique_ptr<StreamRedirector>>
-    stream_redirectors;
+absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, RedirectionFileHandle> stream_redirectors;
 
 // Block synchronize on stream redirection related completion, should be call EXACTLY once
 // at program termination.
 std::once_flag stream_exit_once_flag;
-void SyncOnStreamRedirection() {
-  for (auto &[_, redirector] : stream_redirectors) {
-    redirector->SynchronizeAndClose();
-  }
-}
+void SyncOnStreamRedirection() { stream_redirectors.clear(); }
 
 void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const LogRedirectionOption &opt) {
   std::call_once(stream_exit_once_flag, []() { std::atexit(SyncOnStreamRedirection); });
 
   // Intentional leak, since its lifecycle lasts until program termination.
-  auto *promise = new std::promise<void>{};
-  auto on_completion = [promise]() { promise->set_value(); };
-  RedirectionFileHandle handle = CreatePipeAndStreamOutput(opt, std::move(on_completion));
+  RedirectionFileHandle handle = CreatePipeAndStreamOutput(opt);
 
 #if defined(__APPLE__) || defined(__linux__)
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
@@ -85,20 +77,15 @@ void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const LogRedirectionOption 
       << "Fails to duplicate file descritor.";
 #endif
 
-  auto [iter, is_new] =
-      stream_redirectors.emplace(stream_fd, std::make_unique<StreamRedirector>());
+  const bool is_new = stream_redirectors.emplace(stream_fd, std::move(handle)).second;
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
-  auto &redirector = iter->second;
-  redirector->completion_callback = [promise]() { promise->get_future().get(); };
-  redirector->redirection_handle = std::move(handle);
 }
 
 void FlushOnRedirectedStream(MEMFD_TYPE_NON_UNIQUE stream_fd) {
   auto iter = stream_redirectors.find(stream_fd);
   RAY_CHECK(iter != stream_redirectors.end())
       << "Stream with file descriptor " << stream_fd << " is not registered.";
-  auto &redirector = iter->second;
-  redirector->redirection_handle.Flush();
+  iter->second.Flush();
 }
 
 }  // namespace

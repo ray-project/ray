@@ -44,12 +44,16 @@ inline constexpr std::string_view kPipeLogReadBufSizeEnv = "RAY_PIPE_LOG_READ_BU
 class RedirectionFileHandle {
  public:
   RedirectionFileHandle() = default;
+
+  // @param termination_synchronizer is used to
   RedirectionFileHandle(MEMFD_TYPE_NON_UNIQUE write_handle,
                         std::shared_ptr<spdlog::logger> logger,
-                        std::function<void()> termination_caller)
+                        std::function<void()> close_write_handle,
+                        std::function<void()> termination_synchronizer)
       : write_handle_(write_handle),
         logger_(std::move(logger)),
-        termination_caller_(std::move(termination_caller)) {}
+        close_write_handle_(std::move(close_write_handle)),
+        termination_synchronizer_(std::move(termination_synchronizer)) {}
   RedirectionFileHandle(const RedirectionFileHandle &) = delete;
   RedirectionFileHandle &operator=(const RedirectionFileHandle &) = delete;
 
@@ -73,7 +77,8 @@ class RedirectionFileHandle {
     logger_ = std::move(rhs.logger_);
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = -1;
-    termination_caller_ = std::move(rhs.termination_caller_);
+    close_write_handle_ = std::move(rhs.close_write_handle_);
+    termination_synchronizer_ = std::move(rhs.termination_synchronizer_);
   }
   RedirectionFileHandle &operator=(RedirectionFileHandle &&rhs) {
     if (this == &rhs) {
@@ -82,13 +87,16 @@ class RedirectionFileHandle {
     logger_ = std::move(rhs.logger_);
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = -1;
-    termination_caller_ = std::move(rhs.termination_caller_);
+    close_write_handle_ = std::move(rhs.close_write_handle_);
+    termination_synchronizer_ = std::move(rhs.termination_synchronizer_);
     return *this;
   }
   void Close() {
     // Only invoke termination functor when handler at a valid state.
     if (write_handle_ != -1) {
-      termination_caller_();
+      close_write_handle_();
+      termination_synchronizer_();
+      write_handle_ = -1;
     }
   }
   void CompleteWrite(const char *data, size_t len) {
@@ -103,7 +111,8 @@ class RedirectionFileHandle {
     logger_ = std::move(rhs.logger_);
     write_fd_ = rhs.write_fd_;
     rhs.write_fd_ = nullptr;
-    termination_caller_ = std::move(rhs.termination_caller_);
+    close_write_handle_ = std::move(rhs.close_write_handle_);
+    termination_synchronizer_ = std::move(rhs.termination_synchronizer_);
   }
   RedirectionFileHandle &operator=(RedirectionFileHandle &&rhs) {
     if (this == &rhs) {
@@ -112,13 +121,16 @@ class RedirectionFileHandle {
     logger_ = std::move(rhs.logger_);
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = nullptr;
-    termination_caller_ = std::move(rhs.termination_caller_);
+    close_write_handle_ = std::move(rhs.close_write_handle_);
+    termination_synchronizer_ = std::move(rhs.termination_synchronizer_);
     return *this;
   }
-  ~RedirectionFileHandle() {
+  void Close() {
     // Only invoke termination functor when handler at a valid state.
     if (write_handle_ != nullptr) {
-      termination_caller_();
+      close_write_handle_();
+      termination_synchronizer_();
+      write_handle_ = nullptr;
     }
   }
   void CompleteWrite(char *data, size_t len) {
@@ -136,8 +148,11 @@ class RedirectionFileHandle {
   // Logger, which is responsible for writing content into all sinks.
   std::shared_ptr<spdlog::logger> logger_;
 
+  // Used to close write handle.
+  std::function<void()> close_write_handle_;
+
   // Termination hook, used to flush and call completion.
-  std::function<void()> termination_caller_;
+  std::function<void()> termination_synchronizer_;
 };
 
 // This function creates a pipe so applications could write to.
@@ -147,13 +162,12 @@ class RedirectionFileHandle {
 // The returned [RedirectionFileHandle] owns the lifecycle for pipe file descriptors and
 // background threads, the resource release happens at token's destruction.
 //
-// @param on_completion: called after all content has been persisted.
-// @return pipe stream token, so application could stream content into, and synchronize on
-// the destruction.
+// @return pipe stream token, so application could stream content into, flush stream and
+// block wait on flush and close completion.
 //
 // Notice caller side should _NOT_ close the given file handle, it will be handled
 // internally.
 RedirectionFileHandle CreatePipeAndStreamOutput(
-    const LogRedirectionOption &log_redirect_opt, std::function<void()> on_completion);
+    const LogRedirectionOption &log_redirect_opt);
 
 }  // namespace ray

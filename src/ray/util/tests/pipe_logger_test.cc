@@ -44,23 +44,16 @@ TEST_P(PipeLoggerTest, NoPipeWrite) {
   // testing directory.
   const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
 
-  std::promise<void> promise{};
-  auto on_completion = [&promise]() { promise.set_value(); };
-
   // Take the default option, which doesn't have rotation enabled.
   LogRedirectionOption logging_option{};
   logging_option.file_path = test_file_path;
-  {
-    auto log_token = CreatePipeAndStreamOutput(logging_option, std::move(on_completion));
+  auto log_token = CreatePipeAndStreamOutput(logging_option);
 
-    ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
-              kLogLine1.length());
-    ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
-              kLogLine2.length());
-  }
-
-  // Synchronize on log flush completion.
-  promise.get_future().get();
+  ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
+            kLogLine1.length());
+  ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
+            kLogLine2.length());
+  log_token.Close();
 
   // Check log content after completion.
   const auto actual_content = CompleteReadFile(test_file_path);
@@ -81,28 +74,21 @@ TEST_P(PipeLoggerTest, PipeWrite) {
   // testing directory.
   const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
 
-  std::promise<void> promise{};
-  auto on_completion = [&promise]() { promise.set_value(); };
-
   // Take the default option, which doesn't have rotation enabled.
   LogRedirectionOption logging_option{};
   logging_option.file_path = test_file_path;
   logging_option.rotation_max_size = 5;
   logging_option.rotation_max_file_count = 2;
-  {
-    auto log_token = CreatePipeAndStreamOutput(logging_option, std::move(on_completion));
 
-    ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
-              kLogLine1.length());
-    ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
-              kLogLine2.length());
-
-    // Write empty line, which is not expected to appear.
-    ASSERT_EQ(write(log_token.GetWriteHandle(), "\n", /*count=*/1), 1);
-  }
-
+  auto log_token = CreatePipeAndStreamOutput(logging_option);
+  ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
+            kLogLine1.length());
+  ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
+            kLogLine2.length());
+  // Write empty line, which is not expected to appear.
+  ASSERT_EQ(write(log_token.GetWriteHandle(), "\n", /*count=*/1), 1);
   // Synchronize on log flush completion.
-  promise.get_future().get();
+  log_token.Close();
 
   // Check log content after completion.
   const std::string log_file_path1 = test_file_path;
