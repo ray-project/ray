@@ -48,18 +48,14 @@ class TestUtils(unittest.TestCase):
         "c": {"ca": np.array([[[1, 2]], [[3, 5]]]), "cb": np.array([[1.0], [2.0]])},
     }
     # Corresponding space struct.
-    spaces = dict(
-        {
+    spaces = {
             "a": gym.spaces.Discrete(4),
             "b": (gym.spaces.Box(-1.0, 10.0, (3,)), gym.spaces.Box(-1.0, 1.0, (3, 1))),
-            "c": dict(
-                {
+            "c": {
                     "ca": gym.spaces.MultiDiscrete([4, 6]),
                     "cb": gym.spaces.Box(-1.0, 1.0, ()),
-                }
-            ),
-        }
-    )
+            },
+    }
 
     @classmethod
     def setUpClass(cls) -> None:
