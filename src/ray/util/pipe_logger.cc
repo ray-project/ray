@@ -259,25 +259,15 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
                   CREATE_ALWAYS,  // Create new file or overwrite existing
                   FILE_ATTRIBUTE_NORMAL,
                   NULL);  // No template file
-
-  if (file_handle == INVALID_HANDLE_VALUE) {
-    DWORD error_code = GetLastError();
-    throw std::runtime_error("Fails to open file " + file_path +
-                             " with failure reason: " + std::to_string(error_code));
-  }
+  RAY_CHECK(file_handle != INVALID_HANDLE_VALUE)
+      << "Fails to open file " << file_path
+      << " with failure reason: " << std::to_string(GetLastError());
 
   auto close_write_handle = [file_handle, on_completion = std::move(on_completion)]() {
-    if (!FlushFileBuffers(file_handle)) {
-      DWORD error_code = GetLastError();
-      throw std::runtime_error("Fails to flush data to disk because " +
-                               std::to_string(error_code));
-    }
-
-    if (!CloseHandle(file_handle)) {
-      DWORD error_code = GetLastError();
-      throw std::runtime_error("Fails to close redirection file because " +
-                               std::to_string(error_code));
-    }
+    RAY_CHECK(FlushFileBuffers(file_handle))
+        << "Fails to flush data to disk because " << std::to_string(GetLastError());
+    RAY_CHECK(CloseHandle(file_handle))
+        << "Fails to close redirection file because " << std::to_string(GetLastError());
   };
 
   return RedirectionFileHandle{file_handle,
