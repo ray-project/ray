@@ -188,6 +188,26 @@ class TestJSONFormatter:
         assert len(record_dict) == len(should_exist)
         assert "exc_text" not in record_dict
 
+    def test_record_with_valid_addl_log_std_attrs(self, shutdown_only):
+        formatter = JSONFormatter()
+        formatter.set_addl_log_std_attrs(["name"])
+        record = logging.makeLogRecord({})
+        formatted = formatter.format(record)
+
+        record_dict = json.loads(formatted)
+        should_exist = [
+            "asctime",
+            "levelname",
+            "message",
+            "filename",
+            "lineno",
+            "timestamp_ns",
+            "name",
+        ]
+        for key in should_exist:
+            assert key in record_dict
+        assert len(record_dict) == len(should_exist)
+
 
 class TestTextFormatter:
     def test_record_with_user_provided_context(self):
@@ -211,10 +231,22 @@ class TestTextFormatter:
         for s in ["INFO", "Test message", "test.py:1000", "--"]:
             assert s in formatted
 
+    def test_record_with_valid_addl_log_std_attrs(self, shutdown_only):
+        formatter = TextFormatter()
+        formatter.set_addl_log_std_attrs(["name"])
+        record = logging.makeLogRecord({})
+        formatted = formatter.format(record)
+        assert "name=" in formatted
+
 
 def test_invalid_encoding():
     with pytest.raises(ValueError):
         LoggingConfig(encoding="INVALID")
+
+
+def test_invalid_addl_log_std_attrs():
+    with pytest.raises(ValueError):
+        LoggingConfig(addl_log_std_attrs=["invalid"])
 
 
 class TestTextModeE2E:
@@ -224,7 +256,7 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig(encoding="TEXT")
+    logging_config=ray.LoggingConfig(encoding="TEXT", addl_log_std_attrs=["name"])
 )
 
 @ray.remote
@@ -244,6 +276,7 @@ ray.get(obj_ref)
             "task_id",
             "INFO",
             "This is a Ray task",
+            "name=",
         ]
         for s in should_exist:
             assert s in stderr
@@ -255,7 +288,7 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig(encoding="TEXT")
+    logging_config=ray.LoggingConfig(encoding="TEXT", addl_log_std_attrs=["name"])
 )
 
 @ray.remote
@@ -280,6 +313,7 @@ ray.get(actor_instance.print_message.remote())
             "task_id",
             "INFO",
             "This is a Ray actor",
+            "name=",
         ]
         for s in should_exist:
             assert s in stderr
@@ -290,7 +324,7 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig(encoding="TEXT")
+    logging_config=ray.LoggingConfig(encoding="TEXT", addl_log_std_attrs=["name"])
 )
 
 logger = logging.getLogger()
@@ -304,6 +338,7 @@ logger.info("This is a Ray driver")
             "node_id",
             "INFO",
             "This is a Ray driver",
+            "name=",
         ]
         for s in should_exist:
             assert s in stderr
