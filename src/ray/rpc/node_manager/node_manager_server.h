@@ -49,7 +49,6 @@ namespace rpc {
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(IsLocalWorkerDead)         \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)            \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(DrainRaylet)               \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTasksInfo)              \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)            \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTaskFailureCause)       \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)     \
@@ -151,10 +150,6 @@ class NodeManagerServiceHandler {
   virtual void HandleGetSystemConfig(GetSystemConfigRequest request,
                                      GetSystemConfigReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetTasksInfo(GetTasksInfoRequest request,
-                                  GetTasksInfoReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetObjectsInfo(GetObjectsInfoRequest request,
                                     GetObjectsInfoReply *reply,

@@ -206,8 +206,8 @@ class CompiledDAGFuture:
 
         if not self._dag._has_execution_results(self._execution_index):
             result = yield from fut.__await__()
+            self._dag._max_finished_execution_index += 1
             self._dag._cache_execution_results(self._execution_index, result)
-            self._dag.increment_max_finished_execution_index()
 
         return_vals = self._dag._get_execution_results(
             self._execution_index, self._channel_index
