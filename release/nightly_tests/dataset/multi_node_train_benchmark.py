@@ -12,6 +12,7 @@ from image_loader_microbenchmark import (
     get_transform,
     crop_and_flip_image,
     get_preprocess_map_fn,
+    decode_image_crop_and_flip,
     center_crop_image,
 )
 
@@ -221,6 +222,7 @@ def parse_args():
             #     num_workers=args.num_workers, target_worker_gb=args.target_worker_gb
             # )
             args.data_root = PARQUET_SPLIT_S3_DIRS["train"]
+            # args.data_root = "s3://anyscale-imagenet/parquet"
         else:
             raise Exception(
                 f"Unknown file type {args.file_type}; "
@@ -277,7 +279,7 @@ def train_loop_per_worker():
 
     # Get the configured data loading solution.
     batch_iter = None
-    batch_iter_val = None
+    val_ds, batch_iter_val = None, None
 
     if args.use_torch:
         batch_iter = get_torch_data_loader(
@@ -428,7 +430,7 @@ def train_loop_per_worker():
         )
         if args.use_ray_data:
             print(f"iter stats: {ds_shard.stats()}")
-            if run_validation_set:
+            if val_ds:
                 print(f"val iter stats: {val_ds.stats()}")
     # Similar reporting for aggregating number of rows across workers
     all_num_rows = [
@@ -654,6 +656,7 @@ def benchmark_code(
                 val_dataset = val_dataset.map(wnid_to_index)
             elif args.file_type == "parquet":
                 ray_dataset = ray.data.read_parquet(
+                    # args.data_root,
                     args.data_root, columns=["image", "label"]
                 )
 
@@ -674,7 +677,9 @@ def benchmark_code(
                 ray_datasets_dict["val"] = val_dataset
             elif args.file_type == "parquet":
                 ray_dataset = ray_dataset.map(
+                    # decode_image_crop_and_flip
                     get_preprocess_map_fn(decode_image=True, random_transforms=True)
+                    # lambda x: {"image": np.ones(5)}
                 )
                 val_dataset = val_dataset.map(
                     get_preprocess_map_fn(decode_image=True, random_transforms=False)

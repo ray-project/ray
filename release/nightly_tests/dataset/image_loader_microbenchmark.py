@@ -181,7 +181,12 @@ def get_transform(to_torch_tensor: bool = True, random_transforms: bool = True):
             ),
             torchvision.transforms.RandomHorizontalFlip(),
         ]
-    
+    else:
+        transforms += [
+            torchvision.transforms.Resize(256),
+            torchvision.transforms.CenterCrop(224),
+        ]
+
     if to_torch_tensor:
         transforms += [torchvision.transforms.ToTensor()]
 
@@ -191,8 +196,7 @@ def get_transform(to_torch_tensor: bool = True, random_transforms: bool = True):
         )
     ]
 
-    transform = torchvision.transforms.Compose(transforms)
-    return transform
+    return torchvision.transforms.Compose(transforms)
 
 
 # Capture `transform`` in the map UDFs.
@@ -258,7 +262,7 @@ def get_preprocess_map_fn(decode_image: bool = True, random_transforms: bool = T
     TODO: Move these preprocessing utilities shared between tests to a separate file.
     """
     crop_resize_transform = get_transform(
-        to_torch_tensor=True,
+        to_torch_tensor=False,
         random_transforms=random_transforms
     )
 
@@ -266,11 +270,16 @@ def get_preprocess_map_fn(decode_image: bool = True, random_transforms: bool = T
         assert "image" in row and "label" in row, row.keys()
 
         if decode_image:
-            row["image"] = Image.open(io.BytesIO(row["image"]))
+            # row["image"] = np.array(Image.open(io.BytesIO(row["image"])))
+            # row["image"] = torch.tensor(
+            #     np.transpose(row["image"], axes=(2, 0, 1)),
+            # ) / 255.0
+            row["image"] = pil_to_tensor(Image.open(io.BytesIO(row["image"]))) / 255.0
 
         row["image"] = crop_resize_transform(row["image"])
         row["label"] = IMAGENET_WNID_TO_ID[row["label"]]
-        return {"image": row["image"], "label": row["label"]}
+
+        return {"image": np.array(row["image"]), "label": row["label"]}
 
     return map_fn
 
