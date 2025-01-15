@@ -31,7 +31,7 @@ class MNISTDataModule(pl.LightningDataModule):
         self.num_classes = 10
 
     def prepare_data(self):
-        # Download the MNIST dataset if not already present
+        # download
         with FileLock(os.path.expanduser("~/.data.lock")):
             load_dataset("ylecun/mnist", cache_dir=self.data_dir)
 
@@ -41,22 +41,14 @@ class MNISTDataModule(pl.LightningDataModule):
         def transform_fn(sample):
             return (self.transform(sample["image"]), sample["label"])
 
-        train_data = [transform_fn(sample) for sample in dataset["train"]]
-        test_data = [transform_fn(sample) for sample in dataset["test"]]
-
-        self.dataset = {"train": train_data, "test": test_data}
+        self.mnist_train = [transform_fn(sample) for sample in dataset["train"]]
+        self.mnist_val = [transform_fn(sample) for sample in dataset["test"]]
 
     def train_dataloader(self):
-        return DataLoader(
-            self.dataset["train"],
-            batch_size=self.batch_size,
-        )
+        return DataLoader(self.mnist_train, batch_size=self.batch_size)
 
     def val_dataloader(self):
-        return DataLoader(
-            self.dataset["test"],  # Using test set as validation
-            batch_size=self.batch_size,
-        )
+        return DataLoader(self.mnist_val, batch_size=self.batch_size)
 
 
 class LightningMNISTClassifier(pl.LightningModule):
