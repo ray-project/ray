@@ -49,12 +49,12 @@ class TestUtils(unittest.TestCase):
     }
     # Corresponding space struct.
     spaces = {
-            "a": gym.spaces.Discrete(4),
-            "b": (gym.spaces.Box(-1.0, 10.0, (3,)), gym.spaces.Box(-1.0, 1.0, (3, 1))),
-            "c": {
-                    "ca": gym.spaces.MultiDiscrete([4, 6]),
-                    "cb": gym.spaces.Box(-1.0, 1.0, ()),
-            },
+        "a": gym.spaces.Discrete(4),
+        "b": (gym.spaces.Box(-1.0, 10.0, (3,)), gym.spaces.Box(-1.0, 1.0, (3, 1))),
+        "c": {
+            "ca": gym.spaces.MultiDiscrete([4, 6]),
+            "cb": gym.spaces.Box(-1.0, 1.0, ()),
+        },
     }
 
     @classmethod
