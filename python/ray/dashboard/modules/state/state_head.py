@@ -284,6 +284,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             reply = await self._state_api_data_source_client.get_all_actor_info(
                 filters=[("actor_id", "=", actor_id)]
             )
+            if len(reply.actor_table_data) == 0:
+                return None
             assert len(reply.actor_table_data) == 1
             return protobuf_message_to_dict(
                 reply.actor_table_data[0],
