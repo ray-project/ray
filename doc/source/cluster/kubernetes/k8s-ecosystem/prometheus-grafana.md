@@ -366,7 +366,7 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
 
 ## Step 11: View metrics from different RayCluster CRs
 
-Once the Ray Dashboard is imported into Grafana, you can filter metrics by using the `Cluster` variable. This variable is automatically applied by default when using the provided `PodMonitor` configuration. No additional setup is needed for this labeling.
+Once the Ray Dashboard is imported into Grafana, you can filter metrics by using the `Cluster` variable. Ray Dashboard automatically applies this variable by default when you use the provided `PodMonitor` configuration. You don't need any additional setup for this labeling.
 
 If you have multiple RayCluster custom resources, the `Cluster` variable allows you to filter metrics specific to a particular cluster. This ensures that you can easily monitor or debug individual RayCluster instances without being overwhelmed by data from all clusters.
 
