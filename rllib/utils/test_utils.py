@@ -1135,13 +1135,6 @@ def run_rllib_example_script_experiment(
             if args.num_learners is not None:
                 config.learners(num_learners=args.num_learners)
 
-            # User wants to use GPUs if available, but doesn't hard-require them.
-            if args.num_gpus_per_learner is None:
-                if num_gpus_available >= num_gpus_needed_if_available:
-                    config.learners(num_gpus_per_learner=1)
-                else:
-                    config.learners(num_gpus_per_learner=0, num_cpus_per_learner=1)
-
             # User wants to use aggregator actors per Learner.
             if args.num_aggregator_actors_per_learner is not None:
                 config.learners(
@@ -1149,6 +1142,13 @@ def run_rllib_example_script_experiment(
                         args.num_aggregator_actors_per_learner
                     )
                 )
+
+            # User wants to use GPUs if available, but doesn't hard-require them.
+            if args.num_gpus_per_learner is None:
+                if num_gpus_available >= num_gpus_needed_if_available:
+                    config.learners(num_gpus_per_learner=1)
+                else:
+                    config.learners(num_gpus_per_learner=0, num_cpus_per_learner=1)
 
             # User hard-requires n GPUs, but they are not available -> Error.
             elif num_gpus_available < num_gpus_requested:
