@@ -892,9 +892,9 @@ class CompiledDAG:
         self._proxy_actor = _create_proxy_actor()
         # Set to True when `teardown` API is called.
         self._is_teardown = False
-        # execution index of destructed dagrefs -> number destructed at that idx
-        # we will release the buffers for these indices as we come across them
-        # so that we don't have to pay the cost of deserialization
+        # execution indices of destructed CompiledDAGRefs -> number destructed at idx
+        # When the number destructed is equal to the number of dag_output_channels,
+        # we will lazily release the native buffers corresponding to these indices
         self._destructed_execution_idxs: Dict[int, int] = defaultdict(int)
 
     @property
@@ -2019,19 +2019,20 @@ class CompiledDAG:
         """
         This will try to repeatedly release channel buffers as long as
         max_finished_execution_index + 1 is in the set of destructed indices.
+        We should be checking to release buffers any time we are incrementing
+        or checking the max_finished_execution_index or the destructed_execution_idxs.
         """
         timeout = self._get_timeout
-        # Keep releasing buffers while the next execution idx is in the destructed set
         while self._next_execution_can_be_released():
             start_time = time.monotonic()
             try:
                 self._dag_output_fetcher.release_channel_buffers(timeout)
             except RayChannelTimeoutError as e:
                 raise RayChannelTimeoutError(
-                    "If the execution is expected to take a long time, increase "
-                    f"RAY_CGRAPH_get_timeout which is currently {self._get_timeout}"
-                    " seconds. Otherwise, this may indicate that the execution is "
-                    "hanging."
+                    "Execution of DagRefs that have been destructed is taking a "
+                    "long time. If this is expected, increase RAY_CGRAPH_get_timeout "
+                    f"which is currently {self._get_timeout} seconds. "
+                    "Otherwise, this may indicate that the execution is hanging."
                 ) from e
 
             self._max_finished_execution_index += 1
@@ -2046,8 +2047,10 @@ class CompiledDAG:
         channel_index: Optional[int] = None,
         timeout: Optional[float] = None,
     ):
-        """Repeatedly execute this DAG until the given execution index,
-        and buffer all results (except for refs that have been destructed).
+        """Repeatedly execute this DAG until the given execution index and
+        buffer results for all DagRefs that are still alive. If this comes across
+        execution indices for which the corresponding DagRef has been destructed,
+        it will release the buffer and not cache the result.
         If the DAG has already been executed up to the given index, it will do nothing.
 
         Args:
@@ -2131,6 +2134,9 @@ class CompiledDAG:
         else:
             inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
+        # We want to release any buffers we can at this point based on the
+        # max_finished_execution_index so that the number of inflight executions
+        # is correct.
         self._try_release_buffers()
         self._raise_if_too_many_inflight_executions()
         try:
