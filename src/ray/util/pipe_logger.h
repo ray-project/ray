@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Util on logging with pipe.
+// Util on logging with redirection, which supports a few logging features, i.e., log
+// rotation, multiple sinks for logging, etc.
 
 #pragma once
 
@@ -41,6 +42,7 @@ namespace ray {
 // finished.
 inline constexpr std::string_view kPipeLogReadBufSizeEnv = "RAY_PIPE_LOG_READ_BUF_SIZE";
 
+// File handle requires active destruction via owner calling [Close].
 class RedirectionFileHandle {
  public:
   RedirectionFileHandle() = default;
@@ -55,6 +57,7 @@ class RedirectionFileHandle {
         close_fn_(std::move(close_fn)) {}
   RedirectionFileHandle(const RedirectionFileHandle &) = delete;
   RedirectionFileHandle &operator=(const RedirectionFileHandle &) = delete;
+  ~RedirectionFileHandle() = default;
 
   // Synchronously flush content to storage.
   //

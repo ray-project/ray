@@ -56,7 +56,10 @@ void SyncOnStreamRedirection() {
 }
 
 void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const LogRedirectionOption &opt) {
-  std::call_once(stream_exit_once_flag, []() { std::atexit(SyncOnStreamRedirection); });
+  std::call_once(stream_exit_once_flag, []() {
+    RAY_CHECK_EQ(std::atexit(SyncOnStreamRedirection), 0)
+        << "Fails to register stream redirection termination hook.";
+  });
 
   RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
 
