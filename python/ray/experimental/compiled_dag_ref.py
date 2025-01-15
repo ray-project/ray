@@ -107,7 +107,7 @@ class CompiledDAGRef:
                     self._execution_index, self._channel_index
                 )
             else:
-                self._dag._destructed_execution_idxs.add(self._execution_index)
+                self._dag._destructed_execution_idxs[self._execution_index] += 1
                 self._dag._try_release_buffers()
 
     def get(self, timeout: Optional[float] = None):

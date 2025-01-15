@@ -239,6 +239,17 @@ def test_out_of_order_destruction(ray_start_regular):
     # should be destructed and not counted in the inflight executions
     ref5 = compiled_dag.execute(3)
     assert ray.get(ref5) == 23
+    compiled_dag.teardown()
+
+    b = Actor.remote(0)
+    with InputNode() as inp:
+        dag = MultiOutputNode([b.inc.bind(inp), b.inc.bind(inp)])
+    compiled_dag = dag.experimental_compile()
+    ref1, ref2 = compiled_dag.execute(1)
+    del ref2
+    # Test that ray.get() on ref1 still works properly even if
+    # ref2 was destructed
+    assert ray.get(ref1) == 1
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])

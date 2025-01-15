@@ -892,9 +892,10 @@ class CompiledDAG:
         self._proxy_actor = _create_proxy_actor()
         # Set to True when `teardown` API is called.
         self._is_teardown = False
-        # idxs of destructed dagrefs, we will release the buffers for these indices as
-        # we come across them so that we don't have to pay the cost of deserialization
-        self._destructed_execution_idxs: Set[int] = set()
+        # execution index of destructed dagrefs -> number destructed at that idx
+        # we will release the buffers for these indices as we come across them
+        # so that we don't have to pay the cost of deserialization
+        self._destructed_execution_idxs: Dict[int, int] = defaultdict(int)
 
     @property
     def communicator_id_p2p(self) -> Optional[str]:
@@ -2001,6 +2002,19 @@ class CompiledDAG:
                 del self._result_buffer[execution_index]
         return result
 
+    def _next_execution_can_be_released(self):
+        """
+        Check if the next buffers for the next execution which will be completed
+        can be released. The next execution can be released if
+        the next execution index is in the destructed set and the number of destructed
+        channels is equal to the number of output channels.
+        """
+        return (
+            self._max_finished_execution_index + 1 in self._destructed_execution_idxs
+            and self._destructed_execution_idxs[self._max_finished_execution_index + 1]
+            == len(self.dag_output_channels)
+        )
+
     def _try_release_buffers(self):
         """
         This will try to repeatedly release channel buffers as long as
@@ -2008,7 +2022,7 @@ class CompiledDAG:
         """
         timeout = self._get_timeout
         # Keep releasing buffers while the next execution idx is in the destructed set
-        while self._max_finished_execution_index + 1 in self._destructed_execution_idxs:
+        while self._next_execution_can_be_released():
             start_time = time.monotonic()
             try:
                 self._dag_output_fetcher.release_channel_buffers(timeout)
@@ -2059,10 +2073,7 @@ class CompiledDAG:
             # If a dagref for a specific execution index has been destructed,
             # release the channel buffers for that execution index instead of caching
             try:
-                if (
-                    self._max_finished_execution_index + 1
-                    in self._destructed_execution_idxs
-                ):
+                if self._next_execution_can_be_released():
                     self._dag_output_fetcher.release_channel_buffers(timeout)
                 else:
                     result = self._dag_output_fetcher.read(timeout)
