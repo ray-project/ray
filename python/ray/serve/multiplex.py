@@ -249,7 +249,7 @@ class _ModelMultiplexWrapper:
                 await asyncio.get_running_loop().run_in_executor(None, model.__del__)
             else:
                 await model.__del__()
-            setattr(model, "__del__", lambda _: None)
+            model.__del__ = lambda _: None
         unload_latency_ms = (time.time() - unload_start_time) * 1000.0
         self.model_unload_latency_ms.observe(unload_latency_ms)
         logger.info(

@@ -8,6 +8,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.framework import get_device
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import DeveloperAPI
 
@@ -47,6 +48,8 @@ class AggregatorActor(FaultAwareApply):
         self._node = platform.node()
         self._device = get_device(self.config, 1)
 
+        self.metrics = MetricsLogger()
+
         # Create the RLModule.
         # TODO (sven): For now, this RLModule (its weights) never gets updated.
         #  The reason the module is needed is for the connector to know, which
@@ -73,6 +76,7 @@ class AggregatorActor(FaultAwareApply):
         batch_on_gpu = self._learner_connector(
             episodes=episodes,
             rl_module=self._module,
+            metrics=self.metrics,
         )
         # Convert to a dict into a `MultiAgentBatch`.
         # TODO (sven): Try to get rid of dependency on MultiAgentBatch (once our mini-
@@ -84,3 +88,6 @@ class AggregatorActor(FaultAwareApply):
             env_steps=env_steps,
         )
         return ma_batch_on_gpu
+
+    def get_metrics(self):
+        return self.metrics.reduce()
