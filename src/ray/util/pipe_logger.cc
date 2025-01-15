@@ -44,12 +44,10 @@ size_t GetPipeLogReadSizeOrDefault() {
   return kDefaultPipeLogReadBufSize;
 }
 
-// TODO(hjiang): Make thread annotation for std::mutex.
 struct StreamDumper {
-  std::mutex mu;
-  bool stopped = false;
-  std::condition_variable cv;
-  std::deque<std::string> content;
+  absl::Mutex mu;
+  bool stopped ABSL_GUARDED_BY(mu) = false;
+  std::deque<std::string> content ABSL_GUARDED_BY(mu);
 };
 
 // Read bytes from handle into [data], return number of bytes read.
@@ -104,9 +102,8 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
         // Reached the end of stream.
         if (cur_new_line.empty()) {
           {
-            std::lock_guard lck(stream_dumper->mu);
+            absl::MutexLock lock(&stream_dumper->mu);
             stream_dumper->stopped = true;
-            stream_dumper->cv.notify_one();
           }
 
           // Place IO operation out of critical section.
@@ -119,9 +116,8 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
 
         // We only log non-empty lines.
         if (!cur_new_line.empty()) {
-          std::lock_guard lck(stream_dumper->mu);
+          absl::MutexLock lock(&stream_dumper->mu);
           stream_dumper->content.emplace_back(std::move(cur_new_line));
-          stream_dumper->cv.notify_one();
         }
       }
 
@@ -143,10 +139,13 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
     while (true) {
       std::string curline;
       {
-        std::unique_lock lck(stream_dumper->mu);
-        stream_dumper->cv.wait(lck, [stream_dumper]() {
-          return !stream_dumper->content.empty() || stream_dumper->stopped;
-        });
+        auto has_new_content_or_stopped =
+            [stream_dumper]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(stream_dumper->mu) {
+              return !stream_dumper->content.empty() || stream_dumper->stopped;
+            };
+
+        absl::MutexLock lock(&stream_dumper->mu);
+        stream_dumper->mu.Await(absl::Condition(&has_new_content_or_stopped));
 
         // Keep logging until all content flushed.
         if (!stream_dumper->content.empty()) {
