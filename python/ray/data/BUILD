@@ -349,7 +349,7 @@ py_test(
     name = "test_dynamic_block_split",
     size = "medium",
     srcs = ["tests/test_dynamic_block_split.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "data_non_parallel"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
