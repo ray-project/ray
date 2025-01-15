@@ -413,7 +413,7 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id_hex_str,
           std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
       RAY_ASSIGN_OR_RETURN(
           node_infos,
-          gcs_client_->Nodes().GetAllNoCacheWithFilter(timeout_ms, std::move(filters)));
+          gcs_client_->Nodes().GetAllNoCacheWithFilters(timeout_ms, std::move(filters)));
     }
     if (!node_infos.empty()) {
       *node_info = node_infos[0].SerializeAsString();
@@ -447,7 +447,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       auto timeout_ms =
           std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
       RAY_ASSIGN_OR_RETURN(
-          node_infos, gcs_client_->Nodes().GetAllNoCacheWithFilter(timeout_ms, filters));
+          node_infos, gcs_client_->Nodes().GetAllNoCacheWithFilters(timeout_ms, filters));
     }
     if (!node_infos.empty()) {
       *node_to_connect = node_infos[0].SerializeAsString();
@@ -465,7 +465,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       absl::ReaderMutexLock lock(&mutex_);
       auto timeout_ms = end_time_point - current_time_ms();
       RAY_ASSIGN_OR_RETURN(
-          node_infos, gcs_client_->Nodes().GetAllNoCacheWithFilter(timeout_ms, filters));
+          node_infos, gcs_client_->Nodes().GetAllNoCacheWithFilters(timeout_ms, filters));
     }
     if (node_infos.empty() && node_ip_address == gcs_address) {
       filters.set_node_ip_address("127.0.0.1");
@@ -475,7 +475,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
             std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
         RAY_ASSIGN_OR_RETURN(
             node_infos,
-            gcs_client_->Nodes().GetAllNoCacheWithFilter(timeout_ms, filters));
+            gcs_client_->Nodes().GetAllNoCacheWithFilters(timeout_ms, filters));
       }
     }
     if (!node_infos.empty()) {

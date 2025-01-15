@@ -709,7 +709,7 @@ Status NodeInfoAccessor::GetAllNoCache(int64_t timeout_ms,
   return Status::OK();
 }
 
-StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCacheWithFilter(
+StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCacheWithFilters(
     int64_t timeout_ms, rpc::GetAllNodeInfoRequest_Filters filters) {
   rpc::GetAllNodeInfoRequest request;
   *request.mutable_filters() = std::move(filters);

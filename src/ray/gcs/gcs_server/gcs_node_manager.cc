@@ -233,7 +233,6 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
       request.filters().has_node_ip_address()
           ? std::make_optional(request.filters().node_ip_address())
           : std::nullopt;
-  std::optional<std::string> filter_node_;
   auto filter_fn = [&filter_node_id, &filter_node_name, &filter_node_ip_address](
                        const rpc::GcsNodeInfo &node) {
     if (filter_node_id.has_value() &&
