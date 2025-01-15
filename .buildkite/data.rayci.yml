@@ -48,11 +48,8 @@ steps:
       - data
       - data_non_parallel
     instance_type: medium
-    parallelism: 1
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
-        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 1
         --build-name data9build
         --only-tags data_non_parallel
     depends_on: data9build
@@ -77,11 +74,8 @@ steps:
       - data
       - data_non_parallel
     instance_type: medium
-    parallelism: 1
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
-        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 1
         --build-name datalbuild
         --only-tags data_non_parallel
     depends_on: datalbuild
@@ -114,7 +108,6 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --workers 1 --worker-id  "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 1
         --python-version {{matrix.python}}
         --only-tags data_non_parallel
     depends_on: databuild-multipy
@@ -144,11 +137,8 @@ steps:
       - data
       - data_non_parallel
     instance_type: medium
-    parallelism: 1
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
-        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 1
         --build-name datanbuild
         --only-tags data_non_parallel
     depends_on: datanbuild
