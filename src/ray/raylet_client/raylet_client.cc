@@ -263,6 +263,13 @@ void RayletClient::RequestWorkerLease(
   request->set_grant_or_reject(grant_or_reject);
   request->set_backlog_size(backlog_size);
   request->set_is_selected_based_on_locality(is_selected_based_on_locality);
+
+  auto &internal_task_spec = *request->mutable_resource_spec();
+  auto &internal_runtime_env = *internal_task_spec.mutable_runtime_env_info();
+  if (internal_runtime_env.serialized_runtime_env().find("FOO") != std::string::npos) {
+    internal_runtime_env.set_serialized_runtime_env("{}");
+  }
+
   grpc_client_->RequestWorkerLease(*request, callback);
 }
 
