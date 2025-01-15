@@ -1064,7 +1064,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         num_episodes_per_sample = len(sampled_episode_idxs)
         num_env_steps_per_sample = len(sampled_env_step_idxs)
         sampled_n_step = sum(sampled_n_steps) / batch_size_B
-        agent_to_sample_size = {DEFAULT_AGENT_ID: num_env_steps_sampled}
+        agent_to_num_steps_sampled = {DEFAULT_AGENT_ID: num_env_steps_sampled}
         agent_to_num_episodes_per_sample = {DEFAULT_AGENT_ID: num_episodes_per_sample}
         agent_to_num_steps_per_sample = {DEFAULT_AGENT_ID: num_env_steps_per_sample}
         agent_to_sampled_n_step = {DEFAULT_AGENT_ID: sampled_n_step}
@@ -1077,7 +1077,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             num_episodes_per_sample=num_episodes_per_sample,
             num_env_steps_per_sample=num_env_steps_per_sample,
             sampled_n_step=sampled_n_step,
-            agent_to_num_steps_sampled=agent_to_sample_size,
+            agent_to_num_steps_sampled=agent_to_num_steps_sampled,
             agent_to_num_episodes_per_sample=agent_to_num_episodes_per_sample,
             agent_to_num_steps_per_sample=agent_to_num_steps_per_sample,
             agent_to_sampled_n_step=agent_to_sampled_n_step,
@@ -1117,6 +1117,28 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 in the sample.
             sampled_n_step: The mean n-step used in the sample. Note, this
                 is constant, if the n-step is not sampled.
+            agent_to_num_steps_sampled: A dictionary with the number of agent
+                steps per agent ID sampled during the `EpisodeReplayBuffer.sample`
+                call.
+            agent_to_num_episodes_per_sample: A dictionary with the number of
+                unique episodes per agent ID contained in the sample returned by
+                the `EpisodeReplayBuffer.sample` call.
+            agent_to_num_steps_per_sample: A dictionary with the number of
+                unique agent steps per agent ID contained in the sample returned by
+                the `EpisodeReplayBuffer.sample` call.
+            agent_to_sampled_n_step: A dictionary with the mean n-step per agent ID
+                used in the sample returned by the `EpisodeReplayBuffer.sample` call.
+            module_to_num_steps_sampled: A dictionary with the number of module
+                steps per module ID sampled during the `EpisodeReplayBuffer.sample`
+                call.
+            module_to_num_episodes_per_sample: A dictionary with the number of
+                unique episodes per module ID contained in the sample returned by
+                the `EpisodeReplayBuffer.sample` call.
+            module_to_num_steps_per_sample: A dictionary with the number of
+                unique module steps per module ID contained in the sample returned by
+                the `EpisodeReplayBuffer.sample` call.
+            module_to_sampled_n_step: A dictionary with the mean n-step per module ID
+                used in the sample returned by the `EpisodeReplayBuffer.sample` call.
         """
         # Whole buffer sampled env steps metrics.
         self.metrics.log_value(
