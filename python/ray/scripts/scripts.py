@@ -2672,6 +2672,12 @@ try:
 except Exception as e:
     logger.debug(f"Integrating ray jobs command line tool failed with {e}")
 
+try:
+    from ray.dashboard.modules.virtual_cluster.cli import vclusters_cli_group
+
+    add_command_alias(vclusters_cli_group, name="vclusters", hidden=False)
+except Exception as e:
+    logger.debug(f"Integrating ray vclusters command line tool failed with {e}")
 
 try:
     from ray.serve.scripts import serve_cli
