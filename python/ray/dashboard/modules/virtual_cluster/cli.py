@@ -11,6 +11,7 @@ from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_lo
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_service_pb2 import (
     CreateOrUpdateVirtualClusterRequest,
+    GetVirtualClustersRequest,
     RemoveVirtualClusterRequest,
 )
 
@@ -69,6 +70,17 @@ def create(
 ):
     """Create a new virtual cluster."""
     stub = _get_virtual_cluster_stub(address)
+    reply = stub.GetVirtualClusters(GetVirtualClustersRequest(virtual_cluster_id=id))
+    if reply.status.code != 0:
+        cli_logger.error(
+            f"Failed to create virtual cluster '{id}': {reply.status.message}"
+        )
+        sys.exit(1)
+
+    if len(reply.virtual_cluster_data_list) > 0:
+        cli_logger.error(f"Failed to create virtual cluster '{id}': already exists")
+        sys.exit(1)
+
     if replica_sets is not None:
         replica_sets = json.loads(replica_sets)
 
