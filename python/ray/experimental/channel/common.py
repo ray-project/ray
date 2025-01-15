@@ -279,6 +279,12 @@ class ReaderInterface:
         self._closed = False
         self._num_reads = 0
 
+        # A list of channels that were not read in the last `read` call
+        # because the reader returned immediately when a RayTaskError was found.
+        # These channels must be consumed before the next read to avoid reading
+        # stale data remaining from the last read.
+        self._leftover_channels: List[ChannelInterface] = []
+
     def get_num_reads(self) -> int:
         return self._num_reads
 
@@ -291,8 +297,8 @@ class ReaderInterface:
 
         Args:
             timeout: The maximum time in seconds to wait for reading.
-                None means using default timeout, 0 means immediate timeout
-                (immediate success or timeout without blocking), -1 means
+                None means using default timeout which is infinite, 0 means immediate
+                timeout (immediate success or timeout without blocking), -1 means
                 infinite timeout (block indefinitely).
 
         """
@@ -320,6 +326,27 @@ class ReaderInterface:
         for channel in self._input_channels:
             channel.close()
 
+    def _consume_leftover_channels_if_needed(
+        self, timeout: Optional[float] = None
+    ) -> None:
+        # Consume the channels that were not read in the last `read` call because a
+        # RayTaskError was returned from another channel. If we don't do this, the
+        # read operation will read stale versions of the object refs.
+        #
+        # If a RayTaskError is returned from a leftover channel, it will be ignored.
+        # If a read operation times out, a RayChannelTimeoutError exception will be
+        # raised.
+        #
+        # TODO(kevin85421): Currently, a DAG with NCCL channels and fast fail enabled
+        # may not be reusable. Revisit this in the future.
+        for c in self._leftover_channels:
+            start_time = time.monotonic()
+            c.read(timeout)
+            if timeout is not None:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
+        self._leftover_channels = []
+
 
 @DeveloperAPI
 class SynchronousReader(ReaderInterface):
@@ -333,13 +360,62 @@ class SynchronousReader(ReaderInterface):
         pass
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
-        results = []
-        for c in self._input_channels:
-            start_time = time.monotonic()
-            results.append(c.read(timeout))
-            if timeout is not None:
-                timeout -= time.monotonic() - start_time
-                timeout = max(timeout, 0)
+        self._consume_leftover_channels_if_needed(timeout)
+        # We don't update `remaining_timeout` here because in the worst case,
+        # consuming leftover channels requires reading all `_input_channels`,
+        # which users expect to complete within the original `timeout`. Updating
+        # `remaining_timeout` could cause unexpected timeouts in subsequent read
+        # operations.
+
+        # It is a special case that `timeout` is set to 0, which means
+        # read once for each channel.
+        is_zero_timeout = timeout == 0
+
+        results = [None for _ in range(len(self._input_channels))]
+        if timeout is None or timeout == -1:
+            timeout = float("inf")
+        timeout_point = time.monotonic() + timeout
+        remaining_timeout = timeout
+
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+        iteration_timeout = ctx.read_iteration_timeout
+
+        # Iterate over the input channels with a shorter timeout for each iteration
+        # to detect RayTaskError early and fail fast.
+        done_channels = set()
+        while len(done_channels) < len(self._input_channels):
+            for i, c in enumerate(self._input_channels):
+                if c in done_channels:
+                    continue
+                try:
+                    result = c.read(min(remaining_timeout, iteration_timeout))
+                    results[i] = result
+                    done_channels.add(c)
+                    if isinstance(result, ray.exceptions.RayTaskError):
+                        # If we raise an exception immediately, it will be considered
+                        # as a system error which will cause the execution loop to
+                        # exit. Hence, return immediately and let `_process_return_vals`
+                        # handle the exception.
+                        #
+                        # Return a list of RayTaskError so that the caller will not
+                        # get an undefined partial result.
+                        self._leftover_channels = [
+                            c for c in self._input_channels if c not in done_channels
+                        ]
+                        return [result for _ in range(len(self._input_channels))]
+                except ray.exceptions.RayChannelTimeoutError as e:
+                    remaining_timeout = max(timeout_point - time.monotonic(), 0)
+                    if remaining_timeout == 0:
+                        raise e
+                    continue
+
+                remaining_timeout = max(timeout_point - time.monotonic(), 0)
+                if remaining_timeout == 0 and not is_zero_timeout:
+                    raise ray.exceptions.RayChannelTimeoutError(
+                        f"Cannot read all channels within {timeout} seconds"
+                    )
         return results
 
     def release_channel_buffers(self, timeout: Optional[float] = None) -> None:
@@ -377,14 +453,35 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
-        results = []
-        for c in self._input_channels:
-            exiting = retry_and_check_interpreter_exit(
-                lambda: results.append(c.read(timeout=1))
-            )
-            if exiting:
-                break
+        # Give it a default timeout 60 seconds to release the buffers
+        # of the channels that were not read in the last `read` call.
+        self._consume_leftover_channels_if_needed(60)
 
+        results = [None for _ in range(len(self._input_channels))]
+
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+        iteration_timeout = ctx.read_iteration_timeout
+
+        done_channels = set()
+        while len(done_channels) < len(self._input_channels):
+            for i, c in enumerate(self._input_channels):
+                if c in done_channels:
+                    continue
+                try:
+                    result = c.read(iteration_timeout)
+                    results[i] = result
+                    done_channels.add(c)
+                    if isinstance(result, ray.exceptions.RayTaskError):
+                        self._leftover_channels = [
+                            c for c in self._input_channels if c not in done_channels
+                        ]
+                        return [result for _ in range(len(self._input_channels))]
+                except ray.exceptions.RayChannelTimeoutError:
+                    pass
+                if sys.is_finalizing():
+                    return results
         return results
 
     async def run(self):
@@ -450,10 +547,9 @@ class WriterInterface:
         Write the value.
 
         Args:
-            timeout: The maximum time in seconds to wait for writing.
-                None means using default timeout, 0 means immediate timeout
-                (immediate success or timeout without blocking), -1 means
-                infinite timeout (block indefinitely).
+            timeout: The maximum time in seconds to wait for writing. 0 means
+                immediate timeout (immediate success or timeout without blocking).
+                -1 and None mean infinite timeout (blocks indefinitely).
         """
         raise NotImplementedError()
 
