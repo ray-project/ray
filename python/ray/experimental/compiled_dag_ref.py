@@ -101,6 +101,10 @@ class CompiledDAGRef:
         # we skip python-based deserialization as the values stored in the buffers are
         # not used.
         if not self._ray_get_called:
+            if self._execution_index in self._dag._result_buffer:
+                _ = self._dag._get_execution_results(
+                    self._execution_index, self._channel_index
+                )
             self._dag.release_output_channel_buffers(self._execution_index)
 
     def get(self, timeout: Optional[float] = None):
