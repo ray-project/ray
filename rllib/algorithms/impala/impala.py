@@ -286,7 +286,7 @@ class IMPALAConfig(AlgorithmConfig):
                 help="Aggregator workers are no longer supported on the old API "
                 "stack! To use aggregation (and GPU pre-loading) on the new API "
                 "stack, activate the new API stack, then set "
-                "`config.training(num_aggregator_actors_per_learner=..)`. Good "
+                "`config.learners(num_aggregator_actors_per_learner=..)`. Good "
                 "choices are normally 1 or 2, but this depends on your overall "
                 "setup, especially your `EnvRunner` throughput.",
                 error=True,
@@ -297,7 +297,7 @@ class IMPALAConfig(AlgorithmConfig):
                 help="Aggregator workers are no longer supported on the old API "
                 "stack! To use aggregation (and GPU pre-loading) on the new API "
                 "stack, activate the new API stack and THEN set "
-                "`config.training(max_requests_in_flight_per_aggregator_actor=..)"
+                "`config.learners(max_requests_in_flight_per_aggregator_actor=..)"
                 "`.",
                 error=True,
             )

@@ -289,15 +289,23 @@ def add_rllib_example_script_args(
         "--num-learners",
         type=int,
         default=None,
-        help="The number of Learners to use. If none, use the algorithm's default "
+        help="The number of Learners to use. If `None`, use the algorithm's default "
         "value.",
     )
     parser.add_argument(
         "--num-gpus-per-learner",
         type=float,
         default=None,
-        help="The number of GPUs per Learner to use. If none and there are enough GPUs "
-        "for all required Learners (--num-learners), use a value of 1, otherwise 0.",
+        help="The number of GPUs per Learner to use. If `None` and there are enough "
+        "GPUs for all required Learners (--num-learners), use a value of 1, "
+        "otherwise 0.",
+    )
+    parser.add_argument(
+        "--num-aggregator-actors-per-learner",
+        type=int,
+        default=None,
+        help="The number of Aggregator actors to use per Learner. If `None`, use the "
+        "algorithm's default value.",
     )
 
     # Ray init options.
@@ -1133,6 +1141,14 @@ def run_rllib_example_script_experiment(
                     config.learners(num_gpus_per_learner=1)
                 else:
                     config.learners(num_gpus_per_learner=0, num_cpus_per_learner=1)
+
+            # User wants to use aggregator actors per Learner.
+            if args.num_aggregator_actors_per_learner is not None:
+                config.learners(
+                    num_aggregator_actors_per_learner=(
+                        args.num_aggregator_actors_per_learner
+                    )
+                )
 
             # User hard-requires n GPUs, but they are not available -> Error.
             elif num_gpus_available < num_gpus_requested:
