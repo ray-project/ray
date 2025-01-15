@@ -318,10 +318,14 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   auto timeout_point = ToTimeoutPoint(timeout_ms);
   bool locked = false;
   bool expired = false;
+  auto last_signal_check_time = std::chrono::steady_clock::now();
   do {
     RAY_RETURN_NOT_OK(object->header->CheckHasError());
-    if (check_signals_) {
+    if (std::chrono::steady_clock::now() - last_signal_check_time >=
+            std::chrono::seconds(1) &&
+        check_signals_) {
       RAY_RETURN_NOT_OK(check_signals_());
+      last_signal_check_time = std::chrono::steady_clock::now();
     }
     // The channel is still open. This lock ensures that there is only one reader
     // at a time. The lock is released in `ReadRelease()`.
