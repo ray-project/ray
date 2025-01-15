@@ -226,25 +226,24 @@ bool ShouldUsePipeStream(const LogRedirectionOption &log_redirect_opt) {
          log_redirect_opt.tee_to_stderr;
 }
 
-// TODO(hjiang): Implement open file for windows.
 #if defined(__APPLE__) || defined(__linux__)
 RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
   int fd = open(file_path.data(), O_WRONLY | O_CREAT, 0644);
   RAY_CHECK_NE(fd, -1) << "Fails to open file " << file_path << " with failure reason "
                        << strerror(errno);
 
-  auto close_write_handle = [fd]() {
+  auto flush_fn = [fd]() {
     RAY_CHECK_EQ(fsync(fd), 0) << "Fails to flush data to disk because "
                                << strerror(errno);
-    if (close(fd) != 0) {
-      RAY_LOG(ERROR) << "Fails to close redirection file because " << strerror(errno);
-    }
+  };
+  auto close_fn = [fd]() {
+    RAY_CHECK_EQ(fsync(fd), 0) << "Fails to flush data to disk because "
+                               << strerror(errno);
+    RAY_CHECK_EQ(close(fd), 0) << "Fails to close redirection file because "
+                               << strerror(errno);
   };
 
-  return RedirectionFileHandle{fd,
-                               /*logger=*/nullptr,
-                               /*close_write_handle=*/std::move(close_write_handle),
-                               /*termination_synchronizer=*/[]() {}};
+  return RedirectionFileHandle{fd, std::move(flush_fn), std::move(close_fn)};
 }
 #elif defined(_WIN32)
 #include <windows.h>
@@ -281,16 +280,16 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
     }
   };
 
-  return RedirectionFileHandle{reinterpret_cast<intptr_t>(file_handle),
+  return RedirectionFileHandle{file_handle,
                                /*logger=*/nullptr,
-                               /*close_write_handle=*/[]() {},
-                               std::move(termination_synchronizer)};
+                               /*close_write_handle=*/std::move(close_write_handle),
+                               /*termination_synchronizer=*/[]() {}};
 }
 #endif
 
 }  // namespace
 
-RedirectionFileHandle CreatePipeAndStreamOutput(
+RedirectionFileHandle CreateRedirectionFileHandle(
     const LogRedirectionOption &log_redirect_opt) {
   const bool should_use_pipe_stream = ShouldUsePipeStream(log_redirect_opt);
   if (!should_use_pipe_stream) {
@@ -303,8 +302,6 @@ RedirectionFileHandle CreatePipeAndStreamOutput(
   auto promise = std::make_shared<std::promise<void>>();
   // Invoked after flush and close finished.
   auto on_close_completion = [promise = promise]() { promise->set_value(); };
-  // Invoke at handler's `Close` to block wait flush and close completion.
-  auto termination_synchronizer = [promise]() { promise->get_future().get(); };
 
 // TODO(hjiang): Use `boost::iostreams` to represent pipe write fd, which supports
 // cross-platform and line-wise read.
@@ -317,9 +314,11 @@ RedirectionFileHandle CreatePipeAndStreamOutput(
 
   auto read_func = [read_fd](char *data, size_t len) { return Read(read_fd, data, len); };
   auto close_read_handle = [read_fd]() { RAY_CHECK_EQ(close(read_fd), 0); };
-  auto close_write_handle = [write_fd]() {
+  auto close_fn = [write_fd, promise]() {
     CompleteWriteEOFIndicator(write_fd);
     RAY_CHECK_EQ(close(write_fd), 0);
+    // Block until destruction finishes.
+    promise->get_future().get();
   };
 
 #elif defined(_WIN32)
@@ -339,6 +338,8 @@ RedirectionFileHandle CreatePipeAndStreamOutput(
   auto close_write_handle = [write_handle, read_handle, promise = promise]() {
     CompleteWriteEOFIndicator(write_handle);
     RAY_CHECK(CloseHandle(write_handle));
+    // Block until destruction finishes.
+    promise->get_future().get();
   };
 
 #endif
@@ -350,18 +351,18 @@ RedirectionFileHandle CreatePipeAndStreamOutput(
                      std::move(on_close_completion));
 
 #if defined(__APPLE__) || defined(__linux__)
-  RedirectionFileHandle stream_token{write_fd,
-                                     std::move(logger),
-                                     std::move(close_write_handle),
-                                     std::move(termination_synchronizer)};
+  RedirectionFileHandle redirection_file_handle{
+      write_fd,
+      /*flush_fn=*/[logger = std::move(logger)]() { logger->flush(); },
+      std::move(close_fn)};
 #elif defined(_WIN32)
-  RedirectionFileHandle stream_token{write_handle,
-                                     std::move(logger),
-                                     std::move(close_write_handle),
-                                     std::move(termination_synchronizer)};
+  RedirectionFileHandle redirection_file_handle{
+      write_handle,
+      /*flush_fn=*/[logger = std::move(logger)]() { logger->flush(); },
+      std::move(close_fn)};
 #endif
 
-  return stream_token;
+  return redirection_file_handle;
 }
 
 }  // namespace ray

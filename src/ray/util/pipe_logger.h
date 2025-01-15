@@ -45,15 +45,14 @@ class RedirectionFileHandle {
  public:
   RedirectionFileHandle() = default;
 
-  // @param termination_synchronizer is used to
+  // @param termination_synchronizer is used to block wait until destruction operation
+  // finishes.
   RedirectionFileHandle(MEMFD_TYPE_NON_UNIQUE write_handle,
-                        std::shared_ptr<spdlog::logger> logger,
-                        std::function<void()> close_write_handle,
-                        std::function<void()> termination_synchronizer)
+                        std::function<void()> flush_fn,
+                        std::function<void()> close_fn)
       : write_handle_(write_handle),
-        logger_(std::move(logger)),
-        close_write_handle_(std::move(close_write_handle)),
-        termination_synchronizer_(std::move(termination_synchronizer)) {}
+        flush_fn_(std::move(flush_fn)),
+        close_fn_(std::move(close_fn)) {}
   RedirectionFileHandle(const RedirectionFileHandle &) = delete;
   RedirectionFileHandle &operator=(const RedirectionFileHandle &) = delete;
 
@@ -63,8 +62,8 @@ class RedirectionFileHandle {
   // in the pipe; a better approach is flush pipe, send FLUSH indicator and block wait
   // until logger sync over.
   void Flush() {
-    if (logger_ != nullptr) {
-      logger_->flush();
+    if (flush_fn_) {
+      flush_fn_();
     }
   }
 
@@ -74,28 +73,25 @@ class RedirectionFileHandle {
   // copiable to avoid manual `dup`.
 #if defined(__APPLE__) || defined(__linux__)
   RedirectionFileHandle(RedirectionFileHandle &&rhs) {
-    logger_ = std::move(rhs.logger_);
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = -1;
-    close_write_handle_ = std::move(rhs.close_write_handle_);
-    termination_synchronizer_ = std::move(rhs.termination_synchronizer_);
+    flush_fn_ = std::move(rhs.flush_fn_);
+    close_fn_ = std::move(rhs.close_fn_);
   }
   RedirectionFileHandle &operator=(RedirectionFileHandle &&rhs) {
     if (this == &rhs) {
       return *this;
     }
-    logger_ = std::move(rhs.logger_);
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = -1;
-    close_write_handle_ = std::move(rhs.close_write_handle_);
-    termination_synchronizer_ = std::move(rhs.termination_synchronizer_);
+    flush_fn_ = std::move(rhs.flush_fn_);
+    close_fn_ = std::move(rhs.close_fn_);
     return *this;
   }
   void Close() {
     // Only invoke termination functor when handler at a valid state.
     if (write_handle_ != -1) {
-      close_write_handle_();
-      termination_synchronizer_();
+      close_fn_();
       write_handle_ = -1;
     }
   }
@@ -108,28 +104,24 @@ class RedirectionFileHandle {
 
 #elif defined(_WIN32)
   RedirectionFileHandle(RedirectionFileHandle &&rhs) {
-    logger_ = std::move(rhs.logger_);
     write_fd_ = rhs.write_fd_;
     rhs.write_fd_ = nullptr;
-    close_write_handle_ = std::move(rhs.close_write_handle_);
-    termination_synchronizer_ = std::move(rhs.termination_synchronizer_);
+    flush_fn_ = std::move(rhs.flush_fn_);
+    close_fn_ = std::move(rhs.close_fn_);
   }
   RedirectionFileHandle &operator=(RedirectionFileHandle &&rhs) {
     if (this == &rhs) {
       return *this;
     }
-    logger_ = std::move(rhs.logger_);
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = nullptr;
-    close_write_handle_ = std::move(rhs.close_write_handle_);
-    termination_synchronizer_ = std::move(rhs.termination_synchronizer_);
+    close_fn_ = std::move(rhs.close_fn_);
     return *this;
   }
   void Close() {
     // Only invoke termination functor when handler at a valid state.
     if (write_handle_ != nullptr) {
-      close_write_handle_();
-      termination_synchronizer_();
+      close_fn_();
       write_handle_ = nullptr;
     }
   }
@@ -145,14 +137,11 @@ class RedirectionFileHandle {
  private:
   MEMFD_TYPE_NON_UNIQUE write_handle_;
 
-  // Logger, which is responsible for writing content into all sinks.
-  std::shared_ptr<spdlog::logger> logger_;
+  // Used to flush log message.
+  std::function<void()> flush_fn_;
 
-  // Used to close write handle.
-  std::function<void()> close_write_handle_;
-
-  // Termination hook, used to flush and call completion.
-  std::function<void()> termination_synchronizer_;
+  // Used to close write handle, and block until destruction completes
+  std::function<void()> close_fn_;
 };
 
 // This function creates a pipe so applications could write to.
@@ -167,7 +156,7 @@ class RedirectionFileHandle {
 //
 // Notice caller side should _NOT_ close the given file handle, it will be handled
 // internally.
-RedirectionFileHandle CreatePipeAndStreamOutput(
+RedirectionFileHandle CreateRedirectionFileHandle(
     const LogRedirectionOption &log_redirect_opt);
 
 }  // namespace ray

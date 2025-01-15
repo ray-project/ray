@@ -43,13 +43,14 @@ HANDLE GetStderrHandle() { return _fileno(stderr); }
 // absl::InlinedVector.
 //
 // Maps from original stream file handle (i.e. stdout/stderr) to its stream redirector.
-absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, RedirectionFileHandle> stream_redirectors;
+absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, RedirectionFileHandle>
+    redirection_file_handles;
 
 // Block synchronize on stream redirection related completion, should be call **EXACTLY
 // ONCE** at program termination.
 std::once_flag stream_exit_once_flag;
 void SyncOnStreamRedirection() {
-  for (auto &[_, handle] : stream_redirectors) {
+  for (auto &[_, handle] : redirection_file_handles) {
     handle.Close();
   }
 }
@@ -57,8 +58,7 @@ void SyncOnStreamRedirection() {
 void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const LogRedirectionOption &opt) {
   std::call_once(stream_exit_once_flag, []() { std::atexit(SyncOnStreamRedirection); });
 
-  // Intentional leak, since its lifecycle lasts until program termination.
-  RedirectionFileHandle handle = CreatePipeAndStreamOutput(opt);
+  RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
 
 #if defined(__APPLE__) || defined(__linux__)
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
@@ -68,13 +68,14 @@ void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const LogRedirectionOption 
       << "Fails to duplicate file descritor.";
 #endif
 
-  const bool is_new = stream_redirectors.emplace(stream_fd, std::move(handle)).second;
+  const bool is_new =
+      redirection_file_handles.emplace(stream_fd, std::move(handle)).second;
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
 }
 
 void FlushOnRedirectedStream(MEMFD_TYPE_NON_UNIQUE stream_fd) {
-  auto iter = stream_redirectors.find(stream_fd);
-  RAY_CHECK(iter != stream_redirectors.end())
+  auto iter = redirection_file_handles.find(stream_fd);
+  RAY_CHECK(iter != redirection_file_handles.end())
       << "Stream with file descriptor " << stream_fd << " is not registered.";
   iter->second.Flush();
 }

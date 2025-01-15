@@ -47,7 +47,7 @@ TEST_P(PipeLoggerTest, NoPipeWrite) {
   // Take the default option, which doesn't have rotation enabled.
   LogRedirectionOption logging_option{};
   logging_option.file_path = test_file_path;
-  auto log_token = CreatePipeAndStreamOutput(logging_option);
+  auto log_token = CreateRedirectionFileHandle(logging_option);
 
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
             kLogLine1.length());
@@ -80,7 +80,7 @@ TEST_P(PipeLoggerTest, PipeWrite) {
   logging_option.rotation_max_size = 5;
   logging_option.rotation_max_file_count = 2;
 
-  auto log_token = CreatePipeAndStreamOutput(logging_option);
+  auto log_token = CreateRedirectionFileHandle(logging_option);
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
             kLogLine1.length());
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
