@@ -85,7 +85,7 @@ class RedirectionFileHandle {
     termination_caller_ = std::move(rhs.termination_caller_);
     return *this;
   }
-  ~RedirectionFileHandle() {
+  void Close() {
     // Only invoke termination functor when handler at a valid state.
     if (write_handle_ != -1) {
       termination_caller_();

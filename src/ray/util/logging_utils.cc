@@ -44,6 +44,12 @@ struct StreamRedirector {
   // Used to synchronize the logging completion.
   std::function<void()> completion_callback;
   RedirectionFileHandle redirection_handle;
+
+  // Mark write finished and synchronize on logging completion in blocking style.
+  void SynchronizeAndClose() {
+    redirection_handle.Close();
+    completion_callback();
+  }
 };
 
 // TODO(hjiang): Revisit later, should be able to save some heap alllocation with
@@ -58,18 +64,8 @@ absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, std::unique_ptr<StreamRedirector>>
 // at program termination.
 std::once_flag stream_exit_once_flag;
 void SyncOnStreamRedirection() {
-  // TODO(hjiang): Could use absl::InlinedVector to save memory allocation.
-  std::vector<std::function<void()>> completion_callbacks;
-  completion_callbacks.reserve(stream_redirectors.size());
-
   for (auto &[_, redirector] : stream_redirectors) {
-    completion_callbacks.emplace_back(redirector->completion_callback);
-  }
-  // Used to trigger completion hook function.
-  stream_redirectors.clear();
-  // Block wait stream destruction completion.
-  for (auto &cb : completion_callbacks) {
-    cb();
+    redirector->SynchronizeAndClose();
   }
 }
 
