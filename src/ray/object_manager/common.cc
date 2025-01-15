@@ -17,6 +17,7 @@
 #include <csignal>
 
 #include "absl/strings/str_cat.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 
@@ -86,6 +87,8 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(
     RAY_CHECK_EQ(sem_wait(sem), 0);
   } else {
     bool got_sem = false;
+    const auto check_signal_interval = std::chrono::milliseconds(
+        RayConfig::instance().get_check_signal_interval_milliseconds());
     auto last_signal_check_time = std::chrono::steady_clock::now();
     // try to acquire the semaphore at least once even if the timeout_point is passed
     do {
@@ -97,7 +100,7 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(
         break;
       }
       if (std::chrono::steady_clock::now() - last_signal_check_time >
-              std::chrono::seconds(1) &&
+              check_signal_interval &&
           check_signals) {
         RAY_RETURN_NOT_OK(check_signals());
         last_signal_check_time = std::chrono::steady_clock::now();
@@ -191,10 +194,12 @@ Status PlasmaObjectHeader::ReadAcquire(
   // TODO(jhumphri): Wouldn't a futex be better here than polling?
   // Wait for the requested version (or a more recent one) to be sealed.
 
+  const auto check_signal_interval = std::chrono::milliseconds(
+      RayConfig::instance().get_check_signal_interval_milliseconds());
   auto last_signal_check_time = std::chrono::steady_clock::now();
   while (version < version_to_read || !is_sealed) {
     if (std::chrono::steady_clock::now() - last_signal_check_time >
-            std::chrono::seconds(1) &&
+            check_signal_interval &&
         check_signals) {
       RAY_RETURN_NOT_OK(check_signals());
       last_signal_check_time = std::chrono::steady_clock::now();
