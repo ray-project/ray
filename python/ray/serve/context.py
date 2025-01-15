@@ -181,7 +181,7 @@ class _RequestContext:
 
 
 _serve_request_context = contextvars.ContextVar(
-    "Serve internal request context variable", default=_RequestContext()
+    "Serve internal request context variable", default=None
 )
 
 
@@ -196,6 +196,10 @@ def _set_request_context(
     the current context value will be used."""
 
     current_request_context = _serve_request_context.get()
+    if current_request_context is None:
+        current_request_context = _RequestContext()
+        _serve_request_context.set(current_request_context)
+        
     _serve_request_context.set(
         _RequestContext(
             route=route or current_request_context.route,
