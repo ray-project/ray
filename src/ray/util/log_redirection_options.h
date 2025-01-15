@@ -21,8 +21,9 @@ namespace ray {
 
 // Configuration for log redirection. By default no rotation enabled.
 //
-// It's allowed to have multiple sinks are enabled in the option (i.e. redirection file
-// set and `tee_to_stdout` set to true).
+// It's allowed to have multiple sinks are enabled in the option.
+// For example, if redirection file set and `tee_to_stdout` both set to true, the stream
+// content is written to both sinks.
 struct LogRedirectionOption {
   // Redirected file path on local filesystem.
   std::string file_path;

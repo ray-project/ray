@@ -31,6 +31,13 @@
 namespace ray {
 
 namespace {
+
+// TODO(hjiang): Investigate how we could notify reader thread to stop by close write pipe
+// directly, instead of relying on eof indicator.
+//
+// An indicator which represents EOF, so read thread could exit.
+const std::string kEofIndicator = GenerateUUIDV4();
+
 // Default pipe log read buffer size.
 constexpr size_t kDefaultPipeLogReadBufSize = 1024;
 
@@ -62,12 +69,23 @@ size_t Read(int read_fd, char *data, size_t len) {
   RAY_CHECK(bytes_read != -1) << "Fails to read from pipe because " << strerror(errno);
   return bytes_read;
 }
+void CompleteWriteEOFIndicator(int write_fd) {
+  ssize_t bytes_written = write(write_fd, kEofIndicator.data(), kEofIndicator.length());
+  RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(kEofIndicator.length()));
+  bytes_written = write(write_fd, "\n", /*count=*/1);
+  RAY_CHECK_EQ(bytes_written, 1);
+}
 #elif defined(_WIN32)
 size_t Read(HANDLE read_handle, char *data, size_t len) {
   DWORD bytes_read = 0;
   BOOL success = ReadFile(read_handle, data, len, &bytes_read, nullptr);
   RAY_CHECK(success) << "Fails to read from pipe.";
   return bytes_read;
+}
+void CompleteWriteEOFIndicator(HANDLE write_handle) {
+  DWORD bytes_written = 0;
+  WriteFile(
+      write_handle, kEofIndicator.c_str(), kEofIndicator.size(), &bytes_written, nullptr);
 }
 #endif
 
@@ -101,7 +119,7 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(
         cur_new_line += newlines[idx];
 
         // Reached the end of stream.
-        if (cur_new_line.empty()) {
+        if (cur_new_line == kEofIndicator) {
           {
             absl::MutexLock lock(&stream_dumper->mu);
             stream_dumper->stopped = true;
@@ -299,7 +317,10 @@ RedirectionFileHandle CreatePipeAndStreamOutput(
 
   auto read_func = [read_fd](char *data, size_t len) { return Read(read_fd, data, len); };
   auto close_read_handle = [read_fd]() { RAY_CHECK_EQ(close(read_fd), 0); };
-  auto close_write_handle = [write_fd]() { RAY_CHECK_EQ(close(write_fd), 0); };
+  auto close_write_handle = [write_fd]() {
+    CompleteWriteEOFIndicator(write_fd);
+    RAY_CHECK_EQ(close(write_fd), 0);
+  };
 
 #elif defined(_WIN32)
   SECURITY_ATTRIBUTES sa;
@@ -316,6 +337,7 @@ RedirectionFileHandle CreatePipeAndStreamOutput(
   };
   auto close_read_handle = [read_handle]() { RAY_CHECK(CloseHandle(read_handle)); };
   auto close_write_handle = [write_handle, read_handle, promise = promise]() {
+    CompleteWriteEOFIndicator(write_handle);
     RAY_CHECK(CloseHandle(write_handle));
   };
 

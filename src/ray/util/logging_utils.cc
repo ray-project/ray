@@ -39,29 +39,20 @@ HANDLE GetStdoutHandle() { return _fileno(stdout); }
 HANDLE GetStderrHandle() { return _fileno(stderr); }
 #endif
 
-struct StreamRedirector {
-  // Used to synchronize the logging completion.
-  std::function<void()> completion_callback;
-  RedirectionFileHandle redirection_handle;
-
-  // Mark write finished and synchronize on logging completion in blocking style.
-  void SynchronizeAndClose() {
-    redirection_handle.Close();
-    completion_callback();
-  }
-};
-
 // TODO(hjiang): Revisit later, should be able to save some heap alllocation with
 // absl::InlinedVector.
 //
 // Maps from original stream file handle (i.e. stdout/stderr) to its stream redirector.
-// Callbacks which should be synchronized before program termination.
 absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, RedirectionFileHandle> stream_redirectors;
 
-// Block synchronize on stream redirection related completion, should be call EXACTLY once
-// at program termination.
+// Block synchronize on stream redirection related completion, should be call **EXACTLY
+// ONCE** at program termination.
 std::once_flag stream_exit_once_flag;
-void SyncOnStreamRedirection() { stream_redirectors.clear(); }
+void SyncOnStreamRedirection() {
+  for (auto &[_, handle] : stream_redirectors) {
+    handle.Close();
+  }
+}
 
 void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const LogRedirectionOption &opt) {
   std::call_once(stream_exit_once_flag, []() { std::atexit(SyncOnStreamRedirection); });
