@@ -41,10 +41,6 @@ namespace ray {
 // finished.
 inline constexpr std::string_view kPipeLogReadBufSizeEnv = "RAY_PIPE_LOG_READ_BUF_SIZE";
 
-// TODO(hjiang):
-// 1. Use `MEMFD_TYPE_NON_UNIQUE` after we split `plasma/compat.h` into a separate target,
-// otherwise we're introducing too many unnecessary dependencies.
-// 2. Add a `Flush` feature exposed to python side.
 class RedirectionFileHandle {
  public:
   RedirectionFileHandle() = default;

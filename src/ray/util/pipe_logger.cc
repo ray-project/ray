@@ -203,10 +203,8 @@ std::shared_ptr<spdlog::logger> CreateLogger(
 bool ShouldUsePipeStream(const LogRedirectionOption &log_redirect_opt) {
   const bool need_rotation =
       log_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max();
-  return static_cast<int>(need_rotation) +
-             static_cast<int>(log_redirect_opt.tee_to_stdout) +
-             static_cast<int>(log_redirect_opt.tee_to_stderr) >
-         0;
+  return need_rotation || log_redirect_opt.tee_to_stdout ||
+         log_redirect_opt.tee_to_stderr;
 }
 
 // TODO(hjiang): Implement open file for windows.
@@ -220,12 +218,55 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path,
   auto termination_caller = [fd, on_completion = std::move(on_completion)]() {
     RAY_CHECK_EQ(fsync(fd), 0) << "Fails to flush data to disk because "
                                << strerror(errno);
-    RAY_CHECK_EQ(close(fd), 0) << "Fails to close redirection file because "
-                               << strerror(errno);
+    if (close(fd) != 0) {
+      RAY_LOG(ERROR) << "Fails to close redirection file because " << strerror(errno);
+    }
     on_completion();
   };
 
   return RedirectionFileHandle{fd, /*logger=*/nullptr, std::move(termination_caller)};
+}
+#elif defined(_WIN32)
+#include <windows.h>
+RedirectionFileHandle OpenFileForRedirection(const std::string &file_path,
+                                             std::function<void()> on_completion) {
+  // Convert std::string to LPCWSTR (Windows-style wide string)
+  std::wstring wide_file_path(file_path.begin(), file_path.end());
+
+  HANDLE file_handle =
+      CreateFileW(wide_file_path.c_str(),
+                  GENERIC_WRITE,
+                  0,              // No sharing
+                  NULL,           // Default security attributes
+                  CREATE_ALWAYS,  // Create new file or overwrite existing
+                  FILE_ATTRIBUTE_NORMAL,
+                  NULL);  // No template file
+
+  if (file_handle == INVALID_HANDLE_VALUE) {
+    DWORD error_code = GetLastError();
+    throw std::runtime_error("Fails to open file " + file_path +
+                             " with failure reason: " + std::to_string(error_code));
+  }
+
+  auto termination_caller = [file_handle, on_completion = std::move(on_completion)]() {
+    if (!FlushFileBuffers(file_handle)) {
+      DWORD error_code = GetLastError();
+      throw std::runtime_error("Fails to flush data to disk because " +
+                               std::to_string(error_code));
+    }
+
+    if (!CloseHandle(file_handle)) {
+      DWORD error_code = GetLastError();
+      throw std::runtime_error("Fails to close redirection file because " +
+                               std::to_string(error_code));
+    }
+
+    on_completion();
+  };
+
+  return RedirectionFileHandle{reinterpret_cast<intptr_t>(file_handle),
+                               /*logger=*/nullptr,
+                               std::move(termination_caller)};
 }
 #endif
 
