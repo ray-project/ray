@@ -10,14 +10,14 @@
          "replica_id":""
       },
       "events":[
-         
+
       ],
       "links":[
-         
+
       ]
    },
    {
-      "name":"replica_handle_request",
+      "name":"replica_handle_request grpc-deployment",
       "kind":"SpanKind.SERVER",
       "status":{
          "status_code":"OK"
@@ -33,10 +33,10 @@
          "is_streaming":false
       },
       "events":[
-         
+
       ],
       "links":[
-         
+
       ]
    }
 ]

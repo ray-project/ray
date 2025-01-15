@@ -184,7 +184,7 @@ class AnyscaleReplica(ReplicaBase):
         """
         trace_context = extract_propagated_context(request_metadata.tracing_context)
         trace_manager = TraceContextManager(
-            trace_name="replica_handle_request",
+            trace_name=f"replica_handle_request {self._deployment_id.name}",
             trace_context=trace_context,
         )
         with trace_manager:

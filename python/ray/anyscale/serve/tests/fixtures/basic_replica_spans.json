@@ -10,14 +10,14 @@
          "replica_id":""
       },
       "events":[
-         
+
       ],
       "links":[
-         
+
       ]
    },
    {
-      "name":"replica_handle_request",
+      "name":"replica_handle_request BasicModel",
       "kind":"SpanKind.SERVER",
       "status":{
          "status_code":"OK"
@@ -33,10 +33,10 @@
          "is_streaming":true
       },
       "events":[
-         
+
       ],
       "links":[
-         
+
       ]
    }
 ]
