@@ -7,10 +7,12 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.actor_manager import FaultAwareApply
-from ray.rllib.utils.framework import get_device
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import DeveloperAPI
+
+torch, _ = try_import_torch()
 
 
 @DeveloperAPI(stability="alpha")
@@ -46,7 +48,11 @@ class AggregatorActor(FaultAwareApply):
 
         # Set device and node.
         self._node = platform.node()
-        self._device = get_device(self.config, 1)
+        self._device = (
+            torch.device(f"cuda:{ray.get_gpu_ids()[0]}")
+            if self.config.num_gpus_per_learner > 0
+            else torch.device("cpu")
+        )
 
         self.metrics = MetricsLogger()
 

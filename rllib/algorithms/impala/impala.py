@@ -855,7 +855,7 @@ class IMPALA(Algorithm):
     def _pre_queue_batch_refs(
         self, batch_refs: List[Tuple[int, ObjectRef]]
     ) -> List[List[ObjectRef]]:
-        # `batch_refs` is a list of tuple(actor_id, ObjRef[MABatch]).
+        # `batch_refs` is a list of tuple(aggregator_actor_id, ObjRef[MABatch]).
 
         # Each ObjRef[MABatch] was returned by one AggregatorActor from a single
         # `get_batch()` call and the underlying MABatch is already located on a
