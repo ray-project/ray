@@ -22,12 +22,10 @@ from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_boo
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
+from ray.dashboard.optional_deps import aiohttp, hdrs
 from ray.dashboard.utils import (
-    CustomEncoder,
     DashboardAgentModule,
     DashboardHeadModule,
-    to_google_style,
 )
 from ray.dashboard.routes import method_route_table_factory, rest_response
 

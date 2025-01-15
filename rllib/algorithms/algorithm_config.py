@@ -325,6 +325,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
         self.validate_env_runners_after_construction = True
+        self.episodes_to_numpy = True
         self.max_requests_in_flight_per_env_runner = 1
         self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
@@ -631,11 +632,11 @@ class AlgorithmConfig(_Config):
         # Worst naming convention ever: NEVER EVER use reserved key-words...
         if "lambda_" in config:
             assert hasattr(self, "lambda_")
-            config["lambda"] = getattr(self, "lambda_")
+            config["lambda"] = self.lambda_
             config.pop("lambda_")
         if "input_" in config:
             assert hasattr(self, "input_")
-            config["input"] = getattr(self, "input_")
+            config["input"] = self.input_
             config.pop("input_")
 
         # Convert `policies` (PolicySpecs?) into dict.
@@ -1754,6 +1755,7 @@ class AlgorithmConfig(_Config):
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         explore: Optional[bool] = NotProvided,
+        episodes_to_numpy: Optional[bool] = NotProvided,
         # @OldAPIStack settings.
         exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
         create_env_on_local_worker: Optional[bool] = NotProvided,  # @OldAPIStack
@@ -1906,6 +1908,10 @@ class AlgorithmConfig(_Config):
             explore: Default exploration behavior, iff `explore=None` is passed into
                 compute_action(s). Set to False for no exploration behavior (e.g.,
                 for evaluation).
+            episodes_to_numpy: Whether to numpy'ize episodes before
+                returning them from an EnvRunner. False by default. If True, EnvRunners
+                call `to_numpy()` on those episode (chunks) to be returned by
+                `EnvRunners.sample()`.
             exploration_config: A dict specifying the Exploration object's config.
             remote_worker_envs: If using num_envs_per_env_runner > 1, whether to create
                 those new envs in remote processes instead of in the same worker.
@@ -2030,6 +2036,10 @@ class AlgorithmConfig(_Config):
             self.batch_mode = batch_mode
         if explore is not NotProvided:
             self.explore = explore
+        if episodes_to_numpy is not NotProvided:
+            self.episodes_to_numpy = episodes_to_numpy
+
+        # @OldAPIStack
         if exploration_config is not NotProvided:
             # Override entire `exploration_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.

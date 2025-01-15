@@ -60,8 +60,8 @@ class BaseRouteTable(abc.ABC):
         bound_items = []
         for r in cls._routes._items:
             if isinstance(r, RouteDef):
-                route_method = getattr(r.handler, "__route_method__")
-                route_path = getattr(r.handler, "__route_path__")
+                route_method = r.handler.__route_method__
+                route_path = r.handler.__route_path__
                 instance = cls._bind_map[route_method][route_path].instance
                 if instance is not None:
                     bound_items.append(r)
