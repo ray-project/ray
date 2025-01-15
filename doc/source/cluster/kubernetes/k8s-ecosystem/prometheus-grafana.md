@@ -368,7 +368,7 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
 
 Once the Ray Dashboard is imported into Grafana, you can filter metrics by using the `Cluster` variable. Ray Dashboard automatically applies this variable by default when you use the provided `PodMonitor` configuration. You don't need any additional setup for this labeling.
 
-If you have multiple RayCluster custom resources, the `Cluster` variable allows you to filter metrics specific to a particular cluster. This ensures that you can easily monitor or debug individual RayCluster instances without being overwhelmed by data from all clusters.
+If you have multiple RayCluster custom resources, the `Cluster` variable allows you to filter metrics specific to a particular cluster. This feature ensures that you can easily monitor or debug individual RayCluster instances without being overwhelmed by the data from all clusters.
 
 For example, in the following figures, one selects the metrics from the RayCluster `raycluster-embed-grafana`, and the other selects metrics from the RayCluster `raycluster-embed-grafana-2`.
 
