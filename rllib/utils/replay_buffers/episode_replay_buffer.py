@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import scipy
 
-from ray.rllib.core import DEFAULT_AGENT_ID
+from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.utils import force_list
@@ -49,10 +49,25 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_EVICTED,
     NUM_EPISODES_EVICTED_LIFETIME,
     NUM_EPISODES_PER_SAMPLE,
+    NUM_MODULE_EPISODES_STORED,
+    NUM_MODULE_EPISODES_ADDED,
+    NUM_MODULE_EPISODES_ADDED_LIFETIME,
+    NUM_MODULE_EPISODES_EVICTED,
+    NUM_MODULE_EPISODES_EVICTED_LIFETIME,
+    NUM_MODULE_EPISODES_PER_SAMPLE,
+    NUM_MODULE_STEPS_STORED,
+    NUM_MODULE_STEPS_ADDED,
+    NUM_MODULE_STEPS_ADDED_LIFETIME,
+    NUM_MODULE_STEPS_EVICTED,
+    NUM_MODULE_STEPS_EVICTED_LIFETIME,
+    NUM_MODULE_STEPS_PER_SAMPLE,
+    NUM_MODULE_STEPS_PER_SAMPLE_LIFETIME,
+    NUM_MODULE_STEPS_SAMPLED,
+    NUM_MODULE_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
-from ray.rllib.utils.typing import SampleBatchType, ResultDict
+from ray.rllib.utils.typing import AgentID, ModuleID, SampleBatchType, ResultDict
 
 
 class EpisodeReplayBuffer(ReplayBufferInterface):
@@ -173,9 +188,17 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
         # Set up some counters for metrics.
         num_env_steps_added = 0
+        agent_to_num_steps_added = {DEFAULT_AGENT_ID: 0}
+        module_to_num_steps_added = {DEFAULT_MODULE_ID: 0}
         num_episodes_added = 0
+        agent_to_num_episodes_added = {DEFAULT_AGENT_ID: 0}
+        module_to_num_episodes_added = {DEFAULT_MODULE_ID: 0}
         num_episodes_evicted = 0
+        agent_to_num_episodes_evicted = {DEFAULT_AGENT_ID: 0}
+        module_to_num_episodes_evicted = {DEFAULT_MODULE_ID: 0}
         num_env_steps_evicted = 0
+        agent_to_num_steps_evicted = {DEFAULT_AGENT_ID: 0}
+        module_to_num_steps_evicted = {DEFAULT_MODULE_ID: 0}
 
         for eps in episodes:
             # Make sure we don't change what's coming in from the user.
@@ -193,6 +216,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self._num_timesteps += eps_len
             self._num_timesteps_added += eps_len
             num_env_steps_added += eps_len
+            agent_to_num_steps_added[DEFAULT_AGENT_ID] += eps_len
+            module_to_num_steps_added[DEFAULT_MODULE_ID] += eps_len
 
             # Ongoing episode, concat to existing record.
             if eps.id_ in self.episode_id_to_index:
@@ -204,6 +229,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             # New episode. Add to end of our episodes deque.
             else:
                 num_episodes_added += 1
+                agent_to_num_episodes_added[DEFAULT_AGENT_ID] += 1
+                module_to_num_episodes_added[DEFAULT_MODULE_ID] += 1
                 self.episodes.append(eps)
                 eps_idx = len(self.episodes) - 1 + self._num_episodes_evicted
                 self.episode_id_to_index[eps.id_] = eps_idx
@@ -217,6 +244,14 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 evicted_eps_len = len(evicted_eps)
                 num_episodes_evicted += 1
                 num_env_steps_evicted += evicted_eps_len
+                agent_to_num_episodes_evicted[DEFAULT_AGENT_ID] += 1
+                module_to_num_episodes_evicted[DEFAULT_MODULE_ID] += 1
+                agent_to_num_steps_evicted[
+                    DEFAULT_AGENT_ID
+                ] += evicted_eps.agent_steps()
+                module_to_num_steps_evicted[
+                    DEFAULT_MODULE_ID
+                ] += evicted_eps.agent_steps()
                 # Correct our size.
                 self._num_timesteps -= evicted_eps_len
 
@@ -267,27 +302,43 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 self._num_episodes_evicted += 1
 
         self._update_add_metrics(
-            num_env_steps_added,
             num_episodes_added,
+            num_env_steps_added,
             num_episodes_evicted,
             num_env_steps_evicted,
+            agent_to_num_episodes_added,
+            agent_to_num_steps_added,
+            agent_to_num_episodes_evicted,
+            agent_to_num_steps_evicted,
+            module_to_num_steps_added,
+            module_to_num_episodes_added,
+            module_to_num_episodes_evicted,
+            module_to_num_steps_evicted,
         )
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def _update_add_metrics(
         self,
-        num_timesteps_added: int,
         num_episodes_added: int,
+        num_env_steps_added: int,
         num_episodes_evicted: int,
         num_env_steps_evicted: int,
+        agent_to_num_episodes_added: Dict[AgentID, int],
+        agent_to_num_steps_added: Dict[AgentID, int],
+        agent_to_num_episodes_evicted: Dict[AgentID, int],
+        agent_to_num_steps_evicted: Dict[AgentID, int],
+        module_to_num_steps_added: Dict[ModuleID, int],
+        module_to_num_episodes_added: Dict[ModuleID, int],
+        module_to_num_episodes_evicted: Dict[ModuleID, int],
+        module_to_num_steps_evicted: Dict[ModuleID, int],
         **kwargs,
     ) -> None:
         """Updates the replay buffer's adding metrics.
 
         Args:
-            num_timesteps_added: The total number of environment steps added to the
-                buffer in the `EpisodeReplayBuffer.add` call.
             num_episodes_added: The total number of episodes added to the
+                buffer in the `EpisodeReplayBuffer.add` call.
+            num_timesteps_added: The total number of environment steps added to the
                 buffer in the `EpisodeReplayBuffer.add` call.
             num_episodes_evicted: The total number of environment steps evicted from
                 the buffer in the `EpisodeReplayBuffer.add` call. Note, this
@@ -299,103 +350,23 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 does not include the number of steps evicted before ever
                 added to the buffer (i.e. can happen in case a lot of episodes
                 were added and the buffer's capacity is not large enough).
+            agent_to_num_episodes_added: A dictionary with the number of episodes per
+                agent ID added to the buffer during the `EpisodeReplayBuffer.add` call.
+            agent_to_num_steps_added: A dictionary with the number of agent steps per
+                agent ID added to the buffer during the `EpisodeReplayBuffer.add` call.
+            agent_to_num_episodes_evicted: A dictionary with the number of episodes per
+                agent ID evicted to the buffer during the `EpisodeReplayBuffer.add` call.
+            agent_to_num_steps_evicted: A dictionary with the number of agent steps per
+                agent ID evicted to the buffer during the `EpisodeReplayBuffer.add` call.
+            module_to_num_episodes_added: A dictionary with the number of episodes per
+                module ID added to the buffer during the `EpisodeReplayBuffer.add` call.
+            module_to_num_steps_added: A dictionary with the number of agent steps per
+                module ID added to the buffer during the `EpisodeReplayBuffer.add` call.
+            module_to_num_episodes_evicted: A dictionary with the number of episodes per
+                module ID evicted to the buffer during the `EpisodeReplayBuffer.add` call.
+            module_to_num_steps_evicted: A dictionary with the number of agent steps per
+                module ID evicted to the buffer during the `EpisodeReplayBuffer.add` call.
         """
-        # Get the actual number of agent steps residing in the buffer.
-        # TODO (simon): Write the same counters and getters as for the
-        # multi-agent buffers.
-        self.metrics.log_value(
-            (NUM_AGENT_STEPS_STORED, DEFAULT_AGENT_ID),
-            self.get_num_timesteps(),
-            reduce="mean",
-            window=self._metrics_num_episodes_for_smoothing,
-        )
-        # Number of timesteps added.
-        self.metrics.log_value(
-            (NUM_AGENT_STEPS_ADDED, DEFAULT_AGENT_ID),
-            num_timesteps_added,
-            reduce="sum",
-            clear_on_reduce=True,
-        )
-        self.metrics.log_value(
-            (NUM_AGENT_STEPS_ADDED_LIFETIME, DEFAULT_AGENT_ID),
-            num_timesteps_added,
-            reduce="sum",
-        )
-        self.metrics.log_value(
-            (NUM_AGENT_STEPS_EVICTED, DEFAULT_AGENT_ID),
-            num_env_steps_evicted,
-            reduce="sum",
-            clear_on_reduce=True,
-        )
-        self.metrics.log_value(
-            (NUM_AGENT_STEPS_EVICTED_LIFETIME, DEFAULT_AGENT_ID),
-            num_env_steps_evicted,
-            reduce="sum",
-        )
-        # Whole buffer step metrics.
-        self.metrics.log_value(
-            NUM_ENV_STEPS_STORED,
-            self.get_num_timesteps(),
-            reduce="mean",
-            window=self._metrics_num_episodes_for_smoothing,
-        )
-        self.metrics.log_value(
-            NUM_ENV_STEPS_ADDED,
-            num_timesteps_added,
-            reduce="sum",
-            clear_on_reduce=True,
-        )
-        self.metrics.log_value(
-            NUM_ENV_STEPS_ADDED_LIFETIME,
-            num_timesteps_added,
-            reduce="sum",
-        )
-        self.metrics.log_value(
-            NUM_ENV_STEPS_EVICTED,
-            num_env_steps_evicted,
-            reduce="sum",
-            clear_on_reduce=True,
-        )
-        self.metrics.log_value(
-            NUM_ENV_STEPS_EVICTED_LIFETIME,
-            num_env_steps_evicted,
-            reduce="sum",
-        )
-
-        # Episode metrics.
-
-        # Number of episodes in the buffer.
-        self.metrics.log_value(
-            (NUM_AGENT_EPISODES_STORED, DEFAULT_AGENT_ID),
-            self.get_num_episodes(),
-            reduce="mean",
-            window=self._metrics_num_episodes_for_smoothing,
-        )
-        # Number of new episodes added. Note, this metric could
-        # be zero.
-        self.metrics.log_value(
-            (NUM_AGENT_EPISODES_ADDED, DEFAULT_AGENT_ID),
-            num_episodes_added,
-            reduce="sum",
-            clear_on_reduce=True,
-        )
-        self.metrics.log_value(
-            (NUM_AGENT_EPISODES_ADDED_LIFETIME, DEFAULT_AGENT_ID),
-            num_episodes_added,
-            reduce="sum",
-        )
-        self.metrics.log_value(
-            (NUM_AGENT_EPISODES_EVICTED, DEFAULT_AGENT_ID),
-            num_episodes_evicted,
-            reduce="sum",
-            clear_on_reduce=True,
-        )
-        self.metrics.log_value(
-            (NUM_AGENT_EPISODES_EVICTED_LIFETIME, DEFAULT_AGENT_ID),
-            num_episodes_evicted,
-            reduce="sum",
-        )
-
         # Whole buffer episode metrics.
         self.metrics.log_value(
             NUM_EPISODES_STORED,
@@ -404,7 +375,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             window=self._metrics_num_episodes_for_smoothing,
         )
         # Number of new episodes added. Note, this metric could
-        # be zero.
+        # be zero when ongoing episodes were logged.
         self.metrics.log_value(
             NUM_EPISODES_ADDED,
             num_episodes_added,
@@ -427,6 +398,183 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             num_episodes_evicted,
             reduce="sum",
         )
+        # Whole buffer step metrics.
+        self.metrics.log_value(
+            NUM_ENV_STEPS_STORED,
+            self.get_num_timesteps(),
+            reduce="mean",
+            window=self._metrics_num_episodes_for_smoothing,
+        )
+        self.metrics.log_value(
+            NUM_ENV_STEPS_ADDED,
+            num_env_steps_added,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            NUM_ENV_STEPS_ADDED_LIFETIME,
+            num_env_steps_added,
+            reduce="sum",
+        )
+        self.metrics.log_value(
+            NUM_ENV_STEPS_EVICTED,
+            num_env_steps_evicted,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            NUM_ENV_STEPS_EVICTED_LIFETIME,
+            num_env_steps_evicted,
+            reduce="sum",
+        )
+
+        # Log per-agent metrics.
+        for aid in agent_to_num_episodes_added:
+            # Number of new episodes added. Note, this metric could
+            # be zero.
+            self.metrics.log_value(
+                (NUM_AGENT_EPISODES_ADDED, aid),
+                agent_to_num_episodes_added[aid],
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_AGENT_EPISODES_ADDED_LIFETIME, aid),
+                agent_to_num_episodes_added[aid],
+                reduce="sum",
+            )
+            # Number of new agent steps added. Note, this metric could
+            # be zero, too.
+            self.metrics.log_value(
+                (NUM_AGENT_STEPS_ADDED, aid),
+                agent_to_num_steps_added[aid],
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_AGENT_STEPS_ADDED_LIFETIME, aid),
+                agent_to_num_steps_added[aid],
+                reduce="sum",
+            )
+        for aid in agent_to_num_episodes_evicted:
+            # Number of agent episodes evicted. Note, values could be zero.
+            self.metrics.log_value(
+                (NUM_AGENT_EPISODES_EVICTED, aid),
+                agent_to_num_episodes_evicted[aid],
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_AGENT_EPISODES_EVICTED_LIFETIME, aid),
+                agent_to_num_episodes_evicted[aid],
+                reduce="sum",
+            )
+            # Number of agent steps evicted. Note, values could be zero.
+            self.metrics.log_value(
+                (NUM_AGENT_STEPS_EVICTED, aid),
+                agent_to_num_steps_evicted[aid],
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_AGENT_STEPS_EVICTED_LIFETIME, aid),
+                agent_to_num_steps_evicted[aid],
+                reduce="sum",
+            )
+            # Number of episodes in the buffer.
+            agent_episodes_stored = self.metrics.peek(
+                (NUM_AGENT_EPISODES_ADDED_LIFETIME, aid)
+            ) - self.metrics.peek((NUM_AGENT_EPISODES_EVICTED_LIFETIME, aid))
+            self.metrics.log_value(
+                (NUM_AGENT_EPISODES_STORED, aid),
+                agent_episodes_stored,
+                reduce="mean",
+                window=self._metrics_num_episodes_for_smoothing,
+            )
+            # Number of agent steps in the buffer.
+            agent_steps_stored = self.metrics.peek(
+                (NUM_AGENT_STEPS_ADDED_LIFETIME, aid)
+            ) - self.metrics.peek((NUM_AGENT_EPISODES_EVICTED_LIFETIME, aid))
+            self.metrics.log_value(
+                (NUM_AGENT_STEPS_STORED, aid),
+                agent_steps_stored,
+                reduce="mean",
+                window=self._metrics_num_episodes_for_smoothing,
+            )
+
+        # Log per-module metrics.
+        for mid in module_to_num_episodes_added:
+            # Number of new episodes added. Note, this metric could
+            # be zero.
+            self.metrics.log_value(
+                (NUM_MODULE_EPISODES_ADDED, mid),
+                module_to_num_episodes_added[mid],
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_MODULE_EPISODES_ADDED_LIFETIME, mid),
+                module_to_num_episodes_added[mid],
+                reduce="sum",
+            )
+            # Number of new module steps added. Note, this metric could
+            # be zero, too.
+            self.metrics.log_value(
+                (NUM_MODULE_STEPS_ADDED, mid),
+                module_to_num_steps_added[mid],
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_MODULE_STEPS_ADDED_LIFETIME, mid),
+                module_to_num_steps_added[mid],
+                reduce="sum",
+            )
+        for mid in module_to_num_episodes_evicted:
+            # Number of module episodes evicted. Note, values could be zero.
+            self.metrics.log_value(
+                (NUM_MODULE_EPISODES_EVICTED, mid),
+                module_to_num_episodes_evicted[mid],
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_MODULE_EPISODES_EVICTED_LIFETIME, mid),
+                module_to_num_episodes_evicted[mid],
+                reduce="sum",
+            )
+            # Number of module steps evicted. Note, values could be zero.
+            self.metrics.log_value(
+                (NUM_MODULE_STEPS_EVICTED, mid),
+                module_to_num_steps_evicted[mid],
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_MODULE_STEPS_EVICTED_LIFETIME, mid),
+                module_to_num_steps_evicted[mid],
+                reduce="sum",
+            )
+            # Number of episodes in the buffer.
+            module_episodes_stored = self.metrics.peek(
+                (NUM_MODULE_EPISODES_ADDED_LIFETIME, mid)
+            ) - self.metrics.peek((NUM_MODULE_EPISODES_EVICTED_LIFETIME, mid))
+            self.metrics.log_value(
+                (NUM_MODULE_EPISODES_STORED, mid),
+                module_episodes_stored,
+                reduce="mean",
+                window=self._metrics_num_episodes_for_smoothing,
+            )
+            # Number of module steps in the buffer.
+            module_steps_stored = self.metrics.peek(
+                (NUM_MODULE_STEPS_ADDED_LIFETIME, mid)
+            ) - self.metrics.peek((NUM_MODULE_EPISODES_EVICTED_LIFETIME, mid))
+            self.metrics.log_value(
+                (NUM_MODULE_STEPS_STORED, mid),
+                module_steps_stored,
+                reduce="mean",
+                window=self._metrics_num_episodes_for_smoothing,
+            )
 
     @override(ReplayBufferInterface)
     def sample(
@@ -1007,23 +1155,23 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
     # TODO (simon): Check, if we can instead peek into the metrics
     # and deprecate all variables.
-    def get_num_episodes(self) -> int:
+    def get_num_episodes(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of episodes (completed or truncated) stored in the buffer."""
         return len(self.episodes)
 
-    def get_num_episodes_evicted(self) -> int:
+    def get_num_episodes_evicted(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of episodes that have been evicted from the buffer."""
         return self._num_episodes_evicted
 
-    def get_num_timesteps(self) -> int:
+    def get_num_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of individual timesteps stored in the buffer."""
         return len(self._indices)
 
-    def get_sampled_timesteps(self) -> int:
+    def get_sampled_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of timesteps that have been sampled in buffer's lifetime."""
         return self.sampled_timesteps
 
-    def get_added_timesteps(self) -> int:
+    def get_added_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of timesteps that have been added in buffer's lifetime."""
         return self._num_timesteps_added
 

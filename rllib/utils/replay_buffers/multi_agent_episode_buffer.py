@@ -200,6 +200,16 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         self._num_timesteps += total_env_timesteps
         self._num_timesteps_added += total_env_timesteps
 
+        # Set up some counters for metrics.
+        num_episodes_evicted = 0
+        num_agent_episodes_evicted = 0
+        agent_to_num_episodes_evicted = defaultdict(0)
+        module_to_num_episodes_evicted = defaultdict(0)
+        num_env_steps_evicted = 0
+        num_agent_steps_evicted = 0
+        agent_to_num_steps_evicted = defaultdict(0)
+        module_to_num_steps_evicted = defaultdict(0)
+
         # Evict old episodes.
         eps_evicted_ids: Set[Union[str, int]] = set()
         eps_evicted_idxs: Set[int] = set()
@@ -228,6 +238,17 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             self._num_timesteps -= evicted_episode.env_steps()
             self._num_agent_timesteps -= evicted_episode.agent_steps()
             self._num_episodes_evicted += 1
+            # Increase the counters.
+            num_episodes_evicted += 1
+            num_env_steps_evicted += evicted_episode.env_steps()
+            for aid, a_eps in evicted_episode.agent_episodes.items():
+                mid = evicted_episode._agent_to_module_mapping[aid]
+                num_agent_episodes_evicted += 1
+                agent_to_num_episodes_evicted[aid] += 1
+                module_to_num_episodes_evicted[mid] += 1
+                num_agent_steps_evicted += a_eps.agent_steps()
+                agent_to_num_steps_evicted[aid] += a_eps.agent_steps()
+                module_to_num_steps_evicted[mid] += a_eps.agent_steps()
             # Remove the module timesteps of the evicted episode from the counters.
             self._evict_module_episodes(evicted_episode)
             del evicted_episode
@@ -290,6 +311,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 self._indices.extend([(eps_idx, i) for i in range(len(eps))])
                 # Add new module indices.
                 self._add_new_module_indices(eps, eps_idx, False)
+
+        # Update the adding metrics.
 
     @override(EpisodeReplayBuffer)
     def sample(
