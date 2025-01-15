@@ -19,10 +19,16 @@ PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 class MNISTDataModule(pl.LightningDataModule):
     def __init__(self, batch_size: int, data_dir: str = PATH_DATASETS):
         super().__init__()
+        self.data_dir = data_dir
+        self.transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.1307,), (0.3081,)),
+            ]
+        )
         self.batch_size = batch_size
         self.dims = (1, 28, 28)
         self.num_classes = 10
-        self.data_dir = data_dir
 
     def prepare_data(self):
         # Download the MNIST dataset if not already present
@@ -32,19 +38,11 @@ class MNISTDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
         dataset = load_dataset("ylecun/mnist", cache_dir=self.data_dir)
 
-        transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307,), (0.3081,)),
-            ]
-        )
+        def transform_fn(sample):
+            return (self.transform(sample["image"]), sample["label"])
 
-        train_data = [
-            (transform(sample["image"]), sample["label"]) for sample in dataset["train"]
-        ]
-        test_data = [
-            (transform(sample["image"]), sample["label"]) for sample in dataset["test"]
-        ]
+        train_data = [transform_fn(sample) for sample in dataset["train"]]
+        test_data = [transform_fn(sample) for sample in dataset["test"]]
 
         self.dataset = {"train": train_data, "test": test_data}
 
