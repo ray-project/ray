@@ -11,7 +11,7 @@ from benchmark import Benchmark, BenchmarkMetric
 from image_loader_microbenchmark import (
     get_transform,
     crop_and_flip_image,
-    decode_image_crop_and_flip,
+    get_preprocess_map_fn,
     center_crop_image,
 )
 
@@ -49,7 +49,6 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--data-root", type=str, help="Root of the training data directory")
-    parser.add_argument("--val-data-root", type=str, default=None, help="Root of the validation data directory")
     parser.add_argument(
         "--file-type",
         default="image",
@@ -222,7 +221,6 @@ def parse_args():
             #     num_workers=args.num_workers, target_worker_gb=args.target_worker_gb
             # )
             args.data_root = PARQUET_SPLIT_S3_DIRS["train"]
-            args.val_data_root = args.val_data_root or PARQUET_SPLIT_S3_DIRS["val"]
         else:
             raise Exception(
                 f"Unknown file type {args.file_type}; "
@@ -286,7 +284,7 @@ def train_loop_per_worker():
             worker_rank=worker_rank,
             batch_size=args.batch_size,
             num_workers=torch_num_workers,
-            transform=get_transform(False),
+            transform=get_transform(to_torch_tensor=False),
         )
     elif args.use_mosaic:
         target_epoch_size = get_mosaic_epoch_size(
@@ -658,9 +656,12 @@ def benchmark_code(
                 ray_dataset = ray.data.read_parquet(
                     args.data_root, columns=["image", "label"]
                 )
+
+                # TODO: The validation parquet files do not have labels,
+                # so just use a subset of the train dataset for now.
                 val_dataset = ray.data.read_parquet(
-                    args.val_data_root, columns=["image", "label"]
-                )
+                    PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
+                ).limit(50000)
             else:
                 raise Exception(f"Unknown file type {args.file_type}")
             if cache_input_ds:
@@ -672,9 +673,14 @@ def benchmark_code(
                 val_dataset = val_dataset.map(center_crop_image)
                 ray_datasets_dict["val"] = val_dataset
             elif args.file_type == "parquet":
-                ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
-                val_dataset = val_dataset.map(decode_image_crop_and_flip)
+                ray_dataset = ray_dataset.map(
+                    get_preprocess_map_fn(decode_image=True, random_transforms=True)
+                )
+                val_dataset = val_dataset.map(
+                    get_preprocess_map_fn(decode_image=True, random_transforms=False)
+                )
                 ray_datasets_dict["val"] = val_dataset
+
             if cache_output_ds:
                 ray_dataset = ray_dataset.materialize()
             ray_datasets_dict[ds_name] = ray_dataset

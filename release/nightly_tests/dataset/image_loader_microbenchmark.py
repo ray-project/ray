@@ -11,12 +11,15 @@ import numpy as np
 from PIL import Image
 from typing import TYPE_CHECKING, Iterator, Callable, Any
 import pandas as pd
-from benchmark import Benchmark
 
-import streaming
-from streaming import LocalDataset, StreamingDataset
+# import streaming
+# from streaming import LocalDataset, StreamingDataset
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+
+from benchmark import Benchmark
+from dataset_benchmark_util import IMAGENET_WNID_TO_ID
+
 
 if TYPE_CHECKING:
     import pyarrow
@@ -162,12 +165,14 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
     return df
 
 
-def get_transform(to_torch_tensor: bool = True, ):
+def get_transform(to_torch_tensor: bool = True, random_transforms: bool = True):
     # Note(swang): This is a different order from tf.data.
     # torch: decode -> randCrop+resize -> randFlip
     # tf.data: decode -> randCrop -> randFlip -> resize
-    transform = torchvision.transforms.Compose(
-        [
+    transforms = []
+
+    if random_transforms:
+        transforms += [
             torchvision.transforms.RandomResizedCrop(
                 antialias=True,
                 size=DEFAULT_IMAGE_SIZE,
@@ -176,18 +181,22 @@ def get_transform(to_torch_tensor: bool = True, ):
             ),
             torchvision.transforms.RandomHorizontalFlip(),
         ]
-        + ([torchvision.transforms.ToTensor()] if to_torch_tensor else [])
-        + [
-            torchvision.transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-            )
-        ]
-    )
+    
+    if to_torch_tensor:
+        transforms += [torchvision.transforms.ToTensor()]
+
+    transforms += [
+        torchvision.transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        )
+    ]
+
+    transform = torchvision.transforms.Compose(transforms)
     return transform
 
 
 # Capture `transform`` in the map UDFs.
-transform = get_transform(False)
+transform = get_transform(to_torch_tensor=False)
 
 
 def crop_and_flip_image(row):
@@ -238,6 +247,34 @@ def decode_image_crop_and_flip(row):
     return {"image": np.array(transform(pil_to_tensor(row["image"]) / 255.0))}
 
 
+def get_preprocess_map_fn(decode_image: bool = True, random_transforms: bool = True):
+    """Get a map function that transforms a row of the dataset to the format
+    expected by the training loop.
+
+    The output is a dict with 2 keys:
+    - "image": np.array of the transformed, normalized image
+    - "label": An integer index of the WNID 
+    
+    TODO: Move these preprocessing utilities shared between tests to a separate file.
+    """
+    crop_resize_transform = get_transform(
+        to_torch_tensor=True,
+        random_transforms=random_transforms
+    )
+
+    def map_fn(row):
+        assert "image" in row and "label" in row, row.keys()
+
+        if decode_image:
+            row["image"] = Image.open(io.BytesIO(row["image"]))
+
+        row["image"] = crop_resize_transform(row["image"])
+        row["label"] = IMAGENET_WNID_TO_ID[row["label"]]
+        return {"image": row["image"], "label": row["label"]}
+
+    return map_fn
+
+
 class MdsDatasource(ray.data.datasource.FileBasedDatasource):
     _FILE_EXTENSIONS = ["mds"]
 
@@ -276,44 +313,44 @@ class MdsDatasource(ray.data.datasource.FileBasedDatasource):
             i += 1
 
 
-class MosaicDataset(LocalDataset):
-    def __init__(self, local: str, transforms: Callable) -> None:
-        super().__init__(local=local)
-        self.transforms = transforms
+# class MosaicDataset(LocalDataset):
+#     def __init__(self, local: str, transforms: Callable) -> None:
+#         super().__init__(local=local)
+#         self.transforms = transforms
 
-    def __getitem__(self, idx: int) -> Any:
-        obj = super().__getitem__(idx)
-        image = obj["image"]
-        label = obj["label"]
-        return self.transforms(image), label
+#     def __getitem__(self, idx: int) -> Any:
+#         obj = super().__getitem__(idx)
+#         image = obj["image"]
+#         label = obj["label"]
+#         return self.transforms(image), label
 
 
-class S3MosaicDataset(StreamingDataset):
-    def __init__(
-        self,
-        s3_bucket: str,
-        num_physical_nodes,
-        cache_dir: str,
-        transforms: Callable,
-        cache_limit=None,
-        epoch_size=None,
-    ) -> None:
-        super().__init__(
-            remote=s3_bucket,
-            local=cache_dir,
-            cache_limit=cache_limit,
-            epoch_size=epoch_size,
-            # Set StreamingDataset to read sequentially.
-            shuffle=False,
-            num_canonical_nodes=num_physical_nodes,
-        )
-        self.transforms = transforms
+# class S3MosaicDataset(StreamingDataset):
+#     def __init__(
+#         self,
+#         s3_bucket: str,
+#         num_physical_nodes,
+#         cache_dir: str,
+#         transforms: Callable,
+#         cache_limit=None,
+#         epoch_size=None,
+#     ) -> None:
+#         super().__init__(
+#             remote=s3_bucket,
+#             local=cache_dir,
+#             cache_limit=cache_limit,
+#             epoch_size=epoch_size,
+#             # Set StreamingDataset to read sequentially.
+#             shuffle=False,
+#             num_canonical_nodes=num_physical_nodes,
+#         )
+#         self.transforms = transforms
 
-    def __getitem__(self, idx: int) -> Any:
-        obj = super().__getitem__(idx)
-        image = obj["image"]
-        label = obj["label"]
-        return self.transforms(image), label
+#     def __getitem__(self, idx: int) -> Any:
+#         obj = super().__getitem__(idx)
+#         image = obj["image"]
+#         label = obj["label"]
+#         return self.transforms(image), label
 
 
 def get_mosaic_dataloader(
@@ -349,10 +386,10 @@ def get_mosaic_dataloader(
             cache_dir=MOSAIC_CACHE,
             cache_limit=cache_limit,
             epoch_size=epoch_size,
-            transforms=get_transform(True),
+            transforms=get_transform(to_torch_tensor=True),
         )
     else:
-        mosaic_ds = MosaicDataset(mosaic_data_root, transforms=get_transform(True))
+        mosaic_ds = MosaicDataset(mosaic_data_root, transforms=get_transform(to_torch_tensor=True))
 
     if num_workers is None:
         num_workers = os.cpu_count()
@@ -480,7 +517,7 @@ if __name__ == "__main__":
 
         # torch, with transform.
         torch_dataset = build_torch_dataset(
-            args.data_root, args.batch_size, transform=get_transform(True)
+            args.data_root, args.batch_size, transform=get_transform(to_torch_tensor=True)
         )
         for i in range(args.num_epochs):
             benchmark.run_iterate_ds(
