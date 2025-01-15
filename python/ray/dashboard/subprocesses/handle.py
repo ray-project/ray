@@ -214,6 +214,9 @@ class SubprocessModuleHandle:
                 return
             await asyncio.sleep(1)
 
+    def __repr__(self) -> str:
+        return f"SubprocessModuleHandle(module={self.module_cls.__name__}, pid={self.process.pid})"
+
     async def send_request(
         self, method_name: str, request: Optional[aiohttp.web.Request]
     ) -> Awaitable[aiohttp.web.StreamResponse]:

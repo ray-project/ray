@@ -5,6 +5,7 @@ import multiprocessing
 import threading
 from dataclasses import dataclass
 
+from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
     RequestMessage,
@@ -26,6 +27,8 @@ class SubprocessModuleConfig:
     Pickleable.
     """
 
+    cluster_id_hex: str
+    gcs_address: str
     # Logger configs. Will be set up in subprocess entrypoint `run_module`.
     logging_level: str
     logging_format: str
@@ -59,6 +62,9 @@ class SubprocessModule(abc.ABC):
         self._config = config
         self._child_bound_queue = child_bound_queue
         self._parent_bound_queue = parent_bound_queue
+        # Lazy init
+        self._gcs_aio_client = None
+
 
     @staticmethod
     def is_minimal_module():
@@ -83,6 +89,16 @@ class SubprocessModule(abc.ABC):
         from the parent queue.
         """
         pass
+
+    @property
+    def gcs_aio_client(self):
+        if self._gcs_aio_client is None:
+            self._gcs_aio_client = GcsAioClient(
+                address=self._config.gcs_address,
+                nums_reconnect_retry=0,
+                cluster_id=self._config.cluster_id_hex,
+            )
+        return self._gcs_aio_client
 
     def handle_child_bound_message(
         self,
@@ -168,12 +184,17 @@ def run_module(
         backup_count=config.logging_rotate_backup_count,
     )
 
-    assert_not_in_asyncio_loop()
+    logger.info(f"Starting module {module_name} with config {config}")
 
-    loop = asyncio.new_event_loop()
-    module = cls(config, child_bound_queue, parent_bound_queue)
-
-    loop.run_until_complete(module.init())
+    try:
+        assert_not_in_asyncio_loop()
+        loop = asyncio.new_event_loop()
+        module = cls(config, child_bound_queue, parent_bound_queue)
+        loop.run_until_complete(module.init())
+        logger.info(f"Module {module_name} started")
+    except Exception as e:
+        logger.error(f"Error running module {module_name}: {e}")
+        # raise e
 
     dispatch_child_bound_messages_thread = threading.Thread(
         name=f"{module_name}-dispatch_child_bound_messages_thread",

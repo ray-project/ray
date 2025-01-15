@@ -27,6 +27,9 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
     Creates a tmpdir to hold the logs.
     """
     yield SubprocessModuleConfig(
+        cluster_id_hex="test_cluster_id",
+        # until we really need one in tests...
+        gcs_address=None,
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=tmp_path,
@@ -202,9 +205,10 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
         ("utils.py", "TestModule is done initing"),
         ("utils.py", "In /logging_in_module, Not all those who wander are lost."),
     ]
+
     assert all(
-        (file_name, content) in matches for (file_name, content) in expected_logs
-    ), f"Expected to contain {expected_logs}, got {matches}"
+        log in matches for log in expected_logs
+    ), f"Expected {expected_logs}, got {matches}"
 
 
 if __name__ == "__main__":

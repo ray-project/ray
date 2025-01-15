@@ -1,24 +1,26 @@
 from aiohttp.web import HTTPServiceUnavailable, Request, Response
 
-import ray.dashboard.optional_utils as optional_utils
-import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.healthz.utils import HealthChecker
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
+from ray.dashboard.subprocesses.module import SubprocessModule
 
-routes = optional_utils.DashboardHeadRouteTable
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-class HealthzHead(dashboard_utils.DashboardHeadModule):
+class HealthzHead(SubprocessModule):
     """Health check in the head.
 
     This module adds health check related endpoint to the head to check
     GCS's heath.
     """
 
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._health_checker = HealthChecker(self.gcs_aio_client)
 
-    @routes.get("/api/gcs_healthz")
+    @SubprocessRouteTable.get("/api/gcs_healthz")
     async def health_check(self, req: Request) -> Response:
         alive = False
         try:
@@ -33,7 +35,7 @@ class HealthzHead(dashboard_utils.DashboardHeadModule):
 
         return HTTPServiceUnavailable(reason="Health check failed")
 
-    async def run(self, server):
+    async def run(self):
         pass
 
     @staticmethod

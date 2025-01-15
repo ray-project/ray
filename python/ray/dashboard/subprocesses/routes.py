@@ -17,6 +17,9 @@ from ray.dashboard.subprocesses.message import (
     StreamResponseStartMessage,
 )
 from ray.dashboard.subprocesses.module import SubprocessModule
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SubprocessRouteTable(BaseRouteTable):
@@ -220,6 +223,7 @@ class SubprocessRouteTable(BaseRouteTable):
             ) -> aiohttp.web.Response:
                 bind_info = cls._bind_map[method][path]
                 subprocess_module_handle = bind_info.instance
+                logger.debug(f"Sending request to {subprocess_module_handle}")
                 task = subprocess_module_handle.send_request(handler.__name__, request)
                 return await task
 
