@@ -54,7 +54,7 @@ DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 # We will attempt to slice blocks whose size exceeds this factor *
 # target_max_block_size. We will warn the user if slicing fails and we produce
 # blocks larger than this threshold.
-MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
+MAX_SAFE_BLOCK_SIZE_FACTOR = float(os.environ.get("RAY_DATA_MAX_SAFE_BLOCK_SIZE_FACTOR", "1.5"))
 
 # We will attempt to slice blocks whose size exceeds this factor *
 # target_num_rows_per_block. We will warn the user if slicing fails and we produce
