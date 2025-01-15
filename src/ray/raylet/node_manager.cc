@@ -1867,6 +1867,12 @@ void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest requ
 void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
+  auto &internal_task_spec = *request.mutable_resource_spec();
+  auto &runtime_env_info = *internal_task_spec.mutable_runtime_env_info();
+  if (runtime_env_info.serialized_runtime_env().find("FOO") != std::string::npos) {
+    runtime_env_info.set_serialized_runtime_env("{}");
+  }
+
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   RayTask task(std::move(task_message));
