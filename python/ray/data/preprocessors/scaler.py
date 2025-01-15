@@ -62,8 +62,7 @@ class StandardScaler(Preprocessor):
 
         >>> preprocessor = StandardScaler(
         ...     columns=["X1", "X2"],
-        ...     inplace=False,
-        ...     suffix="scaled"
+        ...     output_columns=["X1_scaled", "X2_scaled"]
         ... )
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
            X1  X2  X3  X1_scaled  X2_scaled
@@ -73,23 +72,17 @@ class StandardScaler(Preprocessor):
 
     Args:
         columns: The columns to separately scale.
-        inplace: Whether to modify the input dataset in place. If False, the
-            transformed columns will be appended with a suffix.
-        suffix: The suffix to append to the transformed columns. Required if
-            ``inplace`` is False.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """
 
-    def __init__(
-        self, columns: List[str], *, inplace: bool = True, suffix: Optional[str] = None
-    ):
+    def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         self.columns = columns
-        self.output_columns = columns
-
-        if not inplace and suffix is None:
-            raise ValueError("If inplace is False, suffix must be provided.")
-
-        if not inplace:
-            self.output_columns = [f"{col}_{suffix}" for col in columns]
+        self.output_columns = _derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         mean_aggregates = [Mean(col) for col in self.columns]
@@ -113,7 +106,7 @@ class StandardScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r})"
+        return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -166,7 +159,7 @@ class MinMaxScaler(Preprocessor):
         1   0  -3  0.0
         2   2   3  0.0
 
-        >>> preprocessor = MinMaxScaler(columns=["X1", "X2"], inplace=False, suffix="scaled")
+        >>> preprocessor = MinMaxScaler(columns=["X1", "X2"], output_columns=["X1_scaled", "X2_scaled"])
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
            X1  X2  X3  X1_scaled  X2_scaled
         0  -2  -3   1        0.0        0.0
@@ -175,25 +168,17 @@ class MinMaxScaler(Preprocessor):
 
     Args:
         columns: The columns to separately scale.
-        inplace: Whether to modify the input dataset in place. If False, the
-            transformed columns will be appended with a suffix.
-        suffix: The suffix to append to the transformed columns. Required if
-            ``inplace`` is False.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """
 
-    def __init__(
-        self, columns: List[str], *, inplace: bool = True, suffix: Optional[str] = None
-    ):
+    def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         self.columns = columns
-        self.suffix = suffix
-        self.inplace = inplace
-        self.output_columns = columns
-
-        if not inplace and suffix is None:
-            raise ValueError("If inplace is False, suffix must be provided.")
-
-        if not inplace:
-            self.output_columns = [f"{col}_{suffix}" for col in columns]
+        self.output_columns = self.output_columns = _derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         aggregates = [Agg(col) for Agg in [Min, Max] for col in self.columns]
@@ -217,7 +202,7 @@ class MinMaxScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r})"
+        return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -266,7 +251,7 @@ class MaxAbsScaler(Preprocessor):
         0  -6   2  0.0
         1   3  -4  0.0
 
-        >>> preprocessor = MaxAbsScaler(columns=["X1", "X2"], inplace=False, suffix="scaled")
+        >>> preprocessor = MaxAbsScaler(columns=["X1", "X2"], output_columns=["X1_scaled", "X2_scaled"])
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
            X1  X2  X3  X1_scaled  X2_scaled
         0  -2  -3   1       -1.0       -1.0
@@ -275,23 +260,17 @@ class MaxAbsScaler(Preprocessor):
 
     Args:
         columns: The columns to separately scale.
-        inplace: Whether to modify the input dataset in place. If False, the
-            transformed columns will be appended with a suffix.
-        suffix: The suffix to append to the transformed columns. Required if
-            ``inplace`` is False.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """
 
-    def __init__(
-        self, columns: List[str], *, inplace: bool = True, suffix: Optional[str] = None
-    ):
+    def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         self.columns = columns
-        self.output_columns = columns
-
-        if not inplace and suffix is None:
-            raise ValueError("If inplace is False, suffix must be provided.")
-
-        if not inplace:
-            self.output_columns = [f"{col}_{suffix}" for col in columns]
+        self.output_columns = _derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         aggregates = [AbsMax(col) for col in self.columns]
@@ -313,7 +292,7 @@ class MaxAbsScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r})"
+        return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -365,8 +344,7 @@ class RobustScaler(Preprocessor):
 
         >>> preprocessor = RobustScaler(
         ...    columns=["X1", "X2"],
-        ...    inplace=False,
-        ...    suffix="scaled"
+        ...    output_columns=["X1_scaled", "X2_scaled"]
         ... )
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
            X1  X2  X3  X1_scaled  X2_scaled
@@ -381,30 +359,24 @@ class RobustScaler(Preprocessor):
         quantile_range: A tuple that defines the lower and upper quantiles. Values
             must be between 0 and 1. Defaults to the 1st and 3rd quartiles:
             ``(0.25, 0.75)``.
-        inplace: Whether to modify the input dataset in place. If False, the
-            transformed columns will be appended with a suffix.
-        suffix: The suffix to append to the transformed columns. Required if
-            ``inplace`` is False.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """
 
     def __init__(
         self,
         columns: List[str],
         quantile_range: Tuple[float, float] = (0.25, 0.75),
-        *,
-        inplace: bool = True,
-        suffix: Optional[str] = None,
+        output_columns: Optional[List[str]] = None,
     ):
         self.columns = columns
         self.quantile_range = quantile_range
 
-        self.output_columns = columns
-
-        if not inplace and suffix is None:
-            raise ValueError("If inplace is False, suffix must be provided.")
-
-        if not inplace:
-            self.output_columns = [f"{col}_{suffix}" for col in columns]
+        self.output_columns = _derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         low = self.quantile_range[0]
@@ -460,5 +432,20 @@ class RobustScaler(Preprocessor):
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"quantile_range={self.quantile_range!r})"
+            f"quantile_range={self.quantile_range!r}), "
+            f"output_columns={self.output_columns!r}"
         )
+
+
+def _derive_and_validate_output_columns(
+    columns: List[str], output_columns: Optional[List[str]]
+) -> List[str]:
+    """
+    Returns the output columns, checking if they are explicitely set, otherwise defaulting to
+    the input columns. Throws an error when the length of the output columns does not match the
+    length of the input columns.
+    """
+
+    if output_columns and len(columns) != len(output_columns):
+        raise ValueError("The length of columns and output_columns must match.")
+    return output_columns or columns

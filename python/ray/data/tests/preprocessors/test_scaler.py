@@ -66,9 +66,11 @@ def test_min_max_scaler():
 
     # append mode
     with pytest.raises(ValueError):
-        MinMaxScaler(columns=["B", "C"], inplace=False)
+        MinMaxScaler(columns=["B", "C"], output_columns=["B_mm_scaled"])
 
-    scaler = MinMaxScaler(columns=["B", "C"], inplace=False, suffix="mm_scaled")
+    scaler = MinMaxScaler(
+        columns=["B", "C"], output_columns=["B_mm_scaled", "C_mm_scaled"]
+    )
     scaler.fit(ds)
 
     pred_in_df = pd.DataFrame.from_dict(
@@ -144,9 +146,11 @@ def test_max_abs_scaler():
 
     # append mode
     with pytest.raises(ValueError):
-        MaxAbsScaler(columns=["B", "C"], inplace=False)
+        MaxAbsScaler(columns=["B", "C"], output_columns=["B_ma_scaled"])
 
-    scaler = MaxAbsScaler(columns=["B", "C"], inplace=False, suffix="ma_scaled")
+    scaler = MaxAbsScaler(
+        columns=["B", "C"], output_columns=["B_ma_scaled", "C_ma_scaled"]
+    )
     scaler.fit(ds)
 
     pred_in_df = pd.DataFrame.from_dict(
@@ -229,9 +233,11 @@ def test_robust_scaler():
 
     # append mode
     with pytest.raises(ValueError):
-        RobustScaler(columns=["B", "C"], inplace=False)
+        RobustScaler(columns=["B", "C"], output_columns=["B_r_scaled"])
 
-    scaler = RobustScaler(columns=["B", "C"], inplace=False, suffix="r_scaled")
+    scaler = RobustScaler(
+        columns=["B", "C"], output_columns=["B_r_scaled", "C_r_scaled"]
+    )
     scaler.fit(ds)
 
     pred_in_df = pd.DataFrame.from_dict(
@@ -313,9 +319,11 @@ def test_standard_scaler():
 
     # append mode
     with pytest.raises(ValueError):
-        StandardScaler(columns=["B", "C"], inplace=False)
+        StandardScaler(columns=["B", "C"], output_columns=["B_s_scaled"])
 
-    scaler = StandardScaler(columns=["B", "C"], inplace=False, suffix="r_scaled")
+    scaler = StandardScaler(
+        columns=["B", "C"], output_columns=["B_s_scaled", "C_s_scaled"]
+    )
     scaler.fit(ds)
 
     pred_in_df = pd.DataFrame.from_dict(
@@ -328,8 +336,8 @@ def test_standard_scaler():
             "A": pred_col_a,
             "B": pred_col_b,
             "C": pred_col_c,
-            "B_r_scaled": pred_processed_col_b,
-            "C_r_scaled": pred_processed_col_c,
+            "B_s_scaled": pred_processed_col_b,
+            "C_s_scaled": pred_processed_col_c,
         }
     )
 
