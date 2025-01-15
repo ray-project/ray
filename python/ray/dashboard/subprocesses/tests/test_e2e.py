@@ -142,6 +142,18 @@ async def test_streamed_iota(aiohttp_client, default_module_config):
     assert await response.text() == "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n"
 
 
+async def test_streamed_iota_with_error(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    # Server behavior: sends 200 OK with 0-9, then an error message.
+    response = await client.post("/streamed_iota_with_error", data=b"10")
+    assert response.headers["Transfer-Encoding"] == "chunked"
+    assert response.status == 200
+    txt = await response.text()
+    assert txt == "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\nThis is an error"
+
+
 async def test_logging_in_module(aiohttp_client, default_module_config):
     app = await start_http_server_app(default_module_config, [TestModule])
     client = await aiohttp_client(app)
@@ -164,7 +176,7 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
     # Expected format: [(file_name:line_no, content), ...]
     expected_logs = [
         ("utils.py:24", "TestModule is running"),
-        ("utils.py:61", "In /logging_in_module, Not all those who wander are lost."),
+        ("utils.py:72", "In /logging_in_module, Not all those who wander are lost."),
     ]
 
     assert matches == expected_logs, f"Expected {expected_logs}, got {matches}"

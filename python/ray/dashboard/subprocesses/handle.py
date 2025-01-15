@@ -179,6 +179,29 @@ class SubprocessModuleHandle:
         except Exception as e:
             response_fut.set_exception(e)
 
+    @staticmethod
+    async def handle_stream_response_error(
+        prev_fut: Awaitable[aiohttp.web.StreamResponse],
+        exception: Exception,
+        response_fut: Awaitable[aiohttp.web.Response],
+    ) -> None:
+        """
+        When the async iterator in the module raises an error, we need to propagate it
+        to the client and close the stream. However, we already sent a 200 OK to the
+        client and can't change that to a 500. We can't just raise an exception here to
+        aiohttp because that causes it to abruptly close the connection and the client
+        will raise a ClientPayloadError(TransferEncodingError).
+
+        Instead, we write exception to the stream and close the stream.
+        """
+        try:
+            response = await asyncio.wrap_future(prev_fut)
+            await response.write(str(exception).encode())
+            await response.write_eof()
+            response_fut.set_result(response)
+        except Exception as e:
+            response_fut.set_exception(e)
+
 
 def handle_parent_bound_message(
     loop: asyncio.AbstractEventLoop,
@@ -230,9 +253,19 @@ def handle_parent_bound_message(
     elif isinstance(message, ErrorMessage):
         # Propagate the error to aiohttp.
         active_request = handle.active_requests.pop_or_raise(message.request_id)
-        loop.call_soon_threadsafe(
-            active_request.response_fut.set_exception, message.error
-        )
+        if active_request.stream_response is not None:
+            asyncio.run_coroutine_threadsafe(
+                SubprocessModuleHandle.handle_stream_response_error(
+                    active_request.stream_response,
+                    message.error,
+                    active_request.response_fut,
+                ),
+                loop,
+            )
+        else:
+            loop.call_soon_threadsafe(
+                active_request.response_fut.set_exception, message.error
+            )
     else:
         raise ValueError(f"Unknown message type: {type(message)}")
 

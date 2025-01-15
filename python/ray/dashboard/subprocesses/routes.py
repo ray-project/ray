@@ -71,6 +71,13 @@ class SubprocessRouteTable(BaseRouteTable):
     6. dispatch_parent_bound_messages receives the ParentBoundMessage and
         resolves the Future with the response.
     7. aiohttp receives the response and sends it back to the client.
+
+    Exception handling:
+    - If a non-streaming child side handler raises an exception, the parent side
+      handler translates it to a 500 error.
+    - If a streaming child side handler already sent a chunk of data, the parent
+      side handler should already sent a 200 OK with that data to the client. It will
+      send str(exception) to the client and close the stream.
     """
 
     _bind_map = collections.defaultdict(dict)

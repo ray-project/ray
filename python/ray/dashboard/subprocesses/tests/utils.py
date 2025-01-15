@@ -56,6 +56,19 @@ class TestModule(SubprocessModule):
             await asyncio.sleep(0.001)
             yield f"{i}\n".encode()
 
+    @SubprocessRouteTable.post("/streamed_iota_with_error", streaming=True)
+    async def streamed_iota_with_error(
+        self, request_body: bytes
+    ) -> AsyncIterator[bytes]:
+        """
+        Streams the numbers 0 to N, then raises an error.
+        """
+        n = int(request_body)
+        for i in range(n):
+            await asyncio.sleep(0.001)
+            yield f"{i}\n".encode()
+        raise ValueError("This is an error")
+
     @SubprocessRouteTable.post("/logging_in_module")
     async def logging_in_module(self, request_body: bytes) -> aiohttp.web.Response:
         logger.info("In /logging_in_module, Not all those who wander are lost.")
