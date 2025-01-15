@@ -176,7 +176,7 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
     # Expected format: [(file_name:line_no, content), ...]
     expected_logs = [
         ("utils.py:24", "TestModule is running"),
-        ("utils.py:72", "In /logging_in_module, Not all those who wander are lost."),
+        ("utils.py:74", "In /logging_in_module, Not all those who wander are lost."),
     ]
 
     assert matches == expected_logs, f"Expected {expected_logs}, got {matches}"
