@@ -498,7 +498,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         return replica_result.to_object_ref(timeout_s=remaining_timeout_s)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class DeploymentResponseGenerator(_DeploymentResponseBase):
     """A future-like object wrapping the result of a streaming deployment handle call.
 
