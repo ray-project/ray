@@ -324,9 +324,8 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   auto last_signal_check_time = std::chrono::steady_clock::now();
   do {
     RAY_RETURN_NOT_OK(object->header->CheckHasError());
-    if (std::chrono::steady_clock::now() - last_signal_check_time >=
-            check_signal_interval &&
-        check_signals_) {
+    if (check_signals_ && std::chrono::steady_clock::now() - last_signal_check_time >=
+                              check_signal_interval) {
       RAY_RETURN_NOT_OK(check_signals_());
       last_signal_check_time = std::chrono::steady_clock::now();
     }

@@ -99,9 +99,8 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(
         got_sem = true;
         break;
       }
-      if (std::chrono::steady_clock::now() - last_signal_check_time >
-              check_signal_interval &&
-          check_signals) {
+      if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
+                               check_signal_interval) {
         RAY_RETURN_NOT_OK(check_signals());
         last_signal_check_time = std::chrono::steady_clock::now();
       }
@@ -198,9 +197,8 @@ Status PlasmaObjectHeader::ReadAcquire(
       RayConfig::instance().get_check_signal_interval_milliseconds());
   auto last_signal_check_time = std::chrono::steady_clock::now();
   while (version < version_to_read || !is_sealed) {
-    if (std::chrono::steady_clock::now() - last_signal_check_time >
-            check_signal_interval &&
-        check_signals) {
+    if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
+                             check_signal_interval) {
       RAY_RETURN_NOT_OK(check_signals());
       last_signal_check_time = std::chrono::steady_clock::now();
     }
