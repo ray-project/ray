@@ -1,7 +1,6 @@
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
-load("//bazel:ray.bzl", "COPTS")
+load("//bazel:ray.bzl", "ray_cc_library")
 
-cc_library(
+ray_cc_library(
     name = "util",
     srcs = glob(
         [
@@ -14,13 +13,10 @@ cc_library(
     hdrs = glob([
         "*.h",
     ]),
-    copts = COPTS,
     linkopts = select({
         "@platforms//os:windows": [],
         "//conditions:default": ["-lpthread"],
     }),
-    strip_include_prefix = "//src",
-    visibility = ["//visibility:public"],
     deps = [
         ":thread_checker",
         "//:aligned_alloc",
@@ -43,15 +39,46 @@ cc_library(
     ],
 )
 
-cc_library(
+ray_cc_library(
     name = "size_literals",
     hdrs = ["size_literals.h"],
-    visibility = ["//visibility:public"],
 )
 
-cc_library(
+ray_cc_library(
     name = "thread_checker",
     hdrs = ["thread_checker.h"],
     srcs = ["thread_checker.cc"],
-    visibility = ["//visibility:public"],
+
+)
+
+ray_cc_library(
+    name = "map_utils",
+    hdrs = ["map_utils.h"],
+)
+
+ray_cc_library(
+    name = "shared_lru",
+    hdrs = ["shared_lru.h"],
+    deps = [
+        ":map_utils",
+        ":util",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "compat",
+    hdrs = ["compat.h"],
+)
+
+ray_cc_library(
+    name = "pipe_logger",
+    hdrs = ["pipe_logger.h"],
+    srcs = ["pipe_logger.cc"],
+    deps = [
+        ":compat",
+        ":util",
+        "@com_github_spdlog//:spdlog",
+        "@com_google_absl//absl/strings",
+    ],
 )

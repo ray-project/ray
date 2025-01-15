@@ -49,6 +49,37 @@ def test_webdataset_read(ray_start_2_cpus, tmp_path):
         assert sample["b"].decode("utf-8") == str(i**2)
 
 
+def test_webdataset_expand_json(ray_start_2_cpus, tmp_path):
+    import numpy as np
+    import torch
+
+    image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
+    gray = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
+    dstruct = dict(a=[1, 2], b=dict(c=2), d="hello")
+    ttensor = torch.tensor([1, 2, 3]).numpy()
+
+    sample = {
+        "__key__": "foo",
+        "jpg": image,
+        "gray.png": gray,
+        "mp": dstruct,
+        "json": dstruct,
+        "pt": ttensor,
+        "und": b"undecoded",
+        "custom": b"nothing",
+    }
+
+    # write the encoded data using the default encoder
+    data = [sample]
+    ds = ray.data.from_items(data).repartition(1)
+    ds.write_webdataset(path=tmp_path, try_create_dir=True)
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)], override_num_blocks=1, expand_json=True
+    )
+    record = ds.take(1)
+    assert [1, 2] == record[0]["a"]
+
+
 def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
     path = os.path.join(tmp_path, "bar_000000.tar")
     with TarWriter(path) as tf:
@@ -199,6 +230,43 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
         assert isinstance(sample["und"], bytes)
         assert sample["und"] == b"undecoded"
         assert sample["custom"] == "custom-value"
+
+
+def test_webdataset_decoding(ray_start_2_cpus, tmp_path):
+    import numpy as np
+    import torch
+
+    image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
+    gray = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
+    dstruct = dict(a=np.nan, b=dict(c=2), d="hello", e={"img_filename": "for_test.jpg"})
+    ttensor = torch.tensor([1, 2, 3]).numpy()
+
+    sample = {
+        "__key__": "foo",
+        "jpg": image,
+        "gray.png": gray,
+        "mp": dstruct,
+        "json": dstruct,
+        "pt": ttensor,
+        "und": b"undecoded",
+        "custom": b"nothing",
+    }
+
+    # write the encoded data using the default encoder
+    data = [sample]
+    ds = ray.data.from_items(data).repartition(1)
+    ds.write_webdataset(path=tmp_path, try_create_dir=True)
+
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)],
+        override_num_blocks=1,
+        decoder=None,
+    )
+    samples = ds.take(1)
+    import json
+
+    meta_json = json.loads(samples[0]["json"].decode("utf-8"))
+    assert meta_json["e"]["img_filename"] == "for_test.jpg"
 
 
 @pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])

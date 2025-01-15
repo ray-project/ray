@@ -154,7 +154,7 @@ def run_tfrecords_benchmark(benchmark: Benchmark):
 if __name__ == "__main__":
     ray.init()
 
-    benchmark = Benchmark("read-tfrecords")
+    benchmark = Benchmark()
 
     run_tfrecords_benchmark(benchmark)
 

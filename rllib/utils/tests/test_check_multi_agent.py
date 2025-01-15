@@ -18,8 +18,8 @@ class TestCheckMultiAgent(unittest.TestCase):
 
     def test_multi_agent_bad_policy_ids(self):
         self.assertRaisesRegex(
-            KeyError,
-            "Policy IDs must always be of type",
+            ValueError,
+            "PolicyID `1` not valid!",
             lambda: (
                 PPOConfig().multi_agent(
                     policies={1, "good_id"},

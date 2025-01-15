@@ -408,6 +408,9 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 - ``uv`` (dict | List[str] | str): Alpha version feature. Either (1) a list of uv `requirements specifiers <https://pip.pypa.io/en/stable/cli/pip_install/#requirement-specifiers>`_, (2) a string containing
   the path to a local uv `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file, or (3) a python dictionary that has three fields: (a) ``packages`` (required, List[str]): a list of uv packages,
   (b) ``uv_version`` (optional, str): the version of uv; Ray will spell the package name "uv" in front of the ``uv_version`` to form the final requirement string.
+  (c) ``uv_check`` (optional, bool): whether to enable pip check at the end of uv install, default to False.
+  (d) ``uv_pip_install_options`` (optional, List[str]): user-provided options for ``uv pip install`` command, default to ``["--no-cache"]``.
+  To override the default options and install without any options, use an empty list ``[]`` as install option value.
   The syntax of a requirement specifier is the same as ``pip`` requirements.
   This will be installed in the Ray workers at runtime.  Packages in the preinstalled cluster environment will still be available.
   To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
@@ -459,13 +462,10 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``{"stop-on-exit": "true", "t": "cuda,cublas,cudnn", "ftrace": ""}``
 
-- ``container`` (dict): Require a given (Docker) image, and the worker process will run in a container with this image.
-  The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.
-  The `run_options` list spec is `here <https://docs.docker.com/engine/reference/run/>`__.
+- ``image_uri`` (dict): Require a given Docker image. The worker process runs in a container with this image.
+  - Example: ``{"image_uri": "anyscale/ray:2.31.0-py39-cpu"}``
 
-  - Example: ``{"image": "anyscale/ray:2.31.0-py39-cpu", "worker_path": "/root/python/ray/workers/default_worker.py", "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}``
-
-  Note: ``container`` is experimental now. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
+  Note: ``image_uri`` is experimental. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
 
 - ``config`` (dict | :class:`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): config for runtime environment. Either a dict or a RuntimeEnvConfig.
   Fields:

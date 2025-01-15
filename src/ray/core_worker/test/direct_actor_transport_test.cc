@@ -804,7 +804,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   bool Enabled() const override { return true; }
 
-  const std::string DebugString() override { return ""; }
+  std::string DebugString() override { return ""; }
 };
 
 class MockTaskReceiver : public TaskReceiver {
@@ -830,8 +830,8 @@ class TaskReceiverTest : public ::testing::Test {
  public:
   TaskReceiverTest()
       : worker_context_(WorkerType::WORKER, JobID::FromInt(0)),
-        worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
-        dependency_waiter_(std::make_shared<MockDependencyWaiter>()) {
+        worker_client_(std::make_shared<MockWorkerClient>()),
+        dependency_waiter_(std::make_unique<MockDependencyWaiter>()) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
                                   std::placeholders::_1,
@@ -847,12 +847,12 @@ class TaskReceiverTest : public ::testing::Test {
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_,
-                    dependency_waiter_);
+                    dependency_waiter_.get());
   }
 
   Status MockExecuteTask(
       const TaskSpecification &task_spec,
-      const std::shared_ptr<ResourceMappingType> &resource_ids,
+      std::optional<ResourceMappingType> resource_ids,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
@@ -878,7 +878,7 @@ class TaskReceiverTest : public ::testing::Test {
   instrumented_io_context main_io_service_;
   MockTaskEventBuffer task_event_buffer_;
   std::shared_ptr<MockWorkerClient> worker_client_;
-  std::shared_ptr<DependencyWaiter> dependency_waiter_;
+  std::unique_ptr<DependencyWaiter> dependency_waiter_;
 };
 
 TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
@@ -976,11 +976,14 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
 
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog,
-                                         argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      argv[0],
+      ray::RayLogLevel::INFO,
+      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   return RUN_ALL_TESTS();
 }

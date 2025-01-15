@@ -21,6 +21,7 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "ray/common/asio/asio_util.h"
 // clang-format on
 
 namespace ray {
@@ -28,22 +29,27 @@ class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+    client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+    gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
+    io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsNodeManagerTest");
   }
 
  protected:
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
-  std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
-  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::unique_ptr<rpc::NodeManagerClientPool> client_pool_;
+  std::unique_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
 };
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
-  gcs::GcsNodeManager node_manager(
-      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   io_context_->GetIoService(),
+                                   client_pool_.get(),
+                                   ClusterID::Nil());
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -57,8 +63,11 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {
-  gcs::GcsNodeManager node_manager(
-      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   io_context_->GetIoService(),
+                                   client_pool_.get(),
+                                   ClusterID::Nil());
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;

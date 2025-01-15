@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, deque
 import time
 import threading
 from typing import Any, Callable, Dict, Optional, Tuple, Union
@@ -137,6 +137,7 @@ class Stats:
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         on_exit: Optional[Callable] = None,
+        throughput: Union[bool, float] = False,
     ):
         """Initializes a Stats instance.
 
@@ -174,6 +175,13 @@ class Stats:
                 to True is useful for cases, in which the internal values list would
                 otherwise grow indefinitely, for example if reduce is None and there
                 is no `window` provided.
+            with_throughput: Whether to track a throughput estimate together with this
+                Stats. This is only supported for `reduce=sum` and
+                `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
+                then keeps track of the time passed between two consecutive calls to
+                `reduce()` and update its throughput estimate. The current throughput
+                estimate of a key can be obtained through:
+                `Stats.peek([some key], throughput=True)`.
         """
         # Thus far, we only support mean, max, min, and sum.
         if reduce not in [None, "mean", "min", "max", "sum"]:
@@ -218,7 +226,13 @@ class Stats:
 
         # On each `.reduce()` call, we store the result of this call in hist[0] and the
         # previous `reduce()` result in hist[1].
-        self._hist = (0, 0)
+        self._hist = deque([0, 0, 0], maxlen=3)
+
+        self._throughput = throughput if throughput is not True else 0.0
+        if self._throughput is not False:
+            assert self._reduce_method == "sum"
+            assert self._window in [None, float("inf")]
+            self._throughput_last_time = -1
 
     def push(self, value) -> None:
         """Appends a new value into the internal values list.
@@ -243,7 +257,7 @@ class Stats:
         # In case another thread already is measuring this Stats (timing), simply ignore
         # the "enter request" and return a clone of `self`.
         thread_id = threading.get_ident()
-        assert self._start_times[thread_id] is None
+        # assert self._start_times[thread_id] is None
         self._start_times[thread_id] = time.perf_counter()
         return self
 
@@ -260,7 +274,7 @@ class Stats:
 
         del self._start_times[thread_id]
 
-    def peek(self, *, previous: bool = False) -> Any:
+    def peek(self, *, previous: Optional[int] = None, throughput: bool = False) -> Any:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
@@ -268,16 +282,20 @@ class Stats:
         given the current internal values list.
 
         Args:
-            previous: If True, returns the previous (reduced) result of this `Stats`
-                object.
+            previous: If provided (int), returns that previously (reduced) result of
+                this `Stats` object, which was generated `previous` number of `reduce()`
+                calls ago). If None (default), returns the current (reduced) value.
 
         Returns:
             The result of reducing the internal values list (or the previously computed
             reduced result, if `previous` is True).
         """
         # Return previously reduced value.
-        if previous:
-            return self._hist[1]
+        if previous is not None:
+            return self._hist[-abs(previous)]
+        # Return the last measured throughput.
+        elif throughput:
+            return self._throughput if self._throughput is not False else None
         return self._reduced_values()[0]
 
     def reduce(self) -> "Stats":
@@ -295,11 +313,26 @@ class Stats:
         """
         reduced, values = self._reduced_values()
 
+        # Keep track and update underlying throughput metric.
+        if self._throughput is not False:
+            # Take the delta between the new (upcoming) reduced value and the most
+            # recently reduced value (one `reduce()` call ago).
+            delta_sum = reduced - self._hist[-1]
+            assert delta_sum >= 0
+            time_now = time.perf_counter()
+            if self._throughput_last_time == -1:
+                self._throughput = np.nan
+            else:
+                delta_time = time_now - self._throughput_last_time
+                assert delta_time >= 0.0
+                self._throughput = delta_sum / delta_time
+            self._throughput_last_time = time_now
+
         # Reduce everything to a single (init) value.
         self.values = values
 
         # Shift historic reduced valued by one in our hist-tuple.
-        self._hist = (reduced, self._hist[0])
+        self._hist.append(reduced)
 
         # `clear_on_reduce` -> Return an empty new Stats object with the same settings
         # as `self`.
@@ -321,6 +354,10 @@ class Stats:
         # Slice by window size, if provided.
         if self._window not in [None, float("inf")]:
             self.values = self.values[-self._window :]
+
+        # Adopt `other`'s current throughput estimate (it's the newer one).
+        if self._throughput is not False:
+            self._throughput = other._throughput
 
     def merge_in_parallel(self, *others: "Stats") -> None:
         """Merges all internal values of `others` into `self`'s internal values list.
@@ -458,10 +495,12 @@ class Stats:
                 `self`.
         """
         # Make sure `others` have same reduction settings.
-        assert all(self._reduce_method == o._reduce_method for o in others)
-        assert all(self._window == o._window for o in others)
-        assert all(self._ema_coeff == o._ema_coeff for o in others)
-
+        assert all(
+            self._reduce_method == o._reduce_method
+            and self._window == o._window
+            and self._ema_coeff == o._ema_coeff
+            for o in others
+        )
         win = self._window or float("inf")
 
         # Take turns stepping through `self` and `*others` values, thereby moving
@@ -567,17 +606,20 @@ class Stats:
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
+            "_hist": list(self._hist),
         }
 
     @staticmethod
     def from_state(state: Dict[str, Any]) -> "Stats":
-        return Stats(
+        stats = Stats(
             state["values"],
             reduce=state["reduce"],
             window=state["window"],
             ema_coeff=state["ema_coeff"],
             clear_on_reduce=state["clear_on_reduce"],
         )
+        stats._hist = deque(state["_hist"], maxlen=stats._hist.maxlen)
+        return stats
 
     @staticmethod
     def similar_to(
@@ -605,6 +647,7 @@ class Stats:
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
+            throughput=other._throughput,
         )
         stats._hist = other._hist
         return stats
@@ -657,12 +700,6 @@ class Stats:
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
-                # TODO (sven): Currently, tensor metrics only work with window=1.
-                #  We might want o enforce it more formally, b/c it's probably not a
-                #  good idea to have MetricsLogger or Stats tinker with the actual
-                #  computation graph that users are trying to build in their loss
-                #  functions.
-                assert len(values) == 1
                 assert all(torch.is_tensor(v) for v in values), values
                 # TODO (sven) If the shape is (), do NOT even use the reduce method.
                 #  Using `tf.reduce_mean()` here actually lead to a completely broken
