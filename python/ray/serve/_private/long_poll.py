@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import random
+from asyncio import sleep
 from asyncio.events import AbstractEventLoop
 from collections import defaultdict
 from collections.abc import Mapping
@@ -79,7 +80,6 @@ class LongPollClient:
         key_listeners: Dict[KeyType, UpdateStateCallable],
         call_in_event_loop: AbstractEventLoop,
     ) -> None:
-        assert len(key_listeners) > 0
         # We used to allow this to be optional, but due to Ray Client issue
         # we now enforce all long poll client to post callback to event loop
         # See https://github.com/ray-project/ray/issues/20971
@@ -99,6 +99,27 @@ class LongPollClient:
 
         self._poll_next()
 
+    def stop(self) -> None:
+        """Stop the long poll client after the next RPC returns."""
+        self.is_running = False
+
+    def add_key_listeners(
+        self, key_listeners: Dict[KeyType, UpdateStateCallable]
+    ) -> None:
+        """Add more key listeners to the client.
+        The new listeners will only be included in the *next* long poll request;
+        the current request will continue with the existing listeners.
+
+        If a key is already in the client, the new listener will replace the old one,
+        but the snapshot ID will be preserved, so the new listener will only be called
+        on the *next* update to that key.
+        """
+        # Only initialize snapshot ids for *new* keys.
+        self.snapshot_ids.update(
+            {key: -1 for key in key_listeners.keys() if key not in self.key_listeners}
+        )
+        self.key_listeners.update(key_listeners)
+
     def _on_callback_completed(self, trigger_at: int):
         """Called after a single callback is completed.
 
@@ -115,6 +136,9 @@ class LongPollClient:
         """Poll the update. The callback is expected to scheduler another
         _poll_next call.
         """
+        if not self.is_running:
+            return
+
         self._callbacks_processed_count = 0
         self._current_ref = self.host_actor.listen_for_change.remote(self.snapshot_ids)
         self._current_ref._on_completed(lambda update: self._process_update(update))
@@ -162,6 +186,8 @@ class LongPollClient:
             f"{list(updates.keys())}.",
             extra={"log_to_stderr": False},
         )
+        if not updates:  # no updates, no callbacks to run, just poll again
+            self._schedule_to_event_loop(self._poll_next)
         for key, update in updates.items():
             self.snapshot_ids[key] = update.snapshot_id
             callback = self.key_listeners[key]
@@ -246,10 +272,20 @@ class LongPollHost:
     ) -> Union[LongPollState, Dict[KeyType, UpdatedObject]]:
         """Listen for changed objects.
 
-        This method will returns a dictionary of updated objects. It returns
-        immediately if the snapshot_ids are outdated, otherwise it will block
-        until there's an update.
+        This method will return a dictionary of updated objects. It returns
+        immediately if any of the snapshot_ids are outdated,
+        otherwise it will block until there's an update.
         """
+        # If there are no keys to listen for,
+        # just wait for a short time to provide backpressure,
+        # then return an empty update.
+        if not keys_to_snapshot_ids:
+            await sleep(1)
+
+            updated_objects = {}
+            self._count_send(updated_objects)
+            return updated_objects
+
         # If there are any keys with outdated snapshot ids,
         # return their updated values immediately.
         updated_objects = {}
