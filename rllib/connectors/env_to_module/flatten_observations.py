@@ -173,9 +173,6 @@ class FlattenObservations(ConnectorV2):
         for sa_episode in self.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=True
         ):
-            # Episode is not finalized yet and thus still operates on lists of items.
-            assert not sa_episode.is_finalized
-
             last_obs = sa_episode.get_observations(-1)
 
             if self._multi_agent:

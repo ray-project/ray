@@ -740,42 +740,6 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleGetTasksInfo(rpc::GetTasksInfoRequest request,
-                                     rpc::GetTasksInfoReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Received a HandleGetTasksInfo request";
-  auto total = std::make_shared<int>(0);
-  auto count = std::make_shared<int>(0);
-  auto limit = request.has_limit() ? request.limit() : -1;
-  // Each worker query will have limit as well.
-  // At the end there will be limit * num_workers entries returned at max.
-  QueryAllWorkerStates(
-      /*on_replied*/
-      [reply, total, limit, count](const ray::Status &status,
-                                   const rpc::GetCoreWorkerStatsReply &r) {
-        *total += r.tasks_total();
-        if (status.ok()) {
-          for (const auto &task_info : r.owned_task_info_entries()) {
-            if (limit != -1 && *count >= limit) {
-              break;
-            }
-            *count += 1;
-            reply->add_owned_task_info_entries()->CopyFrom(task_info);
-          }
-          for (const auto &running_task_id : r.running_task_ids()) {
-            reply->add_running_task_ids(running_task_id);
-          }
-        } else {
-          RAY_LOG(INFO) << "Failed to query task information from a worker.";
-        }
-      },
-      send_reply_callback,
-      /*include_memory_info*/ false,
-      /*include_task_info*/ true,
-      /*limit*/ limit,
-      /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
-}
-
 void NodeManager::HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
                                        rpc::GetObjectsInfoReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
@@ -1964,11 +1928,11 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
         send_reply_callback(status, success, failure);
       };
 
-  cluster_task_manager_->QueueAndScheduleTask(task,
+  cluster_task_manager_->QueueAndScheduleTask(std::move(task),
                                               request.grant_or_reject(),
                                               request.is_selected_based_on_locality(),
                                               reply,
-                                              send_reply_callback_wrapper);
+                                              std::move(send_reply_callback_wrapper));
 }
 
 void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
