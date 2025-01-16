@@ -29,10 +29,6 @@
 namespace ray {
 
 namespace {
-
-// An indicator which represents EOF, so read thread could exit.
-const std::string kEofIndicator = GenerateUUIDV4();
-
 // Default pipe log read buffer size.
 constexpr size_t kDefaultPipeLogReadBufSize = 1024;
 
@@ -48,12 +44,10 @@ size_t GetPipeLogReadSizeOrDefault() {
   return kDefaultPipeLogReadBufSize;
 }
 
-// TODO(hjiang): Make thread annotation for std::mutex.
 struct StreamDumper {
-  std::mutex mu;
-  bool stopped = false;
-  std::condition_variable cv;
-  std::deque<std::string> content;
+  absl::Mutex mu;
+  bool stopped ABSL_GUARDED_BY(mu) = false;
+  std::deque<std::string> content ABSL_GUARDED_BY(mu);
 };
 
 // Read bytes from handle into [data], return number of bytes read.
@@ -67,12 +61,6 @@ size_t Read(int read_fd, char *data, size_t len) {
   RAY_CHECK(bytes_read != -1) << "Fails to read from pipe because " << strerror(errno);
   return bytes_read;
 }
-void CompleteWriteEOFIndicator(int write_fd) {
-  ssize_t bytes_written = write(write_fd, kEofIndicator.data(), kEofIndicator.length());
-  RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(kEofIndicator.length()));
-  bytes_written = write(write_fd, "\n", /*count=*/1);
-  RAY_CHECK_EQ(bytes_written, 1);
-}
 #elif defined(_WIN32)
 #include <windows.h>
 size_t Read(HANDLE read_handle, char *data, size_t len) {
@@ -80,11 +68,6 @@ size_t Read(HANDLE read_handle, char *data, size_t len) {
   BOOL success = ReadFile(read_handle, data, len, &bytes_read, nullptr);
   RAY_CHECK(success) << "Fails to read from pipe.";
   return bytes_read;
-}
-void CompleteWriteEOFIndicator(HANDLE write_handle) {
-  DWORD bytes_written = 0;
-  WriteFile(
-      write_handle, kEofIndicator.c_str(), kEofIndicator.size(), &bytes_written, nullptr);
 }
 #endif
 
@@ -117,11 +100,10 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
         cur_new_line += newlines[idx];
 
         // Reached the end of stream.
-        if (cur_new_line == kEofIndicator) {
+        if (cur_new_line.empty()) {
           {
-            std::lock_guard lck(stream_dumper->mu);
+            absl::MutexLock lock(&stream_dumper->mu);
             stream_dumper->stopped = true;
-            stream_dumper->cv.notify_one();
           }
 
           // Place IO operation out of critical section.
@@ -134,9 +116,8 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
 
         // We only log non-empty lines.
         if (!cur_new_line.empty()) {
-          std::lock_guard lck(stream_dumper->mu);
+          absl::MutexLock lock(&stream_dumper->mu);
           stream_dumper->content.emplace_back(std::move(cur_new_line));
-          stream_dumper->cv.notify_one();
         }
       }
 
@@ -158,10 +139,13 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(ReadFunc read_func,
     while (true) {
       std::string curline;
       {
-        std::unique_lock lck(stream_dumper->mu);
-        stream_dumper->cv.wait(lck, [stream_dumper]() {
-          return !stream_dumper->content.empty() || stream_dumper->stopped;
-        });
+        auto has_new_content_or_stopped =
+            [stream_dumper]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(stream_dumper->mu) {
+              return !stream_dumper->content.empty() || stream_dumper->stopped;
+            };
+
+        absl::MutexLock lock(&stream_dumper->mu);
+        stream_dumper->mu.Await(absl::Condition(&has_new_content_or_stopped));
 
         // Keep logging until all content flushed.
         if (!stream_dumper->content.empty()) {
@@ -208,7 +192,6 @@ RotationFileHandle CreatePipeAndStreamOutput(const std::string &fname,
   auto read_func = [read_fd](char *data, size_t len) { return Read(read_fd, data, len); };
   auto close_read_handle = [read_fd]() { RAY_CHECK_EQ(close(read_fd), 0); };
   auto termination_caller = [write_fd]() {
-    CompleteWriteEOFIndicator(write_fd);
     RAY_CHECK_EQ(close(write_fd), 0);
   };
 
@@ -227,7 +210,6 @@ RotationFileHandle CreatePipeAndStreamOutput(const std::string &fname,
   };
   auto close_read_handle = [read_handle]() { RAY_CHECK(CloseHandle(read_handle)); };
   auto termination_caller = [write_handle, read_handle]() {
-    CompleteWriteEOFIndicator(write_handle);
     RAY_CHECK(CloseHandle(write_handle));
   };
 
