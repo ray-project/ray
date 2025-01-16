@@ -25,7 +25,7 @@ in ``example.py``, run the following command:
     RAY_CGRAPH_ENABLE_NVTX_PROFILING=1 python3 example.py
 
 
-This leverages the `NVTX library <https://nvtx.readthedocs.io/en/latest/index.html#>`_ to automatically
+This command leverages the `NVTX library <https://nvtx.readthedocs.io/en/latest/index.html#>`_ to automatically
 annotate all methods called in the execution loops of compiled graph.
 
 To visualize the profiling results, follow the instructions in 
