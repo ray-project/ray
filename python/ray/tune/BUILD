@@ -299,6 +299,15 @@ py_test(
 )
 
 py_test(
+    name = "test_train_v2_integration",
+    size = "small",
+    srcs = ["tests/test_train_v2_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
     name = "test_trainable",
     size = "medium",
     srcs = ["tests/test_trainable.py"],
