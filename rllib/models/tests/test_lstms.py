@@ -2,8 +2,8 @@ from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import unittest
 
 import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms import ppo
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
 
@@ -69,7 +69,7 @@ class TestLSTMs(unittest.TestCase):
         tune.Tuner(
             "PPO",
             param_space=config.to_dict(),
-            run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
+            run_config=tune.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
         ).fit()
 
 

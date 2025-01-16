@@ -5,7 +5,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune import Stopper
-from ray import train, tune
+from ray import tune
 
 # Needs the following packages to be installed on Ubuntu:
 #   sudo apt-get libosmesa-dev
@@ -132,7 +132,7 @@ config = (
 tuner = tune.Tuner(
     "SAC",
     param_space=config,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop=BenchmarkStopper(benchmark_envs=benchmark_envs),
         name="benchmark_sac_mujoco",
     ),

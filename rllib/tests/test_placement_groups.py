@@ -2,12 +2,12 @@ import os
 import unittest
 
 import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.tune import Callback
 from ray.tune.experiment import Trial
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.result import TRAINING_ITERATION
 
 trial_executor = None
 
@@ -65,7 +65,7 @@ class TestPlacementGroups(unittest.TestCase):
         tune.Tuner(
             "my_trainable",
             param_space=config,
-            run_config=air.RunConfig(
+            run_config=tune.RunConfig(
                 stop={TRAINING_ITERATION: 2},
                 verbose=2,
                 callbacks=[_TestCallback()],
@@ -95,7 +95,7 @@ class TestPlacementGroups(unittest.TestCase):
         tune.Tuner(
             PPO,
             param_space=config,
-            run_config=air.RunConfig(
+            run_config=tune.RunConfig(
                 stop={TRAINING_ITERATION: 2},
                 verbose=2,
                 callbacks=[_TestCallback()],
@@ -119,7 +119,7 @@ class TestPlacementGroups(unittest.TestCase):
             tune.Tuner(
                 tune.with_resources(PPO, PlacementGroupFactory([{"CPU": 1}])),
                 param_space=config,
-                run_config=air.RunConfig(stop={TRAINING_ITERATION: 2}, verbose=2),
+                run_config=tune.RunConfig(stop={TRAINING_ITERATION: 2}, verbose=2),
             ).fit()
         except ValueError as e:
             assert "have been automatically set to" in e.args[0]

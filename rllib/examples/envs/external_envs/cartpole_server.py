@@ -30,8 +30,7 @@ import gymnasium as gym
 import os
 
 import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -40,6 +39,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.tune.logger import pretty_print
 from ray.tune.registry import get_trainable_cls
+from ray.tune.result import TRAINING_ITERATION
 
 SERVER_ADDRESS = "localhost"
 # In this example, the user can run the policy server with
@@ -272,5 +272,5 @@ if __name__ == "__main__":
         }
 
         tune.Tuner(
-            args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+            args.run, param_space=config, run_config=tune.RunConfig(stop=stop, verbose=2)
         ).fit()

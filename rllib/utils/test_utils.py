@@ -25,8 +25,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
-from ray import train, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
 from ray.air.integrations.wandb import WandbLoggerCallback, WANDB_ENV_VAR
 from ray.rllib.core import DEFAULT_MODULE_ID, Columns
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
@@ -42,10 +41,8 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
-
-
 from ray.tune import CLIReporter
-
+from ray.tune.result import TRAINING_ITERATION
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms import Algorithm, AlgorithmConfig
@@ -1269,11 +1266,11 @@ def run_rllib_example_script_experiment(
     results = tune.Tuner(
         trainable or config.algo_class,
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop,
             verbose=args.verbose,
             callbacks=tune_callbacks,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
@@ -1501,14 +1498,14 @@ def check_reproducibilty(
         results1 = tune.Tuner(
             algo_class,
             param_space=algo_config.to_dict(),
-            run_config=train.RunConfig(stop=stop_dict, verbose=1),
+            run_config=tune.RunConfig(stop=stop_dict, verbose=1),
         ).fit()
         results1 = results1.get_best_result().metrics
 
         results2 = tune.Tuner(
             algo_class,
             param_space=algo_config.to_dict(),
-            run_config=train.RunConfig(stop=stop_dict, verbose=1),
+            run_config=tune.RunConfig(stop=stop_dict, verbose=1),
         ).fit()
         results2 = results2.get_best_result().metrics
 

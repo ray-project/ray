@@ -1,8 +1,8 @@
 import unittest
 
 import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.utils.framework import try_import_tf
 from ray.tune.registry import get_trainable_cls
 
@@ -29,7 +29,7 @@ def check_support(alg, config, test_eager=False, test_trace=True):
             tune.Tuner(
                 a,
                 param_space=config,
-                run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
+                run_config=tune.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
             ).fit()
         if test_trace:
             config["eager_tracing"] = True
@@ -37,7 +37,7 @@ def check_support(alg, config, test_eager=False, test_trace=True):
             tune.Tuner(
                 a,
                 param_space=config,
-                run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
+                run_config=tune.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
             ).fit()
 
 
