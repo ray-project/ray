@@ -571,8 +571,9 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         is_terminated = [[False] * batch_length_T for _ in range(batch_size_B)]
         is_truncated = [[False] * batch_length_T for _ in range(batch_size_B)]
 
-        # Store the unique episode buffer indexes to determine from
-        # how many episodes the sample was sampled.
+        # Record all the env step buffer indices that are contained in the sample.
+        sampled_env_step_idxs = set()
+        # Record all the episode buffer indices that are contained in the sample.
         sampled_episode_idxs = set()
 
         B = 0
@@ -641,13 +642,20 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 T = 0
             # Add the episode buffer index to the set of episode indexes.
             sampled_episode_idxs.add(episode_idx)
+            # Record a has for the episode ID and timestep inside of the episode.
+            sampled_env_step_idxs.add(
+                hashlib.sha256(f"{episode.id_}-{episode_ts}".encode()).hexdigest()
+            )
 
         # Update our sampled counter.
         self.sampled_timesteps += batch_size_B * batch_length_T
 
         # Update the sample metrics.
         self._update_sample_metrics(
-            batch_size_B * batch_length_T, len(sampled_episode_idxs)
+            num_env_steps_sampled=batch_size_B * batch_length_T,
+            num_episodes_per_sample=len(sampled_episode_idxs),
+            num_env_steps_per_sample=len(sampled_env_step_idxs),
+            sampled_n_step=None,
         )
 
         # TODO: Return SampleBatch instead of this simpler dict.
