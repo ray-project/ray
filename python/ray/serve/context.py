@@ -185,8 +185,13 @@ _serve_request_context = contextvars.ContextVar(
 )
 
 
+@DeveloperAPI
 def get_serve_request_context():
-    """Get the current request context."""
+    """Get the current request context.
+
+    Returns:
+        The current request context
+    """
 
     if _serve_request_context.get() is None:
         _serve_request_context.set(_RequestContext())
