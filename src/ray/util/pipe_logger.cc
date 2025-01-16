@@ -274,9 +274,7 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
         << "Fails to close redirection file because " << std::to_string(GetLastError());
   };
 
-  return RedirectionFileHandle{file_handle,
-                               std::move(flush_fn),
-                               std::move(close_fn)};
+  return RedirectionFileHandle{file_handle, std::move(flush_fn), std::move(close_fn)};
 }
 #endif
 
