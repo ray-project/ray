@@ -1867,9 +1867,7 @@ void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest requ
 void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  rpc::Task task_message;
-  task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
-  RayTask task(std::move(task_message));
+  RayTask task{std::move(*request.mutable_resource_spec())};
 
   const auto caller_worker =
       WorkerID::FromBinary(task.GetTaskSpecification().CallerAddress().worker_id());
