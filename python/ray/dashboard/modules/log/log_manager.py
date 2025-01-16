@@ -257,7 +257,7 @@ class LogsManager:
             suffix=suffix,
             timeout=timeout,
         )
-        return node_id, log_filename
+        return node_id.hex(), log_filename
 
     async def _resolve_task_filename(
         self, task_id: str, attempt_number: int, suffix: str, timeout: int

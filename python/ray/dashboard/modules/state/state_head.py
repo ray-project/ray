@@ -276,13 +276,12 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         logger.info(f"Streaming logs with format {output_format} options: {options}")
 
         async def get_actor_fn(actor_id: ActorID) -> Optional[ActorTableData]:
-            reply = await self.gcs_aio_client.get_all_actor_info(actor_id=actor_id)
-            if len(reply.actor_table_data) == 0:
+            actor_info_dict = await self.gcs_aio_client.get_all_actor_info(
+                actor_id=actor_id
+            )
+            if len(actor_info_dict) == 0:
                 return None
-            assert (
-                len(reply.actor_table_data) == 1
-            ), f"actor info for {actor_id} is not unique: {reply.actor_table_data}"
-            return reply.actor_table_data[0]
+            return actor_info_dict[actor_id]
 
         async def formatter_text(response, async_gen: AsyncIterable[bytes]):
             try:

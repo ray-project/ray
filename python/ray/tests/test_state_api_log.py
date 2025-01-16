@@ -507,7 +507,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         await logs_manager.resolve_filename(
             node_id=node_id.hex(),
             log_filename=None,
-            actor_id=actor_id,
+            actor_id=actor_id.hex(),
             task_id=None,
             pid=None,
             get_actor_fn=get_actor_fn,
@@ -521,7 +521,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         await logs_manager.resolve_filename(
             node_id=node_id.hex(),
             log_filename=None,
-            actor_id=actor_id,
+            actor_id=actor_id.hex(),
             task_id=None,
             pid=None,
             get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, None),
@@ -539,7 +539,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     res = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
-        actor_id=actor_id,
+        actor_id=actor_id.hex(),
         task_id=None,
         pid=None,
         get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
