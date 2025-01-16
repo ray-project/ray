@@ -38,6 +38,7 @@ TEST(LoggingUtilTest, RedirectStderr) {
 
   LogRedirectionOption opts;
   opts.file_path = test_file_path;
+  // Manually check whether streamed content is displayed on screen.
   opts.tee_to_stderr = true;
   opts.rotation_max_size = 5;
   opts.rotation_max_file_count = 2;

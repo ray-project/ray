@@ -56,6 +56,7 @@ void SyncOnStreamRedirection() {
   }
 }
 
+#if defined(__APPLE__) || defined(__linux__)
 // Redirect the given [stream_fd] based on the specified option.
 void RedirectStream(int stream_fd, const LogRedirectionOption &opt) {
   std::call_once(stream_exit_once_flag, []() {
@@ -76,20 +77,14 @@ void RedirectStream(int stream_fd, const LogRedirectionOption &opt) {
   }
 
   RedirectionFileHandle handle = CreateRedirectionFileHandle(opt, std_stream_fd);
-
-#if defined(__APPLE__) || defined(__linux__)
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
       << "Fails to duplicate file descritor " << strerror(errno);
-#elif defined(_WIN32)
-  int windows_pipe_write_fd = _open_osfhandle(handle.GetWriteHandle(), _O_WTEXT);
-  RAY_CHECK_NE(_dup2(windows_pipe_write_fd, stream_fd), -1)
-      << "Fails to duplicate file descritor.";
-#endif
 
   const bool is_new =
       redirection_file_handles.emplace(stream_fd, std::move(handle)).second;
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
 }
+#endif
 
 void FlushOnRedirectedStream(int stream_fd) {
   auto iter = redirection_file_handles.find(stream_fd);
@@ -100,21 +95,21 @@ void FlushOnRedirectedStream(int stream_fd) {
 
 }  // namespace
 
+#if defined(__APPLE__) || defined(__linux__)
 void RedirectStdout(const LogRedirectionOption &opt) {
-#if defined(_WIN32)
-  return;
-#endif
-
   RedirectStream(GetStdoutHandle(), opt);
 }
-
-void RedirectStderr(const LogRedirectionOption &opt) {
-#if defined(_WIN32)
-  return;
+#elif defined(_WIN32)
+void RedirectStdout(const LogRedirectionOption &opt) { return; }
 #endif
 
+#if defined(__APPLE__) || defined(__linux__)
+void RedirectStderr(const LogRedirectionOption &opt) {
   RedirectStream(GetStderrHandle(), opt);
 }
+#elif defined(_WIN32)
+void RedirectStderr(const LogRedirectionOption &opt) { return; }
+#endif
 
 void FlushOnRedirectedStdout() { FlushOnRedirectedStream(GetStdoutHandle()); }
 void FlushOnRedirectedStderr() { FlushOnRedirectedStream(GetStderrHandle()); }

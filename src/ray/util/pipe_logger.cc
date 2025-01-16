@@ -240,41 +240,11 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
 
   return RedirectionFileHandle{fd, std::move(flush_fn), std::move(close_fn)};
 }
-#elif defined(_WIN32)
-#include <windows.h>
-RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
-  // Convert std::string to LPCWSTR (Windows-style wide string)
-  std::wstring wide_file_path(file_path.begin(), file_path.end());
-
-  HANDLE file_handle =
-      CreateFileW(wide_file_path.c_str(),
-                  GENERIC_WRITE,
-                  0,              // No sharing
-                  NULL,           // Default security attributes
-                  CREATE_ALWAYS,  // Create new file or overwrite existing
-                  FILE_ATTRIBUTE_NORMAL,
-                  NULL);  // No template file
-  RAY_CHECK(file_handle != INVALID_HANDLE_VALUE)
-      << "Fails to open file " << file_path
-      << " with failure reason: " << std::to_string(GetLastError());
-
-  auto flush_fn = [file_handle]() {
-    RAY_CHECK(FlushFileBuffers(file_handle))
-        << "Fails to flush data to disk because " << std::to_string(GetLastError());
-  };
-  auto close_fn = [file_handle]() {
-    RAY_CHECK(FlushFileBuffers(file_handle))
-        << "Fails to flush data to disk because " << std::to_string(GetLastError());
-    RAY_CHECK(CloseHandle(file_handle))
-        << "Fails to close redirection file because " << std::to_string(GetLastError());
-  };
-
-  return RedirectionFileHandle{file_handle, std::move(flush_fn), std::move(close_fn)};
-}
 #endif
 
 }  // namespace
 
+#if defined(__APPLE__) || defined(__linux__)
 RedirectionFileHandle CreateRedirectionFileHandle(
     const LogRedirectionOption &log_redirect_opt, const StdStreamFd &std_stream_fd) {
   // Case-1: only redirection, but not rotation and tee involved.
@@ -292,9 +262,8 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   // Invoked after flush and close finished.
   auto on_close_completion = [promise = promise]() { promise->set_value(); };
 
-// TODO(hjiang): Use `boost::iostreams` to represent pipe write fd, which supports
-// cross-platform and line-wise read.
-#if defined(__APPLE__) || defined(__linux__)
+  // TODO(hjiang): Use `boost::iostreams` to represent pipe write fd, which supports
+  // cross-platform and line-wise read.
   int pipefd[2] = {0};
   // TODO(hjiang): We shoud have our own syscall macro.
   RAY_CHECK_EQ(pipe(pipefd), 0);
@@ -309,29 +278,6 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     // Block until destruction finishes.
     promise->get_future().get();
   };
-
-#elif defined(_WIN32)
-  SECURITY_ATTRIBUTES sa;
-  sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-  sa.lpSecurityDescriptor = nullptr;
-  sa.bInheritHandle = TRUE;
-
-  HANDLE read_handle;
-  HANDLE write_handle;
-  RAY_CHECK(CreatePipe(&read_handle, &write_handle, &sa, 0));
-
-  auto read_func = [read_handle](char *data, size_t len) {
-    return Read(read_handle, data, len);
-  };
-  auto close_read_handle = [read_handle]() { RAY_CHECK(CloseHandle(read_handle)); };
-  auto close_fn = [write_handle, read_handle, promise = promise]() {
-    CompleteWriteEOFIndicator(write_handle);
-    RAY_CHECK(CloseHandle(write_handle));
-    // Block until destruction finishes.
-    promise->get_future().get();
-  };
-
-#endif
 
   auto logger = CreateLogger(log_redirect_opt);
 
@@ -369,15 +315,17 @@ RedirectionFileHandle CreateRedirectionFileHandle(
                      std::move(close_read_handle),
                      std::move(on_close_completion));
 
-#if defined(__APPLE__) || defined(__linux__)
   RedirectionFileHandle redirection_file_handle{
       write_fd, std::move(flush_fn), std::move(close_fn)};
-#elif defined(_WIN32)
-  RedirectionFileHandle redirection_file_handle{
-      write_handle, std::move(flush_fn), std::move(close_fn)};
-#endif
 
   return redirection_file_handle;
 }
+
+#elif defined(_WIN32)
+RedirectionFileHandle CreateRedirectionFileHandle(
+    const LogRedirectionOption &log_redirect_opt, const StdStreamFd &std_stream_fd) {
+  return RedirectionFileHandle{};
+}
+#endif
 
 }  // namespace ray
