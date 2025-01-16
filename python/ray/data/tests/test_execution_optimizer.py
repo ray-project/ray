@@ -1665,7 +1665,7 @@ def test_from_tf_e2e(ray_start_regular_shared):
 def test_from_torch_e2e(ray_start_regular_shared, tmp_path):
     import torchvision
 
-    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
+    torch_dataset = torchvision.datasets.FashionMNIST(tmp_path, download=True)
 
     ray_dataset = ray.data.from_torch(torch_dataset)
 
