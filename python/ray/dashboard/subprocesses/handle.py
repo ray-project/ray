@@ -45,11 +45,11 @@ class SubprocessModuleHandle:
     Lifecycle:
     1. In SubprocessModuleHandle creation, the subprocess is started, and 2 queues are
        created.
-    2. user must call SubprocessModuleHandle.start() before it can handle parent bound
-       messages.
+    2. User must call SubprocessModuleHandle.start_module() before it can handle parent
+       bound messages.
     3. SubprocessRouteTable.bind(handle)
     4. app.add_routes(routes=SubprocessRouteTable.bound_routes())
-    5. run the app.
+    5. Run the app.
 
     Health check:
     Every 1s, do a health check by _do_health_check_every_second. If the module is
