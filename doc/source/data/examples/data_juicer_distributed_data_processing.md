@@ -14,12 +14,12 @@ See the [Data-Juicer 2.0: Cloud-Scale Adaptive Data Processing for Foundation Mo
 
 ### Ray mode in Data-Juicer
 
-- For most implementations of Data-Juicer [operators](https://github.com/modelscope/data-juicer/blob/main/docs/Operators.md), the core processing functions are engine-agnostic. Operators manage interoperability is primarily in [RayDataset](https://github.com/modelscope/data-juicer/blob/main//data_juicer/core/ray_data.py) and [RayExecutor](https://github.com/modelscope/data-juicer/blob/main//data_juicer/core/ray_executor.py), which are subclasses of the base `DJDataset` and `BaseExecutor`, respectively, and support both Ray [Tasks](../ray-core/tasks.html) and [Actors](../ray-core/actors.html).
+- For most implementations of Data-Juicer [operators](https://github.com/modelscope/data-juicer/blob/main/docs/Operators.md), the core processing functions are engine-agnostic. Operators manage interoperability is primarily in [RayDataset](https://github.com/modelscope/data-juicer/blob/main//data_juicer/core/ray_data.py) and [RayExecutor](https://github.com/modelscope/data-juicer/blob/main//data_juicer/core/ray_executor.py), which are subclasses of the base `DJDataset` and `BaseExecutor`, respectively, and support both Ray [Tasks](ray-remote-functions) and [Actors](actor-guide).
 - The exception is the deduplication operators, which are challenging to scale in standalone mode. These operators are named [`ray_xx_deduplicator`](https://github.com/modelscope/data-juicer/blob/main//data_juicer/ops/deduplicator/).
 
 ### Subset splitting
 
-When a cluster has tens of thousands of nodes but only a few dataset files, Ray splits the dataset files according to available resources and distribute the blocks across all nodes, incurring high network communication costs and reduced CPU utilization. For more details, see [Ray's autodetect_parallelism](https://github.com/ray-project/ray/blob/2dbd08a46f7f08ea614d8dd20fd0bca5682a3078/python/ray/data/_internal/util.py#L201-L205) and [tuning output blocks for Ray](https://docs.ray.io/en/latest/data/performance-tips.html#tuning-output-blocks-for-read).
+When a cluster has tens of thousands of nodes but only a few dataset files, Ray splits the dataset files according to available resources and distribute the blocks across all nodes, incurring high network communication costs and reduced CPU utilization. For more details, see [Ray's autodetect_parallelism](https://github.com/ray-project/ray/blob/2dbd08a46f7f08ea614d8dd20fd0bca5682a3078/python/ray/data/_internal/util.py#L201-L205) and [tuning output blocks for Ray](read_output_blocks).
 
 This default execution plan can be quite inefficient especially for scenarios with a large number of nodes. To optimize performance for such cases, Data-Juicer automatically splits the original dataset into smaller files in advance, taking into consideration the features of Ray and Arrow. When you encounter such performance issues, you can use this feature or split the dataset according to your own preferences. In this auto-split strategy, the single file size is set to 128MB, and the result should ensure that the number of sub-files after splitting is at least twice the total number of CPU cores available in the cluster.
 
@@ -62,7 +62,7 @@ pip install -v -e .  # Install the minimal requirements of Data-Juicer
 pip install -v -e ".[dist]"  # Include dependencies on Ray and other distributed libraries
 ```
 
-Then start a Ray cluster (ref to the [Ray doc](https://docs.ray.io/en/latest/ray-core/starting-ray.html) for more details):
+Then start a Ray cluster (ref to the [Ray doc](start-ray) for more details):
 
 ```shell
 # Start a cluster as the head node
