@@ -164,9 +164,7 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI, TargetNetworkAPI):
         obs = batch[Columns.OBS].permute(0, 3, 1, 2)
         embeddings = self._target_base_cnn_stack(obs)
         logits = self._target_logits(embeddings)
-        return {
-            OLD_ACTION_DIST_LOGITS_KEY: torch.squeeze(logits, dim=[-1, -2])
-        }
+        return {OLD_ACTION_DIST_LOGITS_KEY: torch.squeeze(logits, dim=[-1, -2])}
 
     # We implement this RLModule as a ValueFunctionAPI RLModule, so it can be used
     # by value-based methods like PPO or IMPALA.
