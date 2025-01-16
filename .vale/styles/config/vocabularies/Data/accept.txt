@@ -2,7 +2,7 @@ autoscaler
 [Aa]vro
 [Bb]ackpressure
 Dask
-Data('s)?
+[Dd]ata('s)?
 [Dd]atasource
 [Dd]iscretizer(s)?
 dtype
