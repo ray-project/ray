@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 import logging
 import json
 from ray._private.log import INTERNAL_TIMESTAMP_LOG_KEY

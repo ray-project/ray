@@ -22,10 +22,11 @@ class LoggingConfigurator(ABC):
     def configure_logging(self, encoding: str, log_level: str):
         raise NotImplementedError
 
-    @abstractmethod
-    def configure_logging(
-        self, encoding: str, log_level: str, log_std_attributes: list
-    ):
+    # Should be marked as @abstractmethod, but we can't do that because of backwards
+    # compatibility.
+    # Also, assuming the function will only be called inside LoggingConfig._apply() and
+    # the input dictionary should always contain all fields in the LoggingConfig class.
+    def configure_logging(self, logging_config: dict):  # noqa: F811
         raise NotImplementedError
 
 
@@ -40,26 +41,30 @@ class DefaultLoggingConfigurator(LoggingConfigurator):
 
     @Deprecated
     def configure_logging(self, encoding: str, log_level: str):
-        self.configure_logging(encoding, log_level, [])
+        self.configure_logging(
+            {
+                "encoding": encoding,
+                "log_level": log_level,
+                "addl_log_std_attrs": [],
+            }
+        )
 
-    def configure_logging(
-        self, encoding: str, log_level: str, log_std_attributes: list
-    ):
-        formatter = self._encoding_to_formatter[encoding]
-        formatter.set_addl_log_std_attrs(log_std_attributes)
+    def configure_logging(self, logging_config: dict):  # noqa: F811
+        formatter = self._encoding_to_formatter[logging_config["encoding"]]
+        formatter.set_addl_log_std_attrs(logging_config["addl_log_std_attrs"])
 
         core_context_filter = CoreContextFilter()
         handler = logging.StreamHandler()
-        handler.setLevel(log_level)
+        handler.setLevel(logging_config["log_level"])
         handler.setFormatter(formatter)
         handler.addFilter(core_context_filter)
 
         root_logger = logging.getLogger()
-        root_logger.setLevel(log_level)
+        root_logger.setLevel(logging_config["log_level"])
         root_logger.addHandler(handler)
 
         ray_logger = logging.getLogger("ray")
-        ray_logger.setLevel(log_level)
+        ray_logger.setLevel(logging_config["log_level"])
         # Remove all existing handlers added by `ray/__init__.py`.
         for h in ray_logger.handlers[:]:
             ray_logger.removeHandler(h)
@@ -96,7 +101,11 @@ class LoggingConfig:
     def _configure_logging(self):
         """Set up the logging configuration for the current process."""
         _logging_configurator.configure_logging(
-            self.encoding, self.log_level, self.addl_log_std_attrs
+            {
+                "encoding": self.encoding,
+                "log_level": self.log_level,
+                "addl_log_std_attrs": self.addl_log_std_attrs,
+            }
         )
 
     def _apply(self):
