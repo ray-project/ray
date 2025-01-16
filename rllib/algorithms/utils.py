@@ -48,12 +48,11 @@ class AggregatorActor(FaultAwareApply):
 
         # Set device and node.
         self._node = platform.node()
-        self._device = (
-            torch.device(f"cuda:{ray.get_gpu_ids()[0]}")
+        self._device = torch.device(
+            f"cuda:{ray.get_gpu_ids()[0]}"
             if self.config.num_gpus_per_learner > 0
-            else torch.device("cpu")
+            else "cpu"
         )
-
         self.metrics = MetricsLogger()
 
         # Create the RLModule.
