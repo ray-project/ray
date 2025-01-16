@@ -62,6 +62,29 @@ class RedirectionFileHandle {
   RedirectionFileHandle &operator=(const RedirectionFileHandle &) = delete;
   ~RedirectionFileHandle() = default;
 
+  RedirectionFileHandle(RedirectionFileHandle &&rhs) {
+    write_handle_ = rhs.write_handle_;
+    rhs.write_handle_ = INVALID_FD;
+    flush_fn_ = std::move(rhs.flush_fn_);
+    close_fn_ = std::move(rhs.close_fn_);
+  }
+  RedirectionFileHandle &operator=(RedirectionFileHandle &&rhs) {
+    if (this == &rhs) {
+      return *this;
+    }
+    write_handle_ = rhs.write_handle_;
+    rhs.write_handle_ = INVALID_FD;
+    flush_fn_ = std::move(rhs.flush_fn_);
+    close_fn_ = std::move(rhs.close_fn_);
+    return *this;
+  }
+  void Close() {
+    if (write_handle_ != INVALID_FD) {
+      close_fn_();
+      write_handle_ = INVALID_FD;
+    }
+  }
+
   // Synchronously flush content to storage.
   //
   // TODO(hjiang): Current method only flushes whatever we send to logger, but not those
@@ -72,70 +95,22 @@ class RedirectionFileHandle {
     flush_fn_();
   }
 
+  MEMFD_TYPE_NON_UNIQUE GetWriteHandle() const { return write_handle_; }
+
   // Used to write to.
   //
   // TODO(hjiang): I will followup with another PR to make a `FD` class, which is not
   // copiable to avoid manual `dup`.
 #if defined(__APPLE__) || defined(__linux__)
-  RedirectionFileHandle(RedirectionFileHandle &&rhs) {
-    write_handle_ = rhs.write_handle_;
-    rhs.write_handle_ = -1;
-    flush_fn_ = std::move(rhs.flush_fn_);
-    close_fn_ = std::move(rhs.close_fn_);
-  }
-  RedirectionFileHandle &operator=(RedirectionFileHandle &&rhs) {
-    if (this == &rhs) {
-      return *this;
-    }
-    write_handle_ = rhs.write_handle_;
-    rhs.write_handle_ = -1;
-    flush_fn_ = std::move(rhs.flush_fn_);
-    close_fn_ = std::move(rhs.close_fn_);
-    return *this;
-  }
-  void Close() {
-    if (write_handle_ != -1) {
-      close_fn_();
-      write_handle_ = -1;
-    }
-  }
   void CompleteWrite(const char *data, size_t len) {
     ssize_t bytes_written = write(write_handle_, data, len);
     RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(len));
   }
-
-  int GetWriteHandle() const { return write_handle_; }
-
 #elif defined(_WIN32)
-  RedirectionFileHandle(RedirectionFileHandle &&rhs) {
-    write_handle_ = rhs.write_handle_;
-    rhs.write_handle_ = nullptr;
-    flush_fn_ = std::move(rhs.flush_fn_);
-    close_fn_ = std::move(rhs.close_fn_);
-  }
-  RedirectionFileHandle &operator=(RedirectionFileHandle &&rhs) {
-    if (this == &rhs) {
-      return *this;
-    }
-    write_handle_ = rhs.write_handle_;
-    rhs.write_handle_ = nullptr;
-    close_fn_ = std::move(rhs.close_fn_);
-    return *this;
-  }
-  void Close() {
-    // Only invoke termination functor when handler at a valid state.
-    if (write_handle_ != nullptr) {
-      close_fn_();
-      write_handle_ = nullptr;
-    }
-  }
   void CompleteWrite(char *data, size_t len) {
     DWORD bytes_written = 0;
     WriteFile(write_handle_, data, len, &bytes_written, nullptr);
   }
-
-  HANDLE GetWriteHandle() const { return write_handle_; }
-
 #endif
 
  private:
