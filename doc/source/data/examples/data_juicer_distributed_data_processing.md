@@ -1,6 +1,5 @@
 # Distributed Data Processing in Data-Juicer
 
-## Overview
 
 Data-Juicer supports large-scale distributed data processing based on [Ray](https://github.com/ray-project/ray) and Alibaba's [PAI](https://www.aliyun.com/product/bigdata/learn).
 
