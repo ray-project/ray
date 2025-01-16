@@ -28,5 +28,5 @@ in ``example.py``, run the following command:
 This leverages the `NVTX library <https://nvtx.readthedocs.io/en/latest/index.html#>`_ to automatically
 annotate all methods called in the execution loops of compiled graph.
 
-To visualize the profiling results, follow the same instructions as described in 
+To visualize the profiling results, follow the instructions in 
 `Nsight Profiling Result <https://docs.ray.io/en/latest/ray-observability/user-guides/profiling.html#profiling-result>`__.
