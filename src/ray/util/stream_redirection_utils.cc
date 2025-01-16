@@ -61,19 +61,7 @@ void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
         << "Fails to register stream redirection termination hook.";
   });
 
-  StdStreamFd std_stream_fd{};
-  if (opt.tee_to_stdout) {
-    std_stream_fd.stdout_fd = dup(STDOUT_FILENO);
-    RAY_CHECK_NE(std_stream_fd.stdout_fd, -1)
-        << "Fails to duplicate stdout: " << strerror(errno);
-  }
-  if (opt.tee_to_stderr) {
-    std_stream_fd.stderr_fd = dup(STDERR_FILENO);
-    RAY_CHECK_NE(std_stream_fd.stderr_fd, -1)
-        << "Fails to duplicate stderr: " << strerror(errno);
-  }
-
-  RedirectionFileHandle handle = CreateRedirectionFileHandle(opt, std_stream_fd);
+  RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
       << "Fails to duplicate file descritor " << strerror(errno);
 

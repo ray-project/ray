@@ -48,7 +48,7 @@ TEST_P(PipeLoggerTest, NoPipeWrite) {
   // Take the default option, which doesn't have rotation enabled.
   StreamRedirectionOption logging_option{};
   logging_option.file_path = test_file_path;
-  auto log_token = CreateRedirectionFileHandle(logging_option, StdStreamFd{});
+  auto log_token = CreateRedirectionFileHandle(logging_option);
 
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
             kLogLine1.length());
@@ -81,7 +81,7 @@ TEST_P(PipeLoggerTest, PipeWrite) {
   logging_option.rotation_max_size = 5;
   logging_option.rotation_max_file_count = 2;
 
-  auto log_token = CreateRedirectionFileHandle(logging_option, StdStreamFd{});
+  auto log_token = CreateRedirectionFileHandle(logging_option);
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
             kLogLine1.length());
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
@@ -111,11 +111,6 @@ TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   // testing directory.
   const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
 
-  // Manually check whether stdout displays content correctly.
-  const int new_stdout_fd = dup(STDOUT_FILENO);
-  StdStreamFd std_stream_fd{};
-  std_stream_fd.stdout_fd = new_stdout_fd;
-
   StreamRedirectionOption logging_option{};
   logging_option.file_path = test_file_path;
   logging_option.tee_to_stdout = true;
@@ -123,7 +118,7 @@ TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   // Capture stdout via `dup`.
   testing::internal::CaptureStdout();
 
-  auto log_token = CreateRedirectionFileHandle(logging_option, StdStreamFd{});
+  auto log_token = CreateRedirectionFileHandle(logging_option);
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
             kLogLine1.length());
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
@@ -147,11 +142,6 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
   // testing directory.
   const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
 
-  // Manually check whether stderr displays content correctly.
-  const int new_stderr_fd = dup(STDERR_FILENO);
-  StdStreamFd std_stream_fd{};
-  std_stream_fd.stderr_fd = new_stderr_fd;
-
   StreamRedirectionOption logging_option{};
   logging_option.file_path = test_file_path;
   logging_option.rotation_max_size = 5;
@@ -161,7 +151,7 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
   // Capture stdout via `dup`.
   testing::internal::CaptureStderr();
 
-  auto log_token = CreateRedirectionFileHandle(logging_option, StdStreamFd{});
+  auto log_token = CreateRedirectionFileHandle(logging_option);
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
             kLogLine1.length());
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),

@@ -59,6 +59,20 @@ struct StreamDumper {
   std::deque<std::string> content ABSL_GUARDED_BY(mu);
 };
 
+// File descriptors which indicates standard stream.
+#if defined(__APPLE__) || defined(__linux__)
+struct StdStreamFd {
+  int stdout_fd = STDOUT_FILENO;
+  int stderr_fd = STDERR_FILENO;
+};
+#elif defined(_WIN32)
+// TODO(hjiang): not used for windows, implement later.
+struct StdStreamFd {
+  int stdout_fd = -1;
+  int stderr_fd = -1;
+};
+#endif
+
 // Read bytes from handle into [data], return number of bytes read.
 // If read fails, throw exception.
 #if defined(__APPLE__) || defined(__linux__)
@@ -234,7 +248,7 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
 
 #if defined(__APPLE__) || defined(__linux__)
 RedirectionFileHandle CreateRedirectionFileHandle(
-    const StreamRedirectionOption &log_redirect_opt, const StdStreamFd &std_stream_fd) {
+    const StreamRedirectionOption &log_redirect_opt) {
   // Case-1: only redirection, but not rotation and tee involved.
   const bool should_use_pipe_stream = ShouldUsePipeStream(log_redirect_opt);
   if (!should_use_pipe_stream) {
@@ -249,6 +263,18 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   auto promise = std::make_shared<std::promise<void>>();
   // Invoked after flush and close finished.
   auto on_close_completion = [promise = promise]() { promise->set_value(); };
+
+  StdStreamFd std_stream_fd{};
+  if (log_redirect_opt.tee_to_stdout) {
+    std_stream_fd.stdout_fd = dup(STDOUT_FILENO);
+    RAY_CHECK_NE(std_stream_fd.stdout_fd, -1)
+        << "Fails to duplicate stdout: " << strerror(errno);
+  }
+  if (log_redirect_opt.tee_to_stderr) {
+    std_stream_fd.stderr_fd = dup(STDERR_FILENO);
+    RAY_CHECK_NE(std_stream_fd.stderr_fd, -1)
+        << "Fails to duplicate stderr: " << strerror(errno);
+  }
 
   // TODO(hjiang): Use `boost::iostreams` to represent pipe write fd, which supports
   // cross-platform and line-wise read.
@@ -295,6 +321,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
         if (log_redirect_opt.tee_to_stdout) {
           fsync(std_stream_fd.stdout_fd);
         }
+        // No need to sync for stderr since it's unbuffered.
       };
 
   StartStreamDump(std::move(read_func),

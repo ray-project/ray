@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <unistd.h>
-
 #include <limits>
 #include <string>
 
@@ -38,19 +36,5 @@ struct StreamRedirectionOption {
   // Whether to tee to stderr.
   bool tee_to_stderr = false;
 };
-
-// File descriptors which indicates standard stream.
-#if defined(__APPLE__) || defined(__linux__)
-struct StdStreamFd {
-  int stdout_fd = STDOUT_FILENO;
-  int stderr_fd = STDERR_FILENO;
-};
-#elif defined(_WIN32)
-// TODO(hjiang): not used for windows, implement later.
-struct StdStreamFd {
-  int stdout_fd = -1;
-  int stderr_fd = -1;
-};
-#endif
 
 }  // namespace ray
