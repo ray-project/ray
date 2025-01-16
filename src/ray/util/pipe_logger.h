@@ -136,6 +136,6 @@ class RedirectionFileHandle {
 // Notice caller side should _NOT_ close the given file handle, it will be handled
 // internally.
 RedirectionFileHandle CreateRedirectionFileHandle(
-    const StreamRedirectionOption &log_redirect_opt);
+    const StreamRedirectionOption &stream_redirect_opt);
 
 }  // namespace ray

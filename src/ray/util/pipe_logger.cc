@@ -192,21 +192,21 @@ void StartStreamDump(ReadFunc read_func,
 
 // Create a spdlog logger with all sinks specified by the given option.
 std::shared_ptr<spdlog::logger> CreateLogger(
-    const StreamRedirectionOption &log_redirect_opt) {
+    const StreamRedirectionOption &stream_redirect_opt) {
   std::vector<spdlog::sink_ptr> logging_sinks;
   spdlog::sink_ptr file_sink = nullptr;
-  if (log_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max()) {
+  if (stream_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max()) {
     file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        log_redirect_opt.file_path,
-        log_redirect_opt.rotation_max_size,
-        log_redirect_opt.rotation_max_file_count);
+        stream_redirect_opt.file_path,
+        stream_redirect_opt.rotation_max_size,
+        stream_redirect_opt.rotation_max_file_count);
   } else {
-    file_sink =
-        std::make_shared<spdlog::sinks::basic_file_sink_st>(log_redirect_opt.file_path);
+    file_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>(
+        stream_redirect_opt.file_path);
   }
   file_sink->set_level(spdlog::level::info);
   auto logger = std::make_shared<spdlog::logger>(
-      /*name=*/absl::StrFormat("pipe-logger-%s", log_redirect_opt.file_path),
+      /*name=*/absl::StrFormat("pipe-logger-%s", stream_redirect_opt.file_path),
       std::move(file_sink));
   logger->set_level(spdlog::level::info);
   logger->set_pattern("%v");  // Only message string is logged.
@@ -216,11 +216,11 @@ std::shared_ptr<spdlog::logger> CreateLogger(
 // Pipe streamer is only used in certain cases:
 // 1. Log roration is requested;
 // 2. Multiple sinks are involved.
-bool ShouldUsePipeStream(const StreamRedirectionOption &log_redirect_opt) {
+bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
   const bool need_rotation =
-      log_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max();
-  return need_rotation || log_redirect_opt.tee_to_stdout ||
-         log_redirect_opt.tee_to_stderr;
+      stream_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max();
+  return need_rotation || stream_redirect_opt.tee_to_stdout ||
+         stream_redirect_opt.tee_to_stderr;
 }
 
 #if defined(__APPLE__) || defined(__linux__)
@@ -248,11 +248,11 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
 
 #if defined(__APPLE__) || defined(__linux__)
 RedirectionFileHandle CreateRedirectionFileHandle(
-    const StreamRedirectionOption &log_redirect_opt) {
+    const StreamRedirectionOption &stream_redirect_opt) {
   // Case-1: only redirection, but not rotation and tee involved.
-  const bool should_use_pipe_stream = ShouldUsePipeStream(log_redirect_opt);
+  const bool should_use_pipe_stream = ShouldUsePipeStream(stream_redirect_opt);
   if (!should_use_pipe_stream) {
-    return OpenFileForRedirection(log_redirect_opt.file_path);
+    return OpenFileForRedirection(stream_redirect_opt.file_path);
   }
 
   // Case-2: redirection with rotation, or tee is involved.
@@ -265,12 +265,12 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   auto on_close_completion = [promise = promise]() { promise->set_value(); };
 
   StdStreamFd std_stream_fd{};
-  if (log_redirect_opt.tee_to_stdout) {
+  if (stream_redirect_opt.tee_to_stdout) {
     std_stream_fd.stdout_fd = dup(STDOUT_FILENO);
     RAY_CHECK_NE(std_stream_fd.stdout_fd, -1)
         << "Fails to duplicate stdout: " << strerror(errno);
   }
-  if (log_redirect_opt.tee_to_stderr) {
+  if (stream_redirect_opt.tee_to_stderr) {
     std_stream_fd.stderr_fd = dup(STDERR_FILENO);
     RAY_CHECK_NE(std_stream_fd.stderr_fd, -1)
         << "Fails to duplicate stderr: " << strerror(errno);
@@ -293,36 +293,37 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     promise->get_future().get();
   };
 
-  auto logger = CreateLogger(log_redirect_opt);
+  auto logger = CreateLogger(stream_redirect_opt);
 
   // [content] doesn't have trailing newliner.
   auto write_fn = [logger,
-                   log_redirect_opt = log_redirect_opt,
+                   stream_redirect_opt = stream_redirect_opt,
                    std_stream_fd = std_stream_fd](const std::string &content) {
     if (logger != nullptr) {
       logger->log(spdlog::level::info, content);
     }
-    if (log_redirect_opt.tee_to_stdout) {
+    if (stream_redirect_opt.tee_to_stdout) {
       RAY_CHECK_EQ(write(std_stream_fd.stdout_fd, content.data(), content.length()),
-                   static_assert<ssize_t>(content.length()));
+                   static_cast<ssize_t>(content.length()));
       RAY_CHECK_EQ(write(std_stream_fd.stdout_fd, "\n", 1), 1);
     }
-    if (log_redirect_opt.tee_to_stderr) {
+    if (stream_redirect_opt.tee_to_stderr) {
       RAY_CHECK_EQ(write(std_stream_fd.stderr_fd, content.data(), content.length()),
-                   static_assert<ssize_t>(content.length()));
+                   static_cast<ssize_t>(content.length()));
       RAY_CHECK_EQ(write(std_stream_fd.stderr_fd, "\n", 1), 1);
     }
   };
-  auto flush_fn =
-      [logger, log_redirect_opt = log_redirect_opt, std_stream_fd = std_stream_fd]() {
-        if (logger != nullptr) {
-          logger->flush();
-        }
-        if (log_redirect_opt.tee_to_stdout) {
-          fsync(std_stream_fd.stdout_fd);
-        }
-        // No need to sync for stderr since it's unbuffered.
-      };
+  auto flush_fn = [logger,
+                   stream_redirect_opt = stream_redirect_opt,
+                   std_stream_fd = std_stream_fd]() {
+    if (logger != nullptr) {
+      logger->flush();
+    }
+    if (stream_redirect_opt.tee_to_stdout) {
+      fsync(std_stream_fd.stdout_fd);
+    }
+    // No need to sync for stderr since it's unbuffered.
+  };
 
   StartStreamDump(std::move(read_func),
                   std::move(write_fn),
@@ -338,7 +339,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
 #elif defined(_WIN32)
 RedirectionFileHandle CreateRedirectionFileHandle(
-    const StreamRedirectionOption &log_redirect_opt, const StdStreamFd &std_stream_fd) {
+    const StreamRedirectionOption &stream_redirect_opt) {
   return RedirectionFileHandle{};
 }
 #endif
