@@ -12,9 +12,9 @@ import os
 import time
 import traceback
 from collections import namedtuple
-from typing import Any, Callable
+from typing import Any, Callable, Union
 
-from aiohttp.web import Response
+from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.consts as dashboard_consts
@@ -24,7 +24,12 @@ from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_boo
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
-from ray.dashboard.utils import CustomEncoder, to_google_style
+from ray.dashboard.utils import (
+    CustomEncoder,
+    DashboardAgentModule,
+    DashboardHeadModule,
+    to_google_style,
+)
 
 try:
     create_task = asyncio.create_task
@@ -57,8 +62,8 @@ def method_route_table_factory():
             bound_items = []
             for r in cls._routes._items:
                 if isinstance(r, RouteDef):
-                    route_method = getattr(r.handler, "__route_method__")
-                    route_path = getattr(r.handler, "__route_path__")
+                    route_method = r.handler.__route_method__
+                    route_path = r.handler.__route_path__
                     instance = cls._bind_map[route_method][route_path].instance
                     if instance is not None:
                         bound_items.append(r)
@@ -260,16 +265,47 @@ def aiohttp_cache(
         return _wrapper
 
 
+def is_browser_request(req: Request) -> bool:
+    """Checks if a request is made by a browser like user agent.
+
+    This heuristic is very weak, but hard for a browser to bypass- eg,
+    fetch/xhr and friends cannot alter the user-agent, but requests made with
+    an http library can stumble into this if they choose to user a browser like
+    user agent.
+    """
+    return req.headers["User-Agent"].startswith("Mozilla")
+
+
+def deny_browser_requests() -> Callable:
+    """Reject any requests that appear to be made by a browser"""
+
+    def decorator_factory(f: Callable) -> Callable:
+        @functools.wraps(f)
+        async def decorator(self, req: Request):
+            if is_browser_request(req):
+                return Response(
+                    text="Browser requests not allowed",
+                    status=aiohttp.web.HTTPMethodNotAllowed.status_code,
+                )
+            return await f(self, req)
+
+        return decorator
+
+    return decorator_factory
+
+
 def init_ray_and_catch_exceptions() -> Callable:
     """Decorator to be used on methods that require being connected to Ray."""
 
     def decorator_factory(f: Callable) -> Callable:
         @functools.wraps(f)
-        async def decorator(self, *args, **kwargs):
+        async def decorator(
+            self: Union[DashboardAgentModule, DashboardHeadModule], *args, **kwargs
+        ):
             try:
                 if not ray.is_initialized():
                     try:
-                        address = self.get_gcs_address()
+                        address = self.gcs_address
                         logger.info(f"Connecting to ray with address={address}")
                         # Set the gcs rpc timeout to shorter
                         os.environ["RAY_gcs_server_request_timeout_seconds"] = str(

@@ -3,7 +3,7 @@ region: us-west-2
 
 max_workers: 0
 
-aws:
+advanced_configurations_json:
     # Fix the volume size so that IOPS is constant even if the default changes.
     BlockDeviceMappings:
         - DeviceName: /dev/sda1

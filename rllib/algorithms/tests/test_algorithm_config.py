@@ -4,7 +4,6 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import make_multi_callbacks
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
@@ -37,24 +36,6 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertTrue(algo.config.train_batch_size == 3000)
         algo.train()
         algo.stop()
-
-    def test_update_from_dict_works_for_multi_callbacks(self):
-        """Test to make sure callbacks config dict works."""
-        config_dict = {"callbacks": make_multi_callbacks([])}
-        config = AlgorithmConfig()
-        # This should work.
-        config.update_from_dict(config_dict)
-
-        serialized = config.serialize()
-
-        # For now, we don't support serializing make_multi_callbacks.
-        # It'll turn into a classpath that's not really usable b/c the class
-        # was created on-the-fly.
-        self.assertEqual(
-            serialized["callbacks"],
-            "ray.rllib.algorithms.callbacks.make_multi_callbacks.<locals>."
-            "_MultiCallbacks",
-        )
 
     def test_freezing_of_algo_config(self):
         """Tests, whether freezing an AlgorithmConfig actually works as expected."""
@@ -169,16 +150,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertFalse(config.is_atari)
 
     def test_rl_module_api(self):
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .environment("CartPole-v1")
-            .framework("torch")
-            .env_runners(enable_connectors=True)
-        )
+        config = PPOConfig().environment("CartPole-v1").framework("torch")
 
         self.assertEqual(config.rl_module_spec.module_class, PPOTorchRLModule)
 
@@ -232,15 +204,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertTrue(config_3 is config)
 
     def test_learner_api(self):
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .environment("CartPole-v1")
-            .env_runners(enable_connectors=True)
-        )
+        config = PPOConfig().environment("CartPole-v1")
 
         self.assertEqual(config.learner_class, PPOTorchLearner)
 
@@ -323,7 +287,7 @@ class TestAlgorithmConfig(unittest.TestCase):
 
     def test_get_multi_rl_module_spec(self):
         """Tests whether the get_multi_rl_module_spec() method works properly."""
-        from ray.rllib.examples.rl_modules.classes.vpg_rlm import VPGTorchRLModule
+        from ray.rllib.examples.rl_modules.classes.vpg_torch_rlm import VPGTorchRLModule
 
         class CustomRLModule1(VPGTorchRLModule):
             pass

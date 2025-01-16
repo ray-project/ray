@@ -1,4 +1,5 @@
 import abc
+import functools
 from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import RefBundle
@@ -31,7 +32,6 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
             RefBundle([(input_blocks[i], input_metadata[i])], owns_blocks=False)
             for i in range(len(input_blocks))
         ]
-        self._output_metadata_cache = None
 
     @property
     def input_data(self) -> List[RefBundle]:
@@ -41,13 +41,10 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
         return self._input_data
 
     def aggregate_output_metadata(self) -> BlockMetadata:
-        """Get aggregated output metadata, using cache if available."""
-        if self._output_metadata_cache is None:
-            self._output_metadata_cache = self._compute_output_metadata()
-        return self._output_metadata_cache
+        return self._cached_output_metadata
 
-    def _compute_output_metadata(self) -> BlockMetadata:
-        """Compute the output metadata without caching."""
+    @functools.cached_property
+    def _cached_output_metadata(self) -> BlockMetadata:
         return BlockMetadata(
             num_rows=self._num_rows(),
             size_bytes=self._size_bytes(),

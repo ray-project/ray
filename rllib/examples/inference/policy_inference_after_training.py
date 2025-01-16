@@ -138,7 +138,7 @@ if __name__ == "__main__":
     )
     # Create new RLModule and restore its state from the last algo checkpoint.
     # Note that the checkpoint for the RLModule can be found deeper inside the algo
-    # checkpoint's sub-directories ([algo dir] -> "learner/" -> "module_state/" ->
+    # checkpoint's subdirectories ([algo dir] -> "learner/" -> "module_state/" ->
     # "[module ID]):
     rl_module = RLModule.from_checkpoint(
         os.path.join(

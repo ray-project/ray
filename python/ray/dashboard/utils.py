@@ -11,21 +11,27 @@ from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections import namedtuple
 from collections.abc import Mapping, MutableMapping, Sequence
+from dataclasses import dataclass
 from typing import Optional
 
 import aiosignal  # noqa: F401
 from frozenlist import FrozenList  # noqa: F401
+from packaging.version import Version
 
 import ray
 import ray._private.protobuf_compat
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
+import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray._private.utils import (
     binary_to_hex,
     check_dashboard_dependencies_installed,
+    get_or_create_event_loop,
     split_address,
 )
 from ray._raylet import GcsClient
+from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 try:
     create_task = asyncio.create_task
@@ -65,22 +71,128 @@ class DashboardAgentModule(abc.ABC):
         dependencies.
         """
 
-    def get_gcs_address(self):
+    @property
+    def gcs_address(self):
         return self._dashboard_agent.gcs_address
 
 
+@dataclass
+class DashboardHeadModuleConfig:
+    minimal: bool
+    cluster_id_hex: str
+    session_name: str
+    gcs_address: str
+    log_dir: str
+    temp_dir: str
+    session_dir: str
+    ip: str
+    http_host: str
+    http_port: int
+    # We can't put this to ctor of DashboardHeadModule because ServeRestApiImpl requires
+    # DashboardHeadModule and DashboardAgentModule have the same shape of ctor, that
+    # is, single argument.
+    metrics: DashboardPrometheusMetrics
+
+
 class DashboardHeadModule(abc.ABC):
-    def __init__(self, dashboard_head):
+    def __init__(self, config: DashboardHeadModuleConfig):
         """
         Initialize current module when DashboardHead loading modules.
-        :param dashboard_head: The DashboardHead instance.
+        :param config: The DashboardHeadModuleConfig instance.
         """
-        self._dashboard_head = dashboard_head
-        self.session_name = dashboard_head.session_name
+        self._config = config
+        self._gcs_client = None
+        self._gcs_aio_client = None  # lazy init
+        self._aiogrpc_gcs_channel = None  # lazy init
+        self._http_session = None  # lazy init
+
+    @property
+    def minimal(self):
+        return self._config.minimal
+
+    @property
+    def session_name(self):
+        return self._config.session_name
+
+    @property
+    def gcs_address(self):
+        return self._config.gcs_address
+
+    @property
+    def log_dir(self):
+        return self._config.log_dir
+
+    @property
+    def temp_dir(self):
+        return self._config.temp_dir
+
+    @property
+    def session_dir(self):
+        return self._config.session_dir
+
+    @property
+    def ip(self):
+        return self._config.ip
+
+    @property
+    def http_host(self):
+        return self._config.http_host
+
+    @property
+    def http_port(self):
+        return self._config.http_port
 
     @property
     def http_session(self):
-        return self._dashboard_head.http_session
+        assert not self._config.minimal, "http_session accessed in minimal Ray."
+        import aiohttp
+
+        if self._http_session is not None:
+            return self._http_session
+        # Create a http session for all modules.
+        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
+        if Version(aiohttp.__version__) < Version("4.0.0"):
+            self._http_session = aiohttp.ClientSession(loop=get_or_create_event_loop())
+        else:
+            self._http_session = aiohttp.ClientSession()
+        return self._http_session
+
+    @property
+    def metrics(self):
+        return self._config.metrics
+
+    @property
+    def gcs_client(self):
+        if self._gcs_client is None:
+            self._gcs_client = GcsClient(
+                address=self._config.gcs_address,
+                nums_reconnect_retry=0,
+                cluster_id=self._config.cluster_id_hex,
+            )
+        return self._gcs_client
+
+    @property
+    def gcs_aio_client(self):
+        if self._gcs_aio_client is None:
+            self._gcs_aio_client = GcsAioClient(
+                address=self._config.gcs_address,
+                nums_reconnect_retry=0,
+                cluster_id=self._config.cluster_id_hex,
+            )
+            if not internal_kv._internal_kv_initialized():
+                internal_kv._initialize_internal_kv(self.gcs_client)
+        return self._gcs_aio_client
+
+    @property
+    def aiogrpc_gcs_channel(self):
+        # TODO(ryw): once we removed the old gcs client, also remove this.
+        if self._config.minimal:
+            return None
+        if self._aiogrpc_gcs_channel is None:
+            gcs_channel = GcsChannel(gcs_address=self._config.gcs_address, aio=True)
+            gcs_channel.connect()
+            self._aiogrpc_gcs_channel = gcs_channel.channel()
+        return self._aiogrpc_gcs_channel
 
     @abc.abstractmethod
     async def run(self, server):
@@ -99,8 +211,89 @@ class DashboardHeadModule(abc.ABC):
         dependencies.
         """
 
-    def get_gcs_address(self):
-        return self._dashboard_head.gcs_address
+
+class RateLimitedModule(abc.ABC):
+    """Simple rate limiter
+
+    Inheriting from this class and decorate any class methods will
+    apply simple rate limit.
+    It will limit the maximal number of concurrent invocations of **all** the
+    methods decorated.
+
+    The below Example class will only allow 10 concurrent calls to A() and B()
+
+    E.g.:
+
+        class Example(RateLimitedModule):
+            def __init__(self):
+                super().__init__(max_num_call=10)
+
+            @RateLimitedModule.enforce_max_concurrent_calls
+            async def A():
+                ...
+
+            @RateLimitedModule.enforce_max_concurrent_calls
+            async def B():
+                ...
+
+            async def limit_handler_(self):
+                raise RuntimeError("rate limited reached!")
+
+    """
+
+    def __init__(self, max_num_call: int, logger: Optional[logging.Logger] = None):
+        """
+        Args:
+            max_num_call: Maximal number of concurrent invocations of all decorated
+                functions in the instance.
+                Setting to -1 will disable rate limiting.
+
+            logger: Logger
+        """
+        self.max_num_call_ = max_num_call
+        self.num_call_ = 0
+        self.logger_ = logger
+
+    @staticmethod
+    def enforce_max_concurrent_calls(func):
+        """Decorator to enforce max number of invocations of the decorated func
+
+        NOTE: This should be used as the innermost decorator if there are multiple
+        ones.
+
+        E.g., when decorating functions already with @routes.get(...), this must be
+        added below then the routes decorators:
+            ```
+            @routes.get('/')
+            @RateLimitedModule.enforce_max_concurrent_calls
+            async def fn(self):
+                ...
+
+            ```
+        """
+
+        @functools.wraps(func)
+        async def async_wrapper(self, *args, **kwargs):
+            if self.max_num_call_ >= 0 and self.num_call_ >= self.max_num_call_:
+                if self.logger_:
+                    self.logger_.warning(
+                        f"Max concurrent requests reached={self.max_num_call_}"
+                    )
+                return await self.limit_handler_()
+            self.num_call_ += 1
+            try:
+                ret = await func(self, *args, **kwargs)
+            finally:
+                self.num_call_ -= 1
+            return ret
+
+        # Returning closure here to avoid passing 'self' to the
+        # 'enforce_max_concurrent_calls' decorator.
+        return async_wrapper
+
+    @abstractmethod
+    async def limit_handler_(self):
+        """Handler that is invoked when max number of concurrent calls reached"""
 
 
 def dashboard_module(enable):
@@ -206,23 +399,32 @@ def to_google_style(d):
 def message_to_dict(message, decode_keys=None, **kwargs):
     """Convert protobuf message to Python dict."""
 
+    def _decode_keys(d):
+        for k, v in d.items():
+            if isinstance(v, dict):
+                d[k] = _decode_keys(v)
+            if isinstance(v, list):
+                new_list = []
+                for i in v:
+                    if isinstance(i, dict):
+                        new_list.append(_decode_keys(i))
+                    else:
+                        new_list.append(i)
+                d[k] = new_list
+            else:
+                if k in decode_keys:
+                    d[k] = binary_to_hex(b64decode(v))
+                else:
+                    d[k] = v
+        return d
+
     d = ray._private.protobuf_compat.message_to_dict(
         message, use_integers_for_enums=False, **kwargs
     )
-
-    def _decode_rec(o, should_decode=False):
-        if isinstance(o, dict):
-            for k, v in o.items():
-                o[k] = _decode_rec(v, should_decode=k in decode_keys)
-            return o
-        elif isinstance(o, list):
-            return [_decode_rec(i, should_decode) for i in o]
-        elif should_decode:
-            return binary_to_hex(b64decode(o))
-        else:
-            return o
-
-    return _decode_rec(d) if decode_keys else d
+    if decode_keys:
+        return _decode_keys(d)
+    else:
+        return d
 
 
 class SignalManager:

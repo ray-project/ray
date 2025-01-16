@@ -3,7 +3,7 @@ import gymnasium as gym
 import logging
 import re
 import tree  # pip install dm_tree
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -37,9 +37,6 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.util.debug import log_once
-
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import Episode
 
 tf1, tf, tfv = try_import_tf()
 
@@ -343,7 +340,7 @@ class DynamicTFPolicyV2(TFPolicy):
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[SampleBatch] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ):
         """Post process trajectory in the format of a SampleBatch.
 

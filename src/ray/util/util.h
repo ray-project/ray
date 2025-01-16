@@ -37,6 +37,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <string>
@@ -62,22 +63,13 @@
 #endif
 
 // Boost forward-declarations (to avoid forcing slow header inclusions)
-namespace boost {
-
-namespace asio {
-
-namespace generic {
+namespace boost::asio::generic {
 
 template <class Protocol>
 class basic_endpoint;
-
 class stream_protocol;
 
-}  // namespace generic
-
-}  // namespace asio
-
-}  // namespace boost
+}  // namespace boost::asio::generic
 
 enum class CommandLineSyntax { System, POSIX, Windows };
 
@@ -156,37 +148,7 @@ inline int64_t current_sys_time_us() {
   return mu_since_epoch.count();
 }
 
-inline std::string GenerateUUIDV4() {
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  static std::uniform_int_distribution<> dis(0, 15);
-  static std::uniform_int_distribution<> dis2(8, 11);
-
-  std::stringstream ss;
-  int i;
-  ss << std::hex;
-  for (i = 0; i < 8; i++) {
-    ss << dis(gen);
-  }
-  ss << "-";
-  for (i = 0; i < 4; i++) {
-    ss << dis(gen);
-  }
-  ss << "-4";
-  for (i = 0; i < 3; i++) {
-    ss << dis(gen);
-  }
-  ss << "-";
-  ss << dis2(gen);
-  for (i = 0; i < 3; i++) {
-    ss << dis(gen);
-  }
-  ss << "-";
-  for (i = 0; i < 12; i++) {
-    ss << dis(gen);
-  };
-  return ss.str();
-}
+std::string GenerateUUIDV4();
 
 /// A helper function to parse command-line arguments in a platform-compatible manner.
 ///
@@ -302,12 +264,19 @@ inline void unsetEnv(const std::string &name) {
   RAY_CHECK_EQ(ret, 0) << "Failed to unset env var " << name;
 }
 
+// Set [thread_name] to current thread; if it fails, error will be logged.
+// NOTICE: It only works for macos and linux.
 inline void SetThreadName(const std::string &thread_name) {
+  int ret = 0;
 #if defined(__APPLE__)
-  pthread_setname_np(thread_name.c_str());
+  ret = pthread_setname_np(thread_name.c_str());
 #elif defined(__linux__)
-  pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
+  ret = pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
 #endif
+  if (ret < 0) {
+    RAY_LOG(ERROR) << "Fails to set thread name to " << thread_name << " since "
+                   << strerror(errno);
+  }
 }
 
 inline std::string GetThreadName() {
@@ -409,5 +378,10 @@ void QuickExit();
 /// \param precision the precision to format the value to
 /// \return the foramtted value
 std::string FormatFloat(float value, int32_t precision);
+
+/// Converts a timeout in milliseconds to a timeout point.
+/// \param[in] timeout_ms The timeout in milliseconds.
+/// \return The timeout point, or std::nullopt if timeout_ms is -1.
+std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms);
 
 }  // namespace ray

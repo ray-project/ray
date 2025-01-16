@@ -57,10 +57,6 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 
     config = (
         PPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .learners(
             num_learners=0,  # Set this to greater than 1 to allow for DDP style updates.
             num_gpus_per_learner=0,  # Set this to 1 to enable GPU training.
@@ -91,7 +87,7 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
          - Supported Framework
        * - **PPO**
          - |pytorch| |tensorflow|
-       * - **Impala**
+       * - **IMPALA**
          - |pytorch| |tensorflow|
        * - **APPO**
          - |pytorch| |tensorflow|
@@ -106,7 +102,7 @@ Construction
 ------------
 
 If you enable the :ref:`RLModule <rlmodule-guide>`
-and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, then calling :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build` constructs a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` for you, but if you’re using these APIs standalone, you can construct the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` as follows.
+and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, then calling :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_algo` constructs a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` for you, but if you’re using these APIs standalone, you can construct the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` as follows.
 
 .. testcode::
     :hide:
@@ -177,6 +173,9 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
             # Construct a new Learner using our config object.
             learner = config.build_learner(env=env)
 
+            # Needs to be called on the learner before calling any functions.
+            learner.build()
+
 
 Updates
 -------
@@ -217,8 +216,8 @@ Updates
     }
     default_batch = SampleBatch(DUMMY_BATCH)
     DUMMY_BATCH = default_batch.as_multi_agent()
-
-    learner.build() # needs to be called on the learner before calling any functions
+    # Make sure, we convert the batch to the correct framework (here: torch).
+    DUMMY_BATCH = learner._convert_batch_type(DUMMY_BATCH)
 
 
 .. tab-set::

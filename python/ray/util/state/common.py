@@ -2,6 +2,7 @@ import datetime
 import json
 import logging
 import sys
+import warnings
 from abc import ABC
 from dataclasses import asdict, field, fields
 from enum import Enum, unique
@@ -162,6 +163,33 @@ class ListApiOptions:
                     f"Unsupported filter predicate {filter_predicate} is given. "
                     "Available predicates: =, !=."
                 )
+
+    def has_conflicting_filters(self) -> bool:
+        # Check the filters in the ListApiOptions conflicts. Specifically for:
+        # - multiple '=' filters with the same key but different values.
+        # TODO(myan): More conflicts situation can be added for further optimization.
+        # For exmaple, 2 filters with same key and same value but one with '=' predicate
+        # and ther other with '!=' predicate
+        equal_filters = {}
+        for filter in self.filters:
+            filter_key, filter_predicate, filter_value = filter
+            if filter_predicate == "=":
+                if (
+                    filter_key in equal_filters
+                    and equal_filters[filter_key] != filter_value
+                ):
+                    warnings.warn(
+                        "There are multiple '=' filters with the same "
+                        f"key '{filter_key}' but different values"
+                        f"'{equal_filters[filter_key]}' & '{filter_value}'. "
+                        "Empty result set will be returned",
+                        UserWarning,
+                    )
+                    return True
+                elif filter_key not in equal_filters:
+                    equal_filters[filter_key] = filter_value
+
+        return False
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -467,6 +495,8 @@ class ActorState(StateSchema):
     num_restarts_due_to_lineage_reconstruction: int = state_column(
         filterable=False, detail=True
     )
+    #: The call site of the actor creation.
+    call_site: Optional[str] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -760,9 +790,8 @@ class TaskState(StateSchema):
     error_message: Optional[str] = state_column(detail=True, filterable=False)
     # Is task paused by the debugger
     is_debugger_paused: Optional[bool] = state_column(detail=True, filterable=True)
-    # List of objects (passed in by ref as arguments) this task
-    # is dependent on
-    args_object_ids: List[str] = state_column(detail=True, filterable=False)
+    #: The call site of the task.
+    call_site: Optional[str] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1552,8 +1581,6 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
             "worker_id",
             "placement_group_id",
             "component_id",
-            "object_id",
-            "args_object_ids",
         ],
     )
 
@@ -1584,7 +1611,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
                 "runtime_env_info",
                 "parent_task_id",
                 "placement_group_id",
-                "args_object_ids",
+                "call_site",
             ],
         ),
         (task_attempt, ["task_id", "attempt_number", "job_id"]),

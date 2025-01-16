@@ -72,7 +72,7 @@ rayservice-sample   7s
 
 $ kubectl get pods
 NAME                                                      READY   STATUS    RESTARTS   AGE
-ervice-sample-raycluster-454c4-worker-small-group-b6mmg   1/1     Running   0          XXs
+service-sample-raycluster-454c4-worker-small-group-b6mmg  1/1     Running   0          XXs
 kuberay-operator-7fbdbf8c89-4lrnr                         1/1     Running   0          XXs
 rayservice-sample-raycluster-454c4-head-krk9d             1/1     Running   0          XXs
 
@@ -238,7 +238,7 @@ Monitor your Serve application using the Ray Dashboard.
 - Learn more about how to configure and manage Dashboard [here](observability-configure-manage-dashboard).
 - Learn about the Ray Serve Dashboard [here](serve-monitoring).
 - Learn how to set up [Prometheus](prometheus-setup) and [Grafana](grafana) for Dashboard.
-- Learn about the [Ray Serve logs](serve-logging) and how to [persistent logs](kuberay-logging) on Kubernetes.
+- Learn about the [Ray Serve logs](serve-logging) and how to [persistent logs](persist-kuberay-custom-resource-logs) on Kubernetes.
 
 :::{note}
 - To troubleshoot application deployment failures in Serve, you can check the KubeRay operator logs by running `kubectl logs -f <kuberay-operator-pod-name>` (e.g., `kubectl logs -f kuberay-operator-7447d85d58-lv7pf`). The KubeRay operator logs contain information about the Serve application deployment event and Serve application health checks.

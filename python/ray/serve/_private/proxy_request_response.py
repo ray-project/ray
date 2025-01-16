@@ -2,7 +2,7 @@ import logging
 import pickle
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Awaitable, Callable, List, Tuple, Union
+from typing import Any, AsyncIterator, List, Tuple, Union
 
 import grpc
 from starlette.types import Receive, Scope, Send
@@ -58,7 +58,8 @@ class ASGIProxyRequest(ProxyRequest):
 
     @property
     def method(self) -> str:
-        return self.scope.get("method", "websocket").upper()
+        # WebSocket messages don't have a 'method' field.
+        return self.scope.get("method", "WS").upper()
 
     @property
     def route_path(self) -> str:
@@ -95,11 +96,12 @@ class ASGIProxyRequest(ProxyRequest):
         self.scope["root_path"] = root_path
 
     def request_object(
-        self, receive_asgi_messages: Callable[[str], Awaitable[bytes]]
+        self,
+        proxy_actor_name: str,
     ) -> StreamingHTTPRequest:
         return StreamingHTTPRequest(
             asgi_scope=self.scope,
-            receive_asgi_messages=receive_asgi_messages,
+            proxy_actor_name=proxy_actor_name,
         )
 
 

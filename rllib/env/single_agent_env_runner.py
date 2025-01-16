@@ -6,10 +6,10 @@ from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
 from gymnasium.wrappers.vector import DictInfoToList
-from gymnasium.envs.registration import VectorizeMode
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
+from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
@@ -18,16 +18,17 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics import (
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
@@ -41,6 +42,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES,
+    NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
     SAMPLE_TIMER,
@@ -53,7 +55,6 @@ from ray.rllib.utils.typing import EpisodeID, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
-_, tf, _ = try_import_tf()
 logger = logging.getLogger("ray.rllib")
 
 
@@ -64,7 +65,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     """The generic environment runner for the single agent case."""
 
     @override(EnvRunner)
-    def __init__(self, config: AlgorithmConfig, **kwargs):
+    def __init__(self, *, config: AlgorithmConfig, **kwargs):
         """Initializes a SingleAgentEnvRunner instance.
 
         Args:
@@ -74,13 +75,22 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         super().__init__(config=config)
 
         self.worker_index: int = kwargs.get("worker_index")
+        self.num_workers: int = kwargs.get("num_workers", self.config.num_env_runners)
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
 
         # Create a MetricsLogger object for logging custom stats.
         self.metrics = MetricsLogger()
 
         # Create our callbacks object.
-        self._callbacks: DefaultCallbacks = self.config.callbacks_class()
+        self._callbacks: List[RLlibCallback] = [
+            cls() for cls in force_list(self.config.callbacks_class)
+        ]
+
+        # Set device.
+        self._device = get_device(
+            self.config,
+            0 if not self.worker_index else self.config.num_gpus_per_env_runner,
+        )
 
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.vector.VectorEnvWrapper] = None
@@ -88,7 +98,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.make_env()
 
         # Create the env-to-module connector pipeline.
-        self._env_to_module = self.config.build_env_to_module_connector(self.env)
+        self._env_to_module = self.config.build_env_to_module_connector(
+            self.env, device=self._device
+        )
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
         # call to make sure the final observation (before an episode cut) gets properly
         # processed (and maybe postprocessed and re-stored into the episode).
@@ -100,18 +112,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._cached_to_module = None
 
         # Create the RLModule.
-        try:
-            module_spec: RLModuleSpec = self.config.get_rl_module_spec(
-                env=self.env.unwrapped, spaces=self.get_spaces(), inference_only=True
-            )
-            # Build the module from its spec.
-            self.module = module_spec.build()
-        # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
-        # will not have an RLModule, but might still be usable with random actions.
-        except NotImplementedError:
-            self.module = None
+        self.module: Optional[RLModule] = None
+        self.make_module()
 
-        # Create the two connector pipelines: env-to-module and module-to-env.
+        # Create the module-to-env connector pipeline.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
 
         # This should be the default.
@@ -127,6 +131,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         ] = defaultdict(list)
         self._weights_seq_no: int = 0
 
+        # Measures the time passed between returning from `sample()`
+        # and receiving the next `sample()` request from the user.
         self._time_after_sampling = None
 
     @override(EnvRunner)
@@ -165,11 +171,19 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
+        # Log time between `sample()` requests.
         if self._time_after_sampling is not None:
             self.metrics.log_value(
                 key=TIME_BETWEEN_SAMPLING,
                 value=time.perf_counter() - self._time_after_sampling,
             )
+
+        # Log current weight seq no.
+        self.metrics.log_value(
+            key=WEIGHTS_SEQ_NO,
+            value=self._weights_seq_no,
+            window=1,
+        )
 
         with self.metrics.log_time(SAMPLE_TIMER):
             # If no execution details are provided, use the config to try to infer the
@@ -211,10 +225,15 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 )
 
             # Make the `on_sample_end` callback.
-            self._callbacks.on_sample_end(
-                env_runner=self,
-                metrics_logger=self.metrics,
-                samples=samples,
+            make_callback(
+                "on_sample_end",
+                callbacks_objects=self._callbacks,
+                callbacks_functions=self.config.callbacks_on_sample_end,
+                kwargs=dict(
+                    env_runner=self,
+                    metrics_logger=self.metrics,
+                    samples=samples,
+                ),
             )
 
         self._time_after_sampling = time.perf_counter()
@@ -269,12 +288,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
                 # RLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = (
+                    # Global env steps sampled are (roughly) this EnvRunner's lifetime
+                    # count times the number of env runners in the algo.
+                    global_env_steps_lifetime = (
                         self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
                         + ts
-                    )
+                    ) * (self.config.num_env_runners or 1)
                     to_env = self.module.forward_exploration(
-                        to_module, t=env_steps_lifetime
+                        to_module, t=global_env_steps_lifetime
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -286,6 +307,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=episodes,
                     explore=explore,
                     shared_data=shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -345,6 +367,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     explore=explore,
                     rl_module=self.module,
                     shared_data=shared_data,
+                    metrics=self.metrics,
                 )
 
             for env_index in range(self.num_envs):
@@ -369,8 +392,13 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                         "on_episode_end", env_index, episodes
                     )
 
-                    # Then finalize (numpy'ize) the episode.
-                    done_episodes_to_return.append(episodes[env_index].finalize())
+                    # Numpy'ize the episode.
+                    if self.config.episodes_to_numpy:
+                        # Any possibly compress observations.
+                        done_episodes_to_return.append(episodes[env_index].to_numpy())
+                    # Leave episode as lists of individual (obs, action, etc..) items.
+                    else:
+                        done_episodes_to_return.append(episodes[env_index])
 
                     # Also early-out if we reach the number of episodes within this
                     # for-loop.
@@ -383,9 +411,13 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                         observation_space=self.env.single_observation_space,
                         action_space=self.env.single_action_space,
                     )
+                    self._make_on_episode_callback(
+                        "on_episode_created",
+                        env_index,
+                        episodes,
+                    )
 
         # Return done episodes ...
-        # TODO (simon): Check, how much memory this attribute uses.
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         # ... and all ongoing episode chunks.
 
@@ -407,13 +439,19 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     continue
                 eps.validate()
                 self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-                # Return finalized (numpy'ized) Episodes.
-                ongoing_episodes_to_return.append(eps.finalize())
+
+                # Numpy'ize the episode.
+                if self.config.episodes_to_numpy:
+                    # Any possibly compress observations.
+                    ongoing_episodes_to_return.append(eps.to_numpy())
+                # Leave episode as lists of individual (obs, action, etc..) items.
+                else:
+                    ongoing_episodes_to_return.append(eps)
 
             # Continue collecting into the cut Episode chunks.
             self._episodes = ongoing_episodes_continuations
 
-        self._increase_sampled_metrics(ts)
+        self._increase_sampled_metrics(ts, len(done_episodes_to_return))
 
         # Return collected episode data.
         return done_episodes_to_return + ongoing_episodes_to_return
@@ -428,6 +466,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             ),
         }
 
+    @override(EnvRunner)
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
         for eps in self._done_episodes_for_metrics:
@@ -447,15 +486,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 episode_length, episode_return, episode_duration_s
             )
 
-        # Log num episodes counter for this iteration.
-        self.metrics.log_value(
-            NUM_EPISODES,
-            len(self._done_episodes_for_metrics),
-            reduce="sum",
-            # Reset internal data on `reduce()` call below (not a lifetime count).
-            clear_on_reduce=True,
-        )
-
         # Now that we have logged everything, clear cache of done episodes.
         self._done_episodes_for_metrics.clear()
 
@@ -471,7 +501,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         **kwargs,
     ) -> StateDict:
         state = {
-            WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
@@ -485,6 +514,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 ),
                 **kwargs,
             )
+            state[WEIGHTS_SEQ_NO] = self._weights_seq_no
         if self._check_component(
             COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
         ):
@@ -519,6 +549,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 ):
                     rl_module_state = rl_module_state[DEFAULT_MODULE_ID]
                 self.module.set_state(rl_module_state)
+
             # Update our weights_seq_no, if the new one is > 0.
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
@@ -529,6 +560,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
                 value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 reduce="sum",
+                with_throughput=True,
             )
 
     @override(Checkpointable)
@@ -567,8 +599,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             AssertionError: If the EnvRunner Actor has NOT been properly initialized.
         """
         # Make sure, we have built our gym.vector.Env and RLModule properly.
-        assert self.env and self.module
+        assert self.env and hasattr(self, "module")
 
+    @override(EnvRunner)
     def make_env(self) -> None:
         """Creates a vectorized gymnasium env and stores it in `self.env`.
 
@@ -592,7 +625,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             env_ctx = EnvContext(
                 env_ctx,
                 worker_index=self.worker_index,
-                num_workers=self.config.num_env_runners,
+                num_workers=self.num_workers,
                 remote=self.config.remote_worker_envs,
             )
 
@@ -619,15 +652,16 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 env_context=env_ctx,
             )
         gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
+        vectorize_mode = self.config.gym_env_vectorize_mode
 
         self.env = DictInfoToList(
             gym.make_vec(
                 "rllib-single-agent-env-v0",
                 num_envs=self.config.num_envs_per_env_runner,
                 vectorization_mode=(
-                    VectorizeMode.ASYNC
-                    if self.config.remote_worker_envs
-                    else VectorizeMode.SYNC
+                    vectorize_mode
+                    if isinstance(vectorize_mode, gym.envs.registration.VectorizeMode)
+                    else gym.envs.registration.VectorizeMode(vectorize_mode.lower())
                 ),
             )
         )
@@ -639,12 +673,37 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._needs_initial_reset = True
 
         # Call the `on_environment_created` callback.
-        self._callbacks.on_environment_created(
-            env_runner=self,
-            metrics_logger=self.metrics,
-            env=self.env.unwrapped,
-            env_context=env_ctx,
+        make_callback(
+            "on_environment_created",
+            callbacks_objects=self._callbacks,
+            callbacks_functions=self.config.callbacks_on_environment_created,
+            kwargs=dict(
+                env_runner=self,
+                metrics_logger=self.metrics,
+                env=self.env.unwrapped,
+                env_context=env_ctx,
+            ),
         )
+
+    @override(EnvRunner)
+    def make_module(self):
+        try:
+            module_spec: RLModuleSpec = self.config.get_rl_module_spec(
+                env=self.env.unwrapped, spaces=self.get_spaces(), inference_only=True
+            )
+            # Build the module from its spec.
+            self.module = module_spec.build()
+
+            # Move the RLModule to our device.
+            # TODO (sven): In order to make this framework-agnostic, we should maybe
+            #  make the RLModule.build() method accept a device OR create an additional
+            #  `RLModule.to()` override.
+            self.module.to(self._device)
+
+        # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
+        # will not have an RLModule, but might still be usable with random actions.
+        except NotImplementedError:
+            self.module = None
 
     @override(EnvRunner)
     def stop(self):
@@ -682,6 +741,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 episodes=episodes,
                 explore=explore,
                 shared_data=shared_data,
+                metrics=self.metrics,
             )
 
         # Call `on_episode_start()` callbacks (always after reset).
@@ -697,16 +757,21 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
     def _make_on_episode_callback(self, which: str, idx: int, episodes):
-        getattr(self._callbacks, which)(
-            episode=episodes[idx],
-            env_runner=self,
-            metrics_logger=self.metrics,
-            env=self.env.unwrapped,
-            rl_module=self.module,
-            env_index=idx,
+        make_callback(
+            which,
+            callbacks_objects=self._callbacks,
+            callbacks_functions=getattr(self.config, f"callbacks_{which}"),
+            kwargs=dict(
+                episode=episodes[idx],
+                env_runner=self,
+                metrics_logger=self.metrics,
+                env=self.env.unwrapped,
+                rl_module=self.module,
+                env_index=idx,
+            ),
         )
 
-    def _increase_sampled_metrics(self, num_steps):
+    def _increase_sampled_metrics(self, num_steps, num_episodes_completed):
         # Per sample cycle stats.
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
@@ -723,8 +788,19 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             reduce="sum",
             clear_on_reduce=True,
         )
+        self.metrics.log_value(
+            NUM_EPISODES,
+            num_episodes_completed,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
         # Lifetime stats.
-        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED_LIFETIME,
+            num_steps,
+            reduce="sum",
+            with_throughput=True,
+        )
         self.metrics.log_value(
             (NUM_AGENT_STEPS_SAMPLED_LIFETIME, DEFAULT_AGENT_ID),
             num_steps,
@@ -733,6 +809,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.metrics.log_value(
             (NUM_MODULE_STEPS_SAMPLED_LIFETIME, DEFAULT_MODULE_ID),
             num_steps,
+            reduce="sum",
+        )
+        self.metrics.log_value(
+            NUM_EPISODES_LIFETIME,
+            num_episodes_completed,
             reduce="sum",
         )
         return num_steps
