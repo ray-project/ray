@@ -50,8 +50,8 @@ config = (
     IMPALAConfig()
     .environment("heavy-cart")
     # .env_runners(compress_observations=True)
+    .learners(num_aggregator_actors_per_learner=2)
     .training(
-        num_aggregator_actors_per_learner=2,
         train_batch_size_per_learner=500,
         # train_batch_size=500,
     )
