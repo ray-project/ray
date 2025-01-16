@@ -188,19 +188,19 @@ const ActorDetailPage = () => {
               <div>
                 <CpuStackTraceLink
                   pid={actorDetail.pid}
-                  ip={actorDetail.address?.ipAddress}
+                  nodeId={actorDetail.address?.rayletId}
                   type=""
                 />
                 <br />
                 <CpuProfilingLink
                   pid={actorDetail.pid}
-                  ip={actorDetail.address?.ipAddress}
+                  nodeId={actorDetail.address?.rayletId}
                   type=""
                 />
                 <br />
                 <MemoryProfilingButton
                   pid={actorDetail.pid}
-                  ip={actorDetail.address?.ipAddress}
+                  nodeId={actorDetail.address?.rayletId}
                   type=""
                 />
               </div>
