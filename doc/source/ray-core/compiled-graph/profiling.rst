@@ -1,7 +1,7 @@
 Profiling
 =========
 
-Ray Compiled Graph provides profiling functionalities to better understand performance
+Ray Compiled Graph provides profiling functionalities to better understand the performance
 of individual tasks, systems overhead, and performance bottlenecks.
 
 Nsight system profiler
