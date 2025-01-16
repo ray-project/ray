@@ -346,6 +346,7 @@ py_test(
 )
 
 # Added "data_non_parallel" tag to prevent parallel execution of this test.
+# It needs about 5GB memory.
 py_test(
     name = "test_dynamic_block_split",
     size = "medium",
