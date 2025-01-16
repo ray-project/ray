@@ -15,9 +15,7 @@ from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.streaming_executor_state import Topology
-    from ray.data._internal.execution.streaming_executor_state import OpState
-
+    from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 
 
 logger = logging.getLogger(__name__)
