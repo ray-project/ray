@@ -1928,11 +1928,11 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
         send_reply_callback(status, success, failure);
       };
 
-  cluster_task_manager_->QueueAndScheduleTask(task,
+  cluster_task_manager_->QueueAndScheduleTask(std::move(task),
                                               request.grant_or_reject(),
                                               request.is_selected_based_on_locality(),
                                               reply,
-                                              send_reply_callback_wrapper);
+                                              std::move(send_reply_callback_wrapper));
 }
 
 void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
