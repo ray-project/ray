@@ -544,7 +544,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
             task_id = req.query.get("task_id")
             attempt_number = req.query.get("attempt_number")
-            node_id = req.query.get("node_id")
             try:
                 (pid, _) = await self.get_worker_details_for_running_task(
                     task_id, attempt_number
@@ -556,6 +555,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         assert pid is not None
 
+        node_id = req.query.get("node_id")
         duration_s = int(req.query.get("duration", 10))
 
         # Default not using `--native`, `--leaks` and `--format` for profiling
