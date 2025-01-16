@@ -196,11 +196,13 @@ class MetricsLogger:
             return default
 
         # Otherwise, return the reduced Stats' (peek) value.
+        with self._threading_lock:
+            struct = self._get_key(key).copy()
 
         # Create a reduced view of the requested sub-structure or leaf (Stats object).
         ret = tree.map_structure(
             lambda s: s.peek(throughput=throughput),
-            self._get_key(key),
+            struct,
         )
         return ret
 
@@ -1076,8 +1078,9 @@ class MetricsLogger:
             logger.reset()
             check(logger.reduce(), {})
         """
-        self.stats = {}
-        self._tensor_keys = set()
+        with self._threading_lock:
+            self.stats = {}
+            self._tensor_keys = set()
 
     def delete(self, *key: Tuple[str, ...], key_error: bool = True) -> None:
         """Deletes the given `key` from this metrics logger's stats.
@@ -1150,37 +1153,40 @@ class MetricsLogger:
 
     def _set_key(self, flat_key, stats):
         flat_key = force_tuple(tree.flatten(flat_key))
-        _dict = self.stats
-        for i, key in enumerate(flat_key):
-            # If we are at the end of the key sequence, set
-            # the key, no matter, whether it already exists or not.
-            if i == len(flat_key) - 1:
-                _dict[key] = stats
-                return
-            # If an intermediary key in the sequence is missing,
-            # add a sub-dict under this key.
-            if key not in _dict:
-                _dict[key] = {}
-            _dict = _dict[key]
+
+        with self._threading_lock:
+            _dict = self.stats
+            for i, key in enumerate(flat_key):
+                # If we are at the end of the key sequence, set
+                # the key, no matter, whether it already exists or not.
+                if i == len(flat_key) - 1:
+                    _dict[key] = stats
+                    return
+                # If an intermediary key in the sequence is missing,
+                # add a sub-dict under this key.
+                if key not in _dict:
+                    _dict[key] = {}
+                _dict = _dict[key]
 
     def _del_key(self, flat_key, key_error=False):
         flat_key = force_tuple(tree.flatten(flat_key))
 
-        # Erase the tensor key as well, if applicable.
-        if flat_key in self._tensor_keys:
-            self._tensor_keys.discard(flat_key)
+        with self._threading_lock:
+            # Erase the tensor key as well, if applicable.
+            if flat_key in self._tensor_keys:
+                self._tensor_keys.discard(flat_key)
 
-        # Erase the key from the (nested) `self.stats` dict.
-        _dict = self.stats
-        try:
-            for i, key in enumerate(flat_key):
-                if i == len(flat_key) - 1:
-                    del _dict[key]
-                    return
-                _dict = _dict[key]
-        except KeyError as e:
-            if key_error:
-                raise e
+            # Erase the key from the (nested) `self.stats` dict.
+            _dict = self.stats
+            try:
+                for i, key in enumerate(flat_key):
+                    if i == len(flat_key) - 1:
+                        del _dict[key]
+                        return
+                    _dict = _dict[key]
+            except KeyError as e:
+                if key_error:
+                    raise e
 
 
 class _DummyRLock:
