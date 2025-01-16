@@ -179,6 +179,13 @@ def _expand_directory(
         description=f"get file info for path '{base_path}'",
         match=retry_on_error_messages,
     )
+
+    # Lineage reconstruction doesn't work if tasks aren't deterministic, and
+    # `filesystem.get_file_info` might return files in a non-deterministic order. So, we
+    # sort the files.
+    assert isinstance(files, list), type(files)
+    files.sort(key=lambda file_: file_.path)
+
     for file_ in files:
         if not file_.path.startswith(base_path):
             continue
