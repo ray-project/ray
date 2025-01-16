@@ -3952,6 +3952,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if config["replay_buffer_config"]["type"] in [
             "EpisodeReplayBuffer",
             "PrioritizedEpisodeReplayBuffer",
+            "MultiAgentEpisodeReplayBuffer",
         ]:
             # TODO (simon): If all episode buffers have metrics, check for sublassing.
             config["replay_buffer_config"][

@@ -10,7 +10,11 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import (
+    DeveloperAPI,
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import AgentID, ModuleID, SampleBatchType
 
@@ -117,6 +121,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         *,
         batch_size_B: int = 16,
         batch_length_T: int = 1,
+        metrics_num_episodes_for_smoothing: int = 100,
         **kwargs,
     ):
         """Initializes a multi-agent episode replay buffer.
@@ -133,6 +138,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             capacity=capacity,
             batch_size_B=batch_size_B,
             batch_length_T=batch_length_T,
+            metrics_num_episodes_for_smoothing=metrics_num_episodes_for_smoothing,
             **kwargs,
         )
 
@@ -201,14 +207,18 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         self._num_timesteps_added += total_env_timesteps
 
         # Set up some counters for metrics.
+        num_env_steps_added = 0
+        agent_to_num_steps_added = defaultdict(int)
+        module_to_num_steps_added = defaultdict(int)
+        num_episodes_added = 0
+        agent_to_num_episodes_added = defaultdict(int)
+        module_to_num_episodes_added = defaultdict(int)
         num_episodes_evicted = 0
-        num_agent_episodes_evicted = 0
-        agent_to_num_episodes_evicted = defaultdict(0)
-        module_to_num_episodes_evicted = defaultdict(0)
+        agent_to_num_episodes_evicted = defaultdict(int)
+        module_to_num_episodes_evicted = defaultdict(int)
         num_env_steps_evicted = 0
-        num_agent_steps_evicted = 0
-        agent_to_num_steps_evicted = defaultdict(0)
-        module_to_num_steps_evicted = defaultdict(0)
+        agent_to_num_steps_evicted = defaultdict(int)
+        module_to_num_steps_evicted = defaultdict(int)
 
         # Evict old episodes.
         eps_evicted_ids: Set[Union[str, int]] = set()
@@ -243,10 +253,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             num_env_steps_evicted += evicted_episode.env_steps()
             for aid, a_eps in evicted_episode.agent_episodes.items():
                 mid = evicted_episode._agent_to_module_mapping[aid]
-                num_agent_episodes_evicted += 1
                 agent_to_num_episodes_evicted[aid] += 1
                 module_to_num_episodes_evicted[mid] += 1
-                num_agent_steps_evicted += a_eps.agent_steps()
                 agent_to_num_steps_evicted[aid] += a_eps.agent_steps()
                 module_to_num_steps_evicted[mid] += a_eps.agent_steps()
             # Remove the module timesteps of the evicted episode from the counters.
@@ -305,14 +313,38 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Otherwise, create a new entry.
             else:
                 # New episode.
+                num_episodes_added += 1
+                for aid, a_eps in eps.agent_episodes.items():
+                    mid = eps._agent_to_module_mapping[aid]
+                    agent_to_num_episodes_added[aid]
+                    module_to_num_episodes_added[mid]
                 self.episodes.append(eps)
                 eps_idx = len(self.episodes) - 1 + self._num_episodes_evicted
                 self.episode_id_to_index[eps.id_] = eps_idx
                 self._indices.extend([(eps_idx, i) for i in range(len(eps))])
                 # Add new module indices.
                 self._add_new_module_indices(eps, eps_idx, False)
+            num_env_steps_added += eps.env_steps()
+            for aid, e_eps in eps.agent_episodes.items():
+                mid = eps._agent_to_module_mapping[aid]
+                agent_to_num_steps_added[aid] += e_eps.agent_steps()
+                module_to_num_steps_added[mid] += e_eps.agent_steps()
 
         # Update the adding metrics.
+        self._update_add_metrics(
+            num_episodes_added,
+            num_env_steps_added,
+            num_episodes_evicted,
+            num_env_steps_evicted,
+            agent_to_num_episodes_added,
+            agent_to_num_steps_added,
+            agent_to_num_episodes_evicted,
+            agent_to_num_steps_evicted,
+            module_to_num_steps_added,
+            module_to_num_episodes_added,
+            module_to_num_episodes_evicted,
+            module_to_num_steps_evicted,
+        )
 
     @override(EpisodeReplayBuffer)
     def sample(

@@ -23,10 +23,6 @@ config = (
             "alpha": 0.6,
             "beta": 0.4,
         },
-        # replay_buffer_config={
-        #     "type": "EpisodeReplayBuffer",
-        #     "capacity": 50000,
-        # },
         n_step=(2, 5),
         double_q=True,
         dueling=True,

@@ -29,11 +29,15 @@ config = (
     .training(
         lr=0.00065 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=48,
+        # replay_buffer_config={
+        #     "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
+        #     "capacity": 50000,
+        #     "alpha": 0.6,
+        #     "beta": 0.4,
+        # },
         replay_buffer_config={
-            "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
+            "type": "MultiAgentEpisodeReplayBuffer",
             "capacity": 50000,
-            "alpha": 0.6,
-            "beta": 0.4,
         },
         n_step=(2, 5),
         double_q=True,
