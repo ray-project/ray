@@ -26,8 +26,8 @@ namespace ray {
 // 2. This function is _NOT_ thread-safe.
 //
 // TODO(hjiang): Implement full-featured redirection for windows.
-void RedirectStdout(const LogRedirectionOption &opt);
-void RedirectStderr(const LogRedirectionOption &opt);
+void RedirectStdout(const StreamRedirectionOption &opt);
+void RedirectStderr(const StreamRedirectionOption &opt);
 
 // Flush on redirected stream synchronously.
 //

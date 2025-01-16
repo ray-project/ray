@@ -46,7 +46,7 @@ TEST_P(PipeLoggerTest, NoPipeWrite) {
   const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
 
   // Take the default option, which doesn't have rotation enabled.
-  LogRedirectionOption logging_option{};
+  StreamRedirectionOption logging_option{};
   logging_option.file_path = test_file_path;
   auto log_token = CreateRedirectionFileHandle(logging_option, StdStreamFd{});
 
@@ -76,7 +76,7 @@ TEST_P(PipeLoggerTest, PipeWrite) {
   const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
 
   // Take the default option, which doesn't have rotation enabled.
-  LogRedirectionOption logging_option{};
+  StreamRedirectionOption logging_option{};
   logging_option.file_path = test_file_path;
   logging_option.rotation_max_size = 5;
   logging_option.rotation_max_file_count = 2;
@@ -116,7 +116,7 @@ TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   StdStreamFd std_stream_fd{};
   std_stream_fd.stdout_fd = new_stdout_fd;
 
-  LogRedirectionOption logging_option{};
+  StreamRedirectionOption logging_option{};
   logging_option.file_path = test_file_path;
   logging_option.tee_to_stdout = true;
 

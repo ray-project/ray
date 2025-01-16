@@ -190,7 +190,7 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(
 
 // Create a spdlog logger with all sinks specified by the given option.
 std::shared_ptr<spdlog::logger> CreateLogger(
-    const LogRedirectionOption &log_redirect_opt) {
+    const StreamRedirectionOption &log_redirect_opt) {
   std::vector<spdlog::sink_ptr> logging_sinks;
   spdlog::sink_ptr file_sink = nullptr;
   if (log_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max()) {
@@ -214,7 +214,7 @@ std::shared_ptr<spdlog::logger> CreateLogger(
 // Pipe streamer is only used in certain cases:
 // 1. Log roration is requested;
 // 2. Multiple sinks are involved.
-bool ShouldUsePipeStream(const LogRedirectionOption &log_redirect_opt) {
+bool ShouldUsePipeStream(const StreamRedirectionOption &log_redirect_opt) {
   const bool need_rotation =
       log_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max();
   return need_rotation || log_redirect_opt.tee_to_stdout ||
@@ -246,7 +246,7 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
 
 #if defined(__APPLE__) || defined(__linux__)
 RedirectionFileHandle CreateRedirectionFileHandle(
-    const LogRedirectionOption &log_redirect_opt, const StdStreamFd &std_stream_fd) {
+    const StreamRedirectionOption &log_redirect_opt, const StdStreamFd &std_stream_fd) {
   // Case-1: only redirection, but not rotation and tee involved.
   const bool should_use_pipe_stream = ShouldUsePipeStream(log_redirect_opt);
   if (!should_use_pipe_stream) {
@@ -323,7 +323,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
 #elif defined(_WIN32)
 RedirectionFileHandle CreateRedirectionFileHandle(
-    const LogRedirectionOption &log_redirect_opt, const StdStreamFd &std_stream_fd) {
+    const StreamRedirectionOption &log_redirect_opt, const StdStreamFd &std_stream_fd) {
   return RedirectionFileHandle{};
 }
 #endif

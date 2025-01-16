@@ -94,7 +94,6 @@ class RedirectionFileHandle {
     return *this;
   }
   void Close() {
-    // Only invoke termination functor when handler at a valid state.
     if (write_handle_ != -1) {
       close_fn_();
       write_handle_ = -1;
@@ -162,6 +161,6 @@ class RedirectionFileHandle {
 // Notice caller side should _NOT_ close the given file handle, it will be handled
 // internally.
 RedirectionFileHandle CreateRedirectionFileHandle(
-    const LogRedirectionOption &log_redirect_opt, const StdStreamFd &std_stream_fd);
+    const StreamRedirectionOption &log_redirect_opt, const StdStreamFd &std_stream_fd);
 
 }  // namespace ray

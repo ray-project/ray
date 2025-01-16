@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/logging_utils.h"
+#include "ray/util/stream_redirection_utils.h"
 
 #include <cstring>
 #include <functional>
@@ -58,7 +58,7 @@ void SyncOnStreamRedirection() {
 
 #if defined(__APPLE__) || defined(__linux__)
 // Redirect the given [stream_fd] based on the specified option.
-void RedirectStream(int stream_fd, const LogRedirectionOption &opt) {
+void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
   std::call_once(stream_exit_once_flag, []() {
     RAY_CHECK_EQ(std::atexit(SyncOnStreamRedirection), 0)
         << "Fails to register stream redirection termination hook.";
@@ -96,19 +96,19 @@ void FlushOnRedirectedStream(int stream_fd) {
 }  // namespace
 
 #if defined(__APPLE__) || defined(__linux__)
-void RedirectStdout(const LogRedirectionOption &opt) {
+void RedirectStdout(const StreamRedirectionOption &opt) {
   RedirectStream(GetStdoutHandle(), opt);
 }
 #elif defined(_WIN32)
-void RedirectStdout(const LogRedirectionOption &opt) { return; }
+void RedirectStdout(const StreamRedirectionOption &opt) { return; }
 #endif
 
 #if defined(__APPLE__) || defined(__linux__)
-void RedirectStderr(const LogRedirectionOption &opt) {
+void RedirectStderr(const StreamRedirectionOption &opt) {
   RedirectStream(GetStderrHandle(), opt);
 }
 #elif defined(_WIN32)
-void RedirectStderr(const LogRedirectionOption &opt) { return; }
+void RedirectStderr(const StreamRedirectionOption &opt) { return; }
 #endif
 
 void FlushOnRedirectedStdout() { FlushOnRedirectedStream(GetStdoutHandle()); }

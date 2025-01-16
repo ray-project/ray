@@ -233,20 +233,18 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
-    copts = COPTS,
     tags = ["team:core"],
 )
 
 ray_cc_test(
-    name = "logging_utils_test",
-    srcs = ["logging_utils_test.cc"],
+    name = "stream_redirection_utils_test",
+    srcs = ["stream_redirection_utils_test.cc"],
     deps = [
-        "//src/ray/util:logging_utils",
+        "//src/ray/util:stream_redirection_utils",
         ":unix_test_utils",
         "//src/ray/util",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
-    copts = COPTS,
     tags = ["team:core"],
 )

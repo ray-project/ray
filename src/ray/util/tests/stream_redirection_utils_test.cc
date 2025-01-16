@@ -14,7 +14,7 @@
 
 #if defined(__APPLE__) || defined(__linux__)
 
-#include "ray/util/logging_utils.h"
+#include "ray/util/stream_redirection_utils.h"
 
 #include <gtest/gtest.h>
 
@@ -36,7 +36,7 @@ TEST(LoggingUtilTest, RedirectStderr) {
   // Redirect stderr for testing, so we could have stdout for debugging.
   const std::string test_file_path = absl::StrFormat("%s.err", GenerateUUIDV4());
 
-  LogRedirectionOption opts;
+  StreamRedirectionOption opts;
   opts.file_path = test_file_path;
   // Manually check whether streamed content is displayed on screen.
   opts.tee_to_stderr = true;
