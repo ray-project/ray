@@ -597,6 +597,9 @@ class _StatsManager:
                     "num_tasks_finished"
                 ] += node_metrics.num_tasks_finished
                 agg_node_metrics[
+                    "obj_store_mem_used"
+                ] += node_metrics.obj_store_mem_used
+                agg_node_metrics[
                     "obj_store_mem_spilled"
                 ] += node_metrics.obj_store_mem_spilled
                 agg_node_metrics[

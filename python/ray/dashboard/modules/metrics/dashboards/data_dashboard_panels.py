@@ -54,6 +54,7 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    # TODO(mowen): Determine if we actually need bytes allocated since its not being used.
     Panel(
         id=2,
         title="Bytes Allocated",
@@ -69,20 +70,20 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     # TODO(mowen): Fix after adding in metric for data allocated
-    Panel(
-        id=40,
-        title="Bytes Allocated (by Node)",
-        description="Amount allocated by dataset operators, grouped by node.",
-        unit="bytes",
-        targets=[
-            Target(
-                expr="sum(ray_data_allocated_bytes{{{global_filters}}}) by (dataset, operator, instance)",
-                legend="Bytes Allocated: {{dataset}}, {{operator}}, {{instance}}",
-            )
-        ],
-        fill=0,
-        stack=False,
-    ),
+    # Panel(
+    #     id=40,
+    #     title="Bytes Allocated (by Node)",
+    #     description="Amount allocated by dataset operators, grouped by node.",
+    #     unit="bytes",
+    #     targets=[
+    #         Target(
+    #             expr="sum(ray_data_allocated_bytes_per_node{{{global_filters}}}) by (dataset, node)",
+    #             legend="Bytes Allocated: {{dataset}}, {{node}}",
+    #         )
+    #     ],
+    #     fill=0,
+    #     stack=False,
+    # ),
     Panel(
         id=3,
         title="Bytes Freed",
@@ -125,7 +126,6 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
-    # TODO(mowen): Fix after adding in metric for current usage
     Panel(
         id=42,
         title="Object Store Memory (by Node)",
@@ -133,8 +133,8 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_current_bytes{{{global_filters}}}) by (dataset, operator, instance)",
-                legend="Current Usage: {{dataset}}, {{operator}}, {{instance}}",
+                expr="sum(ray_data_obj_store_mem_used_per_node{{{global_filters}}}) by (dataset, node)",
+                legend="Current Usage: {{dataset}}, {{node}}",
             )
         ],
         fill=0,
