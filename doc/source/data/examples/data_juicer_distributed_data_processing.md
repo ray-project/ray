@@ -36,7 +36,7 @@ In addition, streaming-read support for CSV and Parquet files is already enabled
 
 Data-Juicer provides an optimized MinHash-LSH-based Deduplicator in Ray mode. It's a multiprocess Union-Find set in Ray Actors and a load-balanced distributed algorithm, [BTS](https://ieeexplore.ieee.org/document/10598116), to complete equivalence class merging. This operator can deduplicate terabyte-sized datasets on 1280 CPU cores in 3 hours. The Data-Juicer team's ablation study shows 2x to 3x speedups with our dedicated optimizations for Ray mode compared to the vanilla version of this deduplication operator.
 
-## Performance Results
+## Performance results
 
 ### Data Processing with Varied Scales
 
