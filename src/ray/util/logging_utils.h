@@ -24,6 +24,8 @@ namespace ray {
 // 1. This function should be called **at most once** per process; redirected stream
 // will be flushed and synchronized at process termination to guarantee no data loss.
 // 2. This function is _NOT_ thread-safe.
+//
+// TODO(hjiang): Implement full-featured redirection for windows.
 void RedirectStdout(const LogRedirectionOption &opt);
 void RedirectStderr(const LogRedirectionOption &opt);
 

@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <unistd.h>
+
 #include <limits>
 #include <string>
 
@@ -35,6 +37,12 @@ struct LogRedirectionOption {
   bool tee_to_stdout = false;
   // Whether to tee to stderr.
   bool tee_to_stderr = false;
+};
+
+// File descriptors which indicates standard stream.
+struct StdStreamFd {
+  int stdout_fd = STDOUT_FILENO;
+  int stderr_fd = STDERR_FILENO;
 };
 
 }  // namespace ray

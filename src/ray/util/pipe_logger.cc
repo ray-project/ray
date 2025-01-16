@@ -89,11 +89,13 @@ void CompleteWriteEOFIndicator(HANDLE write_handle) {
 }
 #endif
 
-template <typename ReadFunc>
+// TODO(hjiang): No need to return stream dumper.
+template <typename ReadFunc, typename WriteFunc, typename FlushFunc>
 std::shared_ptr<StreamDumper> CreateStreamDumper(
     ReadFunc read_func,
+    WriteFunc write_func,
+    FlushFunc flush_func,
     std::function<void()> close_read_handle,
-    std::shared_ptr<spdlog::logger> logger,
     std::function<void()> on_close_completion) {
   auto stream_dumper = std::make_shared<StreamDumper>();
 
@@ -153,7 +155,8 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(
   }).detach();
 
   std::thread([stream_dumper = stream_dumper,
-               logger = std::move(logger),
+               write_func = std::move(write_func),
+               flush_func = std::move(flush_func),
                on_close_completion = std::move(on_close_completion)]() {
     while (true) {
       std::string curline;
@@ -171,14 +174,14 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(
           curline = std::move(stream_dumper->content.front());
           stream_dumper->content.pop_front();
         } else if (stream_dumper->stopped) {
-          logger->flush();
+          flush_func();
           on_close_completion();
           return;
         }
       }
 
       // Perform IO operation out of critical section.
-      logger->log(spdlog::level::info, curline);
+      write_func(curline);
     }
   }).detach();
 
@@ -189,28 +192,20 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(
 std::shared_ptr<spdlog::logger> CreateLogger(
     const LogRedirectionOption &log_redirect_opt) {
   std::vector<spdlog::sink_ptr> logging_sinks;
+  spdlog::sink_ptr file_sink = nullptr;
   if (log_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max()) {
-    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+    file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
         log_redirect_opt.file_path,
         log_redirect_opt.rotation_max_size,
         log_redirect_opt.rotation_max_file_count);
-    file_sink->set_level(spdlog::level::info);
-    logging_sinks.emplace_back(std::move(file_sink));
+  } else {
+    file_sink =
+        std::make_shared<spdlog::sinks::basic_file_sink_st>(log_redirect_opt.file_path);
   }
-  if (log_redirect_opt.tee_to_stdout) {
-    auto stdout_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    stdout_sink->set_level(spdlog::level::info);
-    logging_sinks.emplace_back(std::move(stdout_sink));
-  }
-  if (log_redirect_opt.tee_to_stderr) {
-    auto stderr_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
-    stderr_sink->set_level(spdlog::level::info);
-    logging_sinks.emplace_back(std::move(stderr_sink));
-  }
+  file_sink->set_level(spdlog::level::info);
   auto logger = std::make_shared<spdlog::logger>(
       /*name=*/absl::StrFormat("pipe-logger-%s", log_redirect_opt.file_path),
-      std::make_move_iterator(logging_sinks.begin()),
-      std::make_move_iterator(logging_sinks.end()));
+      std::move(file_sink));
   logger->set_level(spdlog::level::info);
   logger->set_pattern("%v");  // Only message string is logged.
   return logger;
@@ -281,12 +276,15 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
 }  // namespace
 
 RedirectionFileHandle CreateRedirectionFileHandle(
-    const LogRedirectionOption &log_redirect_opt) {
+    const LogRedirectionOption &log_redirect_opt, const StdStreamFd &std_stream_fd) {
+  // Case-1: only redirection, but not rotation and tee involved.
   const bool should_use_pipe_stream = ShouldUsePipeStream(log_redirect_opt);
   if (!should_use_pipe_stream) {
     return OpenFileForRedirection(log_redirect_opt.file_path);
   }
 
+  // Case-2: redirection with rotation, or tee is involved.
+  //
   // Used to synchronize on asynchronous stream logging.
   // Shared pointer is used here to workaround the known limitation `std::function`
   // requires captured to be copy constructible.
@@ -336,21 +334,47 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 #endif
 
   auto logger = CreateLogger(log_redirect_opt);
+
+  // [content] doesn't have trailing newliner.
+  auto write_fn = [logger,
+                   log_redirect_opt = log_redirect_opt,
+                   std_stream_fd = std_stream_fd](const std::string &content) {
+    if (logger != nullptr) {
+      logger->log(spdlog::level::info, content);
+    }
+    if (log_redirect_opt.tee_to_stdout) {
+      RAY_CHECK_EQ(write(std_stream_fd.stdout_fd, content.data(), content.length()),
+                   content.length());
+      RAY_CHECK_EQ(write(std_stream_fd.stdout_fd, "\n", 1), 1);
+    }
+    if (log_redirect_opt.tee_to_stderr) {
+      RAY_CHECK_EQ(write(std_stream_fd.stderr_fd, content.data(), content.length()),
+                   content.length());
+      RAY_CHECK_EQ(write(std_stream_fd.stderr_fd, "\n", 1), 1);
+    }
+  };
+  auto flush_fn =
+      [logger, log_redirect_opt = log_redirect_opt, std_stream_fd = std_stream_fd]() {
+        if (logger != nullptr) {
+          logger->flush();
+        }
+        if (log_redirect_opt.tee_to_stdout) {
+          fsync(std_stream_fd.stdout_fd);
+        }
+      };
+
   CreateStreamDumper(std::move(read_func),
+                     std::move(write_fn),
+                     flush_fn,
                      std::move(close_read_handle),
-                     logger,
                      std::move(on_close_completion));
 
 #if defined(__APPLE__) || defined(__linux__)
   RedirectionFileHandle redirection_file_handle{
-      write_fd,
-      /*flush_fn=*/[logger = std::move(logger)]() { logger->flush(); },
-      std::move(close_fn)};
+      write_fd, std::move(flush_fn), std::move(close_fn)};
 #elif defined(_WIN32)
   RedirectionFileHandle redirection_file_handle{
-      write_handle,
-      /*flush_fn=*/[logger = std::move(logger)]() { logger->flush(); },
-      std::move(close_fn)};
+      write_handle, std::move(flush_fn), std::move(close_fn)};
 #endif
 
   return redirection_file_handle;

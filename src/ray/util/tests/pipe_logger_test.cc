@@ -17,6 +17,7 @@
 #include "ray/util/pipe_logger.h"
 
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include <cstdint>
 #include <future>
@@ -47,7 +48,7 @@ TEST_P(PipeLoggerTest, NoPipeWrite) {
   // Take the default option, which doesn't have rotation enabled.
   LogRedirectionOption logging_option{};
   logging_option.file_path = test_file_path;
-  auto log_token = CreateRedirectionFileHandle(logging_option);
+  auto log_token = CreateRedirectionFileHandle(logging_option, StdStreamFd{});
 
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
             kLogLine1.length());
@@ -80,7 +81,7 @@ TEST_P(PipeLoggerTest, PipeWrite) {
   logging_option.rotation_max_size = 5;
   logging_option.rotation_max_file_count = 2;
 
-  auto log_token = CreateRedirectionFileHandle(logging_option);
+  auto log_token = CreateRedirectionFileHandle(logging_option, StdStreamFd{});
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
             kLogLine1.length());
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
@@ -103,6 +104,36 @@ TEST_P(PipeLoggerTest, PipeWrite) {
 }
 
 INSTANTIATE_TEST_SUITE_P(PipeLoggerTest, PipeLoggerTest, testing::Values(1024, 3));
+
+// TODO(hjiang): Add more test cases on different combinations.
+TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
+  // TODO(core): We should have a better test util, which allows us to create a temporary
+  // testing directory.
+  const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+  // Manually check whether stdout displays content correctly.
+  const int new_stdout_fd = dup(STDOUT_FILENO);
+  StdStreamFd std_stream_fd{};
+  std_stream_fd.stdout_fd = new_stdout_fd;
+
+  LogRedirectionOption logging_option{};
+  logging_option.file_path = test_file_path;
+  logging_option.tee_to_stdout = true;
+
+  auto log_token = CreateRedirectionFileHandle(logging_option, StdStreamFd{});
+  ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
+            kLogLine1.length());
+  ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
+            kLogLine2.length());
+  log_token.Close();
+
+  // Check log content after completion.
+  EXPECT_EQ(CompleteReadFile(test_file_path),
+            absl::StrFormat("%s%s", kLogLine1, kLogLine2));
+
+  // Delete temporary file.
+  EXPECT_EQ(unlink(test_file_path.data()), 0);
+}
 
 }  // namespace
 

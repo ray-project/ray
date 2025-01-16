@@ -54,7 +54,10 @@ class RedirectionFileHandle {
                         std::function<void()> close_fn)
       : write_handle_(write_handle),
         flush_fn_(std::move(flush_fn)),
-        close_fn_(std::move(close_fn)) {}
+        close_fn_(std::move(close_fn)) {
+    RAY_CHECK(flush_fn_);
+    RAY_CHECK(close_fn_);
+  }
   RedirectionFileHandle(const RedirectionFileHandle &) = delete;
   RedirectionFileHandle &operator=(const RedirectionFileHandle &) = delete;
   ~RedirectionFileHandle() = default;
@@ -65,9 +68,8 @@ class RedirectionFileHandle {
   // in the pipe; a better approach is flush pipe, send FLUSH indicator and block wait
   // until logger sync over.
   void Flush() {
-    if (flush_fn_) {
-      flush_fn_();
-    }
+    RAY_CHECK(flush_fn_);
+    flush_fn_();
   }
 
   // Used to write to.
@@ -160,6 +162,6 @@ class RedirectionFileHandle {
 // Notice caller side should _NOT_ close the given file handle, it will be handled
 // internally.
 RedirectionFileHandle CreateRedirectionFileHandle(
-    const LogRedirectionOption &log_redirect_opt);
+    const LogRedirectionOption &log_redirect_opt, const StdStreamFd &std_stream_fd);
 
 }  // namespace ray

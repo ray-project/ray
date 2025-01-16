@@ -63,7 +63,19 @@ void RedirectStream(int stream_fd, const LogRedirectionOption &opt) {
         << "Fails to register stream redirection termination hook.";
   });
 
-  RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
+  StdStreamFd std_stream_fd{};
+  if (opt.tee_to_stdout) {
+    std_stream_fd.stdout_fd = dup(STDOUT_FILENO);
+    RAY_CHECK_NE(std_stream_fd.stdout_fd, -1)
+        << "Fails to duplicate stdout: " << strerror(errno);
+  }
+  if (opt.tee_to_stderr) {
+    std_stream_fd.stderr_fd = dup(STDERR_FILENO);
+    RAY_CHECK_NE(std_stream_fd.stderr_fd, -1)
+        << "Fails to duplicate stderr: " << strerror(errno);
+  }
+
+  RedirectionFileHandle handle = CreateRedirectionFileHandle(opt, std_stream_fd);
 
 #if defined(__APPLE__) || defined(__linux__)
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
@@ -89,10 +101,18 @@ void FlushOnRedirectedStream(int stream_fd) {
 }  // namespace
 
 void RedirectStdout(const LogRedirectionOption &opt) {
+#if defined(_WIN32)
+  return;
+#endif
+
   RedirectStream(GetStdoutHandle(), opt);
 }
 
 void RedirectStderr(const LogRedirectionOption &opt) {
+#if defined(_WIN32)
+  return;
+#endif
+
   RedirectStream(GetStderrHandle(), opt);
 }
 
