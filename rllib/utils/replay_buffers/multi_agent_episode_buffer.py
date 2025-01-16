@@ -316,8 +316,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 num_episodes_added += 1
                 for aid, a_eps in eps.agent_episodes.items():
                     mid = eps._agent_to_module_mapping[aid]
-                    agent_to_num_episodes_added[aid]
-                    module_to_num_episodes_added[mid]
+                    agent_to_num_episodes_added[aid] += 1
+                    module_to_num_episodes_added[mid] += 1
                 self.episodes.append(eps)
                 eps_idx = len(self.episodes) - 1 + self._num_episodes_evicted
                 self.episode_id_to_index[eps.id_] = eps_idx

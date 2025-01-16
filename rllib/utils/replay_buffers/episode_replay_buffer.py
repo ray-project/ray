@@ -483,6 +483,33 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 agent_to_num_steps_evicted[aid],
                 reduce="sum",
             )
+        # Note, we need to loop through the metrics here to receive
+        # metrics for all agents (not only the ones that steps).
+        for aid in self.metrics.stats[NUM_AGENT_STEPS_ADDED_LIFETIME]:
+            # Add default metrics for evicted episodes if not existent.
+            if aid not in agent_to_num_episodes_evicted:
+                self.metrics.log_value(
+                    (NUM_AGENT_EPISODES_EVICTED, aid),
+                    0,
+                    reduce="sum",
+                    clear_on_reduce=True,
+                )
+                self.metrics.log_value(
+                    (NUM_AGENT_EPISODES_EVICTED_LIFETIME, aid),
+                    0,
+                    reduce="sum",
+                )
+                self.metrics.log_value(
+                    (NUM_AGENT_STEPS_EVICTED, aid),
+                    0,
+                    reduce="sum",
+                    clear_on_reduce=True,
+                )
+                self.metrics.log_value(
+                    (NUM_AGENT_STEPS_EVICTED_LIFETIME, aid),
+                    0,
+                    reduce="sum",
+                )
             # Number of episodes in the buffer.
             agent_episodes_stored = self.metrics.peek(
                 (NUM_AGENT_EPISODES_ADDED_LIFETIME, aid)
@@ -497,6 +524,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             agent_steps_stored = self.metrics.peek(
                 (NUM_AGENT_STEPS_ADDED_LIFETIME, aid)
             ) - self.metrics.peek((NUM_AGENT_EPISODES_EVICTED_LIFETIME, aid))
+
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_STORED, aid),
                 agent_steps_stored,
@@ -557,7 +585,33 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 module_to_num_steps_evicted[mid],
                 reduce="sum",
             )
+        # Note, we need to loop through the metrics here to receive
+        # metrics for all agents (not only the ones that steps).
+        for mid in self.metrics.stats[NUM_MODULE_STEPS_ADDED_LIFETIME]:
             # Number of episodes in the buffer.
+            if mid not in module_to_num_episodes_evicted:
+                self.metrics.log_value(
+                    (NUM_MODULE_EPISODES_EVICTED, mid),
+                    0,
+                    reduce="sum",
+                    clear_on_reduce=True,
+                )
+                self.metrics.log_value(
+                    (NUM_MODULE_EPISODES_EVICTED_LIFETIME, mid),
+                    0,
+                    reduce="sum",
+                )
+                self.metrics.log_value(
+                    (NUM_MODULE_STEPS_EVICTED, mid),
+                    0,
+                    reduce="sum",
+                    clear_on_reduce=True,
+                )
+                self.metrics.log_value(
+                    (NUM_MODULE_STEPS_EVICTED_LIFETIME, mid),
+                    0,
+                    reduce="sum",
+                )
             module_episodes_stored = self.metrics.peek(
                 (NUM_MODULE_EPISODES_ADDED_LIFETIME, mid)
             ) - self.metrics.peek((NUM_MODULE_EPISODES_EVICTED_LIFETIME, mid))
