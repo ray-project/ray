@@ -202,8 +202,8 @@ class DashboardAgent:
         http_port = -1 if not self.http_server else self.http_server.http_port
         grpc_port = -1 if not self.server else self.grpc_port
         await self.gcs_aio_client.internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}".encode(),
-            json.dumps([http_port, grpc_port]).encode(),
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_PREFIX}{self.node_id}".encode(),
+            json.dumps([self.ip, http_port, grpc_port]).encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )

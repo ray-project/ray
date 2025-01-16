@@ -216,10 +216,10 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         present until agent.py starts, so we need to loop waiting for agent.py writes
         its port to internal kv.
         """
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}".encode()
+        key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_PREFIX}{node_id}".encode()
         while True:
             try:
-                agent_port = await self.gcs_aio_client.internal_kv_get(
+                agent_addr = await self.gcs_aio_client.internal_kv_get(
                     key,
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
                     timeout=None,
@@ -228,8 +228,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 # node is still alive.
                 if DataSource.nodes.get(node_id, {}).get("state") != "ALIVE":
                     return
-                if agent_port:
-                    DataSource.agents[node_id] = json.loads(agent_port)
+                if agent_addr:
+                    DataSource.agents[node_id] = json.loads(agent_addr)
                     return
             except Exception:
                 logger.exception(f"Error getting agent port for node {node_id}.")

@@ -633,26 +633,20 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         self, node_id: NodeID
     ) -> Optional[Tuple[str, int, int]]:
         """
-        Given a NodeID, Gather 2 async tasks:
-        - get the NodeManagerAddress from GCS
-        - get agent port from InternalKV
+        Given a NodeID, get agent port from InternalKV.
 
         returns a tuple of (ip, http_port, grpc_port).
 
         If either of them are not found, return None.
         """
-        node_info, agent_port_json = await asyncio.gather(
-            self.gcs_aio_client.get_all_node_info(node_id=node_id),
-            self.gcs_aio_client.internal_kv_get(
-                f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id.hex()}".encode(),
-                namespace=KV_NAMESPACE_DASHBOARD,
-                timeout=None,
-            ),
+        agent_addr_json = await self.gcs_aio_client.internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_PREFIX}{node_id.hex()}".encode(),
+            namespace=KV_NAMESPACE_DASHBOARD,
+            timeout=GCS_RPC_TIMEOUT_SECONDS,
         )
-        if not node_info or not agent_port_json:
+        if not agent_addr_json:
             return None
-        ip = node_info[node_id].node_manager_address
-        http_port, grpc_port = json.loads(agent_port_json)
+        ip, http_port, grpc_port = json.loads(agent_addr_json)
         return ip, http_port, grpc_port
 
     def _make_stub(
