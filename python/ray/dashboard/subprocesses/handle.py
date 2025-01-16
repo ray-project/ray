@@ -23,7 +23,11 @@ from ray.dashboard.subprocesses.module import (
     SubprocessModuleConfig,
     run_module,
 )
-from ray.dashboard.subprocesses.utils import assert_not_in_asyncio_loop, ThreadSafeDict
+from ray.dashboard.subprocesses.utils import (
+    assert_not_in_asyncio_loop,
+    ThreadSafeDict,
+    module_logging_filename,
+)
 
 """
 This file contains code run in the parent process. It can start a subprocess and send
@@ -46,6 +50,20 @@ class SubprocessModuleHandle:
     3. SubprocessRouteTable.bind(handle)
     4. app.add_routes(routes=SubprocessRouteTable.bound_routes())
     5. run the app.
+
+    Health check:
+    Every 1s, do a health check by _do_health_check_every_second. If the module is
+    unhealthy:
+      1. log the exception
+      2. log the last N lines of the log file
+      3. fail all active requests
+      4. restart the module
+
+    TODO(ryw): define policy for health check:
+    - check period (Now: 1s)
+    - define unhealthy. (Now: process exits. TODO: check_health() for event loop hang)
+    - check number of failures in a row before we deem it unhealthy (Now: N/A)
+    - "max number of restarts"? (Now: infinite)
     """
 
     @dataclass
@@ -75,16 +93,27 @@ class SubprocessModuleHandle:
         self.loop = loop
         self.module_cls = module_cls
         self.config = config
-        self.child_bound_queue = multiprocessing.Queue()
-        self.parent_bound_queue = multiprocessing.Queue()
 
-        self.dispatch_parent_bound_messages_thread = None
-
+        # Runtime states, set by start_module(), reset by destroy_module().
+        self.next_request_id = None
+        self.child_bound_queue = None
+        self.parent_bound_queue = None
         self.active_requests = ThreadSafeDict[
             int, SubprocessModuleHandle.ActiveRequest
         ]()
-        self.next_request_id = 0
+        self.process = None
+        self.dispatch_parent_bound_messages_thread = None
+        self.health_check_task = None
 
+    def start_module(self, start_dispatch_parent_bound_messages_thread: bool = True):
+        """
+        Params:
+        - start_dispatch_parent_bound_messages_thread: used for testing.
+        """
+        self.next_request_id = 0
+        self.child_bound_queue = multiprocessing.Queue()
+        self.parent_bound_queue = multiprocessing.Queue()
+        self.active_requests.pop_all()
         self.process = multiprocessing.Process(
             target=run_module,
             args=(
@@ -97,8 +126,92 @@ class SubprocessModuleHandle:
         )
         self.process.start()
 
-    def start(self):
-        self._start_dispatch_parent_bound_messages_thread()
+        if start_dispatch_parent_bound_messages_thread:
+            self.dispatch_parent_bound_messages_thread = threading.Thread(
+                target=dispatch_parent_bound_messages,
+                args=(self.loop, self.parent_bound_queue, self),
+                daemon=True,
+            )
+            self.dispatch_parent_bound_messages_thread.start()
+
+        self.health_check_task = self.loop.create_task(
+            self._do_health_check_every_second()
+        )
+
+    async def destroy_module(self, reason: Exception):
+        """
+        Destroy the module. This is called when the module is unhealthy.
+
+        async because we need to set exceptions to the futures.
+
+        Params:
+        - reason: the exception that caused the module to be destroyed. Propagated to
+          active requests so they can be failed.
+        """
+        self.next_request_id = 0
+        self.process.terminate()
+        self.process = None
+
+        for active_request in self.active_requests.pop_all().values():
+            active_request.response_fut.set_exception(reason)
+        self.parent_bound_queue.close()
+        self.parent_bound_queue = None
+
+        self.child_bound_queue.close()
+        self.child_bound_queue = None
+
+        # dispatch_parent_bound_messages_thread is daemon so we don't need to join it.
+        self.dispatch_parent_bound_messages_thread = None
+
+        self.health_check_task.cancel()
+        self.health_check_task = None
+
+    async def health_check(self) -> aiohttp.web.Response:
+        """
+        Do internal health check. The module should respond immediately with a 200 OK.
+        This can be used to measure module responsiveness in RTT, it also indicates
+        subprocess event loop lag.
+
+        Currently you get a 200 OK with body = b'ok!'. Later if we want we can add more
+        observability payloads.
+        """
+        return await self.send_request("_internal_health_check", request=None)
+
+    async def _do_once_health_check(self):
+        """
+        Do a health check once. We check for:
+        1. if the process exits, it's considered died.
+
+        # TODO(ryw): also do `await self.health_check()` and define a policy to
+        # determine if the process is dead.
+        """
+        if self.process.exitcode is not None:
+            raise RuntimeError(f"Process exited with code {self.process.exitcode}")
+
+    async def _do_health_check_every_second(self):
+        """
+        Every 1s, do a health check. If the module is unhealthy:
+        1. log the exception
+        2. log the last N lines of the log file
+        3. fail all active requests
+        4. restart the module
+        """
+        while True:
+            try:
+                await self._do_once_health_check()
+            except Exception as e:
+                filename = module_logging_filename(
+                    self.module_cls.__name__, self.config.logging_filename
+                )
+                logger.exception(
+                    f"Module {self.module_cls.__name__} is unhealthy. Please refer to"
+                    f"{self.config.log_dir}/{filename} "
+                    "for more details. Failing all active requests."
+                )
+                await self.destroy_module(e)
+                self.start_module()
+                return
+            await asyncio.sleep(1)
 
     async def send_request(
         self, method_name: str, request: Optional[aiohttp.web.Request]
@@ -123,26 +236,6 @@ class SubprocessModuleHandle:
             RequestMessage(request_id=request_id, method_name=method_name, body=body)
         )
         return await new_active_request.response_fut
-
-    async def health_check(self):
-        """
-        Do internal health check. The module should respond immediately with a 200 OK.
-        This can be used to measure module responsiveness in RTT, it also indicates
-        subprocess event loop lag.
-
-        Currently you get a 200 OK with body = b'ok!'. Later if we want we can add more
-        observability payloads.
-        """
-        return await self.send_request("_internal_health_check", request=None)
-
-    # PRIVATE METHODS
-    def _start_dispatch_parent_bound_messages_thread(self):
-        self.dispatch_parent_bound_messages_thread = threading.Thread(
-            target=dispatch_parent_bound_messages,
-            args=(self.loop, self.parent_bound_queue, self),
-            daemon=True,
-        )
-        self.dispatch_parent_bound_messages_thread.start()
 
     def _send_message(self, message: ChildBoundMessage):
         self.child_bound_queue.put(message)

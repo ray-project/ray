@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import signal
 from typing import AsyncIterator
 
 import aiohttp
@@ -71,4 +73,11 @@ class TestModule(SubprocessModule):
     @SubprocessRouteTable.post("/logging_in_module")
     async def logging_in_module(self, request_body: bytes) -> aiohttp.web.Response:
         logger.info("In /logging_in_module, Not all those who wander are lost.")
+        return aiohttp.web.Response(text="done!")
+
+    @SubprocessRouteTable.post("/kill_self")
+    async def kill_self(self, request_body: bytes) -> aiohttp.web.Response:
+        logger.error("Crashing by sending myself a sigkill")
+        os.kill(os.getpid(), signal.SIGKILL)
+        asyncio.sleep(1000)
         return aiohttp.web.Response(text="done!")

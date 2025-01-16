@@ -59,3 +59,9 @@ class ThreadSafeDict(Generic[K, V]):
             if value is None:
                 raise KeyError(f"Key {key} not found in {self._dict}")
             return value
+
+    def pop_all(self) -> dict[K, V]:
+        with self._lock:
+            d = self._dict
+            self._dict = {}
+            return d
