@@ -82,7 +82,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         for i in range(num_timesteps):
             # If terminated we create a new episode.
             if terminated:
-                episodes.append(eps.finalize())
+                episodes.append(eps.to_numpy())
                 eps = SingleAgentEpisode()
                 obs, info = env.reset()
                 eps.add_env_reset(obs, info)
@@ -310,7 +310,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         gamma: float = 0.99,
         include_infos: bool = False,
         include_extra_model_outputs: bool = False,
-        finalize: bool = False,
+        to_numpy: bool = False,
         **kwargs,
     ) -> SampleBatchType:
         """Samples from a buffer in a prioritized way.
@@ -492,8 +492,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 len_lookback_buffer=0,
                 t_started=episode_ts,
             )
-            if finalize:
-                sampled_episode.finalize()
+            if to_numpy:
+                sampled_episode.to_numpy()
             sampled_episodes.append(sampled_episode)
 
             # Increment counter.

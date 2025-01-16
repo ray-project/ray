@@ -1,6 +1,11 @@
 load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 
 ray_cc_library(
+    name = "compat",
+    hdrs = ["compat.h"],
+)
+
+ray_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
 )
