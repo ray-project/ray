@@ -111,6 +111,8 @@ class NodeMetrics:
     num_tasks_running: int = field(default=0)
     num_tasks_finished: int = field(default=0)
     obj_store_mem_spilled: int = field(default=0)
+    obj_store_mem_freed: int = field(default=0)
+    bytes_outputs_of_finished_tasks: int = field(default=0)
 
 
 class OpRuntimesMetricsMeta(type):
@@ -563,6 +565,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             self.rows_task_outputs_generated += meta.num_rows
             trace_allocation(block_ref, "operator_output")
 
+        # update per node metrics
+        for _, meta in output.blocks:
+            if meta.exec_stats is not None and meta.exec_stats.node_id is not None:
+                node_id = meta.exec_stats.node_id
+            else:
+                node_id = _NODE_UNKNOWN
+
+            node_metrics = node_metrics = self._per_node_metrics[node_id]
+            node_metrics.bytes_outputs_of_finished_tasks += meta.size_bytes
+
     def on_task_finished(self, task_index: int, exception: Optional[Exception]):
         """Callback when a task is finished."""
         self.num_tasks_running -= 1
@@ -602,16 +614,22 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.obj_store_mem_freed += total_input_size
 
         # update per node metrics
-        node_ids = set()
+        node_ids_seen = set()
         for block, meta in inputs.blocks:
-            # collect node ids
             if meta.exec_stats is not None and meta.exec_stats.node_id is not None:
-                node_ids.add(meta.exec_stats.node_id)
+                node_id = meta.exec_stats.node_id
+            else:
+                node_id = _NODE_UNKNOWN
 
-        for node_id in node_ids:
-            node_metrics = self._per_node_metrics[node_id]
-            node_metrics.num_tasks_finished += 1
-            node_metrics.num_tasks_running -= 1
+            node_metrics = node_metrics = self._per_node_metrics[node_id]
+
+            # stats to update once per node id or if node id is unknown
+            if node_id not in node_ids_seen or node_id == _NODE_UNKNOWN:
+                node_metrics.num_tasks_finished += 1
+                node_metrics.num_tasks_running -= 1
+
+            # stats to update once per block
+            node_metrics.obj_store_mem_freed += meta.size_bytes
 
         inputs.destroy_if_owned()
         del self._running_tasks[task_index]

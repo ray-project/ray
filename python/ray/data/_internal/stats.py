@@ -599,6 +599,12 @@ class _StatsManager:
                 agg_node_metrics[
                     "obj_store_mem_spilled"
                 ] += node_metrics.obj_store_mem_spilled
+                agg_node_metrics[
+                    "obj_store_mem_freed"
+                ] += node_metrics.obj_store_mem_freed
+                agg_node_metrics[
+                    "bytes_outputs_of_finished_tasks"
+                ] += node_metrics.bytes_outputs_of_finished_tasks
         return aggregated_by_node
 
     def update_execution_metrics(

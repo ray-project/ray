@@ -47,8 +47,8 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_spilled_bytes{{{global_filters}}}) by (dataset, operator, instance)",
-                legend="Bytes Spilled: {{dataset}}, {{operator}}, {{instance}}",
+                expr="sum(ray_data_obj_store_mem_spilled_per_node{{{global_filters}}}) by (dataset, node)",
+                legend="Bytes Spilled: {{dataset}}, {{node}}",
             )
         ],
         fill=0,
@@ -68,6 +68,7 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    # TODO(mowen): Fix after adding in metric for data allocated
     Panel(
         id=40,
         title="Bytes Allocated (by Node)",
@@ -103,8 +104,8 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_freed_bytes{{{global_filters}}}) by (dataset, operator, instance)",
-                legend="Bytes Freed: {{dataset}}, {{operator}}, {{instance}}",
+                expr="sum(ray_data_obj_store_mem_freed_per_node{{{global_filters}}}) by (dataset, node)",
+                legend="Bytes Freed: {{dataset}}, {{node}}",
             )
         ],
         fill=0,
@@ -124,6 +125,7 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    # TODO(mowen): Fix after adding in metric for current usage
     Panel(
         id=42,
         title="Object Store Memory (by Node)",
@@ -350,8 +352,8 @@ DATA_GRAFANA_PANELS = [
         unit="Bps",
         targets=[
             Target(
-                expr="rate(ray_data_bytes_outputs_of_finished_tasks{{{global_filters}}}[1m])) by (dataset, operator, instance)",
-                legend="Bytes Taken / Second: {{dataset}}, {{operator}}, {{instance}}",
+                expr="rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node)",
+                legend="Bytes Taken / Second: {{dataset}}, {{node}}",
             )
         ],
         fill=0,
@@ -379,8 +381,8 @@ DATA_GRAFANA_PANELS = [
         unit="tasks",
         targets=[
             Target(
-                expr="sum(ray_data_num_tasks_submitted{{{global_filters}}}) by (dataset, operator, instance)",
-                legend="Submitted Tasks: {{dataset}}, {{operator}}, {{instance}}",
+                expr="sum(ray_data_num_tasks_submitted_per_node{{{global_filters}}}) by (dataset, node)",
+                legend="Submitted Tasks: {{dataset}}, {{node}}",
             )
         ],
         fill=0,
@@ -407,8 +409,8 @@ DATA_GRAFANA_PANELS = [
         unit="tasks",
         targets=[
             Target(
-                expr="sum(ray_data_num_tasks_running{{{global_filters}}}) by (dataset, operator, instance)",
-                legend="Running Tasks: {{dataset}}, {{operator}}, {{instance}}",
+                expr="sum(ray_data_num_tasks_running_per_node{{{global_filters}}}) by (dataset, node)",
+                legend="Running Tasks: {{dataset}}, {{node}}",
             )
         ],
         fill=0,
@@ -449,8 +451,8 @@ DATA_GRAFANA_PANELS = [
         unit="tasks",
         targets=[
             Target(
-                expr="sum(rate(ray_data_num_tasks_finished{{{global_filters}}}[1m])) by (dataset, operator, instance)",
-                legend="Finished Tasks: {{dataset}}, {{operator}}, {{instance}}",
+                expr="sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}}}[1m])) by (dataset, node)",
+                legend="Finished Tasks: {{dataset}}, {{node}}",
             )
         ],
         fill=0,
