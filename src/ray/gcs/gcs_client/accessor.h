@@ -17,6 +17,7 @@
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
+#include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/rpc/client_call.h"
@@ -414,8 +415,14 @@ class NodeInfoAccessor {
 
   /// Get information of all nodes from an RPC to GCS synchronously.
   ///
-  /// \return All nodes in cache.
+  /// \return All nodes from gcs without cache.
   virtual Status GetAllNoCache(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &nodes);
+
+  /// Get information of all nodes from an RPC to GCS synchronously with filters.
+  ///
+  /// \return All nodes that match the given filters from the gcs without the cache.
+  virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCacheWithFilters(
+      int64_t timeout_ms, rpc::GetAllNodeInfoRequest_Filters filters);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
