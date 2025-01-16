@@ -379,6 +379,18 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
     ASSERT_EQ(reply.num_filtered(), 2);
     ASSERT_EQ(reply.total(), 3);
   }
+
+  {
+    // Get by node_ip_address
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_node_ip_address("127.0.0.1");
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 1);
+    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.total(), 3);
+  }
 }
 
 TEST_F(GcsServerTest, TestWorkerInfo) {
