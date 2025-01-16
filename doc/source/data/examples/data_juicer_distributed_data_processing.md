@@ -28,7 +28,7 @@ This default execution plan can be quite inefficient especially for scenarios wi
 Streaming reading of JSON files is a common requirement in data processing for foundation models, as many datasets are stored in JSONL format and are large in size. 
 However, the current implementation in Ray Datasets, which is rooted in the underlying Arrow library (up to Ray version 2.40 and Arrow version 18.1.0), doesn't support streaming reading of JSON files.
 
-To address the lack of native support for streaming JSON data, we have developed a streaming loading interface and contributed an in-house [patch](https://github.com/modelscope/data-juicer/pull/515) for Apache Arrow ([PR to the repo](https://github.com/apache/arrow/pull/45084)). This patch helps alleviate Out-of-Memory issues. With this patch, Data-Juicer in Ray mode will, by default, use the streaming loading interface to load JSON files. 
+To address the lack of native support for streaming JSON data, the Data-Juicer team developed a streaming loading interface and contributed an in-house [patch](https://github.com/modelscope/data-juicer/pull/515) for Apache Arrow ([PR to the repo](https://github.com/apache/arrow/pull/45084)). This patch helps alleviate Out-of-Memory issues. With this patch, Data-Juicer in Ray mode, by default, uses the streaming loading interface to load JSON files. 
 Besides, streaming-read support for CSV and Parquet files is already enabled.
 
 
