@@ -37,7 +37,7 @@ import ray
 from ray.air.constants import TRAINING_ITERATION
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
@@ -538,6 +538,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
             logdir_prefix = f"{type(self).__name__}_{env_descr_for_dir}_{timestr}"
+
             if not os.path.exists(DEFAULT_STORAGE_PATH):
                 # Possible race condition if dir is created several times on
                 # rollout workers
