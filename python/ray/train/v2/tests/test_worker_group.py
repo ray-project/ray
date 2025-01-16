@@ -358,7 +358,7 @@ def test_flush_worker_result_queue(queue_backlog_length):
 def test_env_var_propagation(monkeypatch):
     """Ray Train should automatically propagate some environment variables
     from the driver to the workers."""
-    test_env_var = ENV_VARS_TO_PROPAGATE[0]
+    test_env_var = list(ENV_VARS_TO_PROPAGATE)[0]
     monkeypatch.setenv(test_env_var, "1")
     w = _default_test_worker_group()
     w.start(train_fn=lambda: None, num_workers=4, resources_per_worker={"CPU": 1})
