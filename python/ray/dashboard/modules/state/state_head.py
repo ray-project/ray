@@ -3,15 +3,17 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime
-from typing import AsyncIterable
+from typing import AsyncIterable, Optional
 
 import aiohttp.web
 from aiohttp.web import Response
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray import ActorID
 from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
@@ -27,12 +29,7 @@ from ray.dashboard.state_api_utils import (
     options_from_req,
 )
 from ray.dashboard.utils import Change, RateLimitedModule
-from ray.util.state.common import (
-    DEFAULT_LOG_LIMIT,
-    DEFAULT_RPC_TIMEOUT,
-    GetLogOptions,
-    protobuf_message_to_dict,
-)
+from ray.util.state.common import DEFAULT_LOG_LIMIT, DEFAULT_RPC_TIMEOUT, GetLogOptions
 from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient
 
@@ -278,19 +275,14 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         output_format = req.query.get("format", "leading_1")
         logger.info(f"Streaming logs with format {output_format} options: {options}")
 
-        async def get_actor_fn(actor_id: str) -> dict:
-            # can't use self._state_api.list_actors because it filters out workerId and
-            # rayletId.
-            reply = await self._state_api_data_source_client.get_all_actor_info(
-                filters=[("actor_id", "=", actor_id)]
-            )
+        async def get_actor_fn(actor_id: ActorID) -> Optional[ActorTableData]:
+            reply = await self.gcs_aio_client.get_all_actor_info(actor_id=actor_id)
             if len(reply.actor_table_data) == 0:
                 return None
-            assert len(reply.actor_table_data) == 1
-            return protobuf_message_to_dict(
-                reply.actor_table_data[0],
-                fields_to_decode=["actor_id", "node_id", "worker_id", "raylet_id"],
-            )
+            assert (
+                len(reply.actor_table_data) == 1
+            ), f"actor info for {actor_id} is not unique: {reply.actor_table_data}"
+            return reply.actor_table_data[0]
 
         async def formatter_text(response, async_gen: AsyncIterable[bytes]):
             try:

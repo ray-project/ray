@@ -44,7 +44,7 @@ from ray.dashboard.modules.log.log_agent import _stream_log_in_chunk
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.util.state import get_log, list_logs, list_nodes, list_workers
-from ray.util.state.common import GetLogOptions, protobuf_message_to_dict
+from ray.util.state.common import GetLogOptions
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_manager import StateDataSourceClient
 
@@ -98,14 +98,7 @@ async def generate_actor_data(id, node_id, worker_id):
             worker_id=worker_id,
         ),
     )
-
-    # This is different from actor_table_data_to_dict in actor_head.py
-    # because we set preserving_proto_field_name=True, so fields are snake_case, while
-    # actor_table_data_to_dict in actor_head.py is camelCase.
-    return protobuf_message_to_dict(
-        message,
-        fields_to_decode=["actor_id", "node_id", "worker_id", "raylet_id"],
-    )
+    return message
 
 
 # Unit Tests (Log Agent)
