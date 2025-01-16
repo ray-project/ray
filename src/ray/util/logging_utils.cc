@@ -24,7 +24,8 @@
 #include "ray/util/util.h"
 
 #if defined(_WIN32)
-#include <io.h>
+#include <fcntl.h>  // For _O_WTEXT
+#include <io.h>     // For _open_osfhandle
 #endif
 
 namespace ray {
@@ -55,6 +56,7 @@ void SyncOnStreamRedirection() {
   }
 }
 
+// Redirect the given [stream_fd] based on the specified option.
 void RedirectStream(int stream_fd, const LogRedirectionOption &opt) {
   std::call_once(stream_exit_once_flag, []() {
     RAY_CHECK_EQ(std::atexit(SyncOnStreamRedirection), 0)
@@ -67,7 +69,7 @@ void RedirectStream(int stream_fd, const LogRedirectionOption &opt) {
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
       << "Fails to duplicate file descritor " << strerror(errno);
 #elif defined(_WIN32)
-  const int windows_pipe_write_fd = _open_osfhandle(handle.GetWriteHandle(), _O_WTEXT);
+  int windows_pipe_write_fd = _open_osfhandle(handle.GetWriteHandle(), _O_WTEXT);
   RAY_CHECK_NE(_dup2(windows_pipe_write_fd, stream_fd), -1)
       << "Fails to duplicate file descritor.";
 #endif
@@ -77,7 +79,7 @@ void RedirectStream(int stream_fd, const LogRedirectionOption &opt) {
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
 }
 
-void FlushOnRedirectedStream(MEMFD_TYPE_NON_UNIQUE stream_fd) {
+void FlushOnRedirectedStream(int stream_fd) {
   auto iter = redirection_file_handles.find(stream_fd);
   RAY_CHECK(iter != redirection_file_handles.end())
       << "Stream with file descriptor " << stream_fd << " is not registered.";
