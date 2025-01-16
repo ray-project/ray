@@ -265,7 +265,6 @@ def test_torch_tensor_nccl(
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("num_gpus", [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]])
-# @pytest.mark.parametrize("num_gpus", [[1, 0]])
 def test_torch_tensor_auto(ray_start_regular, num_gpus):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
