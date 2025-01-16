@@ -196,15 +196,18 @@ class MetricsLogger:
             return default
 
         # Otherwise, return the reduced Stats' (peek) value.
-        with self._threading_lock:
-            struct = self._get_key(key).copy()
+        struct = self._get_key(key)
 
         # Create a reduced view of the requested sub-structure or leaf (Stats object).
-        ret = tree.map_structure(
-            lambda s: s.peek(throughput=throughput),
-            struct,
-        )
-        return ret
+        with self._threading_lock:
+            if isinstance(struct, Stats):
+                return struct.peek(throughput=throughput)
+
+            ret = tree.map_structure(
+                lambda s: s.peek(throughput=throughput),
+                struct.copy(),
+            )
+            return ret
 
     @staticmethod
     def peek_results(results: Any) -> Any:
