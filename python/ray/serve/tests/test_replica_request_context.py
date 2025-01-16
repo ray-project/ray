@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
 from ray import serve
-from ray.serve.context import _serve_request_context
+from ray.serve.context import get_serve_request_context
 
 
 def _get_request_context_route() -> str:
