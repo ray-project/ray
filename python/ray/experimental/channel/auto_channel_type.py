@@ -123,7 +123,7 @@ class AutoChannelType(ChannelOutputType):
 
     def create_channel(
         self,
-        writer: "ray.actor.ActorHandle",
+        writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         driver_actor_id: Optional[str] = None,
     ) -> "ChannelOutputType":
