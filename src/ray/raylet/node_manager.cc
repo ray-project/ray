@@ -1893,7 +1893,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     actor_id = task.GetTaskSpecification().ActorCreationId();
   }
 
-  auto task_spec = task.GetTaskSpecification();
+  const auto &task_spec = task.GetTaskSpecification();
   worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
 
   auto send_reply_callback_wrapper =
