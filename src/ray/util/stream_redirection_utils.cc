@@ -35,9 +35,6 @@ namespace {
 #if defined(__APPLE__) || defined(__linux__)
 int GetStdoutHandle() { return STDOUT_FILENO; }
 int GetStderrHandle() { return STDERR_FILENO; }
-#elif defined(_WIN32)
-int GetStdoutHandle() { return _fileno(stdout); }
-int GetStderrHandle() { return _fileno(stderr); }
 #endif
 
 // TODO(hjiang): Revisit later, should be able to save some heap alllocation with
@@ -99,19 +96,17 @@ void FlushOnRedirectedStream(int stream_fd) {
 void RedirectStdout(const StreamRedirectionOption &opt) {
   RedirectStream(GetStdoutHandle(), opt);
 }
-#elif defined(_WIN32)
-void RedirectStdout(const StreamRedirectionOption &opt) { return; }
-#endif
-
-#if defined(__APPLE__) || defined(__linux__)
 void RedirectStderr(const StreamRedirectionOption &opt) {
   RedirectStream(GetStderrHandle(), opt);
 }
-#elif defined(_WIN32)
-void RedirectStderr(const StreamRedirectionOption &opt) { return; }
-#endif
-
 void FlushOnRedirectedStdout() { FlushOnRedirectedStream(GetStdoutHandle()); }
 void FlushOnRedirectedStderr() { FlushOnRedirectedStream(GetStderrHandle()); }
+
+#elif defined(_WIN32)
+void RedirectStdout(const StreamRedirectionOption &opt) { return; }
+void RedirectStderr(const StreamRedirectionOption &opt) { return; }
+void FlushOnRedirectedStdout() { return; }
+void FlushOnRedirectedStderr() { return; }
+#endif
 
 }  // namespace ray

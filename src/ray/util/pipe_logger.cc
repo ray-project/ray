@@ -75,18 +75,6 @@ void CompleteWriteEOFIndicator(int write_fd) {
   bytes_written = write(write_fd, "\n", /*count=*/1);
   RAY_CHECK_EQ(bytes_written, 1);
 }
-#elif defined(_WIN32)
-size_t Read(HANDLE read_handle, char *data, size_t len) {
-  DWORD bytes_read = 0;
-  BOOL success = ReadFile(read_handle, data, len, &bytes_read, nullptr);
-  RAY_CHECK(success) << "Fails to read from pipe.";
-  return bytes_read;
-}
-void CompleteWriteEOFIndicator(HANDLE write_handle) {
-  DWORD bytes_written = 0;
-  WriteFile(
-      write_handle, kEofIndicator.c_str(), kEofIndicator.size(), &bytes_written, nullptr);
-}
 #endif
 
 template <typename ReadFunc, typename WriteFunc, typename FlushFunc>
