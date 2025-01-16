@@ -275,7 +275,7 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
   };
 
   return RedirectionFileHandle{file_handle,
-                               std::move(flush_fn)),
+                               std::move(flush_fn),
                                std::move(close_fn)};
 }
 #endif
