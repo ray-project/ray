@@ -212,7 +212,9 @@ if __name__ == "__main__":
     # run with Tune for auto env and Algorithm creation and TensorBoard
     else:
         tuner = tune.Tuner(
-            args.run, run_config=tune.RunConfig(stop=stop, verbose=2), param_space=config
+            args.run,
+            run_config=tune.RunConfig(stop=stop, verbose=2),
+            param_space=config,
         )
         results = tuner.fit()
 

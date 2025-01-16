@@ -272,5 +272,7 @@ if __name__ == "__main__":
         }
 
         tune.Tuner(
-            args.run, param_space=config, run_config=tune.RunConfig(stop=stop, verbose=2)
+            args.run,
+            param_space=config,
+            run_config=tune.RunConfig(stop=stop, verbose=2),
         ).fit()
