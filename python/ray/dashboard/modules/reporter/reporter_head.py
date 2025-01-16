@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
 import aiohttp.web
@@ -65,6 +66,10 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             self.gcs_address, self.temp_dir
         )
         self._state_api = None
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS,
+            thread_name_prefix="reporter_head_executor",
+        )
 
         # Fetched from GCS only once on startup in run(). It's static throughout the
         # the cluster's lifetime.
