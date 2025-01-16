@@ -263,7 +263,11 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
       << "Fails to open file " << file_path
       << " with failure reason: " << std::to_string(GetLastError());
 
-  auto close_write_handle = [file_handle]() {
+  auto flush_fn = [file_handle]() {
+    RAY_CHECK(FlushFileBuffers(file_handle))
+        << "Fails to flush data to disk because " << std::to_string(GetLastError());
+  };
+  auto close_fn = [file_handle]() {
     RAY_CHECK(FlushFileBuffers(file_handle))
         << "Fails to flush data to disk because " << std::to_string(GetLastError());
     RAY_CHECK(CloseHandle(file_handle))
@@ -271,9 +275,8 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
   };
 
   return RedirectionFileHandle{file_handle,
-                               /*logger=*/nullptr,
-                               /*close_write_handle=*/std::move(close_write_handle),
-                               /*termination_synchronizer=*/[]() {}};
+                               std::move(flush_fn)),
+                               std::move(close_fn)};
 }
 #endif
 

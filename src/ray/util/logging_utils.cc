@@ -35,8 +35,8 @@ namespace {
 int GetStdoutHandle() { return STDOUT_FILENO; }
 int GetStderrHandle() { return STDERR_FILENO; }
 #elif defined(_WIN32)
-HANDLE GetStdoutHandle() { return _fileno(stdout); }
-HANDLE GetStderrHandle() { return _fileno(stderr); }
+int GetStdoutHandle() { return _fileno(stdout); }
+int GetStderrHandle() { return _fileno(stderr); }
 #endif
 
 // TODO(hjiang): Revisit later, should be able to save some heap alllocation with
@@ -55,7 +55,7 @@ void SyncOnStreamRedirection() {
   }
 }
 
-void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const LogRedirectionOption &opt) {
+void RedirectStream(int stream_fd, const LogRedirectionOption &opt) {
   std::call_once(stream_exit_once_flag, []() {
     RAY_CHECK_EQ(std::atexit(SyncOnStreamRedirection), 0)
         << "Fails to register stream redirection termination hook.";
@@ -67,7 +67,8 @@ void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const LogRedirectionOption 
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
       << "Fails to duplicate file descritor " << strerror(errno);
 #elif defined(_WIN32)
-  RAY_CHECK_NE(_dup2(handle.GetWriteHandle(), stream_fd), -1)
+  const int windows_pipe_write_fd = _open_osfhandle(handle.GetWriteHandle(), _O_WTEXT);
+  RAY_CHECK_NE(_dup2(windows_pipe_write_fd, stream_fd), -1)
       << "Fails to duplicate file descritor.";
 #endif
 
