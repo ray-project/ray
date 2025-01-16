@@ -11,7 +11,7 @@ Compiled Graphs build on top of Ray's profiling capabilities, and leverage Nsigh
 system profiling. 
 
 To run Nsight Profiling on Compiled Graphs, specify the runtime_env for the involved actors
-as described in `Run Nsight on Ray <https://docs.ray.io/en/latest/ray-observability/user-guides/profiling.html#run-nsight-on-ray>`__.
+as described in :ref:`Run Nsight on Ray <run-nsight-on-ray>`.
 
 After execution, Compiled Graph generates the profiling results under the `/tmp/ray/session_*/logs/{profiler_name}`
 directory.
@@ -28,5 +28,5 @@ in ``example.py``, run the following command:
 This command leverages the `NVTX library <https://nvtx.readthedocs.io/en/latest/index.html#>`_ to automatically
 annotate all methods called in the execution loops of compiled graph.
 
-To visualize the profiling results, follow the instructions in 
-`Nsight Profiling Result <https://docs.ray.io/en/latest/ray-observability/user-guides/profiling.html#profiling-result>`__.
+To visualize the profiling results, follow the same instructions as described in 
+:ref:`Nsight Profiling Result <profiling-result>`.
