@@ -41,6 +41,7 @@ from ray.train import Checkpoint
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
+from ray.rllib.algorithms.utils import AggregatorActor
 from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.core import (
@@ -80,6 +81,7 @@ from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, force_list
+from ray.rllib.utils.actor_manager import FaultTolerantActorManager, RemoteCallResults
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     ExperimentalAPI,
@@ -106,6 +108,7 @@ from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
+    AGGREGATOR_ACTOR_RESULTS,
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
@@ -840,6 +843,53 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 # need it for reading recorded experiences.
                 self.offline_data.spaces = spaces
 
+        # Create an Aggregator actor set, if necessary.
+        self._aggregator_actor_manager = None
+        if self.config.enable_rl_module_and_learner and (
+            self.config.num_aggregator_actors_per_learner > 0
+        ):
+            # Get the devices of each learner.
+            learner_locations = self.learner_group.foreach_learner(
+                func=lambda _learner: (_learner.node, _learner.device),
+            )
+            rl_module_spec = self.config.get_multi_rl_module_spec(
+                spaces=self.env_runner_group.get_spaces(),
+                inference_only=False,
+            )
+            agg_cls = ray.remote(
+                num_cpus=1,
+                num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
+                max_restarts=-1,
+            )(AggregatorActor)
+            self._aggregator_actor_manager = FaultTolerantActorManager(
+                [
+                    agg_cls.remote(self.config, rl_module_spec)
+                    for _ in range(
+                        (self.config.num_learners or 1)
+                        * self.config.num_aggregator_actors_per_learner
+                    )
+                ],
+                max_remote_requests_in_flight_per_actor=(
+                    self.config.max_requests_in_flight_per_aggregator_actor
+                ),
+            )
+            aggregator_locations = self._aggregator_actor_manager.foreach_actor(
+                func=lambda actor: (actor._node, actor._device)
+            )
+            self._aggregator_actor_to_learner = {}
+            for agg_idx, aggregator_location in enumerate(aggregator_locations):
+                for learner_idx, learner_location in enumerate(learner_locations):
+                    if learner_location.get() == aggregator_location.get():
+                        self._aggregator_actor_to_learner[agg_idx] = learner_idx
+                        break
+                if agg_idx not in self._aggregator_actor_to_learner:
+                    raise RuntimeError(
+                        "No Learner worker found that matches aggregation worker "
+                        f"#{agg_idx}'s node ({aggregator_location[0]}) and device "
+                        f"({aggregator_location[1]})! The Learner workers' locations "
+                        f"are {learner_locations}."
+                    )
+
         # Run `on_algorithm_init` callback after initialization is done.
         make_callback(
             "on_algorithm_init",
@@ -893,7 +943,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             and (self.iteration + 1) % self.config.evaluation_interval == 0
         )
         # Results dict for training (and if appolicable: evaluation).
-        train_results: ResultDict = {}
         eval_results: ResultDict = {}
 
         # Parallel eval + training: Kick off evaluation-loop and parallel train() call.
@@ -3005,6 +3054,28 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                         reduce="sum",
                         clear_on_reduce=True,
                     )
+
+        if self.config.num_aggregator_actors_per_learner:
+            remote_aggregator_metrics: RemoteCallResults = (
+                self._aggregator_actor_manager.fetch_ready_async_reqs(
+                    timeout_seconds=0.0,
+                    return_obj_refs=False,
+                    tags="metrics",
+                )
+            )
+            self._aggregator_actor_manager.foreach_actor_async(
+                func=lambda actor: actor.get_metrics(),
+                tag="metrics",
+            )
+
+            FaultTolerantActorManager.handle_remote_call_result_errors(
+                remote_aggregator_metrics,
+                ignore_ray_errors=False,
+            )
+            self.metrics.merge_and_log_n_dicts(
+                [res.get() for res in remote_aggregator_metrics.result_or_errors],
+                key=AGGREGATOR_ACTOR_RESULTS,
+            )
 
         # Only here (at the end of the iteration), reduce the results into a single
         # result dict.
