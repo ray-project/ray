@@ -19,10 +19,10 @@
 #include <string>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/common.pb.h"
-
 namespace ray {
 
 static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
@@ -144,6 +144,25 @@ struct SaveArgToUniquePtrAction {
 template <size_t k, typename T>
 SaveArgToUniquePtrAction<k, T> SaveArgToUniquePtr(std::unique_ptr<T> *ptr) {
   return {ptr};
+}
+
+template <typename Lambda>
+auto SyncPostAndWait(instrumented_io_context &io_context,
+                     const std::string &name,
+                     Lambda f) {
+  using ReturnType = std::invoke_result_t<Lambda>;
+  std::promise<ReturnType> promise;
+  io_context.post(
+      [&]() {
+        if constexpr (std::is_void_v<ReturnType>) {
+          f();
+          promise.set_value();
+        } else {
+          promise.set_value(f());
+        }
+      },
+      name);
+  return promise.get_future().get();
 }
 
 }  // namespace ray

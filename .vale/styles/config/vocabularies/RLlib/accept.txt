@@ -20,6 +20,7 @@ MARLModule
 (MARWIL|marwil)
 MLAgents
 multiagent
+[Pp]erceptrons?
 postprocessing
 (PPO|ppo)
 [Pp]y[Tt]orch
@@ -27,7 +28,7 @@ pragmas?
 (RL|rl)lib
 RNN
 RLModules?
-rollout
+[Rr]ollout
 (SAC|sac)
 SGD
 [Ss]ubcomponents?

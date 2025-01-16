@@ -305,29 +305,25 @@ def test_multi_output_get_exception(ray_start_regular):
         ray.get(refs)
 
 
-# TODO(wxdeng): Fix segfault. If this test is run, the following tests
-# will segfault.
-# def test_two_from_three_returns(ray_start_regular):
-#     a = Actor.remote(0)
-#     with InputNode() as i:
-#         o1, o2 = a.return_two_from_three.bind(i)
-#         dag = MultiOutputNode([o1, o2])
+def test_two_from_three_returns(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two_from_three.bind(i)
+        dag = MultiOutputNode([o1, o2])
 
-#     compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
 
-#     # A value error is raised because the number of returns is not equal to
-#     # the number of outputs. Since the value error is raised in the writer,
-#     # the reader fails to read the outputs and raises a channel error.
+    # A value error is raised because the number of returns is not equal to
+    # the number of outputs. Since the value error is raised in the writer,
+    # the reader fails to read the outputs and raises a channel error.
 
-#     # TODO(wxdeng): Fix exception type. The value error should be catched.
-#     # However, two exceptions are raised in the writer and reader respectively.
+    # TODO(wxdeng): Fix exception type. The value error should be catched.
+    # However, two exceptions are raised in the writer and reader respectively.
 
-#     # with pytest.raises(RayChannelError, match="Channel closed."):
-#     # with pytest.raises(ValueError, match="Expected 2 outputs, but got 3 outputs"):
-#     with pytest.raises(Exception):
-#         ray.get(compiled_dag.execute(1))
-
-#     compiled_dag.teardown()
+    # with pytest.raises(RayChannelError, match="Channel closed."):
+    # with pytest.raises(ValueError, match="Expected 2 outputs, but got 3 outputs"):
+    with pytest.raises(Exception):
+        ray.get(compiled_dag.execute(1))
 
 
 def test_kwargs_not_supported(ray_start_regular):
@@ -1116,12 +1112,6 @@ def test_dag_exception_chained(ray_start_regular, capsys):
     # Can use the DAG after exceptions are thrown.
     assert ray.get(compiled_dag.execute(1)) == 2
 
-    # Note: somehow the auto triggered teardown() from ray.shutdown()
-    # does not finish in time for this test, leading to a segfault
-    # of the following test (likely due to a dangling monitor thread
-    # upon the new Ray init).
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_dag_exception_multi_output(ray_start_regular, single_fetch, capsys):
@@ -1339,72 +1329,6 @@ class TestDAGExceptionCompileMultipleTimes:
             branch2.experimental_compile()
 
 
-def test_exceed_max_buffered_results(ray_start_regular):
-    a = Actor.remote(0)
-    with InputNode() as i:
-        dag = a.inc.bind(i)
-
-    compiled_dag = dag.experimental_compile(_max_buffered_results=1)
-
-    refs = []
-    for i in range(2):
-        ref = compiled_dag.execute(1)
-        # Hold the refs to avoid get() being called on the ref
-        # when it goes out of scope
-        refs.append(ref)
-
-    # ray.get() on the 2nd ref fails because the DAG cannot buffer 2 results.
-    with pytest.raises(
-        ValueError,
-        match=(
-            "Too many buffered results: the allowed max count for buffered "
-            "results is 1; call ray.get\(\) on previous CompiledDAGRefs to "
-            "free them up from buffer"
-        ),
-    ):
-        ray.get(ref)
-
-    del refs
-
-
-@pytest.mark.parametrize("single_fetch", [True, False])
-def test_exceed_max_buffered_results_multi_output(ray_start_regular, single_fetch):
-    a = Actor.remote(0)
-    b = Actor.remote(0)
-    with InputNode() as inp:
-        dag = MultiOutputNode([a.inc.bind(inp), b.inc.bind(inp)])
-
-    compiled_dag = dag.experimental_compile(_max_buffered_results=1)
-
-    refs = []
-    for i in range(2):
-        ref = compiled_dag.execute(1)
-        # Hold the refs to avoid get() being called on the ref
-        # when it goes out of scope
-        refs.append(ref)
-
-    if single_fetch:
-        # If there are results not fetched from an execution, that execution
-        # still counts towards the number of buffered results.
-        ray.get(refs[0][0])
-
-    # ray.get() on the 2nd ref fails because the DAG cannot buffer 2 results.
-    with pytest.raises(
-        ValueError,
-        match=(
-            "Too many buffered results: the allowed max count for buffered "
-            "results is 1; call ray.get\(\) on previous CompiledDAGRefs to "
-            "free them up from buffer"
-        ),
-    ):
-        if single_fetch:
-            ray.get(ref[0])
-        else:
-            ray.get(ref)
-
-    del refs
-
-
 def test_compiled_dag_ref_del(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as inp:
@@ -1586,16 +1510,13 @@ def test_dag_teardown_while_running(ray_start_regular):
     assert result == 0.1
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio(ray_start_regular, max_queue_size):
+def test_asyncio(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
         dag = a.echo.bind(i)
 
     loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
-    )
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main(i):
         # Use numpy so that the return value will be zero-copy deserialized. If
@@ -1609,16 +1530,13 @@ def test_asyncio(ray_start_regular, max_queue_size):
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio_out_of_order_get(ray_start_regular, max_queue_size):
+def test_asyncio_out_of_order_get(ray_start_regular):
     c = Collector.remote()
     with InputNode() as i:
         dag = c.collect.bind(i)
 
     loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
-    )
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main():
         fut_a = await compiled_dag.execute_async("a")
@@ -1632,18 +1550,15 @@ def test_asyncio_out_of_order_get(ray_start_regular, max_queue_size):
     loop.run_until_complete(main())
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
 @pytest.mark.parametrize("gather_futs", [True, False])
-def test_asyncio_multi_output(ray_start_regular, max_queue_size, gather_futs):
+def test_asyncio_multi_output(ray_start_regular, gather_futs):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
         dag = MultiOutputNode([a.echo.bind(i), b.echo.bind(i)])
 
     loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
-    )
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main(i):
         # Use numpy so that the return value will be zero-copy deserialized. If
@@ -1666,16 +1581,13 @@ def test_asyncio_multi_output(ray_start_regular, max_queue_size, gather_futs):
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio_exceptions(ray_start_regular, max_queue_size):
+def test_asyncio_exceptions(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
         dag = a.inc.bind(i)
 
     loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
-    )
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main():
         fut = await compiled_dag.execute_async(1)
@@ -1847,6 +1759,280 @@ class TestCompositeChannel:
             assert ray.get(refs[1]) == 3
         else:
             assert ray.get(refs) == [3, 3]
+
+
+@ray.remote
+class FastFailActor:
+    def sleep_and_echo(self, x):
+        time.sleep(x)
+        return x
+
+    def fail_if_x_is_even(self, x):
+        if x % 2 == 0:
+            raise ValueError("x is even")
+        return x
+
+    def sleep_and_fail(self, x):
+        time.sleep(x)
+        raise ValueError("fail")
+
+
+class TestFastFail:
+    @pytest.mark.parametrize("is_async", [True, False])
+    def test_first_input_fail(self, ray_start_regular, is_async):
+        """
+        Tests the case where the failing input is at the beginning of the input list.
+        """
+        a = FastFailActor.remote()
+        with InputNode() as inp:
+            dag = MultiOutputNode(
+                [a.fail_if_x_is_even.bind(inp), a.sleep_and_echo.bind(inp)]
+            )
+        compiled_dag = dag.experimental_compile(enable_asyncio=is_async)
+
+        if is_async:
+
+            async def main():
+                futs = await compiled_dag.execute_async(6)
+                start_time = time.time()
+                with pytest.raises(ValueError, match="x is even"):
+                    await asyncio.gather(*futs)
+                end_time = time.time()
+                assert end_time - start_time < 6
+
+            loop = get_or_create_event_loop()
+            loop.run_until_complete(main())
+        else:
+            start_time = time.time()
+            with pytest.raises(ValueError, match="x is even"):
+                ray.get(compiled_dag.execute(6))
+            end_time = time.time()
+            assert end_time - start_time < 6
+
+    @pytest.mark.parametrize("is_async", [True, False])
+    def test_last_input_fail(self, ray_start_regular, is_async):
+        """
+        Tests the case where the failing input is at the end of the input list.
+        The test cannot use the same actor for both `sleep_and_echo` and
+        `fail_if_x_is_even` tasks because the control dependency would make the
+        `fail_if_x_is_even` task execute after the `sleep_and_echo` task finishes.
+        """
+        a = FastFailActor.remote()
+        b = FastFailActor.remote()
+        with InputNode() as inp:
+            dag = MultiOutputNode(
+                [a.sleep_and_echo.bind(inp), b.fail_if_x_is_even.bind(inp)]
+            )
+        compiled_dag = dag.experimental_compile(enable_asyncio=is_async)
+
+        if is_async:
+
+            async def main():
+                futs = await compiled_dag.execute_async(6)
+                start_time = time.time()
+                with pytest.raises(ValueError, match="x is even"):
+                    await asyncio.gather(*futs)
+                end_time = time.time()
+                assert end_time - start_time < 6
+
+            loop = get_or_create_event_loop()
+            loop.run_until_complete(main())
+        else:
+            start_time = time.time()
+            with pytest.raises(ValueError, match="x is even"):
+                ray.get(compiled_dag.execute(6))
+            end_time = time.time()
+            assert end_time - start_time < 6
+
+    @pytest.mark.parametrize("is_async", [True, False])
+    def test_get_one_of_output_refs(self, ray_start_regular, is_async):
+        """
+        Tests the case where `ray.get` is called on only one of the output refs
+        which doesn't fail.
+        """
+        a = FastFailActor.remote()
+        b = FastFailActor.remote()
+        with InputNode() as inp:
+            dag = MultiOutputNode(
+                [a.sleep_and_echo.bind(inp), b.fail_if_x_is_even.bind(inp)]
+            )
+        compiled_dag = dag.experimental_compile(enable_asyncio=is_async)
+
+        if is_async:
+
+            async def main():
+                futs = await compiled_dag.execute_async(6)
+                start_time = time.time()
+                with pytest.raises(ValueError, match="x is even"):
+                    await asyncio.gather(futs[0])
+                end_time = time.time()
+                assert end_time - start_time < 6
+
+            loop = get_or_create_event_loop()
+            loop.run_until_complete(main())
+        else:
+            start_time = time.time()
+            with pytest.raises(ValueError, match="x is even"):
+                refs = compiled_dag.execute(6)
+                ray.get(refs[0])
+            end_time = time.time()
+            assert end_time - start_time < 6
+
+    @pytest.mark.parametrize("is_async", [True, False])
+    def test_middle_input_fail(self, ray_start_regular, is_async):
+        """
+        Tests the case where the failing input is in the middle of the input list.
+        """
+        a = FastFailActor.remote()
+        b = FastFailActor.remote()
+        c = FastFailActor.remote()
+        with InputNode() as inp:
+            dag = MultiOutputNode(
+                [
+                    a.sleep_and_echo.bind(inp),
+                    b.fail_if_x_is_even.bind(inp),
+                    c.sleep_and_echo.bind(inp),
+                ]
+            )
+        compiled_dag = dag.experimental_compile(enable_asyncio=is_async)
+
+        if is_async:
+
+            async def main():
+                futs = await compiled_dag.execute_async(6)
+                start_time = time.time()
+                with pytest.raises(ValueError, match="x is even"):
+                    await asyncio.gather(*futs)
+                end_time = time.time()
+                assert end_time - start_time < 6
+
+            loop = get_or_create_event_loop()
+            loop.run_until_complete(main())
+        else:
+            start_time = time.time()
+            with pytest.raises(ValueError, match="x is even"):
+                ray.get(compiled_dag.execute(6))
+            end_time = time.time()
+            assert end_time - start_time < 6
+
+    @pytest.mark.parametrize("is_async", [True, False])
+    def test_all_inputs_fail(self, ray_start_regular, is_async):
+        """
+        Tests the case where all inputs fail with different sleep times.
+        """
+        a = FastFailActor.remote()
+        b = FastFailActor.remote()
+        c = FastFailActor.remote()
+        with InputNode() as inp:
+            dag = MultiOutputNode(
+                [
+                    a.sleep_and_fail.bind(inp[0]),
+                    b.sleep_and_fail.bind(inp[1]),
+                    c.sleep_and_fail.bind(inp[2]),
+                ]
+            )
+        compiled_dag = dag.experimental_compile(enable_asyncio=is_async)
+
+        if is_async:
+
+            async def main():
+                futs = await compiled_dag.execute_async(6, 0, 6)
+                start_time = time.time()
+                with pytest.raises(ValueError, match="fail"):
+                    await asyncio.gather(*futs)
+                end_time = time.time()
+                assert end_time - start_time < 6
+
+            loop = get_or_create_event_loop()
+            loop.run_until_complete(main())
+        else:
+            start_time = time.time()
+            with pytest.raises(ValueError, match="fail"):
+                ray.get(compiled_dag.execute(6, 0, 6))
+            end_time = time.time()
+            assert end_time - start_time < 6
+
+    @pytest.mark.parametrize("is_async", [True, False])
+    def test_one_input_fail_and_retry_success(self, ray_start_regular, is_async):
+        """
+        Tests the case where only one input fails during the first execution, and
+        subsequent executions succeed.
+        """
+        a = FastFailActor.remote()
+        with InputNode() as inp:
+            dag = MultiOutputNode(
+                [a.fail_if_x_is_even.bind(inp), a.sleep_and_echo.bind(inp)]
+            )
+        compiled_dag = dag.experimental_compile(enable_asyncio=is_async)
+
+        if is_async:
+
+            async def main():
+                futs = await compiled_dag.execute_async(2)
+                with pytest.raises(ValueError, match="x is even"):
+                    await asyncio.gather(*futs)
+                for _ in range(3):
+                    futs = await compiled_dag.execute_async(1)
+                    assert await asyncio.gather(*futs) == [1, 1]
+
+            loop = get_or_create_event_loop()
+            loop.run_until_complete(main())
+        else:
+            with pytest.raises(ValueError, match="x is even"):
+                ray.get(compiled_dag.execute(2))
+            for _ in range(3):
+                assert ray.get(compiled_dag.execute(1)) == [1, 1]
+
+    @pytest.mark.parametrize("is_async", [True, False])
+    def test_all_inputs_fail_and_retry_success(self, ray_start_regular, is_async):
+        """
+        Tests the case where all inputs fail during the first execution, but the
+        subsequent executions succeed.
+        """
+        a = FastFailActor.remote()
+        with InputNode() as inp:
+            dag = MultiOutputNode(
+                [a.fail_if_x_is_even.bind(inp), a.fail_if_x_is_even.bind(inp)]
+            )
+        compiled_dag = dag.experimental_compile(enable_asyncio=is_async)
+
+        if is_async:
+
+            async def main():
+                futs = await compiled_dag.execute_async(2)
+                with pytest.raises(ValueError, match="x is even"):
+                    await asyncio.gather(*futs)
+                for _ in range(3):
+                    futs = await compiled_dag.execute_async(1)
+                    assert await asyncio.gather(*futs) == [1, 1]
+
+            loop = get_or_create_event_loop()
+            loop.run_until_complete(main())
+        else:
+            with pytest.raises(ValueError, match="x is even"):
+                ray.get(compiled_dag.execute(2))
+            for _ in range(3):
+                assert ray.get(compiled_dag.execute(1)) == [1, 1]
+
+    def test_retry_timeout(self, ray_start_regular):
+        """
+        Tests the case where only one input fails during the first execution and
+        subsequent executions timeout while consuming the leftover input.
+        """
+        a = FastFailActor.remote()
+        with InputNode() as inp:
+            dag = MultiOutputNode(
+                [a.fail_if_x_is_even.bind(inp), a.sleep_and_echo.bind(inp)]
+            )
+        compiled_dag = dag.experimental_compile()
+
+        with pytest.raises(ValueError, match="x is even"):
+            ray.get(compiled_dag.execute(30))
+        with pytest.raises(RayChannelTimeoutError):
+            # RayChannelTimeoutError is raised when consuming the leftover input
+            # which sleeps for 30 seconds.
+            ref = compiled_dag.execute(1)
+            ray.get(ref, timeout=3)
 
 
 class TestLeafNode:
@@ -2250,6 +2436,97 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
+
+
+def test_inflight_requests_exceed_capacity(ray_start_regular):
+    expected_error_message = (
+        "The compiled graph can't have more than 2 "
+        "in-flight executions, and you currently have 2 "
+        "in-flight executions. Retrieve an output using ray.get before "
+        "submitting more requests or increase `_max_inflight_executions`. "
+    )
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.sleep.bind(inp)
+    compiled_dag = dag.experimental_compile(_max_inflight_executions=2)
+    ref1 = compiled_dag.execute(1)
+    ref2 = compiled_dag.execute(1)
+    with pytest.raises(
+        ray.exceptions.RayCgraphCapacityExceeded,
+        match=(expected_error_message),
+    ):
+        _ = compiled_dag.execute(1)
+
+    # test same with asyncio
+    async def main():
+        a = Actor.remote(0)
+        with InputNode() as inp:
+            dag = a.sleep.bind(inp)
+        async_compiled_dag = dag.experimental_compile(
+            enable_asyncio=True, _max_inflight_executions=2
+        )
+        ref1 = await async_compiled_dag.execute_async(1)
+        ref2 = await async_compiled_dag.execute_async(1)
+        print(async_compiled_dag._execution_index)
+        with pytest.raises(
+            ray.exceptions.RayCgraphCapacityExceeded,
+            match=(expected_error_message),
+        ):
+            _ = await async_compiled_dag.execute_async(1)
+        (ref1, ref2)
+
+    loop = get_or_create_event_loop()
+    loop.run_until_complete(main())
+    # to show variables are being used and avoid destruction since
+    # CompiledDagRef __del__ will release buffers and
+    # increment _max_finished_execution_index
+    (ref1, ref2)
+
+
+def test_result_buffer_exceeds_capacity(ray_start_regular):
+    expected_error_message = (
+        "The compiled graph can't have more than 2 "
+        "in-flight executions, and you currently have 2 "
+        "in-flight executions. Retrieve an output using ray.get before "
+        "submitting more requests or increase `_max_inflight_executions`. "
+    )
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+    compiled_dag = dag.experimental_compile(_max_inflight_executions=2)
+    ref1 = compiled_dag.execute(1)
+    ref2 = compiled_dag.execute(2)
+    ray.get(ref2)
+    ref3 = compiled_dag.execute(3)
+    with pytest.raises(
+        ray.exceptions.RayCgraphCapacityExceeded,
+        match=(expected_error_message),
+    ):
+        _ = compiled_dag.execute(4)
+
+    # test same with asyncio
+    async def main():
+        a = Actor.remote(0)
+        with InputNode() as inp:
+            dag = a.inc.bind(inp)
+        async_compiled_dag = dag.experimental_compile(
+            enable_asyncio=True, _max_inflight_executions=2
+        )
+        ref1 = await async_compiled_dag.execute_async(1)
+        ref2 = await async_compiled_dag.execute_async(2)
+        await ref2
+        ref3 = await async_compiled_dag.execute_async(3)
+        with pytest.raises(
+            ray.exceptions.RayCgraphCapacityExceeded,
+            match=(expected_error_message),
+        ):
+            _ = await async_compiled_dag.execute_async(4)
+        (ref1, ref3)
+
+    loop = get_or_create_event_loop()
+    loop.run_until_complete(main())
+    # same reason as comment for test_inflight_requests_exceed_capacity
+    (ref1, ref3)
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
