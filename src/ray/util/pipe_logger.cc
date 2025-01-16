@@ -304,12 +304,12 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     }
     if (log_redirect_opt.tee_to_stdout) {
       RAY_CHECK_EQ(write(std_stream_fd.stdout_fd, content.data(), content.length()),
-                   content.length());
+                   static_assert<ssize_t>(content.length()));
       RAY_CHECK_EQ(write(std_stream_fd.stdout_fd, "\n", 1), 1);
     }
     if (log_redirect_opt.tee_to_stderr) {
       RAY_CHECK_EQ(write(std_stream_fd.stderr_fd, content.data(), content.length()),
-                   content.length());
+                   static_assert<ssize_t>(content.length()));
       RAY_CHECK_EQ(write(std_stream_fd.stderr_fd, "\n", 1), 1);
     }
   };
