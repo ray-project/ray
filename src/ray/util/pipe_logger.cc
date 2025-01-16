@@ -89,14 +89,12 @@ void CompleteWriteEOFIndicator(HANDLE write_handle) {
 }
 #endif
 
-// TODO(hjiang): No need to return stream dumper.
 template <typename ReadFunc, typename WriteFunc, typename FlushFunc>
-std::shared_ptr<StreamDumper> CreateStreamDumper(
-    ReadFunc read_func,
-    WriteFunc write_func,
-    FlushFunc flush_func,
-    std::function<void()> close_read_handle,
-    std::function<void()> on_close_completion) {
+void StartStreamDump(ReadFunc read_func,
+                     WriteFunc write_func,
+                     FlushFunc flush_func,
+                     std::function<void()> close_read_handle,
+                     std::function<void()> on_close_completion) {
   auto stream_dumper = std::make_shared<StreamDumper>();
 
   // Create two threads, so there's no IO operation within critical section thus no
@@ -184,8 +182,6 @@ std::shared_ptr<StreamDumper> CreateStreamDumper(
       write_func(curline);
     }
   }).detach();
-
-  return stream_dumper;
 }
 
 // Create a spdlog logger with all sinks specified by the given option.
@@ -309,11 +305,11 @@ RedirectionFileHandle CreateRedirectionFileHandle(
         }
       };
 
-  CreateStreamDumper(std::move(read_func),
-                     std::move(write_fn),
-                     flush_fn,
-                     std::move(close_read_handle),
-                     std::move(on_close_completion));
+  StartStreamDump(std::move(read_func),
+                  std::move(write_fn),
+                  flush_fn,
+                  std::move(close_read_handle),
+                  std::move(on_close_completion));
 
   RedirectionFileHandle redirection_file_handle{
       write_fd, std::move(flush_fn), std::move(close_fn)};

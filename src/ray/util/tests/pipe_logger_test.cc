@@ -135,6 +135,41 @@ TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   EXPECT_EQ(unlink(test_file_path.data()), 0);
 }
 
+TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
+  // TODO(core): We should have a better test util, which allows us to create a temporary
+  // testing directory.
+  const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+  // Manually check whether stderr displays content correctly.
+  const int new_stderr_fd = dup(STDERR_FILENO);
+  StdStreamFd std_stream_fd{};
+  std_stream_fd.stderr_fd = new_stderr_fd;
+
+  StreamRedirectionOption logging_option{};
+  logging_option.file_path = test_file_path;
+  logging_option.rotation_max_size = 5;
+  logging_option.rotation_max_file_count = 2;
+  logging_option.tee_to_stderr = true;
+
+  auto log_token = CreateRedirectionFileHandle(logging_option, StdStreamFd{});
+  ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
+            kLogLine1.length());
+  ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
+            kLogLine2.length());
+  log_token.Close();
+
+  // Check log content after completion.
+  const std::string log_file_path1 = test_file_path;
+  EXPECT_EQ(CompleteReadFile(test_file_path), kLogLine2);
+
+  const std::string log_file_path2 = absl::StrFormat("%s.1", test_file_path);
+  EXPECT_EQ(CompleteReadFile(log_file_path2), kLogLine1);
+
+  // Delete temporary file.
+  EXPECT_EQ(unlink(log_file_path1.data()), 0);
+  EXPECT_EQ(unlink(log_file_path2.data()), 0);
+}
+
 }  // namespace
 
 }  // namespace ray
