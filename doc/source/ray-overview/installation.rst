@@ -68,7 +68,7 @@ and macOS by choosing the option that best matches your use case.
           * - `pip install -U "ray[rllib]"`
             - Core, Tune, RLlib
           * - `pip install -U "ray[all]"`
-            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib
+            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib. This option isn't recommended. Specify the extras you need as shown below instead.
 
         .. tip::
 
