@@ -17,7 +17,7 @@ After execution, Compiled Graph generates the profiling results under the `/tmp/
 directory.
 
 For fine-grained performance analysis of method calls and system overhead, set the environment variable
-``RAY_CGRAPH_ENABLE_NVTX_PROFILING=1`` when running the script. For example, for a compiled graph script
+``RAY_CGRAPH_ENABLE_NVTX_PROFILING=1`` when running the script. For example, for a Compiled Graph script
 in ``example.py``, run the following command:
 
 .. testcode::
