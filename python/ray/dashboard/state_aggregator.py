@@ -512,7 +512,7 @@ class StateAPIManager:
             for id, entry in entries.items():
                 for node_id in cluster_nodes[id]:
                     node = all_nodes[node_id]
-                    if not node["is_dead"]:
+                    if not node["is_dead"] and node["template_id"] != "":
                         entry["replica_sets"][node["template_id"]] = (
                             entry["replica_sets"].get(node["template_id"], 0) + 1
                         )
@@ -533,7 +533,7 @@ class StateAPIManager:
                 for node_id, node in entry["visible_node_instances"].items():
                     if node_id not in divided_nodes:
                         undivided_nodes[node_id] = node
-                        if not node["is_dead"]:
+                        if not node["is_dead"] and node["template_id"] != "":
                             entry["undivided_replica_sets"][node["template_id"]] = (
                                 entry["undivided_replica_sets"].get(
                                     node["template_id"], 0

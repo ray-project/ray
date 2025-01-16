@@ -1,4 +1,5 @@
 import copy
+import asyncio
 import json
 import logging
 import os
@@ -11,6 +12,7 @@ import urllib
 import urllib.parse
 import warnings
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
 from ray.dashboard.modules.metrics import install_and_start_prometheus
@@ -23,6 +25,10 @@ import psutil
 import yaml
 
 import ray
+from ray.util.state.common import (
+    DEFAULT_LIMIT,
+    DEFAULT_RPC_TIMEOUT,
+)
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._private.utils import (
@@ -33,6 +39,18 @@ from ray._private.utils import (
 from ray._private.internal_api import memory_summary
 from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
+from ray._private.gcs_aio_client import GcsAioClient
+from ray._private.gcs_utils import GcsChannel
+from ray.core.generated import gcs_service_pb2_grpc
+from ray.core.generated.gcs_service_pb2 import (
+    CreateOrUpdateVirtualClusterRequest,
+    GetVirtualClustersRequest,
+    RemoveVirtualClusterRequest,
+)
+from ray.dashboard.state_aggregator import StateAPIManager
+from ray.util.state.common import ListApiOptions, VirtualClusterState
+from ray.util.state.state_cli import AvailableFormat, format_list_api_output
+from ray.util.state.state_manager import StateDataSourceClient
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
@@ -2616,6 +2634,299 @@ def add_command_alias(command, name, hidden):
     cli.add_command(new_command, name=name)
 
 
+def _get_virtual_cluster_stub(address: Optional[str] = None):
+    address = services.canonicalize_bootstrap_address_or_die(address)
+    channel = GcsChannel(address, aio=False)
+    channel.connect()
+    return gcs_service_pb2_grpc.VirtualClusterInfoGcsServiceStub(channel.channel())
+
+
+@click.group("vcluster")
+def vclusters_cli_group():
+    """Create, update or remove virtual clusters."""
+    pass
+
+
+@vclusters_cli_group.command()
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Address of the Ray cluster to connect to. Can also be specified "
+        "using the RAY_ADDRESS environment variable."
+    ),
+)
+@click.option(
+    "--id",
+    type=str,
+    required=True,
+    help="Virtual Cluster ID to create.",
+)
+@click.option(
+    "--divisible",
+    is_flag=True,
+    default=False,
+    help="Whether the virtual cluster is divisible.",
+)
+@click.option(
+    "--replica-sets",
+    type=str,
+    default=None,
+    required=True,
+    help="JSON-serialized dictionary of replica sets.",
+)
+@add_click_logging_options
+def create(
+    address: Optional[str],
+    id: str,
+    divisible: bool,
+    replica_sets: Optional[str],
+):
+    """Create a new virtual cluster."""
+    stub = _get_virtual_cluster_stub(address)
+    reply = stub.GetVirtualClusters(GetVirtualClustersRequest(virtual_cluster_id=id))
+    if reply.status.code != 0:
+        cli_logger.error(
+            f"Failed to create virtual cluster '{id}': {reply.status.message}"
+        )
+        sys.exit(1)
+
+    if len(reply.virtual_cluster_data_list) > 0:
+        cli_logger.error(f"Failed to create virtual cluster '{id}': already exists")
+        sys.exit(1)
+
+    if replica_sets is not None:
+        replica_sets = json.loads(replica_sets)
+
+    request = CreateOrUpdateVirtualClusterRequest(
+        virtual_cluster_id=id,
+        divisible=divisible,
+        replica_sets=replica_sets,
+    )
+
+    reply = stub.CreateOrUpdateVirtualCluster(request)
+
+    if reply.status.code == 0:
+        cli_logger.success(f"Virtual cluster '{id}' created successfully")
+    else:
+        cli_logger.error(
+            f"Failed to create virtual cluster '{id}': {reply.status.message}"
+        )
+        sys.exit(1)
+
+
+@vclusters_cli_group.command()
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Address of the Ray cluster to connect to. Can also be specified "
+        "using the RAY_ADDRESS environment variable."
+    ),
+)
+@click.option(
+    "--id",
+    type=str,
+    required=True,
+    help="Virtual Cluster ID to create.",
+)
+@click.option(
+    "--divisible",
+    is_flag=True,
+    default=False,
+    help="Whether the virtual cluster is divisible.",
+)
+@click.option(
+    "--replica-sets",
+    type=str,
+    default=None,
+    required=True,
+    help="JSON-serialized dictionary of replica sets.",
+)
+@click.option(
+    "--revision",
+    type=int,
+    required=True,
+    help="Revision number for the virtual cluster.",
+)
+@add_click_logging_options
+def update(
+    address: Optional[str],
+    id: str,
+    divisible: bool,
+    replica_sets: Optional[str],
+    revision: int,
+):
+    """Update an existing virtual cluster."""
+    stub = _get_virtual_cluster_stub(address)
+    if replica_sets is not None:
+        replica_sets = json.loads(replica_sets)
+
+    request = CreateOrUpdateVirtualClusterRequest(
+        virtual_cluster_id=id,
+        divisible=divisible,
+        replica_sets=replica_sets,
+        revision=revision,
+    )
+
+    reply = stub.CreateOrUpdateVirtualCluster(request)
+
+    if reply.status.code == 0:
+        cli_logger.success(f"Virtual cluster '{id}' updated successfully")
+    else:
+        cli_logger.error(
+            f"Failed to update virtual cluster '{id}': {reply.status.message}"
+        )
+        sys.exit(1)
+
+
+@vclusters_cli_group.command()
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Address of the Ray cluster to connect to. Can also be specified "
+        "using the RAY_ADDRESS environment variable."
+    ),
+)
+@click.argument("virtual-cluster-id", type=str)
+@add_click_logging_options
+def remove(address: Optional[str], virtual_cluster_id: str):
+    """Remove a virtual cluster."""
+    stub = _get_virtual_cluster_stub(address)
+    request = RemoveVirtualClusterRequest(virtual_cluster_id=virtual_cluster_id)
+
+    reply = stub.RemoveVirtualCluster(request)
+
+    if reply.status.code == 0:
+        cli_logger.success(
+            f"Virtual cluster '{virtual_cluster_id}' removed successfully"
+        )
+    else:
+        cli_logger.error(
+            f"Failed to remove virtual cluster '{virtual_cluster_id}'"
+            f": {reply.status.message}"
+        )
+        sys.exit(1)
+
+
+def _get_available_formats() -> List[str]:
+    """Return the available formats in a list of string"""
+    return [format_enum.value for format_enum in AvailableFormat]
+
+
+@vclusters_cli_group.command()
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Address of the Ray cluster to connect to. Can also be specified "
+        "using the RAY_ADDRESS environment variable."
+    ),
+)
+@click.option(
+    "--format", default="default", type=click.Choice(_get_available_formats())
+)
+@click.option(
+    "-f",
+    "--filter",
+    help=(
+        "A key, predicate, and value to filter the result. "
+        "E.g., --filter 'key=value' or --filter 'key!=value'. "
+        "You can specify multiple --filter options. In this case all predicates "
+        "are concatenated as AND. For example, --filter key=value --filter key2=value "
+        "means (key==val) AND (key2==val2), "
+        "String filter values are case-insensitive."
+    ),
+    multiple=True,
+)
+@click.option(
+    "--limit",
+    default=DEFAULT_LIMIT,
+    type=int,
+    help=("Maximum number of entries to return. 100 by default."),
+)
+@click.option(
+    "--detail",
+    help=(
+        "If the flag is set, the output will contain data in more details. "
+        "Note that the API could query more sources "
+        "to obtain information in a greater detail."
+    ),
+    is_flag=True,
+    default=False,
+)
+@click.option(
+    "--timeout",
+    type=int,
+    default=DEFAULT_RPC_TIMEOUT,
+    required=False,
+    help="Timeout for the request.",
+)
+@add_click_logging_options
+def list(
+    address: Optional[str],
+    timeout: Optional[int],
+    limit: Optional[int],
+    filter: Optional[str],
+    detail: Optional[bool],
+    format: Optional[str],
+):
+    """Lists all virtual clusters and their information.
+
+    Example:
+        `ray vcluster list`
+    """
+
+    async def run(address):
+        address = services.canonicalize_bootstrap_address_or_die(address)
+        gcs_aio_client = GcsAioClient(address=address)
+        gcs_channel = GcsChannel(gcs_address=address, aio=True)
+        gcs_channel.connect()
+        state_api_data_source_client = StateDataSourceClient(
+            gcs_channel.channel(), gcs_aio_client
+        )
+        state_api_manager = StateAPIManager(
+            state_api_data_source_client,
+            thread_pool_executor=ThreadPoolExecutor(
+                thread_name_prefix="state_api_test_utils"
+            ),
+        )
+        data = await state_api_manager.list_vclusters(
+            option=ListApiOptions(
+                timeout=timeout,
+                limit=limit,
+                filters=filter,
+                detail=detail,
+            )
+        )
+        await state_api_data_source_client._client_session.close()
+        fmt = AvailableFormat(format)
+        if detail and fmt == AvailableFormat.DEFAULT:
+            fmt = AvailableFormat.YAML
+
+        result = [VirtualClusterState(**vcluster) for vcluster in data.result]
+
+        print(
+            format_list_api_output(
+                state_data=result,
+                schema=VirtualClusterState,
+                format=fmt,
+                detail=detail,
+            )
+        )
+
+    asyncio.run(run(address))
+
+
 cli.add_command(dashboard)
 cli.add_command(debug)
 cli.add_command(start)
@@ -2648,6 +2959,7 @@ cli.add_command(enable_usage_stats)
 cli.add_command(metrics_group)
 cli.add_command(drain_node)
 cli.add_command(check_open_ports)
+cli.add_command(vclusters_cli_group)
 
 try:
     from ray.util.state.state_cli import (
@@ -2672,12 +2984,6 @@ try:
 except Exception as e:
     logger.debug(f"Integrating ray jobs command line tool failed with {e}")
 
-try:
-    from ray.dashboard.modules.virtual_cluster.cli import vclusters_cli_group
-
-    add_command_alias(vclusters_cli_group, name="vclusters", hidden=False)
-except Exception as e:
-    logger.debug(f"Integrating ray vclusters command line tool failed with {e}")
 
 try:
     from ray.serve.scripts import serve_cli
