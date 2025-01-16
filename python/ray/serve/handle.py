@@ -335,7 +335,7 @@ class _DeploymentResponseBase:
         return self._cancelled
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class DeploymentResponse(_DeploymentResponseBase):
     """A future-like object wrapping the result of a unary deployment handle call.
 
@@ -505,7 +505,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         return replica_result.to_object_ref(timeout_s=remaining_timeout_s)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class DeploymentResponseGenerator(_DeploymentResponseBase):
     """A future-like object wrapping the result of a streaming deployment handle call.
 
@@ -628,7 +628,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         return replica_result.to_object_ref_gen()
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class DeploymentHandle(_DeploymentHandleBase):
     """A handle used to make requests to a deployment at runtime.
 
