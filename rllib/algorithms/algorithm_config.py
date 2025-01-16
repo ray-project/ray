@@ -356,6 +356,8 @@ class AlgorithmConfig(_Config):
         self.num_learners = 0
         self.num_gpus_per_learner = 0
         self.num_cpus_per_learner = 1
+        self.num_aggregator_actors_per_learner = 0
+        self.max_requests_in_flight_per_aggregator_actor = 100
         self.local_gpu_idx = 0
         # TODO (sven): This probably works even without any restriction
         #  (allowing for any arbitrary number of requests in-flight). Test with
@@ -400,9 +402,6 @@ class AlgorithmConfig(_Config):
         self.learner_config_dict = {}
         self.optimizer = {}  # @OldAPIStack
         self._learner_class = None
-        # New API stack's aggregator actors.
-        self.num_aggregator_actors_per_learner = 0
-        self.max_requests_in_flight_per_aggregator_actor = 100
 
         # `self.callbacks()`
         # TODO (sven): Set this default to None, once the old API stack has been
@@ -2132,6 +2131,8 @@ class AlgorithmConfig(_Config):
         num_learners: Optional[int] = NotProvided,
         num_cpus_per_learner: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
+        num_aggregator_actors_per_learner: Optional[int] = NotProvided,
+        max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         max_requests_in_flight_per_learner: Optional[int] = NotProvided,
     ):
@@ -2154,6 +2155,14 @@ class AlgorithmConfig(_Config):
                 the training on main process CPUs. If `num_gpus_per_learner` is > 0,
                 then you shouldn't change `num_cpus_per_learner` (from its default
                 value of 1).
+            num_aggregator_actors_per_learner: The number of aggregator actors per
+                Learner (if num_learners=0, one local learner is created). Must be at
+                least 1. Aggregator actors perform the task of a) converting episodes
+                into a train batch and b) move that train batch to the same GPU that
+                the corresponding learner is located on. Good values are 1 or 2, but
+                this strongly depends on your setup and `EnvRunner` throughput.
+            max_requests_in_flight_per_aggregator_actor: How many in-flight requests
+                are allowed per aggregator actor before new requests are dropped?
             local_gpu_idx: If `num_gpus_per_learner` > 0, and
                 `num_learners` < 2, then RLlib uses this GPU index for training. This is
                 an index into the available
@@ -2178,6 +2187,12 @@ class AlgorithmConfig(_Config):
             self.num_cpus_per_learner = num_cpus_per_learner
         if num_gpus_per_learner is not NotProvided:
             self.num_gpus_per_learner = num_gpus_per_learner
+        if num_aggregator_actors_per_learner is not NotProvided:
+            self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
+        if max_requests_in_flight_per_aggregator_actor is not NotProvided:
+            self.max_requests_in_flight_per_aggregator_actor = (
+                max_requests_in_flight_per_aggregator_actor
+            )
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx
         if max_requests_in_flight_per_learner is not NotProvided:
@@ -2205,9 +2220,9 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
-        num_aggregator_actors_per_learner: Optional[int] = NotProvided,
-        max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         # Deprecated args.
+        num_aggregator_actors_per_learner=DEPRECATED_VALUE,
+        max_requests_in_flight_per_aggregator_actor=DEPRECATED_VALUE,
         num_sgd_iter=DEPRECATED_VALUE,
         max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
@@ -2298,18 +2313,27 @@ class AlgorithmConfig(_Config):
                 Learner subclasses and in case the user doesn't want to write an extra
                 `AlgorithmConfig` subclass just to add a few settings to the base Algo's
                 own config class.
-            num_aggregator_actors_per_learner: The number of aggregator actors per
-                Learner (if num_learners=0, one local learner is created). Must be at
-                least 1. Aggregator actors perform the task of a) converting episodes
-                into a train batch and b) move that train batch to the same GPU that
-                the corresponding learner is located on. Good values are 1 or 2, but
-                this strongly depends on your setup and `EnvRunner` throughput.
-            max_requests_in_flight_per_aggregator_actor: How many in-flight requests
-                are allowed per aggregator actor before new requests are dropped?
 
         Returns:
             This updated AlgorithmConfig object.
         """
+        if num_aggregator_actors_per_learner != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config.training(num_aggregator_actors_per_learner=..)",
+                new="config.learners(num_aggregator_actors_per_learner=..)",
+                error=False,
+            )
+            self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
+        if max_requests_in_flight_per_aggregator_actor != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config.training(max_requests_in_flight_per_aggregator_actor=..)",
+                new="config.learners(max_requests_in_flight_per_aggregator_actor=..)",
+                error=False,
+            )
+            self.max_requests_in_flight_per_aggregator_actor = (
+                max_requests_in_flight_per_aggregator_actor
+            )
+
         if num_sgd_iter != DEPRECATED_VALUE:
             deprecation_warning(
                 old="config.training(num_sgd_iter=..)",
@@ -2383,12 +2407,6 @@ class AlgorithmConfig(_Config):
             )
         if learner_config_dict is not NotProvided:
             self.learner_config_dict.update(learner_config_dict)
-        if num_aggregator_actors_per_learner is not NotProvided:
-            self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
-        if max_requests_in_flight_per_aggregator_actor is not NotProvided:
-            self.max_requests_in_flight_per_aggregator_actor = (
-                max_requests_in_flight_per_aggregator_actor
-            )
 
         return self
 

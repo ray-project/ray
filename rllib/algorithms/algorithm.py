@@ -207,29 +207,15 @@ except ImportError:
             all_learners = [
                 {
                     "CPU": _num
-                    * (cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0),
-                    "GPU": _num
-                    * max(
-                        0,
-                        (
-                            cf.num_gpus_per_learner
-                            - 0.01 * cf.num_aggregator_actors_per_learner
-                        ),
+                    * (
+                        (cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0)
+                        + cf.num_aggregator_actors_per_learner
                     ),
+                    "GPU": _num * max(0, cf.num_gpus_per_learner),
                 }
             ]
 
-            all_aggregation_actors = []
-            if cf.num_aggregator_actors_per_learner:
-                _num = cf.num_learners * cf.num_aggregator_actors_per_learner
-                all_aggregation_actors = [
-                    {
-                        "CPU": 1 * _num,
-                        "GPU": (0.01 if cf.num_gpus_per_learner > 0 else 0) * _num,
-                    }
-                ]
-
-            return all_learners + all_aggregation_actors
+            return all_learners
 
 
 tf1, tf, tfv = try_import_tf()
@@ -886,10 +872,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if self.config.enable_rl_module_and_learner and (
             self.config.num_aggregator_actors_per_learner > 0
         ):
-            # Get the devices of each learner.
-            learner_locations = self.learner_group.foreach_learner(
-                func=lambda _learner: (_learner.node, _learner.device),
-            )
             rl_module_spec = self.config.get_multi_rl_module_spec(
                 spaces=self.env_runner_group.get_spaces(),
                 inference_only=False,
@@ -911,13 +893,33 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     self.config.max_requests_in_flight_per_aggregator_actor
                 ),
             )
-            aggregator_locations = self._aggregator_actor_manager.foreach_actor(
-                func=lambda actor: (actor._node, actor._device)
-            )
+            # Get the devices of each learner.
+            learner_locations = [
+                (i, loc)
+                for i, loc in enumerate(
+                    self.learner_group.foreach_learner(
+                        func=lambda _learner: (_learner.node, _learner.device),
+                    )
+                )
+            ]
+            # Get the devices of each AggregatorActor.
+            aggregator_locations = [
+                (i, loc)
+                for i, loc in enumerate(
+                    self._aggregator_actor_manager.foreach_actor(
+                        func=lambda actor: (actor._node, actor._device)
+                    )
+                )
+            ]
             self._aggregator_actor_to_learner = {}
-            for agg_idx, aggregator_location in enumerate(aggregator_locations):
-                for learner_idx, learner_location in enumerate(learner_locations):
+            for agg_idx, aggregator_location in aggregator_locations:
+                for learner_idx, learner_location in learner_locations:
                     if learner_location.get() == aggregator_location.get():
+                        # Round-robin, in case all Learners are on same device (e.g. for
+                        # CPU learners).
+                        learner_locations = learner_locations[1:] + [
+                            learner_locations[0]
+                        ]
                         self._aggregator_actor_to_learner[agg_idx] = learner_idx
                         break
                 if agg_idx not in self._aggregator_actor_to_learner:
@@ -927,6 +929,18 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                         f"({aggregator_location[1]})! The Learner workers' locations "
                         f"are {learner_locations}."
                     )
+
+            # Make sure, each Learner index is mapped to from at least one
+            # AggregatorActor.
+            if not all(
+                learner_idx in self._aggregator_actor_to_learner.values()
+                for learner_idx in range(self.config.num_learners or 1)
+            ):
+                raise RuntimeError(
+                    "Some Learner indices are not mapped to from any AggregatorActors! "
+                    "Final AggregatorActor idx -> Learner idx mapping is: "
+                    f"{self._aggregator_actor_to_learner}"
+                )
 
         # Run `on_algorithm_init` callback after initialization is done.
         make_callback(
