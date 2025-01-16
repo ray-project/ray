@@ -97,7 +97,7 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   const auto &owner_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
   RayTask task(actor->GetCreationTaskSpecification(),
                owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
-  cluster_task_manager_.QueueAndScheduleTask(task,
+  cluster_task_manager_.QueueAndScheduleTask(std::move(task),
                                              /*grant_or_reject*/ false,
                                              /*is_selected_based_on_locality*/ false,
                                              /*reply*/ reply.get(),

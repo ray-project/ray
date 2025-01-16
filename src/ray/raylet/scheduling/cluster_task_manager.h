@@ -67,7 +67,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param is_selected_based_on_locality : should schedule on local node if possible.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  void QueueAndScheduleTask(const RayTask &task,
+  void QueueAndScheduleTask(RayTask task,
                             bool grant_or_reject,
                             bool is_selected_based_on_locality,
                             rpc::RequestWorkerLeaseReply *reply,
