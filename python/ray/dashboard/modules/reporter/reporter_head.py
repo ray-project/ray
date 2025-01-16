@@ -1,14 +1,13 @@
 import asyncio
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
 import aiohttp.web
 
+from ray import NodeID
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
@@ -16,14 +15,15 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS_LEGACY,
     GLOBAL_GRPC_OPTIONS,
     KV_NAMESPACE_CLUSTER,
+    KV_NAMESPACE_DASHBOARD,
     env_integer,
 )
+import ray.dashboard.consts as dashboard_consts
 from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
-from ray._private.utils import get_or_create_event_loop, init_grpc_channel
+from ray._private.utils import init_grpc_channel
 from ray.autoscaler._private.commands import debug_status
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
-from ray.dashboard.datacenter import DataSource
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.util.state.common import ListApiOptions
 from ray.util.state.state_manager import StateDataSourceClient
@@ -56,9 +56,7 @@ RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS = env_integer(
 class ReportHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
         super().__init__(config)
-        self._stubs = {}
         self._ray_config = None
-        DataSource.agents.signal.append(self._update_stubs)
         # TODO(fyrestone): Avoid using ray.state in dashboard, it's not
         # asynchronous and will lead to low performance. ray disconnect()
         # will be hang when the ray.state is connected and the GCS is exit.
@@ -68,25 +66,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         self._state_api = None
 
-        self._executor = ThreadPoolExecutor(
-            max_workers=RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS,
-            thread_name_prefix="reporter_head_executor",
-        )
-
-    async def _update_stubs(self, change):
-        if change.old:
-            node_id, port = change.old
-            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
-            self._stubs.pop(ip, None)
-        if change.new:
-            node_id, ports = change.new
-            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
-            options = GLOBAL_GRPC_OPTIONS
-            channel = init_grpc_channel(
-                f"{ip}:{ports[1]}", options=options, asynchronous=True
-            )
-            stub = reporter_pb2_grpc.ReporterServiceStub(channel)
-            self._stubs[ip] = stub
+        # Fetched from GCS only once on startup in run(). It's static throughout the
+        # the cluster's lifetime.
+        self.cluster_metadata = None
 
     @routes.get("/api/v0/cluster_metadata")
     async def get_cluster_metadata(self, req):
@@ -232,6 +214,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         Args:
             req (aiohttp.web.Request): The HTTP request object.
 
+        Params:
+            task_id: The ID of the task.
+            attempt_number: The attempt number of the task.
+            node_id: The ID of the node.
+
         Returns:
             aiohttp.web.Response: The HTTP response containing
             the traceback information.
@@ -256,11 +243,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         task_id = req.query.get("task_id")
         attempt_number = req.query.get("attempt_number")
-        node_id = req.query.get("node_id")
+        node_id_hex = req.query.get("node_id")
 
-        ip = DataSource.nodes[node_id]["nodeManagerAddress"]
-
-        reporter_stub = self._stubs[ip]
+        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
+        if not ip_ports:
+            raise aiohttp.web.HTTPInternalServerError(text="Failed to get stub address")
+        ip, http_port, grpc_port = ip_ports
+        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
@@ -348,9 +337,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         task_id = req.query.get("task_id")
         attempt_number = req.query.get("attempt_number")
-        node_id = req.query.get("node_id")
-
-        ip = DataSource.nodes[node_id]["nodeManagerAddress"]
+        node_id_hex = req.query.get("node_id")
 
         duration_s = int(req.query.get("duration", 5))
         if duration_s > 60:
@@ -359,7 +346,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
-        reporter_stub = self._stubs[ip]
+        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
+        if not ip_ports:
+            raise aiohttp.web.HTTPInternalServerError(text="Failed to get stub address")
+        ip, http_port, grpc_port = ip_ports
+        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
 
         try:
             (pid, _) = await self.get_worker_details_for_running_task(
@@ -369,9 +360,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
         logger.info(
-            "Sending CPU profiling request to {}:{} for {} with native={}".format(
-                ip, pid, task_id, native
-            )
+            f"Sending CPU profiling request to {ip}:{grpc_port}, pid {pid}, for {task_id} with native={native}"
         )
 
         reply = await reporter_stub.CpuProfiling(
@@ -416,17 +405,26 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/worker/traceback")
     async def get_traceback(self, req) -> aiohttp.web.Response:
-        if "ip" in req.query and req.query["ip"] in self._stubs:
-            reporter_stub = self._stubs[req.query["ip"]]
-        else:
-            reporter_stub = list(self._stubs.values())[0]
+        """
+        Params:
+            pid: The PID of the worker.
+            node_id: The ID of the node.
+        """
+        if "pid" not in req.query:
+            raise ValueError("pid is required")
+        if "node_id" not in req.query:
+            raise ValueError("node_id is required")
+
+        ip_ports = await self._get_stub_address(NodeID.from_hex(req.query["node_id"]))
+        if not ip_ports:
+            raise aiohttp.web.HTTPInternalServerError(text="Failed to get stub address")
+        ip, http_port, grpc_port = ip_ports
+        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
         pid = int(req.query["pid"])
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
         logger.info(
-            "Sending stack trace request to {}:{} with native={}".format(
-                req.query.get("ip"), pid, native
-            )
+            f"Sending stack trace request to {ip}:{grpc_port}, pid {pid}, with native={native}"
         )
         reply = await reporter_stub.GetTraceback(
             reporter_pb2.GetTracebackRequest(pid=pid, native=native)
@@ -439,10 +437,22 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/worker/cpu_profile")
     async def cpu_profile(self, req) -> aiohttp.web.Response:
-        if "ip" in req.query and req.query["ip"] in self._stubs:
-            reporter_stub = self._stubs[req.query["ip"]]
-        else:
-            reporter_stub = list(self._stubs.values())[0]
+        """
+        Params:
+            pid: The PID of the worker.
+            node_id: The ID of the node.
+        """
+        if "pid" not in req.query:
+            raise ValueError("pid is required")
+        if "node_id" not in req.query:
+            raise ValueError("node_id is required")
+
+        ip_ports = await self._get_stub_address(NodeID.from_hex(req.query["node_id"]))
+        if not ip_ports:
+            raise aiohttp.web.HTTPInternalServerError(text="Failed to get stub address")
+        ip, http_port, grpc_port = ip_ports
+        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+
         pid = int(req.query["pid"])
         duration_s = int(req.query.get("duration", 5))
         if duration_s > 60:
@@ -452,9 +462,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
         logger.info(
-            "Sending CPU profiling request to {}:{} with native={}".format(
-                req.query.get("ip"), pid, native
-            )
+            f"Sending CPU profiling request to {ip}:{grpc_port}, pid {pid}, with native={native}"
         )
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
@@ -488,6 +496,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         Returns:
             aiohttp.web.Response: The HTTP response containing the memory profile data.
+
+        Params (1):
+            pid: The PID of the worker.
+            node_id: The ID of the node.
+        Params (2):
+            task_id: The ID of the task.
+            attempt_number: The attempt number of the task.
+            node_id: The ID of the node.
 
         Raises:
             aiohttp.web.HTTPInternalServerError: If no stub
@@ -524,7 +540,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             task_id = req.query.get("task_id")
             attempt_number = req.query.get("attempt_number")
             node_id = req.query.get("node_id")
-            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
             try:
                 (pid, _) = await self.get_worker_details_for_running_task(
                     task_id, attempt_number
@@ -533,7 +548,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 raise aiohttp.web.HTTPInternalServerError(text=str(e))
         else:
             pid = int(req.query["pid"])
-            ip = req.query.get("ip") or None
+
+        assert pid is not None
 
         duration_s = int(req.query.get("duration", 10))
 
@@ -543,19 +559,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         leaks = req.query.get("leaks", False) == "1"
         trace_python_allocators = req.query.get("trace_python_allocators", False) == "1"
 
-        if ip:
-            if ip not in self._stubs:
-                return aiohttp.web.HTTPInternalServerError(
-                    text="Failed to execute: No stub with given ip value"
-                )
-            reporter_stub = self._stubs[ip]
-        else:
-            reporter_stub = list(self._stubs.values())[0]
+        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id))
+        if not ip_ports:
+            raise aiohttp.web.HTTPInternalServerError(text="Failed to get stub address")
+        ip, http_port, grpc_port = ip_ports
+        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
 
         logger.info(
-            "Retrieving memory profiling request to {}:{}{}".format(
-                ip, pid, (f" for {task_id}" if is_task else "")
-            )
+            f"Retrieving memory profiling request to {ip}:{grpc_port}, pid {pid}, with native={native}"
         )
 
         reply = await reporter_stub.MemoryProfiling(
@@ -613,11 +624,46 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             headers={"Content-Type": "text/html"},
         )
 
+    async def _get_stub_address(
+        self, node_id: NodeID
+    ) -> Optional[Tuple[str, int, int]]:
+        """
+        Given a NodeID, Gather 2 async tasks:
+        - get the NodeManagerAddress from GCS
+        - get agent port from InternalKV
+
+        returns a tuple of (ip, http_port, grpc_port).
+
+        If either of them are not found, return None.
+        """
+        node_info, agent_port_json = await asyncio.gather(
+            self.gcs_aio_client.get_all_node_info(node_id=node_id),
+            self.gcs_aio_client.internal_kv_get(
+                f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id.hex()}".encode(),
+                namespace=KV_NAMESPACE_DASHBOARD,
+                timeout=None,
+            ),
+        )
+        if not node_info or not agent_port_json:
+            return None
+        ip = node_info[node_id].node_manager_address
+        http_port, grpc_port = json.loads(agent_port_json)
+        return ip, http_port, grpc_port
+
+    def _make_stub(
+        self, ip_port: str
+    ) -> Optional[reporter_pb2_grpc.ReporterServiceStub]:
+        options = GLOBAL_GRPC_OPTIONS
+        channel = init_grpc_channel(ip_port, options=options, asynchronous=True)
+        return reporter_pb2_grpc.ReporterServiceStub(channel)
+
     async def run(self, server):
         self._state_api_data_source_client = StateDataSourceClient(
             self.aiogrpc_gcs_channel, self.gcs_aio_client
         )
         # Set up the state API in order to fetch task information.
+        # This is only used to get task info. If we have Task APIs in GcsClient we can
+        # remove this.
         # TODO(ryw): unify the StateAPIManager in reporter_head and state_head.
         self._state_api = StateAPIManager(
             self._state_api_data_source_client,
@@ -627,36 +673,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # Need daemon True to avoid dashboard hangs at exit.
         self.service_discovery.daemon = True
         self.service_discovery.start()
-        subscriber = GcsAioResourceUsageSubscriber(address=self.gcs_address)
-        await subscriber.subscribe()
+
         cluster_metadata = await self.gcs_aio_client.internal_kv_get(
             CLUSTER_METADATA_KEY,
             namespace=KV_NAMESPACE_CLUSTER,
         )
         self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
-
-        loop = get_or_create_event_loop()
-
-        while True:
-            try:
-                # The key is b'RAY_REPORTER:{node id hex}',
-                # e.g. b'RAY_REPORTER:2b4fbd...'
-                key, data = await subscriber.poll()
-                if key is None:
-                    continue
-
-                # NOTE: Every iteration is executed inside the thread-pool executor
-                #       (TPE) to avoid blocking the Dashboard's event-loop
-                parsed_data = await loop.run_in_executor(
-                    self._executor, json.loads, data
-                )
-
-                node_id = key.split(":")[-1]
-                DataSource.node_physical_stats[node_id] = parsed_data
-            except Exception:
-                logger.exception(
-                    "Error receiving node physical stats from reporter agent."
-                )
 
     @staticmethod
     def is_minimal_module():

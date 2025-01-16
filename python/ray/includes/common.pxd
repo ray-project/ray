@@ -443,6 +443,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_vector[CGcsNodeInfo] &result)
 
         CRayStatus AsyncGetAll(
+            optional[CNodeID] node_id,
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
             int64_t timeout_ms)
 

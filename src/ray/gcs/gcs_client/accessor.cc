@@ -630,10 +630,14 @@ Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
   return Status::OK();
 }
 
-Status NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback,
+Status NodeInfoAccessor::AsyncGetAll(std::optional<NodeID> node_id,
+                                     const MultiItemCallback<GcsNodeInfo> &callback,
                                      int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
+  if (node_id) {
+    request.mutable_filters()->set_node_id(node_id->Binary());
+  }
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
       request,
       [callback](const Status &status, rpc::GetAllNodeInfoReply &&reply) {
@@ -666,7 +670,7 @@ Status NodeInfoAccessor::AsyncSubscribeToNodeChange(
         done(status);
       }
     };
-    RAY_CHECK_OK(AsyncGetAll(callback, /*timeout_ms=*/-1));
+    RAY_CHECK_OK(AsyncGetAll(std::nullopt, callback, /*timeout_ms=*/-1));
   };
 
   subscribe_node_operation_ = [this](const StatusCallback &done) {

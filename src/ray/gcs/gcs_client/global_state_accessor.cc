@@ -96,6 +96,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
+        /*node_id=*/std::nullopt,
         TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise),
         /*timeout_ms=*/-1));
   }
@@ -401,6 +402,8 @@ ray::Status GlobalStateAccessor::GetAliveNodes(std::vector<rpc::GcsNodeInfo> &no
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
+        /*node_id=*/
+        std::nullopt,
         [&promise](Status status, std::vector<rpc::GcsNodeInfo> &&nodes) {
           promise.set_value(
               std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, std::move(nodes)));

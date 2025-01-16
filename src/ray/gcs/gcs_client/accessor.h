@@ -376,9 +376,11 @@ class NodeInfoAccessor {
 
   /// Get information of all nodes from GCS asynchronously.
   ///
+  /// \param node_id If not nullopt, only return the node info of the specified node.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
+  virtual Status AsyncGetAll(std::optional<NodeID> node_id,
+                             const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                              int64_t timeout_ms);
 
   /// Subscribe to node addition and removal events from GCS and cache those information.

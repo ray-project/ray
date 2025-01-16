@@ -22,6 +22,7 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     env_integer,
 )
+from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
@@ -451,10 +452,41 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         for node_id, new_stat in new_node_stats.items():
             DataSource.node_stats[node_id] = new_stat
 
+    async def _update_node_physical_stats(self):
+        """
+        Update DataSource.node_physical_stats by subscribing to the GCS resource usage.
+        """
+        subscriber = GcsAioResourceUsageSubscriber(address=self.gcs_address)
+        await subscriber.subscribe()
+
+        loop = get_or_create_event_loop()
+
+        while True:
+            try:
+                # The key is b'RAY_REPORTER:{node id hex}',
+                # e.g. b'RAY_REPORTER:2b4fbd...'
+                key, data = await subscriber.poll()
+                if key is None:
+                    continue
+
+                # NOTE: Every iteration is executed inside the thread-pool executor
+                #       (TPE) to avoid blocking the Dashboard's event-loop
+                parsed_data = await loop.run_in_executor(
+                    self._executor, json.loads, data
+                )
+
+                node_id = key.split(":")[-1]
+                DataSource.node_physical_stats[node_id] = parsed_data
+            except Exception:
+                logger.exception(
+                    "Error receiving node physical stats from _update_node_physical_stats."
+                )
+
     async def run(self, server):
         await asyncio.gather(
             self._update_nodes(),
             self._update_node_stats(),
+            self._update_node_physical_stats(),
         )
 
     @staticmethod
