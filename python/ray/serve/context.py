@@ -186,6 +186,8 @@ _serve_request_context = contextvars.ContextVar(
 
 
 def get_serve_request_context():
+    """Get the current request context."""
+
     if _serve_request_context.get() is None:
         _serve_request_context.set(_RequestContext())
     return _serve_request_context.get()
