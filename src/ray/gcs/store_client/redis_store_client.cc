@@ -523,7 +523,11 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   RedisKey redis_key{external_storage_namespace, /*table_name=*/""};
   std::vector<std::string> cmd{"KEYS",
                                RedisMatchPattern::Prefix(redis_key.ToString()).escaped};
-  auto reply = context->RunArgvSync(cmd);
+  std::promise<std::shared_ptr<CallbackReply>> promise;
+  context->RunArgvAsync(cmd, [&promise](const std::shared_ptr<CallbackReply> &reply) {
+    promise.set_value(reply);
+  });
+  auto reply = promise.get_future().get();
   const auto &keys = reply->ReadAsStringArray();
   if (keys.empty()) {
     RAY_LOG(INFO) << "No keys found for external storage namespace "
@@ -532,7 +536,12 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   }
   auto delete_one_sync = [context](const std::string &key) {
     auto del_cmd = std::vector<std::string>{"DEL", key};
-    auto del_reply = context->RunArgvSync(del_cmd);
+    std::promise<std::shared_ptr<CallbackReply>> promise;
+    context->RunArgvAsync(del_cmd,
+                          [&promise](const std::shared_ptr<CallbackReply> &reply) {
+                            promise.set_value(reply);
+                          });
+    auto del_reply = promise.get_future().get();
     return del_reply->ReadAsInteger() > 0;
   };
   size_t num_deleted = 0;
