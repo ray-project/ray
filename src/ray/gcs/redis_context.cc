@@ -450,7 +450,7 @@ void RedisContext::ValidateRedisDB() {
   }
 }
 
-bool RedisContext::isRedisSentinel() {
+bool RedisContext::IsRedisSentinel() {
   auto reply = RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
   if (reply->IsNil() || reply->IsError() || reply->ReadAsString().length() == 0) {
     return false;
@@ -636,7 +636,7 @@ Status RedisContext::Connect(const std::string &address,
   SetDisconnectCallback(redis_async_context_.get());
 
   // handle validation and primary connection for different types of redis
-  if (isRedisSentinel()) {
+  if (IsRedisSentinel()) {
     return ConnectRedisSentinel(*this, username, password, enable_ssl);
   } else {
     return ConnectRedisCluster(

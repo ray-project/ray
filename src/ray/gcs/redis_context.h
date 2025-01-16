@@ -175,7 +175,7 @@ class RedisContext {
 
   void ValidateRedisDB();
 
-  bool isRedisSentinel();
+  bool IsRedisSentinel();
 
   Status ConnectRedisCluster(const std::string &username,
                              const std::string &password,
