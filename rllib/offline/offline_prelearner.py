@@ -1,6 +1,7 @@
 import gymnasium as gym
 import logging
 import numpy as np
+import tree
 import uuid
 
 from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
@@ -86,28 +87,23 @@ class OfflinePreLearner:
         self,
         *,
         config: "AlgorithmConfig",
-        learner: Union[Learner, list[ActorHandle]],
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
+        device_strings: Optional[List[str]] = None,
         **kwargs: Dict[str, Any],
     ):
 
         self.config = config
         self.input_read_episodes = self.config.input_read_episodes
         self.input_read_sample_batches = self.config.input_read_sample_batches
-        # We need this learner to run the learner connector pipeline.
-        # If it is a `Learner` instance, the `Learner` is local.
-        if isinstance(learner, Learner):
-            self._learner = learner
-            self.learner_is_remote = False
-            self._module = self._learner._module
-        # Otherwise we have remote `Learner`s.
-        else:
-            self.learner_is_remote = True
-            # Build the module from spec. Note, this will be a MultiRLModule.
-            self._module = module_spec.build()
-            self._module.set_state(module_state)
+
+        # Build the module from spec. Note, this will be a MultiRLModule.
+        self._module = module_spec.build()
+        self._module.set_state(module_state)
+        # Map the module to the device, if necessary.
+        # TODO (simon): Check here if we already have a list.
+        self._set_device(device_strings)
 
         # Store the observation and action space if defined, otherwise we
         # set them to `None`. Note, if `None` the `convert_from_jsonable`
@@ -118,6 +114,7 @@ class OfflinePreLearner:
         self._learner_connector = self.config.build_learner_connector(
             input_observation_space=self.observation_space,
             input_action_space=self.action_space,
+            device=self._device,
         )
         # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
@@ -186,14 +183,14 @@ class OfflinePreLearner:
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
                 sample_episodes=True,
-                to_numpy=True,
+                finalize=True,
             )
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
             episodes = OfflinePreLearner._map_sample_batch_to_episode(
                 self._is_multi_agent,
                 batch,
-                to_numpy=True,
+                finalize=True,
                 schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
             )["episodes"]
@@ -211,7 +208,7 @@ class OfflinePreLearner:
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
                 sample_episodes=True,
-                to_numpy=True,
+                finalize=True,
             )
         # Otherwise we map the batch to episodes.
         else:
@@ -219,14 +216,14 @@ class OfflinePreLearner:
                 self._is_multi_agent,
                 batch,
                 schema=SCHEMA | self.config.input_read_schema,
-                to_numpy=True,
+                finalize=True,
                 input_compress_columns=self.config.input_compress_columns,
                 observation_space=self.observation_space,
                 action_space=self.action_space,
             )["episodes"]
 
         # TODO (simon): Make synching work. Right now this becomes blocking or never
-        #  receives weights. Learners appear to be non accessi ble via other actors.
+        # receives weights. Learners appear to be non accessable via other actors.
         # Increase the counter for updating the module.
         # self.iter_since_last_module_update += 1
 
@@ -258,9 +255,6 @@ class OfflinePreLearner:
             batch={},
             episodes=episodes,
             shared_data={},
-            # TODO (sven): Add MetricsLogger to non-Learner components that have a
-            #  LearnerConnector pipeline.
-            metrics=None,
         )
         # Convert to `MultiAgentBatch`.
         batch = MultiAgentBatch(
@@ -306,6 +300,49 @@ class OfflinePreLearner:
             "capacity": self.config.train_batch_size_per_learner * 10,
             "batch_size_B": self.config.train_batch_size_per_learner,
         }
+
+    def _set_device(self, device_strings=None) -> None:
+        """Sets the device for this instance.
+
+        If devices were provided through the `device_strings` in the
+        constructor these devices will have priority, which is important
+        for preloading batches onto GPU devices. In the other case
+        it will be checked if any devices were assigned by Ray Core.
+
+        In case no device is available the device will be set to CPU.
+        """
+        from ray.rllib.utils.framework import try_import_torch
+        from ray.air._internal.torch_utils import get_devices
+
+        # Import Torch.
+        torch, nn = try_import_torch()
+        # Receive a list of available devices.
+        devices = tree.map_structure(
+            lambda dev_str: torch.device(dev_str), device_strings or get_devices()
+        )
+        logger.debug(f"===> [OfflinePreLearner] - Available devices: {get_devices()}")
+        # Assign devices randomly to balance loads.
+        self._device = devices[np.random.randint(0, len(devices))]
+        logger.debug(
+            "===> [OfflinePreLearner] - Mapping module to following device: "
+            f"{self._device}"
+        )
+        # TODO (simon): Provide a flag, if the internal module should be
+        # placed on GPU. BC does not need it there, only MARWIL.
+        # If the device is CPU return.
+        if self._device.type == "cpu":
+            return
+        # Otherwise map the `RLModule` to this device.
+        else:
+            # Is this a plain `torch.nn.Module`/`RLModule`?
+            if isinstance(self._module, nn.Module):
+                self._module.to(self._device)
+            # Otherwise it is a `MultiRLModule`.
+            else:
+                # Map each sub-module to the device.
+                for key in self._module.keys():
+                    if isinstance(self._module[key], nn.Module):
+                        self._module[key].to(self._device)
 
     def _validate_episodes(
         self, episodes: List[SingleAgentEpisode]
@@ -361,7 +398,7 @@ class OfflinePreLearner:
         is_multi_agent: bool,
         batch: Dict[str, Union[list, np.ndarray]],
         schema: Dict[str, str] = SCHEMA,
-        to_numpy: bool = False,
+        finalize: bool = False,
         input_compress_columns: Optional[List[str]] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
@@ -476,8 +513,8 @@ class OfflinePreLearner:
                     len_lookback_buffer=0,
                 )
 
-                if to_numpy:
-                    episode.to_numpy()
+                if finalize:
+                    episode.finalize()
                 episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
@@ -488,7 +525,7 @@ class OfflinePreLearner:
         is_multi_agent: bool,
         batch: Dict[str, Union[list, np.ndarray]],
         schema: Dict[str, str] = SCHEMA,
-        to_numpy: bool = False,
+        finalize: bool = False,
         input_compress_columns: Optional[List[str]] = None,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps an old stack `SampleBatch` to new stack episodes."""
@@ -637,11 +674,11 @@ class OfflinePreLearner:
                     },
                     len_lookback_buffer=0,
                 )
-                # Numpy'ized, if necessary.
+                # Finalize, if necessary.
                 # TODO (simon, sven): Check, if we should convert all data to lists
                 # before. Right now only obs are lists.
-                if to_numpy:
-                    episode.to_numpy()
+                if finalize:
+                    episode.finalize()
                 episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}

@@ -7,6 +7,7 @@ import types
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.annotations import (
@@ -97,6 +98,9 @@ class OfflineData:
             logger.info("Reading data from {}".format(self.path))
         except Exception as e:
             logger.error(e)
+
+        data_ctx = ray.data.DataContext.get_current()
+        data_ctx.enable_fallback_to_arrow_object_ext_type = True
         # Avoids reinstantiating the batch iterator each time we sample.
         self.batch_iterators = None
         self.map_batches_kwargs = (
@@ -130,14 +134,9 @@ class OfflineData:
         #   (b) Rematerialize the data every couple of iterations. This is
         #       is costly.
         if not self.data_is_mapped:
-            # Constructor `kwargs` for the `OfflinePreLearner`.
-            fn_constructor_kwargs = {
-                "config": self.config,
-                "learner": self.learner_handles[0],
-                "spaces": self.spaces[INPUT_ENV_SPACES],
-            }
-            # If we have multiple learners, add to the constructor `kwargs`.
-            if num_shards > 1:
+
+            # Get the RLModule state from learners.
+            if num_shards >= 1:
                 # Call here the learner to get an up-to-date module state.
                 # TODO (simon): This is a workaround as along as learners cannot
                 # receive any calls from another actor.
@@ -145,16 +144,48 @@ class OfflineData:
                     self.learner_handles[0].get_state.remote(
                         component=COMPONENT_RL_MODULE
                     )
-                )
-                # Add constructor `kwargs` when using remote learners.
-                fn_constructor_kwargs.update(
-                    {
-                        "learner": None,
-                        "module_spec": self.module_spec,
-                        "module_state": module_state,
-                    }
-                )
+                )[COMPONENT_RL_MODULE]
+                # Provide the `Learner`(s) GPU devices, if needed.
+                if self.map_batches_uses_gpus():
+                    devices = ray.get(self.learner_handles[0].get_device.remote())
+                    devices = [devices] if not isinstance(devices, list) else devices
+                    device_strings = [
+                        device.type + ":" + str(device.index)
+                        if device.type == "cuda"
+                        else device.type
+                        for device in devices
+                    ]
+                # Otherwise, set the GPU strings to `None`.
+                # TODO (simon): Check inside 'OfflinePreLearner'.
+                else:
+                    device_strings = None
+            else:
+                # Get the module state from the `Learner`(S).
+                module_state = self.learner_handles[0].get_state(
+                    component=COMPONENT_RL_MODULE
+                )[COMPONENT_RL_MODULE]
+                # Provide the `Learner`(s) GPU devices, if needed.
+                if self.map_batches_uses_gpus():
+                    device = self.learner_handles[0].get_device()
+                    device_strings = [
+                        device.type + ":" + str(device.index)
+                        if device.type == "cuda"
+                        else device.type
+                    ]
+                else:
+                    device_strings = None
+            # Constructor `kwargs` for the `OfflinePreLearner`.
+            fn_constructor_kwargs = {
+                "config": self.config,
+                "learner": None,
+                "spaces": self.spaces[INPUT_ENV_SPACES],
+                "module_spec": self.module_spec,
+                "module_state": module_state,
+                "device_strings": device_strings,
+            }
 
+            # Map the data to run the `OfflinePreLearner`s in the data pipeline
+            # for training.
             self.data = self.data.map_batches(
                 self.prelearner_class,
                 fn_constructor_kwargs=fn_constructor_kwargs,
@@ -170,6 +201,7 @@ class OfflineData:
         # returned now and we have already generated from the iterator, i.e.
         # `isinstance(self.batch_iterators, types.GeneratorType) == True`, we need
         # to create here a new iterator.
+        # TODO (simon): Check, if this iterator could potentially exhaust.
         if not self.batch_iterators or (
             return_iterator and isinstance(self.batch_iterators, types.GeneratorType)
         ):
@@ -190,23 +222,29 @@ class OfflineData:
             # Otherwise we create a simple iterator and - if necessary - initialize
             # it here.
             else:
-                # If no iterator should be returned, or if we want to return a single
-                # batch iterator, we instantiate the batch iterator once, here.
-                self.batch_iterators = self.data.iter_batches(
-                    # This is important. The batch size is now 1, because the data
-                    # is already run through the `OfflinePreLearner` and a single
-                    # instance is a single `MultiAgentBatch` of size `num_samples`.
-                    batch_size=1,
-                    **self.iter_batches_kwargs,
-                )
-
-                # If there should be batches
-                if not return_iterator:
+                # Should an iterator be returned?
+                if return_iterator:
+                    self.batch_iterators = self.data.iterator()
+                # Otherwise, the user wants batches returned.
+                else:
+                    # If no iterator should be returned, or if we want to return a single
+                    # batch iterator, we instantiate the batch iterator once, here.
+                    self.batch_iterators = self.data.iter_batches(
+                        # This is important. The batch size is now 1, because the data
+                        # is already run through the `OfflinePreLearner` and a single
+                        # instance is a single `MultiAgentBatch` of size `num_samples`.
+                        batch_size=1,
+                        **self.iter_batches_kwargs,
+                    )
                     self.batch_iterators = iter(self.batch_iterators)
 
         # Do we want to return an iterator or a single batch?
         if return_iterator:
-            return self.batch_iterators
+            return (
+                [self.batch_iterators]
+                if not isinstance(self.batch_iterators, list)
+                else self.batch_iterators
+            )
         else:
             # Return a single batch from the iterator.
             try:
@@ -225,13 +263,68 @@ class OfflineData:
 
     @property
     def default_map_batches_kwargs(self):
+        """Default `ray.data.Dataset.map_batches` keyword arguments.
+
+        This property ensures that the data pipeline contains at
+        least two `OfflinePreLearner` for a single learner and at
+        least a single `OfflinePreLearner` per `Learner` in case a
+        multi-learner setup is chosen.
+
+        To override these default settings of the `map_batches` in the
+        Offline RL pipeline, use the attribute `map_batches_kwargs` in
+        `AlgorithmConfig.offline_data`.
+        """
         return {
             "concurrency": max(2, self.config.num_learners),
-            "zero_copy_batch": True,
         }
 
     @property
     def default_iter_batches_kwargs(self):
+        """Default `ray.data.DataIterator.iter_batches` keyword arguments.
+
+        This property ensures that the data pipeline contains at least
+        two prefetched batches when iterating over it in training. Note,
+        in case that multiple `Learner`s are used (`num_learners > 1)
+        these arguments get applied accordingly to multiple streams (one
+        per each `Learner`).
+
+        To override these default settings of the `iter_batches` in the
+        Offline RL pipeline, use the attribute `iter_batches_kwargs` in
+        `AlgorithmConfig.offline_data`.
+        """
         return {
             "prefetch_batches": 2,
         }
+
+    def map_batches_uses_gpus(self):
+        """Checks, if the `OfflinePreLearner`s run on GPU.
+
+        Raises:
+            `ValueError`, if the `ray_remote_args_fn` is supplied and GPUs
+            were neither configured in `map_batches_kwargs` nor in the
+            `ray_remote_args` inside `map_batches_kwargs`.
+        Returns:
+            `True`, if GPUs are configured in either the `map_batches_kwargs`
+            directly or in the `ray_remote_args`. Otherwise returns `False`.
+        """
+        if (
+            "num_gpus" in self.map_batches_kwargs
+            and self.map_batches_kwargs["num_gpus"] > 0
+        ):
+            return True
+        # If not directly supplied, GPUs could be configured in the `ray_remote_args`.
+        elif (
+            "ray_remote_args" in self.map_batches_kwargs
+            and "num_gpus" in self.map_batches_kwargs["ray_remote_args"]
+            and self.map_batches_kwargs["ray_remote_args"]["num_gpus"] > 0
+        ):
+            return True
+        # We do not support `remote_args_fn`s, yet.
+        elif "ray_remote_args_fn" in self.map_batches_kwargs:
+            raise ValueError(
+                "`ray_remote_args_fn` is not supported in `map_batches_kwargs` of "
+                "RLlib's Offline RL API. Use `ray_remote_args` or set `num_gpus` "
+                "explicitly."
+            )
+        else:
+            return False
