@@ -69,21 +69,6 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
-    # TODO(mowen): Fix after adding in metric for data allocated
-    # Panel(
-    #     id=40,
-    #     title="Bytes Allocated (by Node)",
-    #     description="Amount allocated by dataset operators, grouped by node.",
-    #     unit="bytes",
-    #     targets=[
-    #         Target(
-    #             expr="sum(ray_data_allocated_bytes_per_node{{{global_filters}}}) by (dataset, node)",
-    #             legend="Bytes Allocated: {{dataset}}, {{node}}",
-    #         )
-    #     ],
-    #     fill=0,
-    #     stack=False,
-    # ),
     Panel(
         id=3,
         title="Bytes Freed",
@@ -352,7 +337,7 @@ DATA_GRAFANA_PANELS = [
         unit="Bps",
         targets=[
             Target(
-                expr="rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node)",
+                expr="sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node)",
                 legend="Bytes Taken / Second: {{dataset}}, {{node}}",
             )
         ],
