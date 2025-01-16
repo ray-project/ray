@@ -90,7 +90,6 @@ class IMPALAConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.impala import IMPALAConfig
-        from ray import air
         from ray import tune
 
         config = (
@@ -104,7 +103,7 @@ class IMPALAConfig(AlgorithmConfig):
         tune.Tuner(
             "IMPALA",
             param_space=config,
-            run_config=air.RunConfig(stop={"training_iteration": 1}),
+            run_config=tune.RunConfig(stop={"training_iteration": 1}),
         ).fit()
     """
 

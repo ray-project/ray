@@ -70,7 +70,7 @@ this agent and then use its policy to record expert data to local disk.
         EVALUATION_RESULTS,
         EPISODE_RETURN_MEAN,
     )
-    from ray import train, tune
+    from ray import tune
 
     # Configure the PPO algorithm.
     config = (
@@ -102,13 +102,13 @@ this agent and then use its policy to record expert data to local disk.
     tuner = tune.Tuner(
         "PPO",
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop={
                 metric: 450.0,
             },
             name="docs_rllib_offline_pretrain_ppo",
             verbose=2,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=1,
                 checkpoint_at_end=True,
             ),
@@ -249,7 +249,7 @@ data needs to be linked in the configuration of the algorithm (through the ``inp
 
 .. code-block:: python
 
-    from ray import train, tune
+    from ray import tune
     from ray.rllib.algorithms.bc import BCConfig
 
     # Setup the config for behavior cloning.
@@ -317,11 +317,11 @@ data needs to be linked in the configuration of the algorithm (through the ``inp
     tuner = tune.Tuner(
         "BC",
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="docs_rllib_offline_bc",
             # Stop behavior cloning when we reach 450 in return.
             stop={metric: 450.0},
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 # Only checkpoint at the end to be faster.
                 checkpoint_frequency=0,
                 checkpoint_at_end=True,

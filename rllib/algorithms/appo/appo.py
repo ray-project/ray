@@ -58,7 +58,6 @@ class APPOConfig(IMPALAConfig):
     .. testcode::
 
         from ray.rllib.algorithms.appo import APPOConfig
-        from ray import air
         from ray import tune
 
         config = APPOConfig()
@@ -69,7 +68,7 @@ class APPOConfig(IMPALAConfig):
         # Use to_dict() to get the old-style python config dict when running with tune.
         tune.Tuner(
             "APPO",
-            run_config=air.RunConfig(
+            run_config=tune.RunConfig(
                 stop={"training_iteration": 1},
                 verbose=0,
             ),

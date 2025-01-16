@@ -102,7 +102,7 @@ The following examples demonstrate this on RLlib's :py:class:`~ray.rllib.algorit
 
         .. testcode::
 
-            from ray import train, tune
+            from ray import tune
             from ray.rllib.algorithms.ppo import PPOConfig
 
             # Configure.
@@ -120,7 +120,7 @@ The following examples demonstrate this on RLlib's :py:class:`~ray.rllib.algorit
                 "PPO",
                 param_space=config,
                 # Train for 4000 timesteps (2 iterations).
-                run_config=train.RunConfig(stop={"num_env_steps_sampled_lifetime": 4000}),
+                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 4000}),
             ).fit()
 
 .. _rllib-key-concepts-environments:

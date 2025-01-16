@@ -402,7 +402,7 @@ for example a particular :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule
 
         .. testcode::
 
-            from ray import train, tune
+            from ray import tune
 
             # Reuse the preceding PPOConfig (`config`).
             # Inject custom callback code that runs right after algorithm's initialization.
@@ -416,7 +416,7 @@ for example a particular :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule
             results = tune.Tuner(
                 config.algo_class,
                 param_space=config,
-                run_config=train.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
+                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
             ).fit()
 
     .. tab-item:: Swap out one RLModule and continue multi-agent training
@@ -456,7 +456,7 @@ for example a particular :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule
             results = tune.Tuner(
                 multi_agent_config.algo_class,
                 param_space=multi_agent_config,
-                run_config=train.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
+                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
             ).fit()
 
         .. testcode::

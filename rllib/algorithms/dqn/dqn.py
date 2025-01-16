@@ -94,7 +94,6 @@ class DQNConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.dqn.dqn import DQNConfig
-        from ray import air
         from ray import tune
 
         config = (
@@ -106,7 +105,7 @@ class DQNConfig(AlgorithmConfig):
         )
         tune.Tuner(
             "DQN",
-            run_config=air.RunConfig(stop={"training_iteration":1}),
+            run_config=tune.RunConfig(stop={"training_iteration":1}),
             param_space=config,
         ).fit()
 

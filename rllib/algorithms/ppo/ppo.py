@@ -78,7 +78,6 @@ class PPOConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.ppo import PPOConfig
-        from ray import air
         from ray import tune
 
         config = (
@@ -93,7 +92,7 @@ class PPOConfig(AlgorithmConfig):
 
         tune.Tuner(
             "PPO",
-            run_config=air.RunConfig(stop={"training_iteration": 1}),
+            run_config=tune.RunConfig(stop={"training_iteration": 1}),
             param_space=config,
         ).fit()
 

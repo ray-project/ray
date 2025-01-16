@@ -31,7 +31,7 @@ algo.stop()
 
 if False:
     # __rllib-tune-config-begin__
-    from ray import train, tune
+    from ray import tune
 
     config = (
         PPOConfig()
@@ -48,7 +48,7 @@ if False:
     tuner = tune.Tuner(
         "PPO",
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop={"env_runners/episode_return_mean": 150.0},
         ),
     )
@@ -58,15 +58,15 @@ if False:
 
 
 # __rllib-tuner-begin__
-from ray import train, tune
+from ray import tune
 
 # Tuner.fit() allows setting a custom log directory (other than ~/ray-results).
 tuner = tune.Tuner(
     "PPO",
     param_space=config,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop={"num_env_steps_sampled_lifetime": 20000},
-        checkpoint_config=train.CheckpointConfig(checkpoint_at_end=True),
+        checkpoint_config=tune.CheckpointConfig(checkpoint_at_end=True),
     ),
 )
 
