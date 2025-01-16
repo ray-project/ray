@@ -1,9 +1,12 @@
 from typing import Any, Dict, Optional
 
-from ray.rllib.algorithms.appo.appo import OLD_ACTION_DIST_LOGITS_KEY
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network
-from ray.rllib.core.rl_module.apis import TargetNetworkAPI, ValueFunctionAPI
+from ray.rllib.core.rl_module.apis import (
+    TargetNetworkAPI,
+    ValueFunctionAPI,
+    TARGET_NETWORK_ACTION_DIST_INPUTS,
+)
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.torch.misc import (
     normc_initializer,
@@ -164,7 +167,7 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI, TargetNetworkAPI):
         obs = batch[Columns.OBS].permute(0, 3, 1, 2)
         embeddings = self._target_base_cnn_stack(obs)
         logits = self._target_logits(embeddings)
-        return {OLD_ACTION_DIST_LOGITS_KEY: torch.squeeze(logits, dim=[-1, -2])}
+        return {TARGET_NETWORK_ACTION_DIST_INPUTS: torch.squeeze(logits, dim=[-1, -2])}
 
     # We implement this RLModule as a ValueFunctionAPI RLModule, so it can be used
     # by value-based methods like PPO or IMPALA.
