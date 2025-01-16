@@ -107,8 +107,8 @@ class RedirectionFileHandle {
 
 #elif defined(_WIN32)
   RedirectionFileHandle(RedirectionFileHandle &&rhs) {
-    write_fd_ = rhs.write_fd_;
-    rhs.write_fd_ = nullptr;
+    write_handle_ = rhs.write_handle_;
+    rhs.write_handle_ = nullptr;
     flush_fn_ = std::move(rhs.flush_fn_);
     close_fn_ = std::move(rhs.close_fn_);
   }
