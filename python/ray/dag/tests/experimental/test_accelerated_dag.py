@@ -216,7 +216,6 @@ class TestDAGRefDestruction:
         del ref2
         # Test that ray.get() on ref still works properly even if
         # ref2 (corresponding to a later execution) is destructed first
-        time.sleep(0.1)
         assert ray.get(ref) == 1
 
     def test_get_ref_after_destructed_ref(self, ray_start_regular):
