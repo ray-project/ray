@@ -90,6 +90,8 @@ void StartStreamDump(ReadFunc read_func,
   std::thread([read_func = std::move(read_func),
                close_read_handle = std::move(close_read_handle),
                stream_dumper = stream_dumper]() {
+    SetThreadName("PipeReaderThd");
+
     const size_t buf_size = GetPipeLogReadSizeOrDefault();
     // TODO(hjiang): Should resize without initialization.
     std::string content(buf_size, '\0');
@@ -144,6 +146,8 @@ void StartStreamDump(ReadFunc read_func,
                write_func = std::move(write_func),
                flush_func = std::move(flush_func),
                on_close_completion = std::move(on_close_completion)]() {
+    SetThreadName("PipeDumpThd");
+
     while (true) {
       std::string curline;
       {
