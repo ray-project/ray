@@ -407,8 +407,8 @@ std::optional<std::pair<std::string, int>> ParseIffMovedError(
 }
 }  // namespace
 
-void ValidateRedisDB(RedisContext &context) {
-  auto reply = context.RunArgvSync(std::vector<std::string>{"INFO", "CLUSTER"});
+void RedisContext::ValidateRedisDB() {
+  auto reply = RunArgvSync(std::vector<std::string>{"INFO", "CLUSTER"});
   // cluster_state:ok
   // cluster_slots_assigned:16384
   // cluster_slots_ok:16384
@@ -450,8 +450,8 @@ void ValidateRedisDB(RedisContext &context) {
   }
 }
 
-bool isRedisSentinel(RedisContext &context) {
-  auto reply = context.RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
+bool RedisContext::isRedisSentinel() {
+  auto reply = RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
   if (reply->IsNil() || reply->IsError() || reply->ReadAsString().length() == 0) {
     return false;
   } else {
@@ -459,14 +459,13 @@ bool isRedisSentinel(RedisContext &context) {
   }
 }
 
-Status ConnectRedisCluster(RedisContext &context,
-                           const std::string &username,
-                           const std::string &password,
-                           bool enable_ssl,
-                           const std::string &redis_address) {
+Status RedisContext::ConnectRedisCluster(const std::string &username,
+                                         const std::string &password,
+                                         bool enable_ssl,
+                                         const std::string &redis_address) {
   RAY_LOG(INFO) << "Connect to Redis Cluster";
   // Ray has some restrictions for RedisDB. Validate it here.
-  ValidateRedisDB(context);
+  ValidateRedisDB();
 
   // Find the true leader
   std::vector<const char *> argv;
@@ -478,7 +477,7 @@ Status ConnectRedisCluster(RedisContext &context,
   }
 
   auto redis_reply = reinterpret_cast<redisReply *>(
-      ::redisCommandArgv(context.sync_context(), cmds.size(), argv.data(), argc.data()));
+      ::redisCommandArgv(sync_context(), cmds.size(), argv.data(), argc.data()));
 
   if (redis_reply->type == REDIS_REPLY_ERROR) {
     // This should be a MOVED error
@@ -488,12 +487,12 @@ Status ConnectRedisCluster(RedisContext &context,
     auto maybe_ip_port = ParseIffMovedError(error_msg);
     RAY_CHECK(maybe_ip_port.has_value())
         << "Setup Redis cluster failed in the dummy deletion: " << error_msg;
-    context.Disconnect();
+    Disconnect();
     const auto &[ip, port] = maybe_ip_port.value();
     // Connect to the true leader.
     RAY_LOG(INFO) << "Redis cluster leader is " << ip << ":" << port
                   << ". Reconnect to it.";
-    return context.Connect(ip, port, username, password, enable_ssl);
+    return Connect(ip, port, username, password, enable_ssl);
   } else {
     RAY_LOG(INFO) << "Redis cluster leader is " << redis_address;
     freeReplyObject(redis_reply);
@@ -637,14 +636,11 @@ Status RedisContext::Connect(const std::string &address,
   SetDisconnectCallback(redis_async_context_.get());
 
   // handle validation and primary connection for different types of redis
-  if (isRedisSentinel(*this)) {
+  if (isRedisSentinel()) {
     return ConnectRedisSentinel(*this, username, password, enable_ssl);
   } else {
-    return ConnectRedisCluster(*this,
-                               username,
-                               password,
-                               enable_ssl,
-                               ip_addresses[0] + ":" + std::to_string(port));
+    return ConnectRedisCluster(
+        username, password, enable_ssl, ip_addresses[0] + ":" + std::to_string(port));
   }
 }
 

@@ -147,12 +147,6 @@ class RedisContext {
   /// Disconnect from the server.
   void Disconnect();
 
-  /// Run an arbitrary Redis command synchronously.
-  ///
-  /// \param args The vector of command args to pass to Redis.
-  /// \return CallbackReply(The reply from redis).
-  std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string> &args);
-
   /// Run an arbitrary Redis command without a callback.
   ///
   /// \param args The vector of command args to pass to Redis.
@@ -173,6 +167,21 @@ class RedisContext {
   instrumented_io_context &io_service() { return io_service_; }
 
  private:
+  /// Run an arbitrary Redis command synchronously.
+  ///
+  /// \param args The vector of command args to pass to Redis.
+  /// \return CallbackReply(The reply from redis).
+  std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string> &args);
+
+  void ValidateRedisDB();
+
+  bool isRedisSentinel();
+
+  Status ConnectRedisCluster(const std::string &username,
+                             const std::string &password,
+                             bool enable_ssl,
+                             const std::string &redis_address);
+
   instrumented_io_context &io_service_;
 
   std::unique_ptr<redisContext, RedisContextDeleter> context_;
