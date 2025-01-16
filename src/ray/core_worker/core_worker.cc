@@ -612,7 +612,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       };
   experimental_mutable_object_provider_ =
       std::make_shared<experimental::MutableObjectProvider>(
-          *plasma_store_provider_->store_client(), raylet_channel_client_factory);
+          *plasma_store_provider_->store_client(),
+          raylet_channel_client_factory,
+          options_.check_signals);
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,
@@ -1674,12 +1676,6 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   return Status::OK();
-}
-
-Status CoreWorker::ExperimentalChannelReadRelease(
-    const std::vector<ObjectID> &object_ids) {
-  RAY_CHECK_EQ(object_ids.size(), 1UL);
-  return experimental_mutable_object_provider_->ReadRelease(object_ids[0]);
 }
 
 Status CoreWorker::ExperimentalRegisterMutableObjectWriter(

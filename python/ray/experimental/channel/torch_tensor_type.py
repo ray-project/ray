@@ -52,7 +52,7 @@ class TorchTensorType(ChannelOutputType):
         performance if a non-default transport is used. However, if either flag
         is set, then the user must ensure that the condition is met.
 
-        If using this type as an accelerated DAG annotation, an exception will
+        If using this type as a Compiled Graph annotation, an exception will
         be thrown in the following cases, and the DAG will be torn down. To
         continue execution, a new DAG must be created:
         1. If _static_shape=True, and the found tensors don't match the

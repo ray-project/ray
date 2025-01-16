@@ -4,7 +4,6 @@ import os
 import random
 import sys
 import time
-import uuid
 from typing import Optional, Set
 
 import pytest
@@ -29,6 +28,7 @@ from ray.serve._private.replica_scheduler import (
 )
 from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
 from ray.serve._private.test_utils import MockTimer
+from ray.serve._private.utils import generate_request_id
 
 TIMER = MockTimer()
 
@@ -184,8 +184,8 @@ def fake_pending_request(
             args=list(),
             kwargs=dict(),
             metadata=RequestMetadata(
-                request_id=str(uuid.uuid4()),
-                internal_request_id=str(uuid.uuid4()),
+                request_id=generate_request_id(),
+                internal_request_id=generate_request_id(),
                 multiplexed_model_id=model_id,
             ),
             created_at=created_at,
@@ -195,8 +195,8 @@ def fake_pending_request(
             args=list(),
             kwargs=dict(),
             metadata=RequestMetadata(
-                request_id=str(uuid.uuid4()),
-                internal_request_id=str(uuid.uuid4()),
+                request_id=generate_request_id(),
+                internal_request_id=generate_request_id(),
                 multiplexed_model_id=model_id,
             ),
         )

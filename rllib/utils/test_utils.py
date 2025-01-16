@@ -1087,9 +1087,11 @@ def run_rllib_example_script_experiment(
                 enable_env_runner_and_connector_v2=False,
             )
 
-        # Define EnvRunner/RolloutWorker scaling and behavior.
+        # Define EnvRunner scaling and behavior.
         if args.num_env_runners is not None:
             config.env_runners(num_env_runners=args.num_env_runners)
+        if args.num_envs_per_env_runner is not None:
+            config.env_runners(num_envs_per_env_runner=args.num_envs_per_env_runner)
 
         # Define compute resources used automatically (only using the --num-learners
         # and --num-gpus-per-learner args).
@@ -1222,7 +1224,6 @@ def run_rllib_example_script_experiment(
                 **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
             )
         )
-
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
     if progress_reporter is None and args.num_agents > 0:
