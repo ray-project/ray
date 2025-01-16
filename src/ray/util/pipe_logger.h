@@ -24,7 +24,7 @@
 #include <utility>
 
 #include "ray/util/compat.h"
-#include "ray/util/log_redirection_options.h"
+#include "ray/util/stream_redirection_options.h"
 #include "ray/util/util.h"
 #include "spdlog/logger.h"
 

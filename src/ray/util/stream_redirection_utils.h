@@ -14,7 +14,7 @@
 
 // This file contains a few logging related util functions.
 
-#include "ray/util/log_redirection_options.h"
+#include "ray/util/stream_redirection_options.h"
 
 namespace ray {
 

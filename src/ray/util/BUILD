@@ -72,8 +72,8 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "log_redirection_options",
-    hdrs = ["log_redirection_options.h"],
+    name = "stream_redirection_options",
+    hdrs = ["stream_redirection_options.h"],
 )
 
 ray_cc_library(
@@ -93,8 +93,8 @@ ray_cc_library(
     hdrs = ["stream_redirection_utils.h"],
     srcs = ["stream_redirection_utils.cc"],
     deps = [
-        ":log_redirection_options",
         ":pipe_logger",
+        ":stream_redirection_options",
         ":util",
     ],
 )
