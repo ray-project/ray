@@ -10,7 +10,7 @@ See the [Data-Juicer 2.0: Cloud-Scale Adaptive Data Processing for Foundation Mo
 
 <img src="https://img.alicdn.com/imgextra/i2/O1CN01EteoQ31taUweAW1UE_!!6000000005918-2-tps-4034-4146.png" align="center" width="600" />
 
-## Implementation and Optimizations
+## Implementation and optimizations
 
 ### Ray Mode in Data-Juicer
 
