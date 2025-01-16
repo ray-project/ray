@@ -3,6 +3,7 @@ from typing import Callable
 import uuid
 
 import ray
+import ray.data
 
 from benchmark import Benchmark
 
@@ -53,9 +54,12 @@ def main(args):
 
 def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:
     if args.format == "image":
-        # FIXME: We specify the mode as a workaround for
-        # https://github.com/ray-project/ray/issues/49883.
-        read_fn = lambda path: ray.data.read_images(path, mode="RGB")
+
+        def read_fn(path: str) -> ray.data.Dataset:
+            # FIXME: We specify the mode as a workaround for
+            # https://github.com/ray-project/ray/issues/49883.
+            return ray.data.read_images(path, mode="RGB")
+
     elif args.format == "parquet":
         read_fn = ray.data.read_parquet
     elif args.format == "tfrecords":
