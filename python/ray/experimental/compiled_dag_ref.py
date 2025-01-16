@@ -98,8 +98,8 @@ class CompiledDAGRef:
             return
 
         # If we've already cached the result in the buffer, get it to remove it
-        # from the buffer. Else increment value for this execution_idx in the
-        # dag's _destructed_ref_idxs, and try to release any buffers we
+        # from the buffer. Else add this CompiledDAGRef's execution and channel indices
+        # to the dag's _destructed_ref_idxs, and try to release any buffers we
         # can based on the dag's current max_finished_execution_index.
         if not self._ray_get_called:
             if self._execution_index in self._dag._result_buffer:

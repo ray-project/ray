@@ -1953,8 +1953,7 @@ class CompiledDAG:
     ):
         """Cache execution results in self._result_buffer. Results are converted
         to dictionary format to allow efficient element removal and calculation of
-        the buffer size. This can only be called once per execution index. This will
-        also avoid caching for any CompiledDagRef that has already been destructed.
+        the buffer size. This can only be called once per execution index.
 
         Args:
             execution_index: The execution index corresponding to the result.
@@ -1962,6 +1961,7 @@ class CompiledDAG:
         """
         if not self._has_execution_results(execution_index):
             for chan_idx, res in enumerate(result):
+                # avoid caching for any CompiledDAGRef that has already been destructed.
                 if not (
                     execution_index in self._destructed_ref_idxs
                     and chan_idx in self._destructed_ref_idxs[execution_index]
@@ -2055,10 +2055,12 @@ class CompiledDAG:
         timeout: Optional[float] = None,
     ):
         """Repeatedly execute this DAG until the given execution index and
-        buffer results for all CompiledDagRef's that have not been destructed. If this
-        comes across execution indices for which the corresponding CompiledDagRef
-        has been destructed, it will release the buffer and not cache the result.
+        buffer results for all CompiledDagRef's.
         If the DAG has already been executed up to the given index, it will do nothing.
+
+        Note: If this comes across execution indices for which the corresponding
+        CompiledDAGRef's have been destructed, it will release the buffer and not
+        cache the result.
 
         Args:
             execution_index: The execution index to execute until.
@@ -2143,7 +2145,7 @@ class CompiledDAG:
 
         # We want to release any buffers we can at this point based on the
         # max_finished_execution_index so that the number of inflight executions
-        # is correct.
+        # is up to date.
         self._try_release_buffers()
         self._raise_if_too_many_inflight_executions()
         try:

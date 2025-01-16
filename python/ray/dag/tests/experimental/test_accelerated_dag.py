@@ -176,7 +176,7 @@ def test_basic(ray_start_regular):
         del result
 
 
-class TestDagRefDestruction:
+class TestDAGRefDestruction:
     def test_basic_destruction(self, ray_start_regular):
         a = Actor.remote(0)
         with InputNode() as i:
