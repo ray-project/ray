@@ -5,7 +5,6 @@ import multiprocessing
 import threading
 from dataclasses import dataclass
 
-from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
     RequestMessage,

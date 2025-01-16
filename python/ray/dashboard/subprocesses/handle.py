@@ -4,7 +4,7 @@ import logging
 import multiprocessing
 import threading
 from dataclasses import dataclass
-from typing import Awaitable, Dict, Optional
+from typing import Awaitable, Optional
 
 import aiohttp.web
 
