@@ -1,3 +1,4 @@
+(kuberay-gcs-persistent-ft)=
 # Tuning Redis for a Persistent Fault Tolerant GCS
 
 Using Redis to back up the Global Control Store (GCS) with KubeRay provides
