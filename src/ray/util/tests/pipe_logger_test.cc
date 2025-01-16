@@ -120,12 +120,19 @@ TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   logging_option.file_path = test_file_path;
   logging_option.tee_to_stdout = true;
 
+  // Capture stdout via `dup`.
+  testing::internal::CaptureStdout();
+
   auto log_token = CreateRedirectionFileHandle(logging_option, StdStreamFd{});
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
             kLogLine1.length());
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
             kLogLine2.length());
   log_token.Close();
+
+  // Check content tee-ed to stdout.
+  const std::string stdout_content = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(stdout_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Check log content after completion.
   EXPECT_EQ(CompleteReadFile(test_file_path),
@@ -151,12 +158,19 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
   logging_option.rotation_max_file_count = 2;
   logging_option.tee_to_stderr = true;
 
+  // Capture stdout via `dup`.
+  testing::internal::CaptureStderr();
+
   auto log_token = CreateRedirectionFileHandle(logging_option, StdStreamFd{});
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
             kLogLine1.length());
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
             kLogLine2.length());
   log_token.Close();
+
+  // Check content tee-ed to stderr.
+  const std::string stderr_content = testing::internal::GetCapturedStderr();
+  EXPECT_EQ(stderr_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Check log content after completion.
   const std::string log_file_path1 = test_file_path;
