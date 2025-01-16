@@ -11,12 +11,13 @@ from ray.data._internal.execution.interfaces.execution_options import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.streaming_executor_state import OpState
 from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
+    from ray.data._internal.execution.streaming_executor_state import OpState
+
 
 
 logger = logging.getLogger(__name__)
@@ -119,7 +120,7 @@ class ResourceManager:
         return mem_op_internal + mem_op_outputs
 
     def _estimate_object_store_memory_per_node(
-        self, op: PhysicalOperator, state: OpState
+        self, op: PhysicalOperator, state: "OpState"
     ) -> Dict[str, int]:
         usage_per_node = defaultdict(int)
 
