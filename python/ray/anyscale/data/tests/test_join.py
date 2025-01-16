@@ -8,6 +8,7 @@ from ray.anyscale.data._internal.execution.operators import hash_shuffle
 from ray.anyscale.data._internal.logical.operators.join_operator import JoinType
 from ray.data import Dataset
 from ray.data._internal.util import MiB
+from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
@@ -61,7 +62,7 @@ def test_simple_inner_join(
         squares,
         join_type="inner",
         num_partitions=16,
-        key_column_names=("id",),
+        on=("id",),
         partition_size_hint=partition_size_hint,
     )
 
@@ -129,7 +130,7 @@ def test_simple_left_right_outer_join(
         squares,
         join_type=join_type,
         num_partitions=16,
-        key_column_names=("id",),
+        on=("id",),
     )
 
     joined_pd = pd.DataFrame(joined.take_all())
@@ -178,7 +179,7 @@ def test_simple_full_outer_join(
         squares,
         join_type="full_outer",
         num_partitions=16,
-        key_column_names=("id",),
+        on=("id",),
         # NOTE: We override this to reduce hardware requirements
         #       for every aggregator (by default requiring 1 logical CPU)
         aggregator_ray_remote_args={"num_cpus": 0.01},
@@ -192,6 +193,79 @@ def test_simple_full_outer_join(
     pd.testing.assert_frame_equal(expected_pd, joined_pd_sorted)
 
 
+@pytest.mark.parametrize("left_suffix", [None, "_left"])
+@pytest.mark.parametrize("right_suffix", [None, "_right"])
+def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_suffix):
+    doubles = ray.data.range(100).map(
+        lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
+    )
+
+    doubles_pd = doubles.to_pandas()
+
+    # Self-join
+    joined: Dataset = doubles.join(
+        doubles,
+        join_type="inner",
+        num_partitions=16,
+        on=("id",),
+        left_suffix=left_suffix,
+        right_suffix=right_suffix,
+        # NOTE: We override this to reduce hardware requirements
+        #       for every aggregator (by default requiring 1 logical CPU)
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+
+    if left_suffix is None and right_suffix is None:
+        with pytest.raises(RayTaskError) as exc_info:
+            joined.count()
+
+        assert 'Field "double" exists 2 times' in str(exc_info.value.cause)
+    else:
+
+        joined_pd = pd.DataFrame(joined.take_all())
+
+        # Sort resulting frame and reset index (to be able to compare with expected one)
+        joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+
+        # Join using Pandas (to assert against)
+        expected_pd = doubles_pd.join(
+            doubles_pd.set_index("id"),
+            on="id",
+            how="inner",
+            lsuffix=left_suffix,
+            rsuffix=right_suffix,
+        ).reset_index(drop=True)
+
+        pd.testing.assert_frame_equal(expected_pd, joined_pd_sorted)
+
+
+def test_invalid_join_config(ray_start_regular_shared_2_cpus):
+    ds = ray.data.range(32)
+
+    with pytest.raises(ValueError) as exc_info:
+        ds.join(
+            ds,
+            "inner",
+            num_partitions=16,
+            on="id",  # has to be tuple/list
+            validate_schemas=True,
+        )
+
+    assert str(exc_info.value) == "Expected tuple or list as `on` (got str)"
+
+    with pytest.raises(ValueError) as exc_info:
+        ds.join(
+            ds,
+            "inner",
+            num_partitions=16,
+            on=("id",),
+            right_on="id",  # has to be tuple/list
+            validate_schemas=True,
+        )
+
+    assert str(exc_info.value) == "Expected tuple or list as `right_on` (got str)"
+
+
 @pytest.mark.parametrize("join_type", [jt for jt in JoinType])  # noqa: C416
 def test_invalid_join_not_matching_key_columns(
     ray_start_regular_shared_2_cpus, join_type
@@ -203,7 +277,11 @@ def test_invalid_join_not_matching_key_columns(
 
     with pytest.raises(ValueError) as exc_info:
         empty_ds.join(
-            non_empty_ds, join_type, num_partitions=16, key_column_names=("id",)
+            non_empty_ds,
+            join_type,
+            num_partitions=16,
+            on=("id",),
+            validate_schemas=True,
         )
 
     assert (
@@ -220,7 +298,11 @@ def test_invalid_join_not_matching_key_columns(
 
     with pytest.raises(ValueError) as exc_info:
         id_int_type_ds.join(
-            id_float_type_ds, join_type, num_partitions=16, key_column_names=("id",)
+            id_float_type_ds,
+            join_type,
+            num_partitions=16,
+            on=("id",),
+            validate_schemas=True,
         )
 
     assert (

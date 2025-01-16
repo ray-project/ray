@@ -97,11 +97,14 @@ class DatasetMixin:
         ds: "Dataset",
         join_type: str,
         num_partitions: int,
-        key_column_names: Tuple[str] = ("id",),
-        right_key_column_names: Optional[Tuple[str]] = None,
+        on: Tuple[str] = ("id",),
+        right_on: Optional[Tuple[str]] = None,
+        left_suffix: Optional[str] = None,
+        right_suffix: Optional[str] = None,
         *,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
+        validate_schemas: bool = False,
     ) -> "Dataset":
         """Join :class:`Datasets <ray.data.Dataset>` on join keys
 
@@ -115,19 +118,26 @@ class DatasetMixin:
               memory requirements when individual partitions are being joined. Note
               that, consequently, this will also be a total number of blocks that will
               be produced as a result of executing join.
-            key_column_names: The columns from the left operand that will be used as
+            on: The columns from the left operand that will be used as
               keys for the join operation.
-            right_key_column_names: The columns from the right operand that will be
+            right_on: The columns from the right operand that will be
               used as keys for the join operation. When none, `key_column_names` will
               be assumed to be a list of columns to be used for the right dataset
               as well.
-            partition_size_hint: Hint to joining operator about the estimated
+            left_suffix: (Optional) Suffix to be appended for columns of the left
+              operand
+            right_suffix: (Optional) Suffix to be appended for columns of the right
+              operand
+            partition_size_hint: (Optional) Hint to joining operator about the estimated
               avg expected size of the individual partition (in bytes).
               This is used in estimating the total dataset size and allow to tune
               memory requirement of the individual joining workers to prevent OOMs
               when joining very large datasets.
-            aggregator_ray_remote_args: Parameter overriding `ray.remote` args passed
-              when constructing joining (aggregator) workers
+            aggregator_ray_remote_args: (Optional) Parameter overriding `ray.remote`
+              args passed when constructing joining (aggregator) workers
+            validate_schemas: (Optional) Controls whether validation of provided
+              configuration against input schemas will be performed (defaults to
+              false, since obtaining schemas could be prohibitively expensive)
 
         Returns:
             A :class:`Dataset` that holds join of input left Dataset with the right
@@ -163,25 +173,39 @@ class DatasetMixin:
             ]
         """
 
-        left_op_schema: Optional["Schema"] = self.schema()
-        right_op_schema: Optional["Schema"] = ds.schema()
+        if not isinstance(on, (tuple, list)):
+            raise ValueError(
+                f"Expected tuple or list as `on` (got {type(on).__name__})"
+            )
+
+        if right_on and not isinstance(right_on, (tuple, list)):
+            raise ValueError(
+                f"Expected tuple or list as `right_on` (got {type(right_on).__name__})"
+            )
 
         # NOTE: If no separate keys provided for the right side, assume just the left
         #       side ones
-        right_key_column_names = right_key_column_names or key_column_names
+        right_on = right_on or on
 
-        Join._validate_schemas(
-            left_op_schema, right_op_schema, key_column_names, right_key_column_names
-        )
+        # NOTE: By default validating schemas are disabled as it could be arbitrarily
+        #       expensive (potentially executing whole pipeline to completion) to fetch
+        #       one currently
+        if validate_schemas:
+            left_op_schema: Optional["Schema"] = self.schema()
+            right_op_schema: Optional["Schema"] = ds.schema()
+
+            Join._validate_schemas(left_op_schema, right_op_schema, on, right_on)
 
         plan = self._plan.copy()
         op = Join(
             left_input_op=self._logical_plan.dag,
             right_input_op=ds._logical_plan.dag,
-            left_key_columns=key_column_names,
-            right_key_columns=right_key_column_names,
+            left_key_columns=on,
+            right_key_columns=right_on,
             join_type=join_type,
             num_partitions=num_partitions,
+            left_columns_suffix=left_suffix,
+            right_columns_suffix=right_suffix,
             partition_size_hint=partition_size_hint,
             aggregator_ray_remote_args=aggregator_ray_remote_args,
         )

@@ -27,6 +27,8 @@ class Join(NAry):
         right_key_columns: Tuple[str],
         *,
         num_partitions: int,
+        left_columns_suffix: Optional[str] = None,
+        right_columns_suffix: Optional[str] = None,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -59,6 +61,9 @@ class Join(NAry):
         self._left_key_columns = left_key_columns
         self._right_key_columns = right_key_columns
         self._join_type = join_type_enum
+
+        self._left_columns_suffix = left_columns_suffix
+        self._right_columns_suffix = right_columns_suffix
 
         self._partition_size_hint = partition_size_hint
         self._aggregator_ray_remote_args = aggregator_ray_remote_args

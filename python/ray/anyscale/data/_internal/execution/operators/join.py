@@ -50,6 +50,8 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         left_key_col_names: Tuple[str],
         right_key_col_names: Tuple[str],
         target_partition_ids: List[int],
+        left_columns_suffix: Optional[str] = None,
+        right_columns_suffix: Optional[str] = None,
     ):
         super().__init__(aggregator_id)
 
@@ -68,6 +70,9 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
         self._left_key_col_names: Tuple[str] = left_key_col_names
         self._right_key_col_names: Tuple[str] = right_key_col_names
         self._join_type: JoinType = join_type
+
+        self._left_columns_suffix: Optional[str] = left_columns_suffix
+        self._right_columns_suffix: Optional[str] = right_columns_suffix
 
         # Partition builders for the partition corresponding to
         # left and right input sequences respectively
@@ -106,6 +111,8 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             join_type=arrow_join_type,
             keys=list(self._left_key_col_names),
             right_keys=(list(self._right_key_col_names)),
+            left_suffix=self._left_columns_suffix,
+            right_suffix=self._right_columns_suffix,
         )
 
         return joined
@@ -137,6 +144,8 @@ class JoinOperator(HashShufflingOperatorBase):
         join_type: JoinType,
         *,
         num_partitions: int,
+        left_columns_suffix: Optional[str] = None,
+        right_columns_suffix: Optional[str] = None,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
@@ -154,6 +163,8 @@ class JoinOperator(HashShufflingOperatorBase):
                     right_key_col_names=right_key_columns,
                     join_type=join_type,
                     target_partition_ids=target_partition_ids,
+                    left_columns_suffix=left_columns_suffix,
+                    right_columns_suffix=right_columns_suffix,
                 )
             ),
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
