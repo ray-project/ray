@@ -84,7 +84,7 @@ class ServeContextFilter(logging.Filter):
     """
 
     def filter(self, record):
-        request_context = ray.serve.context._serve_request_context.get()
+        request_context = ray.serve.context.get_serve_request_context()
         if request_context.route:
             setattr(record, SERVE_LOG_ROUTE, request_context.route)
         if request_context.request_id:

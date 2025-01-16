@@ -20,7 +20,7 @@ def test_request_id_header_by_default(serve_instance):
     @serve.deployment
     class Model:
         def __call__(self):
-            request_id = ray.serve.context._serve_request_context.get().request_id
+            request_id = ray.serve.context.get_serve_request_context().request_id
             return request_id
 
     serve.run(Model.bind())
@@ -52,7 +52,7 @@ class TestUserProvidedRequestIDHeader:
         @serve.deployment
         class Model:
             def __call__(self) -> int:
-                request_id = ray.serve.context._serve_request_context.get().request_id
+                request_id = ray.serve.context.get_serve_request_context().request_id
                 assert request_id == "123-234"
                 return 1
 
@@ -67,7 +67,7 @@ class TestUserProvidedRequestIDHeader:
         class Model:
             @app.get("/")
             def say_hi(self) -> int:
-                request_id = ray.serve.context._serve_request_context.get().request_id
+                request_id = ray.serve.context.get_serve_request_context().request_id
                 assert request_id == "123-234"
                 return 1
 
@@ -78,7 +78,7 @@ class TestUserProvidedRequestIDHeader:
         @serve.deployment
         class Model:
             def __call__(self) -> int:
-                request_id = ray.serve.context._serve_request_context.get().request_id
+                request_id = ray.serve.context.get_serve_request_context().request_id
                 assert request_id == "123-234"
                 return starlette.responses.Response("1", media_type="application/json")
 
@@ -94,7 +94,7 @@ def test_set_request_id_headers_with_two_attributes(serve_instance):
     @serve.deployment
     class Model:
         def __call__(self):
-            request_id = ray.serve.context._serve_request_context.get().request_id
+            request_id = ray.serve.context.get_serve_request_context().request_id
             return request_id
 
     serve.run(Model.bind())
@@ -128,7 +128,7 @@ def test_reuse_request_id(serve_instance):
     class MyFastAPIDeployment:
         @app.post("/hello")
         def root(self, user_input: Dict[str, str]) -> Dict[str, str]:
-            request_id = ray.serve.context._serve_request_context.get().request_id
+            request_id = ray.serve.context.get_serve_request_context().request_id
             return {
                 "app_name": user_input["app_name"],
                 "serve_context_request_id": request_id,

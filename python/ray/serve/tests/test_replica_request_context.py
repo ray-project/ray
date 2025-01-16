@@ -10,7 +10,7 @@ from ray.serve.context import _serve_request_context
 
 
 def _get_request_context_route() -> str:
-    return _serve_request_context.get().route
+    return get_serve_request_context().route
 
 
 class TestHTTPRoute:

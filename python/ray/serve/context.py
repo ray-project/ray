@@ -185,6 +185,12 @@ _serve_request_context = contextvars.ContextVar(
 )
 
 
+def get_serve_request_context():
+    if _serve_request_context.get() is None:
+        _serve_request_context.set(_RequestContext())
+    return _serve_request_context.get()
+
+
 def _set_request_context(
     route: str = "",
     request_id: str = "",
@@ -195,9 +201,7 @@ def _set_request_context(
     """Set the request context. If the value is not set,
     the current context value will be used."""
 
-    current_request_context = _serve_request_context.get()
-    if current_request_context is None:
-        current_request_context = _RequestContext()
+    current_request_context = get_serve_request_context()
 
     _serve_request_context.set(
         _RequestContext(
