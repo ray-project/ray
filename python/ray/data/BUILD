@@ -345,6 +345,7 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+# Added "data_non_parallel" tag to prevent parallel execution of this test.
 py_test(
     name = "test_dynamic_block_split",
     size = "medium",
