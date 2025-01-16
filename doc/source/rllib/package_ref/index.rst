@@ -15,18 +15,16 @@ If you think there is anything missing, please open an issue on `Github`_.
 
 .. _`GitHub`: https://github.com/ray-project/ray/issues
 
-.. TODO: Eventually, move all reference pages into this dir here (doc/source/rllib/package_ref/)
-
 .. toctree::
     :maxdepth: 2
 
+    algorithm-config.rst
     algorithm.rst
+    callback.rst
     env.rst
-    policy.rst
-    models.rst
     rl_modules.rst
+    distributions.rst
     learner.rst
-    evaluation.rst
+    offline.rst
     replay-buffers.rst
     utils.rst
-    external-app.rst

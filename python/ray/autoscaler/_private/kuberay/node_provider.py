@@ -7,10 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from ray.autoscaler._private.constants import (
-    WORKER_LIVENESS_CHECK_KEY,
-    WORKER_RPC_DRAIN_KEY,
-)
+from ray.autoscaler._private.constants import WORKER_LIVENESS_CHECK_KEY
 from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeStatus, NodeType
 from ray.autoscaler.batching_node_provider import (
     BatchingNodeProvider,
@@ -343,9 +340,6 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         assert (
             provider_config.get(WORKER_LIVENESS_CHECK_KEY, True) is False
         ), f"To use KubeRayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
-        assert (
-            provider_config.get(WORKER_RPC_DRAIN_KEY, False) is True
-        ), f"To use KubeRayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:True`."
         BatchingNodeProvider.__init__(
             self, provider_config, cluster_name, _allow_multiple
         )

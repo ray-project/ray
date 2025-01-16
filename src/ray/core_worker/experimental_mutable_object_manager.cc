@@ -15,6 +15,7 @@
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 
 #include "absl/strings/str_format.h"
+#include "ray/common/ray_config.h"
 #include "ray/object_manager/common.h"
 
 namespace ray {
@@ -318,10 +319,15 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   auto timeout_point = ToTimeoutPoint(timeout_ms);
   bool locked = false;
   bool expired = false;
+  auto check_signal_interval = std::chrono::milliseconds(
+      RayConfig::instance().get_check_signal_interval_milliseconds());
+  auto last_signal_check_time = std::chrono::steady_clock::now();
   do {
     RAY_RETURN_NOT_OK(object->header->CheckHasError());
-    if (check_signals_) {
+    if (check_signals_ && std::chrono::steady_clock::now() - last_signal_check_time >=
+                              check_signal_interval) {
       RAY_RETURN_NOT_OK(check_signals_());
+      last_signal_check_time = std::chrono::steady_clock::now();
     }
     // The channel is still open. This lock ensures that there is only one reader
     // at a time. The lock is released in `ReadRelease()`.
@@ -471,18 +477,6 @@ Status MutableObjectManager::SetErrorAll() {
   return ret;
 }
 
-std::optional<std::chrono::steady_clock::time_point> MutableObjectManager::ToTimeoutPoint(
-    int64_t timeout_ms) {
-  std::optional<std::chrono::steady_clock::time_point> timeout_point;
-  if (timeout_ms == -1) {
-    return timeout_point;
-  }
-  auto now = std::chrono::steady_clock::now();
-  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
-  timeout_point.emplace(now + timeout_duration);
-  return timeout_point;
-}
-
 Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {
   Channel *channel = GetChannel(object_id);
   if (channel == nullptr) {
@@ -574,11 +568,6 @@ Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id,
 
 Status MutableObjectManager::SetErrorAll() {
   return Status::NotImplemented("Not supported on Windows.");
-}
-
-std::optional<std::chrono::steady_clock::time_point> MutableObjectManager::ToTimeoutPoint(
-    int64_t timeout_ms) {
-  return std::nullopt;
 }
 
 Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {

@@ -5,7 +5,7 @@ Installing Ray
 
 .. raw:: html
 
-    <a id="try-anyscale-quickstart-install-ray" target="_blank" href="https://console.anyscale.com/register/ha?utm_source=ray_docs&utm_medium=docs&utm_campaign=installing_ray&redirectTo=/v2/template-preview/workspace-intro">
+    <a id="try-anyscale-quickstart-install-ray" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=installing_ray&redirectTo=/v2/template-preview/workspace-intro">
       <img src="../_static/img/quickstart-with-ray.svg" alt="Run Quickstart on Anyscale" />
       <br/><br/>
     </a>
@@ -68,7 +68,7 @@ and macOS by choosing the option that best matches your use case.
           * - `pip install -U "ray[rllib]"`
             - Core, Tune, RLlib
           * - `pip install -U "ray[all]"`
-            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib
+            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib. This option isn't recommended. Specify the extras you need as shown below instead.
 
         .. tip::
 
