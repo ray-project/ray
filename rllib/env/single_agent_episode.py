@@ -14,6 +14,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import PublicAPI
+from ray.rllib.utils.test_utils import check
 
 
 @PublicAPI(stability="alpha")
@@ -611,7 +612,10 @@ class SingleAgentEpisode:
         other.validate()
 
         # Make sure, end matches other episode chunk's beginning.
-        assert np.all(other.observations[0] == self.observations[-1])
+        if isinstance(self.observation_space, gym.spaces.Dict):
+            check(other.observations[0], self.observations[-1])
+        else:
+            assert np.all(other.observations[0] == self.observations[-1])
         # Pop out our last observations and infos (as these are identical
         # to the first obs and infos in the next episode).
         self.observations.pop()
