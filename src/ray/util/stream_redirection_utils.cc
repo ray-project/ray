@@ -35,6 +35,15 @@ namespace {
 #if defined(__APPLE__) || defined(__linux__)
 int GetStdoutHandle() { return STDOUT_FILENO; }
 int GetStderrHandle() { return STDERR_FILENO; }
+#elif defined(_WIN32)
+int GetStdoutHandle() {
+  HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+  return _open_osfhandle(reinterpret_cast<intptr_t>(stdout_handle), _O_WRONLY);
+}
+int GetStderrHandle() {
+  HANDLE stderr_handle = GetStdHandle(STD_ERROR_HANDLE);
+  return _open_osfhandle(reinterpret_cast<intptr_t>(stderr_handle), _O_WRONLY);
+}
 #endif
 
 // TODO(hjiang): Revisit later, should be able to save some heap alllocation with
@@ -52,7 +61,6 @@ void SyncOnStreamRedirection() {
   }
 }
 
-#if defined(__APPLE__) || defined(__linux__)
 // Redirect the given [stream_fd] based on the specified option.
 void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
   std::call_once(stream_exit_once_flag, []() {
@@ -61,14 +69,20 @@ void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
   });
 
   RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
+
+#if defined(__APPLE__) || defined(__linux__)
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
       << "Fails to duplicate file descritor " << strerror(errno);
+#elif defined(_WIN32)
+  int windows_pipe_write_fd = _open_osfhandle(handle.GetWriteHandle(), _O_WTEXT);
+  RAY_CHECK_NE(_dup2(windows_pipe_write_fd, stream_fd), -1)
+      << "Fails to duplicate file descritor.";
+#endif
 
   const bool is_new =
       redirection_file_handles.emplace(stream_fd, std::move(handle)).second;
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
 }
-#endif
 
 void FlushOnRedirectedStream(int stream_fd) {
   auto iter = redirection_file_handles.find(stream_fd);
@@ -79,7 +93,6 @@ void FlushOnRedirectedStream(int stream_fd) {
 
 }  // namespace
 
-#if defined(__APPLE__) || defined(__linux__)
 void RedirectStdout(const StreamRedirectionOption &opt) {
   RedirectStream(GetStdoutHandle(), opt);
 }
@@ -88,12 +101,5 @@ void RedirectStderr(const StreamRedirectionOption &opt) {
 }
 void FlushOnRedirectedStdout() { FlushOnRedirectedStream(GetStdoutHandle()); }
 void FlushOnRedirectedStderr() { FlushOnRedirectedStream(GetStderrHandle()); }
-
-#elif defined(_WIN32)
-void RedirectStdout(const StreamRedirectionOption &opt) { return; }
-void RedirectStderr(const StreamRedirectionOption &opt) { return; }
-void FlushOnRedirectedStdout() { return; }
-void FlushOnRedirectedStderr() { return; }
-#endif
 
 }  // namespace ray
