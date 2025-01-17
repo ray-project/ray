@@ -10,7 +10,7 @@ Nsight system profiler
 Compiled Graphs build on top of Ray's profiling capabilities, and leverage Nsight
 system profiling. 
 
-To run Nsight Profiling on Compiled Graphs, specify the runtime_env for the involved actors
+To run Nsight Profiling on Compiled Graph, specify the runtime_env for the involved actors
 as described in :ref:`Run Nsight on Ray <run-nsight-on-ray>`.
 
 After execution, Compiled Graph generates the profiling results under the `/tmp/ray/session_*/logs/{profiler_name}`
