@@ -102,7 +102,7 @@ Install RLlib and `PyTorch <https://pytorch.org>`__, as shown below:
 
     .. code-block:: bash
 
-        `pip install "gymnasium[atari,accept-rom-license,mujoco]"`.
+        pip install "gymnasium[atari,accept-rom-license,mujoco]"
 
 This is all, you can now start coding against RLlib. Here is an example for running the :ref:`PPO Algorithm <ppo>` on the
 `Taxi domain <https://gymnasium.farama.org/environments/toy_text/taxi/>`__.

@@ -36,7 +36,8 @@ from ray.rllib.algorithms.dqn import DQNConfig
 algo = (
     DQNConfig()
     .api_stack(
-        enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
     )
     .framework("torch")
     .environment("CartPole-v1")

@@ -1,0 +1,487 @@
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. _rllib-getting-started:
+
+Getting Started
+===============
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. _rllib-in-60min:
+
+RLlib in 60 minutes
+-------------------
+
+.. figure:: images/rllib-index-header.svg
+
+In this tutorial, you learn how to design, customize, and run an end-to-end RLlib learning experiment
+from scratch. This includes picking and configuring an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`,
+running a couple of training iterations, saving the state of your
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` from time to time, running a separate
+evaluation loop, and finally utilizing one of the checkpoints to deploy your trained model
+to an environment outside of RLlib and compute actions.
+
+You also learn how to customize your :ref:`RL environment <rllib-key-concepts-environments>`
+and your :ref:`neural network model <rllib-key-concepts-rl-modules>`.
+
+Installation
+~~~~~~~~~~~~
+
+First, install RLlib, `PyTorch <https://pytorch.org>`__, and `Farama Gymnasium <https://gymnasium.farama.org>`__ as shown below:
+
+.. code-block:: bash
+
+    pip install "ray[rllib]" torch "gymnasium[atari,accept-rom-license,mujoco]"
+
+
+.. _rllib-python-api:
+
+Python API
+~~~~~~~~~~
+
+RLlib's Python API provides all the flexibility required for applying the library to any
+type of RL problem.
+
+You manage RLlib experiments through an instance of the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+class. An :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` typically holds a neural
+network for computing actions, called ``policy``, the :ref:`RL environment <rllib-key-concepts-environments>`
+that you want to optimize against, a loss function, an optimizer, and some code describing the
+algorithm's execution logic, like determining when to collect samples, when to update your model, etc..
+
+In :ref:`multi-agent training <rllib-multi-agent-environments-doc>`,
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` manages the querying and optimization of multiple policies at once.
+
+Through the algorithm's interface, you can train the policy, compute actions, or store your
+algorithm's state through checkpointing.
+
+
+Configure and build the algorithm
++++++++++++++++++++++++++++++++++
+
+You first create an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` instance
+and change some default settings through the config object's various methods.
+
+For example, we can set the :ref:`RL environment <rllib-key-concepts-environments>`
+we want to use by calling the config's :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment`
+method:
+
+.. testcode::
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+
+    # Create a config instance for the PPO algorithm.
+    config = (
+        PPOConfig()
+        .environment("Pendulum-v1")
+    )
+
+
+To scale our setup and define, how many EnvRunner actors you want to leverage,
+you can call the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners` method:
+
+.. testcode::
+
+    config.env_runners(num_env_runners=3)
+
+For training-related settings or any algorithm-specific settings, use the
+:py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training` method:
+
+.. testcode::
+
+    config.training(
+        lr=0.0002,
+        train_batch_size_per_learner=2000,
+        num_epochs=10,
+    )
+
+Finally, you build the actual :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance
+through calling your config's :py:meth:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig.build_algo`
+method.
+
+.. testcode::
+
+    # Build the Algorithm (PPO).
+    ppo = config.build_algo()
+
+
+.. note::
+
+    See here to learn about the :ref:`methods you can use to configure your Algorithm <rllib-algo-configuration-docs>`.
+
+
+Run the algorithm
++++++++++++++++++
+
+After you built your :ref:`PPO <ppo>` from its configuration, you can ``train`` it for a number of
+iterations through calling the :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.train` method,
+which returns a result dictionary that you can pretty-print for debugging purposes:
+
+.. testcode::
+
+    from pprint import pprint
+
+    for _ in range(5):
+        pprint(ppo.train())
+
+
+Checkpoint the algorithm
+++++++++++++++++++++++++
+
+To save the current state of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`,
+create a ``checkpoint`` through calling its :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.save_to_path` method,
+which returns the directory of the saved checkpoint.
+
+Instead of not passing any arguments to this call and letting the algorithm decide where to save
+the checkpoint, you can also provide a checkpoint directory yourself:
+
+.. testcode::
+
+    checkpoint_path = ppo.save_to_path()
+
+    # OR:
+    # ppo.save_to_path([a checkpoint location of your choice])
+
+
+Evaluate the algorithm
+++++++++++++++++++++++
+
+RLlib supports setting up a separate :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
+for the sole purpose of evaluating your model from time to time on the RL environment.
+
+Use your config's :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.evaluation` method
+to set up the details. By default, RLlib doesn't perform evaluation during training and only reports the
+results of collecting training samples with its "regular" :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`.
+
+
+.. testcode::
+    :hide:
+
+    ppo.stop()
+
+
+.. testcode::
+
+    config.evaluation(
+        # Run one evaluation round every iteration.
+        evaluation_interval=1,
+
+        # Create 2 eval EnvRunners in the extra EnvRunnerGroup.
+        evaluation_num_env_runners=2,
+
+        # Run evaluation for exactly 10 episodes. Note that because you have
+        # 2 EnvRunners, each one runs through 5 episodes.
+        evaluation_duration_unit="episodes",
+        evaluation_duration=10,
+    )
+
+    # Rebuild the PPO, but with the extra evaluation EnvRunnerGroup
+    ppo_with_evaluation = config.build()
+
+    for _ in range(3):
+        pprint(ppo_with_evaluation.train())
+
+
+.. _rllib-with-ray-tune:
+
+RLlib with Ray Tune
++++++++++++++++++++
+
+All RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` classes are compatible with
+the :ref:`Ray Tune API <tune-api-ref>`.
+
+This allows for easy utilization of your configured :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` in
+:ref:`Ray Tune <tune-main>` experiments.
+
+For example, the following code performs a simple hyper-parameter sweep of your :ref:`PPO <ppo>`
+through creating three ``Trials``, one for each configured learning rate:
+
+.. testcode::
+
+    from ray import train, tune
+    from ray.rllib.algorithms.ppo import PPOConfig
+
+    config = (
+        PPOConfig()
+        .environment("Pendulum-v1")
+        # Specify a simple tune hyperparameter sweep.
+        .training(
+            lr=tune.grid_search([0.001, 0.0005, 0.0001]),
+        )
+    )
+
+    # Create a Tuner instance to manage the trials.
+    tuner = tune.Tuner(
+        config.algo_class,
+        param_space=config,
+        # Specify a stopping criterion. Note that the criterion has to match one of the
+        # pretty printed result metrics from the results returned previously by
+        # ``.train()``.
+        run_config=train.RunConfig(
+            stop={"env_runners/episode_return_mean": -1000.0},
+        ),
+    )
+    # Run the Tuner and capture the results.
+    results = tuner.fit()
+
+Note that each :py:class:`~ray.tune.trial.Trial` creates a separate
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance as a :ref:`Ray actor <actor-guide>`,
+assigns compute resources to each ``Trial``, and runs them in parallel, if possible,
+on your Ray cluster:
+
+.. code-block:: text
+
+    Trial status: 3 RUNNING
+    Current time: 2025-01-17 18:47:33. Total running time: 3min 0s
+    Logical resource usage: 9.0/12 CPUs, 0/0 GPUs
+    ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+    │ Trial name                    status         lr     iter     total time (s)  episode_return_mean    ..._sampled_lifetime │
+    ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+    │ PPO_Pendulum-v1_b5c41_00000   RUNNING    0.01         29            86.2426             -998.449                  108000 │
+    │ PPO_Pendulum-v1_b5c41_00001   RUNNING    0.001        25            74.4335             -997.079                  100000 │
+    │ PPO_Pendulum-v1_b5c41_00002   RUNNING    0.0001       20            60.0421             -960.293                   80000 │
+    ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+``Tuner.fit()`` returns an ``ResultGrid`` object that allows for a detailed analysis of the
+training process and for retrieving the :ref:`checkpoints <rllib-checkpoints-docs>` of the trained
+algorithms and their models:
+
+.. testcode::
+    # Get the best result based on a particular metric.
+    best_result = results.get_best_result(
+        metric="env_runners/episode_return_mean", mode="max"
+    )
+
+    # Get the best checkpoint corresponding to the best result
+    # from the preceding experiment.
+    best_checkpoint = best_result.checkpoint
+
+
+Deploy a trained model for production inference
++++++++++++++++++++++++++++++++++++++++++++++++
+
+After training, you might want to deploy your models into a new environment, for example
+to run inference in production. You can do so using the checkpoint directory created in the
+preceding example. To read more about checkpoints, model deployments, and algorithm state restoration,
+see this :ref:`page on checkpointing <rllib-checkpoints-docs>` here.
+
+.. testcode::
+
+    from pathlib import Path
+    import gymnasium as gym
+    import numpy as np
+    import torch
+    from ray.rllib.core.rl_module import RLModule
+
+    # Create only the neural network (RLModule) from our checkpoint.
+    rl_module = RLModule.from_checkpoint(
+        Path(best_checkpoint.path) / "learner_group" / "learner" / "rl_module"
+    )["default_policy"]
+
+    # Create the RL environment to test against (same as was used for
+    # training earlier).
+    env = gym.make("Pendulum-v1")
+
+    episode_return = 0.0
+    done = False
+
+    # Reset the env to get the initial observation.
+    obs, info = env.reset()
+
+    while not done:
+        # Compute the next action from a batch (B=1) of observations.
+        obs_batch = torch.from_numpy(obs).unsqueeze(0)  # add batch B=1 dimension
+
+        # Extract the logits from the output and dissolve batch again.
+        action_logits = rl_module.forward_inference({"obs": obs_batch})[
+            "action_dist_inputs"
+        ][0]
+
+        # PPO's default RLModule produces action logits (from which
+        # you have to sample an action or use the max-likelihood one).
+        action = numpy.argmax(action_logits.numpy())
+
+        # Send the action to the environment for the next step.
+        obs, reward, terminated, truncated, info = env.step(action)
+
+        # Perform env-loop bookkeeping.
+        episode_return += reward
+        done = terminated or truncated
+
+    print(f"Reached episode return of {episode_return}.")
+
+
+If you still have an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance up and running
+in your script, you can also get the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` through the
+:py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.get_module` method:
+
+.. testcode::
+
+    rl_module = ppo_with_evaluation.get_module("default_policy")
+
+
+Customizing your RL environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the preceding examples, your :ref:`RL environment <rllib-key-concepts-environments>` was
+a `Farama gymnasium <gymnasium.farama.org>`__ pre-registered one,
+like ``Pendulum-v1`` or ``CartPole-v1``. However, if you would like to run your
+experiments against a custom one, see this tab below for a less-than-50-lines example.
+
+See here for an :ref:`in-depth guide on how to setup RL environments in RLlib <rllib-environments-doc>` and how to customize them.
+
+.. dropdown:: Quickstart: Custom RL environment
+    :animate: fade-in-slide-down
+
+    .. testcode::
+
+        import gymnasium as gym
+        from ray.rllib.algorithms.ppo import PPOConfig
+
+        # Define your custom env class by subclassing gymnasium.Env:
+
+        class ParrotEnv(gym.Env):
+            """Environment in which the agent learns to repeat the seen observations.
+
+            Observations are float numbers indicating the to-be-repeated values,
+            e.g. -1.0, 5.1, or 3.2.
+            The action space is the same as the observation space.
+            Rewards are `r=-abs([observation] - [action])`, for all steps.
+            """
+            def __init__(self, config=None):
+                # Since actions should repeat observations, their spaces must be the same.
+                self.observation_space = gym.spaces.Box(-1.0, 1.0, (1,), np.float32)
+                self.action_space = self.observation_space
+                self._cur_obs = None
+                self._episode_len = 0
+
+            def reset(self, *, seed=None, options=None):
+                """Resets the environment, starting a new episode."""
+                # Reset the episode len.
+                self._episode_len = 0
+                # Sample a random number from our observation space.
+                self._cur_obs = self.observation_space.sample()
+                # Return initial observation.
+                return self._cur_obs, {}
+
+            def step(self, action):
+                """Takes a single step in the episode given `action`."""
+                # Set `terminated` and `truncated` flags to True after 10 steps.
+                self._episode_len += 1
+                terminated = truncated = self._episode_len >= 10
+                # Compute the reward: `r = -abs([obs] - [action])`
+                reward = -sum(abs(self._cur_obs - action))
+                # Set a new observation (random sample).
+                self._cur_obs = self.observation_space.sample()
+                return self._cur_obs, reward, terminated, truncated, {}
+
+        # Point your config to your custom env class:
+        config = (
+            PPOConfig()
+            .environment(ParrotEnv)  # add `env_config=[some Box space] to customize the env
+        )
+
+        # Build a PPO algorithm and train it.
+        ppo_w_custom_env = config.build_algo()
+        ppo_w_custom_env.train()
+
+    .. testcode::
+        :hide:
+
+        # Test that our setup is working.
+        ppo_w_custom_env.stop()
+
+
+Customizing your models
+~~~~~~~~~~~~~~~~~~~~~~~
+
+In the preceding examples, RLlib provided a default neural network model for you, because you didn't specify anything
+in your AlgorithmConfig. If you would like to either reconfigure the type and size of RLlib's default models, for example define
+the number of hidden layers and their activation functions, or even write your own custom models from scratch using PyTorch, see here
+for a detailed guide on how to do so.
+
+
+
+
+Accessing Model State
+~~~~~~~~~~~~~~~~~~~~~
+
+Similar to accessing policy state, you may want to get a reference to the
+underlying neural network model being trained. For example, you may want to
+pre-train it separately, or otherwise update its weights outside of RLlib.
+This can be done by accessing the ``model`` of the policy.
+
+Below you find three explicit examples showing how to access the model state of
+an algorithm.
+
+.. dropdown:: **Example: Preprocessing observations for feeding into a model**
+
+
+    Then for the code:
+
+    .. literalinclude:: doc_code/training.py
+        :language: python
+        :start-after: __preprocessing_observations_start__
+        :end-before: __preprocessing_observations_end__
+
+.. dropdown:: **Example: Querying a policy's action distribution**
+
+    .. literalinclude:: doc_code/training.py
+        :language: python
+        :start-after: __query_action_dist_start__
+        :end-before: __query_action_dist_end__
+
+.. dropdown:: **Example: Getting Q values from a DQN model**
+
+    .. literalinclude:: doc_code/training.py
+        :language: python
+        :start-after: __get_q_values_dqn_start__
+        :end-before: __get_q_values_dqn_end__
+
+    This is especially useful when used with
+    `custom model classes <rllib-models.html>`__.
+
+
+.. Debugging RLlib Experiments
+    ---------------------------
+    Eager Mode
+    ~~~~~~~~~~
+    Policies built with ``build_tf_policy`` (most of the reference algorithms are)
+    can be run in eager mode by setting the
+    ``"framework": "tf2"`` / ``"eager_tracing": true`` config options.
+    This will tell RLlib to execute the model forward pass, action distribution,
+    loss, and stats functions in eager mode.
+    Eager mode makes debugging much easier, since you can now use line-by-line
+    debugging with breakpoints or Python ``print()`` to inspect
+    intermediate tensor values.
+    However, eager can be slower than graph mode unless tracing is enabled.
+    Episode Traces
+    ~~~~~~~~~~~~~~
+    You can use the `data output API <rllib-offline.html>`__ to save episode traces
+    for debugging. For example, the following command will run PPO while saving episode
+    traces to ``/tmp/debug``.
+    .. code-block:: bash
+    cd rllib/tuned_examples/ppo
+    python cartpole_ppo.py --output /tmp/debug
+    # episode traces will be saved in /tmp/debug, for example
+    output-2019-02-23_12-02-03_worker-2_0.json
+    output-2019-02-23_12-02-04_worker-1_0.json
+Log Verbosity
+~~~~~~~~~~~~~
+You can control the log level via the ``"log_level"`` flag. Valid values are "DEBUG",
+"INFO", "WARN" (default), and "ERROR". This can be used to increase or decrease the
+verbosity of internal logging.
+For example:
+    .. code-block:: bash
+    cd rllib/tuned_examples/ppo
+    python atari_ppo.py --env ALE/Pong-v5 --log-level INFO
+    python atari_ppo.py --env ALE/Pong-v5 --log-level DEBUG
+The default log level is ``WARN``. We strongly recommend using at least ``INFO``
+level logging for development.
+Stack Traces
+~~~~~~~~~~~~
+You can use the ``ray stack`` command to dump the stack traces of all the
+Python workers on a single node. This can be useful for debugging unexpected
+hangs or performance issues.
+Next Steps
+----------
+- To check how your application is doing, you can use the :ref:`Ray dashboard <observability-getting-started>`.
