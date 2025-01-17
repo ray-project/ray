@@ -1900,6 +1900,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   auto &runtime_env_info = *rpc_task_spec.mutable_runtime_env_info();
   if (runtime_env_info.serialized_runtime_env().find("FOO") != std::string::npos) {
     runtime_env_info.set_serialized_runtime_env("{}");
+    task_spec.runtime_env_hash_ = 0;
   }
   worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
 
