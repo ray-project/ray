@@ -83,6 +83,7 @@ ray_cc_library(
     deps = [
         ":compat",
         ":util",
+        "@boost//:iostreams",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/strings",
     ],

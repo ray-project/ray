@@ -14,6 +14,10 @@
 
 #include "ray/util/pipe_logger.h"
 
+#include <boost/iostreams/device/file_descriptor.hpp>
+#include <boost/filesystem.hpp>
+#include <boost/filesystem/path.hpp>
+
 #include <condition_variable>
 #include <cstring>
 #include <deque>
@@ -225,22 +229,16 @@ bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
 
 #if defined(__APPLE__) || defined(__linux__)
 RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
-  int fd = open(file_path.data(), O_WRONLY | O_CREAT, 0644);
-  RAY_CHECK_NE(fd, -1) << "Fails to open file " << file_path << " with failure reason "
-                       << strerror(errno);
-
-  auto flush_fn = [fd]() {
-    RAY_CHECK_EQ(fsync(fd), 0) << "Fails to flush data to disk because "
-                               << strerror(errno);
+  boost::iostreams::file_descriptor_sink sink{file_path, std::ios_base::out};
+  auto handle = sink.handle();
+  auto ostream = std::make_shared<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(std::move(sink));
+  auto flush_fn = [ostream]() {
+    ostream->flush();
   };
-  auto close_fn = [fd]() {
-    RAY_CHECK_EQ(fsync(fd), 0) << "Fails to flush data to disk because "
-                               << strerror(errno);
-    RAY_CHECK_EQ(close(fd), 0) << "Fails to close redirection file because "
-                               << strerror(errno);
+  auto close_fn = [ostream]() {
+    ostream->close();
   };
-
-  return RedirectionFileHandle{fd, std::move(flush_fn), std::move(close_fn)};
+  return RedirectionFileHandle{handle, std::move(flush_fn), std::move(close_fn)};
 }
 #endif
 

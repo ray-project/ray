@@ -28,6 +28,8 @@
 #include "ray/util/util.h"
 #include "spdlog/logger.h"
 
+#include <boost/iostreams/stream.hpp>
+
 #if defined(__APPLE__) || defined(__linux__)
 #include <unistd.h>
 #elif defined(_WIN32)
