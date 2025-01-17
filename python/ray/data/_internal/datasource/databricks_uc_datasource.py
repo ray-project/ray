@@ -40,7 +40,6 @@ class DatabricksUCDatasource(Datasource):
         if not host.startswith(('http://', 'https://')):
             self.host = f'https://{host}'
 
-
         url_base = f"{self.host}/api/2.0/sql/statements/"
 
         payload = json.dumps(
