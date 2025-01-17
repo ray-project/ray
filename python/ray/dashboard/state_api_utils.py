@@ -3,6 +3,15 @@ from dataclasses import asdict, fields
 from typing import Awaitable, Callable, List, Tuple
 
 import aiohttp.web
+import json
+from ray._private.gcs_utils import GcsAioClient
+from ray.dashboard import dashboard_consts
+from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD, GCS_RPC_TIMEOUT_SECONDS
+from ray._private.utils import init_grpc_channel
+from ray._private.runtime_env.constants import GLOBAL_GRPC_OPTIONS
+from ray.core.generated.common_pb2 import NodeID
+from ray.core.generated.reporter_pb2_grpc import ReporterServiceStub, LogServiceStub
+from typing import Optional
 
 from ray.dashboard.optional_utils import rest_response
 from ray.util.state.common import (
@@ -249,3 +258,38 @@ def do_filter(
         if match:
             result.append(filter_fields(datum, state_dataclass, detail))
     return result
+
+
+async def get_agent_address(
+    gcs_aio_client: GcsAioClient, node_id: NodeID
+) -> Optional[Tuple[str, int, int]]:
+    """
+    Given a NodeID, get agent port from InternalKV.
+
+    returns a tuple of (ip, http_port, grpc_port).
+
+    If either of them are not found, return None.
+    """
+    agent_addr_json = await gcs_aio_client.internal_kv_get(
+        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_PREFIX}{node_id.hex()}".encode(),
+        namespace=KV_NAMESPACE_DASHBOARD,
+        timeout=GCS_RPC_TIMEOUT_SECONDS,
+    )
+    if not agent_addr_json:
+        return None
+    ip, http_port, grpc_port = json.loads(agent_addr_json)
+    return ip, http_port, grpc_port
+
+
+def make_agent_reporter_service_stub(
+    ip_port: str,
+) -> Optional[ReporterServiceStub]:
+    options = GLOBAL_GRPC_OPTIONS
+    channel = init_grpc_channel(ip_port, options=options, asynchronous=True)
+    return ReporterServiceStub(channel)
+
+
+def make_agent_log_service_stub(ip_port: str) -> Optional[LogServiceStub]:
+    options = GLOBAL_GRPC_OPTIONS
+    channel = init_grpc_channel(ip_port, options=options, asynchronous=True)
+    return LogServiceStub(channel)

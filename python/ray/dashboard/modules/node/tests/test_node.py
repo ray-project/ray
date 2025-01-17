@@ -45,18 +45,6 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
             assert len(dump_data["nodes"]) == 1
             assert len(dump_data["agents"]) == 1
 
-            response = requests.get(webui_url + "/test/notified_agents")
-            response.raise_for_status()
-            try:
-                notified_agents = response.json()
-            except Exception as ex:
-                logger.info("failed response: %s", response.text)
-                raise ex
-            assert notified_agents["result"] is True
-            notified_agents = notified_agents["data"]
-            assert len(notified_agents) == 1
-            assert notified_agents == dump_data["agents"]
-            break
         except (AssertionError, requests.exceptions.ConnectionError) as e:
             logger.info("Retry because of %s", e)
         finally:

@@ -28,6 +28,10 @@ from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.util.state.common import ListApiOptions
 from ray.util.state.state_manager import StateDataSourceClient
+from ray.dashboard.state_api_utils import (
+    get_agent_address,
+    make_agent_reporter_service_stub,
+)
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
@@ -250,11 +254,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         attempt_number = req.query.get("attempt_number")
         node_id_hex = req.query.get("node_id")
 
-        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
+        ip_ports = await get_agent_address(
+            self.gcs_aio_client, NodeID.from_hex(node_id_hex)
+        )
         if not ip_ports:
             raise aiohttp.web.HTTPInternalServerError(text="Failed to get stub address")
         ip, http_port, grpc_port = ip_ports
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        reporter_stub = make_agent_reporter_service_stub(f"{ip}:{grpc_port}")
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"

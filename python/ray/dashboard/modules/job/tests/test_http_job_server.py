@@ -742,7 +742,6 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
             def __init__(self):
                 self._agents = dict()
 
-        DataSource.agents = {}
         DataSource.nodes = {}
         job_head = MockJobHead()
 
@@ -752,12 +751,12 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
             http_port = agent[1]["httpPort"]
             grpc_port = agent[1]["grpcPort"]
             DataSource.nodes[node_id] = {"nodeManagerAddress": node_ip}
+            # DO NOT SUBMIT: changed to internal kv on node_id
             DataSource.agents[node_id] = (node_ip, http_port, grpc_port)
 
         def del_agent(agent):
             node_id = agent[0]
             DataSource.nodes.pop(node_id)
-            DataSource.agents.pop(node_id)
 
         head_node_id = "node1"
 

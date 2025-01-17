@@ -73,7 +73,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         )
 
         DataSource.nodes.signal.append(self._update_raylet_stubs)
-        DataSource.agents.signal.append(self._update_agent_stubs)
 
     async def limit_handler_(self):
         return do_reply(
@@ -115,20 +114,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 node_info["nodeManagerAddress"],
                 int(node_info["nodeManagerPort"]),
                 int(node_info["runtimeEnvAgentPort"]),
-            )
-
-    async def _update_agent_stubs(self, change: Change):
-        """Callback that's called when a new agent is added to Datasource."""
-        if change.old:
-            node_id, _ = change.old
-            self._state_api_data_source_client.unregister_agent_client(node_id)
-        if change.new:
-            # When a new node information is written to DataSource.
-            node_id, (node_ip, http_port, grpc_port) = change.new
-            self._state_api_data_source_client.register_agent_client(
-                node_id,
-                node_ip,
-                grpc_port,
             )
 
     @routes.get("/api/v0/actors")

@@ -3,6 +3,8 @@ import re
 from collections import defaultdict
 from typing import AsyncIterable, Callable, Dict, List, Optional, Tuple
 
+from ray import NodeID
+from ray.dashboard.state_api_utils import get_agent_address
 from ray._private.pydantic_compat import BaseModel
 
 # TODO(sang): Remove the usage of this class.
@@ -127,7 +129,13 @@ class LogsManager:
             yield streamed_log.data
 
     def _verify_node_registered(self, node_id: str):
-        if node_id not in self.client.get_all_registered_log_agent_ids():
+        # TODO(ryw): this check is unnecessary, since all callsites have a next
+        # list_logs call which will raise anyway. Can remove.
+        assert node_id is not None
+        if (
+            get_agent_address(self.client._gcs_aio_client, NodeID.from_hex(node_id))
+            is None
+        ):
             raise DataSourceUnavailable(
                 f"Given node id {node_id} is not available. "
                 "It's either the node is dead, or it is not registered. "
@@ -136,7 +144,6 @@ class LogsManager:
                 "it is highly likely "
                 "a transient issue. Try again."
             )
-        assert node_id is not None
 
     async def _resolve_job_filename(self, sub_job_id: str) -> Tuple[str, str]:
         """Return the log file name and node id for a given job submission id.
