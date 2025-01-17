@@ -725,7 +725,7 @@ def get_multiplexed_model_id() -> str:
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
     """
-    _request_context = ray.serve.context.get_serve_request_context()
+    _request_context = ray.serve.context._get_serve_request_context()
     return _request_context.multiplexed_model_id
 
 

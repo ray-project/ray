@@ -83,7 +83,7 @@ def test_context_vars_propagated(serve_instance, use_fastapi: bool):
             @fastapi_app.get("/")
             def root(self):
                 return PlainTextResponse(
-                    serve.context.get_serve_request_context().request_id
+                    serve.context._get_serve_request_context().request_id
                 )
 
     else:
@@ -92,7 +92,7 @@ def test_context_vars_propagated(serve_instance, use_fastapi: bool):
         class D:
             def __call__(self) -> str:
                 return PlainTextResponse(
-                    serve.context.get_serve_request_context().request_id
+                    serve.context._get_serve_request_context().request_id
                 )
 
     serve.run(D.bind())

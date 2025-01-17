@@ -341,7 +341,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
     )
     def fn(*args):
         logger.info("user func")
-        request_context = ray.serve.context.get_serve_request_context()
+        request_context = ray.serve.context._get_serve_request_context()
         return {
             "request_id": request_context.request_id,
             "route": request_context.route,
@@ -362,7 +362,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
     class Model:
         def __call__(self, req: starlette.requests.Request):
             logger.info("user log message from class method")
-            request_context = ray.serve.context.get_serve_request_context()
+            request_context = ray.serve.context._get_serve_request_context()
             return {
                 "request_id": request_context.request_id,
                 "route": request_context.route,

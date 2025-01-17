@@ -60,7 +60,7 @@ def _add_serve_metric_default_tags(default_tags: Dict[str, str]):
 def _add_serve_context_tag_values(tag_keys: Tuple, tags: Dict[str, str]):
     """Add serve context tag values to the metric tags"""
 
-    _request_context = ray.serve.context.get_serve_request_context()
+    _request_context = ray.serve.context._get_serve_request_context()
     if ROUTE_TAG in tag_keys and ROUTE_TAG not in tags:
         tags[ROUTE_TAG] = _request_context.route
 
