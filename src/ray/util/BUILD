@@ -87,6 +87,7 @@ ray_cc_library(
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/strings",
     ],
+    defines = ["BOOST_ALL_NO_LIB"],
 )
 
 ray_cc_library(

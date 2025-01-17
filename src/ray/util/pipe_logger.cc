@@ -14,9 +14,14 @@
 
 #include "ray/util/pipe_logger.h"
 
-#include <boost/iostreams/device/file_descriptor.hpp>
-#include <boost/filesystem.hpp>
-#include <boost/filesystem/path.hpp>
+// // #include <boost/iostreams/device/file_descriptor.hpp>
+// // #include <boost/filesystem.hpp>
+// // #include <boost/filesystem/path.hpp>
+// #include <boost/iostreams/stream.hpp>
+
+#include <boost/iostreams/device/back_inserter.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
+#include <boost/iostreams/filtering_stream.hpp>
 
 #include <condition_variable>
 #include <cstring>
