@@ -44,7 +44,7 @@ from ray.train.v2._internal.execution.worker_group.worker import (
 )
 from ray.train.v2._internal.util import (
     bundle_to_remote_args,
-    invoke_callbacks_context_managers,
+    invoke_context_managers,
     ray_get_safe,
     time_monotonic,
 )
@@ -232,8 +232,8 @@ class WorkerGroup:
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
         # The current execution order is as follows:`on_worker_group_start` callbacks
         # are triggered before the `after_worker_group_start` callbacks.
-        with invoke_callbacks_context_managers(
-            self._callbacks, "on_worker_group_start"
+        with invoke_context_managers(
+            [callback.on_worker_group_start for callback in self._callbacks]
         ):
             if self._workers:
                 raise ValueError("Workers already started.")
@@ -422,8 +422,8 @@ class WorkerGroup:
                 this is less than or equal to 0, immediately force kill all
                 workers.
         """
-        with invoke_callbacks_context_managers(
-            self._callbacks, "on_worker_group_shutdown"
+        with invoke_context_managers(
+            [callback.on_worker_group_shutdown for callback in self._callbacks]
         ):
             if self._workers:
                 for callback in self._callbacks:

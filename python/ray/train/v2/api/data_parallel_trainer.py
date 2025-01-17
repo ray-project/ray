@@ -17,6 +17,7 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
+from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
     _UNSUPPORTED,
     DEFAULT_RUN_CONTROLLER_AS_ACTOR,
@@ -29,6 +30,7 @@ from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import construct_train_func
+from ray.train.v2.api.callback import UserCallback
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.result import Result
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -195,7 +197,21 @@ class DataParallelTrainer:
             callbacks.append(ControllerMetricsCallback(self.train_run_context))
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
-        # TODO: Add support for user-defined callbacks
+        # Add internal callback that invokes all user-defined callbacks.
+        user_callbacks = [
+            cb for cb in self.run_config.callbacks if isinstance(cb, UserCallback)
+        ]
+        callbacks.append(
+            UserCallbackHandler(
+                user_callbacks=user_callbacks, train_run_context=self.train_run_context
+            )
+        )
+
+        # Append all other callbacks to the full list. This allows custom workarounds
+        # built on top of internal callbacks to work.
+        callbacks.extend(
+            [cb for cb in self.run_config.callbacks if not isinstance(cb, UserCallback)]
+        )
 
         result = self._initialize_and_run_controller(
             train_fn=train_fn,
