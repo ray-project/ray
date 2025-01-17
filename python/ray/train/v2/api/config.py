@@ -165,6 +165,8 @@ class RunConfig(RunConfigV1):
 
         # TODO(justinvyu): Improve this error message and add a migration guide if
         # the user is passing in a Tune callback.
+        from ray.train.v2.api.callback import RayTrainCallback
+
         if not all(isinstance(cb, RayTrainCallback) for cb in self.callbacks):
             raise ValueError(
                 "All callbacks must be instances of `RayTrainCallback`."
