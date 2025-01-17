@@ -5,11 +5,10 @@ from typing import Awaitable, Callable, List, Tuple
 import aiohttp.web
 import json
 from ray._private.gcs_utils import GcsAioClient
-from ray.dashboard import dashboard_consts
-from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD, GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS, DASHBOARD_AGENT_ADDR_PREFIX
+from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD, GLOBAL_GRPC_OPTIONS
 from ray._private.utils import init_grpc_channel
-from ray._private.runtime_env.constants import GLOBAL_GRPC_OPTIONS
-from ray.core.generated.common_pb2 import NodeID
+from ray import NodeID
 from ray.core.generated.reporter_pb2_grpc import ReporterServiceStub, LogServiceStub
 from typing import Optional
 
@@ -271,7 +270,7 @@ async def get_agent_address(
     If either of them are not found, return None.
     """
     agent_addr_json = await gcs_aio_client.internal_kv_get(
-        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_PREFIX}{node_id.hex()}".encode(),
+        f"{DASHBOARD_AGENT_ADDR_PREFIX}{node_id.hex()}".encode(),
         namespace=KV_NAMESPACE_DASHBOARD,
         timeout=GCS_RPC_TIMEOUT_SECONDS,
     )

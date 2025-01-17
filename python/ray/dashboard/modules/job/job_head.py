@@ -12,7 +12,6 @@ from aiohttp.web import Request, Response
 
 import ray
 from ray.dashboard.consts import (
-    KV_NAMESPACE_DASHBOARD,
     GCS_RPC_TIMEOUT_SECONDS,
     DASHBOARD_AGENT_ADDR_PREFIX,
     CANDIDATE_AGENT_NUMBER,
@@ -21,7 +20,7 @@ from ray.dashboard.consts import (
 )
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._private.ray_constants import env_bool
+from ray._private.ray_constants import env_bool, KV_NAMESPACE_DASHBOARD
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
