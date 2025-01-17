@@ -9,7 +9,7 @@ from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
-from ray.train.v2._internal.execution.checkpoint.report_handler import ReportHandler
+from ray.train.v2._internal.execution.checkpoint.report_handler import ReportCallbackHandler
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupStatus,
@@ -50,8 +50,8 @@ def generate_worker_group_status(num_workers, num_ckpt, num_dummy, num_none):
     ],
 )
 def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, expected):
-    """Test the ReportHandler class. expected is the number of
-    times that the CheckpointManager.register_checkpoint is called.
+    """`expected` is the number of times that the
+    CheckpointManager.register_checkpoint is called.
     """
     checkpoint_manager = CheckpointManager(
         storage_context=StorageContext(
@@ -59,7 +59,7 @@ def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, ex
         ),
         checkpoint_config=CheckpointConfig(),
     )
-    checkpoint_handler = ReportHandler(report_callbacks=[checkpoint_manager])
+    checkpoint_handler = ReportCallbackHandler(report_callbacks=[checkpoint_manager])
 
     worker_group = DummyWorkerGroup()
     worker_group.start(

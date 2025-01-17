@@ -11,10 +11,9 @@ if TYPE_CHECKING:
     from ray.train._internal.session import _TrainingResult
 
 
-class ReportHandler(WorkerGroupCallback):
-    """Handle `ray.train.report` calls from multiple workers.
-
-    Execute hooks once all workers have reported a training result.
+class ReportCallbackHandler(WorkerGroupCallback):
+    """Consolidate training results from multiple workers and call
+    subscribers implementing the `ReportCallback` interface sequentially.
     """
 
     def __init__(self, report_callbacks: List[ReportCallback]):
