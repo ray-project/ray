@@ -67,12 +67,34 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "compat",
+    hdrs = ["compat.h"],
+)
+
+ray_cc_library(
+    name = "stream_redirection_options",
+    hdrs = ["stream_redirection_options.h"],
+)
+
+ray_cc_library(
     name = "pipe_logger",
     hdrs = ["pipe_logger.h"],
     srcs = ["pipe_logger.cc"],
     deps = [
-        "@com_github_spdlog//:spdlog",
+        ":compat",
         ":util",
+        "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_library(
+    name = "stream_redirection_utils",
+    hdrs = ["stream_redirection_utils.h"],
+    srcs = ["stream_redirection_utils.cc"],
+    deps = [
+        ":pipe_logger",
+        ":stream_redirection_options",
+        ":util",
     ],
 )
