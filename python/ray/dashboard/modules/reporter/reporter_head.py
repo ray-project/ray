@@ -252,7 +252,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
         if not ip_ports:
-            raise aiohttp.web.HTTPInternalServerError(text=f"Failed to get agent address for node {node_id_hex}")
+            raise aiohttp.web.HTTPInternalServerError(
+                text=f"Failed to get agent address for node {node_id_hex}"
+            )
         ip, http_port, grpc_port = ip_ports
         reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
 
@@ -353,7 +355,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         native = req.query.get("native", False) == "1"
         ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
         if not ip_ports:
-            raise aiohttp.web.HTTPInternalServerError(text="Failed to get stub address")
+            raise aiohttp.web.HTTPInternalServerError(
+                text=f"Failed to get agent address for node {node_id_hex}"
+            )
         ip, http_port, grpc_port = ip_ports
         reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
 
@@ -420,9 +424,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if "node_id" not in req.query:
             raise ValueError("node_id is required")
 
-        ip_ports = await self._get_stub_address(NodeID.from_hex(req.query["node_id"]))
+        node_id_hex = req.query["node_id"]
+        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
         if not ip_ports:
-            raise aiohttp.web.HTTPInternalServerError(text="Failed to get stub address")
+            raise aiohttp.web.HTTPInternalServerError(
+                text=f"Failed to get agent address for node {node_id_hex}"
+            )
         ip, http_port, grpc_port = ip_ports
         reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
         pid = int(req.query["pid"])
@@ -452,9 +459,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if "node_id" not in req.query:
             raise ValueError("node_id is required")
 
-        ip_ports = await self._get_stub_address(NodeID.from_hex(req.query["node_id"]))
+        node_id_hex = req.query["node_id"]
+        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
         if not ip_ports:
-            raise aiohttp.web.HTTPInternalServerError(text="Failed to get stub address")
+            raise aiohttp.web.HTTPInternalServerError(
+                text=f"Failed to get agent address for node {node_id_hex}"
+            )
         ip, http_port, grpc_port = ip_ports
         reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
 
@@ -555,7 +565,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         assert pid is not None
 
-        node_id = req.query.get("node_id")
+        node_id_hex = req.query.get("node_id")
         duration_s = int(req.query.get("duration", 10))
 
         # Default not using `--native`, `--leaks` and `--format` for profiling
@@ -564,9 +574,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         leaks = req.query.get("leaks", False) == "1"
         trace_python_allocators = req.query.get("trace_python_allocators", False) == "1"
 
-        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id))
+        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
         if not ip_ports:
-            raise aiohttp.web.HTTPInternalServerError(text="Failed to get stub address")
+            raise aiohttp.web.HTTPInternalServerError(
+                text=f"Failed to get agent address for node {node_id_hex}"
+            )
         ip, http_port, grpc_port = ip_ports
         reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
 
@@ -637,7 +649,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         returns a tuple of (ip, http_port, grpc_port).
 
-        If either of them are not found, return None.
+        If not found, return None.
         """
         agent_addr_json = await self.gcs_aio_client.internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_PREFIX}{node_id.hex()}".encode(),
