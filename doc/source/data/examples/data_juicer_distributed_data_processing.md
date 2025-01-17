@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Distributed Data Processing in Data-Juicer
 
 Data-Juicer supports large-scale distributed data processing based on [Ray](https://github.com/ray-project/ray) and [Platform for AI](https://www.alibabacloud.com/en/product/machine-learning) of Alibaba Cloud.
@@ -15,18 +19,18 @@ See the [Data-Juicer 2.0: Cloud-Scale Adaptive Data Processing for Foundation Mo
 ### Ray mode in Data-Juicer
 
 - For most implementations of Data-Juicer [operators](https://github.com/modelscope/data-juicer/blob/main/docs/Operators.md), the core processing functions are engine-agnostic. Operators manage interoperability is primarily in [RayDataset](https://github.com/modelscope/data-juicer/blob/main//data_juicer/core/ray_data.py) and [RayExecutor](https://github.com/modelscope/data-juicer/blob/main//data_juicer/core/ray_executor.py), which are subclasses of the base `DJDataset` and `BaseExecutor`, respectively, and support both Ray [Tasks](ray-remote-functions) and [Actors](actor-guide).
-- The exception is the deduplication operators, which are challenging to scale in standalone mode. These operators are named [`ray_xx_deduplicator`](https://github.com/modelscope/data-juicer/blob/main//data_juicer/ops/deduplicator/).
+- The exception is the deduplication operators, which are challenging to scale in standalone mode. The names of these operators follow the pattern of [`ray_xx_deduplicator`](https://github.com/modelscope/data-juicer/blob/main//data_juicer/ops/deduplicator/).
 
 ### Subset splitting
 
 When a cluster has tens of thousands of nodes but only a few dataset files, Ray splits the dataset files according to available resources and distribute the blocks across all nodes, incurring high network communication costs and reduced CPU utilization. For more details, see [Ray's `_autodetect_parallelism` function](https://github.com/ray-project/ray/blob/2dbd08a46f7f08ea614d8dd20fd0bca5682a3078/python/ray/data/_internal/util.py#L201-L205) and [tuning output blocks for Ray](read_output_blocks).
 
-This default execution plan can be quite inefficient especially for scenarios with a large number of nodes. To optimize performance for such cases, Data-Juicer automatically splits the original dataset into smaller files in advance, taking into consideration the features of Ray and Arrow. When you encounter such performance issues, you can use this feature or split the dataset according to your own preferences. In this auto-split strategy, the single file size is set to 128&nbsp;MB, and the result should ensure that the number of sub-files after splitting is at least twice the total number of CPU cores available in the cluster.
+This default execution plan can be quite inefficient especially for scenarios with a large number of nodes. To optimize performance for such cases, Data-Juicer automatically splits the original dataset into smaller files in advance, taking into consideration the features of Ray and Arrow. When you encounter such performance issues, you can use this feature or split the dataset according to your own preferences. In this auto-split strategy, the single file size is about 128&nbsp;MB, and the result should ensure that the number of sub-files after splitting is at least twice the total number of CPU cores available in the cluster.
 
 ### Streaming reading of JSON files
 
-Streaming reading of JSON files is a common requirement in data processing for foundation models, as many datasets are stored in JSONL format and are large in size. 
-However, the current implementation in Ray Datasets, which is rooted in the underlying Arrow library (up to Ray version 2.40 and Arrow version 18.1.0), doesn't support streaming reading of JSON files.
+Streaming reading of JSON files is a common requirement in data processing for foundation models, as many datasets are in JSONL format and large in size. 
+However, the current implementation in Ray Datasets, which depends on the underlying Arrow library (up to Ray version 2.40 and Arrow version 18.1.0), doesn't support streaming reading of JSON files.
 
 To address the lack of native support for streaming JSON data, the Data-Juicer team developed a streaming loading interface and contributed an in-house [patch](https://github.com/modelscope/data-juicer/pull/515) for Apache Arrow ([PR to the repository](https://github.com/apache/arrow/pull/45084)). This patch helps alleviate Out-of-Memory issues. With this patch, Data-Juicer in Ray mode, by default, uses the streaming loading interface to load JSON files. 
 In addition, streaming-read support for CSV and Parquet files is already enabled.
