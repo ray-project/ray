@@ -373,7 +373,7 @@ class ActorDiedError(RayActorError):
         cause: The cause of the actor error. `RayTaskError` type means
             the actor has died because of an exception within `__init__`.
             `ActorDiedErrorContext` means the actor has died because of
-            unexepected system error. None means the cause is not known.
+            unexpected system error. None means the cause is not known.
             Theoretically, this should not happen,
             but it is there as a safety check.
     """
