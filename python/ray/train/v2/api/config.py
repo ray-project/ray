@@ -8,8 +8,7 @@ from ray.train.v2._internal.constants import _DEPRECATED
 from ray.train.v2._internal.util import date_str
 
 if TYPE_CHECKING:
-    from ray.train import SyncConfig
-    from ray.train.v2.api.callback import UserCallback
+    from ray.train import SyncConfig, UserCallback
     from ray.tune.experimental.output import AirVerbosity
     from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.stopper import Stopper
