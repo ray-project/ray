@@ -775,9 +775,9 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         is_terminated = [[False] * batch_length_T for _ in range(batch_size_B)]
         is_truncated = [[False] * batch_length_T for _ in range(batch_size_B)]
 
-        # Store the unique episode buffer indexes to determine from
-        # how many episodes the sample was sampled.
+        # Store the unique episode buffer indices to determine sample variation.
         sampled_episode_idxs = set()
+        # Store the unique env step buffer indices to determine sample variation
         sampled_env_step_idxs = set()
 
         B = 0
@@ -1246,7 +1246,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 )
             for mid in module_to_sampled_n_step:
                 self.metrics.log_value(
-                    (AGENT_ACTUAL_N_STEP, mid),
+                    (MODULE_ACTUAL_N_STEP, mid),
                     module_to_sampled_n_step[mid],
                     reduce="mean",
                     window=self._metrics_num_episodes_for_smoothing,

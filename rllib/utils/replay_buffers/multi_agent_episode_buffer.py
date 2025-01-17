@@ -1,6 +1,7 @@
 import copy
 from collections import defaultdict, deque
 from gymnasium.core import ActType, ObsType
+import hashlib
 import numpy as np
 import scipy
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
@@ -642,6 +643,27 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         random_n_step = isinstance(n_step, (tuple, list))
 
         sampled_episodes = []
+        # Record the number of samples per module/agent/total.
+        num_env_steps_sampled = 0
+        agent_to_num_steps_sampled = defaultdict(int)
+        module_to_num_steps_sampled = defaultdict(int)
+        # Record all the env step buffer indices that are contained in the sample.
+        sampled_env_step_idxs = set()
+        agent_to_sampled_env_step_idxs = defaultdict(set)
+        module_to_sampled_env_step_idxs = defaultdict(set)
+        # Record all the episode buffer indices that are contained in the sample.
+        sampled_episode_idxs = set()
+        agent_to_sampled_episode_idxs = defaultdict(set)
+        module_to_sampled_episode_idxs = defaultdict(set)
+        # Record all n-steps that have been used.
+        sampled_n_steps = []
+        agent_to_sampled_n_steps = defaultdict(list)
+        module_to_sampled_n_steps = defaultdict(list)
+        # Record the number of times a sample needs to be resampled.
+        num_resamples = 0
+        agent_to_num_resamples = defaultdict(int)
+        module_to_num_resamples = defaultdict(int)
+
         # TODO (simon): Ensure that the module has data and if not, skip it.
         #  TODO (sven): Should we then error out or skip? I think the Learner
         #  should handle this case when a module has no train data.
@@ -672,6 +694,9 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                     actual_n_step = int(self.rng.integers(n_step[0], n_step[1]))
                 # If we cannnot make the n-step, we resample.
                 if sa_episode_ts + actual_n_step > len(sa_episode):
+                    num_resamples += 1
+                    agent_to_num_resamples[agent_id]
+                    module_to_num_resamples[module_id]
                     continue
                 # Note, this will be the reward after executing action
                 # `a_(episode_ts)`. For `n_step>1` this will be the discounted sum
@@ -739,15 +764,88 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 )
                 # Append single-agent episode to the list of sampled episodes.
                 sampled_episodes.append(sampled_sa_episode)
+                # Add the episode indices.
+                sampled_episode_idxs.add(ma_episode_idx)
+                agent_to_sampled_episode_idxs[sa_episode.agent_id].add(sa_episode.id_)
+                module_to_sampled_episode_idxs[module_id].add(sa_episode.id_)
+                # Add the unique step hashes.
+                # Get the corresponding index in the `env_to_agent_t` mapping.
+                ma_episode_ts = ma_episode.env_t_to_agent_t[agent_id].data.index(
+                    sa_episode_ts
+                )
+                sampled_env_step_idxs.add(
+                    hashlib.sha256(
+                        f"{ma_episode.id_}-{ma_episode_ts}".encode()
+                    ).hexdigest()
+                )
+                agent_to_sampled_env_step_idxs[agent_id].add(
+                    hashlib.sha256(
+                        f"{sa_episode.id_}-{sa_episode_ts}".encode()
+                    ).hexdigest()
+                )
+                module_to_sampled_env_step_idxs[module_id].add(
+                    hashlib.sha256(
+                        f"{sa_episode.id_}-{sa_episode_ts}".encode()
+                    ).hexdigest()
+                )
+                # Add the actual n-step used in generating this sample.
+                sampled_n_steps.append(actual_n_step)
+                agent_to_sampled_n_steps[agent_id].append(actual_n_step)
+                module_to_sampled_n_steps[module_id].append(actual_n_step)
 
                 # Increase counter.
                 B += 1
 
             # Increase the per module timesteps counter.
             self.sampled_timesteps_per_module[module_id] += B
+            # Increase the counter metrics.
+            num_env_steps_sampled += B
+            agent_to_num_steps_sampled[agent_id] += B
+            module_to_num_steps_sampled[module_id] += B
 
         # Increase the counter for environment timesteps.
         self.sampled_timesteps += batch_size_B
+
+        # Update the sample metrics.
+        num_episodes_per_sample = len(sampled_episode_idxs)
+        num_env_steps_per_sample = len(sampled_env_step_idxs)
+        sampled_n_step = sum(sampled_n_steps) / batch_size_B
+        agent_to_num_episodes_per_sample = {
+            aid: len(l) for aid, l in agent_to_sampled_episode_idxs.items()
+        }
+        module_to_num_episodes_per_sample = {
+            mid: len(l) for mid, l in module_to_sampled_episode_idxs.items()
+        }
+        agent_to_num_steps_per_sample = {
+            aid: len(l) for aid, l in agent_to_sampled_env_step_idxs.items()
+        }
+        module_to_num_steps_per_sample = {
+            mid: len(l) for mid, l in module_to_sampled_env_step_idxs.items()
+        }
+        agent_to_sampled_n_step = {
+            aid: sum(l) / len(l) for aid, l in agent_to_sampled_n_steps.items()
+        }
+        module_to_sampled_n_step = {
+            mid: sum(l) / len(l) for mid, l in module_to_sampled_n_steps.items()
+        }
+        self._update_sample_metrics(
+            num_env_steps_sampled=num_env_steps_sampled,
+            num_episodes_per_sample=num_episodes_per_sample,
+            num_env_steps_per_sample=num_env_steps_per_sample,
+            sampled_n_step=sampled_n_step,
+            agent_to_num_steps_sampled=agent_to_num_steps_sampled,
+            agent_to_num_episodes_per_sample=agent_to_num_episodes_per_sample,
+            agent_to_num_steps_per_sample=agent_to_num_steps_per_sample,
+            agent_to_sampled_n_step=agent_to_sampled_n_step,
+            module_to_num_steps_sampled=module_to_num_steps_sampled,
+            module_to_num_episodes_per_sample=module_to_num_episodes_per_sample,
+            module_to_num_steps_per_sample=module_to_num_steps_per_sample,
+            module_to_sampled_n_step=module_to_sampled_n_step,
+            num_resamples=num_resamples,
+            agent_to_num_resamples=agent_to_num_resamples,
+            module_to_num_resamples=module_to_num_resamples,
+        )
+
         # Return multi-agent dictionary.
         return sampled_episodes
 
