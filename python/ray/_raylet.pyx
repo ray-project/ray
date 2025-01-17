@@ -180,7 +180,6 @@ from ray.exceptions import (
     OutOfDiskError,
     GetTimeoutError,
     TaskCancelledError,
-    AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
     ObjectRefStreamEndOfStreamError,
@@ -1880,85 +1879,86 @@ cdef void execute_task(
                     if debugger_breakpoint != b"":
                         ray.util.pdb.set_trace(
                             breakpoint_uuid=debugger_breakpoint)
+                    core_worker.is_current_async_actor_exited = False
                     outputs = function_executor(*args, **kwargs)
+                    if core_worker.is_current_async_actor_exited:
+                        exit_current_actor_if_asyncio()
+                    else:
+                        if is_streaming_generator:
+                            # Streaming generator always has a single return value
+                            # which is the generator task return.
+                            assert returns[0].size() == 1
 
-                    if is_streaming_generator:
-                        # Streaming generator always has a single return value
-                        # which is the generator task return.
-                        assert returns[0].size() == 1
+                            is_async_gen = inspect.isasyncgen(outputs)
+                            is_sync_gen = inspect.isgenerator(outputs)
 
-                        is_async_gen = inspect.isasyncgen(outputs)
-                        is_sync_gen = inspect.isgenerator(outputs)
-
-                        if (not is_sync_gen
-                                and not is_async_gen):
-                            raise ValueError(
-                                    "Functions with "
-                                    "@ray.remote(num_returns=\"streaming\" "
-                                    "must return a generator")
-                        context = StreamingGeneratorExecutionContext.make(
-                                returns[0][0].first,  # generator object ID.
-                                task_type,
-                                caller_address,
-                                task_id,
-                                serialized_retry_exception_allowlist,
-                                function_name,
-                                function_descriptor,
-                                title,
-                                actor,
-                                actor_id,
-                                name_of_concurrency_group_to_execute,
-                                returns[0].size(),
-                                attempt_number,
-                                should_retry_exceptions,
-                                streaming_generator_returns,
-                                is_retryable_error,
-                                application_error,
-                                generator_backpressure_num_objects)
-                        # We cannot pass generator to cdef in Cython for some reasons.
-                        # It is a workaround.
-                        context.initialize(outputs)
-
-                        if is_async_gen:
-                            if generator_backpressure_num_objects != -1:
+                            if (not is_sync_gen
+                                    and not is_async_gen):
                                 raise ValueError(
-                                    "_generator_backpressure_num_objects is "
-                                    "not supported for an async actor."
-                                )
-                            # Note that the report RPCs are called inside an
-                            # event loop thread.
-                            core_worker.run_async_func_or_coro_in_event_loop(
-                                execute_streaming_generator_async(context),
-                                function_descriptor,
-                                name_of_concurrency_group_to_execute,
-                                task_id=task_id,
-                                task_name=task_name)
-                        else:
-                            execute_streaming_generator_sync(context)
+                                        "Functions with "
+                                        "@ray.remote(num_returns=\"streaming\" "
+                                        "must return a generator")
+                            context = StreamingGeneratorExecutionContext.make(
+                                    returns[0][0].first,  # generator object ID.
+                                    task_type,
+                                    caller_address,
+                                    task_id,
+                                    serialized_retry_exception_allowlist,
+                                    function_name,
+                                    function_descriptor,
+                                    title,
+                                    actor,
+                                    actor_id,
+                                    name_of_concurrency_group_to_execute,
+                                    returns[0].size(),
+                                    attempt_number,
+                                    should_retry_exceptions,
+                                    streaming_generator_returns,
+                                    is_retryable_error,
+                                    application_error,
+                                    generator_backpressure_num_objects)
+                            # We cannot pass generator to cdef in Cython for some reasons.
+                            # It is a workaround.
+                            context.initialize(outputs)
 
-                        # Streaming generator output is not used, so set it to None.
-                        outputs = None
+                            if is_async_gen:
+                                if generator_backpressure_num_objects != -1:
+                                    raise ValueError(
+                                        "_generator_backpressure_num_objects is "
+                                        "not supported for an async actor."
+                                    )
+                                # Note that the report RPCs are called inside an
+                                # event loop thread.
+                                core_worker.run_async_func_or_coro_in_event_loop(
+                                    execute_streaming_generator_async(context),
+                                    function_descriptor,
+                                    name_of_concurrency_group_to_execute,
+                                    task_id=task_id,
+                                    task_name=task_name)
+                            else:
+                                execute_streaming_generator_sync(context)
 
-                    next_breakpoint = (
-                        ray._private.worker.global_worker.debugger_breakpoint)
-                    if next_breakpoint != b"":
-                        # If this happens, the user typed "remote" and
-                        # there were no more remote calls left in this
-                        # task. In that case we just exit the debugger.
-                        ray.experimental.internal_kv._internal_kv_put(
-                            "RAY_PDB_{}".format(next_breakpoint),
-                            "{\"exit_debugger\": true}",
-                            namespace=ray_constants.KV_NAMESPACE_PDB
-                        )
-                        ray.experimental.internal_kv._internal_kv_del(
-                            "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
-                            namespace=ray_constants.KV_NAMESPACE_PDB
-                        )
-                        (ray._private.worker.global_worker
-                         .debugger_breakpoint) = b""
+                            # Streaming generator output is not used, so set it to None.
+                            outputs = None
+
+                        next_breakpoint = (
+                            ray._private.worker.global_worker.debugger_breakpoint)
+                        if next_breakpoint != b"":
+                            # If this happens, the user typed "remote" and
+                            # there were no more remote calls left in this
+                            # task. In that case we just exit the debugger.
+                            ray.experimental.internal_kv._internal_kv_put(
+                                "RAY_PDB_{}".format(next_breakpoint),
+                                "{\"exit_debugger\": true}",
+                                namespace=ray_constants.KV_NAMESPACE_PDB
+                            )
+                            ray.experimental.internal_kv._internal_kv_del(
+                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
+                                namespace=ray_constants.KV_NAMESPACE_PDB
+                            )
+                            (ray._private.worker.global_worker
+                             .debugger_breakpoint) = b""
                     task_exception = False
-                except AsyncioActorExit as e:
-                    exit_current_actor_if_asyncio()
                 except Exception as e:
                     is_retryable_error[0] = determine_if_retryable(
                                     should_retry_exceptions,
@@ -3022,6 +3022,7 @@ cdef class CoreWorker:
         self._task_id_to_future_lock = threading.Lock()
         self._task_id_to_future = {}
         self.event_loop_executor = None
+        self._async_actor_exited_event = asyncio.Event()
 
     def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
@@ -3176,6 +3177,17 @@ cdef class CoreWorker:
 
     def set_actor_repr_name(self, repr_name):
         CCoreWorkerProcess.GetCoreWorker().SetActorReprName(repr_name)
+
+    @property
+    def is_current_async_actor_exited(self):
+        return self._async_actor_exited_event.is_set()
+
+    @is_current_async_actor_exited.setter
+    def is_current_async_actor_exited(self, value):
+        if value:
+            self._async_actor_exited_event.set()
+        else:
+            self._async_actor_exited_event.clear()
 
     def get_plasma_event_handler(self):
         return self.plasma_event_handler

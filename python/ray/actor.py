@@ -29,7 +29,6 @@ from ray._raylet import (
     PythonFunctionDescriptor,
     raise_sys_exit_with_custom_error_message,
 )
-from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
@@ -1774,10 +1773,11 @@ def exit_actor():
     worker = ray._private.worker.global_worker
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
         # In asyncio actor mode, we can't raise SystemExit because it will just
-        # quit the asycnio event loop thread, not the main thread. Instead, we
-        # raise a custom error to the main thread to tell it to exit.
+        # quit the asycnio task, not the main thread. Instead, we use
+        # asyncio.Event for synchronization across multiple asyncio tasks.
         if worker.core_worker.current_actor_is_asyncio():
-            raise AsyncioActorExit()
+            worker.core_worker.is_current_async_actor_exited = True
+            return
 
         # Set a flag to indicate this is an intentional actor exit. This
         # reduces log verbosity.
