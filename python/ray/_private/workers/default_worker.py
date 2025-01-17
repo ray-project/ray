@@ -3,6 +3,7 @@ import argparse
 import base64
 import json
 import time
+import sys
 
 import ray
 import ray._private.node
@@ -11,8 +12,10 @@ import ray._private.utils
 import ray.actor
 from ray._private.async_compat import try_install_uvloop
 from ray._private.parameter import RayParams
-from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
+from ray._private.ray_logging import get_worker_log_file_name
 from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
+import ray.common
+import ray.includes
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
@@ -135,7 +138,7 @@ parser.add_argument(
     "--logging-rotate-bytes",
     required=False,
     type=int,
-    default=ray_constants.LOGGING_ROTATE_BYTES,
+    default=sys.maxsize,
     help="Specify the max bytes for rotating "
     "log file, default is "
     f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
@@ -144,7 +147,7 @@ parser.add_argument(
     "--logging-rotate-backup-count",
     required=False,
     type=int,
-    default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+    default=1,
     help="Specify the backup count of rotated log file, default is "
     f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
 )
@@ -273,12 +276,30 @@ if __name__ == "__main__":
     worker = ray._private.worker.global_worker
 
     # Setup log file.
-    out_file, err_file = node.get_log_file_handles(
-        get_worker_log_file_name(args.worker_type)
+    log_stdout_fname, log_stderr_fname = node.get_log_file_names(
+        get_worker_log_file_name(args.worker_type),
+        unique=True,
+        create_out=True,
+        create_err=True,
     )
-    configure_log_file(out_file, err_file)
-    worker.set_out_file(out_file)
-    worker.set_err_file(err_file)
+    stdout_redirection_opt = ray.includes.common.StreamRedirectionOption(
+        log_stdout_fname,
+        args.logging_rotate_bytes,
+        args.logging_rotate_backup_count,
+        False,
+        False,
+    )
+    ray.includes.common.redirect_stdout(stdout_redirection_opt)
+    stderr_redirection_opt = ray.includes.common.StreamRedirectionOption(
+        log_stderr_fname,
+        args.logging_rotate_bytes,
+        args.logging_rotate_backup_count,
+        False,
+        False,
+    )
+    ray.includes.common.redirect_stderr(stderr_redirection_opt)
+    worker.set_out_file(log_stdout_fname)
+    worker.set_err_file(log_stderr_fname)
 
     if mode == ray.WORKER_MODE and args.worker_preload_modules:
         module_names_to_import = args.worker_preload_modules.split(",")

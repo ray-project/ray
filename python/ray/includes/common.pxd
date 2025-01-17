@@ -746,3 +746,16 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kGcsAutoscalerStateNamespace
     cdef const char[] kGcsAutoscalerV2EnabledKey
     cdef const char[] kGcsAutoscalerClusterConfigKey
+
+cdef extern from "ray/util/stream_redirection_options.h" nogil:
+    cdef cppclass CStreamRedirectionOption "ray::StreamRedirectionOption":
+        CStreamRedirectionOption(
+            c_string file_path_p,
+            uint64_t rotation_max_size,
+            uint64_t rotation_max_file_count,
+            c_bool tee_to_stdout,
+            c_bool tee_to_stderr)
+
+cdef extern from "ray/util/stream_redirection_utils.h" nogil:
+    void redirect_stdout(CStreamRedirectionOption stream_redirection_opts)
+    void redirect_stderr(CStreamRedirectionOption stream_redirection_opts)

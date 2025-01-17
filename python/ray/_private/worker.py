@@ -17,9 +17,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
-    IO,
     Any,
-    AnyStr,
     Callable,
     Dict,
     Generic,
@@ -625,12 +623,12 @@ class Worker:
         finally:
             ray._private.state.update_worker_num_paused_threads(worker_id, -1)
 
-    def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
-        """Set the worker's err file where stderr is redirected to"""
+    def set_err_file(self, err_file: str = None) -> None:
+        """Set the worker's err filename where stderr is redirected to"""
         self._err_file = err_file
 
-    def set_out_file(self, out_file=Optional[IO[AnyStr]]) -> None:
-        """Set the worker's out file where stdout is redirected to"""
+    def set_out_file(self, out_file: str = None) -> None:
+        """Set the worker's out filename where stdout is redirected to"""
         self._out_file = out_file
 
     def record_task_log_start(self, task_id: TaskID, attempt_number: int):
@@ -677,23 +675,25 @@ class Worker:
 
     def get_err_file_path(self) -> str:
         """Get the err log file path"""
-        return self._err_file.name if self._err_file is not None else ""
+        return self._err_file if self._err_file is not None else ""
 
     def get_out_file_path(self) -> str:
         """Get the out log file path"""
-        return self._out_file.name if self._out_file is not None else ""
+        return self._out_file if self._out_file is not None else ""
 
     def get_current_out_offset(self) -> int:
-        """Get the current offset of the out file if seekable, else 0"""
-        if self._out_file is not None and self._out_file.seekable():
-            return self._out_file.tell()
-        return 0
+        """Get the current file size for out file, 0 if out file is not assigned."""
+        if self._out_file is None:
+            return 0
+        file_size = os.path.getsize(self._out_file)
+        return file_size
 
     def get_current_err_offset(self) -> int:
-        """Get the current offset of the err file if seekable, else 0"""
-        if self._err_file is not None and self._err_file.seekable():
-            return self._err_file.tell()
-        return 0
+        """Get the current file size for err file, 0 if err file is not assigned."""
+        if self._err_file is None:
+            return 0
+        file_size = os.path.getsize(self._err_file)
+        return file_size
 
     def get_serialization_context(self):
         """Get the SerializationContext of the job that this worker is processing.
