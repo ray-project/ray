@@ -62,13 +62,13 @@ class SubprocessRouteTable(BaseRouteTable):
     Lifecycle of a request:
     1. Parent receives a aiohttp request.
     2. Router finds by [method][path] and calls parent_side_handler.
-    3. parent_side_handler bookkeeps the request with a Future and sends a
+    3. `parent_side_handler` bookkeeps the request with a Future and sends a
             RequestMessage to the subprocess.
-    4. SubprocessModule.dispatch_child_bound_messages receives the
+    4. `SubprocessModule.dispatch_child_bound_messages` receives the
             RequestMessage and calls the child side handler.
     (real work here)
-    5. child side handler sends a ParentBoundMessage to parent.
-    6. dispatch_parent_bound_messages receives the ParentBoundMessage and
+    5. `child_side_handler` sends a ParentBoundMessage to parent.
+    6. `dispatch_parent_bound_messages` receives the ParentBoundMessage and
         resolves the Future with the response.
     7. aiohttp receives the response and sends it back to the client.
 

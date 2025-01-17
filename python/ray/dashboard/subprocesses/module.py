@@ -74,7 +74,7 @@ class SubprocessModule(abc.ABC):
         return False
 
     @abc.abstractmethod
-    async def run(self):
+    async def init(self):
         """
         Run the module in an asyncio loop. A head module can provide
         servicers to the server.
@@ -155,7 +155,7 @@ def run_module(
     Entrypoint for a subprocess module.
     Creates a dedicated thread to listen from the the parent queue and dispatch messages
     to the module. Only listen to the parent queue AFTER the module is prepared by
-    `module.run()`.
+    `module.init()`.
     """
     module_name = cls.__name__
     logging_filename = module_logging_filename(module_name, config.logging_filename)
@@ -173,7 +173,7 @@ def run_module(
     loop = asyncio.new_event_loop()
     module = cls(config, child_bound_queue, parent_bound_queue)
 
-    loop.run_until_complete(module.run())
+    loop.run_until_complete(module.init())
 
     dispatch_child_bound_messages_thread = threading.Thread(
         target=module.dispatch_child_bound_messages,

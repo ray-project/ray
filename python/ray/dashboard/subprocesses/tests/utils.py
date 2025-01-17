@@ -21,9 +21,11 @@ class TestModule(SubprocessModule):
         super().__init__(*args, **kwargs)
         self.run_finished = False
 
-    async def run(self):
-        logger.info("TestModule is running")
+    async def init(self):
+        logger.info("TestModule is initing")
         self.run_finished = True
+        await asyncio.sleep(0.1)
+        logger.info("TestModule is done initing")
 
     @SubprocessRouteTable.get("/test")
     async def test(self, request_body: bytes) -> aiohttp.web.Response:
@@ -45,6 +47,8 @@ class TestModule(SubprocessModule):
 
     @SubprocessRouteTable.put("/error_403")
     async def make_error_403(self, request_body: bytes) -> aiohttp.web.Response:
+        # For an ascii art of Gandalf the Grey, see:
+        # https://github.com/ray-project/ray/pull/49732#discussion_r1919292428
         raise aiohttp.web.HTTPForbidden(reason="you shall not pass")
 
     @SubprocessRouteTable.post("/streamed_iota", streaming=True)
