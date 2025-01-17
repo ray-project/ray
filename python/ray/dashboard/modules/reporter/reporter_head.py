@@ -252,7 +252,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
         if not ip_ports:
-            raise aiohttp.web.HTTPInternalServerError(text="Failed to get stub address")
+            raise aiohttp.web.HTTPInternalServerError(text=f"Failed to get agent address for node {node_id_hex}")
         ip, http_port, grpc_port = ip_ports
         reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
 
