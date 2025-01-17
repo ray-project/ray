@@ -6,10 +6,14 @@ from ray.train.v2._internal.execution.callback import (
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.v2._internal.execution.worker_group import WorkerGroupStatus
 from ray.train.v2.api.callback import UserCallback
 
 
 class UserCallbackHandler(WorkerGroupCallback, ReportCallback):
+    """Responsible for calling methods of subscribers implementing
+    the `UserCallback` interface.
+    """
     def __init__(
         self, user_callbacks: List[UserCallback], train_run_context: TrainRunContext
     ):
@@ -34,7 +38,7 @@ class UserCallbackHandler(WorkerGroupCallback, ReportCallback):
     # WorkerGroupCallback
     # --------------------------
 
-    def after_worker_group_poll_status(self, worker_group_status):
+    def after_worker_group_poll_status(self, worker_group_status: WorkerGroupStatus):
         if not worker_group_status.errors:
             return
 
