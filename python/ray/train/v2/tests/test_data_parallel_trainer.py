@@ -184,7 +184,7 @@ def test_setup_working_directory(tmp_path, monkeypatch, env_disabled):
 def test_user_callback(tmp_path):
     """Test end to end usage of user callbacks."""
     num_workers = 2
-    
+
     class MyUserCallback(UserCallback):
         def after_report(self, run_context, metrics, checkpoint):
             assert len(metrics) == num_workers

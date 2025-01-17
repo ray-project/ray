@@ -168,7 +168,4 @@ class RunConfig(RunConfigV1):
         from ray.train.v2.api.callback import RayTrainCallback
 
         if not all(isinstance(cb, RayTrainCallback) for cb in self.callbacks):
-            raise ValueError(
-                "All callbacks must be instances of `RayTrainCallback`."
-            )
-
+            raise ValueError("All callbacks must be instances of `RayTrainCallback`.")

@@ -9,7 +9,9 @@ from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
-from ray.train.v2._internal.execution.checkpoint.report_handler import ReportCallbackHandler
+from ray.train.v2._internal.execution.checkpoint.report_handler import (
+    ReportCallbackHandler,
+)
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupStatus,

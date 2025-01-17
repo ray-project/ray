@@ -239,7 +239,10 @@ class TrainContext(TrainRunContext):
         """
 
         with invoke_context_managers(
-            [callback.on_report for callback in self.execution_context.train_context_callbacks]
+            [
+                callback.on_report
+                for callback in self.execution_context.train_context_callbacks
+            ]
         ):
             # Step 1: sync the checkpoint dir name across ranks.
             checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(

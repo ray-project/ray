@@ -26,7 +26,9 @@ from ray.train.v2._internal.execution.callback import (
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
-from ray.train.v2._internal.execution.checkpoint.report_handler import ReportCallbackHandler
+from ray.train.v2._internal.execution.checkpoint.report_handler import (
+    ReportCallbackHandler,
+)
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,

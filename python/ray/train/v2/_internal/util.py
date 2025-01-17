@@ -144,7 +144,9 @@ def ray_get_safe(
 
 
 @contextlib.contextmanager
-def invoke_context_managers(context_managers: List[ContextManager]) -> Generator[None, None, None]:
+def invoke_context_managers(
+    context_managers: List[ContextManager],
+) -> Generator[None, None, None]:
     """
     Utility to invoke a list of context managers and yield sequentially.
 
