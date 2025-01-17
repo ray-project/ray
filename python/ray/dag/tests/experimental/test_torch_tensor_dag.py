@@ -276,6 +276,10 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
 
     sender = TorchTensorWorker.options(num_cpus=0, num_gpus=num_gpus[0]).remote()
     receiver = TorchTensorWorker.options(num_cpus=0, num_gpus=num_gpus[1]).remote()
+    # Use NCCL only when sender and receiver are on different GPUs.
+    # When each actor has 0.5 GPU, sender and receiver are allocated
+    # on the same GPU, so we use auto.
+    expected_transport = "nccl" if num_gpus == [1, 1] else "auto"
 
     shape = (10,)
     dtype = torch.float16
@@ -287,8 +291,6 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
         dag = receiver.recv.bind(data_annotated)
 
     compiled_dag = dag.experimental_compile()
-
-    expected_transport = "nccl" if num_gpus == [1, 1] else "auto"
     assert isinstance(data_annotated.type_hint, TorchTensorType)
     assert data_annotated.type_hint.transport == expected_transport
 

@@ -1176,6 +1176,12 @@ class CompiledDAG:
         for task in auto_transport_tasks:
             writer = task.dag_node._get_actor_handle()
             readers = task.downstream_task_idxs.values()
+            if any(reader is None for reader in readers):
+                # None means reader is the driver, currently driver on GPU
+                # is not supported, so we always use shared memory to transfer
+                # tensors.
+                task.dag_node.type_hint = TorchTensorType()
+                continue
             writer_and_node = (writer, self._get_node_id(writer))
             reader_and_node_list = [
                 (reader, self._get_node_id(reader)) for reader in readers
