@@ -40,7 +40,7 @@ int GetStdoutHandle() { return _fileno(stdout); }
 int GetStderrHandle() { return _fileno(stderr); }
 #endif
 
-// TODO(hjiang): Revisit later, should be able to save some heap alllocation with
+// TODO(hjiang): Revisit later, should be able to save some heap allocation with
 // absl::InlinedVector.
 //
 // Maps from original stream file handle (i.e. stdout/stderr) to its stream redirector.

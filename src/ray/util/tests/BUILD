@@ -223,15 +223,27 @@ ray_cc_library(
     testonly = True,
 )
 
+ray_cc_library(
+    name = "windows_test_utils",
+    hdrs = ["windows_test_utils.h"],
+    srcs = ["windows_test_utils.cc"],
+    deps = [
+        "//src/ray/util",
+    ],
+    testonly = True,
+)
+
 ray_cc_test(
     name = "pipe_logger_test",
     srcs = ["pipe_logger_test.cc"],
     deps = [
-        ":unix_test_utils",
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + select({
+        "@platforms//os:windows": [":windows_test_utils"],
+        "//conditions:default": [":unix_test_utils"],
+    }),
     size = "small",
     tags = ["team:core"],
 )

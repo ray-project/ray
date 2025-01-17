@@ -207,6 +207,8 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
 
 #include <windows.h>
 
+#include "ray/util/tests/windows_test_utils.h"
+
 namespace ray {
 
 TEST(PipeLoggerTestWithTee, RedirectionWithNoTeeAndRotation) {
