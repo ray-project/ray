@@ -294,7 +294,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             check(len(episode.agent_episodes[agent_id].actions), 0)
             check(len(episode.agent_episodes[agent_id].rewards), 0)
             check(episode.agent_episodes[agent_id].is_truncated, False)
-            check(episode.agent_episodes[agent_id].is_finalized, False)
+            check(episode.agent_episodes[agent_id].is_numpy, False)
         check(episode.agent_episodes["agent_5"].is_terminated, True)
         check(
             episode.env_t_to_agent_t["agent_5"].data,
