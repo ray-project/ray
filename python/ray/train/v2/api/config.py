@@ -9,7 +9,7 @@ from ray.train.v2._internal.util import date_str
 
 if TYPE_CHECKING:
     from ray.train import SyncConfig
-    from ray.train.v2.api.callback import RayTrainCallback
+    from ray.train.v2.api.callback import UserCallback
     from ray.tune.experimental.output import AirVerbosity
     from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.stopper import Stopper
@@ -127,7 +127,7 @@ class RunConfig(RunConfigV1):
             will invoke during training.
     """
 
-    callbacks: Optional[List["RayTrainCallback"]] = None
+    callbacks: Optional[List["UserCallback"]] = None
     sync_config: Union[Optional["SyncConfig"], str] = _DEPRECATED
     verbose: Union[Optional[Union[int, "AirVerbosity", "Verbosity"]], str] = _DEPRECATED
     stop: Union[
