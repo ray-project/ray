@@ -64,6 +64,7 @@ void ClusterTaskManager::QueueAndScheduleTask(
   auto &internal_runtime_env = *internal_task_spec_rpc.mutable_runtime_env_info();
   if (internal_runtime_env.serialized_runtime_env().find("FOO") != std::string::npos) {
     internal_runtime_env.set_serialized_runtime_env("{}");
+    internal_task_spec.runtime_env_hash_ = 0;
   }
 
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
