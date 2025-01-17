@@ -15,6 +15,7 @@
 #include "ray/util/pipe_logger.h"
 
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include <cstdint>
 #include <future>
