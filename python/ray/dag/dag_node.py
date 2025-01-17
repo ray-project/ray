@@ -1,5 +1,5 @@
 import copy
-from ray.experimental.channel.auto_channel_type import AutoChannelType
+from ray.experimental.channel.auto_transport_type import AutoTransportType
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 import ray
@@ -141,7 +141,7 @@ class DAGNode(DAGNodeBase):
         _direct_return: bool = False,
     ):
         if transport == "auto":
-            self._type_hint = AutoChannelType()
+            self._type_hint = AutoTransportType()
         elif transport == "nccl":
             self._type_hint = TorchTensorType(
                 transport=transport,

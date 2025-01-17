@@ -20,7 +20,10 @@ import time
 import uuid
 import traceback
 
-from ray.experimental.channel.auto_channel_type import AutoChannelType, TypeHintResolver
+from ray.experimental.channel.auto_transport_type import (
+    AutoTransportType,
+    TypeHintResolver,
+)
 import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
@@ -1036,7 +1039,7 @@ class CompiledDAG:
                         actor_handle
                     )
 
-                if isinstance(dag_node.type_hint, AutoChannelType):
+                if isinstance(dag_node.type_hint, AutoTransportType):
                     auto_transport_tasks.add(task)
 
                 # Collect actors for NCCL P2P methods.
@@ -1494,7 +1497,7 @@ class CompiledDAG:
                         input_node_to_reader_and_node_set[input_dag_node]
                     )
 
-                    if isinstance(input_dag_node.type_hint, AutoChannelType):
+                    if isinstance(input_dag_node.type_hint, AutoTransportType):
                         # Currently driver on GPU is not supported, so we always
                         # use shared memory to transfer tensors.
                         input_dag_node.type_hint = TorchTensorType()
