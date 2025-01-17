@@ -9,11 +9,11 @@ import pyarrow.parquet as pq
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.datasource import bigquery_datasource
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
-from ray.data.datasource import bigquery_datasource
 
 logger = logging.getLogger(__name__)
 
