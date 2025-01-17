@@ -32,8 +32,8 @@ following code as an example:
 
     actors = [EchoActor.remote() for _ in range(4)]
     with InputNode() as inp:
-    outputs = [actor.echo.bind(inp) for actor in actors]
-    dag = MultiOutputNode(outputs)
+        outputs = [actor.echo.bind(inp) for actor in actors]
+        dag = MultiOutputNode(outputs)
 
     compiled_dag = dag.experimental_compile()
     # Kill one of the actors to simulate unexpected actor death.
@@ -42,16 +42,16 @@ following code as an example:
 
     live_actors = []
     try:
-    ray.get(ref)
+        ray.get(ref)
     except ray.exceptions.ActorDiedError:
-    # At this point, the Compiled Graph is shutting down.
-    for actor in actors:
-        try:
-        # Check for live actors.
-        ray.get(actor.echo.remote("ping"))
-        live_actors.append(actor)
-        except ray.exceptions.RayActorError:
-        pass
+        # At this point, the Compiled Graph is shutting down.
+        for actor in actors:
+            try:
+                # Check for live actors.
+                ray.get(actor.echo.remote("ping"))
+                live_actors.append(actor)
+            except ray.exceptions.RayActorError:
+                pass
 
     # Optionally, use the live actors to create a new Compiled Graph..
     assert live_actors == actors[1:]
