@@ -13,6 +13,7 @@ from ray.rllib.utils.test_utils import (
     run_rllib_example_script_experiment,
 )
 
+
 parser = add_rllib_example_script_args()
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
@@ -32,7 +33,18 @@ print(f"data_path={data_path}")
 # Define the BC config.
 config = (
     BCConfig()
-    .environment("CartPole-v1")
+    .environment(
+        env="CartPole-v1",
+    )
+    .evaluation(
+        evaluation_interval=3,
+        evaluation_num_env_runners=1,
+        evaluation_duration=5,
+        evaluation_parallel_to_training=True,
+        evaluation_config={
+            "explore": False,
+        },
+    )
     # Note, the `input_` argument is the major argument for the
     # new offline API. Via the `input_read_method_kwargs` the
     # arguments for the `ray.data.Dataset` read method can be
@@ -43,7 +55,11 @@ config = (
         # Concurrency defines the number of processes that run the
         # `map_batches` transformations. This should be aligned with the
         # 'prefetch_batches' argument in 'iter_batches_kwargs'.
-        map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
+        map_batches_kwargs={
+            "concurrency": 2,
+            "num_cpus": 2,
+            "num_gpus": (args.num_gpus_per_learner or 0) * (0.01 / 2),
+        },
         # This data set is small so do not prefetch too many batches and use no
         # local shuffle.
         iter_batches_kwargs={"prefetch_batches": 1},
@@ -51,26 +67,32 @@ config = (
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
         # iteration. For single-learner mode, 1 is the only option.
-        dataset_num_iters_per_learner=1 if not args.num_learners else None,
+        dataset_num_iters_per_learner=10,
     )
     .training(
-        train_batch_size_per_learner=1024,
+        train_batch_size_per_learner=2048,
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
         lr=0.0008 * (args.num_learners or 1) ** 0.5,
+    )
+    .learners(
+        num_learners=2,
     )
     .rl_module(
         model_config=DefaultModelConfig(
             fcnet_hiddens=[256, 256],
         ),
     )
-    .evaluation(
-        evaluation_interval=3,
-        evaluation_num_env_runners=1,
-        evaluation_duration=5,
-        evaluation_parallel_to_training=True,
-    )
 )
+
+# Ray Tune and Ray Data do not work together, yet.
+args.no_tune = True
+# Enable the new API stack by default.
+args.enable_new_api_stack = True
+
+# If we are running on GPUs reserve fractions of the GPU for pre-loading.
+if args.num_gpus_per_learner is not None and args.num_learners <= 1:
+    args.num_gpus_per_learner *= 0.99
 
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0,

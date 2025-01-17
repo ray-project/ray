@@ -1108,6 +1108,16 @@ class Learner(Checkpointable):
                 "`num_iters` instead."
             )
 
+        from ray.rllib.utils.framework import try_import_torch
+
+        torch, nn = try_import_torch()
+
+        self.metrics.log_value(
+            "dataset_num_iters_per_learner",
+            num_iters,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
         if not self.iterator:
             self.iterator = iterator
 
@@ -1117,29 +1127,37 @@ class Learner(Checkpointable):
         # preparations-, logging-, and update logic to happen.
         self.before_gradient_based_update(timesteps=timesteps or {})
 
-        def _finalize_fn(batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
-            # Note, the incoming batch is a dictionary with a numpy array
-            # holding the `MultiAgentBatch`.
-            batch = self._convert_batch_type(batch["batch"][0])
-            return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
-
         i = 0
         logger.debug(f"===> [Learner {id(self)}]: Looping through batches ... ")
+        # with torch.profiler.profile(
+        #     schedule=torch.profiler.schedule(wait=1, warmup=3, active=10, repeat=1),
+        #     on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/update_from_iterator'),
+        #     record_shapes=True,
+        #     with_stack=True
+        # ) as prof:
         for batch in self.iterator.iter_batches(
             # Note, this needs to be one b/c data is already mapped to
             # `MultiAgentBatch`es of `minibatch_size`.
             batch_size=1,
-            _finalize_fn=_finalize_fn,
             **kwargs,
         ):
             # Update the iteration counter.
             i += 1
 
+            # prof.step()
             # Note, `_finalize_fn`  must return a dictionary.
-            batch = batch["batch"]
+            batch = batch["batch"][0]
+            env_steps = batch.env_steps()
+            self.metrics.log_value(
+                "min_env_steps_per_batch",
+                env_steps,
+                reduce="min",
+                window=num_iters or 1,
+            )
             logger.debug(
                 f"===> [Learner {id(self)}]: batch {i} with {batch.env_steps()} rows."
             )
+
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
             # found in this batch. If not, throw an error.
             unknown_module_ids = set(batch.policy_batches.keys()) - set(
@@ -1170,6 +1188,20 @@ class Learner(Checkpointable):
 
         logger.debug(
             f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
+        )
+        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+        # to actual (numpy) values.
+        self.metrics.tensors_to_numpy(tensor_metrics)
+        self.metrics.log_value(
+            "dataset_num_iters_per_learner_trained",
+            i,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            "dataset_num_iters_per_learner_trained_lifetime",
+            i,
+            reduce="sum",
         )
 
         # Log all individual RLModules' loss terms and its registered optimizers'

@@ -190,7 +190,7 @@ class OfflinePreLearner:
             episodes = OfflinePreLearner._map_sample_batch_to_episode(
                 self._is_multi_agent,
                 batch,
-                finalize=True,
+                to_numpy=True,
                 schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
             )["episodes"]
@@ -216,7 +216,7 @@ class OfflinePreLearner:
                 self._is_multi_agent,
                 batch,
                 schema=SCHEMA | self.config.input_read_schema,
-                finalize=True,
+                to_numpy=True,
                 input_compress_columns=self.config.input_compress_columns,
                 observation_space=self.observation_space,
                 action_space=self.action_space,
@@ -398,7 +398,7 @@ class OfflinePreLearner:
         is_multi_agent: bool,
         batch: Dict[str, Union[list, np.ndarray]],
         schema: Dict[str, str] = SCHEMA,
-        finalize: bool = False,
+        to_numpy: bool = False,
         input_compress_columns: Optional[List[str]] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
@@ -513,8 +513,8 @@ class OfflinePreLearner:
                     len_lookback_buffer=0,
                 )
 
-                if finalize:
-                    episode.finalize()
+                if to_numpy:
+                    episode.to_numpy()
                 episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
@@ -525,7 +525,7 @@ class OfflinePreLearner:
         is_multi_agent: bool,
         batch: Dict[str, Union[list, np.ndarray]],
         schema: Dict[str, str] = SCHEMA,
-        finalize: bool = False,
+        to_numpy: bool = False,
         input_compress_columns: Optional[List[str]] = None,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps an old stack `SampleBatch` to new stack episodes."""
@@ -677,8 +677,8 @@ class OfflinePreLearner:
                 # Finalize, if necessary.
                 # TODO (simon, sven): Check, if we should convert all data to lists
                 # before. Right now only obs are lists.
-                if finalize:
-                    episode.finalize()
+                if to_numpy:
+                    episode.to_numpy()
                 episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}

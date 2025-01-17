@@ -461,7 +461,7 @@ class MARWIL(Algorithm):
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
-                return_iterator=self.config.num_learners > 1,
+                return_iterator=True,  # self.config.num_learners > 1,
             )
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
