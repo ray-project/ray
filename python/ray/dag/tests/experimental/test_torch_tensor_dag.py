@@ -19,6 +19,7 @@ from ray.experimental.channel.communicator import (
     Communicator,
     TorchTensorAllocator,
 )
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray._private.test_utils import (
     get_log_message,
@@ -281,11 +282,15 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
 
     # Test normal execution.
     with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_tensor_transport(transport="auto")
-        dag = receiver.recv.bind(dag)
+        data = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        data_annotated = data.with_tensor_transport(transport="auto")
+        dag = receiver.recv.bind(data_annotated)
 
     compiled_dag = dag.experimental_compile()
+
+    expected_transport = "nccl" if num_gpus == [1, 1] else "auto"
+    assert isinstance(data_annotated.type_hint, TorchTensorType)
+    assert data_annotated.type_hint.transport == expected_transport
 
     # Test that we can pass different shapes and data.
     for i in range(3):
@@ -300,6 +305,8 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
+    assert isinstance(data_annotated.type_hint, TorchTensorType)
+    assert data_annotated.type_hint.transport == expected_transport
 
     # Test that we can pass different shapes and data.
     for i in range(3):
@@ -1330,7 +1337,7 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
         x = workers[0].send.bind(shape, dtype, inp)
         y = workers[1].send.bind(shape, dtype, inp)
 
-        # Tensor to be sent from workes[0] to workers[1].
+        # Tensor to be sent from workers[0] to workers[1].
         t = workers[0].send.bind(shape, dtype, inp)
         t.with_tensor_transport(transport="nccl")
 
