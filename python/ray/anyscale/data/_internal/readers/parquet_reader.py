@@ -229,7 +229,6 @@ class ParquetReader(FileReader):
         def get_batch_iterable():
             return fragment.to_batches(
                 use_threads=self._use_threads,
-                # Workaround for https://github.com/anyscale/rayturbo/issues/1328.
                 columns=None if not columns else columns,
                 filter=filter_expr,
                 schema=schema,

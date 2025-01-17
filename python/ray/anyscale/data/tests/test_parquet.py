@@ -2,6 +2,7 @@ import functools
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 from pyarrow.fs import FileSystemHandler, LocalFileSystem, PyFileSystem
 
 import ray
@@ -102,6 +103,33 @@ def test_transient_error_handling(restore_data_context, ray_start_regular_shared
     fs = PyFileSystem(FlakyFileSystemHandler(LocalFileSystem()))
 
     ray.data.read_parquet("example://iris.parquet", filesystem=fs).materialize()
+
+
+@pytest.mark.parametrize(
+    "columns,expected_exception,expected_message",
+    [
+        ([], ValueError, "`columns` cannot be an empty list."),
+        ("not_a_list", TypeError, "`columns` must be a list of strings."),
+        (["valid_col", 123], TypeError, "All elements in `columns` must be strings."),
+        (["variety", "sepal.length"], None, None),
+    ],
+)
+def test_empty_columns_with_read_parquet(
+    ray_start_regular_shared, columns, expected_exception, expected_message
+):
+    if expected_exception:
+        with pytest.raises(expected_exception, match=expected_message):
+            ray.data.read_parquet(
+                "example://iris.parquet", columns=columns
+            ).materialize()
+    else:
+        try:
+            schema = ray.data.read_parquet(
+                "example://iris.parquet", columns=columns
+            ).schema()
+            assert schema.names == ["variety", "sepal.length"]
+        except Exception as e:
+            pytest.fail(f"Unexpected exception raised: {e}")
 
 
 def test_read_parquet_produces_target_size_blocks(

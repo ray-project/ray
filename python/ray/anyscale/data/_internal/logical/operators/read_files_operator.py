@@ -25,6 +25,13 @@ class ReadFiles(LogicalOperator):
         self.reader = reader
         self.filesystem = filesystem
         self.filter_expr = filter_expr
+        if columns is not None:
+            if not isinstance(columns, list):
+                raise TypeError("`columns` must be a list of strings.")
+            if not columns:
+                raise ValueError("`columns` cannot be an empty list.")
+            if not all(isinstance(col, str) for col in columns):
+                raise TypeError("All elements in `columns` must be strings.")
         if columns is not None and columns_rename is not None:
             assert set(columns_rename.keys()).issubset(columns), (
                 f"All column rename keys must be a subset of the columns list. "
