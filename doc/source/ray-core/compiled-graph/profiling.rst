@@ -7,7 +7,7 @@ of individual tasks, systems overhead, and performance bottlenecks.
 Nsight system profiler
 ----------------------
 
-Compiled Graphs build on top of Ray's profiling capabilities, and leverage Nsight
+Compiled Graph build on top of Ray's profiling capabilities, and leverage Nsight
 system profiling. 
 
 To run Nsight Profiling on Compiled Graph, specify the runtime_env for the involved actors
