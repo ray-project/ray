@@ -2725,3 +2725,11 @@ genrule(
     """,
     local = 1,
 )
+
+ray_cc_binary(
+    name = "pipe",
+    srcs = ["pipe.cc"],
+    deps = [
+        "@boost//:iostreams",
+    ],
+)
