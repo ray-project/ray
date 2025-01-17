@@ -9,7 +9,7 @@ from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2.api.callback import UserCallback
 
 
-class UserCallbackInvoker(WorkerGroupCallback, ReportCallback):
+class UserCallbackHandler(WorkerGroupCallback, ReportCallback):
     def __init__(
         self, user_callbacks: List[UserCallback], train_run_context: TrainRunContext
     ):

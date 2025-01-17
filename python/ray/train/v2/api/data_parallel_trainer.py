@@ -17,7 +17,7 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
-from ray.train.v2._internal.callbacks.user_callback import UserCallbackInvoker
+from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
     _UNSUPPORTED,
     DEFAULT_RUN_CONTROLLER_AS_ACTOR,
@@ -202,7 +202,7 @@ class DataParallelTrainer:
             cb for cb in self.run_config.callbacks if isinstance(cb, UserCallback)
         ]
         callbacks.append(
-            UserCallbackInvoker(
+            UserCallbackHandler(
                 user_callbacks=user_callbacks, train_run_context=self.train_run_context
             )
         )
