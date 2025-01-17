@@ -96,7 +96,6 @@ std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-        /*node_id=*/std::nullopt,
         TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise),
         /*timeout_ms=*/-1));
   }

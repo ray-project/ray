@@ -343,12 +343,12 @@ cdef class InnerGcsClient:
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Nodes().AsyncGetAll(
-                    c_node_id,
                     MultiItemPyCallback[CGcsNodeInfo](
                         convert_get_all_node_info,
                         assign_and_decrement_fut,
                         fut),
-                    timeout_ms))
+                    timeout_ms,
+                    c_node_id))
         return asyncio.wrap_future(fut)
 
     #############################################################

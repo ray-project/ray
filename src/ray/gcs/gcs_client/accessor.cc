@@ -630,9 +630,9 @@ Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
   return Status::OK();
 }
 
-Status NodeInfoAccessor::AsyncGetAll(std::optional<NodeID> node_id,
-                                     const MultiItemCallback<GcsNodeInfo> &callback,
-                                     int64_t timeout_ms) {
+Status NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback,
+                                     int64_t timeout_ms,
+                                     std::optional<NodeID> node_id) {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
   if (node_id) {
