@@ -45,8 +45,10 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
     pid = ray.get(a.getpid.remote())
     a.do_stuff_infinite.remote()
 
+    node_id_hex = ray.get_runtime_context().get_node_id()
+
     def get_actor_stack():
-        url = f"{webui_url}/worker/traceback?pid={pid}&native={native}"
+        url = f"{webui_url}/worker/traceback?pid={pid}&node_id={node_id_hex}&native={native}"
         print("GET URL", url)
         response = requests.get(url)
         print("STATUS CODE", response.status_code)
@@ -71,7 +73,7 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
 
     def get_actor_flamegraph():
         response = requests.get(
-            f"{webui_url}/worker/cpu_profile?pid={pid}&native={native}"
+            f"{webui_url}/worker/cpu_profile?pid={pid}&node_id={node_id_hex}&native={native}"
         )
         response.raise_for_status()
         assert response.headers["Content-Type"] == "image/svg+xml", response.headers
@@ -126,9 +128,11 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
     pid = ray.get(a.getpid.remote())
     a.do_stuff_infinite.remote()
 
+    node_id_hex = ray.get_runtime_context().get_node_id()
+
     def get_actor_memory_flamegraph():
         response = requests.get(
-            f"{webui_url}/memory_profile?pid={pid}&leaks={leaks}&duration=5"
+            f"{webui_url}/memory_profile?pid={pid}&node_id={node_id_hex}&leaks={leaks}&duration=5"
         )
         response.raise_for_status()
 
@@ -152,7 +156,7 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
 
     def get_actor_memory_multiple_flamegraphs():
         response = requests.get(
-            f"{webui_url}/memory_profile?pid={pid}&leaks={leaks}&duration=5"
+            f"{webui_url}/memory_profile?pid={pid}&node_id={node_id_hex}&leaks={leaks}&duration=5"
         )
         response.raise_for_status()
 
@@ -208,8 +212,12 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     pid = ray.get(a.getpid.remote())
     a.do_stuff_infinite.remote()
 
+    node_id_hex = ray.get_runtime_context().get_node_id()
+
     def get_actor_stack():
-        response = requests.get(f"{webui_url}/worker/traceback?pid={pid}")
+        response = requests.get(
+            f"{webui_url}/worker/traceback?pid={pid}&node_id={node_id_hex}"
+        )
         response.raise_for_status()
         content = response.content.decode("utf-8")
         print("CONTENT", content)
@@ -224,28 +232,36 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     )
 
     # Check we return the right status code and error message on failure.
-    response = requests.get(f"{webui_url}/worker/traceback?pid=1234567")
+    response = requests.get(
+        f"{webui_url}/worker/traceback?pid=1234567&node_id={node_id_hex}"
+    )
     content = response.content.decode("utf-8")
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
 
     # Check we return the right status code and error message on failure.
-    response = requests.get(f"{webui_url}/worker/cpu_profile?pid=1234567")
+    response = requests.get(
+        f"{webui_url}/worker/cpu_profile?pid=1234567&node_id={node_id_hex}"
+    )
     content = response.content.decode("utf-8")
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
 
     # Check we return the right status code and error message on failure.
-    response = requests.get(f"{webui_url}/memory_profile?pid=1234567")
+    response = requests.get(
+        f"{webui_url}/memory_profile?pid=1234567&node_id={node_id_hex}"
+    )
     content = response.content.decode("utf-8")
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
 
     # Check wrong ip failure
-    response = requests.get(f"{webui_url}/memory_profile?ip=1234567&pid=1234567")
+    response = requests.get(
+        f"{webui_url}/memory_profile?ip=1234567&pid=1234567&node_id={node_id_hex}"
+    )
     content = response.content.decode("utf-8")
     print(content)
     assert "Failed to execute: No stub with given ip value" in content, content
