@@ -209,7 +209,7 @@ class GlobalStateAccessor {
   /// \param[out] node_info The output parameter to store the node info. To support
   /// multi-language, we serialize each GcsNodeInfo and return the serialized string.
   /// Where used, it needs to be deserialized with protobuf function.
-  ray::Status GetNode(const std::string &node_id, std::string *node_info)
+  ray::Status GetNode(const std::string &node_id_hex_str, std::string *node_info)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get the node to connect for a Ray driver.
@@ -223,12 +223,6 @@ class GlobalStateAccessor {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
-  /// Synchronously get the current alive nodes from GCS Service.
-  ///
-  /// \param[out] nodes The output parameter to store the alive nodes.
-  ray::Status GetAliveNodes(std::vector<rpc::GcsNodeInfo> &nodes)
-      ABSL_LOCKS_EXCLUDED(mutex_);
-
   /// MultiItem transformation helper in template style.
   ///
   /// \return MultiItemCallback within in rpc type DATA.
