@@ -2272,6 +2272,16 @@ def read_databricks_tables(
     )
     from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
 
+    def _normalize_databricks_host(host: str) -> str:
+        """Normalize Databricks host URL to ensure compatibility with MLflow."""
+        if not host:
+            return host
+
+        # If no protocol specified, add https://
+        if not host.startswith(('http://', 'https://')):
+            host = f'https://{host}'
+
+        return host
     def get_dbutils():
         no_dbutils_error = RuntimeError("No dbutils module found.")
         try:
@@ -2294,7 +2304,7 @@ def read_databricks_tables(
             "databricks workspace access token."
         )
 
-    host = os.environ.get("DATABRICKS_HOST")
+    host = _normalize_databricks_host(os.environ.get("DATABRICKS_HOST"))
     if not host:
         if is_in_databricks_runtime():
             ctx = (

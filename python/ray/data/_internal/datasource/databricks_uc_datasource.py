@@ -37,7 +37,7 @@ class DatabricksUCDatasource(Datasource):
         self.schema = schema
         self.query = query
 
-        url_base = f"https://{self.host}/api/2.0/sql/statements/"
+        url_base = f"{self.host}/api/2.0/sql/statements/"
 
         payload = json.dumps(
             {
