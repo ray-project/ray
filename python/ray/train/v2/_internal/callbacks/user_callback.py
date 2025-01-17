@@ -14,6 +14,7 @@ class UserCallbackHandler(WorkerGroupCallback, ReportCallback):
     """Responsible for calling methods of subscribers implementing
     the `UserCallback` interface.
     """
+
     def __init__(
         self, user_callbacks: List[UserCallback], train_run_context: TrainRunContext
     ):
