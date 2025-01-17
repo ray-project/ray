@@ -36,14 +36,8 @@ namespace {
 int GetStdoutHandle() { return STDOUT_FILENO; }
 int GetStderrHandle() { return STDERR_FILENO; }
 #elif defined(_WIN32)
-int GetStdoutHandle() {
-  HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
-  return _open_osfhandle(reinterpret_cast<intptr_t>(stdout_handle), _O_WRONLY);
-}
-int GetStderrHandle() {
-  HANDLE stderr_handle = GetStdHandle(STD_ERROR_HANDLE);
-  return _open_osfhandle(reinterpret_cast<intptr_t>(stderr_handle), _O_WRONLY);
-}
+int GetStdoutHandle() { return _fileno(stdout); }
+int GetStderrHandle() { return _fileno(stderr); }
 #endif
 
 // TODO(hjiang): Revisit later, should be able to save some heap alllocation with
