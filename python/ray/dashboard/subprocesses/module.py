@@ -60,6 +60,19 @@ class SubprocessModule(abc.ABC):
         self._child_bound_queue = child_bound_queue
         self._parent_bound_queue = parent_bound_queue
 
+    @staticmethod
+    def is_minimal_module():
+        """
+        Currently all SubprocessModule classes should be non-minimal.
+
+        We require this because SubprocessModuleHandle tracks aiohttp requests and
+        responses. To ease this, we can define another SubprocessModuleMinimalHandle
+        that doesn't track requests and responses, but still provides Queue interface
+        and health check.
+        TODO(ryw): If needed, create SubprocessModuleMinimalHandle.
+        """
+        return False
+
     @abc.abstractmethod
     async def run(self):
         """

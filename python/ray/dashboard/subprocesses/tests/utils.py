@@ -4,7 +4,7 @@ import os
 import signal
 from typing import AsyncIterator
 
-import aiohttp
+from ray.dashboard.optional_deps import aiohttp
 
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable

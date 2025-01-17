@@ -6,7 +6,7 @@ import threading
 from dataclasses import dataclass
 from typing import Awaitable, Optional
 
-import aiohttp.web
+from ray.dashboard.optional_deps import aiohttp
 
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
@@ -31,7 +31,7 @@ from ray.dashboard.subprocesses.utils import (
 
 """
 This file contains code run in the parent process. It can start a subprocess and send
-messages to it.
+messages to it. Requires non-minimal Ray.
 """
 
 logger = logging.getLogger(__name__)

@@ -3,7 +3,7 @@ import re
 import sys
 from typing import List
 
-import aiohttp.web
+from ray.dashboard.optional_deps import aiohttp
 import pytest
 
 from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
@@ -17,6 +17,8 @@ from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 from ray.dashboard.subprocesses.tests.utils import TestModule
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
+
+# This test requires non-minimal Ray.
 
 
 @pytest.fixture

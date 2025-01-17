@@ -4,7 +4,7 @@ import inspect
 import multiprocessing
 from typing import AsyncIterator, Awaitable, Callable
 
-import aiohttp.web
+from ray.dashboard.optional_deps import aiohttp
 
 from ray.dashboard.routes import BaseRouteTable
 from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
