@@ -33,7 +33,6 @@ from ray.core.generated.gcs_pb2 import (
     TaskStateUpdate,
     TaskLogInfo,
 )
-from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
 from ray.dashboard.modules.log.log_agent import (
     find_offset_of_content_in_file,
     find_end_offset_file,
@@ -83,7 +82,7 @@ def generate_task_event(
     return task_event
 
 
-def generate_actor_data(id, node_id, worker_id):
+async def generate_actor_data(id, node_id, worker_id):
     if worker_id:
         worker_id = worker_id.binary()
     message = ActorTableData(
@@ -99,7 +98,7 @@ def generate_actor_data(id, node_id, worker_id):
             worker_id=worker_id,
         ),
     )
-    return actor_table_data_to_dict(message)
+    return message
 
 
 # Unit Tests (Log Agent)
@@ -487,7 +486,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         actor_id=None,
         task_id=None,
         pid=None,
-        get_actor_fn=lambda _: True,
+        get_actor_fn=None,
         timeout=10,
     )
     log_file_name, n = res.filename, res.node_id
@@ -500,7 +499,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     with pytest.raises(ValueError):
         actor_id = ActorID(b"2" * 16)
 
-        def get_actor_fn(id):
+        async def get_actor_fn(id):
             if id == actor_id:
                 return None
             assert False, "Not reachable."
@@ -508,7 +507,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         await logs_manager.resolve_filename(
             node_id=node_id.hex(),
             log_filename=None,
-            actor_id=actor_id,
+            actor_id=actor_id.hex(),
             task_id=None,
             pid=None,
             get_actor_fn=get_actor_fn,
@@ -522,7 +521,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         await logs_manager.resolve_filename(
             node_id=node_id.hex(),
             log_filename=None,
-            actor_id=actor_id,
+            actor_id=actor_id.hex(),
             task_id=None,
             pid=None,
             get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, None),
@@ -540,7 +539,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     res = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
-        actor_id=actor_id,
+        actor_id=actor_id.hex(),
         task_id=None,
         pid=None,
         get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
@@ -691,6 +690,10 @@ async def test_logs_manager_resolve_file(logs_manager):
     assert log_file_name == f"worker-123-123-{pid}.err"
 
 
+async def get_actor_info_raises(actor_id):
+    raise ValueError("should not be called")
+
+
 @pytest.mark.asyncio
 async def test_logs_manager_stream_log(logs_manager):
     NUM_LOG_CHUNKS = 10
@@ -707,7 +710,9 @@ async def test_logs_manager_stream_log(logs_manager):
     )
 
     i = 0
-    async for chunk in logs_manager.stream_logs(options):
+    async for chunk in logs_manager.stream_logs(
+        options, get_actor_fn=get_actor_info_raises
+    ):
         assert chunk.decode("utf-8") == generate_logs_stream_chunk(index=i)
         i += 1
     assert i == NUM_LOG_CHUNKS
@@ -736,7 +741,9 @@ async def test_logs_manager_stream_log(logs_manager):
 
     logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
     i = 0
-    async for chunk in logs_manager.stream_logs(options):
+    async for chunk in logs_manager.stream_logs(
+        options, get_actor_fn=get_actor_info_raises
+    ):
         assert chunk.decode("utf-8") == generate_logs_stream_chunk(index=i)
         i += 1
     assert i == NUM_LOG_CHUNKS
@@ -774,7 +781,9 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
         timeout=30, media_type="stream", lines=10, node_id="1", filename="raylet.out"
     )
 
-    async for chunk in logs_manager.stream_logs(options):
+    async for chunk in logs_manager.stream_logs(
+        options, get_actor_fn=get_actor_info_raises
+    ):
         pass
 
     # Make sure timeout == None when media_type == stream. This is to avoid
