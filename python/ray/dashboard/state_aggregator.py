@@ -92,6 +92,12 @@ class StateAPIManager:
         def transform(reply) -> ListApiResponse:
             result = []
             for message in reply.actor_table_data:
+                # Note: this is different from actor_table_data_to_dict in actor_head.py
+                # because we set preserving_proto_field_name=True so fields are
+                # snake_case, while actor_table_data_to_dict in actor_head.py is
+                # camelCase.
+                # TODO(ryw): modify actor_table_data_to_dict to use snake_case, and
+                # consolidate the code.
                 data = protobuf_message_to_dict(
                     message=message,
                     fields_to_decode=[
