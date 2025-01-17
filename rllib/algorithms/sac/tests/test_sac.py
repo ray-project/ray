@@ -130,7 +130,7 @@ class TestSAC(unittest.TestCase):
 
         # Dict space .sample() returns an ordered dict.
         # Make sure the keys in samples are ordered differently.
-        dict_samples = [dict(reversed(dict_space.sample())) for _ in range(10)]
+        dict_samples = [dict(reversed(dict_space.sample().items())) for _ in range(10)]
 
         class NestedDictEnv(gym.Env):
             def __init__(self):
