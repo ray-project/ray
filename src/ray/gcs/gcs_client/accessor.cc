@@ -670,7 +670,7 @@ Status NodeInfoAccessor::AsyncSubscribeToNodeChange(
         done(status);
       }
     };
-    RAY_CHECK_OK(AsyncGetAll(std::nullopt, callback, /*timeout_ms=*/-1));
+    RAY_CHECK_OK(AsyncGetAll(callback, /*timeout_ms=*/-1));
   };
 
   subscribe_node_operation_ = [this](const StatusCallback &done) {
