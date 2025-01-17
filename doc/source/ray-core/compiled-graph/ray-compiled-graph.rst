@@ -67,3 +67,4 @@ Learn more details about Ray Compiled Graph from the following links.
 
     quickstart
     visualization
+    profiling
