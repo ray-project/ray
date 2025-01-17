@@ -8,6 +8,8 @@ from ray.cluster_utils import Cluster
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.tune.integration.ray_train import TuneReportCallback, CHECKPOINT_PATH_KEY
+
 
 TRAIN_DRIVER_RESOURCE_NAME = "train_driver_resource"
 NUM_GPUS_IN_CLUSTER = 4
@@ -40,15 +42,23 @@ def test_e2e(
     num_workers_grid_search,
     limit_concurrency,
 ):
+    num_non_checkpoint_reports = 2    
+    num_checkpoint_reports = 1
+
     def train_fn_per_worker(train_fn_config):
+        assert "lr" in train_fn_config
+
         world_size = ray.train.get_context().get_world_size()
-        with create_dict_checkpoint({"model": "dummy"}) as checkpoint:
-            ray.train.report(
-                {"loss": 0.1, "world_size": world_size}, checkpoint=checkpoint
-            )
+        for i in range(num_non_checkpoint_reports):
+            ray.train.report({"idx": i})
+
+        for i in range(num_checkpoint_reports):
+            with create_dict_checkpoint({"model": "dummy"}) as checkpoint:
+                ray.train.report(
+                    {"loss": 0.1, "world_size": world_size}, checkpoint=checkpoint
+                )
 
     def launch_training(tune_config):
-        # TODO: Add TuneReportCallback to report intermediate metrics
         trainer = DataParallelTrainer(
             train_loop_per_worker=train_fn_per_worker,
             train_loop_config=tune_config["train_loop_config"],
@@ -58,13 +68,10 @@ def test_e2e(
             run_config=ray.tune.RunConfig(
                 storage_path=tmp_path,
                 name=f"train-{ray.tune.get_context().get_trial_id()}",
+                callbacks=[TuneReportCallback()],
             ),
         )
-        result = trainer.fit()
-
-        metrics = result.metrics.copy()
-        metrics["checkpoint_path"] = result.checkpoint.path
-        ray.tune.report(metrics)
+        trainer.fit()
 
     tuner = ray.tune.Tuner(
         ray.tune.with_resources(launch_training, {TRAIN_DRIVER_RESOURCE_NAME: 0.01}),
@@ -88,8 +95,9 @@ def test_e2e(
 
     world_sizes = set()
     for result in result_grid:
+        assert len(result.metrics_dataframe) == num_non_checkpoint_reports + num_checkpoint_reports
         assert "loss" in result.metrics
-        assert "checkpoint_path" in result.metrics
+        assert CHECKPOINT_PATH_KEY in result.metrics
         world_sizes.add(result.metrics["world_size"])
     assert world_sizes == set(num_workers_grid_search)
 
