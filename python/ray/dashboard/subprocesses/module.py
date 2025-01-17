@@ -65,7 +65,6 @@ class SubprocessModule(abc.ABC):
         # Lazy init
         self._gcs_aio_client = None
 
-
     @staticmethod
     def is_minimal_module():
         """

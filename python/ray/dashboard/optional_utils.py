@@ -28,7 +28,6 @@ from ray.dashboard.utils import (
     DashboardHeadModule,
 )
 from ray.dashboard.routes import method_route_table_factory, rest_response
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 
 
 try:
@@ -41,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 DashboardHeadRouteTable = method_route_table_factory()
 DashboardAgentRouteTable = method_route_table_factory()
-# SubprocessRouteTable is in subprocesses/routes.py
+# SubprocessRouteTable re-exported from subprocesses/routes.py
 
 
 # The cache value type used by aiohttp_cache.

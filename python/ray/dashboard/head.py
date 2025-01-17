@@ -21,14 +21,17 @@ from ray.dashboard.utils import (
     DashboardHeadModuleConfig,
     async_loop_forever,
 )
-from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleConfig
-from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 
 try:
     import prometheus_client
 except ImportError:
     prometheus_client = None
 
+
+# Type alias for SubprocessModuleHandle
+# We can't import SubprocessModuleHandle because it's non-minimal only, and importing it
+# in minimal Ray causes ImportError.
+TypeForSubprocessModuleHandle = object
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +164,7 @@ class DashboardHead:
     async def _configure_http_server(
         self,
         dashboard_head_modules: List[DashboardHeadModule],
-        subprocess_module_handles: List[SubprocessModuleHandle],
+        subprocess_module_handles: List[TypeForSubprocessModuleHandle],
     ):
         from ray.dashboard.http_server_head import HttpServerDashboardHead
 
@@ -200,9 +203,11 @@ class DashboardHead:
 
     def _load_modules(
         self, modules_to_load: Optional[Set[str]] = None
-    ) -> Tuple[List[DashboardHeadModule], List[SubprocessModuleHandle]]:
+    ) -> Tuple[List[DashboardHeadModule], List[TypeForSubprocessModuleHandle]]:
         """
-        Load both kinds of modules: DashboardHeadModule, SubprocessModule.
+        If minimal, only load DashboardHeadModule.
+        If non-minimal, load both kinds of modules: DashboardHeadModule, SubprocessModule.
+
         If modules_to_load is not None, only load the modules in the set.
         """
         dashboard_head_modules = self._load_dashboard_head_modules(modules_to_load)
@@ -271,13 +276,25 @@ class DashboardHead:
 
     def _load_subprocess_module_handles(
         self, modules_to_load: Optional[Set[str]] = None
-    ) -> List[SubprocessModuleHandle]:
-        """Load `SubprocessModule`s by creating Handles to them.
+    ) -> List[TypeForSubprocessModuleHandle]:
+        """
+        If minimal, return an empty list.
+        If non-minimal, load `SubprocessModule`s by creating Handles to them.
 
         Args:
             modules: A list of module names to load. By default (None),
                 it loads all modules.
         """
+        if self.minimal:
+            logger.info("Subprocess modules not loaded in minimal mode.")
+            return []
+
+        from ray.dashboard.subprocesses.module import (
+            SubprocessModule,
+            SubprocessModuleConfig,
+        )
+        from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
+
         handles = []
         subprocess_cls_list = dashboard_utils.get_all_modules(SubprocessModule)
 
@@ -301,7 +318,7 @@ class DashboardHead:
         for cls in subprocess_cls_list:
             logger.info(f"Loading {SubprocessModule.__name__}: {cls}.")
             handle = SubprocessModuleHandle(loop, cls, config)
-            handle.start()
+            handle.start_module()
             handles.append(handle)
 
         logger.info(f"Loaded {len(handles)} subprocess modules: {handles}.")
