@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.air.config import CheckpointConfig
 from ray.train._checkpoint import Checkpoint
@@ -9,6 +9,7 @@ from ray.train._internal.checkpoint_manager import (
 )
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.exceptions import CheckpointManagerInitializationError
+from ray.train.v2._internal.execution.callback import ReportCallback
 from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _delete_fs_path, _exists_at_fs_path
 
@@ -68,7 +69,7 @@ def _get_state_from_training_result(
     )
 
 
-class CheckpointManager(_CheckpointManager):
+class CheckpointManager(_CheckpointManager, ReportCallback):
     def __init__(
         self,
         checkpoint_config: CheckpointConfig,
@@ -79,6 +80,64 @@ class CheckpointManager(_CheckpointManager):
         super().__init__(checkpoint_config)
         # If the snapshot is found, the checkpoint manager will restore its state.
         self._maybe_load_state_from_storage()
+
+    def register_checkpoint(self, checkpoint_result: _TrainingResult):
+        """Register new checkpoint and add to bookkeeping.
+
+        This method will register a new checkpoint and add it to the internal
+        bookkeeping logic. This means the checkpoint manager will decide if
+        this checkpoint should be kept, and if older or worse performing
+        checkpoints should be deleted.
+
+        Args:
+            checkpoint: Tracked checkpoint object to add to bookkeeping.
+        """
+        self._latest_checkpoint_result = checkpoint_result
+
+        if self._checkpoint_config.checkpoint_score_attribute is not None:
+            # If we're ordering by a score, insert the checkpoint
+            # so that the list remains sorted.
+            _insert_into_sorted_list(
+                self._checkpoint_results,
+                checkpoint_result,
+                key=self._get_checkpoint_score,
+            )
+        else:
+            # If no metric is provided, just append (ordering by time of registration).
+            self._checkpoint_results.append(checkpoint_result)
+
+        results_to_delete = {}
+        if self._checkpoint_config.num_to_keep is not None:
+            # Delete the bottom (N - K) checkpoints
+            worst_results = set(
+                self._checkpoint_results[: -self._checkpoint_config.num_to_keep]
+            )
+            # Except for the latest checkpoint.
+            results_to_delete = worst_results - {self._latest_checkpoint_result}
+
+            # Update internal state before actually deleting them.
+            self._checkpoint_results = [
+                checkpoint_result
+                for checkpoint_result in self._checkpoint_results
+                if checkpoint_result not in results_to_delete
+            ]
+
+        # Save the checkpoint manager state to storage.
+        # Note: We save the state before deleting the old checkpoints.
+        # If deletion happens first and the process crashes, our snapshot
+        # may point to some stale checkpoints that are already deleted.
+        # TODO: Make this writing operation non-blocking.
+        self._write_state_to_storage()
+
+        # Delete the old checkpoints.
+        for checkpoint_result in results_to_delete:
+            checkpoint = checkpoint_result.checkpoint
+            logger.debug("Deleting checkpoint: ", checkpoint)
+            _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
+
+    # --------------------------
+    # CheckpointManager state
+    # --------------------------
 
     def _save_state(self) -> str:
         """Save the checkpoint manager state to a JSON str."""
@@ -168,60 +227,6 @@ class CheckpointManager(_CheckpointManager):
         ) as f:
             f.write(checkpoint_manager_snapshot.encode("utf-8"))
 
-    def register_checkpoint(self, checkpoint_result: _TrainingResult):
-        """Register new checkpoint and add to bookkeeping.
-
-        This method will register a new checkpoint and add it to the internal
-        bookkeeping logic. This means the checkpoint manager will decide if
-        this checkpoint should be kept, and if older or worse performing
-        checkpoints should be deleted.
-
-        Args:
-            checkpoint: Tracked checkpoint object to add to bookkeeping.
-        """
-        self._latest_checkpoint_result = checkpoint_result
-
-        if self._checkpoint_config.checkpoint_score_attribute is not None:
-            # If we're ordering by a score, insert the checkpoint
-            # so that the list remains sorted.
-            _insert_into_sorted_list(
-                self._checkpoint_results,
-                checkpoint_result,
-                key=self._get_checkpoint_score,
-            )
-        else:
-            # If no metric is provided, just append (ordering by time of registration).
-            self._checkpoint_results.append(checkpoint_result)
-
-        results_to_delete = {}
-        if self._checkpoint_config.num_to_keep is not None:
-            # Delete the bottom (N - K) checkpoints
-            worst_results = set(
-                self._checkpoint_results[: -self._checkpoint_config.num_to_keep]
-            )
-            # Except for the latest checkpoint.
-            results_to_delete = worst_results - {self._latest_checkpoint_result}
-
-            # Update internal state before actually deleting them.
-            self._checkpoint_results = [
-                checkpoint_result
-                for checkpoint_result in self._checkpoint_results
-                if checkpoint_result not in results_to_delete
-            ]
-
-        # Save the checkpoint manager state to storage.
-        # Note: We save the state before deleting the old checkpoints.
-        # If deletion happens first and the process crashes, our snapshot
-        # may point to some stale checkpoints that are already deleted.
-        # TODO: Make this writing operation non-blocking.
-        self._write_state_to_storage()
-
-        # Delete the old checkpoints.
-        for checkpoint_result in results_to_delete:
-            checkpoint = checkpoint_result.checkpoint
-            logger.debug("Deleting checkpoint: ", checkpoint)
-            _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
-
     def _assert_checkpoints_exist(self):
         """Validate the checkpoint manager state.
 
@@ -249,3 +254,18 @@ class CheckpointManager(_CheckpointManager):
                         f"`{self._storage_context.experiment_fs_path}`."
                     )
                 )
+
+    # --------------------------
+    # ReportCallback
+    # --------------------------
+
+    def after_report(
+        self, metrics: List[Dict[str, Any]], checkpoint: Optional[Checkpoint]
+    ):
+        if not checkpoint:
+            return
+
+        rank_0_metrics = metrics[0]
+        self.register_checkpoint(
+            _TrainingResult(checkpoint=checkpoint, metrics=rank_0_metrics)
+        )
