@@ -41,8 +41,7 @@ int GetStderrHandle() { return STDERR_FILENO; }
 // absl::InlinedVector.
 //
 // Maps from original stream file handle (i.e. stdout/stderr) to its stream redirector.
-absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, RedirectionFileHandle>
-    redirection_file_handles;
+absl::flat_hash_map<int, RedirectionFileHandle> redirection_file_handles;
 
 // Block synchronize on stream redirection related completion, should be call **EXACTLY
 // ONCE** at program termination.
