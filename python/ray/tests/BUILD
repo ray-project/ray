@@ -647,17 +647,17 @@ py_test(
 )
 
 py_test(
-    name = "vsphere/test_vsphere_node_provider",
+    name = "vsphere/test_cluster_operator",
     size = "small",
-    srcs = ["vsphere/test_vsphere_node_provider.py"],
+    srcs = ["vsphere/test_cluster_operator.py"],
     tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "vsphere/test_vsphere_sdk_provider",
+    name = "vsphere/test_vmray_node_provider",
     size = "small",
-    srcs = ["vsphere/test_vsphere_sdk_provider.py"],
+    srcs = ["vsphere/test_vmray_node_provider.py"],
     tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
