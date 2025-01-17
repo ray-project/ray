@@ -32,8 +32,8 @@ def _append_flatten_attributes(formatted_attrs: Dict[str, Any], key: str, value:
 
 
 class AbstractFormatter(logging.Formatter, ABC):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, fmt=None, datefmt=None, style="%", validate=True) -> None:
+        super().__init__(fmt, datefmt, style, validate)
         self._addl_log_std_attrs = []
 
     def set_addl_log_std_attrs(self, addl_log_std_attrs: List[str]) -> None:
@@ -92,8 +92,8 @@ class JSONFormatter(AbstractFormatter):
 
 
 class TextFormatter(AbstractFormatter):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, fmt=None, datefmt=None, style="%", validate=True) -> None:
+        super().__init__(fmt, datefmt, style, validate)
         self._inner_formatter = logging.Formatter(LOGGER_FORMAT)
 
     def format(self, record: logging.LogRecord) -> str:
