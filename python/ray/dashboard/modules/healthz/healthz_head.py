@@ -37,7 +37,3 @@ class HealthzHead(SubprocessModule):
 
     async def run(self):
         pass
-
-    @staticmethod
-    def is_minimal_module():
-        return True
