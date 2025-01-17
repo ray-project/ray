@@ -505,6 +505,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return true if task events from this task should be reported.
   bool EnableTaskEvents() const;
 
+  int runtime_env_hash_ = 0;
+
  private:
   void ComputeResources();
 
@@ -516,7 +518,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_ = 0;
-  int runtime_env_hash_ = 0;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.

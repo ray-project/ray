@@ -1867,14 +1867,17 @@ void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest requ
 void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  auto &internal_task_spec = *request.mutable_resource_spec();
-  auto &runtime_env_info = *internal_task_spec.mutable_runtime_env_info();
-  if (runtime_env_info.serialized_runtime_env().find("FOO") != std::string::npos) {
-    runtime_env_info.set_serialized_runtime_env("{}");
-  }
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   RayTask task(std::move(task_message));
+
+  auto &internal_task_spec = task.GetMutableTaskSpec();
+  rpc::TaskSpec &rpc_task_spec = internal_task_spec.GetMutableMessage();
+  auto &runtime_env_info = *rpc_task_spec.mutable_runtime_env_info();
+  if (runtime_env_info.serialized_runtime_env().find("FOO") != std::string::npos) {
+    runtime_env_info.set_serialized_runtime_env("{}");
+    internal_task_spec.runtime_env_hash_ = 0;
+  }
 
   const auto caller_worker =
       WorkerID::FromBinary(task.GetTaskSpecification().CallerAddress().worker_id());
