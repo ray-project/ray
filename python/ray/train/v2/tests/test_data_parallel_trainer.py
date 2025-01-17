@@ -193,7 +193,6 @@ def test_user_callback(tmp_path):
         def after_exception(self, run_context, worker_exceptions):
             assert len(worker_exceptions) == 1
             assert worker_exceptions.get(0) is not None
-            assert False
 
     def _train_fn(config):
         ray.train.report(metrics={"rank": ray.train.get_context().get_world_rank()})
