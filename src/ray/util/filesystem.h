@@ -25,7 +25,7 @@
 namespace ray {
 
 /// \return The portable directory separator (slash on all OSes).
-inline char GetAltDirSep() { return '/'; }
+static inline char GetAltDirSep() { return '/'; }
 
 /// Equivalent to Python's os.path.basename() for file system paths.
 std::string GetFileName(const std::string &path);
@@ -34,7 +34,7 @@ std::string GetFileName(const std::string &path);
 std::string GetUserTempDir();
 
 /// \return Whether or not the given character is a directory separator on this platform.
-inline bool IsDirSep(char ch) {
+static inline bool IsDirSep(char ch) {
   bool result = ch == std::filesystem::path::preferred_separator;
 #ifdef _WIN32
   result |= ch == GetAltDirSep();
