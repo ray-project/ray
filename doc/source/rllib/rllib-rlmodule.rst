@@ -38,12 +38,12 @@ or world-model predictions in model-based algorithms.
 Enabling the RLModule API in the AlgorithmConfig
 ------------------------------------------------
 
-In the :ref:`new API stack <rllib-new-api-stack-guide>`, activated by default, RLlib exclusively uses RLModules.
+In the new API stack, activated by default, RLlib exclusively uses RLModules.
 
 If you're working with a legacy config or want to migrate ``ModelV2`` or ``Policy`` classes to the
 new API stack, see the :ref:`new API stack migration guide <rllib-new-api-stack-migration-guide>` for more information.
 
-If your config is set to the old API stack, use the
+If you configured the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` to the old API stack, use the
 :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.api_stack` method to switch:
 
 .. testcode::
@@ -101,7 +101,7 @@ For how to write and configure your custom RLModules, see :ref:`Implementing cus
 Configuring default MLP nets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To train a simple MLP policy like the "multi layer perceptron", which only contains dense layers,
+To train a simple multi layer perceptron (MLP) policy, which only contains dense layers,
 with PPO and the default RLModule, configure your experiment as follows:
 
 .. testcode::
@@ -134,7 +134,7 @@ Configuring default CNN nets
 
 For image-based environments like `Atari <https://ale.farama.org/environments/>`__, use the
 ``conv_..`` fields in :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig` to configure
-the CNN ("convolutional neural network") stack.
+the convolutional neural network (CNN) stack.
 
 For example:
 
@@ -211,9 +211,10 @@ The most direct way to construct your :py:class:`~ray.rllib.core.rl_module.rl_mo
 
 
 .. note::
-    If you have a checkpoint from an `py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or an individual
+    If you have a checkpoint of an `py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or an individual
     :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`,
-    see :ref:`Checkpointing RLModules <rllib-checkpointing-rl-modules-docs>` for how to create the stored RLModule instance from disk.
+    see :ref:`Creating instances with from_checkpoint <rllib-checkpoints-from-checkpoint>` for how to recreate your
+    :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` from disk.
 
 
 Construction through RLModuleSpecs
@@ -321,7 +322,8 @@ tell RLlib to use the particular module class and constructor arguments:
             print(ppo.get_module())
 
         .. note::
-            Often when creating an `RLModuleSpec`, you don't have to define attributes like `observation_space` or `action_space`
+            Often when creating an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` , you don't have to define attributes
+            like ``observation_space`` or ``action_space``
             because RLlib automatically infers these attributes based on the used
             environment or other configuration parameters.
 
@@ -409,7 +411,7 @@ or any multi-model use cases, subclass the :py:class:`~ray.rllib.core.rl_module.
     :py:class:`~ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module.DefaultPPOTorchRLModule`.
     You should carefully study the existing default model in this case to understand how to override
     the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup`, the
-    `_forward_()` methods, and possibly some algo-specific API methods.
+    ``_forward_()`` methods, and possibly some algo-specific API methods.
     See :ref:`Algorithm-specific RLModule APIs <rllib-algo-specific-rl-module-apis-docs>` for how to determine which APIs your algorithm requires you to implement.
 
 
@@ -419,7 +421,7 @@ The setup() method
 You should first implement the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` method,
 in which you add needed NN subcomponents and assign these to class attributes of your choice.
 
-Note that you should call `super().setup()` in your implementation.
+Note that you should call ``super().setup()`` in your implementation.
 
 You also have access to the following attributes anywhere in the class, including in :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup`:
 
@@ -499,7 +501,8 @@ If you don't return the ``actions`` key from your forward method:
     In case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`,
     RLlib always makes the generated distributions from returned key ``action_dist_inputs`` deterministic first through
     the :py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` utility before a possible action sample step.
-    For example, RLlib reduces the sampling from a Categorical distribution to selecting the argmax actions from the distribution's logits or probs.
+    For example, RLlib reduces the sampling from a Categorical distribution to selecting the ``argmax``
+    actions from the distribution logits or probabilities.
     If you return the "actions" key, RLlib skips that sampling step.
 
 
@@ -558,9 +561,9 @@ If you don't return the ``actions`` key from your forward method:
                     }
 
 
-Never override the constructor (`__init__`), however, note that the
+Never override the constructor (``__init__``), however, note that the
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` class's constructor requires the following arguments
-and also receives these properly when you call a spec's `build()` method:
+and also receives these properly when you call a spec's ``build()`` method:
 
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModule.observation_space`: The observation space after having passed all connectors; this observation space is the actual input space for the model after all preprocessing steps.
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModule.action_space`: The action space of the environment.
@@ -588,7 +591,7 @@ To find out, what APIs your Algorithms require, do the following:
     from ray.rllib.algorithms.sac import SACConfig
 
     # Print out the abstract APIs, you need to subclass from and whose
-    # abstract methods you need to implement, besides the `setup()` and `_forward_..()`
+    # abstract methods you need to implement, besides the ``setup()`` and ``_forward_..()``
     # methods.
     print(
         SACConfig()
@@ -656,6 +659,8 @@ share the same encoder, the third network in the MultiRLModule. The encoder rece
 and outputs embedding vectors that then serve as input for the two policy heads to compute the agents' actions.
 
 
+.. _rllib-rlmodule-guide-implementing-custom-multi-rl-modules:
+
 .. tab-set::
 
     .. tab-item:: MultiRLModule (w/ two policy nets and one encoder)
@@ -694,10 +699,10 @@ and outputs embedding vectors that then serve as input for the two policy heads 
             :end-before: __sphinx_doc_encoder_end__
 
 
-To plug in the custom MultiRLModule (from the first tab) into your algorithm's config, create a
-:py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec` with the new class and its constructor
-settings. Also, create one :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` for each agent
-and the shared encoder RLModule, because RLlib requires their observation- and action spaces and their
+To plug in the :ref:`custom MultiRLModule <rllib-rlmodule-guide-implementing-custom-multi-rl-modules>` from the first tab,
+into your algorithm's config, create a :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec`
+with the new class and its constructor settings. Also, create one :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec`
+for each agent and the shared encoder RLModule, because RLlib requires their observation and action spaces and their
 model hyper-parameters:
 
 .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
@@ -715,7 +720,7 @@ model hyper-parameters:
     would take turns updating the same shared encoder, which would lead to learning instabilities.
 
 
-.. _rllib-checkpointing-rl-modules-docs:
+.. _rllib-checkpoints-rl-modules-docs:
 
 Checkpointing RLModules
 -----------------------
@@ -776,7 +781,7 @@ Loading an RLModule checkpoint into a running Algorithm
     from ray.rllib.algorithms.ppo import PPOConfig
 
     # Create a new Algorithm (with the changed module config: 32 units instead of the
-    # default 256; otherwise loading the state of `module` will fail due to a shape
+    # default 256; otherwise loading the state of ``module`` fails due to a shape
     # mismatch).
     config = (
         PPOConfig()
@@ -786,8 +791,8 @@ Loading an RLModule checkpoint into a running Algorithm
     ppo = config.build()
 
 
-Now you can load the saved RLModule state (from the preceding `module.save_to_path()`) directly
-into the running Algorithm's RLModule(s). Note that all RLModules within the algorithm get updated, the ones
+Now you can load the saved RLModule state from the preceding ``module.save_to_path()``, directly
+into the running Algorithm RLModules. Note that all RLModules within the algorithm get updated, the ones
 in the Learner workers and the ones in the EnvRunners.
 
 .. testcode::

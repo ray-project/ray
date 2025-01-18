@@ -289,15 +289,23 @@ def add_rllib_example_script_args(
         "--num-learners",
         type=int,
         default=None,
-        help="The number of Learners to use. If none, use the algorithm's default "
+        help="The number of Learners to use. If `None`, use the algorithm's default "
         "value.",
     )
     parser.add_argument(
         "--num-gpus-per-learner",
         type=float,
         default=None,
-        help="The number of GPUs per Learner to use. If none and there are enough GPUs "
-        "for all required Learners (--num-learners), use a value of 1, otherwise 0.",
+        help="The number of GPUs per Learner to use. If `None` and there are enough "
+        "GPUs for all required Learners (--num-learners), use a value of 1, "
+        "otherwise 0.",
+    )
+    parser.add_argument(
+        "--num-aggregator-actors-per-learner",
+        type=int,
+        default=None,
+        help="The number of Aggregator actors to use per Learner. If `None`, use the "
+        "algorithm's default value.",
     )
 
     # Ray init options.
@@ -312,8 +320,8 @@ def add_rllib_example_script_args(
     parser.add_argument(
         "--num-gpus",
         type=int,
-        default=0,
-        help="The number of GPUs to use (if on the old API stack).",
+        default=None,
+        help="The number of GPUs to use (only on the old API stack).",
     )
 
     return parser
@@ -1097,7 +1105,7 @@ def run_rllib_example_script_experiment(
         # and --num-gpus-per-learner args).
         # New stack.
         if config.enable_rl_module_and_learner:
-            if args.num_gpus > 0:
+            if args.num_gpus is not None and args.num_gpus > 0:
                 raise ValueError(
                     "--num-gpus is not supported on the new API stack! To train on "
                     "GPUs, use the command line options `--num-gpus-per-learner=1` and "
@@ -1127,6 +1135,14 @@ def run_rllib_example_script_experiment(
             if args.num_learners is not None:
                 config.learners(num_learners=args.num_learners)
 
+            # User wants to use aggregator actors per Learner.
+            if args.num_aggregator_actors_per_learner is not None:
+                config.learners(
+                    num_aggregator_actors_per_learner=(
+                        args.num_aggregator_actors_per_learner
+                    )
+                )
+
             # User wants to use GPUs if available, but doesn't hard-require them.
             if args.num_gpus_per_learner is None:
                 if num_gpus_available >= num_gpus_needed_if_available:
@@ -1148,8 +1164,8 @@ def run_rllib_example_script_experiment(
             else:
                 config.learners(num_gpus_per_learner=args.num_gpus_per_learner)
 
-        # Old stack.
-        else:
+        # Old stack (override only if arg was provided by user).
+        elif args.num_gpus is not None:
             config.resources(num_gpus=args.num_gpus)
 
         # Evaluation setup.
