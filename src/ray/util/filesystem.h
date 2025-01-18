@@ -59,4 +59,9 @@ std::string JoinPaths(std::string base, const Paths &...components) {
   (join(base, std::string_view(components)), ...);
   return base;
 }
+
+// Read the whole content for the given [fname], and return as string.
+// If any error happens, throw exception.
+std::string CompleteReadFile(const std::string &fname);
+
 }  // namespace ray

@@ -212,27 +212,6 @@ ray_cc_test(
     tags = ["team:core"],
 )
 
-ray_cc_library(
-    name = "unix_test_utils",
-    hdrs = ["unix_test_utils.h"],
-    srcs = ["unix_test_utils.cc"],
-    deps = [
-        "//src/ray/util",
-        "@boost//:scope_exit",
-    ],
-    testonly = True,
-)
-
-ray_cc_library(
-    name = "windows_test_utils",
-    hdrs = ["windows_test_utils.h"],
-    srcs = ["windows_test_utils.cc"],
-    deps = [
-        "//src/ray/util",
-    ],
-    testonly = True,
-)
-
 ray_cc_test(
     name = "pipe_logger_test",
     srcs = ["pipe_logger_test.cc"],
@@ -240,10 +219,7 @@ ray_cc_test(
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
         "@com_google_googletest//:gtest_main",
-    ] + select({
-        "@platforms//os:windows": [":windows_test_utils"],
-        "//conditions:default": [":unix_test_utils"],
-    }),
+    ],
     size = "small",
     tags = ["team:core"],
 )
@@ -252,9 +228,8 @@ ray_cc_test(
     name = "stream_redirection_utils_test",
     srcs = ["stream_redirection_utils_test.cc"],
     deps = [
-        "//src/ray/util:stream_redirection_utils",
-        ":unix_test_utils",
         "//src/ray/util",
+        "//src/ray/util:stream_redirection_utils",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",

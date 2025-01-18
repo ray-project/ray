@@ -21,13 +21,12 @@
 #include <future>
 #include <string_view>
 
+#include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
 #if defined(__APPLE__) || defined(__linux__)
 
 #include <unistd.h>
-
-#include "ray/util/tests/unix_test_utils.h"
 
 namespace ray {
 

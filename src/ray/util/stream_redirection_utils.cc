@@ -68,8 +68,9 @@ void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
       << "Fails to duplicate file descritor " << strerror(errno);
 #elif defined(_WIN32)
-  int windows_pipe_write_fd = _open_osfhandle(handle.GetWriteHandle(), _O_WTEXT);
-  RAY_CHECK_NE(_dup2(windows_pipe_write_fd, stream_fd), -1)
+  int pipe_write_fd =
+      _open_osfhandle(reinterpret_cast<intptr_t>(handle.GetWriteHandle()), _O_WRONLY);
+  RAY_CHECK_NE(_dup2(pipe_write_fd, stream_fd), -1)
       << "Fails to duplicate file descritor.";
 #endif
 
