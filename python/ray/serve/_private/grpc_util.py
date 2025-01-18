@@ -12,6 +12,7 @@ class gRPCGenericServer(Server):
     Original implementation see: https://github.com/grpc/grpc/blob/
         60c1701f87cacf359aa1ad785728549eeef1a4b0/src/python/grpcio/grpc/aio/_server.py
     """
+
     def __init__(
         self,
         service_handler_factory: Callable,
