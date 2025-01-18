@@ -55,7 +55,7 @@ def create_serve_grpc_server(
     service_handler_factory: Callable,
     *,
     extra_options: Optional[List[Tuple[str, str]]] = None
-):
+) -> gRPCServer:
     """Custom function to create Serve's gRPC server.
 
     This function works similar to `grpc.server()`, but it creates a Serve defined
