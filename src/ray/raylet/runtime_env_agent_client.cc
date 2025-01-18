@@ -380,6 +380,9 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                      reply.serialized_runtime_env_context(),
                      /*setup_error_message*/ reply.error_message());
           } else {
+            RAY_LOG(ERROR) << "hjiang runtime env context is "
+                           << reply.serialized_runtime_env_context();
+
             RAY_LOG(INFO) << "Create runtime env for job " << job_id;
             callback(true,
                      reply.serialized_runtime_env_context(),
