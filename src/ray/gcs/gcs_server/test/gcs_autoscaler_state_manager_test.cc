@@ -66,10 +66,11 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
     kv_manager_ = std::make_unique<GcsInternalKVManager>(
-        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>(),
-                                                io_service_),
-        kRayletConfig);
-    function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
+        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()),
+        kRayletConfig,
+        io_service_);
+    function_manager_ =
+        std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance(), io_service_);
     runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
         [](const std::string &, std::function<void(bool)>) {});
     gcs_actor_manager_ =
@@ -88,7 +89,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                       *gcs_actor_manager_,
                                       *gcs_placement_group_manager_,
                                       *client_pool_,
-                                      kv_manager_->GetInstance()));
+                                      kv_manager_->GetInstance(),
+                                      io_service_));
   }
 
  public:
