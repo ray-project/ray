@@ -1,9 +1,9 @@
-from typing import Sequence
+from typing import Callable, List, Optional, Sequence, Tuple
 
 import grpc
 from grpc.aio._server import Server
 
-from ray.serve._private.constants import SERVE_GRPC_OPTIONS
+from ray.serve._private.constants import DEFAULT_GRPC_SERVER_OPTIONS
 
 
 class gRPCServer(Server):
@@ -51,7 +51,11 @@ class gRPCServer(Server):
         super().add_generic_rpc_handlers(generic_rpc_handlers)
 
 
-def create_serve_grpc_server(service_handler_factory):
+def create_serve_grpc_server(
+    service_handler_factory: Callable,
+    *,
+    extra_options: Optional[List[Tuple[str, str]]] = None
+):
     """Custom function to create Serve's gRPC server.
 
     This function works similar to `grpc.server()`, but it creates a Serve defined
@@ -63,7 +67,7 @@ def create_serve_grpc_server(service_handler_factory):
         thread_pool=None,
         generic_handlers=(),
         interceptors=(),
-        options=SERVE_GRPC_OPTIONS,
+        options=DEFAULT_GRPC_SERVER_OPTIONS + (extra_options or []),
         maximum_concurrent_rpcs=None,
         compression=None,
         service_handler_factory=service_handler_factory,
