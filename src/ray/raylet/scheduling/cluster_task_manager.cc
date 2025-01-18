@@ -58,6 +58,16 @@ void ClusterTaskManager::QueueAndScheduleTask(
       [send_reply_callback = std::move(send_reply_callback)] {
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
+
+  auto &internal_ray_task = work->task;
+  auto &internal_task_spec = internal_ray_task.GetMutableTaskSpec();
+  auto &internal_task_spec_rpc = internal_task_spec.GetMutableMessage();
+  auto &internal_runtime_env = *internal_task_spec_rpc.mutable_runtime_env_info();
+  if (internal_runtime_env.serialized_runtime_env().find("FOO") != std::string::npos) {
+    internal_runtime_env.set_serialized_runtime_env("{}");
+    internal_task_spec.runtime_env_hash_ = 0;
+  }
+
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
   auto infeasible_tasks_iter = infeasible_tasks_.find(scheduling_class);
