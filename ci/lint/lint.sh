@@ -15,7 +15,7 @@ pre_commit() {
   # TODO(MortalHappiness): Run all pre-commit checks
   # Currently, we only run the ruff format check
   pip install -c python/requirements_compiled.txt pre-commit
-  pre-commit run ruff --all-files
+  pre-commit run ruff --all-files --show-diff-on-failure
 }
 
 code_format() {
