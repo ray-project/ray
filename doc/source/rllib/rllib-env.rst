@@ -1,16 +1,16 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. _rllib-environments-doc:
+
+Environments
+============
+
 .. toctree::
     :hidden:
 
     multi-agent-envs
     hierarchical-envs
     external-envs
-
-.. _rllib-environments-doc:
-
-Environments
-============
 
 .. include:: /_includes/rllib/new_api_stack.rst
 

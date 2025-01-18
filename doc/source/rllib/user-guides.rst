@@ -1,5 +1,12 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. _rllib-guides:
+
+User Guides
+===========
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
 .. toctree::
     :hidden:
 
@@ -16,13 +23,6 @@
     rllib-fault-tolerance
     rllib-dev
     scaling-guide
-
-.. _rllib-guides:
-
-User Guides
-===========
-
-.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rllib-feature-guide:
 
