@@ -39,8 +39,8 @@ from ray.serve._private.common import (
     ReplicaQueueLengthInfo,
     RequestMetadata,
     ServeComponentType,
-    gRPCRequest,
     StreamingHTTPRequest,
+    gRPCRequest,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (

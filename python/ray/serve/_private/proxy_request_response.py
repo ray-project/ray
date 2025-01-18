@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator, List, Tuple, Union
 import grpc
 from starlette.types import Receive, Scope, Send
 
-from ray.serve._private.common import gRPCRequest, StreamingHTTPRequest
+from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DEFAULT
 from ray.serve.grpc_util import RayServegRPCContext

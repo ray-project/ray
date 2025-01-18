@@ -16,8 +16,8 @@ from ray.serve._private.common import (
     DeploymentID,
     RequestMetadata,
     RequestProtocol,
-    gRPCRequest,
     StreamingHTTPRequest,
+    gRPCRequest,
 )
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve.generated import serve_pb2
