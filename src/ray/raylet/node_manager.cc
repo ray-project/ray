@@ -1893,6 +1893,14 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     actor_id = task.GetTaskSpecification().ActorCreationId();
   }
 
+  auto &internal_task_spec = task.GetMutableTaskSpec();
+  auto &internal_task_spec_rpc = internal_task_spec.GetMutableMessage();
+  auto &internal_runtime_env = *internal_task_spec_rpc.mutable_runtime_env_info();
+  if (internal_runtime_env.serialized_runtime_env().find("FOO") != std::string::npos) {
+    internal_runtime_env.set_serialized_runtime_env("{}");
+    internal_task_spec.runtime_env_hash_ = 0;
+  }
+
   const auto &task_spec = task.GetTaskSpecification();
   worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
 
