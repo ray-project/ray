@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator, List, Tuple, Union
 import grpc
 from starlette.types import Receive, Scope, Send
 
-from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
+from ray.serve._private.common import gRPCRequest, StreamingHTTPRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DEFAULT
 from ray.serve.grpc_util import RayServegRPCContext
@@ -98,10 +98,12 @@ class ASGIProxyRequest(ProxyRequest):
     def serialized_replica_arg(self, proxy_actor_name: str) -> bytes:
         # NOTE(edoakes): it's important that the request is sent as raw bytes to
         # skip the Ray cloudpickle serialization codepath for performance.
-        return pickle.dumps(StreamingHTTPRequest(
-            asgi_scope=self.scope,
-            proxy_actor_name=proxy_actor_name,
-        ))
+        return pickle.dumps(
+            StreamingHTTPRequest(
+                asgi_scope=self.scope,
+                proxy_actor_name=proxy_actor_name,
+            )
+        )
 
 
 class gRPCProxyRequest(ProxyRequest):
@@ -168,7 +170,9 @@ class gRPCProxyRequest(ProxyRequest):
     def serialized_replica_arg(self) -> bytes:
         # NOTE(edoakes): it's important that the request is sent as raw bytes to
         # skip the Ray cloudpickle serialization codepath for performance.
-        return pickle.dumps(self._request_proto)
+        return pickle.dumps(gRPCRequest(
+            user_request_proto=self._request_proto
+        ))
 
 
 @dataclass(frozen=True)

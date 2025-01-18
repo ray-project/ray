@@ -39,8 +39,8 @@ from ray.serve._private.common import (
     ReplicaQueueLengthInfo,
     RequestMetadata,
     ServeComponentType,
-    StreamingHTTPRequest,
     gRPCRequest,
+    StreamingHTTPRequest,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -1357,21 +1357,24 @@ class UserCallableWrapper:
 
         return request_args, asgi_args, receive_task
 
-    def _prepare_kwargs_for_grpc_request(
+    def _prepare_args_for_grpc_request(
         self,
+        request: gRPCRequest,
         request_metadata: RequestMetadata,
         user_method_params: Dict[str, inspect.Parameter],
-    ) -> Dict[str, Any]:
-        """Prepare kwargs for a user method handling a gRPC request.
+    ) -> Tuple[Tuple[Any], Dict[str, Any]]:
+        """Prepare args and kwargs for a user method handling a gRPC request.
 
-        If the method has a "context" kwarg, we pass it the gRPC context, else nothing.
+        The sole argument is always the user request proto.
+
+        If the method has a "context" kwarg, we pass the gRPC context, else no kwargs.
         """
         if GRPC_CONTEXT_ARG_NAME in user_method_params:
             request_kwargs = {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
         else:
             request_kwargs = {}
 
-        return request_kwargs
+        return (request.user_request_proto,), request_kwargs
 
     async def _handle_user_method_result(
         self,
@@ -1490,10 +1493,11 @@ class UserCallableWrapper:
                     generator_result_callback=generator_result_callback,
                 )
             elif request_metadata.is_grpc_request:
-                # The sole request argument is the user proto request object.
-                assert len(request_args) == 1
-                request_kwargs = self._prepare_kwargs_for_grpc_request(
-                    request_metadata, user_method_params
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], gRPCRequest
+                )
+                request_args, request_kwargs = self._prepare_args_for_grpc_request(
+                    request_args[0], request_metadata, user_method_params
                 )
 
             result, sync_gen_consumed = await self._call_func_or_gen(
