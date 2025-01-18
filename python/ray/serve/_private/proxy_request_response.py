@@ -170,9 +170,7 @@ class gRPCProxyRequest(ProxyRequest):
     def serialized_replica_arg(self) -> bytes:
         # NOTE(edoakes): it's important that the request is sent as raw bytes to
         # skip the Ray cloudpickle serialization codepath for performance.
-        return pickle.dumps(gRPCRequest(
-            user_request_proto=self._request_proto
-        ))
+        return pickle.dumps(gRPCRequest(user_request_proto=self._request_proto))
 
 
 @dataclass(frozen=True)

@@ -573,6 +573,7 @@ class MultiplexedReplicaInfo:
 @dataclass
 class gRPCRequest:
     """Sent from the GRPC proxy to replicas on both unary and streaming codepaths."""
+
     user_request_proto: Any
 
 
