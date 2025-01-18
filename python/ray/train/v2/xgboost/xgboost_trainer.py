@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union, Mapping
 
 import ray.train
 from ray.train import Checkpoint
@@ -122,7 +122,7 @@ class XGBoostTrainer(DataParallelTrainer):
         xgboost_config: Optional[XGBoostConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
+        datasets: Optional[Mapping[str, GenDataset]] = None,
         dataset_config: Optional[ray.train.DataConfig] = None,
         metadata: Optional[Dict[str, Any]] = _UNSUPPORTED,
         resume_from_checkpoint: Optional[Checkpoint] = None,
