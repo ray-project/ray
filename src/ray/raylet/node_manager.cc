@@ -1896,6 +1896,14 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   const auto &task_spec = task.GetTaskSpecification();
   worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
 
+  auto &internal_task_spec = task.GetMutableTaskSpec();
+  auto &internal_task_spec_rpc = internal_task_spec.GetMutableMessage();
+  auto &internal_runtime_env = *internal_task_spec_rpc.mutable_runtime_env_info();
+  if (internal_runtime_env.serialized_runtime_env().find("FOO") != std::string::npos) {
+    internal_runtime_env.set_serialized_runtime_env("{}");
+    internal_task_spec.runtime_env_hash_ = 0;
+  }
+
   auto send_reply_callback_wrapper =
       [this, is_actor_creation_task, actor_id, reply, send_reply_callback](
           Status status, std::function<void()> success, std::function<void()> failure) {
