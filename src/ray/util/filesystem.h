@@ -61,7 +61,8 @@ std::string JoinPaths(std::string base, const Paths &...components) {
 }
 
 // Read the whole content for the given [fname], and return as string.
-// If any error happens, throw exception.
+// If any error happens, error message will be logged and the program will exit
+// immediately.
 std::string CompleteReadFile(const std::string &fname);
 
 }  // namespace ray

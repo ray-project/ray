@@ -219,6 +219,7 @@ ray_cc_test(
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
         "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/cleanup",
     ],
     size = "small",
     tags = ["team:core"],
