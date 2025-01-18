@@ -412,13 +412,13 @@ class _MapWorker:
 
     def on_exit(self):
         """Called when the actor is about to exist.
-        This allows performing cleanup operations in `UDF.__del__`.
+        This enables performing cleanup operations via `UDF.__del__`.
 
         Note, this only ensures cleanup is performed when the job exists gracefully.
         If the driver or the actor is forcefully killed, `__del__` will not be called.
         """
         # `_map_actor_context` is a global variable that references the UDF object.
-        # Deleting it to trigger `UDF.__del__`.
+        # Delete it to trigger `UDF.__del__`.
         del ray.data._map_actor_context
         ray.data._map_actor_context = None
 
