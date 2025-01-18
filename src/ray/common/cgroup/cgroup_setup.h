@@ -28,14 +28,43 @@ bool IsCgroupV2MountedAsRw();
 
 }  // namespace internal
 
+// Usage to setup and cleanup cgroup resource in raylet:
+// const bool setup_cgroup_succ = SetupCgroupsPreparation(node_id);
+// absl::Cleanup cgroup_cleaner([setup_cgroup_succ, node_id]() {
+//   if (!setup_cgroup_succ) {
+//     return;
+//   }
+//   if (!CleanupCgroupForNode(node_id)) {
+//     RAY_LOG(ERROR) << "Fails to cleanup cgroup resource for node " << node_id << "at
+//     raylet.";
+//   }
+// });
+//
 // Util function to setup cgroups preparation for resource constraints.
 // It's expected to call from raylet to setup node level cgroup configurations.
 //
 // If error happens, error will be logged and return false.
 // Cgroup is not supported on non-linux platforms.
 //
-// NOTICE: This function is expected to be called once for eacy raylet instance.
+// NOTICE: This function is expected to be called once for each raylet instance.
+//
+// Impact:
+// - Application cgroup will be created, where later worker process will be placed under;
+// - Existing operating system processes and system components (GCS/raylet) will be placed
+// under system cgroup. For more details, see
+// https://github.com/ray-project/ray/blob/master/src/ray/common/cgroup/README.md
 bool SetupCgroupsPreparation(const std::string &node_id);
+
+// Util function to cleanup cgroup after raylet exits.
+// If any error happens, it will be logged and early return.
+//
+// NOTITE: This function is expected to be called once for each raylet instance at its
+// termination.
+//
+// Impact:
+// - All dangling processes will be killed;
+// - Cgroup for the current node will be deleted.
+void CleanupCgroupForNode(const std::string &node_id);
 
 // Get folder name for application cgroup v2 for current raylet instance.
 const std::string &GetCgroupV2AppFolder();
