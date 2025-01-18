@@ -7,7 +7,7 @@ can hide the communication overhead and improve performance.
 
 To enable this feature, specify ``_overlap_gpu_communication=True`` when calling ``dag.experimental_compile()``.
 
-For example, the following code has GPU communication and computation operations that can potentially benefit
+The following code has GPU communication and computation operations that benefit
 from overlap.
 
 .. testcode::
