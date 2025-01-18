@@ -42,22 +42,22 @@ ClusterTaskManager::ClusterTaskManager(
       get_time_ms_(get_time_ms) {}
 
 void ClusterTaskManager::QueueAndScheduleTask(
-    const RayTask &task,
+    RayTask task,
     bool grant_or_reject,
     bool is_selected_based_on_locality,
     rpc::RequestWorkerLeaseReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
+  const auto scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   auto work = std::make_shared<internal::Work>(
-      task,
+      std::move(task),
       grant_or_reject,
       is_selected_based_on_locality,
       reply,
       [send_reply_callback = std::move(send_reply_callback)] {
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
-  const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
   auto infeasible_tasks_iter = infeasible_tasks_.find(scheduling_class);

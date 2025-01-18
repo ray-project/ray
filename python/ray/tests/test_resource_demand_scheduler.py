@@ -2226,7 +2226,6 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             },
             2,
         )
@@ -2236,7 +2235,6 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_USER_NODE_TYPE: "m4.16xlarge",
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             },
             2,
         )
@@ -2277,7 +2275,6 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_NODE_KIND: "head",
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_USER_NODE_TYPE: "p2.xlarge",
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             },
             1,
         )
@@ -2323,7 +2320,6 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_NODE_KIND: "head",
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             },
             1,
         )

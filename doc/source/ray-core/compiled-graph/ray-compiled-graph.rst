@@ -9,12 +9,12 @@ Ray Compiled Graph
 As large language models (LLM) become common, programming distributed systems with multiple GPUs is essential.
 Ray APIs facilitate using multiple GPUs but have limitations such as:
 
-* having a high system overhead of over 1ms per task launch, which is unsuitable for high-performance tasks like LLM inference
+* having a high system overhead of over 1ms per task launch, which is unsuitable for high-performance tasks like LLM inference.
 * lack direct GPU-to-GPU RDMA communication, requiring external tools like NCCL.
 
 Ray Compiled Graph gives you a classic Ray Core-like API but with:
 
-- **Less than 50us system overhead** for workloads that repeatedly execute the same task DAG
+- **Less than 50us system overhead** for workloads that repeatedly execute the same task DAG.
 - **Native support for GPU-GPU communication**, with NCCL with various optimizations such as overlapping compute and communication.
 
 .. testcode::
@@ -34,7 +34,7 @@ Ray Compiled Graph gives you a classic Ray Core-like API but with:
     ray.get(ref)
 
 Ray Compiled Graph has a static execution model. It is different from classic Ray APIs, which are eager. Because
-of the static nature, Ray Compiled Graph can perform various optimizations such as
+of the static nature, Ray Compiled Graph can perform various optimizations such as:
 
 - Pre-allocate resources so that it can reduce system overhead.
 - Prepare NCCL communicators and schedule it in a way that avoids deadlock.
@@ -53,7 +53,7 @@ More Resources
 --------------
 
 - `Ray Compiled Graph blog <https://www.anyscale.com/blog/announcing-compiled-graphs>`_
-- `Ray Compiled Graph talk at Ray Summit <https://www.youtube.com/watch?v=jv58Cpr6SAs&t=667s>`_
+- `Ray Compiled Graph talk at Ray Summit <https://www.youtube.com/watch?v=jv58Cpr6SAs>`_
 - `Heterogenous training with Ray Compiled Graph <https://www.youtube.com/watch?v=Mg08QTBILWU>`_
 - `Distributed LLM inference with Ray Compiled Graph <https://www.youtube.com/watch?v=oMb_WiUwf5o>`_
 
@@ -67,3 +67,4 @@ Learn more details about Ray Compiled Graph from the following links.
 
     quickstart
     visualization
+    profiling
