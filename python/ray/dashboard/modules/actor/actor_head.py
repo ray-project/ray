@@ -262,7 +262,18 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/logical/actors")
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_actors(self, req) -> aiohttp.web.Response:
-        actors = await DataOrganizer.get_actor_infos()
+        """
+        Gets multiple or all actors.
+
+        Params:
+            actor_ids: str (optional) Comma separated actor IDs in Hex. If provided,
+                       only returns actors with the given IDs. If any of the actor_ids
+                       are not found, they are ignored.
+        """
+        actor_ids = req.query.get("actor_ids")
+        if actor_ids is not None:
+            actor_ids = actor_ids.split(",")
+        actors = await DataOrganizer.get_actor_infos(actor_ids=actor_ids)
         return dashboard_optional_utils.rest_response(
             success=True,
             message="All actors fetched.",

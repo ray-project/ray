@@ -210,6 +210,11 @@ def aiohttp_cache(
                 #   * (Request, )
                 #   * (self, Request)
                 req = args[-1]
+                # Honor Cache-Control:no-cache. If set, this request will not read from
+                # cache and will not be cached.
+                if req.headers.get("Cache-Control") == "no-cache":
+                    logger.error("Cache-Control:no-cache, not using cache")
+                    return await handler(*args)
                 # Make key.
                 if req.method in _AIOHTTP_CACHE_NOBODY_METHODS:
                     key = req.path_qs

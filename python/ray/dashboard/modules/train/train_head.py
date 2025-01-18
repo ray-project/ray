@@ -1,13 +1,11 @@
 import logging
-from typing import List
+from typing import List, Dict
 
 from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.core.generated import gcs_service_pb2_grpc
-from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 from ray.dashboard.modules.job.utils import find_jobs_by_job_ids
 from ray.util.annotations import DeveloperAPI
@@ -23,7 +21,6 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         super().__init__(config)
         self._train_stats_actor = None
         self._job_info_client = None
-        self._gcs_actor_info_stub = None
 
     @routes.get("/api/train/v2/runs")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
@@ -90,6 +87,18 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             content_type="application/json",
         )
 
+    async def get_actor_infos(self, actor_ids: List[str]) -> Dict[str, Dict]:
+        actor_ids_str = ",".join(actor_ids)
+        url = f"http://{self.http_host}:{self.http_port}/logical/actors"
+        async with self.http_session.get(
+            url,
+            headers={"Cache-Control": "no-cache"},
+            params={"actor_ids": actor_ids_str},
+        ) as response:
+            response.raise_for_status()
+            payload = await response.json()
+            return payload["data"]["actors"]
+
     async def _add_actor_status_and_update_run_status(self, train_runs):
         from ray.train._internal.state.schema import (
             ActorStatusEnum,
@@ -107,10 +116,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
 
             logger.info(f"Getting all actor info from GCS (actor_ids={actor_ids})")
 
-            train_run_actors = await DataOrganizer.get_actor_infos(
-                actor_ids=actor_ids,
-            )
-
+            train_run_actors = await self.get_actor_infos(actor_ids)
             for worker_info in train_run.workers:
                 actor = train_run_actors.get(worker_info.actor_id, None)
                 # Add hardware metrics to API response
@@ -184,11 +190,6 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
     async def run(self, server):
         if not self._job_info_client:
             self._job_info_client = JobInfoStorageClient(self.gcs_aio_client)
-
-        gcs_channel = self.aiogrpc_gcs_channel
-        self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
-            gcs_channel
-        )
 
     async def get_train_stats_actor(self):
         """
