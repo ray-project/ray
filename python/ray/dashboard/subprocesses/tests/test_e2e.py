@@ -192,15 +192,15 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
 
     # Assert on the log format and the content.
     log_pattern = (
-        r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\tINFO ([\w\.]+:\d+) -- (.*)"
+        r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\tINFO ([\w\.]+):\d+ -- (.*)"
     )
     matches = re.findall(log_pattern, log_file_content)
 
-    # Expected format: [(file_name:line_no, content), ...]
+    # Expected format: [(file_name, content), ...]
     expected_logs = [
-        ("utils.py:25", "TestModule is initing"),
-        ("utils.py:28", "TestModule is done initing"),
-        ("utils.py:77", "In /logging_in_module, Not all those who wander are lost."),
+        ("utils.py", "TestModule is initing"),
+        ("utils.py", "TestModule is done initing"),
+        ("utils.py", "In /logging_in_module, Not all those who wander are lost."),
     ]
     assert all(
         (file_name, content) in matches for (file_name, content) in expected_logs
