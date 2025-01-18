@@ -106,38 +106,38 @@ class DatasetMixin:
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
         validate_schemas: bool = False,
     ) -> "Dataset":
-        """Join :class:`Datasets <ray.data.Dataset>` on join keys
+        """Join :class:`Datasets <ray.data.Dataset>` on join keys.
 
         Args:
             ds: Other dataset to join against
-            join_type: The kind of join that should be performed, one of (“inner”,
-              “left_outer”, “right_outer”, “full_outer”)
+            join_type: The kind of join that should be performed, one of ("inner",
+                "left_outer", "right_outer", "full_outer")
             num_partitions: Total number of "partitions" input sequences will be split
-              into with each partition being joined independently. Increasing number
-              of partitions allows to reduce individual partition size, hence reducing
-              memory requirements when individual partitions are being joined. Note
-              that, consequently, this will also be a total number of blocks that will
-              be produced as a result of executing join.
+                into with each partition being joined independently. Increasing number
+                of partitions allows to reduce individual partition size, hence reducing
+                memory requirements when individual partitions are being joined. Note
+                that, consequently, this will also be a total number of blocks that will
+                be produced as a result of executing join.
             on: The columns from the left operand that will be used as
-              keys for the join operation.
+                keys for the join operation.
             right_on: The columns from the right operand that will be
-              used as keys for the join operation. When none, `key_column_names` will
-              be assumed to be a list of columns to be used for the right dataset
-              as well.
+                used as keys for the join operation. When none, `on` will
+                be assumed to be a list of columns to be used for the right dataset
+                as well.
             left_suffix: (Optional) Suffix to be appended for columns of the left
-              operand
+                operand.
             right_suffix: (Optional) Suffix to be appended for columns of the right
-              operand
+                operand.
             partition_size_hint: (Optional) Hint to joining operator about the estimated
-              avg expected size of the individual partition (in bytes).
-              This is used in estimating the total dataset size and allow to tune
-              memory requirement of the individual joining workers to prevent OOMs
-              when joining very large datasets.
+                avg expected size of the individual partition (in bytes).
+                This is used in estimating the total dataset size and allow to tune
+                memory requirement of the individual joining workers to prevent OOMs
+                when joining very large datasets.
             aggregator_ray_remote_args: (Optional) Parameter overriding `ray.remote`
-              args passed when constructing joining (aggregator) workers
+                args passed when constructing joining (aggregator) workers.
             validate_schemas: (Optional) Controls whether validation of provided
-              configuration against input schemas will be performed (defaults to
-              false, since obtaining schemas could be prohibitively expensive)
+                configuration against input schemas will be performed (defaults to
+                false, since obtaining schemas could be prohibitively expensive).
 
         Returns:
             A :class:`Dataset` that holds join of input left Dataset with the right
@@ -158,8 +158,8 @@ class DatasetMixin:
             joined_ds = doubles.join(
                 squares,
                 join_type="inner",
-                num_outputs=16,
-                key_column_names=("id",),
+                num_partitions=16,
+                on=("id",),
             )
 
             print(sorted(joined_ds.take_all(), key=lambda item: item["id"]))
