@@ -89,7 +89,7 @@ The actual performance numbers may vary on different hardware, but enabling ``_o
 can improve latency by about 14% for this example.
 
 To verify Compiled Graph overlaps the communication and computation operations,
-`visualize the execution schedule <execution-schedule>` by setting environment variable
+:ref:`visualize the execution schedule <execution-schedule>` by setting environment variable
 ``RAY_CGRAPH_VISUALIZE_SCHEDULE=1``.
 
 .. image:: ../../images/compiled_graph_schedule_overlap.png
