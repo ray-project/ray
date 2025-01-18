@@ -45,18 +45,19 @@ static inline bool IsDirSep(char ch) {
 /// \return The result of joining multiple path components.
 template <class... Paths>
 std::string JoinPaths(std::string base, const Paths &...components) {
-  auto join = [](auto &joined_path, const auto &component) {
-    // if the components begin with "/" or "////", just get the path name.
-    if (!component.empty() &&
-        component.front() == std::filesystem::path::preferred_separator) {
-      joined_path = std::filesystem::path(joined_path)
-                        .append(std::filesystem::path(component).filename().string())
-                        .string();
-    } else {
-      joined_path = std::filesystem::path(joined_path).append(component).string();
+  std::filesystem::path base_path(base);
+
+  auto join = [](auto &bath_path, const auto &component) {
+    if (!component.empty()) {
+      // if the components begin with "/" or "////", just get the path name.
+      if (component.front() == std::filesystem::path::preferred_separator) {
+        bath_path /= std::filesystem::path(component).filename();
+      } else {
+        bath_path /= component;
+      }
     }
   };
-  (join(base, std::string_view(components)), ...);
-  return base;
+  (join(base_path, std::string_view(components)), ...);
+  return base_path.string();
 }
 }  // namespace ray
