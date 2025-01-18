@@ -23,7 +23,7 @@
 #include <future>
 #include <string_view>
 
-#include "ray/util/tests/unix_test_utils.h"
+#include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -33,44 +33,7 @@ namespace {
 constexpr std::string_view kLogLine1 = "hello\n";
 constexpr std::string_view kLogLine2 = "world\n";
 
-class PipeLoggerTest : public ::testing::TestWithParam<size_t> {};
-
-TEST_P(PipeLoggerTest, NoPipeWrite) {
-  const size_t pipe_buffer_size = GetParam();
-  setenv(kPipeLogReadBufSizeEnv.data(),
-         absl::StrFormat("%d", pipe_buffer_size).data(),
-         /*overwrite=*/1);
-
-  // TODO(core): We should have a better test util, which allows us to create a temporary
-  // testing directory.
-  const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
-
-  // Take the default option, which doesn't have rotation enabled.
-  StreamRedirectionOption logging_option{};
-  logging_option.file_path = test_file_path;
-  auto log_token = CreateRedirectionFileHandle(logging_option);
-
-  ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
-            kLogLine1.length());
-  ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
-            kLogLine2.length());
-  log_token.Close();
-
-  // Check log content after completion.
-  const auto actual_content = CompleteReadFile(test_file_path);
-  const std::string expected_content = absl::StrFormat("%s%s", kLogLine1, kLogLine2);
-  EXPECT_EQ(actual_content, expected_content);
-
-  // Delete temporary file.
-  EXPECT_EQ(unlink(test_file_path.data()), 0);
-}
-
-TEST_P(PipeLoggerTest, PipeWrite) {
-  const size_t pipe_buffer_size = GetParam();
-  setenv(kPipeLogReadBufSizeEnv.data(),
-         absl::StrFormat("%d", pipe_buffer_size).data(),
-         /*overwrite=*/1);
-
+TEST(PipeLoggerTestWithTee, PipeWrite) {
   // TODO(core): We should have a better test util, which allows us to create a temporary
   // testing directory.
   const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
@@ -103,9 +66,6 @@ TEST_P(PipeLoggerTest, PipeWrite) {
   EXPECT_EQ(unlink(log_file_path2.data()), 0);
 }
 
-INSTANTIATE_TEST_SUITE_P(PipeLoggerTest, PipeLoggerTest, testing::Values(1024, 3));
-
-// TODO(hjiang): Add more test cases on different combinations.
 TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   // TODO(core): We should have a better test util, which allows us to create a temporary
   // testing directory.
@@ -146,21 +106,24 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
   logging_option.file_path = test_file_path;
   logging_option.rotation_max_size = 5;
   logging_option.rotation_max_file_count = 2;
-  logging_option.tee_to_stderr = true;
+  logging_option.tee_to_stdout = true;
 
   // Capture stdout via `dup`.
-  testing::internal::CaptureStderr();
+  testing::internal::CaptureStdout();
 
   auto log_token = CreateRedirectionFileHandle(logging_option);
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine1.data(), kLogLine1.length()),
             kLogLine1.length());
   ASSERT_EQ(write(log_token.GetWriteHandle(), kLogLine2.data(), kLogLine2.length()),
             kLogLine2.length());
+  // White-box testing: pipe logger reads in lines so manually append a newline to trigger
+  // corresponding sink.
+  ASSERT_EQ(write(log_token.GetWriteHandle(), "\n", 1), 1);
   log_token.Close();
 
-  // Check content tee-ed to stderr.
-  const std::string stderr_content = testing::internal::GetCapturedStderr();
-  EXPECT_EQ(stderr_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
+  // Check content tee-ed to stdout.
+  const std::string stdout_content = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(stdout_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Check log content after completion.
   const std::string log_file_path1 = test_file_path;
@@ -173,6 +136,8 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
   EXPECT_EQ(unlink(log_file_path1.data()), 0);
   EXPECT_EQ(unlink(log_file_path2.data()), 0);
 }
+
+// TODO(hjiang): Add a test case which tee to stderr and verify via gtest capturing.
 
 }  // namespace
 

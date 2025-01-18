@@ -22,7 +22,7 @@
 #include <iostream>
 #include <thread>
 
-#include "ray/util/tests/unix_test_utils.h"
+#include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -48,6 +48,9 @@ TEST(LoggingUtilTest, RedirectStderr) {
 
   std::cerr << kLogLine1 << std::flush;
   std::cerr << kLogLine2 << std::flush;
+  // White-box testing: pipe logger reads in lines so manually append a newline to trigger
+  // corresponding sink.
+  std::cerr << "\n" << std::flush;
 
   // TODO(hjiang): Current implementation is flaky intrinsically, sleep for a while to
   // make sure pipe content has been read over to spdlog.

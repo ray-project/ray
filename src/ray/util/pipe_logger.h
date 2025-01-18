@@ -97,22 +97,6 @@ class RedirectionFileHandle {
 
   MEMFD_TYPE_NON_UNIQUE GetWriteHandle() const { return write_handle_; }
 
-  // Used to write to.
-  //
-  // TODO(hjiang): I will followup with another PR to make a `FD` class, which is not
-  // copiable to avoid manual `dup`.
-#if defined(__APPLE__) || defined(__linux__)
-  void CompleteWrite(const char *data, size_t len) {
-    ssize_t bytes_written = write(write_handle_, data, len);
-    RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(len));
-  }
-#elif defined(_WIN32)
-  void CompleteWrite(char *data, size_t len) {
-    DWORD bytes_written = 0;
-    WriteFile(write_handle_, data, len, &bytes_written, nullptr);
-  }
-#endif
-
  private:
   MEMFD_TYPE_NON_UNIQUE write_handle_;
 

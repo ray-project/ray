@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_library")
+load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_binary")
 
 ray_cc_library(
     name = "util",
@@ -24,6 +24,7 @@ ray_cc_library(
         "//src/ray/protobuf:event_cc_proto",
         "//src/ray/protobuf:export_event_cc_proto",
         "@boost//:asio",
+        "@boost//:iostreams",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -83,6 +84,7 @@ ray_cc_library(
     deps = [
         ":compat",
         ":util",
+        "@boost//:iostreams",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/strings",
     ],
