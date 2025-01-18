@@ -256,13 +256,21 @@ algorithms and their models:
     best_checkpoint = best_result.checkpoint
 
 
-Deploy a trained model for production inference
-+++++++++++++++++++++++++++++++++++++++++++++++
+Deploy a trained model for inference
+++++++++++++++++++++++++++++++++++++
 
 After training, you might want to deploy your models into a new environment, for example
-to run inference in production. You can do so using the checkpoint directory created in the
-preceding example. To read more about checkpoints, model deployments, and algorithm state restoration,
+to run inference in production. For this purpose, you can use the checkpoint directory created
+in the preceding example. To read more about checkpoints, model deployments, and restoring algorithm state,
 see this :ref:`page on checkpointing <rllib-checkpoints-docs>` here.
+
+Here is how you would create a new model instance from the checkpoint and run inference through
+a single episode of your RL environment. Note in particular the use of the
+:py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` method to create
+the model and the
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`
+method to compute actions:
+
 
 .. testcode::
 
@@ -272,14 +280,13 @@ see this :ref:`page on checkpointing <rllib-checkpoints-docs>` here.
     import torch
     from ray.rllib.core.rl_module import RLModule
 
-    # Create only the neural network (RLModule) from our checkpoint.
+    # Create only the neural network (RLModule) from our algorithm checkpoint.
     rl_module = RLModule.from_checkpoint(
         Path(best_checkpoint.path) / "learner_group" / "learner" / "rl_module"
     )["default_policy"]
 
-    # Create the RL environment to test against (same as was used for
-    # training earlier).
-    env = gym.make("Pendulum-v1")
+    # Create the RL environment to test against (same as was used for training earlier).
+    env = gym.make("Pendulum-v1", render_mode="human")
 
     episode_return = 0.0
     done = False
@@ -288,14 +295,14 @@ see this :ref:`page on checkpointing <rllib-checkpoints-docs>` here.
     obs, info = env.reset()
 
     while not done:
+        # Render the env.
+        env.render()
+
         # Compute the next action from a batch (B=1) of observations.
         obs_batch = torch.from_numpy(obs).unsqueeze(0)  # add batch B=1 dimension
-
+        model_outputs = rl_module.forward_inference({"obs": obs_batch})
         # Extract the logits from the output and dissolve batch again.
-        action_logits = rl_module.forward_inference({"obs": obs_batch})[
-            "action_dist_inputs"
-        ][0]
-
+        action_logits = model_outputs["action_dist_inputs"][0]
         # PPO's default RLModule produces action logits (from which
         # you have to sample an action or use the max-likelihood one).
         action = numpy.argmax(action_logits.numpy())
@@ -310,8 +317,8 @@ see this :ref:`page on checkpointing <rllib-checkpoints-docs>` here.
     print(f"Reached episode return of {episode_return}.")
 
 
-If you still have an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance up and running
-in your script, you can also get the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` through the
+Alternatively, if you still have an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance up and running
+in your script, you can get the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` through the
 :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.get_module` method:
 
 .. testcode::
@@ -327,7 +334,8 @@ a `Farama gymnasium <gymnasium.farama.org>`__ pre-registered one,
 like ``Pendulum-v1`` or ``CartPole-v1``. However, if you would like to run your
 experiments against a custom one, see this tab below for a less-than-50-lines example.
 
-See here for an :ref:`in-depth guide on how to setup RL environments in RLlib <rllib-environments-doc>` and how to customize them.
+See here for an :ref:`in-depth guide on how to setup RL environments in RLlib <rllib-environments-doc>`
+and how to customize them.
 
 .. dropdown:: Quickstart: Custom RL environment
     :animate: fade-in-slide-down
@@ -394,51 +402,50 @@ See here for an :ref:`in-depth guide on how to setup RL environments in RLlib <r
 Customizing your models
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-In the preceding examples, RLlib provided a default neural network model for you, because you didn't specify anything
-in your AlgorithmConfig. If you would like to either reconfigure the type and size of RLlib's default models, for example define
-the number of hidden layers and their activation functions, or even write your own custom models from scratch using PyTorch, see here
-for a detailed guide on how to do so.
+In the preceding examples, because you didn't specify anything in your
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, RLlib provided a default
+neural network model. If you would like to either reconfigure the type and size of RLlib's default models,
+for example define the number of hidden layers and their activation functions,
+or even write your own custom models from scratch using PyTorch, see here
+for a :ref:`detailed guide on the RLModule class <rlmodule-guide>`.
 
+See this tab below for a 30-lines example.
 
+.. dropdown:: Quickstart: Custom RLModule
+    :animate: fade-in-slide-down
 
+    .. testcode::
 
-Accessing Model State
-~~~~~~~~~~~~~~~~~~~~~
+        import torch
 
-Similar to accessing policy state, you may want to get a reference to the
-underlying neural network model being trained. For example, you may want to
-pre-train it separately, or otherwise update its weights outside of RLlib.
-This can be done by accessing the ``model`` of the policy.
+        from ray.rllib.core.columns import Columns
+        from ray.rllib.core.rl_module.torch import TorchRLModule
 
-Below you find three explicit examples showing how to access the model state of
-an algorithm.
+        # Define your custom env class by subclassing `TorchRLModule`:
+        class CustomTorchRLModule(TorchRLModule):
+            def setup(self):
+                # You have access here to the following already set attributes:
+                # self.observation_space
+                # self.action_space
+                # self.inference_only
+                # self.model_config  # <- a dict with custom settings
+                input_dim = self.observation_space.shape[0]
+                hidden_dim = self.model_config["hidden_dim"]
+                output_dim = self.action_space.n
 
-.. dropdown:: **Example: Preprocessing observations for feeding into a model**
+                # Define and assign your torch subcomponents.
+                self._policy_net = torch.nn.Sequential(
+                    torch.nn.Linear(input_dim, hidden_dim),
+                    torch.nn.ReLU(),
+                    torch.nn.Linear(hidden_dim, output_dim),
+                )
 
-
-    Then for the code:
-
-    .. literalinclude:: doc_code/training.py
-        :language: python
-        :start-after: __preprocessing_observations_start__
-        :end-before: __preprocessing_observations_end__
-
-.. dropdown:: **Example: Querying a policy's action distribution**
-
-    .. literalinclude:: doc_code/training.py
-        :language: python
-        :start-after: __query_action_dist_start__
-        :end-before: __query_action_dist_end__
-
-.. dropdown:: **Example: Getting Q values from a DQN model**
-
-    .. literalinclude:: doc_code/training.py
-        :language: python
-        :start-after: __get_q_values_dqn_start__
-        :end-before: __get_q_values_dqn_end__
-
-    This is especially useful when used with
-    `custom model classes <rllib-models.html>`__.
+            def _forward(self, batch, **kwargs):
+                # Push the observations from the batch through our `self._policy_net`.
+                action_logits = self._policy_net(batch[Columns.OBS])
+                # Return parameters for the (default) action distribution, which is
+                # `TorchCategorical` (due to our action space being `gym.spaces.Discrete`).
+                return {Columns.ACTION_DIST_INPUTS: action_logits}
 
 
 .. Debugging RLlib Experiments
