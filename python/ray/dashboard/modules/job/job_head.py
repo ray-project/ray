@@ -3,7 +3,7 @@ import dataclasses
 import json
 import logging
 import traceback
-from random import sample
+from random import choice
 from typing import AsyncIterator, Dict, List, Optional, Tuple
 
 import aiohttp.web
@@ -11,10 +11,11 @@ from aiohttp.client import ClientResponse
 from aiohttp.web import Request, Response
 
 import ray
+from ray import NodeID
+import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,
     DASHBOARD_AGENT_ADDR_PREFIX,
-    CANDIDATE_AGENT_NUMBER,
     TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS,
     WAIT_AVAILABLE_AGENT_TIMEOUT,
 )
@@ -171,8 +172,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # `JobHead` has ever used, and will not be deleted
         # from it unless `JobAgentSubmissionClient` is no
         # longer available (the corresponding agent process is dead)
-        # {node_id_hex: JobAgentSubmissionClient}
-        self._agents: Dict[str, JobAgentSubmissionClient] = dict()
+        # {node_id: JobAgentSubmissionClient}
+        self._agents: Dict[NodeID, JobAgentSubmissionClient] = dict()
 
     async def get_target_agent(self) -> Optional[JobAgentSubmissionClient]:
         if RAY_JOB_AGENT_USE_HEAD_NODE_ONLY:
@@ -204,13 +205,13 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             client = self._agents.pop(dead_node)
             await client.close()
 
-        if len(self._agents) >= CANDIDATE_AGENT_NUMBER:
-            node_id = sample(list(set(self._agents)), 1)[0]
+        if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
+            node_id = choice(list(self._agents))
             return self._agents[node_id]
         else:
             # Randomly select one from among all agents, it is possible that
             # the selected one already exists in `self._agents`
-            node_id = sample(sorted(agent_infos), 1)[0]
+            node_id = choice(list(agent_infos))
             agent_info = agent_infos[node_id]
 
             if node_id not in self._agents:
@@ -223,16 +224,20 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def _get_head_node_agent(self) -> Optional[JobAgentSubmissionClient]:
         """Retrieves HTTP client for `JobAgent` running on the Head node"""
 
-        head_node_id = await get_head_node_id(self.gcs_aio_client)
+        head_node_id_binary = await get_head_node_id(self.gcs_aio_client)
 
-        if not head_node_id:
+        if not head_node_id_binary:
             logger.warning("Head node id has not yet been persisted in GCS")
             return None
+
+        head_node_id = NodeID.from_hex(head_node_id_binary)
 
         if head_node_id not in self._agents:
             agent_infos = await self._fetch_agent_infos([head_node_id])
             if head_node_id not in agent_infos:
-                logger.error("Head node agent's information was not found")
+                logger.error(
+                    f"Head node agent's information was not found: {head_node_id} not in {agent_infos}"
+                )
                 return None
 
             ip, http_port, grpc_port = agent_infos[head_node_id]
@@ -242,7 +247,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         return self._agents[head_node_id]
 
-    async def _fetch_all_agent_infos(self) -> Dict[str, Tuple[str, int, int]]:
+    async def _fetch_all_agent_infos(self) -> Dict[NodeID, Tuple[str, int, int]]:
         """
         Fetches all agent infos for all nodes in the cluster.
 
@@ -268,8 +273,11 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                     namespace=KV_NAMESPACE_DASHBOARD,
                     timeout=GCS_RPC_TIMEOUT_SECONDS,
                 )
+                prefix_len = len(DASHBOARD_AGENT_ADDR_PREFIX)
                 return {
-                    key.decode(): json.loads(value.decode())
+                    NodeID.from_hex(key[prefix_len:].decode()): json.loads(
+                        value.decode()
+                    )
                     for key, value in values.items()
                 }
 
@@ -280,8 +288,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
 
     async def _fetch_agent_infos(
-        self, target_node_ids: List[str]
-    ) -> Dict[str, Tuple[str, int, int]]:
+        self, target_node_ids: List[NodeID]
+    ) -> Dict[NodeID, Tuple[str, int, int]]:
         """
         Fetches agent infos for nodes identified by provided node-ids.
 
@@ -294,8 +302,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         while True:
             try:
                 keys = [
-                    f"{DASHBOARD_AGENT_ADDR_PREFIX}{node_id_hex}"
-                    for node_id_hex in target_node_ids
+                    f"{DASHBOARD_AGENT_ADDR_PREFIX}{node_id.hex()}"
+                    for node_id in target_node_ids
                 ]
                 values: Dict[
                     bytes, bytes
@@ -307,8 +315,11 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 if not values or len(values) != len(target_node_ids):
                     # Not all agent infos found, retry
                     raise Exception()
+                prefix_len = len(DASHBOARD_AGENT_ADDR_PREFIX)
                 return {
-                    key.decode(): json.loads(value.decode())
+                    NodeID.from_hex(key[prefix_len:].decode()): json.loads(
+                        value.decode()
+                    )
                     for key, value in values.items()
                 }
             except Exception:

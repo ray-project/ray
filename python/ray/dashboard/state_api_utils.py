@@ -267,7 +267,7 @@ async def get_agent_address(
 
     returns a tuple of (ip, http_port, grpc_port).
 
-    If either of them are not found, return None.
+    If not found, return None.
     """
     agent_addr_json = await gcs_aio_client.internal_kv_get(
         f"{DASHBOARD_AGENT_ADDR_PREFIX}{node_id.hex()}".encode(),

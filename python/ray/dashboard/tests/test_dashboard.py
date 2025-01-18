@@ -382,10 +382,19 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
                 raise ex
             assert dump_info["result"] is True
             dump_data = dump_info["data"]
-            assert len(dump_data["agents"]) == 1
-            node_id, (node_ip, http_port, grpc_port) = next(
-                iter(dump_data["agents"].items())
+            assert len(dump_data["nodes"]) == 1
+
+            node_id_hex = ray_start_with_dashboard["node_id"]
+
+            # Not using state_api_utils.get_agent_address because that's async and we
+            # need a sync one here.
+            gcs_client = make_gcs_client(ray_start_with_dashboard)
+            agent_addr_json = gcs_client.internal_kv_get(
+                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_PREFIX}{node_id_hex}",
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
+            assert agent_addr_json is not None
+            node_ip, http_port, grpc_port = json.loads(agent_addr_json)
 
             response = requests.get(
                 f"http://{node_ip}:{http_port}"
