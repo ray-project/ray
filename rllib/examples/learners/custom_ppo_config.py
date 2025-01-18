@@ -8,12 +8,13 @@ from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import 
 )
 from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (
     AddNextObservationsFromEpisodesToTrainBatch,
-    )
+)
 
 """
 Custom PPO Config class that inherits PPOConfig and overrides the base class's AlgorithmConfig build_learner_connector
 method to construct a custom pipeline that adds on the ability to have 'new_obs' in the training batch
 """
+
 
 class CustomPPOConfig(PPOConfig):
     @override(AlgorithmConfig)
@@ -36,9 +37,7 @@ class CustomPPOConfig(PPOConfig):
         )
         # make sure advantages are also added to the batch
         pipeline.append(
-            GeneralAdvantageEstimation(
-                gamma=self.gamma, lambda_=self.lambda_
-            )
+            GeneralAdvantageEstimation(gamma=self.gamma, lambda_=self.lambda_)
         )
 
         logging.info(

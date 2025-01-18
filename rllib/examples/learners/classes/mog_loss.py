@@ -26,20 +26,23 @@ torch, _ = try_import_torch()
 
 
 class PPOTorchLearnerCustomMOGLoss(PPOTorchLearner):
-    """A custom PPO torch learner adding the negative log-likelihood loss to the base actor network loss.
-    """
+    """A custom PPO torch learner adding the negative log-likelihood loss to the base actor network loss."""
 
-    def compute_log_likelihood(self, td_targets, mu_current, sigma_current, alpha_current):
+    def compute_log_likelihood(
+        self, td_targets, mu_current, sigma_current, alpha_current
+    ):
         td_targets_expanded = td_targets.unsqueeze(1)
         sigma_clamped = sigma_current
-        log_2_pi = torch.log(2*torch.tensor(math.pi))
-        factor = -torch.log(sigma_clamped) - 0.5*log_2_pi 
+        log_2_pi = torch.log(2 * torch.tensor(math.pi))
+        factor = -torch.log(sigma_clamped) - 0.5 * log_2_pi
         mus = td_targets_expanded - mu_current
-        
-        logp = torch.clamp(factor - torch.square(mus)/ (2*torch.square(sigma_clamped)), -1e10, 10)
+
+        logp = torch.clamp(
+            factor - torch.square(mus) / (2 * torch.square(sigma_clamped)), -1e10, 10
+        )
         # little trick of using log_softmax on the current alphas to prevent nans
         loga = torch.clamp(nn.functional.log_softmax(alpha_current, dim=-1), 1e-6, None)
-        
+
         summing_log = -torch.logsumexp(logp + loga, dim=-1)
         return summing_log
 
@@ -65,7 +68,7 @@ class PPOTorchLearnerCustomMOGLoss(PPOTorchLearner):
 
         module = self.module[module_id].unwrapped()
 
-        # batch in the learner is: SampleBatch(400: ['loss_mask', 'terminateds', 'obs', 'actions', 'rewards', 'truncateds', 
+        # batch in the learner is: SampleBatch(400: ['loss_mask', 'terminateds', 'obs', 'actions', 'rewards', 'truncateds',
         # 'action_dist_inputs', 'value_function_out', 'mog_components', 'action_logp', 'weights_seq_no', 'advantages', 'value_targets', 'infos'])
 
         action_dist_class_train = module.get_train_action_dist_cls()
@@ -101,45 +104,48 @@ class PPOTorchLearnerCustomMOGLoss(PPOTorchLearner):
         # Compute the MOG value loss using the negative log-likelihood
         # source of loss function @ricefield
         if config.use_critic:
-            rewards = batch['rewards']
-            dones = batch['dones']
-            gamma = config['gamma']
+            rewards = batch["rewards"]
+            dones = batch["dones"]
+            gamma = config["gamma"]
 
-            mog_components = fwd_out['mog_components']           
-            mu_current = mog_components['means']
-            sigmas_current = mog_components['sigmas']
-            alpha_current = mog_components['alphas']
+            mog_components = fwd_out["mog_components"]
+            mu_current = mog_components["means"]
+            sigmas_current = mog_components["sigmas"]
+            alpha_current = mog_components["alphas"]
 
             # pass through the network
-            if 'new_obs' not in batch:
+            if "new_obs" not in batch:
                 logger.warning("new_obs not in batch! Using current obs!")
                 print(batch)
-                next_obs_in = {
-                    'obs': batch['obs']
-                }
+                next_obs_in = {"obs": batch["obs"]}
             else:
-                next_obs_in = {
-                    'obs': batch['new_obs']
-                }
+                next_obs_in = {"obs": batch["new_obs"]}
 
             mog_output_next = module._forward_train(next_obs_in)
-            mog_output_next = mog_output_next['mog_components']
-            mu_next = mog_output_next['means']
-            sigmas_next = mog_output_next['sigmas']
-            alpha_next = mog_output_next['alphas']
-            alpha_next = torch.clamp(nn.functional.softmax(alpha_next, dim=-1), 1e-6, None)
+            mog_output_next = mog_output_next["mog_components"]
+            mu_next = mog_output_next["means"]
+            sigmas_next = mog_output_next["sigmas"]
+            alpha_next = mog_output_next["alphas"]
+            alpha_next = torch.clamp(
+                nn.functional.softmax(alpha_next, dim=-1), 1e-6, None
+            )
 
             # detach target
             next_state_values = torch.sum(mu_next * alpha_next, dim=1).clone().detach()
             td_targets = rewards + gamma * next_state_values * (1 - dones.float())
             # this alpha current should not be passed through a softmax yet
-            log_likelihood = self.compute_log_likelihood(td_targets, mu_current, sigmas_current, alpha_current)
+            log_likelihood = self.compute_log_likelihood(
+                td_targets, mu_current, sigmas_current, alpha_current
+            )
             log_likelihood_clipped = torch.clamp(log_likelihood, -10, 80)
             nll_loss = torch.mean(log_likelihood_clipped)
             nll_loss_unclipped = torch.mean(log_likelihood)
 
             # for logging purposes
-            value_fn_out = torch.sum(mu_current * torch.clamp(nn.functional.softmax(alpha_current, dim=-1), 1e-6, None))
+            value_fn_out = torch.sum(
+                mu_current
+                * torch.clamp(nn.functional.softmax(alpha_current, dim=-1), 1e-6, None)
+            )
         # Ignore the value function -> Set all to 0.0.
         else:
             z = torch.tensor(0.0, device=surrogate_loss.device)

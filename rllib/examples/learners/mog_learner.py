@@ -79,10 +79,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     custom_config = {
-    "vf_share_layers": False,
-    "fcnet_hiddens": [128, 128],
-    "fcnet_activation": "LeakyReLU",
-    "num_mixture_components": args.num_gaussians,
+        "vf_share_layers": False,
+        "fcnet_hiddens": [128, 128],
+        "fcnet_activation": "LeakyReLU",
+        "num_mixture_components": args.num_gaussians,
     }
 
     module_to_load_spec = RLModuleSpec(
@@ -117,15 +117,21 @@ for iteration in range(1000):
     result = algo.train()
 
     pprint(result)
-    
-    episode_return_mean = result['env_runners']['episode_return_mean']
-    total_timesteps = result['env_runners']['num_env_steps_sampled_lifetime']
 
-    print(f"Iteration {iteration}: Episode Return Mean: {episode_return_mean}, Total Timesteps: {total_timesteps}")
+    episode_return_mean = result["env_runners"]["episode_return_mean"]
+    total_timesteps = result["env_runners"]["num_env_steps_sampled_lifetime"]
+
+    print(
+        f"Iteration {iteration}: Episode Return Mean: {episode_return_mean}, Total Timesteps: {total_timesteps}"
+    )
     if episode_return_mean >= default_reward:
-        print(f"Stopping: Reached target reward of {default_reward} at iteration {iteration}")
+        print(
+            f"Stopping: Reached target reward of {default_reward} at iteration {iteration}"
+        )
         break
     if total_timesteps >= default_timesteps:
-        print(f"Stopping: Reached maximum timesteps of {default_timesteps} at iteration {iteration}")
+        print(
+            f"Stopping: Reached maximum timesteps of {default_timesteps} at iteration {iteration}"
+        )
         break
 # run_rllib_example_script_experiment(base_config, args)

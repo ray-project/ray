@@ -16,6 +16,7 @@ This also uses a custom_config from the module_to_load_spec to get the fcnet_hid
 as well as custom arg num_gaussians
 """
 
+
 class MOGModule(TorchRLModule, ValueFunctionAPI):
     def __init__(
         self,
@@ -33,20 +34,24 @@ class MOGModule(TorchRLModule, ValueFunctionAPI):
             learner_only=learner_only,
             model_config=model_config,
         )
-        
+
     def setup(self):
         input_dim = self.observation_space.shape[0]
-        hidden_dim = self.model_config['fcnet_hiddens'][0]
+        hidden_dim = self.model_config["fcnet_hiddens"][0]
 
         # set failsafe for action space dim
         if isinstance(self.action_space, gym.spaces.Box):
-            output_dim = self.action_space.shape[0]  
+            output_dim = self.action_space.shape[0]
         elif isinstance(self.action_space, gym.spaces.Discrete):
-            output_dim = self.action_space.n 
+            output_dim = self.action_space.n
         else:
-            raise ValueError(f"Unsupported action space type: {type(self.action_space)}")
+            raise ValueError(
+                f"Unsupported action space type: {type(self.action_space)}"
+            )
 
-        self.num_gaussians = self.model_config.get('num_mixture_components', 1) # create a base scalar as a value (normal critic)
+        self.num_gaussians = self.model_config.get(
+            "num_mixture_components", 1
+        )  # create a base scalar as a value (normal critic)
 
         self.policy = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
@@ -58,9 +63,9 @@ class MOGModule(TorchRLModule, ValueFunctionAPI):
         self.mog_critic = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.LeakyReLU(),
-            nn.Linear(hidden_dim, self.num_gaussians*3),
+            nn.Linear(hidden_dim, self.num_gaussians * 3),
         )
-        
+
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         with torch.no_grad():
@@ -73,25 +78,26 @@ class MOGModule(TorchRLModule, ValueFunctionAPI):
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None):
-        obs = batch['obs']
+        obs = batch["obs"]
         mog_output = self._compute_mog_components(obs)
         return torch.sum(
-            mog_output['means'] * torch.clamp(
-                nn.functional.softmax(mog_output['alphas'], dim=-1), 1e-6, None
+            mog_output["means"]
+            * torch.clamp(
+                nn.functional.softmax(mog_output["alphas"], dim=-1), 1e-6, None
             ),
-            dim=-1
+            dim=-1,
         )
 
     def _compute_mog_components(self, obs: torch.Tensor) -> Dict[str, torch.Tensor]:
         mog_output = self.mog_critic(obs)
-        means = mog_output[:, :self.num_gaussians]
-        sigmas_prev = mog_output[:, self.num_gaussians:self.num_gaussians*2]
+        means = mog_output[:, : self.num_gaussians]
+        sigmas_prev = mog_output[:, self.num_gaussians : self.num_gaussians * 2]
         sigmas = nn.functional.softplus(sigmas_prev) + 1e-6
-        alphas = mog_output[:, self.num_gaussians*2:]
+        alphas = mog_output[:, self.num_gaussians * 2 :]
         return {
-            'means': means,
-            'sigmas': sigmas,
-            'alphas': alphas,
+            "means": means,
+            "sigmas": sigmas,
+            "alphas": alphas,
         }
 
     @override(RLModule)
@@ -101,7 +107,7 @@ class MOGModule(TorchRLModule, ValueFunctionAPI):
         value_function_out = self.compute_values(batch)
 
         return {
-            'action_dist_inputs': action_logits,
-            'value_function_out': value_function_out,
-            'mog_components': self._compute_mog_components(obs),
+            "action_dist_inputs": action_logits,
+            "value_function_out": value_function_out,
+            "mog_components": self._compute_mog_components(obs),
         }
