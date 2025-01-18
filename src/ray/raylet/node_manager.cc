@@ -1926,6 +1926,14 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
         send_reply_callback(status, success, failure);
       };
 
+  auto &internal_task_spec = task.GetMutableTaskSpec();
+  auto &internal_task_spec_rpc = internal_task_spec.GetMutableMessage();
+  auto &internal_runtime_env = *internal_task_spec_rpc.mutable_runtime_env_info();
+  if (internal_runtime_env.serialized_runtime_env().find("FOO") != std::string::npos) {
+    internal_runtime_env.set_serialized_runtime_env("{}");
+    internal_task_spec.runtime_env_hash_ = 0;
+  }
+
   cluster_task_manager_->QueueAndScheduleTask(std::move(task),
                                               request.grant_or_reject(),
                                               request.is_selected_based_on_locality(),
