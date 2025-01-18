@@ -1,3 +1,4 @@
+
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. _rllib-getting-started:
@@ -61,8 +62,8 @@ Configure and build the algorithm
 You first create an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` instance
 and change some default settings through the config object's various methods.
 
-For example, we can set the :ref:`RL environment <rllib-key-concepts-environments>`
-we want to use by calling the config's :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment`
+For example, you can set the :ref:`RL environment <rllib-key-concepts-environments>`
+you want to use by calling the config's :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment`
 method:
 
 .. testcode::
@@ -443,52 +444,6 @@ See this tab below for a 30-lines example.
             def _forward(self, batch, **kwargs):
                 # Push the observations from the batch through our `self._policy_net`.
                 action_logits = self._policy_net(batch[Columns.OBS])
-                # Return parameters for the (default) action distribution, which is
+                # Return parameters for the default action distribution, which is
                 # `TorchCategorical` (due to our action space being `gym.spaces.Discrete`).
                 return {Columns.ACTION_DIST_INPUTS: action_logits}
-
-
-.. Debugging RLlib Experiments
-    ---------------------------
-    Eager Mode
-    ~~~~~~~~~~
-    Policies built with ``build_tf_policy`` (most of the reference algorithms are)
-    can be run in eager mode by setting the
-    ``"framework": "tf2"`` / ``"eager_tracing": true`` config options.
-    This will tell RLlib to execute the model forward pass, action distribution,
-    loss, and stats functions in eager mode.
-    Eager mode makes debugging much easier, since you can now use line-by-line
-    debugging with breakpoints or Python ``print()`` to inspect
-    intermediate tensor values.
-    However, eager can be slower than graph mode unless tracing is enabled.
-    Episode Traces
-    ~~~~~~~~~~~~~~
-    You can use the `data output API <rllib-offline.html>`__ to save episode traces
-    for debugging. For example, the following command will run PPO while saving episode
-    traces to ``/tmp/debug``.
-    .. code-block:: bash
-    cd rllib/tuned_examples/ppo
-    python cartpole_ppo.py --output /tmp/debug
-    # episode traces will be saved in /tmp/debug, for example
-    output-2019-02-23_12-02-03_worker-2_0.json
-    output-2019-02-23_12-02-04_worker-1_0.json
-Log Verbosity
-~~~~~~~~~~~~~
-You can control the log level via the ``"log_level"`` flag. Valid values are "DEBUG",
-"INFO", "WARN" (default), and "ERROR". This can be used to increase or decrease the
-verbosity of internal logging.
-For example:
-    .. code-block:: bash
-    cd rllib/tuned_examples/ppo
-    python atari_ppo.py --env ALE/Pong-v5 --log-level INFO
-    python atari_ppo.py --env ALE/Pong-v5 --log-level DEBUG
-The default log level is ``WARN``. We strongly recommend using at least ``INFO``
-level logging for development.
-Stack Traces
-~~~~~~~~~~~~
-You can use the ``ray stack`` command to dump the stack traces of all the
-Python workers on a single node. This can be useful for debugging unexpected
-hangs or performance issues.
-Next Steps
-----------
-- To check how your application is doing, you can use the :ref:`Ray dashboard <observability-getting-started>`.
