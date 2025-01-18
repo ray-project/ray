@@ -17,7 +17,6 @@ from ray.serve._private.common import (
     RequestMetadata,
     RequestProtocol,
     StreamingHTTPRequest,
-    gRPCRequest,
 )
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve.generated import serve_pb2
@@ -556,13 +555,10 @@ def test_grpc_unary_request(run_sync_methods_in_threadpool: bool):
     )
     user_callable_wrapper.initialize_callable().result()
 
-    grpc_request = gRPCRequest(
-        pickle.dumps(serve_pb2.UserDefinedResponse(greeting="world"))
-    )
-
+    request_proto = serve_pb2.UserDefinedResponse(greeting="world")
     request_metadata = _make_request_metadata(call_method="greet", is_grpc_request=True)
     _, result_bytes = user_callable_wrapper.call_user_method(
-        request_metadata, (grpc_request,), dict()
+        request_metadata, (request_proto,), dict()
     ).result()
     assert isinstance(result_bytes, bytes)
 
@@ -579,9 +575,7 @@ def test_grpc_streaming_request(run_sync_methods_in_threadpool: bool):
     )
     user_callable_wrapper.initialize_callable()
 
-    grpc_request = gRPCRequest(
-        pickle.dumps(serve_pb2.UserDefinedResponse(greeting="world"))
-    )
+    request_proto = serve_pb2.UserDefinedResponse(greeting="world")
 
     result_list = []
 
@@ -590,7 +584,7 @@ def test_grpc_streaming_request(run_sync_methods_in_threadpool: bool):
     )
     user_callable_wrapper.call_user_method(
         request_metadata,
-        (grpc_request,),
+        (request_proto,),
         dict(),
         generator_result_callback=result_list.append,
     ).result()
