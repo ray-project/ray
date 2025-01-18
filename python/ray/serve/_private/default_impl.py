@@ -93,7 +93,7 @@ def create_init_handle_options(**kwargs):
 
 
 def get_request_metadata(init_options, handle_options):
-    _request_context = ray.serve.context._serve_request_context.get()
+    _request_context = ray.serve.context._get_serve_request_context()
 
     request_protocol = RequestProtocol.UNDEFINED
     if init_options and init_options._source == DeploymentHandleSource.PROXY:
