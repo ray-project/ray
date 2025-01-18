@@ -42,7 +42,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import add_grpc_address, get_proxy_handle
-from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
+from ray.serve._private.grpc_util import DummyServicer, gRPCGenericServer
 from ray.serve._private.http_util import (
     MessageQueue,
     convert_object_to_asgi_messages,
@@ -1412,7 +1412,7 @@ class ProxyActor:
         if not self.should_start_grpc_service():
             return self.grpc_setup_complete.set()
 
-        grpc_server = create_serve_grpc_server(
+        grpc_server = gRPCGenericServer(
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
 
