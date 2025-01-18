@@ -95,5 +95,5 @@ To verify Compiled Graph overlaps the communication and computation operations,
     :alt: Execution Schedule with GPU Communication Overlap Enabled
     :align: center
 
-Red nodes denote the operations that have different execution order in the optimized schedule
-compared to the original order, due to enabling overlap of communication and computation.
+Red nodes denote the operations with different execution orders in the optimized schedule
+compared to the original order, due to ``_overlap_gpu_communication``.
