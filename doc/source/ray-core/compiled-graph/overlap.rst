@@ -78,14 +78,15 @@ from overlapping.
         for overlap_gpu_communication in [False, True]:
             test(overlap_gpu_communication)
 
-The output of preceding code includes the following two lines (with somewhat different duration values):
+The output of preceding code includes the following two lines:
 
 .. testoutput::
 
     overlap_gpu_communication=False, duration=1.0670117866247892
     overlap_gpu_communication=True, duration=0.9211348341777921
 
-This indicates a 14% performance improvement when enabling ``_overlap_gpu_communication``.
+The actual performance numbers may vary on different hardware, but enabling ``_overlap_gpu_communication``
+can improve latency by about 14% for this example.
 
 To verify Compiled Graph overlaps the communication and computation operations,
 `visualize the execution schedule <execution-schedule>` by setting environment variable
