@@ -6,7 +6,7 @@ Compiled Graph currently provides experimental support for GPU communication and
 To enable this feature, specify ``_overlap_gpu_communication=True`` when calling ``dag.experimental_compile()``.
 
 The following code has GPU communication and computation operations that benefit
-from overlap.
+from overlapping.
 
 .. testcode::
 
