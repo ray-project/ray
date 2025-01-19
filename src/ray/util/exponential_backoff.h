@@ -23,7 +23,7 @@ namespace ray {
 
 /// Provides the exponential backoff algorithm that is typically used
 /// for throttling.
-class ExponentialBackOff {
+class ExponentialBackoff {
  public:
   /// Construct an exponential back off counter.
   ///
@@ -31,7 +31,7 @@ class ExponentialBackOff {
   /// \param[in] multiplier The multiplier for this counter.
   /// \param[in] max_value The maximum value for this counter. By default it's
   ///    infinite double.
-  ExponentialBackOff(uint64_t initial_value,
+  ExponentialBackoff(uint64_t initial_value,
                      double multiplier,
                      uint64_t max_value = std::numeric_limits<uint64_t>::max())
       : curr_value_(initial_value),

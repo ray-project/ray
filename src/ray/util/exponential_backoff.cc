@@ -18,7 +18,7 @@
 
 namespace ray {
 
-uint64_t ExponentialBackOff::GetBackoffMs(uint64_t attempt,
+uint64_t ExponentialBackoff::GetBackoffMs(uint64_t attempt,
                                           uint64_t base_ms,
                                           uint64_t max_backoff_ms) {
   uint64_t delay = static_cast<uint64_t>(pow(2, attempt));
