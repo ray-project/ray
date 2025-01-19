@@ -118,7 +118,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   pg->UpdateState(rpc::PlacementGroupTableData::PENDING);
   now = absl::GetCurrentTimeNanos();
   request.failure_callback(pg, true);
-  auto exp_backer = ExponentialBackOff(
+  auto exp_backer = ExponentialBackoff(
       1000000 * RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms(),
       RayConfig::instance().gcs_create_placement_group_retry_multiplier(),
       1000000 * RayConfig::instance().gcs_create_placement_group_retry_max_interval_ms());
