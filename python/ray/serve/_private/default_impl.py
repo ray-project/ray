@@ -24,7 +24,7 @@ from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentScheduler,
 )
-from ray.serve._private.grpc_util import gRPCServer
+from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
 from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
 from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
@@ -185,8 +185,8 @@ def create_router(
     )
 
 
-def add_grpc_address(grpc_server: gRPCServer, server_address: str):
-    """Helper function to add a address to gRPC server."""
+def add_grpc_address(grpc_server: gRPCGenericServer, server_address: str):
+    """Helper function to add an address to a gRPC server."""
     grpc_server.add_insecure_port(server_address)
 
 
