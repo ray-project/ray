@@ -1,30 +1,26 @@
 import logging
-import os
-import tempfile
-import time
 import uuid
 from typing import Any, Dict, Iterable, List, Optional
 
-import pyarrow.parquet as pq
-
-import ray
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.datasource import bigquery_datasource
-from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_import
-from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
+from ray.util.annotations import DeveloperAPI
+from ray.data.block import Block
 
 from python.ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from python.ray.data.datasource.datasink import WriteResult
 from python.ray.data.datasource.filename_provider import _DefaultFilenameProvider
 
+
+if TYPE_CHECKING:
+    from pyiceberg.catalog import Catalog
+    from pyiceberg.table import Table
+
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_RETRY_CNT = 10
-RATE_LIMIT_EXCEEDED_SLEEP_TIME = 11
-
-
+_SUPPORTED_COMPRESSION_CODECS = {"snappy", "zstd"}
 
 
 class _LoggingFilenameProvider(_DefaultFilenameProvider):
@@ -32,7 +28,7 @@ class _LoggingFilenameProvider(_DefaultFilenameProvider):
         self, dataset_uuid: Optional[str] = None, file_format: Optional[str] = None
     ):
         self.super().__init__(dataset_uuid, file_format)
-        self.written_paths: List[str] = [] 
+        self.written_paths: List[str] = []
 
     def get_filename_for_block(
         self, block: Block, task_index: int, block_index: int
@@ -48,6 +44,7 @@ class _LoggingFilenameProvider(_DefaultFilenameProvider):
         raise NotImplementedError("IcebergDatasink does not support writing rows")
 
 
+@DeveloperAPI
 class IcebergDatasink(Datasink):
     def __init__(
         self,
@@ -56,7 +53,8 @@ class IcebergDatasink(Datasink):
         snapshot_properties: Optional[Dict[str, str]] = None,
     ):
         """
-        Initialize an IcebergDatasink.
+        Iceberg datasink writes Ray Dataset to an existing Iceberg tables. This module heavily uses `write_parquet` and
+        PyIceberg to write parquet files to iceberg data folder and add_files to the iceberg table in a transaction
 
         Args:
             table_identifier: Fully qualified table identifier (i.e., "db_name.table_name")
@@ -91,22 +89,31 @@ class IcebergDatasink(Datasink):
             self._table = catalog.load_table(self.table_identifier)
         return self._table
 
-
     def _create_datasink(self) -> Datasink:
         props = self._table.properties
         datafile_format = props.get("write.format.default", "parquet")
         compression_codec = props.get("write.parquet.compression-codec")
 
-        if datafile_format is not None and datafile_format != "parquet":
-            raise NotImplementedError(f"IcebergDatasink currently does not support {datafile_format}, and only supports writing to parquet tables")
-        if compression_codec is not None and compression_codec not in set(["snappy", "zstd"]):
-            raise NotImplementedError(f"IcebergDatasink currently does not support {compression_codec}, and only supports writing to snappy compressed parquet tables")  
+        if datafile_format and datafile_format != "parquet":
+            raise NotImplementedError(
+                f"IcebergDatasink currently does not support {datafile_format}, and only supports writing to parquet tables"
+            )
+        if compression_codec and compression_codec not in _SUPPORTED_COMPRESSION_CODECS:
+            raise NotImplementedError(
+                f"IcebergDatasink currently does not support {compression_codec}, and only supports {_SUPPORTED_COMPRESSION_CODECS}"
+            )
 
-        filename_provider = _LoggingFilenameProvider(dataset_uuid=str(uuid.uuid4()), file_format=datafile_format)
-        
+        filename_provider = _LoggingFilenameProvider(
+            dataset_uuid=str(uuid.uuid4()), file_format=datafile_format
+        )
+
         data_path = f"{self._table.location}/data/"
-        return ParquetDatasink(path=data_path, try_create_dir=False, filename_provider=filename_provider, arrow_parquet_args={"compression": compression_codec})
-
+        return ParquetDatasink(
+            path=data_path,
+            try_create_dir=False,
+            filename_provider=filename_provider,
+            arrow_parquet_args={"compression": compression_codec},
+        )
 
     def on_write_start(self) -> None:
         _check_not_partitioned(self._table)
@@ -119,7 +126,9 @@ class IcebergDatasink(Datasink):
     def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
         write_result = self._datasink.on_write_complete(write_result_blocks)
         written_paths = self._datasink.filename_provider.written_paths
-        self._table.add_files(files=written_paths, snapshot_properties = self._snapshot_properties)
+        self._table.add_files(
+            files=written_paths, snapshot_properties=self._snapshot_properties
+        )
 
         return write_result
 
@@ -127,4 +136,6 @@ class IcebergDatasink(Datasink):
 def _check_not_partitioned(table: "Table"):
     current_spec = table.specs[table.current_spec_id]
     if len(current_spec.fields) > 0:
-        raise NotImplementedError("IcebergDatasink currently does not support writing to partitioned iceberg table")
+        raise NotImplementedError(
+            "IcebergDatasink currently does not support writing to partitioned iceberg table"
+        )
