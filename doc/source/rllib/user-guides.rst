@@ -13,7 +13,7 @@ User Guides
 .. toctree::
     :hidden:
 
-    debugging-guide
+    developing-and-debugging
     rllib-advanced-api
     rllib-callback
     rllib-models
@@ -42,9 +42,9 @@ RLlib Feature Guides
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: debugging-guide
+        .. button-ref:: developing-and-debugging
 
-            RLlib debugging guide
+            Development and debugging guide
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
