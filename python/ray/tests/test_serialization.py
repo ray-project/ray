@@ -23,12 +23,12 @@ logger = logging.getLogger(__name__)
 def is_named_tuple(cls):
     """Return True if cls is a namedtuple and False otherwise."""
     b = cls.__bases__
-    if len(b) != 1 or b[0] != tuple:
+    if len(b) != 1 or b[0] is not tuple:
         return False
     f = getattr(cls, "_fields", None)
     if not isinstance(f, tuple):
         return False
-    return all(type(n) == str for n in f)
+    return all(type(n) is str for n in f)
 
 
 @pytest.mark.parametrize(
@@ -95,8 +95,8 @@ def test_simple_serialization(ray_start_regular):
         # TODO(rkn): The numpy dtypes currently come back as regular integers
         # or floats.
         if type(obj).__module__ != "numpy":
-            assert type(obj) == type(new_obj_1)
-            assert type(obj) == type(new_obj_2)
+            assert type(obj) is type(new_obj_1)
+            assert type(obj) is type(new_obj_2)
 
 
 @pytest.mark.parametrize(
