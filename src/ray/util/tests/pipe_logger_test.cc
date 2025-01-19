@@ -20,6 +20,7 @@
 #include <unistd.h>
 
 #include <cstdint>
+#include <filesystem>
 #include <future>
 #include <string_view>
 
@@ -105,7 +106,29 @@ TEST_P(PipeLoggerTest, PipeWrite) {
 
 INSTANTIATE_TEST_SUITE_P(PipeLoggerTest, PipeLoggerTest, testing::Values(1024, 3));
 
-// TODO(hjiang): Add more test cases on different combinations.
+// Write content with no trailing newliner, check whether stream redirection handler could
+// exit normally.
+TEST(PipeLoggerTestWithoutNewliner, CompletionTest) {
+  static constexpr std::string_view kContent = "helloworld";
+
+  // TODO(hjiang): We should have a better test util, which allows us to create a
+  // temporary testing directory.
+  const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+  StreamRedirectionOption stream_redirection_opt{};
+  stream_redirection_opt.file_path = test_file_path;
+
+  auto stream_redirection_handle = CreateRedirectionFileHandle(stream_redirection_opt);
+  stream_redirection_handle.CompleteWrite(kContent.data(), kContent.length());
+  stream_redirection_handle.Close();
+
+  // Check log content after completion.
+  EXPECT_EQ(CompleteReadFile(test_file_path), kContent);
+
+  // Delete temporary file.
+  EXPECT_TRUE(std::filesystem::remove(test_file_path));
+}
+
 TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   // TODO(core): We should have a better test util, which allows us to create a temporary
   // testing directory.

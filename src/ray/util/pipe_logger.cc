@@ -84,7 +84,11 @@ size_t Read(int read_fd, char *data, size_t len) {
   return bytes_read;
 }
 void CompleteWriteEOFIndicator(int write_fd) {
-  ssize_t bytes_written = write(write_fd, kEofIndicator.data(), kEofIndicator.length());
+  // Write a newliner to mark the end of application logging.
+  ssize_t bytes_written = write(write_fd, "\n", /*count=*/1);
+  RAY_CHECK_EQ(bytes_written, 1);
+  // Write EOF indicator.
+  bytes_written = write(write_fd, kEofIndicator.data(), kEofIndicator.length());
   RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(kEofIndicator.length()));
   bytes_written = write(write_fd, "\n", /*count=*/1);
   RAY_CHECK_EQ(bytes_written, 1);
