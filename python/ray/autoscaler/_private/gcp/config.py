@@ -6,6 +6,9 @@ import re
 import time
 from functools import partial, reduce
 
+import google_auth_httplib2
+import googleapiclient
+import httplib2
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -81,6 +84,9 @@ def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
         generation = "v5litepod"
         num_cores = num_chips
 
+    if generation == "v6e":
+        num_cores = num_chips
+
     return f"{generation}-{num_cores}"
 
 
@@ -134,6 +140,10 @@ def _get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
     if accelerator_type == "v5litepod-8":
         return 8
 
+    # All V6e configurations have 8 chips per host
+    if accelerator_type.startswith("v6e"):
+        return 8
+
     return DEFAULT_TPU_NUM_CHIPS_PER_HOST
 
 
@@ -143,6 +153,10 @@ def _get_tpu_cores_per_chip(accelerator_type: str) -> int:
 
     # V5Litepods have 1 core per chip
     if accelerator_type == "v5litepod":
+        return 1
+
+    # V6es have 1 core per chip
+    if accelerator_type == "v6e":
         return 1
 
     return DEFAULT_TPU_CORES_PER_CHIP
@@ -318,21 +332,40 @@ def _is_head_node_a_tpu(config: dict) -> bool:
     return get_node_type(node_configs[config["head_node_type"]]) == GCPNodeType.TPU
 
 
+def build_request(http, *args, **kwargs):
+    new_http = google_auth_httplib2.AuthorizedHttp(
+        http.credentials, http=httplib2.Http()
+    )
+    return googleapiclient.http.HttpRequest(new_http, *args, **kwargs)
+
+
 def _create_crm(gcp_credentials=None):
     return discovery.build(
-        "cloudresourcemanager", "v1", credentials=gcp_credentials, cache_discovery=False
+        "cloudresourcemanager",
+        "v1",
+        credentials=gcp_credentials,
+        requestBuilder=build_request,
+        cache_discovery=False,
     )
 
 
 def _create_iam(gcp_credentials=None):
     return discovery.build(
-        "iam", "v1", credentials=gcp_credentials, cache_discovery=False
+        "iam",
+        "v1",
+        credentials=gcp_credentials,
+        requestBuilder=build_request,
+        cache_discovery=False,
     )
 
 
 def _create_compute(gcp_credentials=None):
     return discovery.build(
-        "compute", "v1", credentials=gcp_credentials, cache_discovery=False
+        "compute",
+        "v1",
+        credentials=gcp_credentials,
+        requestBuilder=build_request,
+        cache_discovery=False,
     )
 
 
@@ -341,6 +374,7 @@ def _create_tpu(gcp_credentials=None):
         "tpu",
         TPU_VERSION,
         credentials=gcp_credentials,
+        requestBuilder=build_request,
         cache_discovery=False,
         discoveryServiceUrl="https://tpu.googleapis.com/$discovery/rest",
     )

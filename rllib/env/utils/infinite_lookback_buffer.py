@@ -1,14 +1,17 @@
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.numpy import LARGE_INTEGER, one_hot, one_hot_multidiscrete
+from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     batch,
+    from_jsonable_if_needed,
     get_dummy_batch_for_space,
     get_base_struct_from_space,
+    to_jsonable_if_needed,
 )
 
 
@@ -34,6 +37,76 @@ class InfiniteLookbackBuffer:
         self.space_struct = None
         self.space = space
 
+    def __eq__(
+        self,
+        other: "InfiniteLookbackBuffer",
+    ) -> bool:
+        """Compares two `InfiniteLookbackBuffers.
+
+        Args:
+            other: Another object. If another `LookbackBuffer` instance all
+                their attributes are compared.
+
+        Returns:
+            `True`, if `other` is an `InfiniteLookbackBuffer` instance and all
+            attributes are identical. Otherwise, returns `False`.
+        """
+        if isinstance(other, InfiniteLookbackBuffer):
+            if (
+                self.data == other.data
+                and self.lookback == other.lookback
+                and self.finalized == other.finalized
+                and self.space_struct == other.space_struct
+                and self.space == other.space
+            ):
+                return True
+        return False
+
+    def get_state(self) -> Dict[str, Any]:
+        """Returns the pickable state of a buffer.
+
+        The data in the buffer is stored into a dictionary. Note that
+        buffers can also be generated from pickable states (see
+        `InfiniteLookbackBuffer.from_state`)
+
+        Returns:
+            A dict containing all the data and metadata from the buffer.
+        """
+        return {
+            "data": to_jsonable_if_needed(self.data, self.space)
+            if self.space
+            else self.data,
+            "lookback": self.lookback,
+            "finalized": self.finalized,
+            "space": gym_space_to_dict(self.space) if self.space else self.space,
+        }
+
+    @staticmethod
+    def from_state(state: Dict[str, Any]) -> None:
+        """Creates a new `InfiniteLookbackBuffer` from a state dict.
+
+        Args:
+            state: The state dict, as returned by `self.get_state`.
+
+        Returns:
+            A new `InfiniteLookbackBuffer` instance with the data and metadata
+            from the state dict.
+        """
+        buffer = InfiniteLookbackBuffer()
+        buffer.lookback = state["lookback"]
+        buffer.finalized = state["finalized"]
+        buffer.space = gym_space_from_dict(state["space"]) if state["space"] else None
+        buffer.space_struct = (
+            get_base_struct_from_space(buffer.space) if buffer.space else None
+        )
+        buffer.data = (
+            from_jsonable_if_needed(state["data"], buffer.space)
+            if buffer.space
+            else state["data"]
+        )
+
+        return buffer
+
     def append(self, item) -> None:
         """Appends the given item to the end of this buffer."""
         if self.finalized:
@@ -50,7 +123,10 @@ class InfiniteLookbackBuffer:
             #  probably rather do: `tree.map_structure(..., self.data,
             #  tree.map_structure(lambda *s: np.array(*s), *items)`)??
             self.data = tree.map_structure(
-                lambda d, i: np.concatenate([d, i], axis=0), self.data, np.array(items)
+                lambda d, i: np.concatenate([d, i], axis=0),
+                self.data,
+                # Note, we could have dictionaries here.
+                np.array(items) if isinstance(items, list) else items,
             )
         else:
             for item in items:
@@ -460,9 +536,18 @@ class InfiniteLookbackBuffer:
     ):
         data_to_use = self.data
         if _ignore_last_ts:
-            data_to_use = self.data[:-1]
+            if self.finalized:
+                data_to_use = tree.map_structure(lambda s: s[:-1], self.data)
+            else:
+                data_to_use = self.data[:-1]
         if _add_last_ts_value is not None:
-            data_to_use = np.append(data_to_use.copy(), _add_last_ts_value)
+            if self.finalized:
+                data_to_use = tree.map_structure(
+                    lambda s, last: np.append(s, last), data_to_use, _add_last_ts_value
+                )
+            else:
+                data_to_use = data_to_use.copy()
+                data_to_use.append(_add_last_ts_value)
 
         # If index >= 0 -> Ignore lookback buffer.
         # Otherwise, include lookback buffer.

@@ -5,14 +5,14 @@ import gymnasium as gym
 
 import ray
 from ray import train, tune
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 
 
-class EpisodeAndSampleCallbacks(DefaultCallbacks):
+class EpisodeAndSampleCallbacks(RLlibCallback):
     def __init__(self):
         super().__init__()
         self.counts = Counter()
@@ -24,19 +24,19 @@ class EpisodeAndSampleCallbacks(DefaultCallbacks):
     def on_episode_start(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, gym.Env)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"start": 1})
 
     def on_episode_step(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, gym.Env)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"step": 1})
 
     def on_episode_end(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, gym.Env)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"end": 1})
 
     def on_sample_end(self, *args, env_runner, metrics_logger, **kwargs):
@@ -45,7 +45,7 @@ class EpisodeAndSampleCallbacks(DefaultCallbacks):
         self.counts.update({"sample": 1})
 
 
-class OnEnvironmentCreatedCallback(DefaultCallbacks):
+class OnEnvironmentCreatedCallback(RLlibCallback):
     def on_environment_created(self, *, env_runner, env, env_context, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(env, gym.Env)
@@ -63,7 +63,7 @@ class OnEnvironmentCreatedCallback(DefaultCallbacks):
         )
 
 
-class OnEpisodeCreatedCallback(DefaultCallbacks):
+class OnEpisodeCreatedCallback(RLlibCallback):
     def on_episode_created(
         self,
         *,
@@ -81,7 +81,7 @@ class OnEpisodeCreatedCallback(DefaultCallbacks):
         print("Some code here to test the expected error on new API stack!")
 
 
-class TestCallbacks(unittest.TestCase):
+class TestCallbacksOnEnvRunners(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         tune.register_env("multi_cart", lambda _: MultiAgentCartPole({"num_agents": 2}))
@@ -94,10 +94,6 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks_batch_mode_truncate_episodes(self):
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=0,
@@ -106,8 +102,8 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(EpisodeAndSampleCallbacks)
             .training(
                 train_batch_size=50,  # <- rollout_fragment_length=50
-                sgd_minibatch_size=50,
-                num_sgd_iter=1,
+                minibatch_size=50,
+                num_epochs=1,
             )
         )
 
@@ -119,7 +115,7 @@ class TestCallbacks(unittest.TestCase):
                 )
                 config.environment("multi_cart")
             algo = config.build()
-            callback_obj = algo.env_runner._callbacks
+            callback_obj = algo.env_runner._callbacks[0]
 
             # We must have had exactly one env creation event (already before training).
             self.assertEqual(callback_obj.counts["env_created"], 1)
@@ -146,10 +142,6 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks_batch_mode_complete_episodes(self):
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("CartPole-v1")
             .env_runners(
                 batch_mode="complete_episodes",
@@ -158,8 +150,8 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(EpisodeAndSampleCallbacks)
             .training(
                 train_batch_size=50,  # <- rollout_fragment_length=50
-                sgd_minibatch_size=50,
-                num_sgd_iter=1,
+                minibatch_size=50,
+                num_epochs=1,
             )
         )
 
@@ -172,7 +164,7 @@ class TestCallbacks(unittest.TestCase):
                 config.environment("multi_cart")
 
             algo = config.build()
-            callback_obj = algo.env_runner._callbacks
+            callback_obj = algo.env_runner._callbacks[0]
 
             # We must have had exactly one env creation event (already before training).
             self.assertEqual(callback_obj.counts["env_created"], 1)
@@ -193,25 +185,9 @@ class TestCallbacks(unittest.TestCase):
 
             algo.stop()
 
-    def test_overriding_on_episode_created_throws_error_on_new_api_stack(self):
-        """Tests whether overriding `on_episode_created` raises error w/ SAEnvRunner."""
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .callbacks(OnEpisodeCreatedCallback)
-        )
-        self.assertRaises(ValueError, lambda: config.validate())
-
     def test_tune_trial_id_visible_in_callbacks(self):
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("multi_cart", env_config={"num_agents": 2})
             .callbacks(OnEnvironmentCreatedCallback)
             .multi_agent(

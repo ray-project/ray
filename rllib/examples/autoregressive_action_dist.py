@@ -41,7 +41,9 @@ import os
 import ray
 from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedActionsEnv
+from ray.rllib.examples.envs.classes.correlated_actions_env import (
+    AutoRegressiveActionEnv,
+)
 from ray.rllib.examples._old_api_stack.models.autoregressive_action_model import (
     AutoregressiveActionModel,
     TorchAutoregressiveActionModel,
@@ -102,7 +104,7 @@ def get_cli_args():
     parser.add_argument(
         "--stop-reward",
         type=float,
-        default=200.0,
+        default=-0.012,
         help="Reward at which we stop training.",
     )
     parser.add_argument(
@@ -146,8 +148,11 @@ if __name__ == "__main__":
         get_trainable_cls(args.run)
         .get_default_config()
         # Batch-norm models have not been migrated to the RL Module API yet.
-        .api_stack(enable_rl_module_and_learner=False)
-        .environment(CorrelatedActionsEnv)
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
+        .environment(AutoRegressiveActionEnv)
         .framework(args.framework)
         .training(gamma=0.5)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
@@ -191,7 +196,7 @@ if __name__ == "__main__":
 
         # run manual test loop: 1 iteration until done
         print("Finished training. Running manual test/inference loop.")
-        env = CorrelatedActionsEnv(_)
+        env = AutoRegressiveActionEnv(_)
         obs, info = env.reset()
         done = False
         total_reward = 0

@@ -1,10 +1,12 @@
 from collections import deque
 import copy
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import scipy
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
@@ -116,7 +118,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
     @override(ReplayBufferInterface)
     def add(self, episodes: Union[List["SingleAgentEpisode"], "SingleAgentEpisode"]):
-        """Converts the incoming SampleBatch into a number of SingleAgentEpisode objects.
+        """Converts incoming SampleBatch into a number of SingleAgentEpisode objects.
 
         Then adds these episodes to the internal deque.
         """
@@ -206,6 +208,102 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
     @override(ReplayBufferInterface)
     def sample(
+        self,
+        num_items: Optional[int] = None,
+        *,
+        batch_size_B: Optional[int] = None,
+        batch_length_T: Optional[int] = None,
+        n_step: Optional[Union[int, Tuple]] = None,
+        beta: float = 0.0,
+        gamma: float = 0.99,
+        include_infos: bool = False,
+        include_extra_model_outputs: bool = False,
+        sample_episodes: Optional[bool] = False,
+        to_numpy: bool = False,
+        # TODO (simon): Check, if we need here 1 as default.
+        lookback: int = 0,
+        min_batch_length_T: int = 0,
+        **kwargs,
+    ) -> Union[SampleBatchType, SingleAgentEpisode]:
+        """Samples from a buffer in a randomized way.
+
+        Each sampled item defines a transition of the form:
+
+        `(o_t, a_t, sum(r_(t+1:t+n+1)), o_(t+n), terminated_(t+n), truncated_(t+n))`
+
+        where `o_t` is drawn by randomized sampling.`n` is defined by the `n_step`
+        applied.
+
+        If requested, `info`s of a transitions last timestep `t+n` and respective
+        extra model outputs (e.g. action log-probabilities) are added to
+        the batch.
+
+        Args:
+            num_items: Number of items (transitions) to sample from this
+                buffer.
+            batch_size_B: The number of rows (transitions) to return in the
+                batch
+            batch_length_T: THe sequence length to sample. At this point in time
+                only sequences of length 1 are possible.
+            n_step: The n-step to apply. For the default the batch contains in
+                `"new_obs"` the observation and in `"obs"` the observation `n`
+                time steps before. The reward will be the sum of rewards
+                collected in between these two observations and the action will
+                be the one executed n steps before such that we always have the
+                state-action pair that triggered the rewards.
+                If `n_step` is a tuple, it is considered as a range to sample
+                from. If `None`, we use `n_step=1`.
+            gamma: The discount factor to be used when applying n-step calculations.
+                The default of `0.99` should be replaced by the `Algorithm`s
+                discount factor.
+            include_infos: A boolean indicating, if `info`s should be included in
+                the batch. This could be of advantage, if the `info` contains
+                values from the environment important for loss computation. If
+                `True`, the info at the `"new_obs"` in the batch is included.
+            include_extra_model_outputs: A boolean indicating, if
+                `extra_model_outputs` should be included in the batch. This could be
+                of advantage, if the `extra_mdoel_outputs`  contain outputs from the
+                model important for loss computation and only able to compute with the
+                actual state of model e.g. action log-probabilities, etc.). If `True`,
+                the extra model outputs at the `"obs"` in the batch is included (the
+                timestep at which the action is computed).
+            to_numpy: If episodes should be numpy'ized.
+            lookback: A desired lookback. Any non-negative integer is valid.
+            min_batch_length_T: An optional minimal length when sampling sequences. It
+                ensures that sampled sequences are at least `min_batch_length_T` time
+                steps long. This can be used to prevent empty sequences during
+                learning, when using a burn-in period for stateful `RLModule`s. In rare
+                cases, such as when episodes are very short early in training, this may
+                result in longer sampling times.
+
+        Returns:
+            Either a batch with transitions in each row or (if `return_episodes=True`)
+            a list of 1-step long episodes containing all basic episode data and if
+            requested infos and extra model outputs.
+        """
+
+        if sample_episodes:
+            return self._sample_episodes(
+                num_items=num_items,
+                batch_size_B=batch_size_B,
+                batch_length_T=batch_length_T,
+                n_step=n_step,
+                beta=beta,
+                gamma=gamma,
+                include_infos=include_infos,
+                include_extra_model_outputs=include_extra_model_outputs,
+                to_numpy=to_numpy,
+                lookback=lookback,
+                min_batch_length_T=min_batch_length_T,
+            )
+        else:
+            return self._sample_batch(
+                num_items=num_items,
+                batch_size_B=batch_size_B,
+                batch_length_T=batch_length_T,
+            )
+
+    def _sample_batch(
         self,
         num_items: Optional[int] = None,
         *,
@@ -331,6 +429,221 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         }
 
         return ret
+
+    def _sample_episodes(
+        self,
+        num_items: Optional[int] = None,
+        *,
+        batch_size_B: Optional[int] = None,
+        batch_length_T: Optional[int] = None,
+        n_step: Optional[Union[int, Tuple]] = None,
+        gamma: float = 0.99,
+        include_infos: bool = False,
+        include_extra_model_outputs: bool = False,
+        to_numpy: bool = False,
+        lookback: int = 1,
+        min_batch_length_T: int = 0,
+        **kwargs,
+    ) -> List[SingleAgentEpisode]:
+        """Samples episodes from a buffer in a randomized way.
+
+        Each sampled item defines a transition of the form:
+
+        `(o_t, a_t, sum(r_(t+1:t+n+1)), o_(t+n), terminated_(t+n), truncated_(t+n))`
+
+        where `o_t` is drawn by randomized sampling.`n` is defined by the `n_step`
+        applied.
+
+        If requested, `info`s of a transitions last timestep `t+n` and respective
+        extra model outputs (e.g. action log-probabilities) are added to
+        the batch.
+
+        Args:
+            num_items: Number of items (transitions) to sample from this
+                buffer.
+            batch_size_B: The number of rows (transitions) to return in the
+                batch
+            batch_length_T: The sequence length to sample. Can be either `None`
+                (the default) or any positive integer.
+            n_step: The n-step to apply. For the default the batch contains in
+                `"new_obs"` the observation and in `"obs"` the observation `n`
+                time steps before. The reward will be the sum of rewards
+                collected in between these two observations and the action will
+                be the one executed n steps before such that we always have the
+                state-action pair that triggered the rewards.
+                If `n_step` is a tuple, it is considered as a range to sample
+                from. If `None`, we use `n_step=1`.
+            gamma: The discount factor to be used when applying n-step calculations.
+                The default of `0.99` should be replaced by the `Algorithm`s
+                discount factor.
+            include_infos: A boolean indicating, if `info`s should be included in
+                the batch. This could be of advantage, if the `info` contains
+                values from the environment important for loss computation. If
+                `True`, the info at the `"new_obs"` in the batch is included.
+            include_extra_model_outputs: A boolean indicating, if
+                `extra_model_outputs` should be included in the batch. This could be
+                of advantage, if the `extra_mdoel_outputs`  contain outputs from the
+                model important for loss computation and only able to compute with the
+                actual state of model e.g. action log-probabilities, etc.). If `True`,
+                the extra model outputs at the `"obs"` in the batch is included (the
+                timestep at which the action is computed).
+            to_numpy: If episodes should be numpy'ized.
+            lookback: A desired lookback. Any non-negative integer is valid.
+            min_batch_length_T: An optional minimal length when sampling sequences. It
+                ensures that sampled sequences are at least `min_batch_length_T` time
+                steps long. This can be used to prevent empty sequences during
+                learning, when using a burn-in period for stateful `RLModule`s. In rare
+                cases, such as when episodes are very short early in training, this may
+                result in longer sampling times.
+
+        Returns:
+            A list of 1-step long episodes containing all basic episode data and if
+            requested infos and extra model outputs.
+        """
+        if num_items is not None:
+            assert batch_size_B is None, (
+                "Cannot call `sample()` with both `num_items` and `batch_size_B` "
+                "provided! Use either one."
+            )
+            batch_size_B = num_items
+
+        # Use our default values if no sizes/lengths provided.
+        batch_size_B = batch_size_B or self.batch_size_B
+
+        assert n_step is not None, (
+            "When sampling episodes, `n_step` must be "
+            "provided, but `n_step` is `None`."
+        )
+        # If no sequence should be sampled, we sample n-steps.
+        if not batch_length_T:
+            # Sample the `n_step`` itself, if necessary.
+            actual_n_step = n_step
+            random_n_step = isinstance(n_step, tuple)
+        # Otherwise we use an n-step of 1.
+        else:
+            assert (
+                not isinstance(n_step, tuple) and n_step == 1
+            ), "When sampling sequences n-step must be 1."
+            actual_n_step = n_step
+
+        # Keep track of the indices that were sampled last for updating the
+        # weights later (see `ray.rllib.utils.replay_buffer.utils.
+        # update_priorities_in_episode_replay_buffer`).
+        self._last_sampled_indices = []
+
+        sampled_episodes = []
+
+        B = 0
+        while B < batch_size_B:
+            # Pull a new uniform random index tuple: (eps_idx, ts_in_eps_idx).
+            index_tuple = self._indices[self.rng.integers(len(self._indices))]
+
+            # Compute the actual episode index (offset by the number of
+            # already evicted episodes).
+            episode_idx, episode_ts = (
+                index_tuple[0] - self._num_episodes_evicted,
+                index_tuple[1],
+            )
+            episode = self.episodes[episode_idx]
+
+            # If we use random n-step sampling, draw the n-step for this item.
+            if not batch_length_T and random_n_step:
+                actual_n_step = int(self.rng.integers(n_step[0], n_step[1]))
+
+            # Skip, if we are too far to the end and `episode_ts` + n_step would go
+            # beyond the episode's end.
+            if min_batch_length_T > 0 and episode_ts + min_batch_length_T >= len(
+                episode
+            ):
+                continue
+            if episode_ts + (batch_length_T or 0) + (actual_n_step - 1) > len(episode):
+                actual_length = len(episode)
+            else:
+                actual_length = episode_ts + (batch_length_T or 0) + (actual_n_step - 1)
+
+            # If no sequence should be sampled, we sample here the n-step.
+            if not batch_length_T:
+                sampled_episode = episode.slice(
+                    slice(
+                        episode_ts,
+                        episode_ts + actual_n_step,
+                    )
+                )
+                # Note, this will be the reward after executing action
+                # `a_(episode_ts-n_step+1)`. For `n_step>1` this will be the discounted
+                # sum of all discounted rewards that were collected over the last n
+                # steps.
+                raw_rewards = sampled_episode.get_rewards()
+
+                rewards = scipy.signal.lfilter(
+                    [1], [1, -gamma], raw_rewards[::-1], axis=0
+                )[-1]
+
+                sampled_episode = SingleAgentEpisode(
+                    id_=sampled_episode.id_,
+                    agent_id=sampled_episode.agent_id,
+                    module_id=sampled_episode.module_id,
+                    observation_space=sampled_episode.observation_space,
+                    action_space=sampled_episode.action_space,
+                    observations=[
+                        sampled_episode.get_observations(0),
+                        sampled_episode.get_observations(-1),
+                    ],
+                    actions=[sampled_episode.get_actions(0)],
+                    rewards=[rewards],
+                    infos=[
+                        sampled_episode.get_infos(0),
+                        sampled_episode.get_infos(-1),
+                    ],
+                    terminated=sampled_episode.is_terminated,
+                    truncated=sampled_episode.is_truncated,
+                    extra_model_outputs={
+                        **(
+                            {
+                                k: [episode.get_extra_model_outputs(k, 0)]
+                                for k in episode.extra_model_outputs.keys()
+                            }
+                            if include_extra_model_outputs
+                            else {}
+                        ),
+                    },
+                    t_started=episode_ts,
+                    len_lookback_buffer=0,
+                )
+            # Otherwise we simply slice the episode.
+            else:
+                sampled_episode = episode.slice(
+                    slice(
+                        episode_ts,
+                        actual_length,
+                    ),
+                    len_lookback_buffer=lookback,
+                )
+
+            # Remove reference to sampled episode.
+            del episode
+
+            # Add the actually chosen n-step in this episode.
+            sampled_episode.extra_model_outputs["n_step"] = InfiniteLookbackBuffer(
+                np.full((len(sampled_episode) + lookback,), actual_n_step),
+                lookback=lookback,
+            )
+            # Some loss functions need `weights` - which are only relevant when
+            # prioritizing.
+            sampled_episode.extra_model_outputs["weights"] = InfiniteLookbackBuffer(
+                np.ones((len(sampled_episode) + lookback,)), lookback=lookback
+            )
+
+            # Append the sampled episode.
+            sampled_episodes.append(sampled_episode)
+
+            # Increment counter.
+            B += (actual_length - episode_ts + 1) or 1
+
+        # Update the metric.
+        self.sampled_timesteps += batch_size_B
+
+        return sampled_episodes
 
     def get_num_episodes(self) -> int:
         """Returns number of episodes (completed or truncated) stored in the buffer."""

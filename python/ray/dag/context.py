@@ -8,17 +8,23 @@ from ray.util.annotations import DeveloperAPI
 _default_context: "Optional[DAGContext]" = None
 _context_lock = threading.Lock()
 
-DEFAULT_EXECUTION_TIMEOUT_S = int(os.environ.get("RAY_DAG_execution_timeout", 10))
-DEFAULT_RETRIEVAL_TIMEOUT_S = int(os.environ.get("RAY_DAG_retrieval_timeout", 10))
-# Default buffer size is 1MB.
-DEFAULT_BUFFER_SIZE_BYTES = int(os.environ.get("RAY_DAG_buffer_size_bytes", 1e6))
-# Default asyncio_max_queue_size is 0, which means no limit.
-DEFAULT_ASYNCIO_MAX_QUEUE_SIZE = int(
-    os.environ.get("RAY_DAG_asyncio_max_queue_size", 0)
+DEFAULT_SUBMIT_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_submit_timeout", 10))
+DEFAULT_GET_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_get_timeout", 10))
+DEFAULT_TEARDOWN_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_teardown_timeout", 30))
+DEFAULT_READ_ITERATION_TIMEOUT_S = float(
+    os.environ.get("RAY_CGRAPH_read_iteration_timeout_s", 0.1)
 )
-# The default max_buffered_results is 1000, and the default buffer size is 1 MB.
-# The maximum memory usage for buffered results is 1 GB.
-DEFAULT_MAX_BUFFERED_RESULTS = int(os.environ.get("RAY_DAG_max_buffered_results", 1000))
+# Default buffer size is 1MB.
+DEFAULT_BUFFER_SIZE_BYTES = int(os.environ.get("RAY_CGRAPH_buffer_size_bytes", 1e6))
+# The default number of in-flight executions that can be submitted before consuming the
+# output.
+DEFAULT_MAX_INFLIGHT_EXECUTIONS = int(
+    os.environ.get("RAY_CGRAPH_max_inflight_executions", 10)
+)
+
+DEFAULT_OVERLAP_GPU_COMMUNICATION = bool(
+    os.environ.get("RAY_CGRAPH_overlap_gpu_communication", 0)
+)
 
 
 @DeveloperAPI
@@ -27,7 +33,7 @@ class DAGContext:
     """Global settings for Ray DAG.
 
     You can configure parameters in the DAGContext by setting the environment
-    variables, `RAY_DAG_<param>` (e.g., `RAY_DAG_buffer_size_bytes`) or Python.
+    variables, `RAY_CGRAPH_<param>` (e.g., `RAY_CGRAPH_buffer_size_bytes`) or Python.
 
     Examples:
         >>> from ray.dag import DAGContext
@@ -38,28 +44,46 @@ class DAGContext:
         500
 
     Args:
-        execution_timeout: The maximum time in seconds to wait for execute()
+        submit_timeout: The maximum time in seconds to wait for execute()
             calls.
-        retrieval_timeout: The maximum time in seconds to wait to retrieve
-            a result from the DAG.
-        buffer_size_bytes: The maximum size of messages that can be passed
-            between tasks in the DAG.
-        asyncio_max_queue_size: The max queue size for the async execution.
-            It is only used when enable_asyncio=True.
-        max_buffered_results: The maximum number of execution results that
-            are allowed to be buffered. Setting a higher value allows more
-            DAGs to be executed before `ray.get()` must be called but also
-            increases the memory usage. Note that if the number of ongoing
-            executions is beyond the DAG capacity, the new execution would
-            be blocked in the first place; therefore, this limit is only
-            enforced when it is smaller than the DAG capacity.
+        get_timeout: The maximum time in seconds to wait when retrieving
+            a result from the DAG during `ray.get`. This should be set to a
+            value higher than the expected time to execute the entire DAG.
+        teardown_timeout: The maximum time in seconds to wait for the DAG to
+            cleanly shut down.
+        read_iteration_timeout: The timeout in seconds for each read iteration
+            that reads one of the input channels. If the timeout is reached, the
+            read operation will be interrupted and will try to read the next
+            input channel. It must be less than or equal to `get_timeout`.
+        buffer_size_bytes: The initial buffer size in bytes for messages
+            that can be passed between tasks in the DAG. The buffers will
+            be automatically resized if larger messages are written to the
+            channel.
+        max_inflight_executions: The maximum number of in-flight executions that
+            can be submitted via `execute` or `execute_async` before consuming
+            the output using `ray.get()`. If the caller submits more executions,
+            `RayCgraphCapacityExceeded` is raised.
+        overlap_gpu_communication: (experimental) Whether to overlap GPU
+            communication with computation during DAG execution. If True, the
+            communication and computation can be overlapped, which can improve
+            the performance of the DAG execution.
     """
 
-    execution_timeout: int = DEFAULT_EXECUTION_TIMEOUT_S
-    retrieval_timeout: int = DEFAULT_RETRIEVAL_TIMEOUT_S
+    submit_timeout: int = DEFAULT_SUBMIT_TIMEOUT_S
+    get_timeout: int = DEFAULT_GET_TIMEOUT_S
+    teardown_timeout: int = DEFAULT_TEARDOWN_TIMEOUT_S
+    read_iteration_timeout: float = DEFAULT_READ_ITERATION_TIMEOUT_S
     buffer_size_bytes: int = DEFAULT_BUFFER_SIZE_BYTES
-    asyncio_max_queue_size: int = DEFAULT_ASYNCIO_MAX_QUEUE_SIZE
-    max_buffered_results: int = DEFAULT_MAX_BUFFERED_RESULTS
+    max_inflight_executions: int = DEFAULT_MAX_INFLIGHT_EXECUTIONS
+    overlap_gpu_communication: bool = DEFAULT_OVERLAP_GPU_COMMUNICATION
+
+    def __post_init__(self):
+        if self.read_iteration_timeout > self.get_timeout:
+            raise ValueError(
+                "RAY_CGRAPH_read_iteration_timeout_s "
+                f"({self.read_iteration_timeout}) must be less than or equal to "
+                f"RAY_CGRAPH_get_timeout ({self.get_timeout})"
+            )
 
     @staticmethod
     def get_current() -> "DAGContext":

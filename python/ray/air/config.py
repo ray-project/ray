@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from ray.tune.callback import Callback
     from ray.tune.execution.placement_groups import PlacementGroupFactory
     from ray.tune.experimental.output import AirVerbosity
-    from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
     from ray.tune.utils.log import Verbosity
@@ -103,6 +102,8 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 class ScalingConfig:
     """Configuration for scaling training.
 
+    For more details, see :ref:`train_scaling_config`.
+
     Args:
         trainer_resources: Resources to allocate for the training coordinator.
             The training coordinator launches the worker group and executes
@@ -121,8 +122,9 @@ class ScalingConfig:
             argument.
         resources_per_worker: If specified, the resources
             defined in this Dict is reserved for each worker.
-            Define the ``"CPU"`` and ``"GPU"`` keys (case-sensitive) to
-            override the number of CPU or GPUs used by each worker.
+            Define the ``"CPU"`` key (case-sensitive) to
+            override the number of CPUs used by each worker.
+            This can also be used to request :ref:`custom resources <custom-resources>`.
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
@@ -143,8 +145,8 @@ class ScalingConfig:
                 num_workers=2,
                 # Turn on/off GPU.
                 use_gpu=True,
-                # Specify resources used for trainer.
-                trainer_resources={"CPU": 1},
+                # Assign extra CPU/GPU/custom resources per worker.
+                resources_per_worker={"GPU": 1, "CPU": 1, "memory": 1e9, "custom": 1.0},
                 # Try to schedule workers on different nodes.
                 placement_strategy="SPREAD",
             )
@@ -650,7 +652,9 @@ class RunConfig:
     verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     callbacks: Optional[List["Callback"]] = None
-    progress_reporter: Optional["ProgressReporter"] = None
+    progress_reporter: Optional[
+        "ray.tune.progress_reporter.ProgressReporter"  # noqa: F821
+    ] = None
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
     # Deprecated

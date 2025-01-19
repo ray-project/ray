@@ -17,7 +17,7 @@ Please note that the YAML file in this example uses `serveConfigV2`, which is su
 
 ```sh
 # Step 3.1: Download `ray-service.text-summarizer.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-service.text-summarizer.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-service.text-summarizer.yaml
 
 # Step 3.2: Create a RayService
 kubectl apply -f ray-service.text-summarizer.yaml
@@ -54,7 +54,7 @@ Note that the RayService's Kubernetes service will be created after the Serve ap
 ## Step 5: Send a request to the text_summarizer model
 
 ```sh
-# Step 5.1: Download `text_summarizer_req.py` 
+# Step 5.1: Download `text_summarizer_req.py`
 curl -LO https://raw.githubusercontent.com/ray-project/serve_config_examples/master/text_summarizer/text_summarizer_req.py
 
 # Step 5.2: Send a request to the Summarizer model.

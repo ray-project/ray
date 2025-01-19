@@ -4,7 +4,6 @@ import os
 import platform
 from abc import ABCMeta, abstractmethod
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -26,11 +25,9 @@ import ray
 import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
 from ray.train import Checkpoint
-from ray.rllib.core.columns import Columns
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import (
@@ -79,10 +76,6 @@ from ray.rllib.utils.typing import (
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import Episode
-    from ray.rllib.core.rl_module import RLModule
-
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +116,23 @@ class PolicySpec:
             and self.action_space == other.action_space
             and self.config == other.config
         )
+
+    def get_state(self) -> Dict[str, Any]:
+        """Returns the state of a `PolicyDict` as a dict."""
+        return (
+            self.policy_class,
+            self.observation_space,
+            self.action_space,
+            self.config,
+        )
+
+    @classmethod
+    def from_state(cls, state: Dict[str, Any]) -> "PolicySpec":
+        """Builds a `PolicySpec` from a state."""
+        policy_spec = PolicySpec()
+        policy_spec.__dict__.update(state)
+
+        return policy_spec
 
     def serialize(self) -> Dict:
         from ray.rllib.algorithms.registry import get_policy_class_name
@@ -222,20 +232,20 @@ class Policy(metaclass=ABCMeta):
         self.framework = self.config.get("framework")
 
         # Create the callbacks object to use for handling custom callbacks.
-        from ray.rllib.algorithms.callbacks import DefaultCallbacks
+        from ray.rllib.callbacks.callbacks import RLlibCallback
 
         callbacks = self.config.get("callbacks")
-        if isinstance(callbacks, DefaultCallbacks):
+        if isinstance(callbacks, RLlibCallback):
             self.callbacks = callbacks()
         elif isinstance(callbacks, (str, type)):
             try:
-                self.callbacks: "DefaultCallbacks" = deserialize_type(
+                self.callbacks: "RLlibCallback" = deserialize_type(
                     self.config.get("callbacks")
                 )()
             except Exception:
                 pass  # TEST
         else:
-            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
+            self.callbacks: "RLlibCallback" = RLlibCallback()
 
         # The global timestep, broadcast down from time to time from the
         # local worker to all remote workers.
@@ -395,39 +405,6 @@ class Policy(metaclass=ABCMeta):
         # Return the new policy.
         return new_policy
 
-    @OverrideToImplementCustomLogic
-    def make_rl_module(self) -> "RLModule":
-        """Returns the RL Module (only for when RLModule API is enabled.)
-
-        If RLModule API is enabled
-        (self.config.api_stack(enable_rl_module_and_learner=True), this method should be
-        implemented and should return the RLModule instance to use for this Policy.
-        Otherwise, RLlib will error out.
-        """
-        # if imported on top it creates circular dependency
-        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-
-        if self.__policy_id is None:
-            raise ValueError(
-                "When using RLModule API, `policy_id` within the policies must be "
-                "set. This should have happened automatically. If you see this "
-                "bug, please file a github issue."
-            )
-
-        spec = self.config["__multi_rl_module_spec"]
-        if isinstance(spec, RLModuleSpec):
-            module = spec.build()
-        else:
-            # filter the module_spec to only contain the policy_id of this policy
-            marl_spec = type(spec)(
-                multi_rl_module_class=spec.multi_rl_module_class,
-                module_specs={self.__policy_id: spec.module_specs[self.__policy_id]},
-            )
-            multi_rl_module = marl_spec.build()
-            module = multi_rl_module[self.__policy_id]
-
-        return module
-
     def init_view_requirements(self):
         """Maximal view requirements dict for `learn_on_batch()` and
         `compute_actions` calls.
@@ -474,7 +451,7 @@ class Policy(metaclass=ABCMeta):
         prev_reward: Optional[TensorStructType] = None,
         info: dict = None,
         input_dict: Optional[SampleBatch] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         # Kwars placeholder for future compatibility.
@@ -520,11 +497,8 @@ class Policy(metaclass=ABCMeta):
         if input_dict is None:
             input_dict = {SampleBatch.OBS: obs}
             if state is not None:
-                if self.config.get("enable_rl_module_and_learner", False):
-                    input_dict["state_in"] = state
-                else:
-                    for i, s in enumerate(state):
-                        input_dict[f"state_in_{i}"] = s
+                for i, s in enumerate(state):
+                    input_dict[f"state_in_{i}"] = s
             if prev_action is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action
             if prev_reward is not None:
@@ -580,7 +554,7 @@ class Policy(metaclass=ABCMeta):
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
-        episodes: Optional[List["Episode"]] = None,
+        episodes=None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
@@ -637,7 +611,7 @@ class Policy(metaclass=ABCMeta):
         prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
         prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
         info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["Episode"]] = None,
+        episodes: Optional[List] = None,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         **kwargs,
@@ -714,7 +688,7 @@ class Policy(metaclass=ABCMeta):
         other_agent_batches: Optional[
             Dict[AgentID, Tuple["Policy", SampleBatch]]
         ] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 
@@ -989,14 +963,13 @@ class Policy(metaclass=ABCMeta):
         )
         state["policy_spec"] = policy_spec.serialize()
 
-        if self.config.get("enable_connectors", False):
-            # Checkpoint connectors state as well if enabled.
-            connector_configs = {}
-            if self.agent_connectors:
-                connector_configs["agent"] = self.agent_connectors.to_state()
-            if self.action_connectors:
-                connector_configs["action"] = self.action_connectors.to_state()
-            state["connector_configs"] = connector_configs
+        # Checkpoint connectors state as well if enabled.
+        connector_configs = {}
+        if self.agent_connectors:
+            connector_configs["agent"] = self.agent_connectors.to_state()
+        if self.action_connectors:
+            connector_configs["action"] = self.action_connectors.to_state()
+        state["connector_configs"] = connector_configs
 
         return state
 
@@ -1009,10 +982,6 @@ class Policy(metaclass=ABCMeta):
         """
         # To avoid a circular dependency problem cause by SampleBatch.
         from ray.rllib.connectors.util import restore_connectors_for_policy
-
-        # No-op if connector is not enabled.
-        if not self.config.get("enable_connectors", False):
-            return
 
         connector_configs = state.get("connector_configs", {})
         if "agent" in connector_configs:
@@ -1251,14 +1220,8 @@ class Policy(metaclass=ABCMeta):
             # If in local debugging mode, and _fake_gpus is not on.
             num_gpus = 0
         elif worker_idx == 0:
-            # If we are on the new RLModule/Learner stack, `num_gpus` is deprecated.
-            # so use `num_gpus_per_env_runner` for policy sampling
-            # we need this .get() syntax here to ensure backwards compatibility.
-            if self.config.get("enable_rl_module_and_learner", False):
-                num_gpus = self.config["num_gpus_per_env_runner"]
-            else:
-                # If head node, take num_gpus.
-                num_gpus = self.config["num_gpus"]
+            # If head node, take num_gpus.
+            num_gpus = self.config["num_gpus"]
         else:
             # If worker node, take `num_gpus_per_env_runner`.
             num_gpus = self.config["num_gpus_per_env_runner"]
@@ -1387,17 +1350,13 @@ class Policy(metaclass=ABCMeta):
             sample_batch_size
         )
         self._lazy_tensor_dict(self._dummy_batch)
-        # With RL Modules you want the explore flag to be True for initialization
-        # of the tensors and placeholder you'd need for training.
-        explore = self.config.get("enable_rl_module_and_learner", False)
-
+        explore = False
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=explore
         )
-        if not self.config.get("enable_rl_module_and_learner", False):
-            for key, view_req in self.view_requirements.items():
-                if key not in self._dummy_batch.accessed_keys:
-                    view_req.used_for_compute_actions = False
+        for key, view_req in self.view_requirements.items():
+            if key not in self._dummy_batch.accessed_keys:
+                view_req.used_for_compute_actions = False
         # Add all extra action outputs to view reqirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
@@ -1444,69 +1403,49 @@ class Policy(metaclass=ABCMeta):
         seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
-            if self.config.get("enable_rl_module_and_learner", False):
-                sub_batch = postprocessed_batch[:B]
-                postprocessed_batch["state_in"] = sub_batch["state_in"]
-                postprocessed_batch["state_out"] = sub_batch["state_out"]
-            else:
-                i = 0
-                while "state_in_{}".format(i) in postprocessed_batch:
-                    postprocessed_batch["state_in_{}".format(i)] = postprocessed_batch[
-                        "state_in_{}".format(i)
+            i = 0
+            while "state_in_{}".format(i) in postprocessed_batch:
+                postprocessed_batch["state_in_{}".format(i)] = postprocessed_batch[
+                    "state_in_{}".format(i)
+                ][:B]
+                if "state_out_{}".format(i) in postprocessed_batch:
+                    postprocessed_batch["state_out_{}".format(i)] = postprocessed_batch[
+                        "state_out_{}".format(i)
                     ][:B]
-                    if "state_out_{}".format(i) in postprocessed_batch:
-                        postprocessed_batch[
-                            "state_out_{}".format(i)
-                        ] = postprocessed_batch["state_out_{}".format(i)][:B]
-                    i += 1
+                i += 1
 
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
             postprocessed_batch[SampleBatch.SEQ_LENS] = seq_lens
 
-        if not self.config.get("enable_rl_module_and_learner"):
-            # Switch on lazy to-tensor conversion on `postprocessed_batch`.
-            train_batch = self._lazy_tensor_dict(postprocessed_batch)
-            # Calling loss, so set `is_training` to True.
-            train_batch.set_training(True)
-            if seq_lens is not None:
-                train_batch[SampleBatch.SEQ_LENS] = seq_lens
-            train_batch.count = self._dummy_batch.count
+        # Switch on lazy to-tensor conversion on `postprocessed_batch`.
+        train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        # Calling loss, so set `is_training` to True.
+        train_batch.set_training(True)
+        if seq_lens is not None:
+            train_batch[SampleBatch.SEQ_LENS] = seq_lens
+        train_batch.count = self._dummy_batch.count
 
-            # Call the loss function, if it exists.
-            # TODO(jungong) : clean up after all agents get migrated.
-            # We should simply do self.loss(...) here.
-            if self._loss is not None:
-                self._loss(self, self.model, self.dist_class, train_batch)
-            elif is_overridden(self.loss) and not self.config["in_evaluation"]:
-                self.loss(self.model, self.dist_class, train_batch)
-            # Call the stats fn, if given.
-            # TODO(jungong) : clean up after all agents get migrated.
-            # We should simply do self.stats_fn(train_batch) here.
-            if stats_fn is not None:
-                stats_fn(self, train_batch)
-            if hasattr(self, "stats_fn") and not self.config["in_evaluation"]:
-                self.stats_fn(train_batch)
-        else:
-            # This is not needed to run a training with the Learner API, but useful if
-            # we want to create a batch of data for training from view requirements.
-            for key in set(postprocessed_batch.keys()).difference(
-                set(new_batch.keys())
-            ):
-                # Add all columns generated by postprocessing to view requirements.
-                if key not in self.view_requirements and key != SampleBatch.SEQ_LENS:
-                    self.view_requirements[key] = ViewRequirement(
-                        used_for_compute_actions=False
-                    )
+        # Call the loss function, if it exists.
+        # TODO(jungong) : clean up after all agents get migrated.
+        # We should simply do self.loss(...) here.
+        if self._loss is not None:
+            self._loss(self, self.model, self.dist_class, train_batch)
+        elif is_overridden(self.loss) and not self.config["in_evaluation"]:
+            self.loss(self.model, self.dist_class, train_batch)
+        # Call the stats fn, if given.
+        # TODO(jungong) : clean up after all agents get migrated.
+        # We should simply do self.stats_fn(train_batch) here.
+        if stats_fn is not None:
+            stats_fn(self, train_batch)
+        if hasattr(self, "stats_fn") and not self.config["in_evaluation"]:
+            self.stats_fn(train_batch)
 
         # Re-enable tracing.
         self._no_tracing = False
 
         # Add new columns automatically to view-reqs.
-        if (
-            not self.config.get("enable_rl_module_and_learner")
-            and auto_remove_unneeded_view_reqs
-        ):
+        if auto_remove_unneeded_view_reqs:
             # Add those needed for postprocessing and training.
             all_accessed_keys = (
                 train_batch.accessed_keys
@@ -1584,88 +1523,6 @@ class Policy(metaclass=ABCMeta):
                 "either of type `int` or `tf.Variable`, "
                 "but is of type {}.".format(self, type(self.global_timestep))
             )
-
-    def maybe_add_time_dimension(
-        self,
-        input_dict: Dict[str, TensorType],
-        seq_lens: TensorType,
-        framework: str = None,
-    ):
-        """Adds a time dimension for recurrent RLModules.
-
-        Args:
-            input_dict: The input dict.
-            seq_lens: The sequence lengths.
-            framework: The framework to use for adding the time dimensions.
-                If None, will default to the framework of the policy.
-
-        Returns:
-            The input dict, with a possibly added time dimension.
-        """
-        # We need to check for hasattr(self, "model") because a dummy Policy may not
-        # have a model.
-        if (
-            self.config.get("enable_rl_module_and_learner", False)
-            and hasattr(self, "model")
-            and self.model.is_stateful()
-        ):
-            # Note that this is a temporary workaround to fit the old sampling stack
-            # to RL Modules.
-            ret = {}
-            framework = framework or self.model.framework
-
-            def _add_time_dimension(inputs):
-                inputs = add_time_dimension(
-                    inputs,
-                    seq_lens=seq_lens,
-                    framework=framework,
-                    time_major=self.config.get("model", {}).get("_time_major", False),
-                )
-                return inputs
-
-            def _add_state_out_time_dimension(inputs):
-                # We do a hack here in that we add a time dimension,
-                # even though the tensor already has one. Then, we remove the
-                # original time dimension.
-                v_w_two_time_dims = _add_time_dimension(inputs)
-                if framework == "tf2":
-                    return tf.squeeze(v_w_two_time_dims, axis=2)
-                elif framework == "torch":
-                    # Remove second time dimensions
-                    return torch.squeeze(v_w_two_time_dims, axis=2)
-                elif framework == "np":
-                    shape = v_w_two_time_dims.shape
-                    padded_batch_dim = shape[0]
-                    padded_time_dim = shape[1]
-                    other_dims = shape[3:]
-                    new_shape = (padded_batch_dim, padded_time_dim) + other_dims
-                    return v_w_two_time_dims.reshape(new_shape)
-                else:
-                    raise ValueError(f"Framework {framework} not implemented!")
-
-            for k, v in input_dict.items():
-                if k == SampleBatch.INFOS:
-                    ret[k] = _add_time_dimension(v)
-                elif k == SampleBatch.SEQ_LENS:
-                    # sequence lengths have no time dimension
-                    ret[k] = v
-                elif k == Columns.STATE_IN:
-                    # Assume that batch_repeat_value is max seq len.
-                    # This is commonly the case for Columns.STATE_IN
-                    # Values should already have correct batch and time dimension
-                    assert self.view_requirements[k].batch_repeat_value != 1
-                    ret[k] = v
-                elif k == Columns.STATE_OUT:
-                    # Assume that batch_repeat_value is 1
-                    # This is commonly the case for STATE_OUT
-                    assert self.view_requirements[k].batch_repeat_value == 1
-                    ret[k] = tree.map_structure(_add_state_out_time_dimension, v)
-                else:
-                    ret[k] = tree.map_structure(_add_time_dimension, v)
-
-            return SampleBatch(ret)
-        else:
-            return input_dict
 
     def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
         """Removes a time dimension for recurrent RLModules.

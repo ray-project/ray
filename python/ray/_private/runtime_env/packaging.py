@@ -1,9 +1,9 @@
+import time
 import asyncio
 import hashlib
 import logging
 import os
 import shutil
-from enum import Enum
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
@@ -19,6 +19,7 @@ from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
+from ray._private.runtime_env.protocol import Protocol
 from ray._private.thirdparty.pathspec import PathSpec
 from ray.experimental.internal_kv import (
     _internal_kv_exists,
@@ -72,32 +73,6 @@ class _AsyncFileLock:
         self.file.release()
 
 
-class Protocol(Enum):
-    """A enum for supported storage backends."""
-
-    # For docstring
-    def __new__(cls, value, doc=None):
-        self = object.__new__(cls)
-        self._value_ = value
-        if doc is not None:
-            self.__doc__ = doc
-        return self
-
-    GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
-    CONDA = "conda", "For conda environments installed locally on each node."
-    PIP = "pip", "For pip environments installed locally on each node."
-    HTTPS = "https", "Remote https path, assumes everything packed in one zip file."
-    S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
-    GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
-    FILE = "file", "File storage path, assumes everything packed in one zip file."
-
-    @classmethod
-    def remote_protocols(cls):
-        # Returns a list of protocols that support remote storage
-        # These protocols should only be used with paths that end in ".zip" or ".whl"
-        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
-
-
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
     if left and right:
         return bytes(a ^ b for (a, b) in zip(left, right))
@@ -134,6 +109,56 @@ def _dir_travel(
         excludes.pop()
 
 
+def _hash_file_content_or_directory_name(
+    filepath: Path,
+    relative_path: Path,
+    logger: Optional[logging.Logger] = default_logger,
+) -> bytes:
+    """Helper function to create hash of a single file or directory.
+
+    This function hashes the path of the file or directory,
+    and if it's a file, then it hashes its content too.
+    """
+
+    BUF_SIZE = 4096 * 1024
+
+    sha1 = hashlib.sha1()
+    sha1.update(str(filepath.relative_to(relative_path)).encode())
+    if not filepath.is_dir():
+        try:
+            f = filepath.open("rb")
+        except Exception as e:
+            logger.debug(
+                f"Skipping contents of file {filepath} when calculating package hash "
+                f"because the file couldn't be opened: {e}"
+            )
+        else:
+            try:
+                data = f.read(BUF_SIZE)
+                while len(data) != 0:
+                    sha1.update(data)
+                    data = f.read(BUF_SIZE)
+            finally:
+                f.close()
+
+    return sha1.digest()
+
+
+def _hash_file(
+    filepath: Path,
+    relative_path: Path,
+    logger: Optional[logging.Logger] = default_logger,
+) -> bytes:
+    """Helper function to create hash of a single file.
+
+    It hashes the path of the file and its content to create a hash value.
+    """
+    file_hash = _hash_file_content_or_directory_name(
+        filepath, relative_path, logger=logger
+    )
+    return _xor_bytes(file_hash, b"0" * 8)
+
+
 def _hash_directory(
     root: Path,
     relative_path: Path,
@@ -146,30 +171,13 @@ def _hash_directory(
     hash(file_name, file_content) to create a hash value.
     """
     hash_val = b"0" * 8
-    BUF_SIZE = 4096 * 1024
 
     def handler(path: Path):
-        sha1 = hashlib.sha1()
-        sha1.update(str(path.relative_to(relative_path)).encode())
-        if not path.is_dir():
-            try:
-                f = path.open("rb")
-            except Exception as e:
-                logger.debug(
-                    f"Skipping contents of file {path} when calculating package hash "
-                    f"because the file could not be opened: {e}"
-                )
-            else:
-                try:
-                    data = f.read(BUF_SIZE)
-                    while len(data) != 0:
-                        sha1.update(data)
-                        data = f.read(BUF_SIZE)
-                finally:
-                    f.close()
-
+        file_hash = _hash_file_content_or_directory_name(
+            path, relative_path, logger=logger
+        )
         nonlocal hash_val
-        hash_val = _xor_bytes(hash_val, sha1.digest())
+        hash_val = _xor_bytes(hash_val, file_hash)
 
     excludes = [] if excludes is None else [excludes]
     _dir_travel(root, excludes, handler, logger=logger)
@@ -199,15 +207,15 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         )
 
     if protocol in Protocol.remote_protocols():
-        if pkg_uri.endswith(".whl"):
+        if uri.path.endswith(".whl"):
             # Don't modify the .whl filename. See
             # https://peps.python.org/pep-0427/#file-name-convention
             # for more information.
-            package_name = pkg_uri.split("/")[-1]
+            package_name = uri.path.split("/")[-1]
         else:
             package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
 
-            disallowed_chars = ["/", ":", "@", "+"]
+            disallowed_chars = ["/", ":", "@", "+", " "]
             for disallowed_char in disallowed_chars:
                 package_name = package_name.replace(disallowed_char, "_")
 
@@ -377,16 +385,16 @@ def _get_local_path(base_directory: str, pkg_uri: str) -> str:
     return os.path.join(base_directory, pkg_name)
 
 
-def _zip_directory(
-    directory: str,
+def _zip_files(
+    path_str: str,
     excludes: List[str],
     output_path: str,
     include_parent_dir: bool = False,
     logger: Optional[logging.Logger] = default_logger,
 ) -> None:
-    """Zip the target directory and write it to the output_path.
+    """Zip the target file or directory and write it to the output_path.
 
-    directory: The directory to zip.
+    path_str: The file or directory to zip.
     excludes (List(str)): The directories or file to be excluded.
     output_path: The output path for the zip file.
     include_parent_dir: If true, includes the top-level directory as a
@@ -395,7 +403,10 @@ def _zip_directory(
     pkg_file = Path(output_path).absolute()
     with ZipFile(pkg_file, "w", strict_timestamps=False) as zip_handler:
         # Put all files in the directory into the zip file.
-        dir_path = Path(directory).absolute()
+        file_path = Path(path_str).absolute()
+        dir_path = file_path
+        if file_path.is_file():
+            dir_path = file_path.parent
 
         def handler(path: Path):
             # Pack this path if it's an empty directory or it's a file.
@@ -414,8 +425,8 @@ def _zip_directory(
                     to_path = dir_path.name / to_path
                 zip_handler.write(path, to_path)
 
-        excludes = [_get_excludes(dir_path, excludes)]
-        _dir_travel(dir_path, excludes, handler, logger=logger)
+        excludes = [_get_excludes(file_path, excludes)]
+        _dir_travel(file_path, excludes, handler, logger=logger)
 
 
 def package_exists(pkg_uri: str) -> bool:
@@ -450,14 +461,47 @@ def get_uri_for_package(package: Path) -> str:
         )
 
 
+def get_uri_for_file(file: str) -> str:
+    """Get a content-addressable URI from a file's content.
+
+    This function generates the name of the package by the file.
+    The final package name is _ray_pkg_<HASH_VAL>.zip of this package,
+    where HASH_VAL is the hash value of the file.
+    For example: _ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip
+
+    Examples:
+
+        >>> get_uri_for_file("/my_file.py")  # doctest: +SKIP
+        _ray_pkg_af2734982a741.zip
+
+    Args:
+        file: The file.
+
+    Returns:
+        URI (str)
+
+    Raises:
+        ValueError if the file doesn't exist.
+    """
+    filepath = Path(file).absolute()
+    if not filepath.exists() or not filepath.is_file():
+        raise ValueError(f"File {filepath} must be an existing file")
+
+    hash_val = _hash_file(filepath, filepath.parent)
+
+    return "{protocol}://{pkg_name}.zip".format(
+        protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex()
+    )
+
+
 def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) -> str:
     """Get a content-addressable URI from a directory's contents.
 
-    This function will generate the name of the package by the directory.
+    This function generates the name of the package by the directory.
     It'll go through all the files in the directory and hash the contents
     of the files to get the hash value of the package.
-    The final package name is: _ray_pkg_<HASH_VAL>.zip of this package.
-    e.g., _ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip
+    The final package name is _ray_pkg_<HASH_VAL>.zip of this package.
+    For example: _ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip
 
     Examples:
 
@@ -514,7 +558,7 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
 
 
 def create_package(
-    directory: str,
+    module_path: str,
     target_path: Path,
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
@@ -527,11 +571,11 @@ def create_package(
         logger = default_logger
 
     if not target_path.exists():
-        logger.info(f"Creating a file package for local directory '{directory}'.")
-        _zip_directory(
-            directory,
+        logger.info(f"Creating a file package for local module '{module_path}'.")
+        _zip_files(
+            module_path,
             excludes,
-            target_path,
+            str(target_path),
             include_parent_dir=include_parent_dir,
             logger=logger,
         )
@@ -540,7 +584,7 @@ def create_package(
 def upload_package_if_needed(
     pkg_uri: str,
     base_directory: str,
-    directory: str,
+    module_path: str,
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
     logger: Optional[logging.Logger] = default_logger,
@@ -555,7 +599,7 @@ def upload_package_if_needed(
     Args:
         pkg_uri: URI of the package to upload.
         base_directory: Directory where package files are stored.
-        directory: Directory to be uploaded.
+        module_path: The module to be uploaded, either a single .py file or a directory.
         include_parent_dir: If true, includes the top-level directory as a
             directory inside the zip file.
         excludes: List specifying files to exclude.
@@ -578,17 +622,23 @@ def upload_package_if_needed(
         return False
 
     package_file = Path(_get_local_path(base_directory, pkg_uri))
+    # Make the temporary zip file name unique so that it doesn't conflict with
+    # concurrent upload_package_if_needed calls with the same pkg_uri.
+    # See https://github.com/ray-project/ray/issues/47471.
+    package_file = package_file.with_name(
+        f"{time.time_ns()}_{os.getpid()}_{package_file.name}"
+    )
     create_package(
-        directory,
+        module_path,
         package_file,
         include_parent_dir=include_parent_dir,
         excludes=excludes,
     )
-
-    upload_package_to_gcs(pkg_uri, package_file.read_bytes())
-
+    package_file_bytes = package_file.read_bytes()
     # Remove the local file to avoid accumulating temporary zip files.
     package_file.unlink()
+
+    upload_package_to_gcs(pkg_uri, package_file_bytes)
 
     return True
 
@@ -648,7 +698,7 @@ async def download_and_unpack_package(
         if local_dir.exists():
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
         else:
-            protocol, pkg_name = parse_uri(pkg_uri)
+            protocol, _ = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
                 if gcs_aio_client is None:
                     raise ValueError(
@@ -689,55 +739,7 @@ async def download_and_unpack_package(
                 else:
                     return str(pkg_file)
             elif protocol in Protocol.remote_protocols():
-                # Download package from remote URI
-                tp = None
-                install_warning = (
-                    "Note that these must be preinstalled "
-                    "on all nodes in the Ray cluster; it is not "
-                    "sufficient to install them in the runtime_env."
-                )
-
-                if protocol == Protocol.S3:
-                    try:
-                        import boto3
-                        from smart_open import open as open_file
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` and "
-                            "`pip install boto3` to fetch URIs in s3 "
-                            "bucket. " + install_warning
-                        )
-                    tp = {"client": boto3.client("s3")}
-                elif protocol == Protocol.GS:
-                    try:
-                        from google.cloud import storage  # noqa: F401
-                        from smart_open import open as open_file
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` and "
-                            "`pip install google-cloud-storage` "
-                            "to fetch URIs in Google Cloud Storage bucket."
-                            + install_warning
-                        )
-                elif protocol == Protocol.FILE:
-                    pkg_uri = pkg_uri[len("file://") :]
-
-                    def open_file(uri, mode, *, transport_params=None):
-                        return open(uri, mode)
-
-                else:
-                    try:
-                        from smart_open import open as open_file
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` "
-                            f"to fetch {protocol.value.upper()} URIs. "
-                            + install_warning
-                        )
-
-                with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
-                    with open_file(pkg_file, "wb") as fin:
-                        fin.write(package_zip.read())
+                protocol.download_remote_uri(source_uri=pkg_uri, dest_file=pkg_file)
 
                 if pkg_file.suffix in [".zip", ".jar"]:
                     unzip_package(

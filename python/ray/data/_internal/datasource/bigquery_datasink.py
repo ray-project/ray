@@ -3,12 +3,13 @@ import os
 import tempfile
 import time
 import uuid
-from typing import Any, Iterable, Optional
+from typing import Iterable, Optional
 
 import pyarrow.parquet as pq
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.datasource import bigquery_datasource
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
@@ -20,7 +21,7 @@ DEFAULT_MAX_RETRY_CNT = 10
 RATE_LIMIT_EXCEEDED_SLEEP_TIME = 11
 
 
-class BigQueryDatasink(Datasink):
+class BigQueryDatasink(Datasink[None]):
     def __init__(
         self,
         project_id: str,
@@ -39,13 +40,12 @@ class BigQueryDatasink(Datasink):
 
     def on_write_start(self) -> None:
         from google.api_core import exceptions
-        from google.cloud import bigquery
 
         if self.project_id is None or self.dataset is None:
             raise ValueError("project_id and dataset are required args")
 
         # Set up datasets to write
-        client = bigquery.Client(project=self.project_id)
+        client = bigquery_datasource._create_client(project_id=self.project_id)
         dataset_id = self.dataset.split(".", 1)[0]
         try:
             client.get_dataset(dataset_id)
@@ -70,14 +70,14 @@ class BigQueryDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> None:
         def _write_single_block(block: Block, project_id: str, dataset: str) -> None:
             from google.api_core import exceptions
             from google.cloud import bigquery
 
             block = BlockAccessor.for_block(block).to_arrow()
 
-            client = bigquery.Client(project=project_id)
+            client = bigquery_datasource._create_client(project=project_id)
             job_config = bigquery.LoadJobConfig(autodetect=True)
             job_config.source_format = bigquery.SourceFormat.PARQUET
             job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
@@ -127,5 +127,3 @@ class BigQueryDatasink(Datasink):
                 for block in blocks
             ]
         )
-
-        return "ok"

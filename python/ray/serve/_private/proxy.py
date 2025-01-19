@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import json
 import logging
 import os
@@ -6,8 +7,7 @@ import pickle
 import socket
 import time
 from abc import ABC, abstractmethod
-from functools import partial
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple
 
 import grpc
 import starlette
@@ -19,14 +19,13 @@ from starlette.middleware import Middleware
 from starlette.types import Receive
 
 import ray
-from ray import serve
 from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
     NodeId,
+    ReplicaID,
     RequestMetadata,
     RequestProtocol,
 )
@@ -34,12 +33,15 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
+    RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_PROXY_GC_THRESHOLD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.default_impl import add_grpc_address, get_proxy_handle
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
     MessageQueue,
@@ -66,11 +68,7 @@ from ray.serve._private.proxy_request_response import (
     gRPCProxyRequest,
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
-from ray.serve._private.proxy_router import (
-    EndpointRouter,
-    LongestPrefixRouter,
-    ProxyRouter,
-)
+from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     call_function_from_import_path,
@@ -78,7 +76,7 @@ from ray.serve._private.utils import (
     get_head_node_id,
 )
 from ray.serve.config import gRPCOptions
-from ray.serve.exceptions import BackPressureError
+from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
 from ray.serve.handle import DeploymentHandle
@@ -149,9 +147,8 @@ class GenericProxy(ABC):
         node_id: NodeId,
         node_ip_address: str,
         is_head: bool,
-        proxy_router_class: Type[ProxyRouter],
+        proxy_router: ProxyRouter,
         request_timeout_s: Optional[float] = None,
-        get_handle_override: Optional[Callable] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
@@ -160,14 +157,7 @@ class GenericProxy(ABC):
         self._node_id = node_id
         self._is_head = is_head
 
-        # Used only for displaying the route table.
-        self.route_info: Dict[str, DeploymentID] = dict()
-
-        self.proxy_router = proxy_router_class(
-            get_handle_override
-            or partial(serve.get_deployment_handle, _record_telemetry=False),
-            self.protocol,
-        )
+        self.proxy_router = proxy_router
         self.request_counter = metrics.Counter(
             f"serve_num_{self.protocol.lower()}_requests",
             description=f"The number of {self.protocol} requests processed.",
@@ -247,14 +237,6 @@ class GenericProxy(ABC):
     def _is_draining(self) -> bool:
         """Whether is proxy actor is in the draining status or not."""
         return self._draining_start_time is not None
-
-    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        self.route_info: Dict[str, DeploymentID] = dict()
-        for deployment_id, info in endpoints.items():
-            route = info.route
-            self.route_info[route] = deployment_id
-
-        self.proxy_router.update_routes(endpoints)
 
     def is_drained(self):
         """Check whether the proxy actor is drained or not.
@@ -382,7 +364,10 @@ class GenericProxy(ABC):
             return ResponseHandlerInfo(
                 response_generator=self.not_found_response(proxy_request),
                 metadata=HandlerMetadata(
-                    route=proxy_request.route_path,
+                    # Don't include the invalid route prefix because it can blow up our
+                    # metrics' cardinality.
+                    # See: https://github.com/ray-project/ray/issues/47999
+                    route="",
                 ),
                 should_record_access_log=True,
                 should_increment_ongoing_requests=False,
@@ -402,11 +387,19 @@ class GenericProxy(ABC):
                 if version.parse(starlette.__version__) < version.parse("0.33.0"):
                     proxy_request.set_path(route_path.replace(route_prefix, "", 1))
 
+            # NOTE(edoakes): we use the route_prefix instead of the full HTTP path
+            # for logs & metrics to avoid high cardinality.
+            # See: https://github.com/ray-project/ray/issues/47999
+            logs_and_metrics_route = (
+                route_prefix
+                if self.protocol == RequestProtocol.HTTP
+                else handle.deployment_id.app_name
+            )
             internal_request_id = generate_request_id()
             handle, request_id = self.setup_request_context_and_handle(
                 app_name=handle.deployment_id.app_name,
                 handle=handle,
-                route_path=route_path,
+                route=logs_and_metrics_route,
                 proxy_request=proxy_request,
                 internal_request_id=internal_request_id,
             )
@@ -424,7 +417,7 @@ class GenericProxy(ABC):
                 metadata=HandlerMetadata(
                     application_name=handle.deployment_id.app_name,
                     deployment_name=handle.deployment_id.name,
-                    route=route_path,
+                    route=logs_and_metrics_route,
                 ),
                 should_record_access_log=True,
                 should_increment_ongoing_requests=True,
@@ -463,9 +456,11 @@ class GenericProxy(ABC):
 
         latency_ms = (time.time() - start_time) * 1000.0
         if response_handler_info.should_record_access_log:
+            request_context = ray.serve.context._get_serve_request_context()
             logger.info(
                 access_log_msg(
                     method=proxy_request.method,
+                    route=request_context.route,
                     status=str(status.code),
                     latency_ms=latency_ms,
                 ),
@@ -484,8 +479,8 @@ class GenericProxy(ABC):
         self.processing_latency_tracker.observe(
             latency_ms,
             tags={
-                "method": proxy_request.method,
                 "route": response_handler_info.metadata.route,
+                "method": proxy_request.method,
                 "application": response_handler_info.metadata.application_name,
                 "status_code": str(status.code),
             },
@@ -494,18 +489,18 @@ class GenericProxy(ABC):
             self.request_error_counter.inc(
                 tags={
                     "route": response_handler_info.metadata.route,
-                    "error_code": str(status.code),
                     "method": proxy_request.method,
                     "application": response_handler_info.metadata.application_name,
+                    "error_code": str(status.code),
                 }
             )
             self.deployment_request_error_counter.inc(
                 tags={
-                    "deployment": response_handler_info.metadata.deployment_name,
-                    "error_code": str(status.code),
-                    "method": proxy_request.method,
                     "route": response_handler_info.metadata.route,
+                    "method": proxy_request.method,
                     "application": response_handler_info.metadata.application_name,
+                    "error_code": str(status.code),
+                    "deployment": response_handler_info.metadata.deployment_name,
                 }
             )
 
@@ -514,7 +509,7 @@ class GenericProxy(ABC):
         self,
         app_name: str,
         handle: DeploymentHandle,
-        route_path: str,
+        route: str,
         proxy_request: ProxyRequest,
         internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
@@ -577,7 +572,7 @@ class gRPCProxy(GenericProxy):
     ) -> ResponseGenerator:
         yield ListApplicationsResponse(
             application_names=[
-                endpoint.app_name for endpoint in self.route_info.values()
+                endpoint.app_name for endpoint in self.proxy_router.endpoints
             ],
         ).SerializeToString()
 
@@ -670,7 +665,7 @@ class gRPCProxy(GenericProxy):
         self,
         app_name: str,
         handle: DeploymentHandle,
-        route_path: str,
+        route: str,
         proxy_request: ProxyRequest,
         internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
@@ -692,7 +687,7 @@ class gRPCProxy(GenericProxy):
         )
 
         request_context_info = {
-            "route": route_path,
+            "route": route,
             "request_id": request_id,
             "_internal_request_id": internal_request_id,
             "app_name": app_name,
@@ -715,7 +710,9 @@ class gRPCProxy(GenericProxy):
     ) -> ResponseGenerator:
         handle_arg = proxy_request.request_object()
         response_generator = ProxyResponseGenerator(
-            handle.remote(handle_arg),
+            # NOTE(edoakes): it's important that the request is sent as raw bytes to
+            # skip the Ray cloudpickle serialization codepath for performance.
+            handle.remote(pickle.dumps(handle_arg)),
             timeout_s=self.request_timeout_s,
         )
 
@@ -771,20 +768,18 @@ class HTTPProxy(GenericProxy):
         node_id: NodeId,
         node_ip_address: str,
         is_head: bool,
-        proxy_router_class: Type[ProxyRouter],
+        proxy_router: ProxyRouter,
+        self_actor_name: str,
         request_timeout_s: Optional[float] = None,
-        proxy_actor: Optional[ActorHandle] = None,
-        get_handle_override: Optional[Callable] = None,
     ):
         super().__init__(
             node_id,
             node_ip_address,
             is_head,
-            proxy_router_class,
+            proxy_router,
             request_timeout_s=request_timeout_s,
-            get_handle_override=get_handle_override,
         )
-        self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
+        self.self_actor_name = self_actor_name
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
 
     @property
@@ -810,13 +805,13 @@ class HTTPProxy(GenericProxy):
         status_code = 200 if healthy else 503
         if healthy:
             response = dict()
-            for route, endpoint in self.route_info.items():
+            for endpoint, info in self.proxy_router.endpoints.items():
                 # For 2.x deployments, return {route -> app name}
                 if endpoint.app_name:
-                    response[route] = endpoint.app_name
+                    response[info.route] = endpoint.app_name
                 # Keep compatibility with 1.x deployments.
                 else:
-                    response[route] = endpoint.name
+                    response[info.route] = endpoint.name
         else:
             response = message
 
@@ -900,7 +895,7 @@ class HTTPProxy(GenericProxy):
         self,
         app_name: str,
         handle: DeploymentHandle,
-        route_path: str,
+        route: str,
         proxy_request: ProxyRequest,
         internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
@@ -910,9 +905,10 @@ class HTTPProxy(GenericProxy):
         handle.
         """
         request_context_info = {
-            "route": route_path,
+            "route": route,
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
+            "is_http_request": True,
         }
         for key, value in proxy_request.headers:
             if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
@@ -956,13 +952,16 @@ class HTTPProxy(GenericProxy):
         the status code.
         """
         if app_is_cross_language:
-            handle_arg = await self._format_handle_arg_for_java(proxy_request)
+            handle_arg_bytes = await self._format_handle_arg_for_java(proxy_request)
             # Response is returned as raw bytes, convert it to ASGI messages.
             result_callback = convert_object_to_asgi_messages
         else:
-            self_actor_handle = self.self_actor_handle
-            handle_arg = proxy_request.request_object(
-                receive_asgi_messages=self_actor_handle.receive_asgi_messages.remote
+            # NOTE(edoakes): it's important that the request is sent as raw bytes to
+            # skip the Ray cloudpickle serialization codepath for performance.
+            handle_arg_bytes = pickle.dumps(
+                proxy_request.request_object(
+                    proxy_actor_name=self.self_actor_name,
+                )
             )
             # Messages are returned as pickled dictionaries.
             result_callback = pickle.loads
@@ -977,7 +976,7 @@ class HTTPProxy(GenericProxy):
         )
 
         response_generator = ProxyResponseGenerator(
-            handle.remote(handle_arg),
+            handle.remote(handle_arg_bytes),
             timeout_s=self.request_timeout_s,
             disconnected_task=proxy_asgi_receive_task,
             result_callback=result_callback,
@@ -998,8 +997,7 @@ class HTTPProxy(GenericProxy):
                         status_code = str(asgi_message["status"])
                         status = ResponseStatus(
                             code=status_code,
-                            # TODO(edoakes): we need a more nuanced check than this.
-                            is_error=status_code != "200",
+                            is_error=not status_code.startswith("2"),
                         )
                         expecting_trailers = asgi_message.get("trailers", False)
                     elif asgi_message["type"] == "websocket.accept":
@@ -1020,11 +1018,16 @@ class HTTPProxy(GenericProxy):
                         # the trailers message has been sent.
                         if not asgi_message.get("more_trailers", False):
                             response_generator.stop_checking_for_disconnect()
-                    elif asgi_message["type"] == "websocket.disconnect":
+                    elif asgi_message["type"] in [
+                        "websocket.close",
+                        "websocket.disconnect",
+                    ]:
+                        status_code = str(asgi_message["code"])
                         status = ResponseStatus(
-                            code=str(asgi_message["code"]),
-                            # TODO(edoakes): we need a more nuanced check than this.
-                            is_error=False,
+                            code=status_code,
+                            # All status codes are considered errors aside from:
+                            # 1000 (CLOSE_NORMAL), 1001 (CLOSE_GOING_AWAY).
+                            is_error=status_code not in ["1000", "1001"],
                         )
                         response_generator.stop_checking_for_disconnect()
 
@@ -1053,7 +1056,7 @@ class HTTPProxy(GenericProxy):
             logger.info(
                 f"Client for request {request_id} disconnected, cancelling request."
             )
-        except BackPressureError as e:
+        except (BackPressureError, DeploymentUnavailableError) as e:
             status_code = 503
             status = ResponseStatus(
                 code=status_code,
@@ -1217,11 +1220,13 @@ class ProxyActor:
             http_middlewares.extend(middlewares)
 
         is_head = node_id == get_head_node_id()
+        self.proxy_router = ProxyRouter(get_proxy_handle)
         self.http_proxy = HTTPProxy(
             node_id=node_id,
             node_ip_address=node_ip_address,
             is_head=is_head,
-            proxy_router_class=LongestPrefixRouter,
+            self_actor_name=ray.get_runtime_context().get_actor_name(),
+            proxy_router=self.proxy_router,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),
@@ -1231,7 +1236,7 @@ class ProxyActor:
                 node_id=node_id,
                 node_ip_address=node_ip_address,
                 is_head=is_head,
-                proxy_router_class=EndpointRouter,
+                proxy_router=self.proxy_router,
                 request_timeout_s=(
                     request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
                 ),
@@ -1268,10 +1273,10 @@ class ProxyActor:
             self.run_grpc_server()
         )
 
+        _configure_gc_options()
+
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        self.http_proxy.update_routes(endpoints)
-        if self.grpc_proxy is not None:
-            self.grpc_proxy.update_routes(endpoints)
+        self.proxy_router.update_routes(endpoints)
 
     def _update_logging_config(self, logging_config: LoggingConfig):
         configure_component_logger(
@@ -1287,6 +1292,10 @@ class ProxyActor:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 log_file_path = handler.baseFilename
         return log_file_path
+
+    def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
+        _, handle, _ = self.http_proxy.proxy_router.match_route(route)
+        return handle._router._asyncio_router._replica_scheduler._replica_id_set
 
     def should_start_grpc_service(self) -> bool:
         """Determine whether gRPC service should be started.
@@ -1407,7 +1416,7 @@ class ProxyActor:
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
 
-        grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
+        add_grpc_address(grpc_server, f"[::]:{self.grpc_port}")
 
         # Dummy servicer is used to be callable for the gRPC server. Serve have a
         # custom gRPC server implementation to redirect calls into gRPCProxy.
@@ -1459,6 +1468,10 @@ class ProxyActor:
         Make sure the async event loop is not blocked.
         """
         logger.debug("Received health check.", extra={"log_to_stderr": False})
+
+    def pong(self):
+        """Called by the replica to initialize its handle to the proxy."""
+        pass
 
     async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
         """Get ASGI messages for the provided `request_metadata`.
@@ -1518,3 +1531,15 @@ def _determine_target_loop():
         return "asyncio"
     else:
         return "uvloop"
+
+
+def _configure_gc_options():
+    if not RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS:
+        return
+
+    # Collect any objects that exist already and exclude them from future GC.
+    gc.collect(2)
+    gc.freeze()
+
+    # Tune the GC threshold to run less frequently (default is 700).
+    gc.set_threshold(RAY_SERVE_PROXY_GC_THRESHOLD)

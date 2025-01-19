@@ -57,7 +57,8 @@ def train_func(config: dict):
 
 def train_tensorflow_regression(num_workers: int = 2, use_gpu: bool = False) -> Result:
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
-    preprocessor = Concatenator(exclude=["", "y"], output_column_name="x")
+    columns_to_concatenate = [f"x{i:03}" for i in range(100)]
+    preprocessor = Concatenator(columns=columns_to_concatenate, output_column_name="x")
     dataset = preprocessor.fit_transform(dataset)
 
     config = {"lr": 1e-3, "batch_size": 32, "epochs": 4}

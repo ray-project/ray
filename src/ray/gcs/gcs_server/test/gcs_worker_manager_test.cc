@@ -33,7 +33,7 @@ class GcsWorkerManagerTest : public Test {
   GcsWorkerManagerTest() {
     gcs_publisher_ =
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>();
   }
 
   void SetUp() override {
@@ -45,8 +45,8 @@ class GcsWorkerManagerTest : public Test {
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
     });
-    worker_manager_ =
-        std::make_shared<gcs::GcsWorkerManager>(gcs_table_storage_, gcs_publisher_);
+    worker_manager_ = std::make_shared<gcs::GcsWorkerManager>(
+        *gcs_table_storage_, io_service_, *gcs_publisher_);
   }
 
   void TearDown() override {
@@ -296,9 +296,4 @@ TEST_F(GcsWorkerManagerTest, TestUpdateWorkerNumPausedThreads) {
     ASSERT_EQ(reply.total(), 1);
     ASSERT_EQ(reply.worker_table_data(0).num_paused_threads(), num_paused_threads_delta);
   }
-}
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }

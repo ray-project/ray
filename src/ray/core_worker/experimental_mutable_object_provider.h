@@ -29,12 +29,12 @@ namespace experimental {
 // mutable objects and pushes them to remote nodes as needed.
 class MutableObjectProvider {
  public:
-  typedef std::function<std::shared_ptr<MutableObjectReaderInterface>(
-      const NodeID &node_id, rpc::ClientCallManager &client_call_manager)>
-      RayletFactory;
+  using RayletFactory = std::function<std::shared_ptr<MutableObjectReaderInterface>(
+      const NodeID &, rpc::ClientCallManager &)>;
 
-  MutableObjectProvider(std::shared_ptr<plasma::PlasmaClientInterface> plasma,
-                        RayletFactory factory);
+  MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
+                        RayletFactory factory,
+                        std::function<Status(void)> check_signals);
 
   ~MutableObjectProvider();
 
@@ -44,9 +44,11 @@ class MutableObjectProvider {
 
   /// Registers a writer channel for `object_id` on this node. On each write to this
   /// channel, the write will be sent via RPC to node `node_id`.
+  ///
   /// \param[in] object_id The ID of the object.
-  /// \param[in] node_id The ID of the node to write to.
-  void RegisterWriterChannel(const ObjectID &object_id, const NodeID *node_id);
+  /// \param[in] remote_reader_node_ids The list of remote reader's node ids.
+  void RegisterWriterChannel(const ObjectID &writer_object_id,
+                             const std::vector<NodeID> &remote_reader_node_ids);
 
   /// Handles an RPC request from another note to register a mutable object on this node.
   /// The remote node writes the object and this node reads the object. This node is
@@ -143,21 +145,27 @@ class MutableObjectProvider {
 
  private:
   struct LocalReaderInfo {
-    int64_t num_readers;
+    int64_t num_readers{};
     ObjectID local_object_id;
   };
 
-  // Listens for local changes to `object_id` and sends the changes to remote nodes via
-  // the network.
-  void PollWriterClosure(instrumented_io_context &io_context,
-                         const ObjectID &object_id,
-                         std::shared_ptr<MutableObjectReaderInterface> reader);
+  /// Listens for local changes to `object_id` and sends the changes to remote nodes via
+  /// the network.
+  ///
+  /// \param[in] io_context The IO context.
+  /// \param[in] writer_object_id The object ID of the writer.
+  /// \param[in] remote_readers A list of remote reader clients.
+  void PollWriterClosure(
+      instrumented_io_context &io_context,
+      const ObjectID &writer_object_id,
+      const std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
+          &remote_readers);
 
   // Kicks off `io_context`.
   void RunIOContext(instrumented_io_context &io_context);
 
   // The plasma store.
-  std::shared_ptr<plasma::PlasmaClientInterface> plasma_;
+  plasma::PlasmaClientInterface &plasma_;
 
   // Object manager for the mutable objects.
   std::shared_ptr<ray::experimental::MutableObjectManager> object_manager_;

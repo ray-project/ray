@@ -1,8 +1,5 @@
 import os
 
-#: Used for debugging to turn on DEBUG-level logs
-DEBUG_LOG_ENV_VAR = "SERVE_DEBUG_LOG"
-
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
 
@@ -15,20 +12,17 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 #: Ray namespace used for all Serve actors
 SERVE_NAMESPACE = "serve"
 
-#: HTTP Address
-DEFAULT_HTTP_ADDRESS = "http://127.0.0.1:8000"
-
 #: HTTP Host
-DEFAULT_HTTP_HOST = "127.0.0.1"
+DEFAULT_HTTP_HOST = os.environ.get("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
 
 #: HTTP Port
-DEFAULT_HTTP_PORT = 8000
+DEFAULT_HTTP_PORT = int(os.environ.get("RAY_SERVE_DEFAULT_HTTP_PORT", 8000))
 
 #: Uvicorn timeout_keep_alive Config
 DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 5
 
 #: gRPC Port
-DEFAULT_GRPC_PORT = 9000
+DEFAULT_GRPC_PORT = int(os.environ.get("RAY_SERVE_DEFAULT_GRPC_PORT", 9000))
 
 #: Default Serve application name
 SERVE_DEFAULT_APP_NAME = "default"
@@ -51,7 +45,9 @@ HTTP_PROXY_TIMEOUT = 60
 #: If no replicas at target version is running by the time we're at
 #: max construtor retry count, deploy() is considered failed.
 #: By default we set threshold as min(num_replicas * 3, this value)
-MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = 100
+MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = int(
+    os.environ.get("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", "20")
+)
 
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [
@@ -173,11 +169,6 @@ MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
 )
 
-DAG_DEPRECATION_MESSAGE = (
-    "The DAG API is deprecated. Please use the recommended model composition pattern "
-    "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
-)
-
 # Environment variable name for to specify the encoding of the log messages
 RAY_SERVE_LOG_ENCODING = os.environ.get("RAY_SERVE_LOG_ENCODING", "TEXT")
 
@@ -198,8 +189,6 @@ SERVE_LOG_REPLICA = "replica"
 SERVE_LOG_COMPONENT = "component_name"
 SERVE_LOG_COMPONENT_ID = "component_id"
 SERVE_LOG_MESSAGE = "message"
-SERVE_LOG_ACTOR_ID = "actor_id"
-SERVE_LOG_WORKER_ID = "worker_id"
 # This is a reserved for python logging module attribute, it should not be changed.
 SERVE_LOG_LEVEL_NAME = "levelname"
 SERVE_LOG_TIME = "asctime"
@@ -207,9 +196,8 @@ SERVE_LOG_TIME = "asctime"
 # Logging format with record key to format string dict
 SERVE_LOG_RECORD_FORMAT = {
     SERVE_LOG_REQUEST_ID: "%(request_id)s",
-    SERVE_LOG_ROUTE: "%(route)s",
     SERVE_LOG_APPLICATION: "%(application)s",
-    SERVE_LOG_MESSAGE: "%(filename)s:%(lineno)d - %(message)s",
+    SERVE_LOG_MESSAGE: "-- %(message)s",
     SERVE_LOG_LEVEL_NAME: "%(levelname)s",
     SERVE_LOG_TIME: "%(asctime)s",
 }
@@ -362,4 +350,35 @@ RAY_SERVE_ENABLE_TASK_EVENTS = (
 # Use compact instead of spread scheduling strategy
 RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
+)
+
+# Feature flag to always override local_testing_mode to True in serve.run.
+# This is used for internal testing to avoid passing the flag to every invocation.
+RAY_SERVE_FORCE_LOCAL_TESTING_MODE = (
+    os.environ.get("RAY_SERVE_FORCE_LOCAL_TESTING_MODE", "0") == "1"
+)
+
+# Run sync methods defined in the replica in a thread pool by default.
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL = (
+    os.environ.get("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "0") == "1"
+)
+
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
+    "Calling sync method '{method_name}' directly on the "
+    "asyncio loop. In a future version, sync methods will be run in a "
+    "threadpool by default. Ensure your sync methods are thread safe "
+    "or keep the existing behavior by making them `async def`. Opt "
+    "into the new behavior by setting "
+    "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
+)
+
+# Feature flag to turn off GC optimizations in the proxy (in case there is a
+# memory leak or negative performance impact).
+RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = (
+    os.environ.get("RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS", "1") == "1"
+)
+
+# Used for gc.set_threshold() when proxy GC optimizations are enabled.
+RAY_SERVE_PROXY_GC_THRESHOLD = int(
+    os.environ.get("RAY_SERVE_PROXY_GC_THRESHOLD", "10000")
 )

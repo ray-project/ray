@@ -14,6 +14,8 @@ from numpy import log
 
 import ray
 import ray.cluster_utils
+import ray.exceptions
+from ray import cloudpickle
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +23,12 @@ logger = logging.getLogger(__name__)
 def is_named_tuple(cls):
     """Return True if cls is a namedtuple and False otherwise."""
     b = cls.__bases__
-    if len(b) != 1 or b[0] != tuple:
+    if len(b) != 1 or b[0] is not tuple:
         return False
     f = getattr(cls, "_fields", None)
     if not isinstance(f, tuple):
         return False
-    return all(type(n) == str for n in f)
+    return all(type(n) is str for n in f)
 
 
 @pytest.mark.parametrize(
@@ -93,8 +95,8 @@ def test_simple_serialization(ray_start_regular):
         # TODO(rkn): The numpy dtypes currently come back as regular integers
         # or floats.
         if type(obj).__module__ != "numpy":
-            assert type(obj) == type(new_obj_1)
-            assert type(obj) == type(new_obj_2)
+            assert type(obj) is type(new_obj_1)
+            assert type(obj) is type(new_obj_2)
 
 
 @pytest.mark.parametrize(
@@ -731,6 +733,60 @@ def test_usage_with_dataclass(ray_start_regular):
     assert new_y == y
     assert dataclasses.asdict(new_y) == dataclasses.asdict(y)
     assert dataclasses.asdict(new_y) == expect_dict
+
+
+def test_cannot_out_of_band_serialize_object_ref(shutdown_only, monkeypatch):
+    monkeypatch.setenv("RAY_allow_out_of_band_object_ref_serialization", "0")
+    ray.init()
+
+    # Use ray.remote as a workaround because
+    # RAY_allow_out_of_band_object_ref_serialization cannot be set dynamically.
+    @ray.remote
+    def test():
+        ref = ray.put(1)
+
+        @ray.remote
+        def f():
+            ref
+
+        with pytest.raises(ray.exceptions.OufOfBandObjectRefSerializationException):
+            ray.get(f.remote())
+
+        @ray.remote
+        def f():
+            cloudpickle.dumps(ray.put(1))
+
+        with pytest.raises(ray.exceptions.OufOfBandObjectRefSerializationException):
+            ray.get(f.remote())
+
+    return ray.get(test.remote())
+
+
+def test_can_out_of_band_serialize_object_ref_with_env_var(shutdown_only, monkeypatch):
+    monkeypatch.setenv("RAY_allow_out_of_band_object_ref_serialization", "1")
+    ray.init()
+
+    # Use ray.remote as a workaround because
+    # RAY_allow_out_of_band_object_ref_serialization cannot be set dynamically.
+    @ray.remote
+    def test():
+        ref = ray.put(1)
+
+        @ray.remote
+        def f():
+            ref
+
+        ray.get(f.remote())
+
+        @ray.remote
+        def f():
+            ref = ray.put(1)
+            cloudpickle.dumps(ref)
+
+        ray.get(f.remote())
+
+    # It should pass.
+    ray.get(test.remote())
 
 
 if __name__ == "__main__":

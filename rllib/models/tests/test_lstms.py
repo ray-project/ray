@@ -21,6 +21,10 @@ class TestLSTMs(unittest.TestCase):
         """Tests LSTM prev-a/r input insertions using complex actions."""
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .environment(
                 RandomEnv,
                 env_config={
@@ -49,9 +53,9 @@ class TestLSTMs(unittest.TestCase):
                     "lstm_use_prev_action": True,
                     "lstm_use_prev_reward": True,
                 },
-                num_sgd_iter=1,
+                num_epochs=1,
                 train_batch_size=200,
-                sgd_minibatch_size=50,
+                minibatch_size=50,
             )
             .env_runners(
                 rollout_fragment_length=100,

@@ -20,8 +20,8 @@ PLATFORMS_RAY_ML = [
 ]
 GPU_PLATFORM = "cu12.1.1-cudnn8"
 
-PYTHON_VERSIONS_RAY = ["3.9", "3.10", "3.11"]
-PYTHON_VERSIONS_RAY_ML = ["3.9", "3.10"]
+PYTHON_VERSIONS_RAY = ["3.9", "3.10", "3.11", "3.12"]
+PYTHON_VERSIONS_RAY_ML = ["3.9", "3.10", "3.11"]
 ARCHITECTURES_RAY = ["x86_64", "aarch64"]
 ARCHITECTURES_RAY_ML = ["x86_64"]
 
@@ -46,6 +46,15 @@ class DockerContainer(LinuxContainer):
         upload: bool = False,
     ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
+
+        assert python_version in PYTHON_VERSIONS_RAY
+        assert platform in PLATFORMS_RAY
+        assert architecture in ARCHITECTURES_RAY
+        if image_type == RayType.RAY_ML:
+            assert python_version in PYTHON_VERSIONS_RAY_ML
+            assert platform in PLATFORMS_RAY_ML
+            assert architecture in ARCHITECTURES_RAY_ML
+
         rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
         self.python_version = python_version
         self.platform = platform
@@ -122,13 +131,13 @@ class DockerContainer(LinuxContainer):
         versions = self._get_image_version_tags(external)
 
         platforms = [self.get_platform_tag()]
-        if self.platform == "cpu" and self.image_type == "ray":
+        if self.platform == "cpu" and self.image_type == RayType.RAY:
             # no tag is alias to cpu for ray image
             platforms.append("")
         elif self.platform == GPU_PLATFORM:
             # gpu is alias to cu118 for ray image
             platforms.append("-gpu")
-            if self.image_type == "ray-ml":
+            if self.image_type == RayType.RAY_ML:
                 # no tag is alias to gpu for ray-ml image
                 platforms.append("")
 

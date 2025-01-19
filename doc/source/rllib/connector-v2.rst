@@ -258,6 +258,39 @@ To add custom Learner connector pieces, you need to call the
 Observation Preprocessors
 -------------------------
 
+
+
+.. from old rllib-model.rst
+Built-in Preprocessors
+~~~~~~~~~~~~~~~~~~~~~~
+RLlib tries to pick one of its built-in preprocessors based on the environment's
+observation space. Thereby, the following simple rules apply:
+- Discrete observations are one-hot encoded, e.g. ``Discrete(3) and value=1 -> [0, 1, 0]``.
+- MultiDiscrete observations are encoded by one-hot encoding each discrete element
+  and then concatenating the respective one-hot encoded vectors.
+  e.g. ``MultiDiscrete([3, 4]) and value=[1, 3] -> [0 1 0 0 0 0 1]`` because
+  the first ``1`` is encoded as ``[0 1 0]`` and the second ``3`` is encoded as
+  ``[0 0 0 1]``; these two vectors are then concatenated to ``[0 1 0 0 0 0 1]``.
+- Tuple and Dict observations are flattened, thereby, Discrete and MultiDiscrete
+  sub-spaces are handled as described above.
+  Also, the original dict/tuple observations are still available inside a) the Model via the input
+  dict's "obs" key (the flattened observations are in "obs_flat"), as well as b) the Policy
+  via the following line of code (e.g. put this into your loss function to access the original
+  observations: ``dict_or_tuple_obs = restore_original_dimensions(input_dict["obs"], self.obs_space, "tf|torch")``
+For Atari observation spaces, RLlib defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/atari_wrappers.py>`__
+(``preprocessor_pref=deepmind``). However, if the Algorithm's config key ``preprocessor_pref`` is set to "rllib",
+the following mappings apply for Atari-type observation spaces:
+- Images of shape ``(210, 160, 3)`` are downscaled to ``dim x dim``, where
+  ``dim`` is a model config key (see default Model config below). Also, you can set
+  ``grayscale=True`` for reducing the color channel to 1, or ``zero_mean=True`` for
+  producing -1.0 to 1.0 values (instead of 0.0 to 1.0 values by default).
+- Atari RAM observations (1D space of shape ``(128, )``) are zero-averaged
+  (values between -1.0 and 1.0).
+In all other cases, no preprocessor will be used and the raw observations from the environment
+will be sent directly into your model.
+
+
+
 The simplest way of customizing an env-to-module pipeline is to write an
 :py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.ObservationPreprocessor` and plug
 it into the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`. All you have to do in this case is implement

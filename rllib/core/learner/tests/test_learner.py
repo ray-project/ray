@@ -37,10 +37,11 @@ class TestLearner(unittest.TestCase):
 
         min_loss = float("inf")
         for iter_i in range(1000):
-            batch = reader.next()
-            results = learner.update_from_batch(batch=batch.as_multi_agent())
+            batch = reader.next().as_multi_agent()
+            batch = learner._convert_batch_type(batch)
+            results = learner.update_from_batch(batch=batch)
 
-        loss = results[ALL_MODULES][Learner.TOTAL_LOSS_KEY]
+        loss = results[DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY].peek()
         min_loss = min(loss, min_loss)
         print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
         self.assertLess(min_loss, 0.58)

@@ -1,14 +1,16 @@
 """This is WIP.
 
-On a single-GPU machine, with the --num-gpus=1 command line option, this example should
-learn a episode return of >1000 in ~10h, which is still very basic, but does somewhat
-prove SAC's capabilities. Some more hyperparameter fine tuning, longer runs, and
-more scale (`--num-gpus > 1` and `--num-env-runners > 0`) should help push this up.
+On a single-GPU machine, with the `--num-gpus-per-learner=1` command line option, this
+example should learn a episode return of >1000 in ~10h, which is still very basic, but
+does somewhat prove SAC's capabilities. Some more hyperparameter fine tuning, longer
+runs, and more scale (`--num-learners > 0` and `--num-env-runners > 0`) should help push
+this up.
 """
 
 from torch import nn
 
 from ray.rllib.algorithms.sac.sac import SACConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
@@ -24,10 +26,6 @@ args = parser.parse_args()
 
 config = (
     SACConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("Humanoid-v4")
     .training(
         initial_alpha=1.001,
@@ -48,15 +46,15 @@ config = (
         num_steps_sampled_before_learning_starts=10000,
     )
     .rl_module(
-        model_config_dict={
-            "fcnet_hiddens": [1024, 1024],
-            "fcnet_activation": "relu",
-            "fcnet_weights_initializer": nn.init.xavier_uniform_,
-            "post_fcnet_hiddens": [],
-            "post_fcnet_activation": None,
-            "post_fcnet_weights_initializer": "orthogonal_",
-            "post_fcnet_weights_initializer_config": {"gain": 0.01},
-        }
+        model_config=DefaultModelConfig(
+            fcnet_hiddens=[1024, 1024],
+            fcnet_activation="relu",
+            fcnet_kernel_initializer=nn.init.xavier_uniform_,
+            head_fcnet_hiddens=[],
+            head_fcnet_activation=None,
+            head_fcnet_kernel_initializer="orthogonal_",
+            head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
+        )
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,

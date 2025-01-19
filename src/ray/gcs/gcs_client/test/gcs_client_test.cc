@@ -95,11 +95,13 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   void TearDown() override {
+    client_io_service_->poll();
     client_io_service_->stop();
     client_io_service_thread_->join();
     gcs_client_->Disconnect();
     gcs_client_.reset();
 
+    server_io_service_->poll();
     server_io_service_->stop();
     rpc::DrainServerCallExecutor();
     server_io_service_thread_->join();
@@ -130,9 +132,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   void RestartGcsServer() {
     RAY_LOG(INFO) << "Stopping GCS service, port = " << gcs_server_->GetPort();
-    gcs_server_->Stop();
+    server_io_service_->poll();
     server_io_service_->stop();
     server_io_service_thread_->join();
+    gcs_server_->Stop();
     gcs_server_.reset();
     RAY_LOG(INFO) << "Finished stopping GCS service.";
 
@@ -244,7 +247,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     message.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
     message.mutable_actor_creation_task_spec()->set_is_detached(is_detached);
     message.mutable_actor_creation_task_spec()->set_ray_namespace("test");
-    // If the actor is non-detached, the `WaitForActorOutOfScope` function of the core
+    // If the actor is non-detached, the `WaitForActorRefDeleted` function of the core
     // worker client is called during the actor registration process. In order to simulate
     // the scenario of registration failure, we set the address to an illegal value.
     if (!is_detached) {
@@ -743,7 +746,7 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
   auto expected_num_subscribe_one_notifications = num_subscribe_one_notifications + 1;
 
   // NOTE: In the process of actor registration, if the callback function of
-  // `WaitForActorOutOfScope` is executed first, and then the callback function of
+  // `WaitForActorRefDeleted` is executed first, and then the callback function of
   // `ActorTable().Put` is executed, the actor registration fails, we will receive one
   // notification message; otherwise, the actor registration succeeds, we will receive
   // two notification messages. So we can't assert whether the actor is registered
@@ -1083,11 +1086,14 @@ TEST_P(GcsClientTest, TestInternalKVDelByPrefix) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog,
-                                         argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      /*app_name=*/argv[0],
+      ray::RayLogLevel::INFO,
+      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

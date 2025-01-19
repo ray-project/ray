@@ -3,16 +3,14 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. include:: /_includes/rllib/new_api_stack_component.rst
-
 .. _learner-reference-docs:
 
 
 LearnerGroup API
 ================
 
-Configuring a LearnerGroup and Learner Workers
-----------------------------------------------
+Configuring a LearnerGroup and Learner actors
+---------------------------------------------
 
 .. currentmodule:: ray.rllib.algorithms.algorithm_config
 
@@ -20,9 +18,7 @@ Configuring a LearnerGroup and Learner Workers
     :nosignatures:
     :toctree: doc/
 
-    AlgorithmConfig.resources
-    AlgorithmConfig.rl_module
-    AlgorithmConfig.training
+    AlgorithmConfig.learners
 
 
 Constructing a LearnerGroup
@@ -72,7 +68,19 @@ Constructing a Learner
     Learner._check_is_built
     Learner._make_module
 
-Performing Updates
+
+Implementing a custom RLModule to fit a Learner
+----------------------------------------------------
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    Learner.rl_module_required_apis
+    Learner.rl_module_is_compatible
+
+
+Performing updates
 ------------------
 
 .. autosummary::
@@ -81,25 +89,23 @@ Performing Updates
 
     Learner.update_from_batch
     Learner.update_from_episodes
+    Learner.update_from_iterator
     Learner.before_gradient_based_update
-    Learner._update
     Learner.after_gradient_based_update
 
 
-Computing Losses
+Computing losses
 ----------------
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    Learner.compute_loss
+    Learner.compute_losses
     Learner.compute_loss_for_module
-    Learner._is_module_compatible_with_learner
-    Learner._get_tensor_variable
 
 
-Configuring Optimizers
+Configuring optimizers
 ----------------------
 
 .. autosummary::
@@ -116,10 +122,9 @@ Configuring Optimizers
     Learner.filter_param_dict_for_optimizer
     Learner._check_registered_optimizer
     Learner._set_optimizer_lr
-    Learner._get_clip_function
 
 
-Gradient Computation
+Gradient computation
 --------------------
 
 .. autosummary::
@@ -130,23 +135,22 @@ Gradient Computation
     Learner.postprocess_gradients
     Learner.postprocess_gradients_for_module
     Learner.apply_gradients
+    Learner._get_clip_function
 
-Saving, Loading, Checkpointing, and Restoring States
+Saving, loading, checkpointing, and restoring states
 ----------------------------------------------------
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    Learner.get_state
-    Learner.set_state
     Learner.save_to_path
     Learner.restore_from_path
     Learner.from_checkpoint
-    Learner._get_optimizer_state
-    Learner._set_optimizer_state
+    Learner.get_state
+    Learner.set_state
 
-Adding and Removing Modules
+Adding and removing modules
 ---------------------------
 
 .. autosummary::

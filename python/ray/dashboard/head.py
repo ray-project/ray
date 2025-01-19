@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional, Set
 
@@ -8,12 +9,17 @@ import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
+from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._raylet import GcsClient
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.datacenter import DataOrganizer
-from ray.dashboard.utils import DashboardHeadModule, async_loop_forever
+from ray.dashboard.utils import (
+    DashboardHeadModule,
+    DashboardHeadModuleConfig,
+    async_loop_forever,
+)
 
 try:
     import prometheus_client
@@ -27,6 +33,13 @@ GRPC_CHANNEL_OPTIONS = (
     *ray_constants.GLOBAL_GRPC_OPTIONS,
     ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+)
+
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_DASHBOARD_HEAD_TPE_MAX_WORKERS = env_integer(
+    "RAY_DASHBOARD_DASHBOARD_HEAD_TPE_MAX_WORKERS", 1
 )
 
 
@@ -56,6 +69,7 @@ class DashboardHead:
         http_port: int,
         http_port_retries: int,
         gcs_address: str,
+        cluster_id_hex: str,
         node_ip_address: str,
         grpc_port: int,
         log_dir: str,
@@ -95,16 +109,20 @@ class DashboardHead:
         self.http_port_retries = http_port_retries
         self._modules_to_load = modules_to_load
         self._modules_loaded = False
+        self.metrics = None
 
-        self.gcs_address = None
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_DASHBOARD_HEAD_TPE_MAX_WORKERS,
+            thread_name_prefix="dashboard_head_executor",
+        )
+
         assert gcs_address is not None
         self.gcs_address = gcs_address
+        self.cluster_id_hex = cluster_id_hex
         self.log_dir = log_dir
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.session_name = Path(session_dir).name
-        self.aiogrpc_gcs_channel = None
-        self.gcs_aio_client = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = node_ip_address
@@ -168,6 +186,20 @@ class DashboardHead:
         modules = []
         head_cls_list = dashboard_utils.get_all_modules(DashboardHeadModule)
 
+        config = DashboardHeadModuleConfig(
+            minimal=self.minimal,
+            cluster_id_hex=self.cluster_id_hex,
+            session_name=self.session_name,
+            gcs_address=self.gcs_address,
+            log_dir=self.log_dir,
+            temp_dir=self.temp_dir,
+            session_dir=self.session_dir,
+            ip=self.ip,
+            http_host=self.http_host,
+            http_port=self.http_port,
+            metrics=self.metrics,
+        )
+
         # Select modules to load.
         modules_to_load = modules_to_load or {m.__name__ for m in head_cls_list}
         logger.info("Modules to load: %s", modules_to_load)
@@ -175,7 +207,7 @@ class DashboardHead:
         for cls in head_cls_list:
             logger.info("Loading %s: %s", DashboardHeadModule.__name__, cls)
             if cls.__name__ in modules_to_load:
-                c = cls(self)
+                c = cls(config)
                 modules.append(c)
 
         # Verify modules are loaded as expected.
@@ -228,22 +260,17 @@ class DashboardHead:
         gcs_address = self.gcs_address
 
         # Dashboard will handle connection failure automatically
-        self.gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
-        self.gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
+        self.gcs_client = GcsClient(
+            address=gcs_address, nums_reconnect_retry=0, cluster_id=self.cluster_id_hex
+        )
+        self.gcs_aio_client = GcsAioClient(
+            address=gcs_address, nums_reconnect_retry=0, cluster_id=self.cluster_id_hex
+        )
         internal_kv._initialize_internal_kv(self.gcs_client)
 
-        if self.minimal:
-            self.aiogrpc_gcs_channel = None
-            self.metrics = None
-        else:
-            from ray._private.gcs_utils import GcsChannel
-
-            # TODO(ryw): once we removed the old gcs client, also remove this.
-            gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
-            gcs_channel.connect()
-            self.aiogrpc_gcs_channel = gcs_channel.channel()
-
+        if not self.minimal:
             self.metrics = await self._setup_metrics(self.gcs_aio_client)
+
         try:
             assert internal_kv._internal_kv_initialized()
             # Note: We always record the usage, but it is not reported
@@ -298,7 +325,7 @@ class DashboardHead:
             f"{dashboard_http_host}:{http_port}".encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        ),
+        )
         self.gcs_client.internal_kv_put(
             dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
             f"{self.ip}:{self.grpc_port}".encode(),
@@ -312,7 +339,7 @@ class DashboardHead:
             self._gcs_check_alive(),
             _async_notify(),
             DataOrganizer.purge(),
-            DataOrganizer.organize(),
+            DataOrganizer.organize(self._executor),
         ]
         for m in modules:
             concurrent_tasks.append(m.run(self.server))

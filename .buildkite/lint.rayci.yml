@@ -9,6 +9,7 @@ steps:
     matrix:
       - clang_format
       - code_format
+      - pre_commit
       - untested_code_snippet
       - banned_words
       - doc_readme
@@ -36,6 +37,7 @@ steps:
       - api_policy_check serve
       - api_policy_check data
       - api_policy_check train
+      - api_policy_check tune
       - api_policy_check rllib
 
   - label: ":lint-roller: lint: linkcheck"

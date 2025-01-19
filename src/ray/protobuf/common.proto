@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -358,6 +357,16 @@ message ActorUnschedulableContext {
 // Note: ActorDiedErrorContext is used in the export API and state API so it is public.
 // Any modifications must be backward compatible.
 message ActorDiedErrorContext {
+  enum Reason {
+    UNSPECIFIED = 0;
+    WORKER_DIED = 1;
+    OWNER_DIED = 2;
+    NODE_DIED = 3;
+    RAY_KILL = 4;
+    OUT_OF_SCOPE = 5;
+    REF_DELETED = 6;
+  }
+
   string error_message = 1;
   // The id of owner of the actor.
   bytes owner_id = 2;
@@ -380,6 +389,7 @@ message ActorDiedErrorContext {
   bool never_started = 10;
   // The node death info, if node death is the cause of actor death.
   optional NodeDeathInfo node_death_info = 11;
+  Reason reason = 12;
 }
 
 // Context for task OOM.
@@ -545,6 +555,12 @@ message TaskSpec {
   // this field contains the detached actor id.
   // Otherwise it's empty and is originated from a driver.
   bytes root_detached_actor_id = 40;
+  // The key-value labels for task and actor.
+  map<string, string> labels = 41;
+  // Human readable stacktrace of the task invocation, or actor creation. The exact data
+  // format depends on the language. Only populated if environment variable
+  // `RAY_record_task_actor_creation_sites` is set to `true`.
+  optional string call_site = 42;
 }
 
 message TaskInfoEntry {
@@ -578,6 +594,9 @@ message TaskInfoEntry {
   // If the task/actor is created within a placement group,
   // this value is configured.
   optional bytes placement_group_id = 26;
+  // Human readable stacktrace of the task invocation, or actor creation. The exact data
+  // format depends on the language. Only populated if the flag is enabled.
+  optional string call_site = 27;
 }
 
 message Bundle {
@@ -699,6 +718,7 @@ message ActorCreationTaskSpec {
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder string `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER` in the worker command.
+  // Used by Java workers for JVM options.
   repeated string dynamic_worker_options = 5;
   // The max number of concurrent calls for default concurrency group of this actor.
   int32 max_concurrency = 6;
@@ -815,18 +835,23 @@ enum TaskStatus {
   // to the worker. It will be executed shortly. For actor tasks, execution may be
   // delayed to satisfy ordering constraints or argument fetching.
   SUBMITTED_TO_WORKER = 5;
+  // The actor task is fetching arguments. This happens after the actor worker
+  // receives the task and the actor task has object refs as arguments.
+  PENDING_ACTOR_TASK_ARGS_FETCH = 6;
+  // The actor task is waiting due to ordering or concurrency constraints.
+  PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY = 7;
   // The task is running on a worker.
-  RUNNING = 6;
+  RUNNING = 8;
   // The task is running on a worker, but is blocked in a ray.get() call.
   // This state is a sub-state of RUNNING and used for metrics only.
-  RUNNING_IN_RAY_GET = 7;
+  RUNNING_IN_RAY_GET = 9;
   // The task is running on a worker, but is blocked in a ray.wait() call.
   // This state is a sub-state of RUNNING and used for metrics only.
-  RUNNING_IN_RAY_WAIT = 8;
+  RUNNING_IN_RAY_WAIT = 10;
   // The task has finished.
-  FINISHED = 9;
+  FINISHED = 11;
   // The task has finished but failed with an Exception or system error.
-  FAILED = 10;
+  FAILED = 12;
 }
 
 // Debug info for a referenced object.
@@ -965,4 +990,14 @@ enum PlacementStrategy {
 message NamedActorInfo {
   string ray_namespace = 1;
   string name = 2;
+}
+
+message LineageReconstructionTask {
+  string name = 1;
+  TaskStatus status = 2;
+  // If the task is a normal task,
+  // this has the labels of the normal task.
+  // If the task is an actor task,
+  // this has the labels of the corresponding actor.
+  map<string, string> labels = 3;
 }

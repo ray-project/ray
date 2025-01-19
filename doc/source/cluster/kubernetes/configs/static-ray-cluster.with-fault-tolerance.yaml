@@ -1,5 +1,5 @@
-# This section is only required for deploying Redis on Kubernetes for the purpose of enabling Ray 
-# to write GCS metadata to an external Redis for fault tolerance. If you have already deployed Redis 
+# This section is only required for deploying Redis on Kubernetes for the purpose of enabling Ray
+# to write GCS metadata to an external Redis for fault tolerance. If you have already deployed Redis
 # on Kubernetes, this section can be removed.
 kind: ConfigMap
 apiVersion: v1

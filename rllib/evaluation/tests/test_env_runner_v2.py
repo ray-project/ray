@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.connectors.connector import ActionConnector, ConnectorContext
 from ray.rllib.evaluation.metrics import RolloutMetrics
@@ -52,6 +52,10 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_sample_batch_rollout_single_agent_env(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment(DebugCounterEnv)
             .framework("torch")
             .training(
@@ -61,8 +65,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
         )
 
@@ -79,6 +81,10 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_sample_batch_rollout_multi_agent_env(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -88,8 +94,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
         )
 
@@ -148,13 +152,15 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .framework("torch")
             .environment("env_under_test")
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
                 rollout_fragment_length=100,
             )
             .multi_agent(
@@ -171,7 +177,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             # directly overridden in the policy class.
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "pol1": RLModuleSpec(module_class=RandomRLModule),
                         "pol2": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -211,6 +217,10 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -220,8 +230,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -238,7 +246,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -274,7 +282,7 @@ class TestEnvRunnerV2(unittest.TestCase):
                 assert ac_data.input_dict, "raw input dict should be available"
                 return ac_data
 
-        class AddActionConnectorCallbacks(DefaultCallbacks):
+        class AddActionConnectorCallbacks(RLlibCallback):
             def on_create_policy(self, *, policy_id, policy) -> None:
                 policy.action_connectors.append(
                     CheckInputDictActionConnector(ConnectorContext.from_policy(policy))
@@ -282,6 +290,10 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -294,8 +306,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
         )
 
@@ -308,6 +318,10 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_start_episode(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -317,8 +331,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -335,7 +347,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -364,6 +376,10 @@ class TestEnvRunnerV2(unittest.TestCase):
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -373,8 +389,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -391,7 +405,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -413,7 +427,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         self.assertTrue(len(list(outputs[0].agent_rewards.keys())) == 2)
 
     def test_env_error(self):
-        class CheckErrorCallbacks(DefaultCallbacks):
+        class CheckErrorCallbacks(RLlibCallback):
             def on_episode_end(
                 self, *, worker, base_env, policies, episode, env_index=None, **kwargs
             ) -> None:
@@ -423,6 +437,10 @@ class TestEnvRunnerV2(unittest.TestCase):
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -432,8 +450,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -450,7 +466,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }

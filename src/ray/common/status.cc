@@ -28,89 +28,60 @@
 
 #include "ray/common/status.h"
 
-#include <assert.h>
-
 #include <boost/system/error_code.hpp>
+#include <cassert>
+#include <sstream>
+#include <string_view>
 
 #include "absl/container/flat_hash_map.h"
 
 namespace ray {
 
-#define STATUS_CODE_OK "OK"
-#define STATUS_CODE_OUT_OF_MEMORY "Out of memory"
-#define STATUS_CODE_KEY_ERROR "Key error"
-#define STATUS_CODE_TYPE_ERROR "Type error"
-#define STATUS_CODE_INVALID "Invalid"
-#define STATUS_CODE_IO_ERROR "IOError"
-#define STATUS_CODE_UNKNOWN_ERROR "Unknown error"
-#define STATUS_CODE_NOT_IMPLEMENTED "NotImplemented"
-#define STATUS_CODE_REDIS_ERROR "RedisError"
-#define STATUS_CODE_TIMED_OUT "TimedOut"
-#define STATUS_CODE_INTERRUPTED "Interrupted"
-#define STATUS_CODE_INTENTIONAL_SYSTEM_EXIT "IntentionalSystemExit"
-#define STATUS_CODE_UNEXPECTED_SYSTEM_EXIT "UnexpectedSystemExit"
-#define STATUS_CODE_CREATION_TASK_ERROR "CreationTaskError"
-#define STATUS_CODE_NOT_FOUND "NotFound"
-#define STATUS_CODE_DISCONNECTED "Disconnected"
-#define STATUS_CODE_SCHEDULING_CANCELLED "SchedulingCancelled"
-#define STATUS_CODE_OBJECT_EXISTS "ObjectExists"
-#define STATUS_CODE_OBJECT_NOT_FOUND "ObjectNotFound"
-#define STATUS_CODE_OBJECT_ALREADY_SEALED "ObjectAlreadySealed"
-#define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
-#define STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL "TransientObjectStoreFull"
-#define STATUS_CODE_OUT_OF_DISK "OutOfDisk"
-#define STATUS_CODE_OBJECT_UNKNOWN_OWNER "ObjectUnknownOwner"
-#define STATUS_CODE_RPC_ERROR "RpcError"
-#define STATUS_CODE_OUT_OF_RESOURCE "OutOfResource"
-#define STATUS_CODE_OBJECT_REF_END_OF_STREAM "ObjectRefEndOfStream"
-#define STATUS_CODE_AUTH_ERROR "AuthError"
-#define STATUS_CODE_INVALID_ARGUMENT "InvalidArgument"
-#define STATUS_CODE_CHANNEL_ERROR "ChannelError"
-#define STATUS_CODE_CHANNEL_TIMEOUT_ERROR "ChannelTimeoutError"
-
+constexpr std::string_view kStatusCodeOk = "OK";
 // not a real status (catch all for codes not known)
-#define STATUS_CODE_UNKNOWN "Unknown"
+constexpr std::string_view kStatusCodeUnknown = "Unknown";
 
 namespace {
 
 // Code <-> String mappings.
 
-const absl::flat_hash_map<StatusCode, std::string> kCodeToStr = {
-    {StatusCode::OK, STATUS_CODE_OK},
-    {StatusCode::OutOfMemory, STATUS_CODE_OUT_OF_MEMORY},
-    {StatusCode::KeyError, STATUS_CODE_KEY_ERROR},
-    {StatusCode::TypeError, STATUS_CODE_TYPE_ERROR},
-    {StatusCode::Invalid, STATUS_CODE_INVALID},
-    {StatusCode::IOError, STATUS_CODE_IO_ERROR},
-    {StatusCode::UnknownError, STATUS_CODE_UNKNOWN_ERROR},
-    {StatusCode::NotImplemented, STATUS_CODE_NOT_IMPLEMENTED},
-    {StatusCode::RedisError, STATUS_CODE_REDIS_ERROR},
-    {StatusCode::TimedOut, STATUS_CODE_TIMED_OUT},
-    {StatusCode::Interrupted, STATUS_CODE_INTERRUPTED},
-    {StatusCode::IntentionalSystemExit, STATUS_CODE_INTENTIONAL_SYSTEM_EXIT},
-    {StatusCode::UnexpectedSystemExit, STATUS_CODE_UNEXPECTED_SYSTEM_EXIT},
-    {StatusCode::CreationTaskError, STATUS_CODE_CREATION_TASK_ERROR},
-    {StatusCode::NotFound, STATUS_CODE_NOT_FOUND},
-    {StatusCode::Disconnected, STATUS_CODE_DISCONNECTED},
-    {StatusCode::SchedulingCancelled, STATUS_CODE_SCHEDULING_CANCELLED},
-    {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
-    {StatusCode::ObjectNotFound, STATUS_CODE_OBJECT_NOT_FOUND},
-    {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_ALREADY_SEALED},
-    {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
-    {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
-    {StatusCode::OutOfDisk, STATUS_CODE_OUT_OF_DISK},
-    {StatusCode::ObjectUnknownOwner, STATUS_CODE_OBJECT_UNKNOWN_OWNER},
-    {StatusCode::RpcError, STATUS_CODE_RPC_ERROR},
-    {StatusCode::OutOfResource, STATUS_CODE_OUT_OF_RESOURCE},
-    {StatusCode::ObjectRefEndOfStream, STATUS_CODE_OBJECT_REF_END_OF_STREAM},
-    {StatusCode::AuthError, STATUS_CODE_AUTH_ERROR},
-    {StatusCode::InvalidArgument, STATUS_CODE_INVALID_ARGUMENT},
-    {StatusCode::ChannelError, STATUS_CODE_CHANNEL_ERROR},
-    {StatusCode::ChannelTimeoutError, STATUS_CODE_CHANNEL_TIMEOUT_ERROR},
+const absl::flat_hash_map<StatusCode, std::string_view> kCodeToStr = {
+    {StatusCode::OK, kStatusCodeOk},
+    {StatusCode::OutOfMemory, "Out of memory"},
+    {StatusCode::KeyError, "Key error"},
+    {StatusCode::TypeError, "Type error"},
+    {StatusCode::Invalid, "Invalid"},
+    {StatusCode::IOError, "IOError"},
+    {StatusCode::UnknownError, "Unknown error"},
+    {StatusCode::NotImplemented, "NotImplemented"},
+    {StatusCode::RedisError, "RedisError"},
+    {StatusCode::TimedOut, "TimedOut"},
+    {StatusCode::Interrupted, "Interrupted"},
+    {StatusCode::IntentionalSystemExit, "IntentionalSystemExit"},
+    {StatusCode::UnexpectedSystemExit, "UnexpectedSystemExit"},
+    {StatusCode::CreationTaskError, "CreationTaskError"},
+    {StatusCode::NotFound, "NotFound"},
+    {StatusCode::Disconnected, "Disconnected"},
+    {StatusCode::SchedulingCancelled, "SchedulingCancelled"},
+    {StatusCode::AlreadyExists, "AlreadyExists"},
+    {StatusCode::ObjectExists, "ObjectExists"},
+    {StatusCode::ObjectNotFound, "ObjectNotFound"},
+    {StatusCode::ObjectAlreadySealed, "ObjectAlreadySealed"},
+    {StatusCode::ObjectStoreFull, "ObjectStoreFull"},
+    {StatusCode::TransientObjectStoreFull, "TransientObjectStoreFull"},
+    {StatusCode::OutOfDisk, "OutOfDisk"},
+    {StatusCode::ObjectUnknownOwner, "ObjectUnknownOwner"},
+    {StatusCode::RpcError, "RpcError"},
+    {StatusCode::OutOfResource, "OutOfResource"},
+    {StatusCode::ObjectRefEndOfStream, "ObjectRefEndOfStream"},
+    {StatusCode::AuthError, "AuthError"},
+    {StatusCode::InvalidArgument, "InvalidArgument"},
+    {StatusCode::ChannelError, "ChannelError"},
+    {StatusCode::ChannelTimeoutError, "ChannelTimeoutError"},
 };
 
-const absl::flat_hash_map<std::string, StatusCode> kStrToCode = []() {
-  absl::flat_hash_map<std::string, StatusCode> str_to_code;
+const absl::flat_hash_map<std::string_view, StatusCode> kStrToCode = []() {
+  absl::flat_hash_map<std::string_view, StatusCode> str_to_code;
   for (const auto &pair : kCodeToStr) {
     str_to_code[pair.second] = pair.first;
   }
@@ -119,11 +90,18 @@ const absl::flat_hash_map<std::string, StatusCode> kStrToCode = []() {
 
 }  // namespace
 
-Status::Status(StatusCode code, const std::string &msg, int rpc_code) {
+Status::Status(StatusCode code, const std::string &msg, int rpc_code)
+    : Status(code, msg, SourceLocation{}, rpc_code) {}
+
+Status::Status(StatusCode code,
+               const std::string &msg,
+               SourceLocation loc,
+               int rpc_code) {
   assert(code != StatusCode::OK);
   state_ = new State;
   state_->code = code;
   state_->msg = msg;
+  state_->loc = loc;
   state_->rpc_code = rpc_code;
 }
 
@@ -137,15 +115,15 @@ void Status::CopyFrom(const State *state) {
 }
 
 std::string Status::CodeAsString() const {
-  if (state_ == NULL) {
-    return STATUS_CODE_OK;
+  if (state_ == nullptr) {
+    return std::string(kStatusCodeOk);
   }
 
   auto it = kCodeToStr.find(code());
   if (it == kCodeToStr.end()) {
-    return STATUS_CODE_UNKNOWN;
+    return std::string(kStatusCodeUnknown);
   }
-  return it->second;
+  return std::string(it->second);
 }
 
 StatusCode Status::StringToCode(const std::string &str) {
@@ -160,11 +138,19 @@ StatusCode Status::StringToCode(const std::string &str) {
 
 std::string Status::ToString() const {
   std::string result(CodeAsString());
-  if (state_ == NULL) {
+  if (state_ == nullptr) {
     return result;
   }
+
   result += ": ";
   result += state_->msg;
+
+  if (IsValidSourceLoc(state_->loc)) {
+    std::stringstream ss;
+    ss << state_->loc;
+    result += " at ";
+    result += ss.str();
+  }
   return result;
 }
 

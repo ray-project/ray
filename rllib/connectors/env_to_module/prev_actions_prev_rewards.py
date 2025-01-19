@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 from gymnasium.spaces import Box
@@ -7,7 +7,10 @@ import numpy as np
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import batch, flatten_to_single_ndarray
+from ray.rllib.utils.spaces.space_utils import (
+    batch as batch_fn,
+    flatten_to_single_ndarray,
+)
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -41,16 +44,20 @@ class PrevActionsPrevRewards(ConnectorV2):
     PREV_REWARDS_KEY = "prev_n_rewards"
 
     @override(ConnectorV2)
-    def recompute_observation_space_from_input_spaces(self):
+    def recompute_output_observation_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
         if self._multi_agent:
             ret = {}
-            for agent_id, obs_space in self.input_observation_space.spaces.items():
-                act_space = self.input_action_space[agent_id]
+            for agent_id, obs_space in input_observation_space.spaces.items():
+                act_space = input_action_space[agent_id]
                 ret[agent_id] = self._convert_individual_space(obs_space, act_space)
             return gym.spaces.Dict(ret)
         else:
             return self._convert_individual_space(
-                self.input_observation_space, self.input_action_space
+                input_observation_space, input_action_space
             )
 
     def __init__(
@@ -101,7 +108,7 @@ class PrevActionsPrevRewards(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Optional[Dict[str, Any]],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -110,14 +117,14 @@ class PrevActionsPrevRewards(ConnectorV2):
         for sa_episode in self.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=True
         ):
-            # Episode is not finalized yet and thus still operates on lists of items.
-            assert not sa_episode.is_finalized
+            # Episode is not numpy'ized yet and thus still operates on lists of items.
+            assert not sa_episode.is_numpy
 
             augmented_obs = {self.ORIG_OBS_KEY: sa_episode.get_observations(-1)}
 
             if self.n_prev_actions:
                 augmented_obs[self.PREV_ACTIONS_KEY] = flatten_to_single_ndarray(
-                    batch(
+                    batch_fn(
                         sa_episode.get_actions(
                             indices=slice(-self.n_prev_actions, None),
                             fill=0.0,
@@ -141,7 +148,7 @@ class PrevActionsPrevRewards(ConnectorV2):
             #  error).
             sa_episode.observation_space = self.observation_space
 
-        return data
+        return batch
 
     def _convert_individual_space(self, obs_space, act_space):
         return gym.spaces.Dict(

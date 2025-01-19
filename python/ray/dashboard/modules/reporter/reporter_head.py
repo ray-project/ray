@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
 import aiohttp.web
@@ -15,6 +16,7 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS_LEGACY,
     GLOBAL_GRPC_OPTIONS,
     KV_NAMESPACE_CLUSTER,
+    env_integer,
 )
 from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray._private.utils import get_or_create_event_loop, init_grpc_channel
@@ -43,10 +45,17 @@ SVG_STYLE = """<style>
     }
 </style>\n"""
 
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS = env_integer(
+    "RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS", 1
+)
+
 
 class ReportHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
         self._stubs = {}
         self._ray_config = None
         DataSource.agents.signal.append(self._update_stubs)
@@ -54,23 +63,24 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # asynchronous and will lead to low performance. ray disconnect()
         # will be hang when the ray.state is connected and the GCS is exit.
         # Please refer to: https://github.com/ray-project/ray/issues/16328
-        assert dashboard_head.gcs_address or dashboard_head.redis_address
-        self._gcs_address = dashboard_head.gcs_address
-        temp_dir = dashboard_head.temp_dir
         self.service_discovery = PrometheusServiceDiscoveryWriter(
-            self._gcs_address, temp_dir
+            self.gcs_address, self.temp_dir
         )
-        self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._state_api = None
+
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS,
+            thread_name_prefix="reporter_head_executor",
+        )
 
     async def _update_stubs(self, change):
         if change.old:
             node_id, port = change.old
-            ip = DataSource.node_id_to_ip[node_id]
-            self._stubs.pop(ip)
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
+            self._stubs.pop(ip, None)
         if change.new:
             node_id, ports = change.new
-            ip = DataSource.node_id_to_ip[node_id]
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
             options = GLOBAL_GRPC_OPTIONS
             channel = init_grpc_channel(
                 f"{ip}:{ports[1]}", options=options, asynchronous=True
@@ -104,7 +114,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         (legacy_status, formatted_status_string, error) = await asyncio.gather(
             *[
-                self._gcs_aio_client.internal_kv_get(
+                self.gcs_aio_client.internal_kv_get(
                     key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
                 )
                 for key in [
@@ -134,7 +144,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 success=True,
                 message="Got formatted cluster status.",
                 cluster_status=debug_status(
-                    formatted_status_string, error, address=self._gcs_address
+                    formatted_status_string, error, address=self.gcs_address
                 ),
             )
 
@@ -248,7 +258,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         attempt_number = req.query.get("attempt_number")
         node_id = req.query.get("node_id")
 
-        ip = DataSource.node_id_to_ip[node_id]
+        ip = DataSource.nodes[node_id]["nodeManagerAddress"]
 
         reporter_stub = self._stubs[ip]
 
@@ -340,7 +350,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         attempt_number = req.query.get("attempt_number")
         node_id = req.query.get("node_id")
 
-        ip = DataSource.node_id_to_ip[node_id]
+        ip = DataSource.nodes[node_id]["nodeManagerAddress"]
 
         duration_s = int(req.query.get("duration", 5))
         if duration_s > 60:
@@ -514,7 +524,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             task_id = req.query.get("task_id")
             attempt_number = req.query.get("attempt_number")
             node_id = req.query.get("node_id")
-            ip = DataSource.node_id_to_ip[node_id]
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
             try:
                 (pid, _) = await self.get_worker_details_for_running_task(
                     task_id, attempt_number
@@ -604,20 +614,22 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def run(self, server):
-        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
-            gcs_channel, self._dashboard_head.gcs_aio_client
+            self.aiogrpc_gcs_channel, self.gcs_aio_client
         )
         # Set up the state API in order to fetch task information.
-        self._state_api = StateAPIManager(self._state_api_data_source_client)
+        # TODO(ryw): unify the StateAPIManager in reporter_head and state_head.
+        self._state_api = StateAPIManager(
+            self._state_api_data_source_client,
+            self._executor,
+        )
 
         # Need daemon True to avoid dashboard hangs at exit.
         self.service_discovery.daemon = True
         self.service_discovery.start()
-        gcs_addr = self._dashboard_head.gcs_address
-        subscriber = GcsAioResourceUsageSubscriber(address=gcs_addr)
+        subscriber = GcsAioResourceUsageSubscriber(address=self.gcs_address)
         await subscriber.subscribe()
-        cluster_metadata = await self._dashboard_head.gcs_aio_client.internal_kv_get(
+        cluster_metadata = await self.gcs_aio_client.internal_kv_get(
             CLUSTER_METADATA_KEY,
             namespace=KV_NAMESPACE_CLUSTER,
         )
@@ -635,7 +647,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
                 # NOTE: Every iteration is executed inside the thread-pool executor
                 #       (TPE) to avoid blocking the Dashboard's event-loop
-                parsed_data = await loop.run_in_executor(None, json.loads, data)
+                parsed_data = await loop.run_in_executor(
+                    self._executor, json.loads, data
+                )
 
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = parsed_data

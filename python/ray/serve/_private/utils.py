@@ -7,7 +7,6 @@ import os
 import random
 import string
 import time
-import traceback
 import uuid
 from abc import ABC, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
@@ -24,8 +23,7 @@ from ray._private.utils import import_attr
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
-from ray.exceptions import RayTaskError
-from ray.serve._private.common import ServeComponentType
+from ray.serve._private.common import RequestMetadata, ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
@@ -41,6 +39,11 @@ except ImportError:
     np = None
 
 MESSAGE_PACK_OFFSET = 9
+GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
+    "Streaming deployment handle results cannot be passed to "
+    "downstream handle calls. If you have a use case requiring "
+    "this feature, please file a feature request on GitHub."
+)
 
 
 # Use a global singleton enum to emulate default options. We cannot use None
@@ -158,17 +161,6 @@ def ensure_serialization_context():
     been started."""
     ctx = StandaloneSerializationContext()
     ray.util.serialization_addons.apply(ctx)
-
-
-def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
-    """Utility method to wrap exceptions in user code."""
-
-    try:
-        # Raise and catch so we can access traceback.format_exc()
-        raise exception
-    except Exception as e:
-        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
-        return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
 def msgpack_serialize(obj):
@@ -315,7 +307,7 @@ def require_packages(packages: List[str]):
                         "`pip install` them or add them to "
                         "`runtime_env`."
                     )
-                setattr(func, "_require_packages_checked", True)
+                func._require_packages_checked = True
 
         if inspect.iscoroutinefunction(func):
 
@@ -550,7 +542,11 @@ def get_capacity_adjusted_num_replicas(
 
 
 def generate_request_id() -> str:
-    return str(uuid.uuid4())
+    # NOTE(edoakes): we use random.getrandbits because it reduces CPU overhead
+    # significantly. This is less cryptographically secure but should be ok for
+    # request ID generation.
+    # See https://bugs.python.org/issue45556 for discussion.
+    return str(uuid.UUID(int=random.getrandbits(128), version=4))
 
 
 def inside_ray_client_context() -> bool:
@@ -580,26 +576,37 @@ def get_component_file_name(
     return file_name
 
 
-class FakeObjectRefOrGen:
-    def __init__(self, replica_id):
-        self._replica_id = replica_id
+def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
+    if route_prefix is DEFAULT.VALUE or route_prefix is None:
+        return
 
-    @property
-    def replica_id(self):
-        return self._replica_id
+    if not route_prefix.startswith("/"):
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', "
+            "must start with a forward slash ('/')."
+        )
+
+    if route_prefix != "/" and route_prefix.endswith("/"):
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', "
+            "may not end with a trailing '/'."
+        )
+
+    if "{" in route_prefix or "}" in route_prefix:
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', " "may not contain wildcards."
+        )
 
 
-class FakeObjectRef(FakeObjectRefOrGen):
-    def __await__(self):
-        raise NotImplementedError
+async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadata):
+    """Resolve `DeploymentResponse` objects to underlying object references.
 
-    def _on_completed(self, callback: Callable):
-        pass
+    This enables composition without explicitly calling `_to_object_ref`.
+    """
+    from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 
-
-class FakeObjectRefGen(FakeObjectRefOrGen):
-    def __anext__(self):
-        raise NotImplementedError
-
-    def completed(self):
-        return FakeObjectRef(self._replica_id)
+    if isinstance(obj, DeploymentResponseGenerator):
+        raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
+    elif isinstance(obj, DeploymentResponse):
+        # Launch async task to convert DeploymentResponse to an object ref
+        return asyncio.create_task(obj._to_object_ref())

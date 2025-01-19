@@ -1,8 +1,11 @@
-import asyncio
 import logging
 from typing import Any, List, Optional
 
 import ray.dashboard.consts as dashboard_consts
+from ray._private.utils import (
+    get_or_create_event_loop,
+    parse_pg_formatted_resources_to_original,
+)
 from ray.dashboard.utils import (
     Dict,
     MutableNotificationDict,
@@ -13,6 +16,7 @@ from ray.dashboard.utils import (
 logger = logging.getLogger(__name__)
 
 
+# NOT thread safe. Every assignment must be on the main event loop thread.
 class DataSource:
     # {node id hex(str): node stats(dict of GetNodeStatsReply
     # in node_manager.proto)}
@@ -27,16 +31,12 @@ class DataSource:
     agents = Dict()
     # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
     nodes = Dict()
-    # {node id hex(str): ip address(str)}
-    node_id_to_ip = Dict()
     # {node id hex(str): worker list}
     node_workers = Dict()
     # {node id hex(str): {actor id hex(str): actor table data}}
     node_actors = MutableNotificationDict()
     # {worker id(str): core worker stats}
     core_worker_stats = Dict()
-    # {job id hex(str): {event id(str): event dict}}
-    events = Dict()
 
 
 class DataOrganizer:
@@ -50,7 +50,6 @@ class DataOrganizer:
         # we do not needs to purge them:
         #   * agents
         #   * nodes
-        #   * node_id_to_ip
         alive_nodes = {
             node_id
             for node_id, node_info in DataSource.nodes.items()
@@ -64,34 +63,56 @@ class DataOrganizer:
 
     @classmethod
     @async_loop_forever(dashboard_consts.RAY_DASHBOARD_STATS_UPDATING_INTERVAL)
-    async def organize(cls):
+    async def organize(cls, thread_pool_executor):
+        """
+        Organizes data: read from (node_physical_stats, node_stats) and updates
+        (node_workers, node_worker_stats).
+
+        This methods is not really async, but DataSource is not thread safe so we need
+        to make sure it's on the main event loop thread. To avoid blocking the main
+        event loop, we yield after each node processed.
+        """
+        loop = get_or_create_event_loop()
+
         node_workers = {}
         core_worker_stats = {}
-        # await inside for loop, so we create a copy of keys().
+
+        # NOTE: We copy keys of the `DataSource.nodes` to make sure
+        #       it doesn't change during the iteration (since its being updated
+        #       from another async task)
         for node_id in list(DataSource.nodes.keys()):
-            workers = await cls.get_node_workers(node_id)
+            node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
+            node_stats = DataSource.node_stats.get(node_id, {})
+            # Offloads the blocking operation to a thread pool executor. This also
+            # yields to the event loop.
+            workers = await loop.run_in_executor(
+                thread_pool_executor,
+                cls._extract_workers_for_node,
+                node_physical_stats,
+                node_stats,
+            )
+
             for worker in workers:
-                stats = worker.get("coreWorkerStats", {})
-                if stats:
+                for stats in worker.get("coreWorkerStats", []):
                     worker_id = stats["workerId"]
                     core_worker_stats[worker_id] = stats
+
             node_workers[node_id] = workers
+
         DataSource.node_workers.reset(node_workers)
         DataSource.core_worker_stats.reset(core_worker_stats)
 
     @classmethod
-    async def get_node_workers(cls, node_id):
+    def _extract_workers_for_node(cls, node_physical_stats, node_stats):
         workers = []
-        node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
-        node_stats = DataSource.node_stats.get(node_id, {})
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
         pid_to_worker_stats = {}
         pid_to_language = {}
         pid_to_job_id = {}
-        pids_on_node = set()
+
         for core_worker_stats in node_stats.get("coreWorkersStats", []):
             pid = core_worker_stats["pid"]
-            pids_on_node.add(pid)
+
             pid_to_worker_stats[pid] = core_worker_stats
             pid_to_language[pid] = core_worker_stats["language"]
             pid_to_job_id[pid] = core_worker_stats["jobId"]
@@ -99,13 +120,17 @@ class DataOrganizer:
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
             pid = worker["pid"]
-            worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, {})
+
+            core_worker_stats = pid_to_worker_stats.get(pid)
+            # Empty list means core worker stats is not available.
+            worker["coreWorkerStats"] = [core_worker_stats] if core_worker_stats else []
             worker["language"] = pid_to_language.get(
                 pid, dashboard_consts.DEFAULT_LANGUAGE
             )
             worker["jobId"] = pid_to_job_id.get(pid, dashboard_consts.DEFAULT_JOB_ID)
 
             workers.append(worker)
+
         return workers
 
     @classmethod
@@ -133,8 +158,6 @@ class DataOrganizer:
         node_info["raylet"] = node_stats
         node_info["raylet"].update(ray_stats)
 
-        node_info["status"] = node["stateSnapshot"]["state"]
-
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
         death_info = node.get("deathInfo", {})
@@ -143,10 +166,14 @@ class DataOrganizer:
         )
 
         if not get_summary:
+            actor_table_entries = DataSource.node_actors.get(node_id, {})
+
             # Merge actors to node physical stats
-            node_info["actors"] = await DataOrganizer._get_all_actors(
-                DataSource.node_actors.get(node_id, {})
-            )
+            node_info["actors"] = {
+                actor_id: await DataOrganizer._get_actor_info(actor_table_entry)
+                for actor_id, actor_table_entry in actor_table_entries.items()
+            }
+
             # Update workers to node physical stats
             node_info["workers"] = DataSource.node_workers.get(node_id, [])
 
@@ -155,6 +182,8 @@ class DataOrganizer:
     @classmethod
     async def get_all_node_summary(cls):
         return [
+            # NOTE: We're intentionally awaiting in a loop to avoid excessive
+            #       concurrency spinning up excessive # of tasks for large clusters
             await DataOrganizer.get_node_info(node_id, get_summary=True)
             for node_id in DataSource.nodes.keys()
         ]
@@ -184,7 +213,7 @@ class DataOrganizer:
 
         def _create_agent_info(node_id: str):
             (http_port, grpc_port) = DataSource.agents[node_id]
-            node_ip = DataSource.node_id_to_ip[node_id]
+            node_ip = DataSource.nodes[node_id]["nodeManagerAddress"]
 
             return dict(
                 ipAddress=node_ip,
@@ -196,28 +225,25 @@ class DataOrganizer:
         return {node_id: _create_agent_info(node_id) for node_id in target_node_ids}
 
     @classmethod
-    async def get_all_actors(cls):
-        return await cls._get_all_actors(DataSource.actors)
+    async def get_actor_infos(cls, actor_ids: Optional[List[str]] = None):
+        target_actor_table_entries: dict[str, Optional[dict]]
+        if actor_ids is not None:
+            target_actor_table_entries = {
+                actor_id: DataSource.actors.get(actor_id) for actor_id in actor_ids
+            }
+        else:
+            target_actor_table_entries = DataSource.actors
+
+        return {
+            actor_id: await DataOrganizer._get_actor_info(actor_table_entry)
+            for actor_id, actor_table_entry in target_actor_table_entries.items()
+        }
 
     @staticmethod
-    async def _get_all_actors(actors):
-        result = {}
-        for index, (actor_id, actor) in enumerate(actors.items()):
-            result[actor_id] = await DataOrganizer._get_actor(actor)
-            # There can be thousands of actors including dead ones. Processing
-            # them all can take many seconds, which blocks all other requests
-            # to the dashboard. The ideal solution might be to implement
-            # pagination. For now, use a workaround to yield to the event loop
-            # periodically, so other request handlers have a chance to run and
-            # avoid long latencies.
-            if index % 1000 == 0 and index > 0:
-                # Canonical way to yield to the event loop:
-                # https://github.com/python/asyncio/issues/284
-                await asyncio.sleep(0)
-        return result
+    async def _get_actor_info(actor):
+        if actor is None:
+            return None
 
-    @staticmethod
-    async def _get_actor(actor):
         actor = dict(actor)
         worker_id = actor["address"]["workerId"]
         core_worker_stats = DataSource.core_worker_stats.get(worker_id, {})
@@ -251,4 +277,10 @@ class DataOrganizer:
         actor["gpus"] = actor_process_gpu_stats
         actor["processStats"] = actor_process_stats
         actor["mem"] = node_physical_stats.get("mem", [])
+
+        required_resources = parse_pg_formatted_resources_to_original(
+            actor["requiredResources"]
+        )
+        actor["requiredResources"] = required_resources
+
         return actor

@@ -51,9 +51,10 @@ enum class PlacementStrategy {
 
 enum PlacementGroupState {
   PENDING = 0,
-  CREATED = 1,
-  REMOVED = 2,
-  RESCHEDULING = 3,
+  PREPARED = 1,
+  CREATED = 2,
+  REMOVED = 3,
+  RESCHEDULING = 4,
   UNRECOGNIZED = -1,
 };
 

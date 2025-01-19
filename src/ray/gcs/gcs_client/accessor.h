@@ -17,6 +17,7 @@
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
+#include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/rpc/client_call.h"
@@ -119,6 +120,12 @@ class ActorInfoAccessor {
       const std::string &ray_namespace,
       std::vector<std::pair<std::string, std::string>> &actors);
 
+  virtual Status AsyncReportActorOutOfScope(
+      const ActorID &actor_id,
+      uint64_t num_restarts_due_to_lineage_reconstruction,
+      const StatusCallback &callback,
+      int64_t timeout_ms = -1);
+
   /// Register actor to GCS asynchronously.
   ///
   /// \param task_spec The specification for the actor creation task.
@@ -128,6 +135,11 @@ class ActorInfoAccessor {
   virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
                                     const StatusCallback &callback,
                                     int64_t timeout_ms = -1);
+
+  virtual Status AsyncRestartActor(const ActorID &actor_id,
+                                   uint64_t num_restarts,
+                                   const StatusCallback &callback,
+                                   int64_t timeout_ms = -1);
 
   /// Register actor to GCS synchronously.
   ///
@@ -247,17 +259,25 @@ class JobInfoAccessor {
 
   /// Get all job info from GCS asynchronously.
   ///
+  /// \param job_or_submission_id If not null, filter the jobs with this id.
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback,
+  virtual Status AsyncGetAll(const std::optional<std::string> &job_or_submission_id,
+                             bool skip_submission_job_info_field,
+                             bool skip_is_running_tasks_field,
+                             const MultiItemCallback<rpc::JobTableData> &callback,
                              int64_t timeout_ms);
 
   /// Get all job info from GCS synchronously.
   ///
-  /// \param timeout_ms -1 means infinite.
+  /// \param job_or_submission_id If not null, filter the jobs with this id.
   /// \param[out] job_data_list The list of job data retrieved from GCS.
+  /// \param timeout_ms -1 means infinite.
   /// \return Status
-  virtual Status GetAll(std::vector<rpc::JobTableData> &job_data_list,
+  virtual Status GetAll(const std::optional<std::string> &job_or_submission_id,
+                        bool skip_submission_job_info_field,
+                        bool skip_is_running_tasks_field,
+                        std::vector<rpc::JobTableData> &job_data_list,
                         int64_t timeout_ms);
 
   /// Reestablish subscription.
@@ -395,8 +415,14 @@ class NodeInfoAccessor {
 
   /// Get information of all nodes from an RPC to GCS synchronously.
   ///
-  /// \return All nodes in cache.
+  /// \return All nodes from gcs without cache.
   virtual Status GetAllNoCache(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &nodes);
+
+  /// Get information of all nodes from an RPC to GCS synchronously with filters.
+  ///
+  /// \return All nodes that match the given filters from the gcs without the cache.
+  virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCacheWithFilters(
+      int64_t timeout_ms, rpc::GetAllNodeInfoRequest_Filters filters);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -436,13 +462,6 @@ class NodeInfoAccessor {
   /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
   /// server.
   virtual void AsyncResubscribe();
-
-  /// Get the internal config string from GCS.
-  ///
-  /// \param callback Processes a map of config options
-  /// \return Status
-  virtual Status AsyncGetInternalConfig(
-      const OptionalItemCallback<std::string> &callback);
 
   /// Add a node to accessor cache.
   virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
@@ -797,7 +816,7 @@ class InternalKVAccessor {
                                     const std::string &value,
                                     bool overwrite,
                                     const int64_t timeout_ms,
-                                    const OptionalItemCallback<int> &callback);
+                                    const OptionalItemCallback<bool> &callback);
 
   /// Asynchronously check the existence of a given key
   ///
@@ -920,6 +939,13 @@ class InternalKVAccessor {
                         const int64_t timeout_ms,
                         bool &exists);
 
+  /// Get the internal config string from GCS.
+  ///
+  /// \param callback Processes a map of config options
+  /// \return Status
+  virtual Status AsyncGetInternalConfig(
+      const OptionalItemCallback<std::string> &callback);
+
  private:
   GcsClient *client_impl_;
 };
@@ -964,6 +990,9 @@ class AutoscalerStateAccessor {
 
   virtual Status ReportAutoscalingState(int64_t timeout_ms,
                                         const std::string &serialized_state);
+
+  virtual Status ReportClusterConfig(int64_t timeout_ms,
+                                     const std::string &serialized_cluster_config);
 
   virtual Status DrainNode(const std::string &node_id,
                            int32_t reason,

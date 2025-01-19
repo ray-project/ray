@@ -21,6 +21,10 @@ if __name__ == "__main__":
     # Note: No ray.init(), to test it works without Ray
     config = (
         PPOConfig()
+        .api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False,
+        )
         .environment("CartPole-v1")
         .framework("tf")
         .env_runners(num_env_runners=0)

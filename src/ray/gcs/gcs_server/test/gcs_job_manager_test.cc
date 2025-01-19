@@ -32,12 +32,6 @@
 
 namespace ray {
 
-class MockInMemoryStoreClient : public gcs::InMemoryStoreClient {
- public:
-  explicit MockInMemoryStoreClient(instrumented_io_context &main_io_service)
-      : gcs::InMemoryStoreClient(main_io_service) {}
-};
-
 class GcsJobManagerTest : public ::testing::Test {
  public:
   GcsJobManagerTest() : runtime_env_manager_(nullptr) {
@@ -50,13 +44,13 @@ class GcsJobManagerTest : public ::testing::Test {
     });
     promise.get_future().get();
 
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+    gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    store_client_ = std::make_shared<MockInMemoryStoreClient>(io_service_);
+    store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
-    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
+    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
 
     // Mock client factory which abuses the "address" argument to return a
     // CoreWorkerClient whose number of running tasks equal to the address port. This is
@@ -81,35 +75,44 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
-  rpc::ClientFactoryFn client_factory_;
+  rpc::CoreWorkerClientFactoryFn client_factory_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
 };
 
 TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
-  fake_kv_->Put("ns", "key", "value", /*overwrite=*/true, /*callback=*/[](auto) {});
+  fake_kv_->Put(
+      "ns", "key", "value", /*overwrite=*/true, /*callback=*/{[](auto) {}, io_service_});
   fake_kv_->Get(
-      "ns", "key", [](std::optional<std::string> v) { ASSERT_EQ(v.value(), "value"); });
-  fake_kv_->Put("ns", "key2", "value2", /*overwrite=*/true, /*callback=*/[](auto) {});
+      "ns",
+      "key",
+      {[](std::optional<std::string> v) { ASSERT_EQ(v.value(), "value"); }, io_service_});
+  fake_kv_->Put("ns",
+                "key2",
+                "value2",
+                /*overwrite=*/true,
+                /*callback=*/{[](auto) {}, io_service_});
 
   fake_kv_->MultiGet("ns",
                      {"key", "key2"},
-                     [](const std::unordered_map<std::string, std::string> &result) {
-                       ASSERT_EQ(result.size(), 2);
-                       ASSERT_EQ(result.at("key"), "value");
-                       ASSERT_EQ(result.at("key2"), "value2");
-                     });
+                     {[](const absl::flat_hash_map<std::string, std::string> &result) {
+                        ASSERT_EQ(result.size(), 2);
+                        ASSERT_EQ(result.at("key"), "value");
+                        ASSERT_EQ(result.at("key2"), "value2");
+                      },
+                      io_service_});
 }
 
 TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
+                                     io_service_,
                                      client_factory_);
 
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   // Add 100 jobs. Job i should have i running tasks.
@@ -166,14 +169,15 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
 }
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
+                                     io_service_,
                                      client_factory_);
 
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   // Add 100 jobs.
@@ -243,7 +247,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
                 gcs::JobDataKey(submission_id),
                 job_info_json,
                 /*overwrite=*/true,
-                [&kv_promise](auto) { kv_promise.set_value(true); });
+                {[&kv_promise](auto) { kv_promise.set_value(true); }, io_service_});
   kv_promise.get_future().get();
 
   // Get all job info again.
@@ -294,7 +298,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
                 gcs::JobDataKey(submission_id),
                 job_info_json,
                 /*overwrite=*/true,
-                [&kv_promise2](auto) { kv_promise2.set_value(true); });
+                {[&kv_promise2](auto) { kv_promise2.set_value(true); }, io_service_});
   kv_promise2.get_future().get();
 
   // Get all job info again.
@@ -342,17 +346,104 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   ASSERT_EQ(all_job_info_reply4.job_info_list().size(), 101);
 }
 
-TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
+                                     io_service_,
                                      client_factory_);
 
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+
+  rpc::AddJobReply empty_reply;
+  std::promise<bool> promise1;
+  std::promise<bool> promise2;
+
+  auto add_job_request1 =
+      Mocker::GenAddJobRequest(job_id1, "namespace_1", "submission_1");
+  gcs_job_manager.HandleAddJob(
+      *add_job_request1,
+      &empty_reply,
+      [&promise1](Status, std::function<void()>, std::function<void()>) {
+        promise1.set_value(true);
+      });
+  promise1.get_future().get();
+
+  auto add_job_request2 =
+      Mocker::GenAddJobRequest(job_id2, "namespace_2", "submission_2");
+  gcs_job_manager.HandleAddJob(
+      *add_job_request2,
+      &empty_reply,
+      [&promise2](Status, std::function<void()>, std::function<void()>) {
+        promise2.set_value(true);
+      });
+  promise2.get_future().get();
+
+  // Get all jobs with job_id filter.
+  rpc::GetAllJobInfoRequest all_job_info_request;
+  rpc::GetAllJobInfoReply all_job_info_reply;
+  std::promise<bool> all_job_info_promise;
+
+  all_job_info_request.set_job_or_submission_id(job_id2.Hex());
+  gcs_job_manager.HandleGetAllJobInfo(
+      all_job_info_request,
+      &all_job_info_reply,
+      [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
+        all_job_info_promise.set_value(true);
+      });
+  all_job_info_promise.get_future().get();
+  ASSERT_EQ(all_job_info_reply.job_info_list().size(), 1);
+  ASSERT_EQ(all_job_info_reply.job_info_list(0).job_id(), job_id2.Binary());
+
+  // Get all jobs with job_submission_id filter.
+  rpc::GetAllJobInfoRequest all_job_info_request2;
+  rpc::GetAllJobInfoReply all_job_info_reply2;
+  std::promise<bool> all_job_info_promise2;
+
+  all_job_info_request2.set_job_or_submission_id("submission_1");
+  gcs_job_manager.HandleGetAllJobInfo(
+      all_job_info_request2,
+      &all_job_info_reply2,
+      [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
+        all_job_info_promise2.set_value(true);
+      });
+  all_job_info_promise2.get_future().get();
+  ASSERT_EQ(all_job_info_reply2.job_info_list().size(), 1);
+  ASSERT_EQ(all_job_info_reply2.job_info_list(0).job_id(), job_id1.Binary());
+
+  // Get all jobs with mismatched filter.
+  rpc::GetAllJobInfoRequest all_job_info_request3;
+  rpc::GetAllJobInfoReply all_job_info_reply3;
+  std::promise<bool> all_job_info_promise3;
+
+  all_job_info_request3.set_job_or_submission_id("does_not_exist");
+  gcs_job_manager.HandleGetAllJobInfo(
+      all_job_info_request3,
+      &all_job_info_reply3,
+      [&all_job_info_promise3](Status, std::function<void()>, std::function<void()>) {
+        all_job_info_promise3.set_value(true);
+      });
+  all_job_info_promise3.get_future().get();
+  ASSERT_EQ(all_job_info_reply3.job_info_list().size(), 0);
+}
+
+TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
+                                     runtime_env_manager_,
+                                     *function_manager_,
+                                     *fake_kv_,
+                                     io_service_,
+                                     client_factory_);
+
+  auto job_id1 = JobID::FromInt(1);
+  auto job_id2 = JobID::FromInt(2);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   rpc::AddJobReply empty_reply;
@@ -444,17 +535,19 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
   // Check that the reply has the correct error message.
   ASSERT_EQ(all_job_info_reply4.status().message(), "Invalid limit");
 }
+
 TEST_F(GcsJobManagerTest, TestGetJobConfig) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *kv_,
+                                     io_service_,
                                      client_factory_);
 
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   rpc::AddJobReply empty_reply;
@@ -487,15 +580,16 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
 }
 
 TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
+                                     io_service_,
                                      client_factory_);
 
   auto job_id = JobID::FromInt(1);
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
   auto add_job_request = Mocker::GenAddJobRequest(job_id, "namespace");
 
@@ -554,16 +648,17 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
 }
 
 TEST_F(GcsJobManagerTest, TestNodeFailure) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
+                                     io_service_,
                                      client_factory_);
 
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   rpc::AddJobReply empty_reply;
@@ -634,8 +729,4 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
   EXPECT_TRUE(WaitForCondition(condition, 2000));
 }
 
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
 }  // namespace ray

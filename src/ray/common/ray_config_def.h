@@ -112,6 +112,10 @@ RAY_CONFIG(bool, report_actor_placement_resources, true)
 /// TODO: maybe group this under RAY_DEBUG.
 RAY_CONFIG(bool, record_ref_creation_sites, false)
 
+/// Collects the stacktrace of the task invocation, or actor creation. The stacktrace is
+/// serialized into the TaskSpec and is viewable from the Dashboard. Default is disabled.
+RAY_CONFIG(bool, record_task_actor_creation_sites, false)
+
 /// Objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
 /// will be eagerly evicted in a batch by freeing all plasma copies in the
@@ -201,7 +205,7 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
 // limit in Ray to avoid crashing with many small inlined task arguments.
 // Keep in sync with GCS_STORAGE_MAX_SIZE in packaging.py.
-RAY_CONFIG(int64_t, max_grpc_message_size, 512 * 1024 * 1024)
+RAY_CONFIG(size_t, max_grpc_message_size, 512 * 1024 * 1024)
 
 // The max gRPC message size (the gRPC internal default is 4MB) in communication with the
 // Agent.
@@ -222,10 +226,6 @@ RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
 // non-C++ children processes such as dashboard agent.
 RAY_CONFIG(bool, grpc_enable_http_proxy, false)
 
-// The min number of retries for direct actor creation tasks. The actual number
-// of creation retries will be MAX(actor_creation_min_retries, max_restarts).
-RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
-
 /// Warn if more than this many tasks are queued for submission to an actor.
 /// It likely indicates a bug in the user code.
 RAY_CONFIG(uint64_t, actor_excess_queueing_warn_threshold, 5000)
@@ -245,11 +245,11 @@ RAY_CONFIG(int64_t, worker_lease_timeout_milliseconds, 500)
 /// When this happens, they will kill themselves.
 RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 
-/// These are used by the worker to set timeouts and to batch requests when
-/// getting objects.
-RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
-RAY_CONFIG(int64_t, worker_get_request_size, 10000)
+/// These are used by the worker to set the interval for checking signals and
+/// batching requests when getting objects.
+RAY_CONFIG(int64_t, get_check_signal_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
+
 /// How long to wait for a fetch to complete during ray.get before warning the
 /// user.
 RAY_CONFIG(int64_t, fetch_warn_timeout_milliseconds, 60000)
@@ -451,7 +451,7 @@ RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
 RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024 * 5)
 
 /// The duration between two checks for grpc status.
-RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
+RAY_CONFIG(int32_t, grpc_client_check_connection_status_interval_milliseconds, 1000)
 
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
@@ -502,9 +502,19 @@ RAY_CONFIG(int64_t, task_events_dropped_task_attempts_gc_threshold_s, 15 * 60)
 /// workers. Events will be evicted based on a FIFO order.
 RAY_CONFIG(uint64_t, task_events_max_num_status_events_buffer_on_worker, 100 * 1000)
 
+/// Max number of task status events that will be stored to export
+/// for the export API. Events will be evicted based on a FIFO order.
+RAY_CONFIG(uint64_t,
+           task_events_max_num_export_status_events_buffer_on_worker,
+           1000 * 1000)
+
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
 RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
+
+/// Max number of task events to be written in a single flush iteration. This
+/// caps the number of file writes per iteration.
+RAY_CONFIG(uint64_t, export_task_events_write_batch_size, 10 * 1000)
 
 /// Max number of profile events allowed to be tracked for a single task.
 /// Setting the value to -1 allows unlimited profile events to be tracked.
@@ -542,6 +552,16 @@ RAY_CONFIG(bool, enable_metrics_collection, true)
 /// core_worker received configs from gcs and raylet respectively, so the configs are only
 /// available *after* a grpc call.
 RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
+
+/// Only effective if `enable_metrics_collection` is also true.
+///
+/// If > 0, we monitor each instrumented_io_context every
+/// `io_context_event_loop_lag_collection_interval_ms` milliseconds, by posting a task to
+/// the io_context to measure the duration from post to run. The metric is
+/// `ray_io_context_event_loop_lag_ms`.
+///
+/// A probe task is only posted after a previous probe task has completed.
+RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 250)
 
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
@@ -677,6 +697,9 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// report the loads to raylet.
 RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
 
+/// Timeout for core worker grpc server reconnection in seconds.
+RAY_CONFIG(int32_t, core_worker_rpc_server_reconnect_timeout_s, 60)
+
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 
@@ -736,7 +759,7 @@ RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HP
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
-/// Ray-internal auxiliary tasks (e.g., accelerated dag workers).
+/// Ray-internal auxiliary tasks (e.g., compiled graph workers).
 RAY_CONFIG(std::string, system_concurrency_group_name, "_ray_system")
 
 // Maximum size of the batches when broadcasting resources to raylet.
@@ -754,7 +777,13 @@ RAY_CONFIG(bool, isolate_workers_across_resource_types, true)
 RAY_CONFIG(bool, isolate_workers_across_task_types, true)
 
 /// ServerCall instance number of each RPC service handler
-RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
+///
+/// NOTE: Default value is temporarily pegged at `gcs_server_rpc_server_thread_num * 100`
+///       to keep it at the level it has been prior to
+///       https://github.com/ray-project/ray/pull/47664
+RAY_CONFIG(int64_t,
+           gcs_max_active_rpcs_per_handler,
+           gcs_server_rpc_server_thread_num() * 100)
 
 /// grpc keepalive sent interval for server.
 /// This is only configured in GCS server now.
@@ -822,6 +851,11 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 //  The delay is a random number between the interval. If method equals '*',
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
+
+///  To use this, simply do
+///      export
+///      RAY_testing_rpc_failure="method1=max_num_failures,method2=max_num_failures"
+RAY_CONFIG(std::string, testing_rpc_failure, "")
 
 /// The following are configs for the health check. They are borrowed
 /// from k8s health probe (shorturl.at/jmTY3)

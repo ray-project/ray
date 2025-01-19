@@ -13,7 +13,7 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
+
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
@@ -39,6 +39,11 @@ message MarkJobFinishedReply {
 message GetAllJobInfoRequest {
   // The number of jobs to return. If not specified, return all jobs.
   optional int32 limit = 1;
+  // If set, only return the job with that job id in hex, or the job with that
+  // job_submission_id.
+  optional string job_or_submission_id = 2;
+  optional bool skip_submission_job_info_field = 3;
+  optional bool skip_is_running_tasks_field = 4;
 }
 
 message GetAllJobInfoReply {
@@ -159,10 +164,23 @@ message KillActorViaGcsReply {
   GcsStatus status = 1;
 }
 
+message ReportActorOutOfScopeRequest {
+  // ID of this actor.
+  bytes actor_id = 1;
+  // The actor after this number of lineage reconstructions is out of scope.
+  // This is used to filter out stale message.
+  uint64 num_restarts_due_to_lineage_reconstruction = 2;
+}
+
+message ReportActorOutOfScopeReply {
+  GcsStatus status = 1;
+}
+
 // Service for actor info access.
 service ActorInfoGcsService {
   // Register actor to gcs service.
   rpc RegisterActor(RegisterActorRequest) returns (RegisterActorReply);
+  rpc RestartActor(RestartActorRequest) returns (RestartActorReply);
   // Create actor which local dependencies are resolved.
   rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
   // Get actor data from GCS Service by actor id.
@@ -175,6 +193,8 @@ service ActorInfoGcsService {
   rpc GetAllActorInfo(GetAllActorInfoRequest) returns (GetAllActorInfoReply);
   // Kill actor via GCS Service.
   rpc KillActorViaGcs(KillActorViaGcsRequest) returns (KillActorViaGcsReply);
+  rpc ReportActorOutOfScope(ReportActorOutOfScopeRequest)
+      returns (ReportActorOutOfScopeReply);
 }
 
 message GetClusterIdRequest {}
@@ -209,6 +229,7 @@ message GetAllNodeInfoRequest {
     optional bytes node_id = 1;
     optional GcsNodeInfo.GcsNodeState state = 2;
     optional string node_name = 3;
+    optional string node_ip_address = 4;
   }
 
   // Maximum number to return.
@@ -377,6 +398,16 @@ message RegisterActorReply {
   GcsStatus status = 1;
 }
 
+message RestartActorRequest {
+  bytes actor_id = 1;
+  // The target number of restarts.
+  uint64 num_restarts = 2;
+}
+
+message RestartActorReply {
+  GcsStatus status = 1;
+}
+
 message CreatePlacementGroupRequest {
   PlacementGroupSpec placement_group_spec = 1;
 }
@@ -405,6 +436,11 @@ message GetPlacementGroupReply {
 enum GcsServiceFailureType {
   RPC_DISCONNECT = 0;
   GCS_SERVER_RESTART = 1;
+}
+
+enum FilterPredicate {
+  EQUAL = 0;
+  NOT_EQUAL = 1;
 }
 
 message GetAllPlacementGroupRequest {
@@ -530,7 +566,8 @@ message InternalKVPutRequest {
 
 message InternalKVPutReply {
   GcsStatus status = 1;
-  int32 added_num = 2;
+  // Refers to whether the key / value was actually added.
+  bool added = 2;
 }
 
 message InternalKVDelRequest {
@@ -572,6 +609,7 @@ service InternalKVGcsService {
   rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
   rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
+  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 
 message PinRuntimeEnvURIRequest {
@@ -720,8 +758,6 @@ service NodeInfoGcsService {
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
-  // Get cluster internal config.
-  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }
@@ -738,18 +774,58 @@ message AddTaskEventDataReply {
 message GetTaskEventsRequest {
   // Filter object where predicates are AND together.
   message Filters {
-    // Get task events from a job.
-    optional bytes job_id = 1;
-    // Get task events from a set of tasks.
-    repeated bytes task_ids = 2;
-    // Get the task events with an actor id.
-    optional bytes actor_id = 3;
-    // Get the task events of task with names.
-    optional string name = 4;
+    // The filter to filter on the job id of a task.
+    message JobIdFilter {
+      // The prediate of the filter.
+      FilterPredicate predicate = 1;
+      // The job id to filter on.
+      bytes job_id = 2;
+    }
+
+    // The filter to filter on the task id of a task.
+    message TaskIdFilter {
+      // The prediate of the filter.
+      FilterPredicate predicate = 1;
+      // The task id to filter on.
+      bytes task_id = 2;
+    }
+
+    // The filter to filter on the actor id of a task.
+    message ActorIdFilter {
+      // The prediate of the filter.
+      FilterPredicate predicate = 1;
+      // The actor id to filter on.
+      bytes actor_id = 2;
+    }
+
+    // The filter to filer on the task name.
+    message TaskNameFilter {
+      // The predicate of the filter.
+      FilterPredicate predicate = 1;
+      // The task name to filter on.
+      string task_name = 2;
+    }
+
+    // The filter to filter on the latest state of a task.
+    message StateFilter {
+      // The predicate of the filter.
+      FilterPredicate predicate = 1;
+      // The latest state of the task to filter on.
+      string state = 2;
+    }
+
+    // Task events filter by job ids
+    repeated JobIdFilter job_filters = 1;
+    // Task events filter by task ids
+    repeated TaskIdFilter task_filters = 2;
+    // Task events filter by actor ids
+    repeated ActorIdFilter actor_filters = 3;
+    // Task events filter by task names.
+    repeated TaskNameFilter task_name_filters = 4;
     // True if task events from driver (only profiling events) should be excluded.
     optional bool exclude_driver = 5;
-    // Latest state of the task.
-    optional string state = 6;
+    // Task events filter by certain states.
+    repeated StateFilter state_filters = 6;
   }
 
   // Maximum number of TaskEvents to return.

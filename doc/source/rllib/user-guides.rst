@@ -12,20 +12,19 @@ User Guides
     :hidden:
 
     rllib-advanced-api
+    rllib-callback
     rllib-models
-    rllib-saving-and-loading-algos-and-policies
-    rllib-concepts
+    checkpoints
     single-agent-episode
     connector-v2
     rllib-replay-buffers
     rllib-offline
-    rllib-catalogs
-    rllib-connector
     rllib-rlmodule
     rllib-learner
     rllib-torch2x
     rllib-fault-tolerance
     rllib-dev
+    scaling-guide
 
 
 .. _rllib-feature-guide:
@@ -43,7 +42,15 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-advanced-api-doc
 
-            Advanced Features of the RLlib Python API
+            Advanced features of the RLlib python API
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: rllib-callback
+
+            Injecting custom code into RLlib through callbacks
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -51,23 +58,15 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-models
 
-            Working With Models, Preprocessors and Action Distributions
+            Working with models, preprocessors and action distributions
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-saving-and-loading-algos-and-policies
+        .. button-ref:: checkpoints
 
-            Checkpointing your Algorithms and Policies, and Exporting your Models
-
-    .. grid-item-card::
-        :img-top: /rllib/images/rllib-logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: rllib-concepts
-
-            How To Customize Your Policies?
+            Checkpointing your experiments and models
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -75,7 +74,7 @@ RLlib Feature Guides
 
         .. button-ref:: single-agent-episode
 
-            How To Use SingleAgentEpisodes (new API stack)?
+            How to process trajectories through episodes
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -91,7 +90,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-offline
 
-            Working With Offline Data
+            Offline RL with offline datasets
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -99,7 +98,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-replay-buffers
 
-            Working with ReplayBuffers
+            Working with replay buffers
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -107,12 +106,12 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-dev
 
-            How To Contribute To RLlib?
+            Contribute to RLlib
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-catalogs
+        .. button-ref:: scaling-guide
 
-            How To Use the RLlib Catalogs
+            How to run RLlib experiments at scale

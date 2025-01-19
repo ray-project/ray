@@ -14,20 +14,20 @@ tf1, tf, tfv = try_import_tf()
 tf1.enable_eager_execution()
 
 CONFIGS = [
-    {"mini_batch_size": 256, "num_sgd_iter": 30, "agent_steps": (1652, 1463)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (1000, 2)},
-    {"mini_batch_size": 128, "num_sgd_iter": 3, "agent_steps": (56, 56)},
-    {"mini_batch_size": 128, "num_sgd_iter": 7, "agent_steps": (56, 56)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 56)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 3)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 4)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 55)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (400, 400)},
-    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (64, 64)},
+    {"minibatch_size": 256, "num_epochs": 30, "agent_steps": (1652, 1463)},
+    {"minibatch_size": 128, "num_epochs": 10, "agent_steps": (1000, 2)},
+    {"minibatch_size": 128, "num_epochs": 3, "agent_steps": (56, 56)},
+    {"minibatch_size": 128, "num_epochs": 7, "agent_steps": (56, 56)},
+    {"minibatch_size": 128, "num_epochs": 10, "agent_steps": (56, 56)},
+    {"minibatch_size": 128, "num_epochs": 10, "agent_steps": (56, 3)},
+    {"minibatch_size": 128, "num_epochs": 10, "agent_steps": (56, 4)},
+    {"minibatch_size": 128, "num_epochs": 10, "agent_steps": (56, 55)},
+    {"minibatch_size": 128, "num_epochs": 10, "agent_steps": (400, 400)},
+    {"minibatch_size": 128, "num_epochs": 10, "agent_steps": (64, 64)},
     # W/ SEQ_LENS.
     {
-        "mini_batch_size": 64,
-        "num_sgd_iter": 1,
+        "minibatch_size": 64,
+        "num_epochs": 1,
         "agent_steps": (128,),
         "seq_lens": [16, 16, 16, 16, 16, 16, 2, 2, 14, 14],
         "padding": True,
@@ -39,8 +39,8 @@ class TestMinibatchUtils(unittest.TestCase):
     def test_minibatch_cyclic_iterator(self):
 
         for config in CONFIGS:
-            mini_batch_size = config["mini_batch_size"]
-            num_sgd_iter = config["num_sgd_iter"]
+            minibatch_size = config["minibatch_size"]
+            num_epochs = config["num_epochs"]
             agent_steps = config["agent_steps"]
             seq_lens = config.get("seq_lens")
             max_seq_len = None
@@ -72,7 +72,8 @@ class TestMinibatchUtils(unittest.TestCase):
                                 ]
                             ),
                             "seq_lens": seq_lens,
-                        }
+                        },
+                        _zero_padded=padding,
                     )
                     for i in range(len(agent_steps))
                 }
@@ -85,7 +86,12 @@ class TestMinibatchUtils(unittest.TestCase):
                             )
 
                 mb = MultiAgentBatch(sample_batches, num_env_steps)
-                batch_iter = MiniBatchCyclicIterator(mb, mini_batch_size, num_sgd_iter)
+                batch_iter = MiniBatchCyclicIterator(
+                    mb,
+                    minibatch_size=minibatch_size,
+                    num_epochs=num_epochs,
+                    shuffle_batch_per_epoch=False,
+                )
                 print(config)
                 iteration_counter = 0
                 for batch in batch_iter:
@@ -94,14 +100,14 @@ class TestMinibatchUtils(unittest.TestCase):
                     print(batch["pol0"]["obs"])
                     print("*" * 80)
                     # Check that for each policy the batch size is equal to the
-                    # mini_batch_size.
+                    # minibatch_size.
                     for policy_batch in batch.policy_batches.values():
-                        check(policy_batch.count, mini_batch_size)
+                        check(policy_batch.count, minibatch_size)
                     iteration_counter += 1
 
                 # For each policy check that the last item in batch matches the expected
-                # values, i.e. iteration_counter * mini_batch_size % agent_steps - 1.
-                total_steps = iteration_counter * mini_batch_size
+                # values, i.e. iteration_counter * minibatch_size % agent_steps - 1.
+                total_steps = iteration_counter * minibatch_size
                 for policy_idx, policy_batch in enumerate(
                     batch.policy_batches.values()
                 ):
@@ -111,9 +117,9 @@ class TestMinibatchUtils(unittest.TestCase):
                     check(policy_batch["obs"][-1], expected_last_item)
 
                 # Check iteration counter (should be
-                # ceil(num_gsd_iter * max(agent_steps) / mini_batch_size)).
+                # ceil(num_gsd_iter * max(agent_steps) / minibatch_size)).
                 expected_iteration_counter = np.ceil(
-                    num_sgd_iter * max(agent_steps) / mini_batch_size
+                    num_epochs * max(agent_steps) / minibatch_size
                 )
                 if not seq_lens:
                     check(iteration_counter, expected_iteration_counter)

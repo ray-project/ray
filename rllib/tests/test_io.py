@@ -57,6 +57,10 @@ class AgentIOTest(unittest.TestCase):
     def write_outputs(self, output, fw, output_config=None):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .framework(fw)
             .training(train_batch_size=250)
@@ -98,6 +102,10 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_dir(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .evaluation(off_policy_estimation_methods={})
             .training(train_batch_size=250)
@@ -125,6 +133,10 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_postprocessing_enabled(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .training(train_batch_size=250)
             .offline_data(
@@ -169,6 +181,10 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_eval_sampler(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .offline_data(
                 postprocess_inputs=True,  # adds back 'advantages'
@@ -191,38 +207,6 @@ class AgentIOTest(unittest.TestCase):
         ), "Did not see simulation results during evaluation"
         algo.stop()
 
-    def test_agent_input_list(self):
-        config = (
-            PPOConfig()
-            .environment("CartPole-v1")
-            .training(train_batch_size=98, sgd_minibatch_size=49)
-            .evaluation(off_policy_estimation_methods={})
-        )
-
-        self.write_outputs(self.test_dir, "torch")
-        config.offline_data(input_=glob.glob(self.test_dir + "torch" + "/*.json"))
-        algo = config.build()
-        result = algo.train()
-        self.assertEqual(
-            result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], 250
-        )  # read from input
-        self.assertTrue(np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]))
-        algo.stop()
-
-    def test_agent_input_dict(self):
-        config = PPOConfig().environment("CartPole-v1").training(train_batch_size=2000)
-        self.write_outputs(self.test_dir, "torch")
-        config.offline_data(
-            input_={
-                self.test_dir + "torch": 0.1,
-                "sampler": 0.9,
-            }
-        )
-        algo = config.build()
-        result = algo.train()
-        self.assertTrue(not np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]))
-        algo.stop()
-
     def test_custom_input_procedure(self):
         class CustomJsonReader(JsonReader):
             def __init__(self, ioctx: IOContext):
@@ -242,6 +226,10 @@ class AgentIOTest(unittest.TestCase):
 
             config = (
                 PPOConfig()
+                .api_stack(
+                    enable_env_runner_and_connector_v2=False,
+                    enable_rl_module_and_learner=False,
+                )
                 .environment("CartPole-v1")
                 .offline_data(input_=input_procedure)
                 .evaluation(off_policy_estimation_methods={})
@@ -261,6 +249,10 @@ class AgentIOTest(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .env_runners(num_env_runners=2)
             .training(train_batch_size=500)

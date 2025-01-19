@@ -1,14 +1,13 @@
-"""An example script showing how to load module weights for 1 of n agents
-from checkpoint.
+"""Example demonstrating how to load module weights for 1 of n agents from a checkpoint.
 
 This example:
-    - Runs a multi-agent `Pendulum-v1` experiment with >= 2 policies.
-    - Saves a checkpoint of the `MultiRLModule` used every `--checkpoint-freq`
-       iterations.
+    - Runs a multi-agent `Pendulum-v1` experiment with >= 2 policies, p0, p1, etc..
+    - Saves a checkpoint of the `MultiRLModule` every `--checkpoint-freq`
+    iterations.
     - Stops the experiments after the agents reach a combined return of -800.
-    - Picks the best checkpoint by combined return and restores policy 0 from it.
-    - Runs a second experiment with the restored `RLModule` for policy 0 and
-        a fresh `RLModule` for the other policies.
+    - Picks the best checkpoint by combined return and restores p0 from it.
+    - Runs a second experiment with the restored `RLModule` for p0 and
+    a fresh `RLModule` for the other policies.
     - Stops the second experiment after the agents reach a combined return of -800.
 
 
@@ -39,32 +38,45 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 You should expect a reward of -400.0 eventually being achieved by a simple
-single PPO policy (no tuning, just using RLlib's default settings). In the
-second run of the experiment, the MultiRLModule weights for policy 0 are
-restored from the checkpoint of the first run. The reward for a single agent
-should be -400.0 again, but the training time should be shorter (around 30
-iterations instead of 190).
+single PPO policy. In the second run of the experiment, the MultiRLModule weights
+for policy 0 are restored from the checkpoint of the first run. The reward for a
+single agent should be -400.0 again, but the training time should be shorter
+(around 30 iterations instead of 190) due to the fact that one policy is already
+an expert from the get go.
 """
 
-import os
+from pathlib import Path
+
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core import (
+    COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
+    COMPONENT_RL_MODULE,
+)
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
+    check,
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(
-    default_iters=200,
-    default_timesteps=100000,
-    default_reward=-400.0,
+    # Pendulum-v1 sum of 2 agents (each agent reaches -250).
+    default_reward=-500.0,
+)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    checkpoint_freq=1,
+    num_agents=2,
 )
 # TODO (sven): This arg is currently ignored (hard-set to 2).
 parser.add_argument("--num-policies", type=int, default=2)
@@ -96,14 +108,14 @@ if __name__ == "__main__":
         .environment("env")
         .training(
             train_batch_size_per_learner=512,
-            mini_batch_size_per_learner=64,
+            minibatch_size=64,
             lambda_=0.1,
             gamma=0.95,
             lr=0.0003,
             vf_clip_param=10.0,
         )
         .rl_module(
-            model_config_dict={"fcnet_activation": "relu"},
+            model_config=DefaultModelConfig(fcnet_activation="relu"),
         )
     )
 
@@ -115,42 +127,44 @@ if __name__ == "__main__":
         )
 
     # Augment the base config with further settings and train the agents.
-    results = run_rllib_example_script_experiment(base_config, args)
-
-    # Create an env instance to get the observation and action spaces.
-    env = MultiAgentPendulum(config={"num_agents": args.num_agents})
-    # Get the default module spec from the algorithm config.
-    module_spec = base_config.get_default_rl_module_spec()
-    module_spec.model_config_dict = base_config.model_config | {
-        "fcnet_activation": "relu",
-    }
-    module_spec.observation_space = env.envs[0].observation_space
-    module_spec.action_space = env.envs[0].action_space
-    # Create the module for each policy, but policy 0.
-    module_specs = {}
-    for i in range(1, args.num_agents or 1):
-        module_specs[f"p{i}"] = module_spec
+    results = run_rllib_example_script_experiment(base_config, args, keep_ray_up=True)
 
     # Now swap in the RLModule weights for policy 0.
     chkpt_path = results.get_best_result().checkpoint.path
-    p_0_module_state_path = os.path.join(chkpt_path, "learner", "module_state", "p0")
-    module_spec.load_state_path = p_0_module_state_path
-    module_specs["p0"] = module_spec
-
-    # Create the MultiRLModule.
-    multi_rl_module_spec = MultiRLModuleSpec(module_specs=module_specs)
-    # Define the MultiRLModule in the base config.
-    base_config.rl_module(rl_module_spec=multi_rl_module_spec)
-    # We need to re-register the environment when starting a new run.
-    register_env(
-        "env",
-        lambda _: MultiAgentPendulum(config={"num_agents": args.num_agents}),
+    p_0_module_state_path = (
+        Path(chkpt_path)  # <- algorithm's checkpoint dir
+        / COMPONENT_LEARNER_GROUP  # <- learner group
+        / COMPONENT_LEARNER  # <- learner
+        / COMPONENT_RL_MODULE  # <- MultiRLModule
+        / "p0"  # <- (single) RLModule
     )
+
+    class LoadP0OnAlgoInitCallback(DefaultCallbacks):
+        def on_algorithm_init(self, *, algorithm, **kwargs):
+            module_p0 = algorithm.get_module("p0")
+            weight_before = convert_to_numpy(next(iter(module_p0.parameters())))
+            algorithm.restore_from_path(
+                p_0_module_state_path,
+                component=(
+                    COMPONENT_LEARNER_GROUP
+                    + "/"
+                    + COMPONENT_LEARNER
+                    + "/"
+                    + COMPONENT_RL_MODULE
+                    + "/p0"
+                ),
+            )
+            # Make sure weights were updated.
+            weight_after = convert_to_numpy(next(iter(module_p0.parameters())))
+            check(weight_before, weight_after, false=True)
+
+    base_config.callbacks(LoadP0OnAlgoInitCallback)
+
     # Define stopping criteria.
     stop = {
-        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -800,
-        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 20000,
-        TRAINING_ITERATION: 30,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -800.0,
+        f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 100000,
+        TRAINING_ITERATION: 100,
     }
 
     # Run the experiment again with the restored MultiRLModule.

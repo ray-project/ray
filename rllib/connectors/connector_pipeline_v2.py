@@ -1,4 +1,3 @@
-from collections import defaultdict
 import logging
 from typing import Any, Collection, Dict, List, Optional, Tuple, Type, Union
 
@@ -8,9 +7,10 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.metrics import TIMERS, CONNECTOR_TIMERS
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.typing import EpisodeType, StateDict
 from ray.util.annotations import PublicAPI
-from ray.util.timer import _Timer
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +20,21 @@ class ConnectorPipelineV2(ConnectorV2):
     """Utility class for quick manipulation of a connector pipeline."""
 
     @override(ConnectorV2)
-    def recompute_observation_space_from_input_spaces(self):
-        self._fix_spaces()
+    def recompute_output_observation_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
+        self._fix_spaces(input_observation_space, input_action_space)
         return self.observation_space
 
     @override(ConnectorV2)
-    def recompute_action_space_from_input_spaces(self):
-        self._fix_spaces()
+    def recompute_output_action_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
+        self._fix_spaces(input_observation_space, input_action_space)
         return self.action_space
 
     def __init__(
@@ -51,11 +59,20 @@ class ConnectorPipelineV2(ConnectorV2):
                 pipeline during construction. Note that you can always add (or remove)
                 more ConnectorV2 pieces later on the fly.
         """
-        self.connectors = connectors or []
+        self.connectors = []
+
+        for conn in connectors:
+            # If we have a `ConnectorV2` instance just append.
+            if isinstance(conn, ConnectorV2):
+                self.connectors.append(conn)
+            # If, we have a class with `args` and `kwargs`, build the instance.
+            # Note that this way of constructing a pipeline should only be
+            # used internally when restoring the pipeline state from a
+            # checkpoint.
+            elif isinstance(conn, tuple) and len(conn) == 3:
+                self.connectors.append(conn[0](*conn[1], **conn[2]))
 
         super().__init__(input_observation_space, input_action_space, **kwargs)
-
-        self.timers = defaultdict(_Timer)
 
     def __len__(self):
         return len(self.connectors)
@@ -65,10 +82,11 @@ class ConnectorPipelineV2(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Any,
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
+        metrics: Optional[MetricsLogger] = None,
         **kwargs,
     ) -> Any:
         """In a pipeline, we simply call each of our connector pieces after each other.
@@ -80,24 +98,40 @@ class ConnectorPipelineV2(ConnectorV2):
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
         for connector in self.connectors:
-            timer = self.timers[str(connector)]
-            with timer:
-                data = connector(
-                    rl_module=rl_module,
-                    data=data,
-                    episodes=episodes,
-                    explore=explore,
-                    shared_data=shared_data,
-                    **kwargs,
+            # TODO (sven): Add MetricsLogger to non-Learner components that have a
+            #  LearnerConnector pipeline.
+            stats = None
+            if metrics:
+                stats = metrics.log_time(
+                    kwargs.get("metrics_prefix_key", ())
+                    + (TIMERS, CONNECTOR_TIMERS, connector.__class__.__name__)
                 )
-                if not isinstance(data, dict):
-                    raise ValueError(
-                        f"`data` returned by ConnectorV2 {connector} must be a dict! "
-                        f"You returned {data}. Check your (custom) connectors' "
-                        f"`__call__()` method's return value and make sure you return "
-                        f"the `data` arg passed in (either altered or unchanged)."
-                    )
-        return data
+                stats.__enter__()
+
+            batch = connector(
+                rl_module=rl_module,
+                batch=batch,
+                episodes=episodes,
+                explore=explore,
+                shared_data=shared_data,
+                metrics=metrics,
+                # Deprecated arg.
+                data=batch,
+                **kwargs,
+            )
+
+            if metrics:
+                stats.__exit__(None, None, None)
+
+            if not isinstance(batch, dict):
+                raise ValueError(
+                    f"`data` returned by ConnectorV2 {connector} must be a dict! "
+                    f"You returned {batch}. Check your (custom) connectors' "
+                    f"`__call__()` method's return value and make sure you return "
+                    f"the `data` arg passed in (either altered or unchanged)."
+                )
+
+        return batch
 
     def remove(self, name_or_class: Union[str, Type]):
         """Remove a single connector piece in this pipeline by its name or class.
@@ -112,7 +146,7 @@ class ConnectorPipelineV2(ConnectorV2):
                 break
         if idx >= 0:
             del self.connectors[idx]
-            self._fix_spaces()
+            self._fix_spaces(self.input_observation_space, self.input_action_space)
             logger.info(
                 f"Removed connector {name_or_class} from {self.__class__.__name__}."
             )
@@ -149,7 +183,7 @@ class ConnectorPipelineV2(ConnectorV2):
         next_connector = self.connectors[idx]
 
         self.connectors.insert(idx, connector)
-        self._fix_spaces()
+        self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
             f"Inserted {connector.__class__.__name__} before {name_or_class} "
@@ -185,7 +219,7 @@ class ConnectorPipelineV2(ConnectorV2):
         prev_connector = self.connectors[idx]
 
         self.connectors.insert(idx + 1, connector)
-        self._fix_spaces()
+        self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
             f"Inserted {connector.__class__.__name__} after {name_or_class} "
@@ -201,7 +235,7 @@ class ConnectorPipelineV2(ConnectorV2):
             connector: The new connector piece to be prepended to this pipeline.
         """
         self.connectors.insert(0, connector)
-        self._fix_spaces()
+        self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
             f"Added {connector.__class__.__name__} to the beginning of "
@@ -215,7 +249,7 @@ class ConnectorPipelineV2(ConnectorV2):
             connector: The new connector piece to be appended to this pipeline.
         """
         self.connectors.append(connector)
-        self._fix_spaces()
+        self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
             f"Added {connector.__class__.__name__} to the end of "
@@ -256,6 +290,17 @@ class ConnectorPipelineV2(ConnectorV2):
     # don't have to return the `connectors` c'tor kwarg from there. This is b/c all
     # connector pieces in this pipeline are themselves Checkpointable components,
     # so they will be properly written into this pipeline's checkpoint.
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
+        return (
+            (self.input_observation_space, self.input_action_space),  # *args
+            {
+                "connectors": [
+                    (type(conn), *conn.get_ctor_args_and_kwargs())
+                    for conn in self.connectors
+                ]
+            },
+        )
 
     @override(ConnectorV2)
     def reset_state(self) -> None:
@@ -336,12 +381,12 @@ class ConnectorPipelineV2(ConnectorV2):
             return self.connectors[-1].action_space
         return self._action_space
 
-    def _fix_spaces(self):
+    def _fix_spaces(self, input_observation_space, input_action_space):
         if len(self) > 0:
             # Fix each connector's input_observation- and input_action space in
             # the pipeline.
-            obs_space = self.input_observation_space
-            act_space = self.input_action_space
+            obs_space = input_observation_space
+            act_space = input_action_space
             for con in self.connectors:
                 con.input_action_space = act_space
                 con.input_observation_space = obs_space

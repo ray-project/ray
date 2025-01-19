@@ -10,7 +10,7 @@ tf1, tf, tfv = try_import_tf()
 
 env_name = "CartPole-v1"
 # Use the vector env API.
-env = gym.vector.make(env_name, num_envs=1, asynchronous=False)
+env = gym.make_vec(env_name, num_envs=1, vectorization_mode="sync")
 
 terminated = truncated = False
 # Reset the env.

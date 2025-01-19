@@ -35,7 +35,7 @@ from cython.operator import dereference, postincrement
 cimport cpython
 
 
-cdef class NewGcsClient:
+cdef class InnerGcsClient:
     cdef:
         shared_ptr[CGcsClient] inner
 
@@ -45,7 +45,7 @@ cdef class NewGcsClient:
     @staticmethod
     def standalone(gcs_address: str,
                    cluster_id: Optional[str],
-                   timeout_ms: int) -> "NewGcsClient":
+                   timeout_ms: int) -> "InnerGcsClient":
         cdef GcsClientOptions gcs_options = None
         if cluster_id:
             gcs_options = GcsClientOptions.create(
@@ -64,7 +64,7 @@ cdef class NewGcsClient:
             check_status_timeout_as_rpc_error(
                 ConnectOnSingletonIoContext(dereference(inner), c_timeout_ms))
 
-        gcs_client = NewGcsClient()
+        gcs_client = InnerGcsClient()
         gcs_client.inner = inner
         return gcs_client
 
@@ -209,9 +209,7 @@ cdef class NewGcsClient:
     def async_internal_kv_put(
         self, c_string key, c_string value, c_bool overwrite=False, namespace=None,
         timeout=None
-    ) -> Future[int]:
-        # TODO(ryw): the sync `internal_kv_put` returns bool while this async version
-        # returns int. We should make them consistent.
+    ) -> Future[bool]:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -220,8 +218,8 @@ cdef class NewGcsClient:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVPut(
                     ns, key, value, overwrite, timeout_ms,
-                    OptionalItemPyCallback[int](
-                        &convert_optional_int,
+                    OptionalItemPyCallback[c_bool](
+                        &convert_optional_bool,
                         assign_and_decrement_fut,
                         fut)))
         return asyncio.wrap_future(fut)
@@ -433,24 +431,51 @@ cdef class NewGcsClient:
     #############################################################
 
     def get_all_job_info(
-        self, timeout: Optional[float] = None
+        self, *, job_or_submission_id: Optional[str] = None,
+        skip_submission_job_info_field: bool = False,
+        skip_is_running_tasks_field: bool = False,
+        timeout: Optional[float] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
+        cdef c_string c_job_or_submission_id
+        cdef optional[c_string] c_optional_job_or_submission_id = nullopt
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        cdef c_bool c_skip_submission_job_info_field = skip_submission_job_info_field
+        cdef c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
         cdef CRayStatus status
         cdef c_vector[CJobTableData] reply
+        if job_or_submission_id:
+            c_job_or_submission_id = job_or_submission_id
+            c_optional_job_or_submission_id = \
+                make_optional[c_string](c_job_or_submission_id)
         with nogil:
-            status = self.inner.get().Jobs().GetAll(reply, timeout_ms)
+            status = self.inner.get().Jobs().GetAll(
+                c_optional_job_or_submission_id, c_skip_submission_job_info_field,
+                c_skip_is_running_tasks_field, reply, timeout_ms)
         return raise_or_return((convert_get_all_job_info(status, move(reply))))
 
     def async_get_all_job_info(
-        self, timeout: Optional[float] = None
+        self, *, job_or_submission_id: Optional[str] = None,
+        skip_submission_job_info_field: bool = False,
+        skip_is_running_tasks_field: bool = False,
+        timeout: Optional[float] = None
     ) -> Future[Dict[JobID, gcs_pb2.JobTableData]]:
         cdef:
+            c_string c_job_or_submission_id
+            optional[c_string] c_optional_job_or_submission_id = nullopt
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_bool c_skip_submission_job_info_field = skip_submission_job_info_field
+            c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
             fut = incremented_fut()
+        if job_or_submission_id:
+            c_job_or_submission_id = job_or_submission_id
+            c_optional_job_or_submission_id = \
+                make_optional[c_string](c_job_or_submission_id)
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Jobs().AsyncGetAll(
+                    c_optional_job_or_submission_id,
+                    c_skip_submission_job_info_field,
+                    c_skip_is_running_tasks_field,
                     MultiItemPyCallback[CJobTableData](
                         &convert_get_all_job_info,
                         assign_and_decrement_fut,
@@ -555,6 +580,19 @@ cdef class NewGcsClient:
                 rejection_reason_message))
 
         return (is_accepted, rejection_reason_message.decode())
+
+    def report_cluster_config(
+                self,
+                serialized_cluster_config: c_string):
+        """Report cluster config to GCS"""
+        cdef:
+            int64_t timeout_ms = -1
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Autoscaler().ReportClusterConfig(
+                    timeout_ms, serialized_cluster_config
+                )
+            )
 
 
 # Util functions for async handling
