@@ -176,6 +176,7 @@ def run_module(
     loop.run_until_complete(module.init())
 
     dispatch_child_bound_messages_thread = threading.Thread(
+        name=f"{module_name}-dispatch_child_bound_messages_thread",
         target=module.dispatch_child_bound_messages,
         args=(loop,),
         daemon=True,

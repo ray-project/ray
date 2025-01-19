@@ -51,8 +51,8 @@ class SubprocessModuleHandle:
     4. app.add_routes(routes=SubprocessRouteTable.bound_routes())
     5. Run the app.
 
-    Health check:
-    Every 1s, do a health check by _do_health_check_every_second. If the module is
+    Health check (_do_periodic_health_check):
+    Every 1s, do a health check by _do_once_health_check. If the module is
     unhealthy:
       1. log the exception
       2. log the last N lines of the log file
@@ -69,7 +69,9 @@ class SubprocessModuleHandle:
     @dataclass
     class ActiveRequest:
         request: aiohttp.web.Request
-        response_fut: Awaitable[aiohttp.web.Response]
+        # Future to a Response as the result of a aiohttp handler. It's can be a
+        # Response for a unary request, or a StreamResponse for a streaming request.
+        response_fut: Awaitable[aiohttp.web.StreamResponse]
         # Only exists when the module decides this is a streaming response.
         # To keep the data sent in order, we use future to synchronize. This assumes
         # the Messages received from the Queue are in order.
@@ -128,15 +130,14 @@ class SubprocessModuleHandle:
 
         if start_dispatch_parent_bound_messages_thread:
             self.dispatch_parent_bound_messages_thread = threading.Thread(
+                name=f"{self.module_cls.__name__}-dispatch_parent_bound_messages_thread",
                 target=dispatch_parent_bound_messages,
                 args=(self.loop, self.parent_bound_queue, self),
                 daemon=True,
             )
             self.dispatch_parent_bound_messages_thread.start()
 
-        self.health_check_task = self.loop.create_task(
-            self._do_health_check_every_second()
-        )
+        self.health_check_task = self.loop.create_task(self._do_periodic_health_check())
 
     async def destroy_module(self, reason: Exception):
         """
@@ -188,7 +189,7 @@ class SubprocessModuleHandle:
         if self.process.exitcode is not None:
             raise RuntimeError(f"Process exited with code {self.process.exitcode}")
 
-    async def _do_health_check_every_second(self):
+    async def _do_periodic_health_check(self):
         """
         Every 1s, do a health check. If the module is unhealthy:
         1. log the exception
@@ -215,7 +216,7 @@ class SubprocessModuleHandle:
 
     async def send_request(
         self, method_name: str, request: Optional[aiohttp.web.Request]
-    ) -> Awaitable[aiohttp.web.Response]:
+    ) -> Awaitable[aiohttp.web.StreamResponse]:
         """
         Sends a new request. Bookkeeps it in self.active_requests and sends the
         request to the module. Returns a Future that will be resolved with the response
@@ -263,7 +264,7 @@ class SubprocessModuleHandle:
     @staticmethod
     async def handle_stream_response_end(
         prev_fut: Awaitable[aiohttp.web.StreamResponse],
-        response_fut: Awaitable[aiohttp.web.Response],
+        response_fut: Awaitable[aiohttp.web.StreamResponse],
     ) -> None:
         try:
             response = await asyncio.wrap_future(prev_fut)
@@ -276,7 +277,7 @@ class SubprocessModuleHandle:
     async def handle_stream_response_error(
         prev_fut: Awaitable[aiohttp.web.StreamResponse],
         exception: Exception,
-        response_fut: Awaitable[aiohttp.web.Response],
+        response_fut: Awaitable[aiohttp.web.StreamResponse],
     ) -> None:
         """
         When the async iterator in the module raises an error, we need to propagate it
@@ -301,7 +302,8 @@ def handle_parent_bound_message(
     message: ParentBoundMessage,
     handle: SubprocessModuleHandle,
 ):
-    """Handles a message from the parent bound queue."""
+    """Handles a message from the parent bound queue. This function must run on a
+    dedicated thread, called by dispatch_parent_bound_messages."""
     if isinstance(message, UnaryResponseMessage):
         active_request = handle.active_requests.pop_or_raise(message.request_id)
         # set_result is not thread safe.
