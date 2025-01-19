@@ -1363,17 +1363,18 @@ class UserCallableWrapper:
         request_metadata: RequestMetadata,
         user_method_params: Dict[str, inspect.Parameter],
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Prepare arguments for a user method handling a gRPC request.
+        """Prepare args and kwargs for a user method handling a gRPC request.
 
-        Returns (request_args, request_kwargs).
+        The sole argument is always the user request proto.
+
+        If the method has a "context" kwarg, we pass the gRPC context, else no kwargs.
         """
-        request_args = (pickle.loads(request.grpc_user_request),)
         if GRPC_CONTEXT_ARG_NAME in user_method_params:
             request_kwargs = {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
         else:
             request_kwargs = {}
 
-        return request_args, request_kwargs
+        return (request.user_request_proto,), request_kwargs
 
     async def _handle_user_method_result(
         self,
@@ -1492,7 +1493,6 @@ class UserCallableWrapper:
                     generator_result_callback=generator_result_callback,
                 )
             elif request_metadata.is_grpc_request:
-                # Ensure the request args are a single gRPCRequest object.
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], gRPCRequest
                 )

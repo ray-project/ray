@@ -708,11 +708,8 @@ class gRPCProxy(GenericProxy):
         proxy_request: ProxyRequest,
         app_is_cross_language: bool = False,
     ) -> ResponseGenerator:
-        handle_arg = proxy_request.request_object()
         response_generator = ProxyResponseGenerator(
-            # NOTE(edoakes): it's important that the request is sent as raw bytes to
-            # skip the Ray cloudpickle serialization codepath for performance.
-            handle.remote(pickle.dumps(handle_arg)),
+            handle.remote(proxy_request.serialized_replica_arg()),
             timeout_s=self.request_timeout_s,
         )
 
@@ -956,12 +953,8 @@ class HTTPProxy(GenericProxy):
             # Response is returned as raw bytes, convert it to ASGI messages.
             result_callback = convert_object_to_asgi_messages
         else:
-            # NOTE(edoakes): it's important that the request is sent as raw bytes to
-            # skip the Ray cloudpickle serialization codepath for performance.
-            handle_arg_bytes = pickle.dumps(
-                proxy_request.request_object(
-                    proxy_actor_name=self.self_actor_name,
-                )
+            handle_arg_bytes = proxy_request.serialized_replica_arg(
+                proxy_actor_name=self.self_actor_name,
             )
             # Messages are returned as pickled dictionaries.
             result_callback = pickle.loads
