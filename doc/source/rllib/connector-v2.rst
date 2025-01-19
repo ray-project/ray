@@ -258,8 +258,6 @@ To add custom Learner connector pieces, you need to call the
 Observation Preprocessors
 -------------------------
 
-
-
 .. from old rllib-model.rst
 Built-in Preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -288,8 +286,34 @@ the following mappings apply for Atari-type observation spaces:
   (values between -1.0 and 1.0).
 In all other cases, no preprocessor will be used and the raw observations from the environment
 will be sent directly into your model.
-
-
+Custom Preprocessors and Environment Filters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ .. warning::
+    Custom preprocessors have been fully deprecated, since they sometimes conflict with the built-in preprocessors for handling complex observation spaces.
+    Please use `wrapper classes <https://github.com/Farama-Foundation/Gymnasium/tree/main/gymnasium/wrappers>`__ around your environment instead of preprocessors.
+    Note that the built-in **default** Preprocessors described above will still be used and won't be deprecated.
+Instead of using the deprecated custom Preprocessors, you should use ``gym.Wrappers`` to preprocess your environment's output (observations and rewards),
+but also your Model's computed actions before sending them back to the environment.
+For example, for manipulating your env's observations or rewards, do:
+ .. code-block:: python
+    import gymnasium as gym
+    from ray.rllib.utils.numpy import one_hot
+    class OneHotEnv(gym.core.ObservationWrapper):
+        # Override `observation` to custom process the original observation
+        # coming from the env.
+        def observation(self, observation):
+            # E.g. one-hotting a float obs [0.0, 5.0[.
+            return one_hot(observation, depth=5)
+    class ClipRewardEnv(gym.core.RewardWrapper):
+        def __init__(self, env, min_, max_):
+            super().__init__(env)
+            self.min = min_
+            self.max = max_
+        # Override `reward` to custom process the original reward coming
+        # from the env.
+        def reward(self, reward):
+            # E.g. simple clipping between min and max.
+            return np.clip(reward, self.min, self.max)
 
 The simplest way of customizing an env-to-module pipeline is to write an
 :py:class:`~ray.rllib.connectors.env_to_module.observation_preprocessor.ObservationPreprocessor` and plug
