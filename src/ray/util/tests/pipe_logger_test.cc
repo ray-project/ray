@@ -90,7 +90,6 @@ TEST_P(PipeLoggerTest, PipeWrite) {
     EXPECT_TRUE(std::filesystem::remove(log_file_path2));
   };
 
-  // Take the default option, which doesn't have rotation enabled.
   StreamRedirectionOption stream_redirection_opt{};
   stream_redirection_opt.file_path = test_file_path;
   stream_redirection_opt.rotation_max_size = 5;
@@ -105,7 +104,7 @@ TEST_P(PipeLoggerTest, PipeWrite) {
   stream_redirection_handle.Close();
 
   // Check log content after completion.
-  EXPECT_EQ(CompleteReadFile(test_file_path), kLogLine2);
+  EXPECT_EQ(CompleteReadFile(log_file_path1), kLogLine2);
   EXPECT_EQ(CompleteReadFile(log_file_path2), kLogLine1);
 }
 

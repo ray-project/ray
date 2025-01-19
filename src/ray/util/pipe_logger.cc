@@ -138,6 +138,9 @@ void StartStreamDump(ReadFunc read_func,
         last_line.clear();
 
         // We only log non-empty lines.
+        //
+        // TODO(hjiang): Newliners should also appear in the stdout/stderr/log, current
+        // behavior simply ignore everything.
         if (!cur_new_line.empty()) {
           absl::MutexLock lock(&stream_dumper->mu);
           stream_dumper->content.emplace_back(std::move(cur_new_line));
