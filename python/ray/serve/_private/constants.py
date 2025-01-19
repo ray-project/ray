@@ -327,8 +327,8 @@ RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = int(
     os.environ.get("RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1)
 )
 
-# Serve's gRPC server options.
-SERVE_GRPC_OPTIONS = [
+# Default options passed when constructing gRPC servers.
+DEFAULT_GRPC_SERVER_OPTIONS = [
     ("grpc.max_send_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
 ]
