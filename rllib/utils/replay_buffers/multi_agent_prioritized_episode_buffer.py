@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import numpy as np
 import scipy
 
@@ -131,6 +132,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         batch_size_B: int = 16,
         batch_length_T: int = 1,
         alpha: float = 1.0,
+        metrics_num_episodes_for_smoothing: int = 100,
         **kwargs,
     ):
         """Initializes a `MultiAgentPrioritizedEpisodeReplayBuffer` object
@@ -150,6 +152,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             capacity=capacity,
             batch_size_B=batch_size_B,
             batch_length_T=batch_length_T,
+            metrics_num_episodes_for_smoothing=metrics_num_episodes_for_smoothing,
             **kwargs,
         )
         PrioritizedEpisodeReplayBuffer.__init__(
@@ -158,6 +161,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             batch_size_B=batch_size_B,
             batch_length_T=batch_length_T,
             alpha=alpha,
+            metrics_num_episodes_for_smoothing=metrics_num_episodes_for_smoothing,
             **kwargs,
         )
 
@@ -245,6 +249,20 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         self._num_timesteps += total_env_timesteps
         self._num_timesteps_added += total_env_timesteps
 
+        # Set up some counters for metrics.
+        num_env_steps_added = 0
+        agent_to_num_steps_added = defaultdict(int)
+        module_to_num_steps_added = defaultdict(int)
+        num_episodes_added = 0
+        agent_to_num_episodes_added = defaultdict(int)
+        module_to_num_episodes_added = defaultdict(int)
+        num_episodes_evicted = 0
+        agent_to_num_episodes_evicted = defaultdict(int)
+        module_to_num_episodes_evicted = defaultdict(int)
+        num_env_steps_evicted = 0
+        agent_to_num_steps_evicted = defaultdict(int)
+        module_to_num_steps_evicted = defaultdict(int)
+
         # Evict old episodes.
         eps_evicted_ids: Set[Union[str, int]] = set()
         eps_evicted_idxs: Set[int] = set()
@@ -276,6 +294,15 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             self._num_timesteps -= evicted_episode.env_steps()
             self._num_agent_timesteps -= evicted_episode.agent_steps()
             self._num_episodes_evicted += 1
+            # Increase the counters.
+            num_episodes_evicted += 1
+            num_env_steps_evicted += evicted_episode.env_steps()
+            for aid, a_eps in evicted_episode.agent_episodes.items():
+                mid = evicted_episode._agent_to_module_mapping[aid]
+                agent_to_num_episodes_evicted[aid] += 1
+                module_to_num_episodes_evicted[mid] += 1
+                agent_to_num_steps_evicted[aid] += a_eps.agent_steps()
+                module_to_num_steps_evicted[mid] += a_eps.agent_steps()
             # Remove the module timesteps of the evicted episode from the counters.
             self._evict_module_episodes(evicted_episode)
             del evicted_episode
@@ -382,6 +409,12 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             else:
                 # New episode.
                 self.episodes.append(eps)
+                # Update the counters.
+                num_episodes_added += 1
+                for aid, a_eps in eps.agent_episodes.items():
+                    mid = eps._agent_to_module_mapping[aid]
+                    agent_to_num_episodes_added[aid] += 1
+                    module_to_num_episodes_added[mid] += 1
                 eps_idx = len(self.episodes) - 1 + self._num_episodes_evicted
                 self.episode_id_to_index[eps.id_] = eps_idx
                 self._indices.extend(
@@ -392,8 +425,31 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 )
                 # Add new module indices.
                 self._add_new_module_indices(eps, eps_idx, False, weight_per_module)
+
+            # Update the step counters.
+            num_env_steps_added += eps.env_steps()
+            for aid, e_eps in eps.agent_episodes.items():
+                mid = eps._agent_to_module_mapping[aid]
+                agent_to_num_steps_added[aid] += e_eps.agent_steps()
+                module_to_num_steps_added[mid] += e_eps.agent_steps()
             # Increase index to the new length of `self._indices`.
             j = len(self._indices)
+
+        # Update the adding metrics.
+        self._update_add_metrics(
+            num_episodes_added,
+            num_env_steps_added,
+            num_episodes_evicted,
+            num_env_steps_evicted,
+            agent_to_num_episodes_added,
+            agent_to_num_steps_added,
+            agent_to_num_episodes_evicted,
+            agent_to_num_steps_evicted,
+            module_to_num_steps_added,
+            module_to_num_episodes_added,
+            module_to_num_episodes_evicted,
+            module_to_num_steps_evicted,
+        )
 
     @override(MultiAgentEpisodeReplayBuffer)
     def sample(
@@ -775,6 +831,27 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         # self._last_sampled_indices = defaultdict(lambda: [])
 
         sampled_episodes = []
+        # Record the number of samples per module/agent/total.
+        num_env_steps_sampled = 0
+        agent_to_num_steps_sampled = defaultdict(int)
+        module_to_num_steps_sampled = defaultdict(int)
+        # Record all the env step buffer indices that are contained in the sample.
+        sampled_env_step_idxs = set()
+        agent_to_sampled_env_step_idxs = defaultdict(set)
+        module_to_sampled_env_step_idxs = defaultdict(set)
+        # Record all the episode buffer indices that are contained in the sample.
+        sampled_episode_idxs = set()
+        agent_to_sampled_episode_idxs = defaultdict(set)
+        module_to_sampled_episode_idxs = defaultdict(set)
+        # Record all n-steps that have been used.
+        sampled_n_steps = []
+        agent_to_sampled_n_steps = defaultdict(list)
+        module_to_sampled_n_steps = defaultdict(list)
+        # Record the number of times a sample needs to be resampled.
+        num_resamples = 0
+        agent_to_num_resamples = defaultdict(int)
+        module_to_num_resamples = defaultdict(int)
+
         # TODO (simon): Ensure that the module has data and if not, skip it.
         # TODO (sven): Should we then error out or skip? I think the Learner
         # should handle this case when a module has no train data.
@@ -838,6 +915,9 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                     actual_n_step = int(self.rng.integers(n_step[0], n_step[1]))
                 # If we cannnot make the n-step, we resample.
                 if sa_episode_ts + actual_n_step > len(sa_episode):
+                    num_resamples += 1
+                    agent_to_num_resamples[agent_id] += 1
+                    module_to_num_resamples[module_id] += 1
                     continue
                 # Note, this will be the reward after executing action
                 # `a_(episode_ts)`. For `n_step>1` this will be the discounted sum
@@ -907,6 +987,31 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 )
                 # Append single-agent episode to the list of sampled episodes.
                 sampled_episodes.append(sampled_sa_episode)
+                # Add the episode indices.
+                sampled_episode_idxs.add(ma_episode_idx)
+                agent_to_sampled_episode_idxs[sa_episode.agent_id].add(sa_episode.id_)
+                module_to_sampled_episode_idxs[module_id].add(sa_episode.id_)
+                # Get the corresponding index in the `env_to_agent_t` mapping.
+                ma_episode_ts = ma_episode.env_t_to_agent_t[agent_id].data.index(
+                    sa_episode_ts
+                )
+                # Add the unique step hashes.
+                sampled_env_step_idxs.add(
+                    hashlib.sha256(
+                        f"{ma_episode.id_}-{ma_episode_ts}".encode()
+                    ).hexdigest()
+                )
+                # Add the unique agent step hashes.
+                hashed_agent_step = hashlib.sha256(
+                    f"{sa_episode.id_}-{sa_episode_ts}".encode()
+                ).hexdigest()
+                agent_to_sampled_env_step_idxs[agent_id].add(hashed_agent_step)
+                # Add the unique module step hashes.
+                module_to_sampled_env_step_idxs[module_id].add(hashed_agent_step)
+                # Add the actual n-step used in generating this sample.
+                sampled_n_steps.append(actual_n_step)
+                agent_to_sampled_n_steps[agent_id].append(actual_n_step)
+                module_to_sampled_n_steps[module_id].append(actual_n_step)
 
                 # Increase counter.
                 B += 1
@@ -916,8 +1021,53 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
 
             # Increase the per module timesteps counter.
             self.sampled_timesteps_per_module[module_id] += B
+            # Increase the counter metrics.
+            num_env_steps_sampled += B
+            agent_to_num_steps_sampled[agent_id] += B
+            module_to_num_steps_sampled[module_id] += B
 
         # Increase the counter for environment timesteps.
         self.sampled_timesteps += batch_size_B
+
+        # Update the sample metrics.
+        num_episodes_per_sample = len(sampled_episode_idxs)
+        num_env_steps_per_sample = len(sampled_env_step_idxs)
+        sampled_n_step = sum(sampled_n_steps) / batch_size_B
+        agent_to_num_episodes_per_sample = {
+            aid: len(l) for aid, l in agent_to_sampled_episode_idxs.items()
+        }
+        module_to_num_episodes_per_sample = {
+            mid: len(l) for mid, l in module_to_sampled_episode_idxs.items()
+        }
+        agent_to_num_steps_per_sample = {
+            aid: len(l) for aid, l in agent_to_sampled_env_step_idxs.items()
+        }
+        module_to_num_steps_per_sample = {
+            mid: len(l) for mid, l in module_to_sampled_env_step_idxs.items()
+        }
+        agent_to_sampled_n_step = {
+            aid: sum(l) / len(l) for aid, l in agent_to_sampled_n_steps.items()
+        }
+        module_to_sampled_n_step = {
+            mid: sum(l) / len(l) for mid, l in module_to_sampled_n_steps.items()
+        }
+        self._update_sample_metrics(
+            num_env_steps_sampled=num_env_steps_sampled,
+            num_episodes_per_sample=num_episodes_per_sample,
+            num_env_steps_per_sample=num_env_steps_per_sample,
+            sampled_n_step=sampled_n_step,
+            num_resamples=num_resamples,
+            agent_to_num_steps_sampled=agent_to_num_steps_sampled,
+            agent_to_num_episodes_per_sample=agent_to_num_episodes_per_sample,
+            agent_to_num_steps_per_sample=agent_to_num_steps_per_sample,
+            agent_to_sampled_n_step=agent_to_sampled_n_step,
+            agent_to_num_resamples=agent_to_num_resamples,
+            module_to_num_steps_sampled=module_to_num_steps_sampled,
+            module_to_num_episodes_per_sample=module_to_num_episodes_per_sample,
+            module_to_num_steps_per_sample=module_to_num_steps_per_sample,
+            module_to_sampled_n_step=module_to_sampled_n_step,
+            module_to_num_resamples=module_to_num_resamples,
+        )
+
         # Return multi-agent dictionary.
         return sampled_episodes

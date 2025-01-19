@@ -314,17 +314,19 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Otherwise, create a new entry.
             else:
                 # New episode.
+                self.episodes.append(eps)
+                # Update the counters
                 num_episodes_added += 1
                 for aid, a_eps in eps.agent_episodes.items():
                     mid = eps._agent_to_module_mapping[aid]
                     agent_to_num_episodes_added[aid] += 1
                     module_to_num_episodes_added[mid] += 1
-                self.episodes.append(eps)
                 eps_idx = len(self.episodes) - 1 + self._num_episodes_evicted
                 self.episode_id_to_index[eps.id_] = eps_idx
                 self._indices.extend([(eps_idx, i) for i in range(len(eps))])
                 # Add new module indices.
                 self._add_new_module_indices(eps, eps_idx, False)
+            # Update the step counters.
             num_env_steps_added += eps.env_steps()
             for aid, e_eps in eps.agent_episodes.items():
                 mid = eps._agent_to_module_mapping[aid]
@@ -695,8 +697,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 # If we cannnot make the n-step, we resample.
                 if sa_episode_ts + actual_n_step > len(sa_episode):
                     num_resamples += 1
-                    agent_to_num_resamples[agent_id]
-                    module_to_num_resamples[module_id]
+                    agent_to_num_resamples[agent_id] += 1
+                    module_to_num_resamples[module_id] += 1
                     continue
                 # Note, this will be the reward after executing action
                 # `a_(episode_ts)`. For `n_step>1` this will be the discounted sum
@@ -778,16 +780,11 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                         f"{ma_episode.id_}-{ma_episode_ts}".encode()
                     ).hexdigest()
                 )
-                agent_to_sampled_env_step_idxs[agent_id].add(
-                    hashlib.sha256(
-                        f"{sa_episode.id_}-{sa_episode_ts}".encode()
-                    ).hexdigest()
-                )
-                module_to_sampled_env_step_idxs[module_id].add(
-                    hashlib.sha256(
-                        f"{sa_episode.id_}-{sa_episode_ts}".encode()
-                    ).hexdigest()
-                )
+                hashed_agent_step = hashlib.sha256(
+                    f"{sa_episode.id_}-{sa_episode_ts}".encode()
+                ).hexdigest()
+                agent_to_sampled_env_step_idxs[agent_id].add(hashed_agent_step)
+                module_to_sampled_env_step_idxs[module_id].add(hashed_agent_step)
                 # Add the actual n-step used in generating this sample.
                 sampled_n_steps.append(actual_n_step)
                 agent_to_sampled_n_steps[agent_id].append(actual_n_step)
@@ -833,16 +830,16 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             num_episodes_per_sample=num_episodes_per_sample,
             num_env_steps_per_sample=num_env_steps_per_sample,
             sampled_n_step=sampled_n_step,
+            num_resamples=num_resamples,
             agent_to_num_steps_sampled=agent_to_num_steps_sampled,
             agent_to_num_episodes_per_sample=agent_to_num_episodes_per_sample,
             agent_to_num_steps_per_sample=agent_to_num_steps_per_sample,
             agent_to_sampled_n_step=agent_to_sampled_n_step,
+            agent_to_num_resamples=agent_to_num_resamples,
             module_to_num_steps_sampled=module_to_num_steps_sampled,
             module_to_num_episodes_per_sample=module_to_num_episodes_per_sample,
             module_to_num_steps_per_sample=module_to_num_steps_per_sample,
             module_to_sampled_n_step=module_to_sampled_n_step,
-            num_resamples=num_resamples,
-            agent_to_num_resamples=agent_to_num_resamples,
             module_to_num_resamples=module_to_num_resamples,
         )
 

@@ -29,15 +29,11 @@ config = (
     .training(
         lr=0.00065 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=48,
-        # replay_buffer_config={
-        #     "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
-        #     "capacity": 50000,
-        #     "alpha": 0.6,
-        #     "beta": 0.4,
-        # },
         replay_buffer_config={
-            "type": "MultiAgentEpisodeReplayBuffer",
+            "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
             "capacity": 50000,
+            "alpha": 0.6,
+            "beta": 0.4,
         },
         n_step=(2, 5),
         double_q=True,
@@ -69,7 +65,6 @@ stop = {
 }
 
 
-# args.no_tune = True
 if __name__ == "__main__":
 
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment

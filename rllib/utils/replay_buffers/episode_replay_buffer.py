@@ -27,6 +27,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_EPISODES_EVICTED,
     NUM_AGENT_EPISODES_EVICTED_LIFETIME,
     NUM_AGENT_EPISODES_PER_SAMPLE,
+    NUM_AGENT_RESAMPLES,
     NUM_AGENT_STEPS_STORED,
     NUM_AGENT_STEPS_ADDED,
     NUM_AGENT_STEPS_ADDED_LIFETIME,
@@ -57,6 +58,7 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_EPISODES_EVICTED,
     NUM_MODULE_EPISODES_EVICTED_LIFETIME,
     NUM_MODULE_EPISODES_PER_SAMPLE,
+    NUM_MODULE_RESAMPLES,
     NUM_MODULE_STEPS_STORED,
     NUM_MODULE_STEPS_ADDED,
     NUM_MODULE_STEPS_ADDED_LIFETIME,
@@ -66,6 +68,7 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_STEPS_PER_SAMPLE_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    NUM_RESAMPLES,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
@@ -858,22 +861,29 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         num_env_steps_sampled = batch_size_B * batch_length_T
         num_episodes_per_sample = len(sampled_episode_idxs)
         num_env_steps_per_sample = len(sampled_env_step_idxs)
+        num_resamples = 0
         agent_to_sample_size = {DEFAULT_AGENT_ID: num_env_steps_sampled}
         agent_to_num_episodes_per_sample = {DEFAULT_AGENT_ID: num_episodes_per_sample}
         agent_to_num_steps_per_sample = {DEFAULT_AGENT_ID: num_env_steps_per_sample}
+        agent_to_num_resamples = {DEFAULT_AGENT_ID: num_resamples}
         module_to_num_steps_sampled = {DEFAULT_MODULE_ID: num_env_steps_sampled}
         module_to_num_episodes_per_sample = {DEFAULT_MODULE_ID: num_episodes_per_sample}
         module_to_num_steps_per_sample = {DEFAULT_MODULE_ID: num_env_steps_per_sample}
+        module_to_num_resamples = {DEFAULT_MODULE_ID: num_resamples}
+
         self._update_sample_metrics(
             num_env_steps_sampled=num_env_steps_sampled,
             num_episodes_per_sample=num_episodes_per_sample,
             num_env_steps_per_sample=num_env_steps_per_sample,
+            num_resamples=num_resamples,
             agent_to_num_steps_sampled=agent_to_sample_size,
             agent_to_num_episodes_per_sample=agent_to_num_episodes_per_sample,
             agent_to_num_steps_per_sample=agent_to_num_steps_per_sample,
+            agent_to_num_resamples=agent_to_num_resamples,
             module_to_num_steps_sampled=module_to_num_steps_sampled,
             module_to_num_episodes_per_sample=module_to_num_episodes_per_sample,
             module_to_num_steps_per_sample=module_to_num_steps_per_sample,
+            module_to_num_resamples=module_to_num_resamples,
         )
 
         # TODO: Return SampleBatch instead of this simpler dict.
@@ -1117,28 +1127,34 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         num_env_steps_sampled = batch_size_B
         num_episodes_per_sample = len(sampled_episode_idxs)
         num_env_steps_per_sample = len(sampled_env_step_idxs)
-        sampled_n_step = sum(sampled_n_steps) / batch_size_B
+        sampled_n_step = (sum(sampled_n_steps) / batch_size_B,)
+        num_resamples = 0
         agent_to_num_steps_sampled = {DEFAULT_AGENT_ID: num_env_steps_sampled}
         agent_to_num_episodes_per_sample = {DEFAULT_AGENT_ID: num_episodes_per_sample}
         agent_to_num_steps_per_sample = {DEFAULT_AGENT_ID: num_env_steps_per_sample}
         agent_to_sampled_n_step = {DEFAULT_AGENT_ID: sampled_n_step}
+        agent_to_num_resamples = {DEFAULT_AGENT_ID: num_resamples}
         module_to_num_steps_sampled = {DEFAULT_MODULE_ID: num_env_steps_sampled}
         module_to_num_episodes_per_sample = {DEFAULT_MODULE_ID: num_episodes_per_sample}
         module_to_num_steps_per_sample = {DEFAULT_MODULE_ID: num_env_steps_per_sample}
         module_to_sampled_n_step = {DEFAULT_MODULE_ID: sampled_n_step}
+        module_to_num_resamples = {DEFAULT_MODULE_ID: num_resamples}
         self._update_sample_metrics(
             num_env_steps_sampled=num_env_steps_sampled,
             num_episodes_per_sample=num_episodes_per_sample,
             num_env_steps_per_sample=num_env_steps_per_sample,
             sampled_n_step=sampled_n_step,
+            num_resamples=num_resamples,
             agent_to_num_steps_sampled=agent_to_num_steps_sampled,
             agent_to_num_episodes_per_sample=agent_to_num_episodes_per_sample,
             agent_to_num_steps_per_sample=agent_to_num_steps_per_sample,
             agent_to_sampled_n_step=agent_to_sampled_n_step,
+            agent_to_num_resamples=agent_to_num_resamples,
             module_to_num_steps_sampled=module_to_num_steps_sampled,
             module_to_num_episodes_per_sample=module_to_num_episodes_per_sample,
             module_to_num_steps_per_sample=module_to_num_steps_per_sample,
             module_to_sampled_n_step=module_to_sampled_n_step,
+            module_to_num_resamples=module_to_num_resamples,
         )
 
         return sampled_episodes
@@ -1150,14 +1166,17 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         num_episodes_per_sample: int,
         num_env_steps_per_sample: int,
         sampled_n_step: Optional[float],
+        num_resamples: int,
         agent_to_num_steps_sampled: Dict[AgentID, int],
         agent_to_num_episodes_per_sample: Dict[AgentID, int],
         agent_to_num_steps_per_sample: Dict[AgentID, int],
         agent_to_sampled_n_step: Dict[AgentID, float],
+        agent_to_num_resamples: Dict[AgentID, int],
         module_to_num_steps_sampled: Dict[ModuleID, int],
         module_to_num_episodes_per_sample: Dict[ModuleID, int],
         module_to_num_steps_per_sample: Dict[ModuleID, int],
         module_to_sampled_n_step: Dict[ModuleID, float],
+        module_to_num_resamples: Dict[ModuleID, int],
         **kwargs: Dict[str, Any],
     ) -> None:
         """Updates the replay buffer's sample metrics.
@@ -1171,6 +1190,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 in the sample.
             sampled_n_step: The mean n-step used in the sample. Note, this
                 is constant, if the n-step is not sampled.
+            num_resamples: The number of resamples in a single call to
+                `PrioritizedEpisodeReplayBuffer.sample`. A resampling is triggered
+                when the sampled timestep is to near to the episode end to cover the
+                required n-step.
             agent_to_num_steps_sampled: A dictionary with the number of agent
                 steps per agent ID sampled during the `EpisodeReplayBuffer.sample`
                 call.
@@ -1182,6 +1205,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 the `EpisodeReplayBuffer.sample` call.
             agent_to_sampled_n_step: A dictionary with the mean n-step per agent ID
                 used in the sample returned by the `EpisodeReplayBuffer.sample` call.
+            agent_to_num_resamples: A dictionary with the number of resamples per
+                agent ID in a single call to `PrioritizedEpisodeReplayBuffer.sample`.
+                A resampling is triggered when the sampled timestep is to near to the
+                episode end to cover the required n-step.
             module_to_num_steps_sampled: A dictionary with the number of module
                 steps per module ID sampled during the `EpisodeReplayBuffer.sample`
                 call.
@@ -1193,6 +1220,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 the `EpisodeReplayBuffer.sample` call.
             module_to_sampled_n_step: A dictionary with the mean n-step per module ID
                 used in the sample returned by the `EpisodeReplayBuffer.sample` call.
+            module_to_num_resamples: A dictionary with the number of resamples per
+                module ID in a single call to `PrioritizedEpisodeReplayBuffer.sample`.
+                A resampling is triggered when the sampled timestep is to near to the
+                episode end to cover the required n-step.
         """
         # Whole buffer sampled env steps metrics.
         self.metrics.log_value(
@@ -1252,6 +1283,13 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                     window=self._metrics_num_episodes_for_smoothing,
                 )
 
+        self.metrics.log_value(
+            NUM_RESAMPLES,
+            num_resamples,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+
         # Add per-agent metrics.
         for aid in agent_to_num_steps_sampled:
             self.metrics.log_value(
@@ -1291,6 +1329,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 reduce="mean",
                 window=self._metrics_num_episodes_for_smoothing,
             )
+            self.metrics.log_value(
+                (NUM_AGENT_RESAMPLES, aid),
+                agent_to_num_resamples[aid],
+                reduce="sum",
+                clear_on_reduce=True,
+            )
         # Add per-module metrics.
         for aid in module_to_num_steps_sampled:
             self.metrics.log_value(
@@ -1329,6 +1373,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 / self.metrics.peek((NUM_MODULE_STEPS_SAMPLED_LIFETIME, aid)),
                 reduce="mean",
                 window=self._metrics_num_episodes_for_smoothing,
+            )
+            self.metrics.log_value(
+                (NUM_MODULE_RESAMPLES, mid),
+                module_to_num_resamples[mid],
+                reduce="sum",
+                clear_on_reduce=True,
             )
 
     # TODO (simon): Check, if we can instead peek into the metrics

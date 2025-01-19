@@ -3949,12 +3949,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             return
 
         # Add parameters, if necessary.
-        if config["replay_buffer_config"]["type"] in [
-            "EpisodeReplayBuffer",
-            "PrioritizedEpisodeReplayBuffer",
-            "MultiAgentEpisodeReplayBuffer",
-        ]:
-            # TODO (simon): If all episode buffers have metrics, check for sublassing.
+        if "EpisodeReplayBuffer" in config["replay_buffer_config"]["type"]:
+            # TODO (simon): Subclassing needs a proper class and therefore
+            # we need at this moment the string checking. Because we add
+            # this keyword argument the old stack ReplayBuffer constructors
+            # will exit with an error b/c tje keyword argument is unknown to them.
             config["replay_buffer_config"][
                 "metrics_num_episodes_for_smoothing"
             ] = self.config.metrics_num_episodes_for_smoothing
