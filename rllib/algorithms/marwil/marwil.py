@@ -17,6 +17,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
+from ray.rllib.offline.offline_data import OfflineData
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import deprecation_warning
@@ -204,6 +205,14 @@ class MARWILConfig(AlgorithmConfig):
         #   iterations into the object storage (maybe also connector states).
         self.materialize_data = True
         self.materialize_mapped_data = False
+
+        # Reserve a fraction of the learner GPUs for the `OfflinePreLearner`. The
+        # latter should load batches onto the GPU device of the corresponding. learner.
+        # Note, GPU training does not work, yet, with a multi-learner setup.
+        # TODO (simon): Check, if and how the module should be loaded on GPU in the
+        # `OfflinePreLearner`s to run the GAE.
+        if self._validate_config and not OfflineData.map_batches_uses_gpus(self):
+            self.num_gpus_per_learner *= 0.99
         # __sphinx_doc_end__
         # fmt: on
         self._set_off_policy_estimation_methods = False

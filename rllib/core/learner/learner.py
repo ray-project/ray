@@ -1250,6 +1250,9 @@ class Learner(Checkpointable):
 
         """
 
+    def get_device(self):
+        return self._device
+
     @override(Checkpointable)
     def get_state(
         self,

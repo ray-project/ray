@@ -414,8 +414,6 @@ class LearnerGroup(Checkpointable):
                     " local mode! Try setting `config.num_learners > 0`."
                 )
 
-            # If we have a `ray.data.DataIterator` use the `update_from_iterator` for
-            # training.
             if isinstance(batch, list) and isinstance(batch[0], ray.data.DataIterator):
                 results = [
                     _learner_update(
@@ -441,6 +439,7 @@ class LearnerGroup(Checkpointable):
                         **kwargs,
                     )
                 ]
+
         # One or more remote Learners: Shard batch/episodes into equal pieces (roughly
         # equal if multi-agent AND episodes) and send each Learner worker one of these
         # shards.

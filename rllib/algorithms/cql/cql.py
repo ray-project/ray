@@ -23,6 +23,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
+from ray.rllib.offline.offline_data import OfflineData
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import (
@@ -108,6 +109,16 @@ class CQLConfig(SACConfig):
         # .reporting()
         self.min_sample_timesteps_per_iteration = 0
         self.min_train_timesteps_per_iteration = 100
+
+        # .learners
+        # Reserve a fraction of the learner GPUs for the `OfflinePreLearner`. The
+        # latter should load batches onto the GPU device of the corresponding. learner.
+        # Note, GPU training does not work, yet, with a multi-learner setup.
+        # TODO (simon): Check, if and how the module should be loaded on GPU in the
+        # `OfflinePreLearner`s to run the GAE.
+        if self._validate_config and not OfflineData.map_batches_uses_gpus(self):
+            self.num_gpus_per_learner *= 0.99
+
         # fmt: on
         # __sphinx_doc_end__
 

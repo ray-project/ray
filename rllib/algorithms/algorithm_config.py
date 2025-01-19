@@ -4943,6 +4943,17 @@ class AlgorithmConfig(_Config):
                 "`True`."
             )
 
+        # Validate the device (GPU) settings for the `OfflinePreLearner` layer.
+        if OfflineData.map_batches_uses_gpus(self):
+            self._value_error(
+                "Setting GPUs in `map_batches_kwargs` is not allowed. Because "
+                "each `OfflinePreLearner` in `map_batches` generates batches "
+                "RLlib assigns a fraction (0.01) of a `Learner` GPU to corresponding "
+                "`OfflinePreLearner` to optimize memory operations on GPUs. "
+                "\nIn case that GPU devices should be provided in a customized form "
+                "set `_validate_config` in `AlgorithmConfig.experimental` to `False`."
+            )
+
         if (
             self.output
             and self.output_write_episodes

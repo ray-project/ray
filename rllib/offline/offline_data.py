@@ -146,34 +146,34 @@ class OfflineData:
                     )
                 )[COMPONENT_RL_MODULE]
                 # Provide the `Learner`(s) GPU devices, if needed.
-                if self.map_batches_uses_gpus():
-                    devices = ray.get(self.learner_handles[0].get_device.remote())
-                    devices = [devices] if not isinstance(devices, list) else devices
-                    device_strings = [
-                        device.type + ":" + str(device.index)
-                        if device.type == "cuda"
-                        else device.type
-                        for device in devices
-                    ]
-                # Otherwise, set the GPU strings to `None`.
-                # TODO (simon): Check inside 'OfflinePreLearner'.
-                else:
-                    device_strings = None
+                # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
+                #     devices = ray.get(self.learner_handles[0].get_device.remote())
+                #     devices = [devices] if not isinstance(devices, list) else devices
+                #     device_strings = [
+                #         f"{device.type}:{str(device.index)}"
+                #         if device.type == "cuda"
+                #         else device.type
+                #         for device in devices
+                #     ]
+                # # Otherwise, set the GPU strings to `None`.
+                # # TODO (simon): Check inside 'OfflinePreLearner'.
+                # else:
+                #     device_strings = None
             else:
                 # Get the module state from the `Learner`(S).
                 module_state = self.learner_handles[0].get_state(
                     component=COMPONENT_RL_MODULE
                 )[COMPONENT_RL_MODULE]
                 # Provide the `Learner`(s) GPU devices, if needed.
-                if self.map_batches_uses_gpus():
-                    device = self.learner_handles[0].get_device()
-                    device_strings = [
-                        device.type + ":" + str(device.index)
-                        if device.type == "cuda"
-                        else device.type
-                    ]
-                else:
-                    device_strings = None
+                # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
+                #     device = self.learner_handles[0].get_device()
+                #     device_strings = [
+                #         f"{device.type}:{str(device.index)}"
+                #         if device.type == "cuda"
+                #         else device.type
+                #     ]
+                # else:
+                #     device_strings = None
             # Constructor `kwargs` for the `OfflinePreLearner`.
             fn_constructor_kwargs = {
                 "config": self.config,
@@ -181,7 +181,7 @@ class OfflineData:
                 "spaces": self.spaces[INPUT_ENV_SPACES],
                 "module_spec": self.module_spec,
                 "module_state": module_state,
-                "device_strings": device_strings,
+                "device_strings": self.get_devices(),
             }
 
             # Map the data to run the `OfflinePreLearner`s in the data pipeline
@@ -296,7 +296,8 @@ class OfflineData:
             "prefetch_batches": 2,
         }
 
-    def map_batches_uses_gpus(self):
+    @staticmethod
+    def map_batches_uses_gpus(config):
         """Checks, if the `OfflinePreLearner`s run on GPU.
 
         Raises:
@@ -308,19 +309,19 @@ class OfflineData:
             directly or in the `ray_remote_args`. Otherwise returns `False`.
         """
         if (
-            "num_gpus" in self.map_batches_kwargs
-            and self.map_batches_kwargs["num_gpus"] > 0
+            "num_gpus" in config.map_batches_kwargs
+            and config.map_batches_kwargs["num_gpus"] > 0
         ):
             return True
         # If not directly supplied, GPUs could be configured in the `ray_remote_args`.
         elif (
-            "ray_remote_args" in self.map_batches_kwargs
-            and "num_gpus" in self.map_batches_kwargs["ray_remote_args"]
-            and self.map_batches_kwargs["ray_remote_args"]["num_gpus"] > 0
+            "ray_remote_args" in config.map_batches_kwargs
+            and "num_gpus" in config.map_batches_kwargs["ray_remote_args"]
+            and config.map_batches_kwargs["ray_remote_args"]["num_gpus"] > 0
         ):
             return True
         # We do not support `remote_args_fn`s, yet.
-        elif "ray_remote_args_fn" in self.map_batches_kwargs:
+        elif "ray_remote_args_fn" in config.map_batches_kwargs:
             raise ValueError(
                 "`ray_remote_args_fn` is not supported in `map_batches_kwargs` of "
                 "RLlib's Offline RL API. Use `ray_remote_args` or set `num_gpus` "
@@ -328,3 +329,20 @@ class OfflineData:
             )
         else:
             return False
+
+    def get_devices(self):
+        from ray.rllib.utils import force_list
+
+        device_strings = None
+        if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
+            if len(self.learner_handles) > 1:
+                devices = ray.get(self.learner_handles[0].get_device.remote())
+            else:
+                devices = self.learner_handles[0].get_device()
+            device_strings = [
+                f"{device.type}:{str(device.index)}"
+                if device.type == "cuda"
+                else device.type
+                for device in force_list(devices)
+            ]
+        return device_strings
