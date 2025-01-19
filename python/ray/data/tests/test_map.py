@@ -1442,7 +1442,7 @@ def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
     block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
 
     assert len(block_refs) == 1
-    assert type(ray.get(block_refs[0])) == pd.DataFrame
+    assert type(ray.get(block_refs[0])) is pd.DataFrame
 
 
 def test_map_with_objects_and_tensors(ray_start_regular_shared):
