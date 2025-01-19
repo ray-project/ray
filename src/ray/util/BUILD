@@ -176,7 +176,7 @@ ray_cc_library(
     hdrs = ["sample.h"],
 )
 
-# A giant 'util' target is split since PR (TODO: fill in PR number), here we keep the 'util' target for API compatibility.
+# A giant 'util' target is split since PR https://github.com/ray-project/ray/pull/49938, here we keep the 'util' target for API compatibility.
 #
 # TODO(hjiang): We include a bunch of misc util function/class inside of the class, should split into multiple files and build targets.
 ray_cc_library(
