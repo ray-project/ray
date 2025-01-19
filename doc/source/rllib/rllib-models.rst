@@ -46,52 +46,6 @@ For fully customized RNN/LSTM/Attention-Net setups see the `Recurrent Models <#r
     It isn't possible to use both auto-wrappers (lstm and attention) at the same time. Doing so will create an error.
 
 
-Customizing Preprocessors and Models
-------------------------------------
-
-Custom Preprocessors and Environment Filters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. warning::
-
-    Custom preprocessors have been fully deprecated, since they sometimes conflict with the built-in preprocessors for handling complex observation spaces.
-    Please use `wrapper classes <https://github.com/Farama-Foundation/Gymnasium/tree/main/gymnasium/wrappers>`__ around your environment instead of preprocessors.
-    Note that the built-in **default** Preprocessors described above will still be used and won't be deprecated.
-
-Instead of using the deprecated custom Preprocessors, you should use ``gym.Wrappers`` to preprocess your environment's output (observations and rewards),
-but also your Model's computed actions before sending them back to the environment.
-
-For example, for manipulating your env's observations or rewards, do:
-
-.. code-block:: python
-
-    import gymnasium as gym
-    from ray.rllib.utils.numpy import one_hot
-
-    class OneHotEnv(gym.core.ObservationWrapper):
-        # Override `observation` to custom process the original observation
-        # coming from the env.
-        def observation(self, observation):
-            # E.g. one-hotting a float obs [0.0, 5.0[.
-            return one_hot(observation, depth=5)
-
-
-    class ClipRewardEnv(gym.core.RewardWrapper):
-        def __init__(self, env, min_, max_):
-            super().__init__(env)
-            self.min = min_
-            self.max = max_
-
-        # Override `reward` to custom process the original reward coming
-        # from the env.
-        def reward(self, reward):
-            # E.g. simple clipping between min and max.
-            return np.clip(reward, self.min, self.max)
-
-
-
-
-
 
 Custom Action Distributions
 ---------------------------
