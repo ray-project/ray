@@ -117,13 +117,15 @@ TEST(PipeLoggerTestWithoutNewliner, CompletionTest) {
 
   StreamRedirectionOption stream_redirection_opt{};
   stream_redirection_opt.file_path = test_file_path;
+  stream_redirection_opt.tee_to_stdout = true;
 
   auto stream_redirection_handle = CreateRedirectionFileHandle(stream_redirection_opt);
   stream_redirection_handle.CompleteWrite(kContent.data(), kContent.length());
   stream_redirection_handle.Close();
 
   // Check log content after completion.
-  EXPECT_EQ(CompleteReadFile(test_file_path), kContent);
+  // Logger appends newliner to the end of line, if there's not an existing one.
+  EXPECT_EQ(CompleteReadFile(test_file_path), absl::StrFormat("%s\n", kContent));
 
   // Delete temporary file.
   EXPECT_TRUE(std::filesystem::remove(test_file_path));
