@@ -28,7 +28,7 @@ namespace gcs {
 
 namespace {
 
-ExponentialBackOff CreateDefaultBackoff() {
+ExponentialBackoff CreateDefaultBackoff() {
   // std::chrono conversions are unwieldy but safer.
   // ms -> ns
   using std::chrono::duration_cast;
@@ -44,7 +44,7 @@ ExponentialBackOff CreateDefaultBackoff() {
           milliseconds(
               RayConfig::instance().gcs_create_placement_group_retry_max_interval_ms()))
           .count();
-  return ExponentialBackOff(
+  return ExponentialBackoff(
       initial_delay_ns,
       RayConfig::instance().gcs_create_placement_group_retry_multiplier(),
       max_delay_ns);
@@ -307,7 +307,7 @@ PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     std::shared_ptr<GcsPlacementGroup> placement_group,
-    ExponentialBackOff backoff,
+    ExponentialBackoff backoff,
     bool is_feasible) {
   RAY_LOG(DEBUG).WithField(placement_group->GetPlacementGroupID())
       << "Failed to create placement group " << placement_group->GetName()
@@ -758,7 +758,7 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
 void GcsPlacementGroupManager::AddToPendingQueue(
     std::shared_ptr<GcsPlacementGroup> pg,
     std::optional<int64_t> rank,
-    std::optional<ExponentialBackOff> exp_backer) {
+    std::optional<ExponentialBackoff> exp_backer) {
   if (!rank) {
     rank = absl::GetCurrentTimeNanos();
   }
