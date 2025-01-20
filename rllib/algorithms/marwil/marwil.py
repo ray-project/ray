@@ -206,13 +206,6 @@ class MARWILConfig(AlgorithmConfig):
         self.materialize_data = True
         self.materialize_mapped_data = False
 
-        # Reserve a fraction of the learner GPUs for the `OfflinePreLearner`. The
-        # latter should load batches onto the GPU device of the corresponding. learner.
-        # Note, GPU training does not work, yet, with a multi-learner setup.
-        # TODO (simon): Check, if and how the module should be loaded on GPU in the
-        # `OfflinePreLearner`s to run the GAE.
-        if self._validate_config and not OfflineData.map_batches_uses_gpus(self):
-            self.num_gpus_per_learner *= 0.99
         # __sphinx_doc_end__
         # fmt: on
         self._set_off_policy_estimation_methods = False
@@ -421,6 +414,30 @@ class MARWILConfig(AlgorithmConfig):
 
 
 class MARWIL(Algorithm):
+    @override(Algorithm)
+    def __init__(self, config, *args, **kwargs):
+        """Initialize a MARWIL instance."""
+
+        # Reserve a fraction of the learner GPUs for the `OfflinePreLearner`. The
+        # latter should load batches onto the GPU device of the corresponding. learner.
+        # Note, GPU training does not work, yet, with a multi-learner setup.
+        # TODO (simon): Check, if and how the module should be loaded on GPU in the
+        # `OfflinePreLearner`s to run the GAE.
+        if config.num_gpus_per_learner and config._validate_config:
+            concurrency = config.map_batches_kwargs.get(
+                "concurrency", OfflineData.default_map_batches_kwargs["concurrency"]
+            )
+            self.config.map_batches_kwargs.update(
+                {
+                    "num_gpus": self.config.num_gpus_per_learner
+                    * round(0.01 / concurrency, 4)
+                }
+            )
+            self.config.num_gpus_per_learner *= 0.99
+
+        # Call the super's constructor first.
+        super().__init__(config=config, *args, **kwargs)
+
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:

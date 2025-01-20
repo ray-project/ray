@@ -58,7 +58,6 @@ config = (
         map_batches_kwargs={
             "concurrency": 2,
             "num_cpus": 2,
-            "num_gpus": (args.num_gpus_per_learner or 0) * (0.01 / 2),
         },
         # This data set is small so do not prefetch too many batches and use no
         # local shuffle.
