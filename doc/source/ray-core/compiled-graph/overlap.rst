@@ -85,8 +85,7 @@ The output of preceding code includes the following two lines:
     overlap_gpu_communication=False, duration=1.0670117866247892
     overlap_gpu_communication=True, duration=0.9211348341777921
 
-The actual performance numbers may vary on different hardware, but enabling ``_overlap_gpu_communication``
-can improve latency by about 14% for this example.
+The actual performance numbers may vary on different hardware, but enabling ``_overlap_gpu_communication`` improves latency by about 14% for this example.
 
 To verify Compiled Graph overlaps the communication and computation operations,
 :ref:`visualize the execution schedule <execution-schedule>` by setting environment variable
