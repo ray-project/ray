@@ -257,9 +257,7 @@ class ReplicaMetricsManager:
         """Get current total queue length of requests for this replica."""
         return self._num_ongoing_requests
 
-    def record_request_metrics(
-        self, *, route: str, latency_ms: float, was_error: bool
-    ):
+    def record_request_metrics(self, *, route: str, latency_ms: float, was_error: bool):
         """Records per-request metrics."""
         if self._cached_metrics_interval_s == 0:
             self._processing_latency_tracker.observe(latency_ms, tags={"route": route})
