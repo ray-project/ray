@@ -531,9 +531,8 @@ class TorchMultiDistribution(Distribution):
         """Initializes a TorchMultiActionDistribution object.
 
         Args:
-            child_distribution_struct: Any struct
-                that contains the child distribution classes to use to
-                instantiate the child distributions from `logits`.
+            child_distribution_struct: A complex struct that contains the child
+                distribution instances that make up this multi-distribution.
         """
         super().__init__()
         self._original_struct = child_distribution_struct

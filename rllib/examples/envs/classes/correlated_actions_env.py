@@ -5,12 +5,19 @@ from typing import Any, Dict, Optional
 
 
 class AutoRegressiveActionEnv(gym.Env):
-    """Custom Environment with autoregressive continuous actions.
-
-    Simple env in which the policy has to emit a tuple of correlated actions.
+    """Environment that can only be solved through an autoregressive actions model.
 
     In each step, the agent observes a random number (between -1 and 1) and has
-    to choose two actions a1 and a2.
+    to choose two actions, a1 (discrete, 0, 1, or 2) and a2 (cont. between -1 and 1).
+
+    There are two reward components. The first is the negative absolute value of the
+    delta between 1.0 and the sum of obs and a1. For example, if obs is -0.3 and a1
+    was sampled to be 1, then the value of the first reward component is:
+    r1 = -abs(1.0 - [obs+a1]) = -abs(1.0 - (-0.3 + 1)) = -abs(0.3) = -0.3
+
+    Thus, the agent has to learn to pick a1 such that r1 gets maximized.
+
+    The second reward component is computed
 
     It gets 0 reward for matching a2 to the random obs times action a1. In all
     other cases the negative deviance between the desired action a2 and its
