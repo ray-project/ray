@@ -1,12 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
-
 .. _rllib-examples-overview-docs:
 
 Examples
 ========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 This page contains an index of all the python scripts in the
 `examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__

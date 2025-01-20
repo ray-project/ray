@@ -1,13 +1,11 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
-
 
 .. _rllib-key-concepts:
 
 Key concepts
 ============
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 To help you get a high-level understanding of how the library works, on this page, you learn about the
 key concepts and general architecture of RLlib.
