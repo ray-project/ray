@@ -12,10 +12,22 @@ clang_format() {
 
 pre_commit() {
   # Run pre-commit on all files
-  # TODO(MortalHappiness): Run all pre-commit checks
-  # Currently, we only run the ruff format check
-  pip install -c python/requirements_compiled.txt pre-commit
+  # TODO(MortalHappiness): Run all pre-commit checks because currently we only run some of them.
+  pip install -c python/requirements_compiled.txt pre-commit clang-format
   pre-commit run ruff --all-files --show-diff-on-failure
+  pre-commit run check-added-large-files --all-files --show-diff-on-failure
+  pre-commit run check-ast --all-files --show-diff-on-failure
+  pre-commit run check-toml --all-files --show-diff-on-failure
+  pre-commit run black --all-files --show-diff-on-failure
+  pre-commit run prettier --all-files --show-diff-on-failure
+  pre-commit run mypy --all-files --show-diff-on-failure
+  pre-commit run rst-directive-colons --all-files --show-diff-on-failure
+  pre-commit run rst-inline-touching-normal --all-files --show-diff-on-failure
+  pre-commit run python-check-mock-methods --all-files --show-diff-on-failure
+  pre-commit run clang-format --all-files --show-diff-on-failure
+  pre-commit run docstyle --all-files --show-diff-on-failure
+  pre-commit run check-import-order --all-files --show-diff-on-failure
+  pre-commit run check-cpp-files-inclusion --all-files --show-diff-on-failure
 }
 
 code_format() {
