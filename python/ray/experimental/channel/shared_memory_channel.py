@@ -18,14 +18,6 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_BUFFER_SIZE = int(1e6)  # 100 mB
-# The min buffer size must be large enough to at least fit an instance of the
-# _ResizeChannel class along with any metadata.
-MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
-# For shared memory channels, the default number of buffers per channel to
-# allocate.
-DEFAULT_NUM_SHM_BUFFERS = 1
-
 
 def _create_channel_ref(
     self,
@@ -112,11 +104,16 @@ class SharedMemoryType(ChannelOutputType):
             num_shm_buffers: The number of shared memory buffer per channel.
         """
         super().__init__()
+
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+
         if buffer_size_bytes is None:
-            buffer_size_bytes = DEFAULT_MAX_BUFFER_SIZE
+            buffer_size_bytes = ctx.buffer_size_bytes
         self.buffer_size_bytes = buffer_size_bytes
         if num_shm_buffers is None:
-            num_shm_buffers = DEFAULT_NUM_SHM_BUFFERS
+            num_shm_buffers = ctx.max_inflight_executions
         self._num_shm_buffers = num_shm_buffers
 
     def create_channel(
@@ -192,6 +189,9 @@ class Channel(ChannelInterface):
         elif isinstance(typ, int):
             typ = SharedMemoryType(buffer_size_bytes=typ)
 
+        # The min buffer size must be large enough to at least fit an instance of the
+        # _ResizeChannel class along with any metadata.
+        MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
         if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
             raise ValueError(
                 "typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE "
