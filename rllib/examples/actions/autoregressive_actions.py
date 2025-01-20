@@ -54,17 +54,11 @@ Meaning, most of the time, you would receive a reward better than -0.5, but wors
 | PPO_CorrelatedActionsEnv_6660d_00000 | TERMINATED |     76 |          132.438 |
 +--------------------------------------+------------+--------+------------------+
 +------------------------+------------------------+------------------------+
-|   num_training_step_ca |   num_env_steps_sample |   ...env_steps_sampled |
-|      lls_per_iteration |             d_lifetime |   _lifetime_throughput |
+|    episode_return_mean |   num_env_steps_sample |   ...env_steps_sampled |
+|                        |             d_lifetime |   _lifetime_throughput |
 |------------------------+------------------------+------------------------|
-|                      1 |                 152000 |                1283.48 |
+|                  -0.43 |                 152000 |                1283.48 |
 +------------------------+------------------------+------------------------+
-
-
-
-
-
-
 """
 
 from ray.rllib.algorithms.ppo import PPOConfig
