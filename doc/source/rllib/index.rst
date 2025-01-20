@@ -142,17 +142,14 @@ on the collected data, and a model update step.
     for _ in range(5):
         pprint(algo.train())
 
-At the end of your script, you evaluate the trained Algorithm:
+At the end of your script, you evaluate the trained Algorithm and release all its resources:
 
 .. testcode::
 
     # ... and evaluate it.
     pprint(algo.evaluate())
 
-
-.. testcode::
-    :hide:
-
+    # Release the algo's resources (remote actors, like EnvRunners and Learners).
     algo.stop()
 
 
