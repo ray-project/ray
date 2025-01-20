@@ -121,7 +121,7 @@ struct RedisRequestContext {
   void Run();
 
  private:
-  ExponentialBackOff exp_back_off_;
+  ExponentialBackoff exp_back_off_;
   instrumented_io_context &io_service_;
   RedisAsyncContext *redis_context_;
   size_t pending_retries_;

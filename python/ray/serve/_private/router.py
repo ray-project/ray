@@ -620,7 +620,7 @@ class AsyncioRouter:
 
                 # Keep track of requests that have been sent out to replicas
                 if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-                    _request_context = ray.serve.context._serve_request_context.get()
+                    _request_context = ray.serve.context._get_serve_request_context()
                     request_id: str = _request_context.request_id
                     self._metrics_manager.inc_num_running_requests_for_replica(
                         replica_id

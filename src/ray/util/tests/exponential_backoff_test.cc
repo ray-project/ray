@@ -47,8 +47,8 @@ TEST(ExponentialBackOffTest, TestOverflowReturnsMaxBackoff) {
   }
 }
 
-TEST(ExponentialBackOffTest, GetNext) {
-  auto exp = ExponentialBackOff{1, 2, 9};
+TEST(ExponentialBackoffTest, GetNext) {
+  auto exp = ExponentialBackoff{1, 2, 9};
   ASSERT_EQ(1, exp.Next());
   ASSERT_EQ(2, exp.Next());
   ASSERT_EQ(4, exp.Next());
@@ -65,8 +65,3 @@ TEST(ExponentialBackOffTest, GetNext) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
