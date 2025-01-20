@@ -216,7 +216,7 @@ class ReplicaMetricsManager:
                 logger.exception("Unexpected error reporting metrics.")
 
                 # Exponential backoff starting at 1s and capping at 10s.
-                backoff_time_s = min(10, 2 ** consecutive_errors)
+                backoff_time_s = min(10, 2**consecutive_errors)
                 print(backoff_time_s)
                 consecutive_errors += 1
                 await asyncio.sleep(backoff_time_s)
