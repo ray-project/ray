@@ -96,7 +96,7 @@ For training-related settings or any algorithm-specific settings, use the
     )
 
 Finally, you build the actual :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance
-through calling your config's :py:meth:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig.build_algo`
+through calling your config's :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_algo`
 method.
 
 .. testcode::
