@@ -166,7 +166,7 @@ RLModules
     The following is a quick overview of **RLlib RLModules**.
     See :ref:`here for a detailed description of the RLModule class <rlmodule-guide>`.
 
-`RLModules <rllib-rlmodule.html>`__ are deep-learning framework-specific neural network containers.
+`RLModules <rl-modules.html>`__ are deep-learning framework-specific neural network containers.
 RLlib's :ref:`EnvRunners <rllib-key-concepts-env-runners>` use them for computing actions when stepping through the
 :ref:`RL environment <rllib-key-concepts-environments>` and RLlib's :ref:`Learners <rllib-key-concepts-learners>` use
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances for computing losses and gradients before updating them.

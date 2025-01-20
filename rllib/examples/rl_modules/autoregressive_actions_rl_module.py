@@ -1,17 +1,19 @@
-"""An example script showing how to define and load an `RLModule` with
-a dependent action space.
+"""Example on how to define and run with an RLModule with a dependent action space.
 
 This examples:
-    - Defines an `RLModule` with autoregressive actions.
-    - It does so by implementing a prior distribution for the first couple
-        of actions and then using these actions in a posterior distribution.
-    - Furthermore, it uses in the `RLModule` our simple base `Catalog` class
-        to build the distributions.
-    - Uses this `RLModule` in a PPO training run on a simple environment
-        that rewards synchronized actions.
+    - Shows how to write a custom RLModule outputting autoregressive actions.
+    The RLModule class used here implements a prior distribution for the first couple
+    of actions and then uses the sampled actions to compute the parameters for and
+    sample from a posterior distribution.
+    - Shows how to configure a PPO algorithm to use the custom RLModule.
     - Stops the training after 100k steps or when the mean episode return
-        exceeds -0.012 in evaluation, i.e. if the agent has learned to
-        synchronize its actions.
+    exceeds -0.012 in evaluation, i.e. if the agent has learned to
+    synchronize its actions.
+
+For details on the environment used, take a look at the `CorrelatedActionsEnv`
+class. To receive an episode return over 100, the agent must learn how to synchronize
+its actions.
+
 
 How to run this script
 ----------------------
@@ -29,84 +31,62 @@ For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 
+
 Results to expect
 -----------------
-You should expect a reward of around 155-160 after ~36,000 timesteps sampled
-(trained) being achieved by a simple PPO policy (no tuning, just using RLlib's
-default settings). For details take also a closer look into the
-`CorrelatedActionsEnv` environment. Rewards are such that to receive a return
-over 100, the agent must learn to synchronize its actions.
+You should reach an episode return of around 155-160 after ~36,000 timesteps sampled and
+trained by a simple PPO policy (no tuning, just using RLlib's
+default settings).
 """
 
-
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core.models.catalog import Catalog
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.correlated_actions_env import (
     AutoRegressiveActionEnv,
 )
 from ray.rllib.examples.rl_modules.classes.autoregressive_actions_rlm import (
-    AutoregressiveActionsTorchRLM,
-)
-from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
-    EVALUATION_RESULTS,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    AutoregressiveActionsRLM,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.tune import register_env
 
-
-register_env("correlated_actions_env", lambda _: AutoRegressiveActionEnv(_))
 
 parser = add_rllib_example_script_args(
     default_iters=200,
     default_timesteps=100000,
     default_reward=150.0,
 )
+parser.set_defaults(enable_new_api_stack=True)
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.algo != "PPO":
-        raise ValueError("This example only supports PPO. Please use --algo=PPO.")
+        raise ValueError(
+            "This example script only runs with PPO! Set --algo=PPO on the command "
+            "line."
+        )
 
     base_config = (
         PPOConfig()
-        .environment("correlated_actions_env")
+        .environment(AutoRegressiveActionEnv)
         .rl_module(
             # We need to explicitly specify here RLModule to use and
             # the catalog needed to build it.
             rl_module_spec=RLModuleSpec(
-                module_class=AutoregressiveActionsTorchRLM,
+                module_class=AutoregressiveActionsRLM,
                 model_config={
                     "head_fcnet_hiddens": [64, 64],
                     "head_fcnet_activation": "relu",
                 },
-                catalog_class=Catalog,
+                catalog_class=PPOCatalog,
             ),
-        )
-        .env_runners(
-            num_env_runners=0,
-        )
-        .evaluation(
-            evaluation_num_env_runners=1,
-            evaluation_interval=1,
-            # Run evaluation parallel to training to speed up the example.
-            evaluation_parallel_to_training=True,
         )
     )
 
-    # Let's stop the training after 100k steps or when the mean episode return
-    # exceeds -0.012 in evaluation.
-    stop = {
-        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 100000,
-        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -0.012,
-    }
-
     # Run the example (with Tune).
-    run_rllib_example_script_experiment(base_config, args, stop=stop)
+    run_rllib_example_script_experiment(base_config, args)

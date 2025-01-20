@@ -34,7 +34,7 @@ class AutoRegressiveActionEnv(gym.Env):
 
         # Internal state for the environment (e.g., could represent a factor
         # influencing the relationship)
-        self.state = None
+        self.obs = None
 
     def reset(
         self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
@@ -43,32 +43,25 @@ class AutoRegressiveActionEnv(gym.Env):
         super().reset(seed=seed, options=options)
 
         # Randomly initialize the state between -1 and 1
-        self.state = np.random.uniform(-1, 1, size=(1,))
+        self.obs = np.random.uniform(-1, 1, size=(1,))
 
-        return self.state, {}
+        return self.obs, {}
 
     def step(self, action):
         """Apply the autoregressive action and return step information."""
 
-        # Extract actions
+        # Extract individual action components, a1 and a2.
         a1, a2 = action
 
-        # The state determines the desired relationship between a1 and a2
-        desired_a2 = (
-            self.state[0] * a1
-        )  # Autoregressive relationship dependent on state
+        # The observation determines the desired relationship between a1 and a2.
+        desired_a2 = self.obs[0] * a1
 
         # Reward is based on how close a2 is to the state-dependent autoregressive
         # relationship
-        reward = -np.abs(a2 - desired_a2)  # Negative absolute error as the reward
+        reward = -np.square(a2 - desired_a2)  # Negative absolute error as the reward
 
         # Optionally: add some noise or complexity to the reward function
         # reward += np.random.normal(0, 0.01)  # Small noise can be added
 
         # Terminate after each step (no episode length in this simple example)
-        done = True
-
-        # Empty info dictionary
-        info = {}
-
-        return self.state, reward, done, False, info
+        return self.obs, reward, True, False, {}

@@ -180,7 +180,7 @@ an algorithm.
         :end-before: __get_q_values_dqn_end__
 
     This is especially useful when used with
-    `custom model classes <rllib-models.html>`__.
+    `custom model classes <rl-modules.html>`__.
 
 
 Debugging RLlib Experiments

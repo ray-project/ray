@@ -18,8 +18,7 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
-# TODO (simon): Improvements: `inference-only` mode.
-class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
+class AutoregressiveActionsRLM(TorchRLModule, ValueFunctionAPI):
     """An RLModule that implements an autoregressive action distribution.
 
     This RLModule implements an autoregressive action distribution, where the
@@ -43,12 +42,11 @@ class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
     """
 
     @override(RLModule)
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def setup(self):
         super().setup()
 
         # Build the encoder.
-        self.encoder = self.catalog.build_encoder(framework=self.framework)
+        self.encoder = self.catalog.build_actor_critic_encoder(framework=self.framework)
 
         # Build the prior and posterior heads.
         # Note further, we neet to know the required input dimensions for
@@ -91,23 +89,37 @@ class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
         )
         self.vf = vf_config.build(framework=self.framework)
 
-    @abstractmethod
-    def pi(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
-        """Computes the policy outputs given a batch of data.
+    @override(TorchRLModule)
+    def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
+        # Encoder forward pass.
+        encoder_out = self.encoder(batch)
+        # Policy head forward pass.
+        return self._pi(encoder_out[ENCODER_OUT]["actor"], inference=True)
 
-        Args:
-            batch: The input batch to pass through the policy head.
-
-        Returns:
-            A dict mapping Column names to batches of policy outputs.
-        """
-
-
-class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
-    @override(AutoregressiveActionsRLM)
-    def pi(
-        self, batch: Dict[str, TensorType], inference: bool = False
+    @override(TorchRLModule)
+    def _forward_exploration(
+        self, batch: Dict[str, TensorType], **kwargs
     ) -> Dict[str, TensorType]:
+        # Encoder forward pass.
+        encoder_out = self.encoder(batch)
+        # Policy head forward pass.
+        return self._pi(encoder_out[ENCODER_OUT]["actor"], inference=False)
+
+    @override(TorchRLModule)
+    def _forward_train(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
+        return self._forward_exploration(batch)
+
+    @override(ValueFunctionAPI)
+    def compute_values(self, batch: Dict[str, TensorType], embeddings=None):
+        # Encoder forward pass to get `embeddings`, if necessary.
+        if embeddings is None:
+            embeddings = self.encoder(batch)[ENCODER_OUT]["critic"]
+        # Value head forward pass.
+        vf_out = self.vf(embeddings)
+        # Squeeze out last dimension (single node value head).
+        return vf_out.squeeze(-1)
+
+    def _pi(self, batch: Dict[str, TensorType], inference: bool):
         pi_outs = {}
 
         # Prior forward pass.
@@ -132,11 +144,9 @@ class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
             prior_action_dist = self.action_dist_cls.from_logits(prior_logits)
 
         # Sample the action and reshape.
-        prior_action = (
-            prior_action_dist._flat_child_distributions[0]
-            .sample()
-            .view(*batch.shape[:-1], 1)
-        )
+        prior_action = prior_action_dist._flat_child_distributions[0].sample()
+            #.view(*batch.shape[:-1], 1)
+        #)
 
         # Posterior forward pass.
         posterior_batch = torch.cat([batch, prior_action], dim=-1)
@@ -171,33 +181,3 @@ class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
         pi_outs[Columns.ACTIONS] = (prior_action, posterior_action)
 
         return pi_outs
-
-    @override(TorchRLModule)
-    def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
-        # Encoder forward pass.
-        encoder_out = self.encoder(batch)
-        # Policy head forward pass.
-        return self.pi(encoder_out[ENCODER_OUT], inference=True)
-
-    @override(TorchRLModule)
-    def _forward_exploration(
-        self, batch: Dict[str, TensorType], **kwargs
-    ) -> Dict[str, TensorType]:
-        # Encoder forward pass.
-        encoder_out = self.encoder(batch)
-        # Policy head forward pass.
-        return self.pi(encoder_out[ENCODER_OUT], inference=False)
-
-    @override(TorchRLModule)
-    def _forward_train(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
-        return self._forward_exploration(batch)
-
-    @override(ValueFunctionAPI)
-    def compute_values(self, batch: Dict[str, TensorType], embeddings=None):
-        # Encoder forward pass to get `embeddings`, if necessary.
-        if embeddings is None:
-            embeddings = self.encoder(batch)[ENCODER_OUT]
-        # Value head forward pass.
-        vf_out = self.vf(embeddings)
-        # Squeeze out last dimension (single node value head).
-        return vf_out.squeeze(-1)
