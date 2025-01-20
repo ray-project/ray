@@ -18,22 +18,6 @@ package ray.rpc;
 
 import "opencensus/proto/metrics/v1/metrics.proto";
 
-message GetProfilingStatsRequest {
-  // PID of the worker process.
-  uint32 pid = 1;
-  // Duration of the profiling in seconds.
-  int32 duration = 2;
-}
-
-message GetProfilingStatsReply {
-  // Profiling stats.
-  string profiling_stats = 1;
-  // Standard output of the profiler process.
-  string std_out = 2;
-  // Standard error of the profiler process.
-  string std_err = 3;
-}
-
 message GetTracebackRequest {
   // PID of the worker process.
   uint32 pid = 1;
@@ -91,8 +75,6 @@ message ReportOCMetricsReply {}
 
 // Service for communicating with the reporter agent module on a remote node.
 service ReporterService {
-  // Get the profiling stats.
-  rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
   // Report OpenCensus metrics to the local metrics agent.
   rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
   rpc GetTraceback(GetTracebackRequest) returns (GetTracebackReply);

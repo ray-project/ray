@@ -840,7 +840,9 @@ class ReplicaActor:
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
-        pass
+        # NOTE(edoakes): it's important to call a method on the proxy handle to
+        # initialize its state in the C++ core worker.
+        handle.pong.remote()
 
     def get_num_ongoing_requests(self) -> int:
         """Fetch the number of ongoing requests at this replica (queue length).
@@ -896,6 +898,17 @@ class ReplicaActor:
         await self._replica_impl.reconfigure(deployment_config)
         return self._replica_impl.get_metadata()
 
+    def _preprocess_request_args(
+        self,
+        pickled_request_metadata: bytes,
+        request_args: Tuple[Any],
+    ) -> Tuple[RequestMetadata, Tuple[Any]]:
+        request_metadata = pickle.loads(pickled_request_metadata)
+        if request_metadata.is_http_request or request_metadata.is_grpc_request:
+            request_args = (pickle.loads(request_args[0]),)
+
+        return request_metadata, request_args
+
     async def handle_request(
         self,
         pickled_request_metadata: bytes,
@@ -903,7 +916,9 @@ class ReplicaActor:
         **request_kwargs,
     ) -> Tuple[bytes, Any]:
         """Entrypoint for `stream=False` calls."""
-        request_metadata = pickle.loads(pickled_request_metadata)
+        request_metadata, request_args = self._preprocess_request_args(
+            pickled_request_metadata, request_args
+        )
         return await self._replica_impl.handle_request(
             request_metadata, *request_args, **request_kwargs
         )
@@ -915,7 +930,9 @@ class ReplicaActor:
         **request_kwargs,
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
-        request_metadata = pickle.loads(pickled_request_metadata)
+        request_metadata, request_args = self._preprocess_request_args(
+            pickled_request_metadata, request_args
+        )
         async for result in self._replica_impl.handle_request_streaming(
             request_metadata, *request_args, **request_kwargs
         ):
@@ -939,7 +956,9 @@ class ReplicaActor:
         For streaming requests, the subsequent messages will be the results of the
         user request handler (which must be a generator).
         """
-        request_metadata = pickle.loads(pickled_request_metadata)
+        request_metadata, request_args = self._preprocess_request_args(
+            pickled_request_metadata, request_args
+        )
         async for result in self._replica_impl.handle_request_with_rejection(
             request_metadata, *request_args, **request_kwargs
         ):
@@ -1344,17 +1363,18 @@ class UserCallableWrapper:
         request_metadata: RequestMetadata,
         user_method_params: Dict[str, inspect.Parameter],
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Prepare arguments for a user method handling a gRPC request.
+        """Prepare args and kwargs for a user method handling a gRPC request.
 
-        Returns (request_args, request_kwargs).
+        The sole argument is always the user request proto.
+
+        If the method has a "context" kwarg, we pass the gRPC context, else no kwargs.
         """
-        request_args = (pickle.loads(request.grpc_user_request),)
         if GRPC_CONTEXT_ARG_NAME in user_method_params:
             request_kwargs = {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
         else:
             request_kwargs = {}
 
-        return request_args, request_kwargs
+        return (request.user_request_proto,), request_kwargs
 
     async def _handle_user_method_result(
         self,
@@ -1473,7 +1493,6 @@ class UserCallableWrapper:
                     generator_result_callback=generator_result_callback,
                 )
             elif request_metadata.is_grpc_request:
-                # Ensure the request args are a single gRPCRequest object.
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], gRPCRequest
                 )

@@ -116,6 +116,8 @@ class SACConfig(AlgorithmConfig):
         # .env_runners()
         # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
+
+        # .training()
         self.train_batch_size_per_learner = 256
         self.train_batch_size = 256  # @OldAPIstack
         # Number of timesteps to collect from rollout workers before we start

@@ -186,8 +186,6 @@ class DAGNode(DAGNodeBase):
         _submit_timeout: Optional[float] = None,
         _buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
-        _asyncio_max_queue_size: Optional[int] = None,
-        _max_buffered_results: Optional[int] = None,
         _max_inflight_executions: Optional[int] = None,
         _overlap_gpu_communication: Optional[bool] = None,
     ) -> "ray.dag.CompiledDAG":
@@ -203,23 +201,14 @@ class DAGNode(DAGNodeBase):
                 be automatically resized if larger messages are written to the
                 channel.
             enable_asyncio: Whether to enable asyncio for this DAG.
-            _asyncio_max_queue_size: The max queue size for the async execution.
-                It is only used when enable_asyncio=True.
-            _max_buffered_results: The maximum number of execution results that
-                are allowed to be buffered. Setting a higher value allows more
-                DAGs to be executed before `ray.get()` must be called but also
-                increases the memory usage. Note that if the number of ongoing
-                executions is beyond the DAG capacity, the new execution would
-                be blocked in the first place; therefore, this limit is only
-                enforced when it is smaller than the DAG capacity.
-            _max_inflight_executions: The maximum number of in-flight requests that
-                are allowed to be sent to this DAG. Before submitting more requests,
-                the caller is responsible for calling ray.get to clear finished
-                in-flight requests.
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution. If True, the communication
-                and computation can be overlapped, which can improve the
-                performance of the DAG execution. If None, the default value
+            _max_inflight_executions: The maximum number of in-flight executions that
+                can be submitted via `execute` or `execute_async` before consuming
+                the output using `ray.get()`. If the caller submits more executions,
+                `RayCgraphCapacityExceeded` is raised.
+            _overlap_gpu_communication: (experimental) Whether to overlap GPU
+                communication with computation during DAG execution. If True, the
+                communication and computation can be overlapped, which can improve
+                the performance of the DAG execution. If None, the default value
                 will be used.
 
         Returns:
@@ -230,10 +219,6 @@ class DAGNode(DAGNodeBase):
         ctx = DAGContext.get_current()
         if _buffer_size_bytes is None:
             _buffer_size_bytes = ctx.buffer_size_bytes
-        if _asyncio_max_queue_size is None:
-            _asyncio_max_queue_size = ctx.asyncio_max_queue_size
-        if _max_buffered_results is None:
-            _max_buffered_results = ctx.max_buffered_results
 
         # Validate whether this DAG node has already been compiled.
         if self.is_cgraph_output_node:
@@ -251,8 +236,6 @@ class DAGNode(DAGNodeBase):
             _submit_timeout,
             _buffer_size_bytes,
             enable_asyncio,
-            _asyncio_max_queue_size,
-            _max_buffered_results,
             _max_inflight_executions,
             _overlap_gpu_communication,
         )

@@ -17,9 +17,12 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
+from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
     _UNSUPPORTED,
+    DEFAULT_RUN_CONTROLLER_AS_ACTOR,
     METRICS_ENABLED_ENV_VAR,
+    RUN_CONTROLLER_AS_ACTOR_ENV_VAR,
     get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
@@ -27,6 +30,7 @@ from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import construct_train_func
+from ray.train.v2.api.callback import UserCallback
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.result import Result
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -193,18 +197,23 @@ class DataParallelTrainer:
             callbacks.append(ControllerMetricsCallback(self.train_run_context))
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
-        # TODO: Add support for user-defined callbacks
+        # Add internal callback that invokes all user-defined callbacks.
+        user_callbacks = [
+            cb for cb in self.run_config.callbacks if isinstance(cb, UserCallback)
+        ]
+        callbacks.append(
+            UserCallbackHandler(
+                user_callbacks=user_callbacks, train_run_context=self.train_run_context
+            )
+        )
 
-        # By default, attach the controller to the node running the driver script.
-        controller_actor_cls = ray.remote(
-            num_cpus=0,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=ray.get_runtime_context().get_node_id(), soft=False
-            ),
-            runtime_env={"env_vars": get_env_vars_to_propagate()},
-        )(TrainController)
+        # Append all other callbacks to the full list. This allows custom workarounds
+        # built on top of internal callbacks to work.
+        callbacks.extend(
+            [cb for cb in self.run_config.callbacks if not isinstance(cb, UserCallback)]
+        )
 
-        controller = controller_actor_cls.remote(
+        result = self._initialize_and_run_controller(
             train_fn=train_fn,
             scaling_policy=create_scaling_policy(self.scaling_config),
             failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
@@ -212,9 +221,7 @@ class DataParallelTrainer:
             callbacks=callbacks,
             resume_from_checkpoint=self.resume_from_checkpoint,
         )
-        ray.get(controller.run.remote())
 
-        result = ray.get(controller.get_result.remote())
         if result.error:
             # NOTE: If the training run errored out, raise an error back to the
             # user's driver script.
@@ -224,6 +231,28 @@ class DataParallelTrainer:
             raise result.error
 
         return result
+
+    def _initialize_and_run_controller(self, **controller_init_kwargs) -> Result:
+        run_controller_as_actor = env_bool(
+            RUN_CONTROLLER_AS_ACTOR_ENV_VAR, DEFAULT_RUN_CONTROLLER_AS_ACTOR
+        )
+        if run_controller_as_actor:
+            # Attach the controller to the node running the driver script.
+            controller_actor_cls = ray.remote(
+                num_cpus=0,
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    node_id=ray.get_runtime_context().get_node_id(), soft=False
+                ),
+                runtime_env={"env_vars": get_env_vars_to_propagate()},
+            )(TrainController)
+
+            controller = controller_actor_cls.remote(**controller_init_kwargs)
+            ray.get(controller.run.remote())
+            return ray.get(controller.get_result.remote())
+        else:
+            controller = TrainController(**controller_init_kwargs)
+            controller.run()
+            return controller.get_result()
 
     @classmethod
     def restore(cls, *args, **kwargs):

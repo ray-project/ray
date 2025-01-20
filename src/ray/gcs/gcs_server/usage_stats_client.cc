@@ -16,20 +16,22 @@
 
 namespace ray {
 namespace gcs {
-UsageStatsClient::UsageStatsClient(InternalKVInterface &internal_kv)
-    : internal_kv_(internal_kv) {}
+UsageStatsClient::UsageStatsClient(InternalKVInterface &internal_kv,
+                                   instrumented_io_context &io_context)
+    : internal_kv_(internal_kv), io_context_(io_context) {}
 
 void UsageStatsClient::RecordExtraUsageTag(usage::TagKey key, const std::string &value) {
   internal_kv_.Put(kUsageStatsNamespace,
                    kExtraUsageTagPrefix + absl::AsciiStrToLower(usage::TagKey_Name(key)),
                    value,
                    /*overwrite=*/true,
-                   [](bool added) {
-                     if (!added) {
-                       RAY_LOG(DEBUG)
-                           << "Did not add new extra usage tag, maybe overwritten";
-                     }
-                   });
+                   {[](bool added) {
+                      if (!added) {
+                        RAY_LOG(DEBUG)
+                            << "Did not add new extra usage tag, maybe overwritten";
+                      }
+                    },
+                    io_context_});
 }
 
 void UsageStatsClient::RecordExtraUsageCounter(usage::TagKey key, int64_t counter) {

@@ -12,11 +12,6 @@ from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.postprocessing.zero_padding import (
-    create_mask_and_seq_lens,
-    split_and_zero_pad,
-)
-from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -35,6 +30,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
     [
         [0 or more user defined ConnectorV2 pieces],
         AddObservationsFromEpisodesToBatch,
+        AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
@@ -45,6 +41,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         [0 or more user defined ConnectorV2 pieces],
         AddObservationsFromEpisodesToBatch,
         AddColumnsFromEpisodesToTrainBatch,
+        AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
@@ -160,7 +157,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         output_batch = connector(
             rl_module=rl_module,
             batch={},
-            episodes=[episode.finalize()],
+            episodes=[episode],
             shared_data={},
         )
         check(
@@ -173,7 +170,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 # predictions).
                 # Also note that the different STATE_IN timesteps are already present
                 # as one batched item per episode in the list.
-                (episode.id_,): [[rl_module_init_state, -3.0]],
+                (episode.id_,): [rl_module_init_state, -3.0],
             },
         )
     """
@@ -217,61 +214,6 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         if not rl_module.is_stateful() or Columns.STATE_IN in batch:
             return batch
 
-        # Make all inputs (other than STATE_IN) have an additional T-axis.
-        # Since data has not been batched yet (we are still operating on lists in the
-        # batch), we add this time axis as 0 (not 1). When we batch, the batch axis will
-        # be 0 and the time axis will be 1.
-        # Also, let module-to-env pipeline know that we had added a single timestep
-        # time rank to the data (to remove it again).
-        if not self._as_learner_connector:
-            for column in batch.keys():
-                self.foreach_batch_item_change_in_place(
-                    batch=batch,
-                    column=column,
-                    func=lambda item, eps_id, aid, mid: (
-                        item
-                        if mid is not None and not rl_module[mid].is_stateful()
-                        # Expand on axis 0 (the to-be-time-dim) if item has not been
-                        # batched yet, otherwise axis=1 (the time-dim).
-                        else tree.map_structure(
-                            lambda s: np.expand_dims(
-                                s, axis=(1 if isinstance(s, BatchedNdArray) else 0)
-                            ),
-                            item,
-                        )
-                    ),
-                )
-            shared_data["_added_single_ts_time_rank"] = True
-        else:
-            # Before adding STATE_IN to the `data`, zero-pad existing data and batch
-            # into max_seq_len chunks.
-            for column, column_data in batch.copy().items():
-                # Do not zero-pad INFOS column.
-                if column == Columns.INFOS:
-                    continue
-                for key, item_list in column_data.items():
-                    # Multi-agent case AND RLModule is not stateful -> Do not zero-pad
-                    # for this model.
-                    assert isinstance(key, tuple)
-                    mid = None
-                    if len(key) == 3:
-                        eps_id, aid, mid = key
-                        if not rl_module[mid].is_stateful():
-                            continue
-                    column_data[key] = split_and_zero_pad(
-                        item_list,
-                        max_seq_len=self._get_max_seq_len(rl_module, module_id=mid),
-                    )
-                    # TODO (sven): Remove this hint/hack once we are not relying on
-                    #  SampleBatch anymore (which has to set its property
-                    #  zero_padded=True when shuffling).
-                    shared_data[
-                        (
-                            "_zero_padded_for_mid="
-                            f"{mid if mid is not None else DEFAULT_MODULE_ID}"
-                        )
-                    ] = True
-
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
             # If Learner connector, get all episodes (for train batch).
@@ -280,11 +222,8 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             agents_that_stepped_only=not self._as_learner_connector,
         ):
             if self._as_learner_connector:
-                assert sa_episode.is_finalized
-
-                # Multi-agent case: Extract correct single agent RLModule (to get the
-                # state for individually).
-                sa_module = rl_module
+                # Multi-agent case: Extract correct single agent RLModule (to get its
+                # individual state).
                 if sa_episode.module_id is not None:
                     sa_module = rl_module[sa_episode.module_id]
                 else:
@@ -305,6 +244,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     # state.
                     convert_to_numpy(sa_module.get_initial_state())
                     if sa_episode.t_started == 0
+                    or (Columns.STATE_OUT not in sa_episode.extra_model_outputs)
                     # Episode starts somewhere in the middle (is a cut
                     # continuation chunk) -> Use previous chunk's last
                     # STATE_OUT as initial state.
@@ -314,47 +254,68 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         neg_index_as_lookback=True,
                     )
                 )
-                # state_outs.shape=(T,[state-dim])  T=episode len
-                state_outs = sa_episode.get_extra_model_outputs(key=Columns.STATE_OUT)
-                self.add_n_batch_items(
-                    batch=batch,
-                    column=Columns.STATE_IN,
-                    # items_to_add.shape=(B,[state-dim])
-                    # B=episode len // max_seq_len
-                    items_to_add=tree.map_structure(
-                        # Explanation:
-                        # [::max_seq_len]: only keep every Tth state.
-                        # [:-1]: Shift state outs by one, ignore very last
-                        # STATE_OUT (but therefore add the lookback/init state at
-                        # the beginning).
+                # If we have `"state_out"`s (e.g. from rollouts) use them for the
+                # `"state_in"`s.
+                if Columns.STATE_OUT in sa_episode.extra_model_outputs:
+                    # state_outs.shape=(T,[state-dim])  T=episode len
+                    state_outs = sa_episode.get_extra_model_outputs(
+                        key=Columns.STATE_OUT
+                    )
+                # Otherwise, we have no `"state_out"` (e.g. because we are sampling
+                # from offline data and the expert policy was not stateful).
+                else:
+                    # Then simply use the `look_back_state`, i.e. in this case the
+                    # initial state as `"state_in` in training.
+                    if sa_episode.is_numpy:
+                        state_outs = tree.map_structure(
+                            lambda a, _sae=sa_episode: np.repeat(
+                                a[np.newaxis, ...], len(_sae), axis=0
+                            ),
+                            look_back_state,
+                        )
+                    else:
+                        state_outs = [look_back_state for _ in range(len(sa_episode))]
+                # Explanation:
+                # B=episode len // max_seq_len
+                # [::max_seq_len]: only keep every Tth state.
+                # [:-1]: Shift state outs by one; ignore very last
+                # STATE_OUT, but therefore add the lookback/init state at
+                # the beginning.
+                items_to_add = (
+                    tree.map_structure(
                         lambda i, o, m=max_seq_len: np.concatenate([[i], o[:-1]])[::m],
                         look_back_state,
                         state_outs,
-                    ),
+                    )
+                    if sa_episode.is_numpy
+                    else ([look_back_state] + state_outs[:-1])[::max_seq_len]
+                )
+                self.add_n_batch_items(
+                    batch=batch,
+                    column=Columns.STATE_IN,
+                    items_to_add=items_to_add,
                     num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
                     single_agent_episode=sa_episode,
                 )
-
-                # Also, create the loss mask (b/c of our now possibly zero-padded data)
-                # as well as the seq_lens array and add these to `data` as well.
-                mask, seq_lens = create_mask_and_seq_lens(len(sa_episode), max_seq_len)
-                self.add_n_batch_items(
-                    batch=batch,
-                    column=Columns.SEQ_LENS,
-                    items_to_add=seq_lens,
-                    num_items=len(seq_lens),
-                    single_agent_episode=sa_episode,
-                )
-                if not shared_data.get("_added_loss_mask_for_valid_episode_ts"):
+                if Columns.NEXT_OBS in batch:
+                    items_to_add = (
+                        tree.map_structure(
+                            lambda i, m=max_seq_len: i[::m],
+                            state_outs,
+                        )
+                        if sa_episode.is_numpy
+                        else state_outs[::max_seq_len]
+                    )
                     self.add_n_batch_items(
                         batch=batch,
-                        column=Columns.LOSS_MASK,
-                        items_to_add=mask,
-                        num_items=len(mask),
+                        column=Columns.NEXT_STATE_IN,
+                        items_to_add=items_to_add,
+                        num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
                         single_agent_episode=sa_episode,
                     )
+
             else:
-                assert not sa_episode.is_finalized
+                assert not sa_episode.is_numpy
 
                 # Multi-agent case: Extract correct single agent RLModule (to get the
                 # state for individually).
@@ -365,13 +326,17 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 if not sa_module.is_stateful():
                     continue
 
-                # Episode just started -> Get initial state from our RLModule.
-                if sa_episode.t_started == 0 and len(sa_episode) == 0:
+                # Episode just started or has no `"state_out"` (e.g. in offline
+                # sampling) -> Get initial state from our RLModule.
+                if (sa_episode.t_started == 0 and len(sa_episode) == 0) or (
+                    Columns.STATE_OUT not in sa_episode.extra_model_outputs
+                ):
                     state = sa_module.get_initial_state()
                 # Episode is already ongoing -> Use most recent STATE_OUT.
                 else:
                     state = sa_episode.get_extra_model_outputs(
-                        key=Columns.STATE_OUT, indices=-1
+                        key=Columns.STATE_OUT,
+                        indices=-1,
                     )
                 self.add_batch_item(
                     batch,
@@ -381,17 +346,3 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 )
 
         return batch
-
-    def _get_max_seq_len(self, rl_module, module_id=None):
-        if module_id:
-            mod = rl_module[module_id]
-        else:
-            mod = next(iter(rl_module.values()))
-        if "max_seq_len" not in mod.model_config:
-            raise ValueError(
-                "You are using a stateful RLModule and are not providing a "
-                "'max_seq_len' key inside your `model_config`. You can set this "
-                "dict and/or override keys in it via `config.rl_module("
-                "model_config={'max_seq_len': [some int]})`."
-            )
-        return mod.model_config["max_seq_len"]

@@ -73,15 +73,15 @@ episode_2 = copy.deepcopy(episode)
 
 # __rllib-sa-episode-03-begin__
 
-# Episodes start in the non-finalized state (in which data is stored
-# under the hood in python lists).
-assert episode.is_finalized is False
+# Episodes start in the non-numpy'ized state (in which data is stored
+# under the hood in lists).
+assert episode.is_numpy is False
 
-# Call `finalize()` to convert all stored data from lists of individual (possibly
+# Call `to_numpy()` to convert all stored data from lists of individual (possibly
 # complex) items to numpy arrays. Note that RLlib normally performs this method call,
-# so users don't need to call `finalize()` themselves.
-episode.finalize()
-assert episode.is_finalized is True
+# so users don't need to call `to_numpy()` themselves.
+episode.to_numpy()
+assert episode.is_numpy is True
 
 # __rllib-sa-episode-03-end__
 

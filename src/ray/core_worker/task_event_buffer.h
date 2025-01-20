@@ -363,9 +363,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///        status events being dropped.
   /// \return A unique_ptr to rpc::TaskEvents to be sent to GCS.
   std::unique_ptr<rpc::TaskEventData> CreateDataToSend(
-      std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_send,
-      std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send,
-      absl::flat_hash_set<TaskAttempt> &&dropped_task_attempts_to_send);
+      const std::vector<std::shared_ptr<TaskEvent>> &status_events_to_send,
+      const std::vector<std::shared_ptr<TaskEvent>> &profile_events_to_send,
+      const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send);
 
   /// Write task events for the Export API.
   ///
@@ -375,8 +375,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///              fit in the buffer.
   /// \param profile_events_to_send Task profile events to be written.
   void WriteExportData(
-      std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_write_for_export,
-      std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send);
+      const std::vector<std::shared_ptr<TaskEvent>> &status_events_to_write_for_export,
+      const std::vector<std::shared_ptr<TaskEvent>> &profile_events_to_send);
 
   /// Reset the counters during flushing data to GCS.
   void ResetCountersForFlush();

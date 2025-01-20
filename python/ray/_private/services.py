@@ -1565,6 +1565,7 @@ def start_raylet(
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
     labels: Optional[dict] = None,
+    enable_physical_mode: bool = False,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1620,10 +1621,13 @@ def start_raylet(
             available externally to this node.
         env_updates: Environment variable overrides.
         labels: The key-value labels of the node.
+        enable_physical_mode: Whether physical mode is enabled, which applies
+            constraint to tasks' resource consumption. As of now only memory
+            resource is supported.
     Returns:
         ProcessInfo for the process that was started.
     """
-    assert node_manager_port is not None and type(node_manager_port) == int
+    assert node_manager_port is not None and type(node_manager_port) is int
 
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")

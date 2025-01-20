@@ -6,6 +6,7 @@ from functools import wraps
 from typing import Callable, Coroutine, Optional, Union
 
 import ray
+from ray.serve._private.common import RequestMetadata
 from ray.serve._private.utils import calculate_remaining_timeout
 from ray.serve.exceptions import RequestCancelledError
 
@@ -54,13 +55,12 @@ class ActorReplicaResult(ReplicaResult):
     def __init__(
         self,
         obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator],
-        is_streaming: bool,
-        request_id: str,
+        metadata: RequestMetadata,
     ):
         self._obj_ref: Optional[ray.ObjectRef] = None
         self._obj_ref_gen: Optional[ray.ObjectRefGenerator] = None
-        self._is_streaming: bool = is_streaming
-        self._request_id: str = request_id
+        self._is_streaming: bool = metadata.is_streaming
+        self._request_id: str = metadata.request_id
         self._object_ref_or_gen_sync_lock = threading.Lock()
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
