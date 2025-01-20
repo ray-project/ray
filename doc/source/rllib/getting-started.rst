@@ -193,7 +193,7 @@ the :ref:`Ray Tune API <tune-api-ref>`.
 
 .. note::
 
-    The offline RL algorithms, like :ref:`BC <bs>`, :ref:`CQL <cql>`, and :ref:`MARWIL <marwil>`
+    The offline RL algorithms, like :ref:`BC <bc>`, :ref:`CQL <cql>`, and :ref:`MARWIL <marwil>`
     require more work on :ref:`Tune <tune-main>` and :ref:`Ray Data <data>`
     to add Ray Tune support.
 
