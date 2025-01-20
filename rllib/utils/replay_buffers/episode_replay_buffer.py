@@ -1,6 +1,7 @@
 from collections import deque
 import copy
 import hashlib
+import hashlib
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -128,6 +129,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         batch_size_B: int = 16,
         batch_length_T: int = 64,
         metrics_num_episodes_for_smoothing: int = 100,
+        metrics_num_episodes_for_smoothing: int = 100,
     ):
         """Initializes an EpisodeReplayBuffer instance.
 
@@ -174,6 +176,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self.sampled_timesteps = 0
 
         self.rng = np.random.default_rng(seed=None)
+
+        # Initialize the metrics.
+        self.metrics = MetricsLogger()
+        self._metrics_num_episodes_for_smoothing = metrics_num_episodes_for_smoothing
 
         # Initialize the metrics.
         self.metrics = MetricsLogger()
@@ -1007,6 +1013,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         sampled_episode_idxs = set()
         # Record all n-steps that have been used.
         sampled_n_steps = []
+        # Record all the env step buffer indices that are contained in the sample.
+        sampled_env_step_idxs = set()
+        # Record all the episode buffer indices that are contained in the sample.
+        sampled_episode_idxs = set()
+        # Record all n-steps that have been used.
+        sampled_n_steps = []
 
         B = 0
         while B < batch_size_B:
@@ -1098,6 +1110,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             sampled_env_step_idxs.add(
                 hashlib.sha256(f"{episode.id_}-{episode_ts}".encode()).hexdigest()
             )
+            # Record a has for the episode ID and timestep inside of the episode.
+            sampled_env_step_idxs.add(
+                hashlib.sha256(f"{episode.id_}-{episode_ts}".encode()).hexdigest()
+            )
             # Remove reference to sampled episode.
             del episode
 
@@ -1116,8 +1132,11 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             sampled_episodes.append(sampled_episode)
             sampled_episode_idxs.add(episode_idx)
             sampled_n_steps.append(actual_n_step)
+            sampled_episode_idxs.add(episode_idx)
+            sampled_n_steps.append(actual_n_step)
 
             # Increment counter.
+            B += (actual_length - episode_ts - (actual_n_step - 1) + 1) or 1
             B += (actual_length - episode_ts - (actual_n_step - 1) + 1) or 1
 
         # Update the metric.
@@ -1402,6 +1421,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
     def get_added_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of timesteps that have been added in buffer's lifetime."""
         return self._num_timesteps_added
+
+    def get_metrics(self) -> ResultDict:
+        """Returns the metrics of the buffer and reduces them."""
+        return self.metrics.reduce()
 
     def get_metrics(self) -> ResultDict:
         """Returns the metrics of the buffer and reduces them."""
