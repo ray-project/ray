@@ -7,10 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from ray.autoscaler._private.constants import (
-    WORKER_LIVENESS_CHECK_KEY,
-    WORKER_RPC_DRAIN_KEY,
-)
+from ray.autoscaler._private.constants import WORKER_LIVENESS_CHECK_KEY
 from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeStatus, NodeType
 from ray.autoscaler.batching_node_provider import (
     BatchingNodeProvider,
@@ -80,8 +77,6 @@ REPLICA_INDEX_KEY = "replicaIndex"
 
 # Note: Log handlers set up in autoscaling monitor entrypoint.
 logger = logging.getLogger(__name__)
-
-provider_exists = False
 
 
 def node_data_from_pod(pod: Dict[str, Any]) -> NodeData:
@@ -332,7 +327,6 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         self,
         provider_config: Dict[str, Any],
         cluster_name: str,
-        _allow_multiple: bool = False,
     ):
         logger.info("Creating KubeRayNodeProvider.")
         self.namespace = provider_config["namespace"]
@@ -343,12 +337,7 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         assert (
             provider_config.get(WORKER_LIVENESS_CHECK_KEY, True) is False
         ), f"To use KubeRayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
-        assert (
-            provider_config.get(WORKER_RPC_DRAIN_KEY, False) is True
-        ), f"To use KubeRayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:True`."
-        BatchingNodeProvider.__init__(
-            self, provider_config, cluster_name, _allow_multiple
-        )
+        BatchingNodeProvider.__init__(self, provider_config, cluster_name)
 
     def get_node_data(self) -> Dict[NodeID, NodeData]:
         """Queries K8s for pods in the RayCluster. Converts that pod data into a

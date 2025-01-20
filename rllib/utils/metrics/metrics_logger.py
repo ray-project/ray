@@ -116,7 +116,7 @@ class MetricsLogger:
         #  MetricsLogger) is serialized and deserialized. We will have to fix this
         #  offline RL logic first, then can remove this hack here and return to always
         #  using the RLock.
-        self._threading_lock = _DummyRLock()  # threading.RLock()
+        self._threading_lock = _DummyRLock()
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
@@ -196,13 +196,18 @@ class MetricsLogger:
             return default
 
         # Otherwise, return the reduced Stats' (peek) value.
+        struct = self._get_key(key)
 
         # Create a reduced view of the requested sub-structure or leaf (Stats object).
-        ret = tree.map_structure(
-            lambda s: s.peek(throughput=throughput),
-            self._get_key(key),
-        )
-        return ret
+        with self._threading_lock:
+            if isinstance(struct, Stats):
+                return struct.peek(throughput=throughput)
+
+            ret = tree.map_structure(
+                lambda s: s.peek(throughput=throughput),
+                struct.copy(),
+            )
+            return ret
 
     @staticmethod
     def peek_results(results: Any) -> Any:
@@ -467,7 +472,8 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
             )
 
-        tree.map_structure_with_path(_map, stats_dict)
+        with self._threading_lock:
+            tree.map_structure_with_path(_map, stats_dict)
 
     def merge_and_log_n_dicts(
         self,
@@ -697,7 +703,7 @@ class MetricsLogger:
         clear_on_reduce: bool = False,
         key_for_throughput: Optional[Union[str, Tuple[str, ...]]] = None,
         key_for_unit_count: Optional[Union[str, Tuple[str, ...]]] = None,
-    ) -> None:
+    ) -> Stats:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
         Additionally, measures and logs the throughput for the timed code, iff
@@ -1075,8 +1081,9 @@ class MetricsLogger:
             logger.reset()
             check(logger.reduce(), {})
         """
-        self.stats = {}
-        self._tensor_keys = set()
+        with self._threading_lock:
+            self.stats = {}
+            self._tensor_keys = set()
 
     def delete(self, *key: Tuple[str, ...], key_error: bool = True) -> None:
         """Deletes the given `key` from this metrics logger's stats.
@@ -1149,37 +1156,40 @@ class MetricsLogger:
 
     def _set_key(self, flat_key, stats):
         flat_key = force_tuple(tree.flatten(flat_key))
-        _dict = self.stats
-        for i, key in enumerate(flat_key):
-            # If we are at the end of the key sequence, set
-            # the key, no matter, whether it already exists or not.
-            if i == len(flat_key) - 1:
-                _dict[key] = stats
-                return
-            # If an intermediary key in the sequence is missing,
-            # add a sub-dict under this key.
-            if key not in _dict:
-                _dict[key] = {}
-            _dict = _dict[key]
+
+        with self._threading_lock:
+            _dict = self.stats
+            for i, key in enumerate(flat_key):
+                # If we are at the end of the key sequence, set
+                # the key, no matter, whether it already exists or not.
+                if i == len(flat_key) - 1:
+                    _dict[key] = stats
+                    return
+                # If an intermediary key in the sequence is missing,
+                # add a sub-dict under this key.
+                if key not in _dict:
+                    _dict[key] = {}
+                _dict = _dict[key]
 
     def _del_key(self, flat_key, key_error=False):
         flat_key = force_tuple(tree.flatten(flat_key))
 
-        # Erase the tensor key as well, if applicable.
-        if flat_key in self._tensor_keys:
-            self._tensor_keys.discard(flat_key)
+        with self._threading_lock:
+            # Erase the tensor key as well, if applicable.
+            if flat_key in self._tensor_keys:
+                self._tensor_keys.discard(flat_key)
 
-        # Erase the key from the (nested) `self.stats` dict.
-        _dict = self.stats
-        try:
-            for i, key in enumerate(flat_key):
-                if i == len(flat_key) - 1:
-                    del _dict[key]
-                    return
-                _dict = _dict[key]
-        except KeyError as e:
-            if key_error:
-                raise e
+            # Erase the key from the (nested) `self.stats` dict.
+            _dict = self.stats
+            try:
+                for i, key in enumerate(flat_key):
+                    if i == len(flat_key) - 1:
+                        del _dict[key]
+                        return
+                    _dict = _dict[key]
+            except KeyError as e:
+                if key_error:
+                    raise e
 
 
 class _DummyRLock:

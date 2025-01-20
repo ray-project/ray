@@ -31,6 +31,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
+#include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -318,6 +319,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   GcsActorManager(
       std::unique_ptr<GcsActorSchedulerInterface> scheduler,
       GcsTableStorage *gcs_table_storage,
+      instrumented_io_context &io_context,
       GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
@@ -691,6 +693,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::unique_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.
   GcsTableStorage *gcs_table_storage_;
+  instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   GcsPublisher *gcs_publisher_;
   /// Factory to produce clients to workers. This is used to communicate with
@@ -717,6 +720,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t liftime_num_created_actors_ = 0;
+
+  // Make sure our unprotected maps are accessed from the same thread.
+  // Currently protects actor_to_register_callbacks_.
+  ThreadChecker thread_checker_;
 
   // Debug info.
   enum CountType {

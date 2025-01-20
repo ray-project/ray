@@ -334,11 +334,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                         const rpc::JobConfig &job_config,
                         std::function<void(Status, int)> send_reply_callback);
 
-  // Similar to the above function overload, but the port has been assigned, but directly
-  // returns registration status without taking a callback.
-  Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
-                        const rpc::JobConfig &job_config);
-
   /// Get the client connection's registered worker.
   ///
   /// \param The client connection owned by a registered worker.

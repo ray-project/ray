@@ -1981,7 +1981,7 @@ py_test(
 # subdirectory: algorithms/
 # ....................................
 py_test(
-    name = "examples/algorithms/vpg_custom_algorithm.py",
+    name = "examples/algorithms/vpg_custom_algorithm",
     main = "examples/algorithms/vpg_custom_algorithm.py",
     tags = ["team:rllib", "examples"],
     size = "medium",
@@ -2305,6 +2305,14 @@ py_test(
     size = "medium",
     srcs = ["examples/envs/agents_act_in_sequence.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters=3"]
+)
+py_test(
+    name = "examples/envs/async_gym_env_vectorization",
+    main = "examples/envs/async_gym_env_vectorization.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/async_gym_env_vectorization.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--vectorize-mode=BOTH"]
 )
 py_test(
     name = "examples/envs/custom_env_render_method",
