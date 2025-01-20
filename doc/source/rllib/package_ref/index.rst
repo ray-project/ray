@@ -1,12 +1,11 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rllib-reference-docs:
 
 Ray RLlib API
 =============
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 .. tip:: We'd love to hear your feedback on using RLlib - `sign up to our forum and start asking questions <https://discuss.ray.io>`_!
 

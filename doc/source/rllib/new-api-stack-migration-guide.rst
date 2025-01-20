@@ -1,8 +1,5 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
-
 .. _rllib-new-api-stack-migration-guide:
 
 .. testcode::
@@ -14,6 +11,8 @@
 
 New API stack migration guide
 =============================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 This page explains, step by step, how to convert and translate your existing old API stack
 RLlib classes and code to RLlib's new API stack.

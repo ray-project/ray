@@ -1,7 +1,5 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-environments-doc:
 
 Environments
@@ -14,9 +12,7 @@ Environments
     hierarchical-envs
     external-envs
 
-
-Overview
---------
+.. include:: /_includes/rllib/new_api_stack.rst
 
 .. grid:: 1 2 3 4
     :gutter: 1
