@@ -1,6 +1,5 @@
 import copy
 from ray.experimental.channel.auto_transport_type import AutoTransportType
-from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 import ray
 from ray.dag.base import DAGNodeBase
@@ -82,7 +81,7 @@ class DAGNode(DAGNodeBase):
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
-        self._type_hint: ChannelOutputType = SharedMemoryType()
+        self._type_hint: ChannelOutputType = ChannelOutputType()
 
         # Whether this node calls `experimental_compile`.
         self.is_cgraph_output_node = False
@@ -218,6 +217,7 @@ class DAGNode(DAGNodeBase):
         enable_asyncio: bool = False,
         _max_inflight_executions: Optional[int] = None,
         _overlap_gpu_communication: Optional[bool] = None,
+        _default_nccl_group: Optional[Communicator] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
@@ -240,6 +240,11 @@ class DAGNode(DAGNodeBase):
                 communication and computation can be overlapped, which can improve
                 the performance of the DAG execution. If None, the default value
                 will be used.
+            _default_nccl_group: The default NCCL group to use to transport tensors
+                for nodes annotated with `with_tensor_transport(transport='nccl')`,
+                or `with_tensor_transport(transport='auto')` and Ray determines NCCL
+                transport is needed. If None, Ray creates a default NCCL group and
+                uses it in these cases.
 
         Returns:
             A compiled DAG.
@@ -268,6 +273,7 @@ class DAGNode(DAGNodeBase):
             enable_asyncio,
             _max_inflight_executions,
             _overlap_gpu_communication,
+            _default_nccl_group,
         )
 
     def execute(
