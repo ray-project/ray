@@ -558,10 +558,13 @@ def test_grpc_unary_request(run_sync_methods_in_threadpool: bool):
 
     grpc_request = gRPCRequest(serve_pb2.UserDefinedResponse(greeting="world"))
     request_metadata = _make_request_metadata(call_method="greet", is_grpc_request=True)
-    result = user_callable_wrapper.call_user_method(
+    _, result_bytes = user_callable_wrapper.call_user_method(
         request_metadata, (grpc_request,), dict()
     ).result()
-    assert isinstance(result, serve_pb2.UserDefinedResponse)
+    assert isinstance(result_bytes, bytes)
+
+    result = serve_pb2.UserDefinedResponse()
+    result.ParseFromString(result_bytes)
     assert result.greeting == "Hello world!"
 
 
@@ -588,8 +591,11 @@ def test_grpc_streaming_request(run_sync_methods_in_threadpool: bool):
     ).result()
 
     assert len(result_list) == 10
-    for i, result in enumerate(result_list):
-        assert isinstance(result, serve_pb2.UserDefinedResponse)
+    for i, (_, result_bytes) in enumerate(result_list):
+        assert isinstance(result_bytes, bytes)
+
+        result = serve_pb2.UserDefinedResponse()
+        result.ParseFromString(result_bytes)
         assert result.greeting == f"Hello world {i}!"
 
 
