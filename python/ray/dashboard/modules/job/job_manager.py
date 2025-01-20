@@ -656,7 +656,9 @@ class JobManager:
                 f"Failed to start supervisor actor for job {submission_id}: '{e}'"
                 f". Full traceback:\n{tb_str}"
             )
-            await self._virtual_cluster_client.remove_job_cluster(virtual_cluster_id)
+            await self._virtual_cluster_client.remove_job_cluster(
+                job_info.job_cluster_id
+            )
             await self._job_info_client.put_status(
                 submission_id,
                 JobStatus.FAILED,
