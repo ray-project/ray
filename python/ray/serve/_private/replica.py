@@ -1504,8 +1504,8 @@ class UserCallableWrapper:
 
         result = None
         asgi_args = None
-        user_method = None
         receive_task = None
+        user_method_info = None
         try:
             user_method_info = self._get_user_method_info(request_metadata.call_method)
             if request_metadata.is_http_request:
@@ -1552,6 +1552,7 @@ class UserCallableWrapper:
             if (
                 request_metadata.is_http_request
                 and asgi_args is not None
+                and user_method_info is not None
                 # If the callable is an ASGI app, it already sent a 500 status response.
                 and not user_method_info.is_asgi_app
             ):
