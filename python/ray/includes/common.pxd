@@ -631,6 +631,8 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
         int64_t last_batch_size()
 
+        c_bool IsEmpty() const
+
         CRayStatus PollError(
             c_string* key_id, int64_t timeout_ms, CErrorTableData* data)
 

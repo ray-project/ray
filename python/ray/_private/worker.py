@@ -1905,9 +1905,21 @@ def shutdown(_exiting_interpreter: bool = False):
     _shutdown_all_compiled_dags()
 
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
-        # This is a duration to sleep before shutting down everything in order
-        # to make sure that log messages finish printing.
-        time.sleep(0.5)
+        # Periodically check whether the log message queue has been cleared before
+        # shutting down everything in order to make sure that log messages finish
+        # printing. If not, sleep for a while, but set a maximum number of checks
+        # to avoid a forever-running task that keeps printing logs without stopping.
+        for _ in range(10):
+            time.sleep(0.5)
+            if global_worker.gcs_log_subscriber.is_empty:
+                break
+        if not global_worker.gcs_log_subscriber.is_empty:
+            logger.warning(
+                "The driver may not be able to keep up with the "
+                "stdout/stderr of the workers. To avoid forwarding "
+                "logs to the driver, use "
+                "'ray.init(log_to_driver=False)'."
+            )
     disconnect(_exiting_interpreter)
 
     # disconnect internal kv

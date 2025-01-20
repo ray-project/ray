@@ -455,5 +455,10 @@ int64_t PythonGcsSubscriber::last_batch_size() {
   return last_batch_size_;
 }
 
+bool PythonGcsSubscriber::IsEmpty() const {
+  absl::ReaderMutexLock lock(&mu_);
+  return queue_.empty();
+}
+
 }  // namespace gcs
 }  // namespace ray

@@ -193,6 +193,9 @@ class RAY_EXPORT PythonGcsSubscriber {
 
   int64_t last_batch_size();
 
+  // Whether there are no messages in the queue.
+  bool IsEmpty() const;
+
  private:
   Status DoPoll(int64_t timeout_ms, rpc::PubMessage *message);
 
