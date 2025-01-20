@@ -287,6 +287,10 @@ class ReplicaBase(ABC):
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
 
+        # Flipped to `True` once graceful shutdown is initiated. May be used by replica
+        # subclass implementations.
+        self._shutting_down = False
+
         # Will be populated with the wrapped ASGI app if the user callable is an
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
         self._user_callable_asgi_app: Optional[ASGIApp] = None
@@ -718,6 +722,8 @@ class ReplicaBase(ABC):
                 break
 
     async def perform_graceful_shutdown(self):
+        self._shutting_down = True
+
         # If the replica was never initialized it never served traffic, so we
         # can skip the wait period.
         if self._user_callable_initialized:
