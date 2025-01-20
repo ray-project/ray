@@ -1015,7 +1015,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     // TODO(clarng): clean up and remove task_retry_delay_ms that is relied
     // on by some tests.
     int32_t delay_ms = task_failed_due_to_oom
-                           ? ExponentialBackOff::GetBackoffMs(
+                           ? ExponentialBackoff::GetBackoffMs(
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
