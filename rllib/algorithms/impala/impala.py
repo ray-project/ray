@@ -130,7 +130,6 @@ class IMPALAConfig(AlgorithmConfig):
         self.vtrace_clip_rho_threshold = 1.0
         self.vtrace_clip_pg_rho_threshold = 1.0
         self.learner_queue_size = 3
-        self.max_requests_in_flight_per_env_runner = 1
         self.timeout_s_sampler_manager = 0.0
         self.timeout_s_aggregator_manager = 0.0
         self.broadcast_interval = 1
@@ -757,16 +756,6 @@ class IMPALA(Algorithm):
                 )
 
         time.sleep(0.01)
-
-    @override(Algorithm)
-    def cleanup(self) -> None:
-        super().cleanup()
-
-        # Stop all aggregation actors.
-        if hasattr(self, "_aggregator_actor_manager") and (
-            self._aggregator_actor_manager is not None
-        ):
-            self._aggregator_actor_manager.clear()
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):
