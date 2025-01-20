@@ -205,9 +205,21 @@ class ReplicaMetricsManager:
 
     async def _report_cached_metrics_forever(self):
         assert self._cached_metrics_interval_s > 0
+
+        consecutive_errors = 0
         while True:
-            await asyncio.sleep(self._cached_metrics_interval_s)
-            self._report_cached_metrics()
+            try:
+                await asyncio.sleep(self._cached_metrics_interval_s)
+                self._report_cached_metrics()
+                consecutive_errors = 0
+            except Exception:
+                logger.exception("Unexpected error reporting metrics.")
+
+                # Exponential backoff starting at 1s and capping at 10s.
+                backoff_time_s = min(10, 2 ** consecutive_errors)
+                print(backoff_time_s)
+                consecutive_errors += 1
+                await asyncio.sleep(backoff_time_s)
 
     async def shutdown(self):
         """Stop periodic background tasks."""
