@@ -129,7 +129,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         batch_size_B: int = 16,
         batch_length_T: int = 64,
         metrics_num_episodes_for_smoothing: int = 100,
-        metrics_num_episodes_for_smoothing: int = 100,
     ):
         """Initializes an EpisodeReplayBuffer instance.
 
