@@ -1445,7 +1445,7 @@ class UserCallableWrapper:
                     "generators on a deployment."
                 )
             if request_metadata.is_grpc_request:
-                r = (request_metadata.grpc_context, r.SerializeToString())
+                result = (request_metadata.grpc_context, result.SerializeToString())
 
         return result
 
