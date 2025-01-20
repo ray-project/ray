@@ -34,13 +34,40 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-You should reach an episode return of around 155-160 after ~36,000 timesteps sampled and
-trained by a simple PPO policy (no tuning, just using RLlib's
-default settings).
+You should reach an episode return of better than -0.5 quickly through a simple PPO
+policy. The logic behind beating the env is roughly:
+
+OBS:  optimal a1:   r1:  optimal a2:   r2:
+-1      2            0      -1.0        0
+-0.5    1/2       -0.5   -0.5/-1.5      0
+0       1            0      -1.0        0
+0.5     0/1       -0.5   -0.5/-1.5      0
+1       0            0      -1.0        0
+
+Meaning, most of the time, you would receive a reward better than -0.5, but worse than
+0.0.
+
++--------------------------------------+------------+--------+------------------+
+| Trial name                           | status     |   iter |   total time (s) |
+|                                      |            |        |                  |
+|--------------------------------------+------------+--------+------------------+
+| PPO_CorrelatedActionsEnv_6660d_00000 | TERMINATED |     76 |          132.438 |
++--------------------------------------+------------+--------+------------------+
++------------------------+------------------------+------------------------+
+|   num_training_step_ca |   num_env_steps_sample |   ...env_steps_sampled |
+|      lls_per_iteration |             d_lifetime |   _lifetime_throughput |
+|------------------------+------------------------+------------------------|
+|                      1 |                 152000 |                1283.48 |
++------------------------+------------------------+------------------------+
+
+
+
+
+
+
 """
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples.rl_modules.classes.autoregressive_actions_rlm import (
@@ -55,7 +82,7 @@ from ray.rllib.utils.test_utils import (
 parser = add_rllib_example_script_args(
     default_iters=1000,
     default_timesteps=2000000,
-    default_reward=-0.35,
+    default_reward=-0.45,
 )
 parser.set_defaults(enable_new_api_stack=True)
 
