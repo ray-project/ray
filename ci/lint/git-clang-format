@@ -590,7 +590,7 @@ def apply_changes(old_tree, new_tree, force=False, patch_mode=False):
         # right, since it won't be applied to the user's index, but oh well.
         with temporary_index_file(old_tree):
             subprocess.check_call(["git", "checkout", "--patch", new_tree])
-        index_tree = old_tree
+        index_tree = old_tree  # noqa: F841
     else:
         with temporary_index_file(new_tree):
             run("git", "checkout-index", "-a", "-f")
