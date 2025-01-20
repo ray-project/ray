@@ -1777,7 +1777,8 @@ def exit_actor():
         # asyncio.Event for synchronization across multiple asyncio tasks.
         if worker.core_worker.current_actor_is_asyncio():
             worker.core_worker.is_current_async_actor_exited = True
-            return
+            # return
+            raise ValueError()
 
         # Set a flag to indicate this is an intentional actor exit. This
         # reduces log verbosity.

@@ -1959,6 +1959,8 @@ cdef void execute_task(
                             (ray._private.worker.global_worker
                              .debugger_breakpoint) = b""
                     task_exception = False
+                except ValueError as e:
+                    exit_current_actor_if_asyncio()
                 except Exception as e:
                     is_retryable_error[0] = determine_if_retryable(
                                     should_retry_exceptions,
