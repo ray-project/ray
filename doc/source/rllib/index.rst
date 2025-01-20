@@ -16,7 +16,7 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
 
 .. todo (sven): redo toctree:
     suggestion:
-    getting-started (replaces rllib-training)
+    getting-started
     key-concepts
     rllib-env (single-agent)
         ...  <- multi-agent
@@ -47,7 +47,7 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
 .. toctree::
     :hidden:
 
-    rllib-training
+    getting-started
     key-concepts
     rllib-env
     algorithm-config
@@ -166,7 +166,7 @@ You can also tweak the NN architecture used by tweaking RLlib's :py:class:`~ray.
 as well as, set up a separate config for the evaluation
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors through the ``config.evaluation()`` method.
 
-`See here <rllib-training.html#using-the-python-api>`_, if you want to learn more about the RLlib training APIs.
+:ref:`See here <rllib-python-api>`, if you want to learn more about the RLlib training APIs.
 Also, `see here <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__
 for a simple example on how to write an action inference loop after training.
 

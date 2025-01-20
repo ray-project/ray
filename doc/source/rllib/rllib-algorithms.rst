@@ -74,7 +74,7 @@ Proximal Policy Optimization (PPO)
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/pendulum_ppo.py>`__.
 
 
-**PPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**PPO-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.ppo.ppo.PPOConfig
    :members: training
@@ -121,7 +121,7 @@ See also how to use `parametric-actions in DQN <rllib-models.html#variable-lengt
     "v_max": 10.0``
     (set ``v_min`` and ``v_max`` according to your expected range of returns).
 
-**DQN-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**DQN-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.dqn.dqn.DQNConfig
    :members: training
@@ -150,7 +150,7 @@ Soft Actor Critic (SAC)
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
 `HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah-sac.yaml>`__,
 
-**SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**SAC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.sac.sac.SACConfig
    :members: training
@@ -190,7 +190,7 @@ Asynchronous Proximal Policy Optimization (APPO)
 `Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong_appo.py>`__
 `HalfCheetah-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/halfcheetah_appo.py>`__
 
-**APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**APPO-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.appo.appo.APPOConfig
    :members: training
@@ -229,7 +229,7 @@ Tuned examples:
     The maximum training throughput reached is ~30k transitions per second (~120k environment frames per second).
 
 
-**IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**IMPALA-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.impala.impala.IMPALAConfig
    :members: training
@@ -322,7 +322,7 @@ Behavior Cloning (BC)
 `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole_bc.py>`__
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/pendulum_bc.py>`__
 
-**BC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**BC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.bc.bc.BCConfig
    :members: training
@@ -347,7 +347,7 @@ Conservative Q-Learning (CQL)
 **Tuned examples:**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/pendulum_cql.py>`__
 
-**CQL-specific configs** and `common configs <rllib-training.html#common-parameters>`__):
+**CQL-specific configs** and :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.cql.cql.CQLConfig
    :members: training
@@ -374,7 +374,7 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 **Tuned examples:**
 `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole_marwil.py>`__
 
-**MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**MARWIL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.marwil.marwil.MARWILConfig
    :members: training

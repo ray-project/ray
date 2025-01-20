@@ -127,6 +127,7 @@ instance into the constructor of the :py:class:`~ray.tune.tuner.Tuner`:
     results = tuner.fit()
 
 
+.. _rllib-algo-configuration-generic-settings
 
 Generic config settings
 -----------------------
