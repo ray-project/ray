@@ -985,9 +985,9 @@ def placement_groups_to_resource_demands(
     """
     resource_demand_vector = []
     unconverted = []
-    shapes = []
     for placement_group in pending_placement_groups:
         # Skip **placed** bundle (which has node id associated with it).
+        shapes = []
         for bundle in placement_group.bundles:
             if bundle.node_id != b"":
                 continue
