@@ -223,7 +223,7 @@ class TestDAGRefDestruction:
         with InputNode() as inp:
             dag = a.inc.bind(inp)
         compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(2)
+        compiled_dag.execute(2)
         ref2 = compiled_dag.execute(2)
         ref3 = compiled_dag.execute(2)
         del ref2
@@ -241,7 +241,7 @@ class TestDAGRefDestruction:
         del ref2
         del ref3
         ray.get(ref)
-        ref4 = compiled_dag.execute(3)
+        compiled_dag.execute(3)
         # Test that max_inflight error is not raised as ref2 and ref3
         # should be destructed and not counted in the inflight executions
         ref5 = compiled_dag.execute(3)
