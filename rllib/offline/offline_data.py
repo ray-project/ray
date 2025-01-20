@@ -106,6 +106,8 @@ class OfflineData:
         self.map_batches_kwargs = (
             self.default_map_batches_kwargs | self.config.map_batches_kwargs
         )
+        # Set the devices in the `map_batches_kwargs` if necessary.
+        self.map_batches_set_devices()
         self.iter_batches_kwargs = (
             self.default_iter_batches_kwargs | self.config.iter_batches_kwargs
         )
@@ -329,6 +331,20 @@ class OfflineData:
             )
         else:
             return False
+
+    def map_batches_set_devices(self):
+
+        if (
+            self.config._validate_config
+            or not self.map_batches_uses_gpus(self.config)
+            and self.config.num_gpus_per_learner > 0
+        ):
+            self.map_batches_kwargs.update(
+                {
+                    "num_gpus": self.config.num_gpus_per_learner
+                    * round(0.01 / self.map_batches_kwargs["concurrency"], 4),
+                }
+            )
 
     def get_devices(self):
         from ray.rllib.utils import force_list

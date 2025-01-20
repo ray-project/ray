@@ -424,20 +424,7 @@ class MARWIL(Algorithm):
         # TODO (simon): Check, if and how the module should be loaded on GPU in the
         # `OfflinePreLearner`s to run the GAE.
         if config.num_gpus_per_learner and config._validate_config:
-            # TODO (simon): This is not clean here. Actually, we should use the
-            # OfflineData.default_map_batches_kwargs`' concurrency here, but this
-            # property needs an OfflineData instance (which creates already the
-            # dataset). A classmethod would not workm either because then users
-            # cannot override this property and use properties from the config in
-            # it.
-            concurrency = config.map_batches_kwargs.get("concurrency", 2)
-            self.config.map_batches_kwargs.update(
-                {
-                    "num_gpus": self.config.num_gpus_per_learner
-                    * round(0.01 / concurrency, 4)
-                }
-            )
-            self.config.num_gpus_per_learner *= 0.99
+            config.num_gpus_per_learner *= 0.99
 
         # Call the super's constructor first.
         super().__init__(config=config, *args, **kwargs)
