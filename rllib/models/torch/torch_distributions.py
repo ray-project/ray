@@ -633,7 +633,6 @@ class TorchMultiDistribution(Distribution):
         logits: "torch.Tensor",
         child_distribution_cls_struct: Union[Dict, Iterable],
         input_lens: Union[Dict, List[int]],
-        space: gym.Space,
         **kwargs,
     ) -> "TorchMultiDistribution":
         """Creates this Distribution from logits (and additional arguments).
@@ -650,7 +649,6 @@ class TorchMultiDistribution(Distribution):
             input_lens: A list or dict of integers that indicate the length of each
                 logit. If this is given as a dict, the structure should match the
                 structure of child_distribution_cls_struct.
-            space: The possibly nested output space.
             **kwargs: Forward compatibility kwargs.
 
         Returns:

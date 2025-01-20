@@ -2,7 +2,8 @@ import abc
 from abc import abstractmethod
 from typing import Dict, Type
 
-import gymnasium.spaces
+import gymnasium as gym
+
 from ray.rllib.core import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.models.configs import MLPHeadConfig
@@ -43,16 +44,17 @@ class AutoregressiveActionsRLM(TorchRLModule, ValueFunctionAPI):
 
         # Assert the action space is correct.
         assert isinstance(self.action_space, gym.spaces.Tuple)
-        assert isinstance(self.action_space[0], gymnasium.spaces.Discrete)
-        assert isinstance(self.action_space[1], gymnasium.spaces.Box)
+        assert isinstance(self.action_space[0], gym.spaces.Discrete)
+        assert self.action_space[0].n == 3
+        assert isinstance(self.action_space[1], gym.spaces.Box)
 
-        action_dims = self.action_space[0].shape or (1,)
+        
         self._prior_net = nn.Sequential(
             nn.Linear(
                 in_features=self.observation_space.shape[0],
                 out_features=256,
             ),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(in_features=256, out_features=self.action_space[0].n),
         )
 
@@ -61,7 +63,7 @@ class AutoregressiveActionsRLM(TorchRLModule, ValueFunctionAPI):
                 in_features=self.observation_space.shape[0] + self.action_space[0].n,
                 out_features=256,
             ),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(in_features=256, out_features=self.action_space[1].shape[0] * 2),
         )
 
@@ -71,7 +73,7 @@ class AutoregressiveActionsRLM(TorchRLModule, ValueFunctionAPI):
                 in_features=self.observation_space.shape[0],
                 out_features=256,
             ),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(in_features=256, out_features=1),
         )
 
@@ -96,9 +98,9 @@ class AutoregressiveActionsRLM(TorchRLModule, ValueFunctionAPI):
         # Squeeze out last dimension (single node value head).
         return vf_out.squeeze(-1)
 
-    def _pi(self, batch: Dict[str, TensorType], inference: bool):
+    def _pi(self, obs, inference: bool):
         # Prior forward pass.
-        prior_out = self._prior_net(batch[Columns.OBS])
+        prior_out = self._prior_net(obs)
         dist_a1 = TorchCategorical.from_logits(prior_out)
 
         # If in inference mode, we need to set the distribution to be deterministic.
@@ -109,10 +111,10 @@ class AutoregressiveActionsRLM(TorchRLModule, ValueFunctionAPI):
 
         # Posterior forward pass.
         posterior_batch = torch.cat(
-            [batch[Columns.OBS], one_hot(a1, self.action_space[0])],
+            [obs, one_hot(a1, self.action_space[0])],
             dim=-1,
         )
-        posterior_out = self.posterior(posterior_batch)
+        posterior_out = self._posterior_net(posterior_batch)
         dist_a2 = TorchDiagGaussian.from_logits(posterior_out)
         if inference:
             dist_a2 = dist_a2.to_deterministic()
@@ -126,9 +128,16 @@ class AutoregressiveActionsRLM(TorchRLModule, ValueFunctionAPI):
             Columns.ACTION_LOGP: (
                 TorchMultiDistribution((dist_a1, dist_a2)).logp(actions)
             ),
-            #Columns.ACTION_DIST_INPUTS: posterior_logits,
+            Columns.ACTION_DIST_INPUTS: torch.cat([prior_out, posterior_out], dim=-1),
             # Concatenate the prior and posterior actions and log probabilities.
             Columns.ACTIONS: actions,
         }
 
         return outputs
+
+    @override(TorchRLModule)
+    def get_inference_action_dist_cls(self):
+        return TorchMultiDistribution.get_partial_dist_cls(
+            child_distribution_cls_struct=(TorchCategorical, TorchDiagGaussian),
+            input_lens=(3, 2),
+        )

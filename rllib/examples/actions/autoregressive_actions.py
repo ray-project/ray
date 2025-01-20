@@ -42,9 +42,7 @@ default settings).
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.examples.envs.classes.correlated_actions_env import (
-    AutoRegressiveActionEnv,
-)
+from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples.rl_modules.classes.autoregressive_actions_rlm import (
     AutoregressiveActionsRLM,
 )
@@ -55,9 +53,9 @@ from ray.rllib.utils.test_utils import (
 
 
 parser = add_rllib_example_script_args(
-    default_iters=200,
-    default_timesteps=100000,
-    default_reward=150.0,
+    default_iters=1000,
+    default_timesteps=2000000,
+    default_reward=-0.35,
 )
 parser.set_defaults(enable_new_api_stack=True)
 
@@ -73,20 +71,18 @@ if __name__ == "__main__":
 
     base_config = (
         PPOConfig()
-        .environment(AutoRegressiveActionEnv)
+        .environment(CorrelatedActionsEnv)
+        .training(
+            train_batch_size_per_learner=2000,
+            num_epochs=12,
+            minibatch_size=256,
+            entropy_coeff=0.005,
+            lr=0.0003,
+        )
+        # Specify the RLModule class to be used.
         .rl_module(
-            # We need to explicitly specify here RLModule to use and
-            # the catalog needed to build it.
-            rl_module_spec=RLModuleSpec(
-                module_class=AutoregressiveActionsRLM,
-                model_config={
-                    "head_fcnet_hiddens": [64, 64],
-                    "head_fcnet_activation": "relu",
-                },
-                catalog_class=PPOCatalog,
-            ),
+            rl_module_spec=RLModuleSpec(module_class=AutoregressiveActionsRLM),
         )
     )
 
-    # Run the example (with Tune).
     run_rllib_example_script_experiment(base_config, args)
