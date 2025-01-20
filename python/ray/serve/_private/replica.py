@@ -1014,9 +1014,11 @@ class ReplicaActor:
                 "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
             )
 
+
 @dataclass
 class UserMethodInfo:
     """Wrapper for a user method and its relevant metadata."""
+
     callable: Callable
     name: str
     is_asgi_app: bool
@@ -1033,6 +1035,7 @@ class UserMethodInfo:
             takes_any_args=len(params) > 0,
             takes_grpc_context_kwarg=GRPC_CONTEXT_ARG_NAME in params,
         )
+
 
 class UserCallableWrapper:
     """Wraps a user-provided callable that is used to handle requests to a replica."""
@@ -1401,7 +1404,8 @@ class UserCallableWrapper:
         """
         request_kwargs = (
             {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
-            if user_method_info.takes_grpc_context_kwarg else {}
+            if user_method_info.takes_grpc_context_kwarg
+            else {}
         )
         return (request.user_request_proto,), request_kwargs
 
@@ -1500,9 +1504,7 @@ class UserCallableWrapper:
         user_method = None
         receive_task = None
         try:
-            user_method_info = self._get_user_method_info(
-                request_metadata.call_method
-            )
+            user_method_info = self._get_user_method_info(request_metadata.call_method)
             if request_metadata.is_http_request:
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], StreamingHTTPRequest
