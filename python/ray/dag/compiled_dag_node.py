@@ -1065,7 +1065,7 @@ class CompiledDAG:
                         "the driver cannot participate in the NCCL group"
                     )
 
-            if type(dag_node.type_hint) == ChannelOutputType:
+            if type(dag_node.type_hint) is ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
                 dag_node.with_type_hint(self._default_type_hint)
@@ -2593,16 +2593,16 @@ class CompiledDAG:
         if channel in self._channel_dict and self._channel_dict[channel] != channel:
             channel = self._channel_dict[channel]
             channel_details += f"\n{type(channel).__name__}"
-            if type(channel) == CachedChannel:
+            if type(channel) is CachedChannel:
                 channel_details += f", {channel._channel_id[:6]}..."
         # get inner channel
         if (
-            type(channel) == CompositeChannel
+            type(channel) is CompositeChannel
             and downstream_actor_id in channel._channel_dict
         ):
             inner_channel = channel._channel_dict[downstream_actor_id]
             channel_details += f"\n{type(inner_channel).__name__}"
-            if type(inner_channel) == IntraProcessChannel:
+            if type(inner_channel) is IntraProcessChannel:
                 channel_details += f", {inner_channel._channel_id[:6]}..."
         return channel_details
 
@@ -2766,7 +2766,7 @@ class CompiledDAG:
                             task.output_channels[0],
                             (
                                 downstream_node._get_actor_handle()._actor_id.hex()
-                                if type(downstream_node) == ClassMethodNode
+                                if type(downstream_node) is ClassMethodNode
                                 else self._proxy_actor._actor_id.hex()
                             ),
                         )
@@ -2784,7 +2784,7 @@ class CompiledDAG:
                             task.dag_node._get_actor_handle()._actor_id.hex(),
                         )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)
-            if type(task.dag_node) == InputAttributeNode:
+            if type(task.dag_node) is InputAttributeNode:
                 # Add an edge from the InputAttributeNode to the InputNode
                 dot.edge(str(self.input_task_idx), str(idx))
         dot.render(filename, view=view)
