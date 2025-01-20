@@ -862,11 +862,13 @@ class VirtualClusterState(StateSchema):
     #: Whether the virtual cluster can split into many child virtual clusters or not.
     divisible: bool = state_column(filterable=True)
     #: Divided virtual clusters.
-    divided_clusters: list = state_column(filterable=False)
+    divided_clusters: dict = state_column(filterable=False)
     #: Replica Sets of virtual cluster
-    replica_sets: Optional[dict] = state_column(filterable=False, detail=True)
+    replica_sets: dict = state_column(filterable=False)
     #: Only display undivided replica sets
-    undivided_replica_sets: Optional[dict] = state_column(filterable=False, detail=True)
+    undivided_replica_sets: dict = state_column(filterable=False)
+    #: Total resources of the virtual cluster.
+    resources_usage: dict = state_column(filterable=False, detail=False)
     #: Mapping from node id to its instance.
     visible_node_instances: Optional[dict] = state_column(filterable=False, detail=True)
     #: Only display undivided nodes

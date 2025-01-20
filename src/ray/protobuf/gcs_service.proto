@@ -907,6 +907,10 @@ message NodeInstanceView {
   string template_id = 2;
   // Whether the node is dead
   bool is_dead = 3;
+  // Total resources of the node.
+  map<string, double> resources_total = 4;
+  // Available resources of the node.
+  map<string, double> resources_available = 5;
 }
 
 message VirtualClusterView {

@@ -478,12 +478,15 @@ class StateAPIManager:
             for entry in result:
                 entry = {
                     "virtual_cluster_id": entry["id"],
-                    "divided_clusters": [],
+                    "divided_clusters": {},
                     "divisible": entry["divisible"],
                     "replica_sets": {},
                     "undivided_replica_sets": {},
                     "visible_node_instances": entry.get("node_instance_views", {}),
                     "undivided_nodes": {},
+                    "resources_total": {},
+                    "resources_available": {},
+                    "resources_usage": {},
                 }
                 entries[entry["virtual_cluster_id"]] = entry
 
@@ -494,12 +497,15 @@ class StateAPIManager:
             for id, entry in entries.items():
                 cluster_nodes[id] = set()
                 if id != "kPrimaryClusterID":
-                    primary_cluster["divided_clusters"].append(id)
+                    primary_cluster["divided_clusters"][id] = (
+                        "divisble" if entry["divisible"] else "indivisible"
+                    )
                 elif "##" in id:
                     parent_cluster_id = id.split("##")[0]
-                    entries[parent_cluster_id]["divided_clusters"].append(id)
+                    entries[parent_cluster_id]["divided_clusters"][id] = (
+                        "divisble" if entry["divisible"] else "indivisible"
+                    )
                 all_nodes.update(entry["visible_node_instances"])
-
             # update cluster nodes to calculate template ids
             for id, entry in entries.items():
                 for sub_cluster_id in entry["divided_clusters"]:
@@ -541,6 +547,57 @@ class StateAPIManager:
                                 + 1
                             )
                 entry["undivided_nodes"] = undivided_nodes
+                full_nodes = divided_nodes.union(undivided_nodes.keys())
+                for node_id in full_nodes:
+                    node = all_nodes[node_id]
+                    if not node["is_dead"] and node["template_id"] != "":
+                        for resource, value in node["resources_total"].items():
+                            entry["resources_total"][resource] = (
+                                entry["resources_total"].get(resource, 0) + value
+                            )
+                        for resource, value in node["resources_available"].items():
+                            entry["resources_available"][resource] = (
+                                entry["resources_available"].get(resource, 0) + value
+                            )
+
+            def readable_memory(x: int):
+                if x >= 2**30:
+                    return str(format(x / (2**30), ".3f")) + " GiB"
+                elif x >= 2**20:
+                    return str(format(x / (2**20), ".3f")) + " MiB"
+                elif x >= 2**10:
+                    return str(format(x / (2**10), ".3f")) + " KiB"
+                return str(format(x, ".3f")) + " B"
+
+            for entry in entries.values():
+                for node_id, node in entry["visible_node_instances"].items():
+                    if "resources_total" in node:
+                        del node["resources_total"]
+                    if "resources_available" in node:
+                        del node["resources_available"]
+                for node_id, node in entry["undivided_nodes"].items():
+                    if "resources_total" in node:
+                        del node["resources_total"]
+                    if "resources_available" in node:
+                        del node["resources_available"]
+                for resource, value in entry["resources_available"].items():
+                    entry["resources_available"][resource] = (
+                        entry["resources_total"][resource] - value
+                    )
+                    if "memory" in resource:
+                        entry["resources_available"][resource] = readable_memory(
+                            entry["resources_available"][resource]
+                        )
+                for resource, value in entry["resources_total"].items():
+                    if "memory" in resource:
+                        entry["resources_total"][resource] = readable_memory(value)
+                for resource, value in entry["resources_total"].items():
+                    if resource in ["memory", "CPU", "object_store_memory"]:
+                        entry["resources_usage"][
+                            resource
+                        ] = f"""{entry["resources_available"][resource]} / {value}"""
+                del entry["resources_available"]
+                del entry["resources_total"]
 
             result = list(entries.values())
 

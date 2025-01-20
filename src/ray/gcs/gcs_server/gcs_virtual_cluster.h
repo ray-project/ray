@@ -49,11 +49,18 @@ struct NodeInstance {
     return node_instance;
   }
 
-  std::shared_ptr<rpc::NodeInstanceView> ToView() const {
+  std::shared_ptr<rpc::NodeInstanceView> ToView(
+      const NodeResources &node_resources) const {
     auto node_view = std::make_shared<rpc::NodeInstanceView>();
     node_view->set_template_id(template_id_);
     node_view->set_hostname(hostname_);
     node_view->set_is_dead(is_dead_);
+    auto resources_total = node_view->mutable_resources_total();
+    resources_total->insert(node_resources.total.GetResourceMap().begin(),
+                            node_resources.total.GetResourceMap().end());
+    auto resources_available = node_view->mutable_resources_available();
+    resources_available->insert(node_resources.available.GetResourceMap().begin(),
+                                node_resources.available.GetResourceMap().end());
     return node_view;
   }
 

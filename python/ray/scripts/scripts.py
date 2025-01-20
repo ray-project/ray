@@ -2911,7 +2911,7 @@ def list(
         await state_api_data_source_client._client_session.close()
         fmt = AvailableFormat(format)
         if detail and fmt == AvailableFormat.DEFAULT:
-            fmt = AvailableFormat.YAML
+            fmt = AvailableFormat.TABLE
 
         result = [VirtualClusterState(**vcluster) for vcluster in data.result]
 
