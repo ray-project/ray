@@ -496,7 +496,7 @@ class StateAPIManager:
             cluster_nodes = {}
             for id, entry in entries.items():
                 cluster_nodes[id] = set()
-                if id != "kPrimaryClusterID":
+                if id != "kPrimaryClusterID" and "##" not in id:
                     primary_cluster["divided_clusters"][id] = (
                         "divisble" if entry["divisible"] else "indivisible"
                     )
