@@ -21,6 +21,12 @@ Single RLModuleSpec
 
     RLModuleSpec
     RLModuleSpec.build
+    RLModuleSpec.module_class
+    RLModuleSpec.observation_space
+    RLModuleSpec.action_space
+    RLModuleSpec.inference_only
+    RLModuleSpec.learner_only
+    RLModuleSpec.model_config
 
 MultiRLModuleSpec
 +++++++++++++++++
@@ -33,6 +39,13 @@ MultiRLModuleSpec
 
     MultiRLModuleSpec
     MultiRLModuleSpec.build
+    MultiRLModuleSpec.multi_rl_module_class
+    MultiRLModuleSpec.observation_space
+    MultiRLModuleSpec.action_space
+    MultiRLModuleSpec.inference_only
+    MultiRLModuleSpec.model_config
+    MultiRLModuleSpec.rl_module_specs
+
 
 DefaultModelConfig
 ++++++++++++++++++
@@ -152,3 +165,57 @@ Saving and restoring
     ~MultiRLModule.from_checkpoint
     ~MultiRLModule.get_state
     ~MultiRLModule.set_state
+
+
+Additional RLModule APIs
+------------------------
+
+.. currentmodule:: ray.rllib.core.rl_module.apis
+
+InferenceOnlyAPI
+++++++++++++++++
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    InferenceOnlyAPI.get_non_inference_attributes
+
+QNetAPI
++++++++
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    QNetAPI.compute_q_values
+    QNetAPI.compute_advantage_distribution
+
+SelfSupervisedLossAPI
++++++++++++++++++++++
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    SelfSupervisedLossAPI.compute_self_supervised_loss
+
+TargetNetworkAPI
+++++++++++++++++
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    TargetNetworkAPI.make_target_networks
+    TargetNetworkAPI.get_target_network_pairs
+    TargetNetworkAPI.forward_target
+
+ValueFunctionAPI
+++++++++++++++++
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ValueFunctionAPI.compute_values
