@@ -1118,9 +1118,9 @@ class UserCallableWrapper:
             return self._cached_user_method_info[method_name]
 
         if self._is_function:
-            callable = self._callable
+            user_method = self._callable
         elif hasattr(self._callable, method_name):
-            callable = getattr(self._callable, method_name)
+            user_method = getattr(self._callable, method_name)
         else:
             # Filter to methods that don't start with '__' prefix.
             def callable_method_filter(attr):
@@ -1139,7 +1139,7 @@ class UserCallableWrapper:
             )
 
         info = UserMethodInfo.from_callable(
-            callable,
+            user_method,
             is_asgi_app=isinstance(self._callable, ASGIAppReplicaWrapper),
         )
         self._cached_user_method_info[method_name] = info
