@@ -36,14 +36,17 @@ constexpr bool ArrayIsUnique(const std::array<T, N> &arr) {
 // Returns the index of the first occurrence of value in the array. If value is not found,
 // it's a compile error.
 template <typename T, size_t N>
-constexpr size_t IndexOf(const std::array<T, N> &arr, const T &value) {
-  for (size_t i = 0; i < N; ++i) {
-    if (arr[i] == value) {
-      return i;
-    }
+constexpr size_t IndexOf(const std::array<T, N> &arr, const T &value, size_t index = 0) {
+  if (index < 0 || index == N) {
+    throw std::out_of_range("Value not found in array");
+    // return index;
   }
-  // Throwing in constexpr context leads to a compile error.
-  throw "Value not found in array";
+
+  if (arr[index] == value) {
+    return index;
+  }
+
+  return IndexOf(arr, value, index + 1);
 }
 
 }  // namespace ray

@@ -9,11 +9,16 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 from ray._private import ray_constants
 from ray._private.event.export_event_logger import get_export_event_logger
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray._private.runtime_env.packaging import parse_uri
+from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
+)
+from ray.core.generated.gcs_service_pb2 import (
+    CreateJobClusterRequest,
+    RemoveVirtualClusterRequest,
 )
 from ray.util.annotations import PublicAPI
 
@@ -104,6 +109,8 @@ class JobInfo:
     #: The driver process exit code after the driver executed. Return None if driver
     #: doesn't finish executing
     driver_exit_code: Optional[int] = None
+    #: The job cluster this job belongs to.
+    job_cluster_id: Optional[str] = None
 
     def __post_init__(self):
         if isinstance(self.status, str):
@@ -378,6 +385,62 @@ class JobInfoStorageClient:
         }
 
 
+class VirtualClusterClient:
+    def __init__(self, gcs_address):
+        self._gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
+        self._gcs_channel.connect()
+
+        self._gcs_virtual_cluster_info_stub = (
+            gcs_service_pb2_grpc.VirtualClusterInfoGcsServiceStub(
+                self._gcs_channel.channel()
+            )
+        )
+
+    def build_job_cluster_id(self, job_id, virtual_cluster_id):
+        """
+        Constructs a unique job cluster ID by combining
+        the virtual cluster ID and job ID.
+        Note:
+            The format needs to remain consistent with `virtual_cluster_id.h`.
+        """
+        return f"{virtual_cluster_id}##{job_id}"
+
+    async def create_job_cluster(self, job_id, virtual_cluster_id, replica_sets):
+        request = CreateJobClusterRequest(
+            job_id=job_id,
+            virtual_cluster_id=virtual_cluster_id,
+            replica_sets=replica_sets,
+        )
+
+        reply = await self._gcs_virtual_cluster_info_stub.CreateJobCluster(request)
+
+        if reply.status.code != 0:
+            logger.warning(
+                f"Failed to create job cluster for job ID '{job_id}' in "
+                f"virtual cluster '{virtual_cluster_id}', "
+                f"message: {reply.status.message}"
+            )
+            return None, reply.status.message
+
+        return reply.job_cluster_id, None
+
+    async def remove_job_cluster(self, job_cluster_id):
+        if job_cluster_id is None:
+            return
+
+        request = RemoveVirtualClusterRequest(
+            virtual_cluster_id=job_cluster_id,
+        )
+
+        reply = await self._gcs_virtual_cluster_info_stub.RemoveVirtualCluster(request)
+
+        if reply.status.code != 0:
+            logger.warning(
+                f"Failed to remove job cluster '{job_cluster_id}',"
+                f" message: {reply.status.message}"
+            )
+
+
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
     suffix = Path(package_uri).suffix
     if suffix not in {".zip", ".whl"}:
@@ -426,6 +489,10 @@ class JobSubmitRequest:
     # to reserve for the entrypoint command, separately from any Ray tasks
     # or actors that are created by it.
     entrypoint_resources: Optional[Dict[str, float]] = None
+    # Optional virtual cluster ID for job.
+    virtual_cluster_id: Optional[str] = None
+    # Optional replica sets for job
+    replica_sets: Optional[Dict[str, int]] = None
 
     def __post_init__(self):
         if not isinstance(self.entrypoint, str):
@@ -509,6 +576,31 @@ class JobSubmitRequest:
                         raise TypeError(
                             "entrypoint_resources values must be numbers, "
                             f"got {type(v)}"
+                        )
+
+        if self.virtual_cluster_id is not None and not isinstance(
+            self.virtual_cluster_id, str
+        ):
+            raise TypeError(
+                "virtual_cluster_id must be a string if provided, "
+                f"got {type(self.virtual_cluster_id)}"
+            )
+
+        if self.replica_sets is not None:
+            if not isinstance(self.replica_sets, dict):
+                raise TypeError(
+                    "replica_sets must be a dict, " f"got {type(self.replica_sets)}"
+                )
+            else:
+                for k in self.replica_sets.keys():
+                    if not isinstance(k, str):
+                        raise TypeError(
+                            "replica_sets keys must be strings, " f"got {type(k)}"
+                        )
+                for v in self.replica_sets.values():
+                    if not isinstance(v, int):
+                        raise TypeError(
+                            "replica_sets values must be integers, " f"got {type(v)}"
                         )
 
 

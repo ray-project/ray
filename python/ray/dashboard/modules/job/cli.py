@@ -134,6 +134,20 @@ def job_cli_group():
     ),
 )
 @click.option(
+    "--virtual-cluster-id",
+    type=str,
+    default=None,
+    required=False,
+    help=("Virtual Cluster ID to specify for the job. "),
+)
+@click.option(
+    "--replica-sets",
+    type=str,
+    default=None,
+    required=False,
+    help=("Replica Sets required by the job. "),
+)
+@click.option(
     "--runtime-env",
     type=str,
     default=None,
@@ -210,6 +224,8 @@ def submit(
     address: Optional[str],
     job_id: Optional[str],
     submission_id: Optional[str],
+    virtual_cluster_id: Optional[str],
+    replica_sets: Optional[str],
     runtime_env: Optional[str],
     runtime_env_json: Optional[str],
     metadata_json: Optional[str],
@@ -252,6 +268,8 @@ def submit(
             address=address,
             job_id=submission_id,
             submission_id=submission_id,
+            virtual_cluster_id=virtual_cluster_id,
+            replica_sets=replica_sets,
             runtime_env=runtime_env,
             runtime_env_json=runtime_env_json,
             metadata_json=metadata_json,
@@ -273,9 +291,13 @@ def submit(
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
+    if replica_sets is not None:
+        replica_sets = json.loads(replica_sets)
     job_id = client.submit_job(
         entrypoint=list2cmdline(entrypoint),
         submission_id=submission_id,
+        virtual_cluster_id=virtual_cluster_id,
+        replica_sets=replica_sets,
         runtime_env=final_runtime_env,
         metadata=metadata_json,
         entrypoint_num_cpus=entrypoint_num_cpus,

@@ -187,7 +187,8 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
  public:
   MOCK_METHOD(Status,
               AsyncGetAllAvailableResources,
-              (const MultiItemCallback<rpc::AvailableResources> &callback),
+              (std::optional<std::string> & virtual_cluster_id,
+               const MultiItemCallback<rpc::AvailableResources> &callback),
               (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(Status,
@@ -347,6 +348,33 @@ class MockInternalKVAccessor : public InternalKVAccessor {
   MOCK_METHOD(Status,
               AsyncGetInternalConfig,
               (const OptionalItemCallback<std::string> &callback),
+              (override));
+};
+
+}  // namespace gcs
+}  // namespace ray
+
+namespace ray {
+namespace gcs {
+
+class MockVirtualClusterInfoAccessor : public VirtualClusterInfoAccessor {
+ public:
+  MOCK_METHOD(Status,
+              AsyncGet,
+              (const VirtualClusterID &virtual_cluster_id,
+               const OptionalItemCallback<rpc::VirtualClusterTableData> &callback),
+              (override));
+  MOCK_METHOD(Status,
+              AsyncGetAll,
+              (bool include_job_clusters,
+               bool only_include_indivisible_clusters,
+               (const MultiItemCallback<rpc::VirtualClusterTableData> &callback)),
+              (override));
+  MOCK_METHOD(Status,
+              AsyncSubscribeAll,
+              ((const SubscribeCallback<VirtualClusterID, rpc::VirtualClusterTableData>
+                    &subscribe),
+               const StatusCallback &done),
               (override));
 };
 

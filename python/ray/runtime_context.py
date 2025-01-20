@@ -483,6 +483,11 @@ class RuntimeContext(object):
         return RuntimeEnv.deserialize(self.get_runtime_env_string())
 
     @property
+    def virtual_cluster_id(self):
+
+        return self.worker.current_virtual_cluster_id
+
+    @property
     def current_actor(self):
         """Get the current actor handle of this actor itself.
 

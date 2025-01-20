@@ -17,6 +17,7 @@
 #include <memory>
 #include <utility>
 
+#include "ray/common/virtual_cluster_id.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
@@ -32,6 +33,7 @@ using rpc::JobTableData;
 using rpc::PlacementGroupTableData;
 using rpc::ResourceUsageBatchData;
 using rpc::TaskSpec;
+using rpc::VirtualClusterTableData;
 using rpc::WorkerTableData;
 
 /// \class GcsTable
@@ -213,6 +215,15 @@ class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
   }
 };
 
+class GcsVirtualClusterTable
+    : public GcsTable<VirtualClusterID, VirtualClusterTableData> {
+ public:
+  explicit GcsVirtualClusterTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTable(std::move(store_client)) {
+    table_name_ = TablePrefix_Name(TablePrefix::VIRTUAL_CLUSTER);
+  }
+};
+
 /// \class GcsTableStorage
 ///
 /// This class is not meant to be used directly. All gcs table storage classes should
@@ -227,6 +238,7 @@ class GcsTableStorage {
     placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
     node_table_ = std::make_unique<GcsNodeTable>(store_client_);
     worker_table_ = std::make_unique<GcsWorkerTable>(store_client_);
+    virtual_cluster_table_ = std::make_unique<GcsVirtualClusterTable>(store_client_);
   }
 
   virtual ~GcsTableStorage() = default;
@@ -261,6 +273,11 @@ class GcsTableStorage {
     return *worker_table_;
   }
 
+  GcsVirtualClusterTable &VirtualClusterTable() {
+    RAY_CHECK(virtual_cluster_table_ != nullptr);
+    return *virtual_cluster_table_;
+  }
+
   Status AsyncGetNextJobID(Postable<void(int)> callback) {
     RAY_CHECK(store_client_);
     return store_client_->AsyncGetNextJobID(std::move(callback));
@@ -274,6 +291,7 @@ class GcsTableStorage {
   std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
+  std::unique_ptr<GcsVirtualClusterTable> virtual_cluster_table_;
 };
 
 /// \class RedisGcsTableStorage

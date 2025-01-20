@@ -1,0 +1,87 @@
+name: Ant Ray PyPi Nightly
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+  # pull_request:
+  # push:
+  #   branches:
+  #     - main
+  release:
+    types:
+      - published
+
+jobs:
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        # macos-13 is an intel runner, macos-14 is apple silicon
+        # os: [ubuntu-latest, windows-latest, macos-13, macos-14]
+        os: [ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.22.0
+        env:
+          CIBW_BEFORE_BUILD_LINUX: yum -y update && yum -y install npm && pip install "cython>=0.29.32" wheel && ./ci/env/install-bazel.sh && pushd python/ray/dashboard/client && npm ci && npm run build && popd
+          CIBW_BUILD: |
+            cp39-manylinux_x86_64
+            cp39-manylinux_aarch64
+            cp310-manylinux_x86_64
+            cp310-manylinux_aarch64
+            cp311-manylinux_x86_64
+            cp311-manylinux_aarch64
+          CIBW_ENVIRONMENT: RAY_DEBUG_BUILD=nightly
+        with:
+          package-dir: ./python
+          output-dir: ./python/dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./python/dist/*.whl
+
+  upload_pypi:
+    needs: [build_wheels]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    # if: github.event_name == 'release' && github.event.action == 'published'
+    # # or, alternatively, upload to PyPI on every tag starting with 'v' (remove on: release above to use this)
+    # # if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          # unpacks all CIBW artifacts into dist/
+          pattern: cibw-*
+          path: python/dist
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist
+
+  upload_test_pypi:
+    needs: [build_wheels]
+    runs-on: ubuntu-latest
+    environment: testpypi-publish
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          # unpacks all CIBW artifacts into dist/
+          pattern: cibw-*
+          path: python/dist
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist
+          repository-url: https://test.pypi.org/legacy/

@@ -66,14 +66,20 @@ cdef class GlobalStateAccessor:
             cjob_id = self.inner.get().GetNextJobID()
         return cjob_id.ToInt()
 
-    def get_node_table(self):
+    def get_node_table(self, virtual_cluster_id):
         cdef:
             c_vector[c_string] items
             c_string item
             CGcsNodeInfo c_node_info
             unordered_map[c_string, double] c_resources
+            cdef c_string cvirtual_cluster_id
+
+        if virtual_cluster_id is None:
+            cvirtual_cluster_id = b""
+        else:
+            cvirtual_cluster_id = virtual_cluster_id
         with nogil:
-            items = self.inner.get().GetAllNodeInfo()
+            items = self.inner.get().GetAllNodeInfo(cvirtual_cluster_id)
         results = []
         for item in items:
             c_node_info.ParseFromString(item)
@@ -135,16 +141,26 @@ cdef class GlobalStateAccessor:
             return c_string(result.get().data(), result.get().size())
         return None
 
-    def get_all_available_resources(self):
+    def get_all_available_resources(self, virtual_cluster_id):
         cdef c_vector[c_string] result
+        cdef c_string cvirtual_cluster_id
+        if virtual_cluster_id is None:
+            cvirtual_cluster_id = b""
+        else:
+            cvirtual_cluster_id = virtual_cluster_id
         with nogil:
-            result = self.inner.get().GetAllAvailableResources()
+            result = self.inner.get().GetAllAvailableResources(cvirtual_cluster_id)
         return result
 
-    def get_all_total_resources(self):
+    def get_all_total_resources(self, virtual_cluster_id):
         cdef c_vector[c_string] result
+        cdef c_string cvirtual_cluster_id
+        if virtual_cluster_id is None:
+            cvirtual_cluster_id = b""
+        else:
+            cvirtual_cluster_id = virtual_cluster_id
         with nogil:
-            result = self.inner.get().GetAllTotalResources()
+            result = self.inner.get().GetAllTotalResources(cvirtual_cluster_id)
         return result
 
     def get_task_events(self):

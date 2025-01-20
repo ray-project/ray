@@ -89,3 +89,11 @@ index ecbd2753d..737a14777 100644
 
  Makefile.dep:
  	-$(REDIS_CC) -MM $(ALL_SOURCES) > Makefile.dep 2> /dev/null || true
+@@ -439,6 +439,7 @@ DEP = $(REDIS_SERVER_OBJ:%.o=%.d) $(REDIS_CLI_OBJ:%.o=%.d) $(REDIS_BENCHMARK_OBJ
+ # is built only if python is available and its prereqs are modified.
+ ifneq (,$(PYTHON))
+ $(COMMANDS_DEF_FILENAME).def: commands/*.json ../utils/generate-command-code.py
++	chmod u+w $(COMMANDS_DEF_FILENAME).def
+ 	$(QUIET_GEN)$(PYTHON) ../utils/generate-command-code.py $(GEN_COMMANDS_FLAGS)
+ endif
+ 

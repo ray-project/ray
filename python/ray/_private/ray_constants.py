@@ -118,6 +118,8 @@ RAY_RUNTIME_ENV_CREATE_WORKING_DIR_ENV_VAR = "RAY_RUNTIME_ENV_CREATE_WORKING_DIR
 # the local working_dir and py_modules to be uploaded, or these files might get
 # garbage collected before the job starts.
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
+# Environment variable to specify the virtual cluster ID a Ray job belongs to.
+RAY_VIRTUAL_CLUSTER_ID_ENV_VAR = "VIRTUAL_CLUSTER_ID"
 # If set to 1, then `.gitignore` files will not be parsed and loaded into "excludes"
 # when using a local working_dir or py_modules.
 RAY_RUNTIME_ENV_IGNORE_GITIGNORE = "RAY_RUNTIME_ENV_IGNORE_GITIGNORE"

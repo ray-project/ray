@@ -25,6 +25,7 @@
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -36,6 +37,14 @@
 
 namespace ray {
 namespace gcs {
+
+// Returns true if an actor should be loaded to registered_actors_.
+// `false` Cases:
+// 0. state is DEAD, and is not restartable
+// 1. root owner is job, and job is dead
+// 2. root owner is another detached actor, and that actor is dead
+bool OnInitializeActorShouldLoad(const ray::gcs::GcsInitData &gcs_init_data,
+                                 ray::ActorID actor_id);
 
 /// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to access
 /// the fields inside `ActorTableData`.
@@ -176,6 +185,8 @@ class GcsActor {
   void UpdateState(rpc::ActorTableData::ActorState state);
   /// Get the state of this gcs actor.
   rpc::ActorTableData::ActorState GetState() const;
+  /// Get virtual cluster id of this actor
+  const std::string &GetVirtualClusterID() const;
 
   /// Get the id of this actor.
   ActorID GetActorID() const;
@@ -264,6 +275,11 @@ using RestartActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
 using CreateActorCallback = std::function<void(
     std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply, const Status &status)>;
 
+using ActorRegistrationListenerCallback =
+    std::function<void(const std::shared_ptr<GcsActor> &)>;
+using ActorDestroyListenerCallback =
+    std::function<void(const std::shared_ptr<GcsActor> &)>;
+
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
 /// Actor State Transition Diagram:
@@ -323,6 +339,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
+      GcsVirtualClusterManager &gcs_virtual_cluster_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
       const rpc::CoreWorkerClientFactoryFn &worker_client_factory = nullptr);
 
@@ -498,6 +515,18 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
     usage_stats_client_ = usage_stats_client;
+  }
+
+  /// Add actor registration event listener.
+  void AddActorRegistrationListener(ActorRegistrationListenerCallback listener) {
+    RAY_CHECK(listener);
+    actor_registration_listeners_.emplace_back(std::move(listener));
+  }
+
+  /// Add actor destroy event listener.
+  void AddActorDestroyListener(ActorDestroyListenerCallback listener) {
+    RAY_CHECK(listener);
+    actor_destroy_listeners_.emplace_back(std::move(listener));
   }
 
  private:
@@ -707,6 +736,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   RuntimeEnvManager &runtime_env_manager_;
   /// Function manager for GC purpose
   GcsFunctionManager &function_manager_;
+  /// Virtual cluster manager for scheduling purpose
+  GcsVirtualClusterManager &gcs_virtual_cluster_manager_;
 
   UsageStatsClient *usage_stats_client_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
@@ -724,6 +755,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   // Make sure our unprotected maps are accessed from the same thread.
   // Currently protects actor_to_register_callbacks_.
   ThreadChecker thread_checker_;
+  /// Listeners which monitors the registration of actor.
+  std::vector<ActorRegistrationListenerCallback> actor_registration_listeners_;
+
+  /// Listeners which monitors the destruction of actor.
+  std::vector<ActorDestroyListenerCallback> actor_destroy_listeners_;
 
   // Debug info.
   enum CountType {

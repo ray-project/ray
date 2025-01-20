@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import warnings
+from datetime import datetime
 from enum import Enum
 from itertools import chain
 
@@ -79,6 +80,7 @@ class BuildType(Enum):
     DEBUG = 2
     ASAN = 3
     TSAN = 4
+    NIGHTLY = 5
 
 
 class SetupSpec:
@@ -95,6 +97,11 @@ class SetupSpec:
             self.version: str = f"{version}+asan"
         elif build_type == BuildType.TSAN:
             self.version: str = f"{version}+tsan"
+        elif build_type == BuildType.NIGHTLY:
+            version_postfix = datetime.today().strftime("%Y%m%d")
+            version = re.sub(r"dev\d*", f"dev{version_postfix}", version)
+            self.version: str = version
+            self.name = f"{self.name}-nightly"
         else:
             self.version = version
         self.description: str = description
@@ -117,6 +124,8 @@ elif build_type == "asan":
     BUILD_TYPE = BuildType.ASAN
 elif build_type == "tsan":
     BUILD_TYPE = BuildType.TSAN
+elif build_type == "nightly":
+    BUILD_TYPE = BuildType.NIGHTLY
 else:
     BUILD_TYPE = BuildType.DEFAULT
 
@@ -124,7 +133,7 @@ if os.getenv("RAY_INSTALL_CPP") == "1":
     # "ray-cpp" wheel package.
     setup_spec = SetupSpec(
         SetupType.RAY_CPP,
-        "ray-cpp",
+        "ant-ray-cpp",
         "A subpackage of Ray which provides the Ray C++ API.",
         BUILD_TYPE,
     )
@@ -132,7 +141,7 @@ else:
     # "ray" primary wheel package.
     setup_spec = SetupSpec(
         SetupType.RAY,
-        "ray",
+        "ant-ray",
         "Ray provides a simple, "
         "universal API for building distributed applications.",
         BUILD_TYPE,

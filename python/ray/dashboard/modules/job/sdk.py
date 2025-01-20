@@ -130,6 +130,8 @@ class JobSubmissionClient(SubmissionClient):
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
         submission_id: Optional[str] = None,
+        virtual_cluster_id: Optional[str] = None,
+        replica_sets: Optional[Dict[str, int]] = None,
         entrypoint_num_cpus: Optional[Union[int, float]] = None,
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
@@ -157,6 +159,7 @@ class JobSubmissionClient(SubmissionClient):
         Args:
             entrypoint: The shell command to run for this job.
             submission_id: A unique ID for this job.
+            virtual_cluster_id: The virtual cluster this job belongs to.
             runtime_env: The runtime environment to install and run this job in.
             metadata: Arbitrary data to store along with this job.
             job_id: DEPRECATED. This has been renamed to submission_id
@@ -228,6 +231,8 @@ class JobSubmissionClient(SubmissionClient):
         req = JobSubmitRequest(
             entrypoint=entrypoint,
             submission_id=submission_id,
+            virtual_cluster_id=virtual_cluster_id,
+            replica_sets=replica_sets,
             runtime_env=runtime_env,
             metadata=metadata,
             entrypoint_num_cpus=entrypoint_num_cpus,

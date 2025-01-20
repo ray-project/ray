@@ -26,6 +26,7 @@
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -54,6 +55,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
                          GcsPublisher &gcs_publisher,
                          RuntimeEnvManager &runtime_env_manager,
                          GcsFunctionManager &function_manager,
+                         GcsVirtualClusterManager &gcs_virtual_cluster_manager,
                          InternalKVInterface &internal_kv,
                          instrumented_io_context &io_context,
                          rpc::CoreWorkerClientFactoryFn client_factory = nullptr)
@@ -61,6 +63,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
         gcs_publisher_(gcs_publisher),
         runtime_env_manager_(runtime_env_manager),
         function_manager_(function_manager),
+        gcs_virtual_cluster_manager_(gcs_virtual_cluster_manager),
         internal_kv_(internal_kv),
         io_context_(io_context),
         core_worker_clients_(client_factory) {}
@@ -131,6 +134,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   ray::RuntimeEnvManager &runtime_env_manager_;
   GcsFunctionManager &function_manager_;
+  GcsVirtualClusterManager &gcs_virtual_cluster_manager_;
   InternalKVInterface &internal_kv_;
   instrumented_io_context &io_context_;
   /// The cached core worker clients which are used to communicate with workers.
