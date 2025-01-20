@@ -1,11 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-scaling-guide:
 
 RLlib scaling guide
 ===================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 RLlib is a distributed and scalable RL library, based on `Ray <https://www.ray.io/>`__. An RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 uses `Ray actors <https://docs.ray.io/en/latest/ray-core/actors.html>`__ wherever parallelization of

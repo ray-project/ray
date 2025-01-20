@@ -130,7 +130,6 @@ class IMPALAConfig(AlgorithmConfig):
         self.vtrace_clip_rho_threshold = 1.0
         self.vtrace_clip_pg_rho_threshold = 1.0
         self.learner_queue_size = 3
-        self.max_requests_in_flight_per_env_runner = 1
         self.timeout_s_sampler_manager = 0.0
         self.timeout_s_aggregator_manager = 0.0
         self.broadcast_interval = 1
@@ -555,8 +554,6 @@ class IMPALA(Algorithm):
 
         # Queue of data to be sent to the Learner.
         self.data_to_place_on_learner = []
-        # The local mixin buffer (if required).
-        self.local_mixin_buffer = None
         self._batch_being_built = []  # @OldAPIStack
 
         # Create extra aggregation workers and assign each rollout worker to
@@ -566,18 +563,17 @@ class IMPALA(Algorithm):
             i: [] for i in range(self.config.num_learners or 1)
         }
 
-        # Create our local mixin buffer if the num of aggregation workers is 0.
+        # Create our local mixin buffer.
         if not self.config.enable_rl_module_and_learner:
-            if self.config.replay_proportion > 0.0:
-                self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
-                    capacity=(
-                        self.config.replay_buffer_num_slots
-                        if self.config.replay_buffer_num_slots > 0
-                        else 1
-                    ),
-                    replay_ratio=self.config.replay_ratio,
-                    replay_mode=ReplayMode.LOCKSTEP,
-                )
+            self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
+                capacity=(
+                    self.config.replay_buffer_num_slots
+                    if self.config.replay_buffer_num_slots > 0
+                    else 1
+                ),
+                replay_ratio=self.config.replay_ratio,
+                replay_mode=ReplayMode.LOCKSTEP,
+            )
 
         # This variable is used to keep track of the statistics from the most recent
         # update of the learner group
@@ -757,16 +753,6 @@ class IMPALA(Algorithm):
                 )
 
         time.sleep(0.01)
-
-    @override(Algorithm)
-    def cleanup(self) -> None:
-        super().cleanup()
-
-        # Stop all aggregation actors.
-        if hasattr(self, "_aggregator_actor_manager") and (
-            self._aggregator_actor_manager is not None
-        ):
-            self._aggregator_actor_manager.clear()
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):
@@ -1092,9 +1078,8 @@ class IMPALA(Algorithm):
             batch = batch.decompress_if_needed()
             # Only make a pass through the buffer, if replay proportion is > 0.0 (and
             # we actually have one).
-            if self.local_mixin_buffer:
-                self.local_mixin_buffer.add(batch)
-                batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
+            self.local_mixin_buffer.add(batch)
+            batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
             if batch:
                 processed_batches.append(batch)
 
