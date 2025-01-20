@@ -81,9 +81,9 @@ image observations (``[width] x [height] x [channels]``).
 
         config = (
             PPOConfig()
-            # FrozenLake has a discrete observation space, ...
+            # FrozenLake has a discrete observation space (ints).
             .environment("FrozenLake-v1")
-            # ... which `FlattenObservations` converts to one-hot.
+            # `FlattenObservations` converts int observations to one-hot.
             .env_runners(env_to_module_connector=lambda env: FlattenObservations())
         )
 
@@ -121,6 +121,14 @@ with PPO and the default RLModule, configure your experiment as follows:
         )
     )
 
+.. testcode::
+    :hide:
+
+    test = config.build()
+    test.train()
+    test.stop()
+
+
 The following is the compete list of all supported ``fcnet_..`` options:
 
 .. literalinclude:: ../../../rllib/core/rl_module/default_model_config.py
@@ -136,19 +144,36 @@ For image-based environments like `Atari <https://ale.farama.org/environments/>`
 ``conv_..`` fields in :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig` to configure
 the convolutional neural network (CNN) stack.
 
-For example:
+You may have to check whether your CNN configuration works with the incoming observation image
+dimensions. For example, for an `Atari <https://ale.farama.org/environments/>`__ environment, you can
+use RLlib's Atari wrapper utility, which performs resizing (default 64x64) and gray scaling (default True),
+frame stacking (default None), frame skipping (default 4), normalization (from uint8 to float32), and
+applies up to 30 noop actions after a reset, which aren't part of the episode:
 
 .. testcode::
 
+    import gymnasium as gym  # `pip install gymnasium[atari,accept-rom-license]`
+
     from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
     from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+    from ray.tune import register_env
+
+    register_env(
+        "image_env",
+        lambda _: wrap_atari_for_new_api_stack(
+            gym.make("ale_py:ALE/Pong-v5"),
+            dim=64,  # resize original observation to 64x64x3
+            framestack=4,
+        )
+    )
 
     config = (
         PPOConfig()
-        .environment("ale_py:ALE/Pong-v5")  # `pip install gymnasium[atari]`
+        .environment("image_env")
         .rl_module(
             model_config=DefaultModelConfig(
-                # Use a DreamerV3-style CNN stack.
+                # Use a DreamerV3-style CNN stack for 64x64 images.
                 conv_filters=[
                     [16, 4, 2],  # 1st CNN layer: num_filters, kernel, stride(, padding)?
                     [32, 4, 2],  # 2nd CNN layer
@@ -156,12 +181,18 @@ For example:
                     [128, 4, 2],
                 ],
                 conv_activation="silu",
-
                 # After the last CNN, the default model flattens, then adds an optional MLP.
                 head_fcnet_hiddens=[256],
             )
         )
     )
+
+.. testcode::
+    :hide:
+
+    test = config.build()
+    test.train()
+    test.stop()
 
 The following is the compete list of all supported ``conv_..`` options:
 
@@ -176,6 +207,17 @@ Other default model settings
 
 For LSTM-based configurations and specific settings for continuous action output layers,
 see :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig`.
+
+.. note::
+
+    To auto-wrap your default model with an extra LSTM layer to allow your model to learn in
+    non-Markovian, partially observable environments, you can try the convenience
+    ``DefaultModelConfig.use_lstm`` setting in combination with the
+    ``DefaultModelConfig.lstm_cell_size`` and ``DefaultModelConfig.max_seq_len`` settings.
+    See here for a tuned
+    `example that uses a default RLModule with an LSTM layer <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/stateless_cartpole_ppo.py>`__.
+
+.. TODO: mention attention example once done
 
 
 Constructing RLModule instances
@@ -415,6 +457,8 @@ or any multi-model use cases, subclass the :py:class:`~ray.rllib.core.rl_module.
     See :ref:`Algorithm-specific RLModule APIs <rllib-algo-specific-rl-module-apis-docs>` for how to determine which APIs your algorithm requires you to implement.
 
 
+.. _rllib-implementing-custom-rl-modules-setup:
+
 The setup() method
 ~~~~~~~~~~~~~~~~~~
 
@@ -437,7 +481,6 @@ You also have access to the following attributes anywhere in the class, includin
     from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 
     class MyTorchPolicy(TorchRLModule):
-
         def setup(self):
             # You have access here to the following already set attributes:
             # self.observation_space
@@ -462,6 +505,7 @@ You also have access to the following attributes anywhere in the class, includin
                 torch.nn.Linear(hidden_dim, output_dim),
             )
 
+.. _rllib-implementing-custom-rl-modules-forward:
 
 Forward methods
 ~~~~~~~~~~~~~~~~~~~
@@ -504,7 +548,6 @@ If you don't return the ``actions`` key from your forward method:
     For example, RLlib reduces the sampling from a Categorical distribution to selecting the ``argmax``
     actions from the distribution logits or probabilities.
     If you return the "actions" key, RLlib skips that sampling step.
-
 
 .. tab-set::
 
@@ -601,10 +644,13 @@ To find out, what APIs your Algorithms require, do the following:
 
 
 .. note::
-    You don't need the preceding VPG example module to implement any APIs because
-    you haven't considered training it with any particular algorithm.
-    You can find examples of algorithm-ready :py:class:`~ray.rllib.algorithms.ppo.PPO` custom RLModules
-    in the `tiny_atari_cnn_rlm example <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/tiny_atari_cnn_rlm.py>`__
+
+    You didn't implement any APIs in the preceding example module, because
+    you hadn't considered training it with any particular algorithm yet.
+    You can find examples of custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` classes
+    implementing the :py:class:`~ray.rllib.core.rl_module.apis.self_supervised_loss_api.SelfSupervisedLossAPI` and thus
+    ready to train with :py:class:`~ray.rllib.algorithms.ppo.PPO` in the
+    `tiny_atari_cnn_rlm example <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/tiny_atari_cnn_rlm.py>`__
     and in the `lstm_containing_rlm example <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/lstm_containing_rlm.py>`__.
 
 
@@ -612,6 +658,7 @@ You can mix supervised losses into any RLlib algorithm through the :py:class:`~r
 Your Learner actors automatically call the implemented
 :py:meth:`~ray.rllib.core.rl_module.apis.self_supervised_loss_api.SelfSupervisedLossAPI.compute_self_supervised_loss` method to compute the model's own loss
 passing it the outputs of the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` call.
+
 
 See here for an `example script utilizing a self-supervised loss RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__.
 Losses can be defined over either policy evaluation inputs, or data read from `offline storage <rllib-offline.html>`__.
@@ -656,142 +703,83 @@ override the following methods in the :py:class:`~ray.rllib.core.rl_module.rl_mo
 See `torch_distributions.py <https://github.com/ray-project/ray/blob/master/rllib/models/torch/torch_distributions.py>`__ for common distribution implementations.
 
 
+Auto-regressive action distributions
+++++++++++++++++++++++++++++++++++++
 
-Autoregressive action distributions
-+++++++++++++++++++++++++++++++++++
+In an action space with multiple components, for example ``Tuple(a1, a2)``, you may want to condition the sampling of ``a2`` on the sampled value
+of ``a1``, such that ``a2_sampled ~ P(a2 | a1_sampled, obs)``. Note that in the default, non-autoregressive case, RLlib would use a default
+model in combination with an independent :py:class:`~ray.rllib.models.torch.torch_distributions.TorchMultiDistribution` and thus
+sample ``a1`` and ``a2`` independently. This makes it impossible to learn in environments, in which one action component
+should be sampled dependent on another action, already sampled, action component.
+See an `example for a "correlated actions" environment <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/classes/correlated_actions_env.py>`__ here.
 
-TODO: finish this paragraph and double-check, whether we are doing the correct thing in our new stack example script.
+To write a custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` that samples the various
+action components as previously described, you need to carefully implement its forward logic.
 
-In an action space with multiple components (e.g., ``Tuple(a1, a2)``), you might want ``a2`` to be conditioned on the sampled value
-of ``a1``, such that ``a2_sampled ~ P(a2 | a1_sampled, obs)``. Note that in the non-autoregressive case, RLlib would sample ``a1`` and ``a2``
-independently.
+Find an `example of such a autoregressive action model <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/autoregressive_actions_rlm.py>`__ here.
 
-To do this, you need both a custom model that implements the autoregressive pattern, and a custom action distribution class that
-leverages that model. The `autoregressive_action_dist.py <https://github.com/ray-project/ray/blob/master/rllib/examples/autoregressive_action_dist.py>`__
-example shows how this can be implemented for a simple binary action space. For a more complex space, a more efficient architecture such as a
-`MADE <https://arxiv.org/abs/1502.03509>`__ is recommended. Note that sampling an ``N-part`` action requires ``N`` forward passes through the model,
-however, computing the log probability of an action can be done in one pass:
+You implement the main action sampling logic in the ``_forward_...()`` methods:
 
-.. code-block:: python
-
-    class BinaryAutoregressiveOutput(ActionDistribution):
-        """Action distribution P(a1, a2) = P(a1) * P(a2 | a1)"""
-
-        @staticmethod
-        def required_model_output_shape(self, model_config):
-            return 16  # controls model output feature vector size
-
-        def sample(self):
-            # first, sample a1
-            a1_dist = self._a1_distribution()
-            a1 = a1_dist.sample()
-
-            # sample a2 conditioned on a1
-            a2_dist = self._a2_distribution(a1)
-            a2 = a2_dist.sample()
-
-            # return the action tuple
-            return TupleActions([a1, a2])
-
-        def logp(self, actions):
-            a1, a2 = actions[:, 0], actions[:, 1]
-            a1_vec = tf.expand_dims(tf.cast(a1, tf.float32), 1)
-            a1_logits, a2_logits = self.model.action_model([self.inputs, a1_vec])
-            return (Categorical(a1_logits, None).logp(a1) + Categorical(
-                a2_logits, None).logp(a2))
-
-        def _a1_distribution(self):
-            BATCH = tf.shape(self.inputs)[0]
-            a1_logits, _ = self.model.action_model(
-                [self.inputs, tf.zeros((BATCH, 1))])
-            a1_dist = Categorical(a1_logits, None)
-            return a1_dist
-
-        def _a2_distribution(self, a1):
-            a1_vec = tf.expand_dims(tf.cast(a1, tf.float32), 1)
-            _, a2_logits = self.model.action_model([self.inputs, a1_vec])
-            a2_dist = Categorical(a2_logits, None)
-            return a2_dist
+.. literalinclude:: ../../../rllib/examples/rl_modules/classes/autoregressive_actions_rlm.py
+    :language: python
+    :dedent: 4
+    :start-after: __sphinx_begin__
+    :end-before: __sphinx_end__
 
 
-    class AutoregressiveActionsModel(TFModelV2):
-        """Implements the `.action_model` branch required above."""
-
-        def __init__(self, obs_space, action_space, num_outputs, model_config,
-                     name):
-            super(AutoregressiveActionsModel, self).__init__(
+.. TODO: Move this parametric paragraph back in here, once we have the example translated to the new API stack
+Variable-length / Parametric Action Spaces
+++++++++++++++++++++++++++++++++++++++++++
+Custom models can be used to work with environments where (1) the set of valid actions `varies per step <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five>`__, and/or (2) the number of valid actions is `very large <https://arxiv.org/abs/1811.00260>`__. The general idea is that the meaning of actions can be completely conditioned on the observation, i.e., the ``a`` in ``Q(s, a)`` becomes just a token in ``[0, MAX_AVAIL_ACTIONS)`` that only has meaning in the context of ``s``. This works with algorithms in the `DQN and policy-gradient families <rllib-env.html>`__ and can be implemented as follows:
+1. The environment should return a mask and/or list of valid action embeddings as part of the observation for each step. To enable batching, the number of actions can be allowed to vary from 1 to some max number:
+ .. code-block:: python
+   class MyParamActionEnv(gym.Env):
+       def __init__(self, max_avail_actions):
+           self.action_space = Discrete(max_avail_actions)
+           self.observation_space = Dict({
+               "action_mask": Box(0, 1, shape=(max_avail_actions, )),
+               "avail_actions": Box(-1, 1, shape=(max_avail_actions, action_embedding_sz)),
+               "real_obs": ...,
+           })
+2. A custom model can be defined that can interpret the ``action_mask`` and ``avail_actions`` portions of the observation. Here the model computes the action logits via the dot product of some network output and each action embedding. Invalid actions can be masked out of the softmax by scaling the probability to zero:
+ .. code-block:: python
+    class ParametricActionsModel(TFModelV2):
+        def __init__(self,
+                     obs_space,
+                     action_space,
+                     num_outputs,
+                     model_config,
+                     name,
+                     true_obs_shape=(4,),
+                     action_embed_size=2):
+            super(ParametricActionsModel, self).__init__(
                 obs_space, action_space, num_outputs, model_config, name)
-            if action_space != Tuple([Discrete(2), Discrete(2)]):
-                raise ValueError(
-                    "This model only supports the [2, 2] action space")
-
-            # Inputs
-            obs_input = tf.keras.layers.Input(
-                shape=obs_space.shape, name="obs_input")
-            a1_input = tf.keras.layers.Input(shape=(1, ), name="a1_input")
-            ctx_input = tf.keras.layers.Input(
-                shape=(num_outputs, ), name="ctx_input")
-
-            # Output of the model (normally 'logits', but for an autoregressive
-            # dist this is more like a context/feature layer encoding the obs)
-            context = tf.keras.layers.Dense(
-                num_outputs,
-                name="hidden",
-                activation=tf.nn.tanh,
-                kernel_initializer=normc_initializer(1.0))(obs_input)
-
-            # P(a1 | obs)
-            a1_logits = tf.keras.layers.Dense(
-                2,
-                name="a1_logits",
-                activation=None,
-                kernel_initializer=normc_initializer(0.01))(ctx_input)
-
-            # P(a2 | a1)
-            # --note: typically you'd want to implement P(a2 | a1, obs) as follows:
-            # a2_context = tf.keras.layers.Concatenate(axis=1)(
-            #     [ctx_input, a1_input])
-            a2_context = a1_input
-            a2_hidden = tf.keras.layers.Dense(
-                16,
-                name="a2_hidden",
-                activation=tf.nn.tanh,
-                kernel_initializer=normc_initializer(1.0))(a2_context)
-            a2_logits = tf.keras.layers.Dense(
-                2,
-                name="a2_logits",
-                activation=None,
-                kernel_initializer=normc_initializer(0.01))(a2_hidden)
-
-            # Base layers
-            self.base_model = tf.keras.Model(obs_input, context)
-            self.register_variables(self.base_model.variables)
-            self.base_model.summary()
-
-            # Autoregressive action sampler
-            self.action_model = tf.keras.Model([ctx_input, a1_input],
-                                               [a1_logits, a2_logits])
-            self.action_model.summary()
-            self.register_variables(self.action_model.variables)
-
-
-
-.. note::
-
-   Not all algorithms support autoregressive action distributions; see the `algorithm overview table <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
-
-
-
-
-
-
-
-
-
-
-
-
-
+            self.action_embed_model = FullyConnectedNetwork(...)
+        def forward(self, input_dict, state, seq_lens):
+            # Extract the available actions tensor from the observation.
+            avail_actions = input_dict["obs"]["avail_actions"]
+            action_mask = input_dict["obs"]["action_mask"]
+            # Compute the predicted action embedding
+            action_embed, _ = self.action_embed_model({
+                "obs": input_dict["obs"]["cart"]
+            })
+            # Expand the model output to [BATCH, 1, EMBED_SIZE]. Note that the
+            # avail actions tensor is of shape [BATCH, MAX_ACTIONS, EMBED_SIZE].
+            intent_vector = tf.expand_dims(action_embed, 1)
+            # Batch dot product => shape of logits is [BATCH, MAX_ACTIONS].
+            action_logits = tf.reduce_sum(avail_actions * intent_vector, axis=2)
+            # Mask out invalid actions (use tf.float32.min for stability)
+            inf_mask = tf.maximum(tf.log(action_mask), tf.float32.min)
+            return action_logits + inf_mask, state
+Depending on your use case it may make sense to use |just the masking|_, |just action embeddings|_, or |both|_.  For a runnable example of "just action embeddings" in code,
+check out `examples/parametric_actions_cartpole.py <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__.
+ .. |just the masking| replace:: just the **masking**
+ .. _just the masking: https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/action_mask_model.py
+ .. |just action embeddings| replace:: just action **embeddings**
+ .. _just action embeddings: https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py
+ .. |both| replace:: **both**
+ .. _both: https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/parametric_actions_model.py
+Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``model.vf_share_layers=True``), and several other algorithms. Not all algorithms support parametric actions; see the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__.
 
 
 
