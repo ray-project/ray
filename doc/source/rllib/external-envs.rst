@@ -1,12 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-external-env-setups-doc:
-
 
 External Environments and Applications
 ======================================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 In many situations, it doesn't make sense for an RL environment to be "stepped" by RLlib.
 For example, if you train a policy inside a complex simulator that operates its own execution loop,

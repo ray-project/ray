@@ -1,9 +1,11 @@
-.. include:: /_includes/rllib/new_api_stack.rst
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 .. _rllib-callback-docs:
 
 Callbacks
 =========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 Callbacks are the most straightforward way to inject code into experiments. You can define the code to execute at certain events and pass it to your
 :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`.

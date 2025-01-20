@@ -1,11 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-algo-configuration-docs:
 
 AlgorithmConfig API
 ===================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 RLlib's :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` API is
 the auto-validated and type-safe gateway into configuring and building an RLlib

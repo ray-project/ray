@@ -1,11 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _algorithm-reference-docs:
 
 Algorithms
 ==========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class is the highest-level API in RLlib responsible for **WHEN** and **WHAT** of RL algorithms.
 Things like **WHEN** should we sample the algorithm, **WHEN** should we perform a neural network update, and so on.
