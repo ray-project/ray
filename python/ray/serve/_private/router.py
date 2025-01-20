@@ -3,10 +3,13 @@ import concurrent.futures
 import logging
 import threading
 import time
+import weakref
 from abc import ABC, abstractmethod
+from asyncio import AbstractEventLoop
 from collections import defaultdict
+from collections.abc import MutableMapping
 from contextlib import contextmanager
-from functools import partial
+from functools import lru_cache, partial
 from typing import Any, Coroutine, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
@@ -399,6 +402,14 @@ class AsyncioRouter:
             ),
         )
 
+        # The Router needs to stay informed about changes to the target deployment's
+        # running replicas and deployment config. We do this via the long poll system.
+        # However, for efficiency, we don't want to create a LongPollClient for every
+        # DeploymentHandle, so we use a shared LongPollClient that all Routers
+        # register themselves with. But first, the router needs to get a fast initial
+        # update so that it can start serving requests, which we do with a dedicated
+        # LongPollClient that stops running once the shared client takes over.
+
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
@@ -413,6 +424,11 @@ class AsyncioRouter:
             },
             call_in_event_loop=self._event_loop,
         )
+
+        shared = SharedRouterLongPollClient.get_or_create(
+            controller_handle, self._event_loop
+        )
+        shared.register(self)
 
     def running_replicas_populated(self) -> bool:
         return self._running_replicas_populated
@@ -604,7 +620,7 @@ class AsyncioRouter:
 
                 # Keep track of requests that have been sent out to replicas
                 if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-                    _request_context = ray.serve.context._serve_request_context.get()
+                    _request_context = ray.serve.context._get_serve_request_context()
                     request_id: str = _request_context.request_id
                     self._metrics_manager.inc_num_running_requests_for_replica(
                         replica_id
@@ -690,3 +706,72 @@ class SingletonThreadRouter(Router):
         return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
         )
+
+
+class SharedRouterLongPollClient:
+    def __init__(self, controller_handle: ActorHandle, event_loop: AbstractEventLoop):
+        self.controller_handler = controller_handle
+
+        # We use a WeakSet to store the Routers so that we don't prevent them
+        # from being garbage-collected.
+        self.routers: MutableMapping[
+            DeploymentID, weakref.WeakSet[AsyncioRouter]
+        ] = defaultdict(weakref.WeakSet)
+
+        # Creating the LongPollClient implicitly starts it
+        self.long_poll_client = LongPollClient(
+            controller_handle,
+            key_listeners={},
+            call_in_event_loop=event_loop,
+        )
+
+    @classmethod
+    @lru_cache(maxsize=None)
+    def get_or_create(
+        cls, controller_handle: ActorHandle, event_loop: AbstractEventLoop
+    ) -> "SharedRouterLongPollClient":
+        shared = cls(controller_handle=controller_handle, event_loop=event_loop)
+        logger.info(f"Started {shared}.")
+        return shared
+
+    def update_deployment_targets(
+        self,
+        deployment_target_info: DeploymentTargetInfo,
+        deployment_id: DeploymentID,
+    ) -> None:
+        for router in self.routers[deployment_id]:
+            router.update_deployment_targets(deployment_target_info)
+            router.long_poll_client.stop()
+
+    def update_deployment_config(
+        self, deployment_config: DeploymentConfig, deployment_id: DeploymentID
+    ) -> None:
+        for router in self.routers[deployment_id]:
+            router.update_deployment_config(deployment_config)
+            router.long_poll_client.stop()
+
+    def register(self, router: AsyncioRouter) -> None:
+        self.routers[router.deployment_id].add(router)
+
+        # Remove the entries for any deployment ids that no longer have any routers.
+        # The WeakSets will automatically lose track of Routers that get GC'd,
+        # but the outer dict will keep the key around, so we need to clean up manually.
+        # Note the list(...) to avoid mutating self.routers while iterating over it.
+        for deployment_id, routers in list(self.routers.items()):
+            if not routers:
+                self.routers.pop(deployment_id)
+
+        # Register the new listeners on the long poll client.
+        # Some of these listeners may already exist, but it's safe to add them again.
+        key_listeners = {
+            (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id): partial(
+                self.update_deployment_targets, deployment_id=deployment_id
+            )
+            for deployment_id in self.routers.keys()
+        } | {
+            (LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id): partial(
+                self.update_deployment_config, deployment_id=deployment_id
+            )
+            for deployment_id in self.routers.keys()
+        }
+        self.long_poll_client.add_key_listeners(key_listeners)
