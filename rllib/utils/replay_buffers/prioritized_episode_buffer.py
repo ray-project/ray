@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import numpy as np
 import scipy
 
@@ -6,11 +7,19 @@ from collections import deque
 from numpy.typing import NDArray
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from ray.rllib.core import DEFAULT_AGENT_ID
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 from ray.rllib.utils import force_list
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_RESAMPLES,
+    NUM_RESAMPLES,
+)
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import ModuleID, SampleBatchType
 
 
@@ -118,6 +127,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         batch_size_B: int = 16,
         batch_length_T: int = 1,
         alpha: float = 1.0,
+        metrics_num_episodes_for_smoothing: int = 100,
         **kwargs,
     ):
         """Initializes a `PrioritizedEpisodeReplayBuffer` object
@@ -132,7 +142,10 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 prioritization, `alpha=0.0` means no prioritization.
         """
         super().__init__(
-            capacity=capacity, batch_size_B=batch_size_B, batch_length_T=batch_length_T
+            capacity=capacity,
+            batch_size_B=batch_size_B,
+            batch_length_T=batch_length_T,
+            metrics_num_episodes_for_smoothing=metrics_num_episodes_for_smoothing,
         )
 
         # `alpha` should be non-negative.
@@ -196,6 +209,12 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         episodes = force_list(episodes)
 
+        # Set up some counters for metrics.
+        num_env_steps_added = 0
+        num_episodes_added = 0
+        num_episodes_evicted = 0
+        num_env_steps_evicted = 0
+
         # Add first the timesteps of new episodes to have info about how many
         # episodes should be evicted to stay below capacity.
         new_episode_ids = []
@@ -215,6 +234,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             eps_evicted.append(self.episodes.popleft())
             eps_evicted_ids.append(eps_evicted[-1].id_)
             eps_evicted_idxs.append(self.episode_id_to_index.pop(eps_evicted_ids[-1]))
+            num_episodes_evicted += 1
+            num_env_steps_evicted += len(eps_evicted[-1])
             # If this episode has a new chunk in the new episodes added,
             # we subtract it again.
             # TODO (sven, simon): Should we just treat such an episode chunk
@@ -282,6 +303,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                     existing_eps.concat_episode(eps)
                 # Otherwise, create a new entry.
                 else:
+                    num_episodes_added += 1
                     self.episodes.append(eps)
                     eps_idx = len(self.episodes) - 1 + self._num_episodes_evicted
                     self.episode_id_to_index[eps.id_] = eps_idx
@@ -295,8 +317,17 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                             for i in range(len(eps))
                         ]
                     )
+                num_env_steps_added += len(eps)
                 # Increase index to the new length of `self._indices`.
                 j = len(self._indices)
+
+        # Increase metrics.
+        self._update_add_metrics(
+            num_env_steps_added,
+            num_episodes_added,
+            num_episodes_evicted,
+            num_env_steps_evicted,
+        )
 
     @override(EpisodeReplayBuffer)
     def sample(
@@ -391,6 +422,14 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         self._last_sampled_indices = []
 
         sampled_episodes = []
+        # Record the sampled episode buffer indices to check the number of
+        # episodes per sample.
+        sampled_episode_idxs = set()
+        # Record sampled env step hashes to check the number of different
+        # env steps per sample.
+        sampled_env_steps_idxs = set()
+        num_resamples = 0
+        sampled_n_steps = []
 
         # Sample proportionally from replay buffer's segments using the weights.
         total_segment_sum = self._sum_segment.sum()
@@ -429,6 +468,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Skip, if we are too far to the end and `episode_ts` + n_step would go
             # beyond the episode's end.
             if episode_ts + actual_n_step > len(episode):
+                num_resamples += 1
                 continue
 
             # Note, this will be the reward after executing action
@@ -492,9 +532,19 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 len_lookback_buffer=0,
                 t_started=episode_ts,
             )
+            # Record here the episode time step via a hash code.
+            sampled_env_steps_idxs.add(
+                hashlib.sha256(f"{episode.id_}-{episode_ts}".encode()).hexdigest()
+            )
+            # Convert to numpy arrays, if required.
             if to_numpy:
                 sampled_episode.to_numpy()
             sampled_episodes.append(sampled_episode)
+
+            # Add the episode buffer index to the sampled indices.
+            sampled_episode_idxs.add(episode_idx)
+            # Record the actual n-step for this sample.
+            sampled_n_steps.append(actual_n_step)
 
             # Increment counter.
             B += 1
@@ -502,9 +552,67 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Keep track of sampled indices for updating priorities later.
             self._last_sampled_indices.append(idx)
 
+        # Add to the sampled timesteps counter of the buffer.
         self.sampled_timesteps += batch_size_B
 
+        # Update the sample metrics.
+        self._update_sample_metrics(
+            batch_size_B,
+            len(sampled_episode_idxs),
+            len(sampled_env_steps_idxs),
+            sum(sampled_n_steps) / batch_size_B,
+            num_resamples,
+        )
+
         return sampled_episodes
+
+    @override(EpisodeReplayBuffer)
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def _update_sample_metrics(
+        self,
+        num_env_steps_sampled: int,
+        num_episodes_per_sample: int,
+        num_env_steps_per_sample: int,
+        sampled_n_step: Optional[float],
+        num_resamples: int,
+        **kwargs: Dict[str, Any],
+    ) -> None:
+        """Updates the replay buffer's sample metrics.
+
+        Args:
+            num_env_steps_sampled: The number of environment steps sampled
+                this iteration in the `sample` method.
+            num_episodes_per_sample: The number of unique episodes in the
+                sample.
+            num_env_steps_per_sample: The number of unique environment steps
+                in the sample.
+            sampled_n_step: The mean n-step used in the sample. Note, this
+                is constant, if the n-step is not sampled.
+            num_resamples: The total number of times environment steps needed to
+                be resampled. Resampling happens, if the sampled time step is
+                to near to the episode's end to cover the complete n-step.
+        """
+        # Call the super's method to increase all regular sample metrics.
+        super()._update_sample_metrics(
+            num_env_steps_sampled,
+            num_episodes_per_sample,
+            num_env_steps_per_sample,
+            sampled_n_step,
+        )
+
+        # Add the metrics for resamples.
+        self.metrics.log_value(
+            (NUM_AGENT_RESAMPLES, DEFAULT_AGENT_ID),
+            num_resamples,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            NUM_RESAMPLES,
+            num_resamples,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
 
     @override(EpisodeReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
