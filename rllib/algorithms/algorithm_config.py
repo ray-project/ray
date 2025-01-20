@@ -963,6 +963,7 @@ class AlgorithmConfig(_Config):
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
+            AddTimeDimToBatchAndZeroPad,
             AgentToModuleMapping,
             BatchIndividualItems,
             EnvToModulePipeline,
@@ -1016,7 +1017,9 @@ class AlgorithmConfig(_Config):
         if self.add_default_connectors_to_env_to_module_pipeline:
             # Append OBS handling.
             pipeline.append(AddObservationsFromEpisodesToBatch())
-            # Append STATE_IN/STATE_OUT (and time-rank) handler.
+            # Append time-rank handler.
+            pipeline.append(AddTimeDimToBatchAndZeroPad())
+            # Append STATE_IN/STATE_OUT handler.
             pipeline.append(AddStatesFromEpisodesToBatch())
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
             if self.is_multi_agent:
@@ -1138,6 +1141,7 @@ class AlgorithmConfig(_Config):
             AddColumnsFromEpisodesToTrainBatch,
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
+            AddTimeDimToBatchAndZeroPad,
             AgentToModuleMapping,
             BatchIndividualItems,
             LearnerConnectorPipeline,
@@ -1182,7 +1186,9 @@ class AlgorithmConfig(_Config):
             )
             # Append all other columns handling.
             pipeline.append(AddColumnsFromEpisodesToTrainBatch())
-            # Append STATE_IN/STATE_OUT (and time-rank) handler.
+            # Append time-rank handler.
+            pipeline.append(AddTimeDimToBatchAndZeroPad(as_learner_connector=True))
+            # Append STATE_IN/STATE_OUT handler.
             pipeline.append(AddStatesFromEpisodesToBatch(as_learner_connector=True))
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
             if self.is_multi_agent:
