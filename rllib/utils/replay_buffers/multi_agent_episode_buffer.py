@@ -14,7 +14,6 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     override,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import AgentID, ModuleID, SampleBatchType

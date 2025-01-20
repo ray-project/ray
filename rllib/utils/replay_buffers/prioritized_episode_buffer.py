@@ -13,15 +13,9 @@ from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     override,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
-from ray.rllib.utils.metrics import (
-    NUM_AGENT_RESAMPLES,
-    NUM_MODULE_RESAMPLES,
-    NUM_RESAMPLES,
 )
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
-from ray.rllib.utils.typing import AgentID, ModuleID, SampleBatchType
+from ray.rllib.utils.typing import ModuleID, SampleBatchType
 
 
 class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
