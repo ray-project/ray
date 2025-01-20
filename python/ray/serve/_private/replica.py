@@ -1026,12 +1026,12 @@ class UserMethodInfo:
     takes_grpc_context_kwarg: bool
 
     @classmethod
-    def from_callable(cls, c: Callable) -> "UserMethodInfo":
+    def from_callable(cls, c: Callable, *, is_asgi_app: bool) -> "UserMethodInfo":
         params = inspect.signature(c).parameters
         return cls(
             callable=c,
             name=c.__name__,
-            is_asgi_app=isinstance(c, ASGIAppReplicaWrapper),
+            is_asgi_app=is_asgi_app,
             takes_any_args=len(params) > 0,
             takes_grpc_context_kwarg=GRPC_CONTEXT_ARG_NAME in params,
         )
@@ -1138,7 +1138,9 @@ class UserCallableWrapper:
                 f"{methods}."
             )
 
-        info = UserMethodInfo.from_callable(callable)
+        info = UserMethodInfo.from_callable(
+            callable, is_asgi_app=isinstance(self._callable, ASGIAppReplicaWrapper),
+        )
         self._cached_user_method_info[method_name] = info
         return info
 
