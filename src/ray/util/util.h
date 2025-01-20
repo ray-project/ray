@@ -37,6 +37,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <string>
@@ -45,6 +46,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/random/random.h"
+#include "ray/util/exponential_backoff.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/process.h"
@@ -324,48 +326,6 @@ class ThreadPrivate {
   mutable ThreadChecker thread_checker_;
 };
 
-class ExponentialBackOff {
- public:
-  ExponentialBackOff() = default;
-  ExponentialBackOff(const ExponentialBackOff &) = default;
-  ExponentialBackOff(ExponentialBackOff &&) = default;
-  ExponentialBackOff &operator=(const ExponentialBackOff &) = default;
-  ExponentialBackOff &operator=(ExponentialBackOff &&) = default;
-
-  /// Construct an exponential back off counter.
-  ///
-  /// \param[in] initial_value The start value for this counter
-  /// \param[in] multiplier The multiplier for this counter.
-  /// \param[in] max_value The maximum value for this counter. By default it's
-  ///    infinite double.
-  ExponentialBackOff(uint64_t initial_value,
-                     double multiplier,
-                     uint64_t max_value = std::numeric_limits<uint64_t>::max())
-      : curr_value_(initial_value),
-        initial_value_(initial_value),
-        max_value_(max_value),
-        multiplier_(multiplier) {
-    RAY_CHECK(multiplier > 0.0) << "Multiplier must be greater than 0";
-  }
-
-  uint64_t Next() {
-    auto ret = curr_value_;
-    curr_value_ = curr_value_ * multiplier_;
-    curr_value_ = std::min(curr_value_, max_value_);
-    return ret;
-  }
-
-  uint64_t Current() { return curr_value_; }
-
-  void Reset() { curr_value_ = initial_value_; }
-
- private:
-  uint64_t curr_value_;
-  uint64_t initial_value_;
-  uint64_t max_value_;
-  double multiplier_;
-};
-
 /// Return true if the raylet is failed. This util function is only meant to be used by
 /// core worker modules.
 bool IsRayletFailed(const std::string &raylet_pid);
@@ -377,5 +337,10 @@ void QuickExit();
 /// \param precision the precision to format the value to
 /// \return the foramtted value
 std::string FormatFloat(float value, int32_t precision);
+
+/// Converts a timeout in milliseconds to a timeout point.
+/// \param[in] timeout_ms The timeout in milliseconds.
+/// \return The timeout point, or std::nullopt if timeout_ms is -1.
+std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms);
 
 }  // namespace ray

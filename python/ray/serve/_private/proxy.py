@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import json
 import logging
 import os
@@ -19,7 +20,6 @@ from starlette.types import Receive
 
 import ray
 from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import (
     DeploymentID,
@@ -33,14 +33,16 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
+    RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_PROXY_GC_THRESHOLD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import add_grpc_address, get_proxy_handle
-from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
+from ray.serve._private.grpc_util import DummyServicer, gRPCGenericServer
 from ray.serve._private.http_util import (
     MessageQueue,
     convert_object_to_asgi_messages,
@@ -74,7 +76,7 @@ from ray.serve._private.utils import (
     get_head_node_id,
 )
 from ray.serve.config import gRPCOptions
-from ray.serve.exceptions import BackPressureError
+from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
 from ray.serve.handle import DeploymentHandle
@@ -454,7 +456,7 @@ class GenericProxy(ABC):
 
         latency_ms = (time.time() - start_time) * 1000.0
         if response_handler_info.should_record_access_log:
-            request_context = ray.serve.context._serve_request_context.get()
+            request_context = ray.serve.context._get_serve_request_context()
             logger.info(
                 access_log_msg(
                     method=proxy_request.method,
@@ -706,9 +708,8 @@ class gRPCProxy(GenericProxy):
         proxy_request: ProxyRequest,
         app_is_cross_language: bool = False,
     ) -> ResponseGenerator:
-        handle_arg = proxy_request.request_object()
         response_generator = ProxyResponseGenerator(
-            handle.remote(handle_arg),
+            handle.remote(proxy_request.serialized_replica_arg()),
             timeout_s=self.request_timeout_s,
         )
 
@@ -765,8 +766,8 @@ class HTTPProxy(GenericProxy):
         node_ip_address: str,
         is_head: bool,
         proxy_router: ProxyRouter,
+        self_actor_name: str,
         request_timeout_s: Optional[float] = None,
-        proxy_actor: Optional[ActorHandle] = None,
     ):
         super().__init__(
             node_id,
@@ -775,7 +776,7 @@ class HTTPProxy(GenericProxy):
             proxy_router,
             request_timeout_s=request_timeout_s,
         )
-        self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
+        self.self_actor_name = self_actor_name
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
 
     @property
@@ -948,13 +949,12 @@ class HTTPProxy(GenericProxy):
         the status code.
         """
         if app_is_cross_language:
-            handle_arg = await self._format_handle_arg_for_java(proxy_request)
+            handle_arg_bytes = await self._format_handle_arg_for_java(proxy_request)
             # Response is returned as raw bytes, convert it to ASGI messages.
             result_callback = convert_object_to_asgi_messages
         else:
-            self_actor_handle = self.self_actor_handle
-            handle_arg = proxy_request.request_object(
-                receive_asgi_messages=self_actor_handle.receive_asgi_messages.remote
+            handle_arg_bytes = proxy_request.serialized_replica_arg(
+                proxy_actor_name=self.self_actor_name,
             )
             # Messages are returned as pickled dictionaries.
             result_callback = pickle.loads
@@ -969,7 +969,7 @@ class HTTPProxy(GenericProxy):
         )
 
         response_generator = ProxyResponseGenerator(
-            handle.remote(handle_arg),
+            handle.remote(handle_arg_bytes),
             timeout_s=self.request_timeout_s,
             disconnected_task=proxy_asgi_receive_task,
             result_callback=result_callback,
@@ -1049,7 +1049,7 @@ class HTTPProxy(GenericProxy):
             logger.info(
                 f"Client for request {request_id} disconnected, cancelling request."
             )
-        except BackPressureError as e:
+        except (BackPressureError, DeploymentUnavailableError) as e:
             status_code = 503
             status = ResponseStatus(
                 code=status_code,
@@ -1218,6 +1218,7 @@ class ProxyActor:
             node_id=node_id,
             node_ip_address=node_ip_address,
             is_head=is_head,
+            self_actor_name=ray.get_runtime_context().get_actor_name(),
             proxy_router=self.proxy_router,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
@@ -1264,6 +1265,8 @@ class ProxyActor:
         self.running_task_grpc = get_or_create_event_loop().create_task(
             self.run_grpc_server()
         )
+
+        _configure_gc_options()
 
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.proxy_router.update_routes(endpoints)
@@ -1402,7 +1405,7 @@ class ProxyActor:
         if not self.should_start_grpc_service():
             return self.grpc_setup_complete.set()
 
-        grpc_server = create_serve_grpc_server(
+        grpc_server = gRPCGenericServer(
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
 
@@ -1458,6 +1461,10 @@ class ProxyActor:
         Make sure the async event loop is not blocked.
         """
         logger.debug("Received health check.", extra={"log_to_stderr": False})
+
+    def pong(self):
+        """Called by the replica to initialize its handle to the proxy."""
+        pass
 
     async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
         """Get ASGI messages for the provided `request_metadata`.
@@ -1517,3 +1524,15 @@ def _determine_target_loop():
         return "asyncio"
     else:
         return "uvloop"
+
+
+def _configure_gc_options():
+    if not RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS:
+        return
+
+    # Collect any objects that exist already and exclude them from future GC.
+    gc.collect(2)
+    gc.freeze()
+
+    # Tune the GC threshold to run less frequently (default is 700).
+    gc.set_threshold(RAY_SERVE_PROXY_GC_THRESHOLD)

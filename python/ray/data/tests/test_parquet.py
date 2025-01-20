@@ -1425,6 +1425,25 @@ def test_seed_file_shuffle(restore_data_context, tmp_path):
     assert ds1.take_all() == ds2.take_all()
 
 
+def test_read_null_data_in_first_file(tmp_path, ray_start_regular_shared):
+    # The `read_parquet` implementation might infer the schema from the first file.
+    # This test ensures that implementation handles the case where the first file has no
+    # data and the inferred type is `null`.
+    pq.write_table(pa.Table.from_pydict({"data": [None, None, None]}), tmp_path / "1")
+    pq.write_table(pa.Table.from_pydict({"data": ["spam", "ham"]}), tmp_path / "2")
+
+    ds = ray.data.read_parquet(tmp_path)
+
+    rows = sorted(ds.take_all(), key=lambda row: row["data"] or "")
+    assert rows == [
+        {"data": None},
+        {"data": None},
+        {"data": None},
+        {"data": "ham"},
+        {"data": "spam"},
+    ]
+
+
 if __name__ == "__main__":
     import sys
 
