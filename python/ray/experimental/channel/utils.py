@@ -41,3 +41,32 @@ def split_readers_by_locality(
             local_readers.append((reader, node))
 
     return remote_readers, local_readers
+
+
+def split_readers_by_node_locality(
+    writer_node: str,
+    reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+) -> Tuple[
+    List[Tuple["ray.actor.ActorHandle", str]], List[Tuple["ray.actor.ActorHandle", str]]
+]:
+    """Split readers into remote and local readers based on writer.
+
+    Args:
+        writer_node: The node of the writer
+        reader_and_node_list: List of (reader, node) tuples
+
+    Returns:
+        Tuple containing:
+            - List of (reader, node) tuples for readers on the same node
+            - List of (reader, node) tuples for readers on a different node
+    """
+    readers_on_same_node = []
+    readers_on_different_node = []
+
+    for reader, node in reader_and_node_list:
+        if node == writer_node:
+            readers_on_same_node.append((reader, node))
+        else:
+            readers_on_different_node.append((reader, node))
+
+    return readers_on_same_node, readers_on_different_node
