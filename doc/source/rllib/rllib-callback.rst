@@ -298,11 +298,10 @@ computing the average "first-joint angle" of the
 
 This example utilizes RLlib's :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`
 API to log the custom computations of the injected code of the Algorithm's main results system.
+Read :ref:`more about the MetricsLogger API here <rllib-metric-logger-docs>`__.
 
-.. todo: uncomment this once metrics-logger.rst page is online.
-   Read :ref:`more about the MetricsLogger API here <rllib-metric-logger-doc>`__ or also ...
-
-See this more complex example that `generates and logs a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
+Also, see this more complex example that
+`generates and logs a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
 
 .. testcode::
 

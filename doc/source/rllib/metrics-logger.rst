@@ -1,6 +1,6 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. _rllib-metric-logger-doc:
+.. _rllib-metric-logger-docs:
 
 MetricsLogger API
 ==================
