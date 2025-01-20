@@ -1139,7 +1139,8 @@ class UserCallableWrapper:
             )
 
         info = UserMethodInfo.from_callable(
-            callable, is_asgi_app=isinstance(self._callable, ASGIAppReplicaWrapper),
+            callable,
+            is_asgi_app=isinstance(self._callable, ASGIAppReplicaWrapper),
         )
         self._cached_user_method_info[method_name] = info
         return info
