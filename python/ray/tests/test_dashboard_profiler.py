@@ -259,9 +259,7 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     assert "Failed to execute" in content, content
 
     # Check wrong node id failure
-    response = requests.get(
-        f"{webui_url}/memory_profile?ip=1234567&pid=1234567&node_id=1234567"
-    )
+    response = requests.get(f"{webui_url}/memory_profile?pid=1234567&node_id=1234567")
     content = response.content.decode("utf-8")
     print(content)
     assert (
