@@ -332,7 +332,7 @@ html_theme_options = {
     "pygment_dark_style": "stata-dark",
     "switcher": {
         "json_url": "https://antgroup.github.io/ant-ray/versions.json",
-        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
+        "version_match": os.getenv("READTHEDOCS_VERSION", "main"),
     },
 }
 

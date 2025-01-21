@@ -38,22 +38,22 @@ Or more about `Ray Core`_ and its key abstractions:
 
 Learn more about Monitoring and Debugging:
 
-- Monitor Ray apps and clusters with the `Ray Dashboard <https://docs.ray.io/en/latest/ray-core/ray-dashboard.html>`__.
-- Debug Ray apps with the `Ray Distributed Debugger <https://docs.ray.io/en/latest/ray-observability/ray-distributed-debugger.html>`__.
+- Monitor Ray apps and clusters with the `Ray Dashboard <https://antgroup.github.io/ant-ray/ray-core/ray-dashboard.html>`__.
+- Debug Ray apps with the `Ray Distributed Debugger <https://antgroup.github.io/ant-ray/ray-observability/ray-distributed-debugger.html>`__.
 
 Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 `ecosystem of community integrations`_.
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
-`Installation page <https://docs.ray.io/en/latest/ray-overview/installation.html>`__.
+`Installation page <https://antgroup.github.io/ant-ray/ray-overview/installation.html>`__.
 
-.. _`Serve`: https://docs.ray.io/en/latest/serve/index.html
-.. _`Data`: https://docs.ray.io/en/latest/data/dataset.html
-.. _`Workflow`: https://docs.ray.io/en/latest/workflows/concepts.html
-.. _`Train`: https://docs.ray.io/en/latest/train/train.html
-.. _`Tune`: https://docs.ray.io/en/latest/tune/index.html
-.. _`RLlib`: https://docs.ray.io/en/latest/rllib/index.html
-.. _`ecosystem of community integrations`: https://docs.ray.io/en/latest/ray-overview/ray-libraries.html
+.. _`Serve`: https://antgroup.github.io/ant-ray/serve/index.html
+.. _`Data`: https://antgroup.github.io/ant-ray/data/dataset.html
+.. _`Workflow`: https://antgroup.github.io/ant-ray/workflows/concepts.html
+.. _`Train`: https://antgroup.github.io/ant-ray/train/train.html
+.. _`Tune`: https://antgroup.github.io/ant-ray/tune/index.html
+.. _`RLlib`: https://antgroup.github.io/ant-ray/rllib/index.html
+.. _`ecosystem of community integrations`: https://antgroup.github.io/ant-ray/ray-overview/ray-libraries.html
 
 
 Why Ray?
@@ -81,12 +81,12 @@ More Information
 - `Ray HotOS paper`_
 - `Ray Architecture v1 whitepaper`_
 
-.. _`Ray AI Libraries`: https://docs.ray.io/en/latest/ray-air/getting-started.html
-.. _`Ray Core`: https://docs.ray.io/en/latest/ray-core/walkthrough.html
-.. _`Tasks`: https://docs.ray.io/en/latest/ray-core/tasks.html
-.. _`Actors`: https://docs.ray.io/en/latest/ray-core/actors.html
-.. _`Objects`: https://docs.ray.io/en/latest/ray-core/objects.html
-.. _`Documentation`: http://docs.ray.io/en/latest/index.html
+.. _`Ray AI Libraries`: https://antgroup.github.io/ant-ray/ray-air/getting-started.html
+.. _`Ray Core`: https://antgroup.github.io/ant-ray/ray-core/walkthrough.html
+.. _`Tasks`: https://antgroup.github.io/ant-ray/ray-core/tasks.html
+.. _`Actors`: https://antgroup.github.io/ant-ray/ray-core/actors.html
+.. _`Objects`: https://antgroup.github.io/ant-ray/ray-core/objects.html
+.. _`Documentation`: http://antgroup.github.io/ant-ray/index.html
 .. _`Ray Architecture v1 whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray Architecture whitepaper`: https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview
 .. _`Exoshuffle: large-scale data shuffle in Ray`: https://arxiv.org/abs/2203.05072
