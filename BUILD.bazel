@@ -589,6 +589,7 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:size_literals",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -786,6 +787,7 @@ ray_cc_library(
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:shared_lru",
         "@boost//:circular_buffer",
         "@boost//:fiber",
         "@com_google_absl//absl/cleanup",

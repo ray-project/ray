@@ -29,7 +29,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "nlohmann/json.hpp"
 #include "ray/util/logging.h"
-#include "ray/util/util.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"

@@ -24,6 +24,7 @@
 #include <thread>
 
 #include "absl/strings/str_split.h"
+#include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
