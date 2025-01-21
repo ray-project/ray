@@ -17,8 +17,6 @@
 #include "ray/util/logging.h"
 #include "ray/util/string_utils.h"
 
-namespace ray {
-
 namespace {
 
 /// Python analog: shlex.join(args)
@@ -29,7 +27,7 @@ std::string CreatePosixCommandLine(const std::vector<std::string> &args) {
   for (size_t a = 0; a != args.size(); ++a) {
     std::string arg = args[a], arg_with_null = arg + '\0';
     std::string::const_iterator i = arg_with_null.begin();
-    if (ScanToken(i, safe_chars) != arg) {
+    if (ray::ScanToken(i, safe_chars) != arg) {
       // Prefer single-quotes. Double-quotes have unpredictable behavior, e.g. for "\!".
       std::string quoted;
       quoted += single_quote;
@@ -131,13 +129,13 @@ static std::vector<std::string> ParseWindowsCommandLine(const std::string &s) {
   std::string arg, c_str = s + '\0';
   std::string::const_iterator i = c_str.begin(), j = c_str.end() - 1;
   for (bool stop = false, in_dquotes = false; !stop;) {
-    if (!in_dquotes && (i >= j || ScanToken(i, "%*[ \t]").size())) {
+    if (!in_dquotes && (i >= j || ray::ScanToken(i, "%*[ \t]").size())) {
       result.push_back(arg);
       arg.clear();
     }
     stop |= i >= j && !in_dquotes;
-    arg += ScanToken(i, in_dquotes ? "%*[^\\\"]" : "%*[^\\\" \t]");
-    std::string possible_escape = ScanToken(i, "%*[\\]");
+    arg += ray::ScanToken(i, in_dquotes ? "%*[^\\\"]" : "%*[^\\\" \t]");
+    std::string possible_escape = ray::ScanToken(i, "%*[\\]");
     bool escaping = possible_escape.size() % 2 != 0;
     if (*i == '\"') {
       possible_escape.erase(possible_escape.size() / 2);
@@ -158,7 +156,7 @@ static std::string CreateWindowsCommandLine(const std::vector<std::string> &args
   for (size_t a = 0; a != args.size(); ++a) {
     std::string arg = args[a], arg_with_null = arg + '\0';
     std::string::const_iterator i = arg_with_null.begin();
-    if (ScanToken(i, safe_chars) != arg) {
+    if (ray::ScanToken(i, safe_chars) != arg) {
       // Escape only backslashes that precede double-quotes
       std::string quoted;
       quoted += double_quote;
@@ -231,5 +229,3 @@ std::string CreateCommandLine(const std::vector<std::string> &args,
   }
   return result;
 }
-
-}  // namespace ray

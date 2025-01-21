@@ -16,8 +16,6 @@
 
 #include <gtest/gtest.h>
 
-namespace ray {
-
 namespace {
 
 const char *argv0 = nullptr;
@@ -128,8 +126,6 @@ TEST(UtilTest, CreateCommandLineTest) {
 }
 
 }  // namespace
-
-}  // namespace ray
 
 int main(int argc, char **argv) {
   ray::argv0 = argv[0];
