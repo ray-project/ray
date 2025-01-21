@@ -14,11 +14,16 @@ import numpy as np
 import pytest
 
 import ray
-from ray import cloudpickle, train, tune
+from ray import cloudpickle, tune
 from ray._private.test_utils import object_memory_usage
-from ray.air.config import CheckpointConfig, FailureConfig, RunConfig
-from ray.tune import Checkpoint
-from ray.tune import Callback, Trainable
+from ray.tune import (
+    Callback,
+    Trainable,
+    Checkpoint,
+    CheckpointConfig,
+    FailureConfig,
+    RunConfig,
+)
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.schedulers.pb2 import PB2
