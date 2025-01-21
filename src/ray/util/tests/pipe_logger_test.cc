@@ -37,9 +37,7 @@ class PipeLoggerTest : public ::testing::TestWithParam<size_t> {};
 
 TEST_P(PipeLoggerTest, NoPipeWrite) {
   const size_t pipe_buffer_size = GetParam();
-  setenv(kPipeLogReadBufSizeEnv.data(),
-         absl::StrFormat("%d", pipe_buffer_size).data(),
-         /*overwrite=*/1);
+  setEnv(kPipeLogReadBufSizeEnv.data(), absl::StrFormat("%d", pipe_buffer_size));
 
   // TODO(core): We should have a better test util, which allows us to create a temporary
   // testing directory.
@@ -67,9 +65,7 @@ TEST_P(PipeLoggerTest, NoPipeWrite) {
 
 TEST_P(PipeLoggerTest, PipeWrite) {
   const size_t pipe_buffer_size = GetParam();
-  setenv(kPipeLogReadBufSizeEnv.data(),
-         absl::StrFormat("%d", pipe_buffer_size).data(),
-         /*overwrite=*/1);
+  setEnv(kPipeLogReadBufSizeEnv.data(), absl::StrFormat("%d", pipe_buffer_size));
 
   // TODO(core): We should have a better test util, which allows us to create a temporary
   // testing directory.
