@@ -35,12 +35,14 @@ jobs:
           pip install -r requirements-doc.txt
           pip install -r ../python/requirements.txt
 
-      - name: Build documentation
-        run: make develop
-
       - name: Get branch name
         id: get-branch
         run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build documentation
+        env:
+          READTHEDOCS_VERSION: ${{ steps.get-branch.outputs.branch }}
+        run: make develop
 
       - name: Prepare deployment directory
         run: |
