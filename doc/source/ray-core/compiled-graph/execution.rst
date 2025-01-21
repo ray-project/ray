@@ -53,7 +53,7 @@ following code as an example:
             except ray.exceptions.RayActorError:
                 pass
 
-    # Optionally, use the live actors to create a new Compiled Graph..
+    # Optionally, use the live actors to create a new Compiled Graph.
     assert live_actors == actors[1:]
 
 Timeouts
