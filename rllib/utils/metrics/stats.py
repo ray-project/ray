@@ -137,7 +137,6 @@ class Stats:
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         on_exit: Optional[Callable] = None,
-        throughput: Union[bool, float] = False,
     ):
         """Initializes a Stats instance.
 
@@ -175,13 +174,6 @@ class Stats:
                 to True is useful for cases, in which the internal values list would
                 otherwise grow indefinitely, for example if reduce is None and there
                 is no `window` provided.
-            with_throughput: Whether to track a throughput estimate together with this
-                Stats. This is only supported for `reduce=sum` and
-                `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
-                then keeps track of the time passed between two consecutive calls to
-                `reduce()` and update its throughput estimate. The current throughput
-                estimate of a key can be obtained through:
-                `Stats.peek([some key], throughput=True)`.
         """
         # Thus far, we only support mean, max, min, and sum.
         if reduce not in [None, "mean", "min", "max", "sum"]:
@@ -647,8 +639,8 @@ class Stats:
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
-            throughput=other._throughput,
         )
+        stats._throughput = other._throughput
         stats._hist = other._hist
         return stats
 
