@@ -2671,6 +2671,14 @@ py_test(
 # ....................................
 
 py_test(
+    name = "examples/metrics/custom_metrics_in_algorithm_training_step",
+    main = "examples/metrics/custom_metrics_in_algorithm_training_step.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    srcs = ["examples/metrics/custom_metrics_in_algorithm_training_step.py"],
+    args = ["--enable-new-api-stack"]
+)
+py_test(
     name = "examples/metrics/custom_metrics_in_env_runners",
     main = "examples/metrics/custom_metrics_in_env_runners.py",
     tags = ["team:rllib", "exclusive", "examples"],
