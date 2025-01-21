@@ -556,10 +556,7 @@ def test_grpc_unary_request(run_sync_methods_in_threadpool: bool):
     )
     user_callable_wrapper.initialize_callable().result()
 
-    grpc_request = gRPCRequest(
-        pickle.dumps(serve_pb2.UserDefinedResponse(greeting="world"))
-    )
-
+    grpc_request = gRPCRequest(serve_pb2.UserDefinedResponse(greeting="world"))
     request_metadata = _make_request_metadata(call_method="greet", is_grpc_request=True)
     _, result_bytes = user_callable_wrapper.call_user_method(
         request_metadata, (grpc_request,), dict()
@@ -579,9 +576,7 @@ def test_grpc_streaming_request(run_sync_methods_in_threadpool: bool):
     )
     user_callable_wrapper.initialize_callable()
 
-    grpc_request = gRPCRequest(
-        pickle.dumps(serve_pb2.UserDefinedResponse(greeting="world"))
-    )
+    grpc_request = gRPCRequest(serve_pb2.UserDefinedResponse(greeting="world"))
 
     result_list = []
 
