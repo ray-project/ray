@@ -43,6 +43,8 @@ from ray.autoscaler.tags import (
 )
 from ray.core.generated.common_pb2 import PlacementStrategy
 
+import random
+
 logger = logging.getLogger(__name__)
 
 # The minimum number of nodes to launch concurrently.
@@ -786,8 +788,8 @@ def get_nodes_for(
                 )
             break
 
-        utilization_scores = sorted(utilization_scores, reverse=True)
-        best_node_type = utilization_scores[0][1]
+        weights = [node_types[node_type[1]].get("max_workers", 0) for node_type in utilization_scores]
+        best_node_type = random.choices(utilization_scores, weights=weights, k=1)[0][1]
         nodes_to_add[best_node_type] += 1
         if strict_spread:
             resources = resources[1:]
