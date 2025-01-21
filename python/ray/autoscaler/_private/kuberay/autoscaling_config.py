@@ -416,9 +416,6 @@ def _get_custom_resources(
         return {}
     resources_string = ray_start_params["resources"]
     try:
-        # Drop the extra pair of quotes and remove the backslash escapes.
-        # resources_json should be a json string.
-        resources_json = resources_string[1:-1].replace("\\", "")
         # Load a dict from the json string.
         resources = json.loads(resources_json)
         assert isinstance(resources, dict)
