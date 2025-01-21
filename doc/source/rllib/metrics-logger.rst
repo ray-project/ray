@@ -35,7 +35,8 @@ implementations.
 .. note::
     So far, RLlib components owning a :py:class:`~ray.rllib.utils.metrics_logger.MetricsLogger`
     instance are :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, :py:class:`~ray.rllib.env.env_runner.EnvRunner`,
-    :py:class:`~ray.rllib.core.learner.learner.Learner`, and all :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` classes.
+    :py:class:`~ray.rllib.core.learner.learner.Learner`, all :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` classes,
+    and all ``~ray.rllib.utils.replay_buffers.EpisodeReplayBuffer`` classes.
     The Ray team is considering expanding access to this API on other components as well.
 
 
@@ -44,16 +45,18 @@ Features of MetricsLogger
 
 The :py:class:`~ray.rllib.utils.metrics_logger.MetricsLogger` API offers the following features:
 
-- Users can log scalar values over time, such as losses or rewards.
-- Thereby, users can configure different reduction types, in particular ``mean``, ``min``, ``max``, ``sum``, or ``None``.
-- Users can also specify sliding windows, over which these reductions take place, for example ``window=100`` to average over the
+- Log scalar values over time, such as losses or rewards.
+- Configure different reduction types, in particular ``mean``, ``min``, ``max``, or ``sum``. Also, users can chose to not
+  reduce at all through the ``reduce=None`` setting, leaving the logged values as-is inside the logger.
+  A separate ``clear_on_reduce=True`` setting allows for automatically clearing all logged values thus far on each ``reduce`` event.
+- Specify sliding windows, over which these reductions take place, for example ``window=100`` to average over the
   last 100 logged values, or specify exponential moving average (EMA) coefficients, through which the weight of older values
   in the computed mean should decay over time.
-- Users can merge ``n`` result dicts from ``n`` parallel subcomponents into the local :py:class:`~ray.rllib.utils.metrics_logger.MetricsLogger`.
+- Merge ``n`` result dicts from ``n`` parallel subcomponents into the local :py:class:`~ray.rllib.utils.metrics_logger.MetricsLogger`.
   Each of these ``n`` dicts is the result of a "reduce" operation on each subcomponent's own :py:class:`~ray.rllib.utils.metrics_logger.MetricsLogger`
   instance.
-- Users can Log execution times for distinct code blocks through convenient ``with ...`` blocks.
-- Users can add up lifetime counts and automatically compute the corresponding throughput metrics per second along the way.
+- Log execution times for distinct code blocks through convenient ``with ...`` blocks.
+- Add up lifetime counts and automatically compute the corresponding throughput metrics per second along the way.
 
 
 Built-in usages of MetricsLogger
@@ -214,7 +217,6 @@ in terms of the ``reduce``, ``clear_on_reduce``, ``window``, etc arguments, you 
 
     print(logger.peek(("mean_scores", "player1")))  # <- expect 125.0
 
-
 Logging non-scalar data
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -239,11 +241,8 @@ log three consecutive image frames from a ``CartPole`` environment, do the follo
     env.step(1)
     logger.log_value("some_images", value=env.render())
 
-
-
-
-Timing things
-~~~~~~~~~~~~~
+Timers
+~~~~~~
 
 :py:class:`~ray.rllib.utils.metrics_logger.MetricsLogger` is context capable and offers the following
 simple API to log timer results.
@@ -270,11 +269,17 @@ Notice that you can now time all your code blocks of interest inside your custom
     # EMA should be ~1.1sec.
     assert 1.15 > logger.peek("my_block_to_be_timed") > 1.05
 
-Also note that the default logging behavior is through exponential mean averaging (EMA), with a default coefficient of 0.01.
-This default is usually a good choice for averaging timer results over the course of the experiment.
+.. note::
+    The default logging behavior is through exponential mean averaging (EMA), with a default coefficient of 0.01.
+    This default is usually a good choice for averaging timer results over the course of the experiment.
 
-Counting things
-~~~~~~~~~~~~~~~
+    .. TODO: add this paragraph once we properly support lifetime simple average:
+      If instead you want to reduce through averaging all logged values over the lifetime,
+     use `with logger.log_time([some key], reduce="mean", window=float("inf"))`, instead.
+
+
+Counters
+~~~~~~~~
 
 In case you want to count things, for example the number of environment steps taken in a sample phase, and add up those
 counts either over the lifetime or over some particular phase, use the ``reduce="sum"`` argument in the call to

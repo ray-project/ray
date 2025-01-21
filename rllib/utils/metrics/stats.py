@@ -679,7 +679,7 @@ class Stats:
         if self._reduce_method is None:
             return values, values
 
-        # Special case: Internal values list is empty -> return NaN.
+        # Special case: Internal values list is empty -> return NaN or 0.0 for sum.
         elif len(values) == 0:
             if self._reduce_method in ["min", "max", "mean"]:
                 return float("nan"), []
