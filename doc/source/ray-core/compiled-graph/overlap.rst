@@ -87,7 +87,7 @@ The output of the preceding code includes the following two lines:
 
 The actual performance numbers may vary on different hardware, but enabling ``_overlap_gpu_communication`` improves latency by about 14% for this example.
 
-To verify Compiled Graph overlaps the communication and computation operations,
+To verify that Compiled Graph overlaps the communication and computation operations,
 :ref:`visualize the execution schedule <execution-schedule>` by setting the environment variable
 ``RAY_CGRAPH_VISUALIZE_SCHEDULE=1``.
 
