@@ -122,6 +122,7 @@ def exec_ray_dag(
     use_cgraph=True,
     static_shape=False,
     direct_return=False,
+    num_times_execute=1,
 ):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
@@ -140,11 +141,23 @@ def exec_ray_dag(
 
     if use_cgraph:
         dag = dag.experimental_compile()
+        if num_times_execute == 1:
 
-        def _run():
-            ref = dag.execute(b"x")
-            result = ray.get(ref)
-            assert result == b"x"
+            def _run():
+                ref = dag.execute(b"x")
+                result = ray.get(ref)
+                assert result == b"x"
+
+        else:
+
+            def _run():
+                results = []
+                for i in range(num_times_execute):
+                    if i % 2 == 0:
+                        results.push(dag.execute(b"x"))
+                    else:
+                        results.push(dag.execute(b"yyyyyyy"))
+                ray.get(results)
 
     else:
 
@@ -295,6 +308,14 @@ def exec_ray_dag_cpu(sender_hint, receiver_hint):
     sender = TorchTensorWorker.options(scheduling_strategy=sender_hint).remote()
     receiver = TorchTensorWorker.options(scheduling_strategy=receiver_hint).remote()
     return exec_ray_dag("exec_ray_dag_cpu", sender, receiver)
+
+
+def exec_ray_dag_cpu_ten_times(sender_hint, receiver_hint):
+    sender = TorchTensorWorker.options(scheduling_strategy=sender_hint).remote()
+    receiver = TorchTensorWorker.options(scheduling_strategy=receiver_hint).remote()
+    return exec_ray_dag(
+        "exec_ray_dag_cpu_ten_times", sender, receiver, num_times_execute=10
+    )
 
 
 def exec_ray_core_cpu(sender_hint, receiver_hint):
