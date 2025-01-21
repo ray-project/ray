@@ -9,6 +9,34 @@ RLlib Utilities
 
 Here is a list of all the utilities available in RLlib.
 
+MetricsLogger API
+-----------------
+
+RLlib uses the MetricsLogger API to log stats and metrics for the various components. Users can also
+
+
+For example:
+
+.. testcode::
+
+    from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+
+
+
+.. currentmodule:: ray.rllib.utils.metrics.metrics_logger
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    MetricsLogger
+    MetricsLogger.peek
+    MetricsLogger.log_value
+    MetricsLogger.log_dict
+    MetricsLogger.merge_and_log_n_dicts
+    MetricsLogger.log_time
+
+
 Scheduler API
 -------------
 

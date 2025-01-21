@@ -56,8 +56,8 @@ Algorithm API
 
 .. currentmodule:: ray.rllib.algorithms.algorithm
 
-Constructor
-~~~~~~~~~~~
+Construction and setup
+~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :nosignatures:
@@ -67,34 +67,22 @@ Constructor
     ~Algorithm.setup
     ~Algorithm.get_default_config
 
-Inference and Evaluation
-~~~~~~~~~~~~~~~~~~~~~~~~
+
+Attributes
+~~~~~~~~~~
+
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    ~Algorithm.compute_actions
-    ~Algorithm.compute_single_action
-    ~Algorithm.evaluate
-
-Saving and Restoring
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~Algorithm.from_checkpoint
-    ~Algorithm.from_state
-    ~Algorithm.get_weights
-    ~Algorithm.set_weights
-    ~Algorithm.export_model
-    ~Algorithm.export_policy_checkpoint
-    ~Algorithm.export_policy_model
-    ~Algorithm.restore
-    ~Algorithm.restore_workers
-    ~Algorithm.save
-    ~Algorithm.save_checkpoint
-
+    ~Algorithm.config
+    ~Algorithm.metrics
+    ~Algorithm.env_runner_group
+    ~Algorithm.env_runner
+    ~Algorithm.eval_env_runner_group
+    ~Algorithm.eval_env_runner
+    ~Algorithm.learner_group
+    ~Algorithm.offline_data
 
 Training
 ~~~~~~~~
@@ -105,11 +93,33 @@ Training
     ~Algorithm.train
     ~Algorithm.training_step
 
+Saving and restoring
+~~~~~~~~~~~~~~~~~~~~
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~Algorithm.save_to_path
+    ~Algorithm.restore_from_path
+    ~Algorithm.from_checkpoint
+    ~Algorithm.get_state
+    ~Algorithm.set_state
+
+
+Evaluation
+~~~~~~~~~~
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~Algorithm.evaluate
+
 Multi Agent
 ~~~~~~~~~~~
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
+    ~Algorithm.get_module
     ~Algorithm.add_policy
     ~Algorithm.remove_policy
