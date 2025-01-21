@@ -27,7 +27,7 @@ Then, download the forked files to your local computer and change into the autom
 
 .. code-block:: bash
 
-    git clone https://github.com/[your git username]/ray
+    git clone https://github.com/<your git username>/ray
     cd ray
 
 The RLlib team recommends using a python environment management tool, like `Anaconda <https://www.anaconda.com/download>`__ to easily
@@ -50,7 +50,7 @@ depending on your system and python version and run the following commands:
 
 .. code-block:: bash
 
-    pip install -U [copied link from https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies]
+    pip install -U <copied link from https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies>
 
 .. note::
     You now have installed Ray through ``pip``, however, the installed package has no connection whatsoever with the
@@ -123,6 +123,10 @@ Run the following whenever you want to continue developing on your current branc
 
     git pull upstream master
 
+
+Cleaning up and reinstalling your setup
++++++++++++++++++++++++++++++++++++++++
+
 In case you observe strange error messages that are coming from parts of the code you have not altered, you may have to clean up and reinstall
 Ray in your environment. These errors might come from Ray libraries, other than RLlib, that the Ray team has recently changed and that are now
 conflicting with either the pip-installed Ray or with RLlib's source code.
@@ -134,8 +138,8 @@ conflicting with either the pip-installed Ray or with RLlib's source code.
 .. code-block:: bash
 
     pip uninstall -y ray
-    rm -rf [your pip-installed ray directory]  # only, if it's still there for some reason after the uninstall
-    pip install -U [pick right wheel from https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies]
+    rm -rf <your pip-installed ray directory>  # only, if it's still there for some reason after the uninstall
+    pip install -U <pick right wheel from https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies>
     git stash
     python python/ray/setup-dev.py  # <- only say `Y` to linking RLlib, then press CTRL+C to abort the script
 
@@ -143,6 +147,9 @@ conflicting with either the pip-installed Ray or with RLlib's source code.
 Modifying your own RLlib branch
 -------------------------------
 
+To create a new branch
+
+You can now start coding and modifying your own against RLlib
 
 API Stability
 +++++++++++++
@@ -164,6 +171,28 @@ Contributing to RLlib and creating a pull request
 -------------------------------------------------
 
 The Ray team is grateful for any external help we can get from the open-source community in maintaining and developing RLlib.
+
+To create a pull request, branch out from ``master``, give your new branch a meaningful name:
+
+.. code-block:: bash
+
+    git checkout -b <name of your new branch>
+    git branch  # verify your new branch
+
+Then start editing RLlib's source files and run your scripts.
+When you are done coding, commit your changes and push them back to your forked repository of Ray (``origin``).
+
+.. code-block:: bash
+
+    git push -u origin <name of your new branch>
+
+Click this link here to `create a new pull request on the github website <https://github.com/ray-project/ray/pulls/>`__.
+Your pushed branch should be highlighted in yellow:
+
+.. figure:: images/developing/git_pr.png
+
+
+
 
 Contributing Fixes and Enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
