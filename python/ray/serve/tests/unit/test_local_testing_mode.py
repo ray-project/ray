@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pytest
@@ -85,6 +86,80 @@ def test_to_object_ref_error_message():
 
     # Test the inner handle case (this would raise if it failed).
     h.remote().result()
+
+
+def test_deploy_multiple_apps_batched(serve_instance):
+    @serve.deployment
+    class A:
+        def __call__(self):
+            return "a"
+
+    @serve.deployment
+    class B:
+        def __call__(self):
+            return "b"
+
+    serve.run_many(
+        [
+            serve.RunTarget(A.bind(), name="a", route_prefix="/a"),
+            serve.RunTarget(B.bind(), name="b", route_prefix="/b"),
+        ],
+        _local_testing_mode=True,
+    )
+
+    assert serve.get_app_handle("a").remote().result() == "a"
+    assert serve.get_app_handle("b").remote().result() == "b"
+
+
+def test_redeploy_multiple_apps_batched(serve_instance):
+    @serve.deployment
+    class A:
+        def __call__(self):
+            return "a", os.getpid()
+
+    @serve.deployment
+    class V1:
+        def __call__(self):
+            return "version 1", os.getpid()
+
+    @serve.deployment
+    class V2:
+        def __call__(self):
+            return "version 2", os.getpid()
+
+    serve.run_many(
+        [
+            serve.RunTarget(A.bind(), name="a", route_prefix="/a"),
+            serve.RunTarget(V1.bind(), name="v", route_prefix="/v"),
+        ],
+        _local_testing_mode=True,
+    )
+
+    a1, pida1 = serve.get_app_handle("a").remote().result()
+
+    assert a1 == "a"
+
+    v1, pid1 = serve.get_app_handle("v").remote().result()
+
+    assert v1 == "version 1"
+
+    serve.run_many(
+        [
+            serve.RunTarget(V2.bind(), name="v", route_prefix="/v"),
+        ],
+        _local_testing_mode=True,
+    )
+
+    v2, pid2 = serve.get_app_handle("v").remote().result()
+
+    assert v2 == "version 2"
+    assert pid1 == pid2  # because local testing mode, so it's all in-process
+
+    # Redeploying "v" should not have affected "a"
+    a2, pida2 = serve.get_app_handle("a").remote().result()
+
+    assert a1 == a2
+    assert pida1 == pida2
 
 
 if __name__ == "__main__":
