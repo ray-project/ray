@@ -8,20 +8,20 @@ Developing with RLlib and debugging
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-This page teaches you how to set up Ray RLlib for development. It walks you through cloning your own github fork,
+This page teaches you how to set up Ray RLlib for development. It walks you through cloning your own GitHub fork,
 installing Ray, setting up RLlib so you can modify and customize your own code, creating a pull request (PR),
 debugging RLlib code, and clearing and re-installing Ray and RLlib in case of problems with your installation or setup.
 
 Forking the git repository
 --------------------------
 
-First, create your own repository fork using your github account.
+First, create your own repository fork using your GitHub account.
 
 .. figure:: images/developing/git_fork.png
     :align: left
 
     Click on the "fork" button to create your own Ray repository fork under your git username.
-    You have to create a git account first in order to do so.
+    To do so, you have to create a git account first.
 
 Then, download the forked files to your local computer and change into the automatically created ``ray`` directory.
 
@@ -78,7 +78,7 @@ You can develop RLlib and edit its source files locally without compiling Ray th
 Enter `Y` on the prompt, then abort the script through pressing ``CTRL + C`` repeatedly until you return to the command prompt.
 
 This sets up symbolic links between the ``ray/rllib`` dir of your local git clone and the respective directory bundled with the pip-installed ``ray`` package.
-This way, every change you make in the source files in your local git clone will immediately be reflected in your installed ``ray`` as well.
+This way, every change you make in the source files in your local git clone is immediately reflected in your installed ``ray`` as well.
 
 .. note::
     If you have installed ray from source using `these instructions here <https://docs.ray.io/en/master/ray-overview/installation.html>`__,
@@ -87,7 +87,7 @@ This way, every change you make in the source files in your local git clone will
 Testing your installation
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Run a quick check on whether the above pip-installation and git repository symbolic linking  was successful:
+Run a quick check on whether the preceding pip-installation and git repository symbolic linking  was successful:
 
 .. code-block:: bash
 
@@ -97,7 +97,7 @@ Run a quick check on whether the above pip-installation and git repository symbo
     >>> ppo = PPOConfig().environment("CartPole-v1").build()
     >>> ppo.train()
 
-The above should result in a large print out of training results in your console.
+The call to ``train()`` should result in a large print out of training results in your console.
 
 Keeping your master-branch and installation up to date
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -115,7 +115,7 @@ The Ray team recommends to set up your own Ray fork on your local computer as ``
     git fetch
 
 From time to time you should pull from the Ray team's `master branch <https://github.com/ray-project/ray>`__, no matter, which
-PR or branch you are currently developing in. The Ray repository moves very fast and several dozen changes may be merged into it every day:
+PR or branch you are currently developing in. The Ray repository moves very fast and the team may merge several dozen changes into it every day:
 
 Run the following whenever you want to continue developing on your current branch or PR:
 
@@ -127,13 +127,13 @@ Run the following whenever you want to continue developing on your current branc
 Cleaning up and reinstalling your setup
 +++++++++++++++++++++++++++++++++++++++
 
-In case you observe strange error messages that are coming from parts of the code you have not altered, you may have to clean up and reinstall
+In case you observe strange error messages that are coming from parts of the code you haven't altered, you may have to clean up and reinstall
 Ray in your environment. These errors might come from Ray libraries, other than RLlib, that the Ray team has recently changed and that are now
 conflicting with either the pip-installed Ray or with RLlib's source code.
 
 .. warning::
     Before you perform the following steps, make sure you have everything committed and pushed to git. Your local branch should be free
-    of any uncommitted changes!
+    of any uncommitted changes.
 
 .. code-block:: bash
 
@@ -170,7 +170,8 @@ API compatibility guarantees:
 Contributing to RLlib and creating a pull request
 -------------------------------------------------
 
-The Ray team is grateful for any external help we can get from the open-source community in maintaining and developing RLlib.
+The Ray team is grateful for any external help we can get from the open source community in maintaining and developing RLlib.
+Feel free to file new RLlib-related PRs through `Ray's github repo <https://github.com/ray-project/ray/pulls>`__.
 
 To create a pull request, branch out from ``master``, give your new branch a meaningful name:
 
@@ -180,25 +181,25 @@ To create a pull request, branch out from ``master``, give your new branch a mea
     git branch  # verify your new branch
 
 Then start editing RLlib's source files and run your scripts.
-When you are done coding, commit your changes and push them back to your forked repository of Ray (``origin``).
+When you have finished coding, commit your changes and push them back to your forked ``origin`` repository of Ray.
 
 .. code-block:: bash
 
     git push -u origin <name of your new branch>
 
 Click this link here to `create a new pull request on the github website <https://github.com/ray-project/ray/pulls/>`__.
-Your pushed branch should be highlighted in yellow:
+The pushed branch should be highlighted in yellow:
 
 .. figure:: images/developing/git_pr.png
+    :align: left
 
-
-
+    Click on the "Compare and pull request" button to start the pull request (PR) process.
+    Fill out the form on the next page and submit your PR for review by the Ray team.
 
 Contributing Fixes and Enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Feel free to file new RLlib-related PRs through `Ray's github repo <https://github.com/ray-project/ray/pulls>`__.
-If you are unsure about how to structure your bug-fix or enhancement-PRs, create a small PR first,
+If you are unsure about how to structure your bug-fix or enhancement PRs, create a smaller PR first,
 then ask questions to the team within its conversation section.
 
 See here for an `example of a good first community PR <https://github.com/ray-project/ray/pull/46317>`__.
@@ -206,30 +207,30 @@ See here for an `example of a good first community PR <https://github.com/ray-pr
 New Features
 ++++++++++++
 
-New feature developments, discussions, and upcoming priorities are tracked on the
-`GitHub issues page <https://github.com/ray-project/ray/issues>`__ (note that this may not include all development efforts).
+The Ray team tracks new feature developments, discussions, and upcoming priorities on the
+`GitHub issues page <https://github.com/ray-project/ray/issues>`__.
+Note that this may not include all development efforts.
 
 Contributing Algorithms
 +++++++++++++++++++++++
 
-These are the guidelines for merging new algorithms into RLlib.
-We distinguish between two levels of contributions: As an `example script <https://github.com/ray-project/ray/tree/master/rllib/examples>`__
-(possibly with additional classes in other files)
+The guidelines for merging new algorithms into RLlib depend on the level of contribution you would like to make with the new algorithm:
+
 or as a fully-integrated RLlib Algorithm in `rllib/algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__.
 
-* Example Algorithms:
-    - must subclass Algorithm and implement the ``training_step()`` method
-    - must include the main example script, in which the algo is demoed, in a CI test, which proves that the algo is learning a certain task.
-    - should offer functionality not present in existing algorithms
+* `Example Algorithms <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__:
+    - must subclass :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` and implement the ``training_step()`` method
+    - must include an actual `example script <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__, which configures and runs the algorithm.
+      This script must be included in the `BUILD file <https://github.com/ray-project/ray/tree/master/rllib/BUILD>`__ to run as a CI test, proving that the algorithm can learn a certain task.
+    - must offer functionality not present in existing algorithms
 
-* Fully integrated Algorithms have the following additional requirements:
+* `Fully integrated Algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__ also require the following:
     - must offer substantial new functionality not possible to add to other algorithms
-    - should support custom RLModules
-    - should use RLlib abstractions and support distributed execution
-    - should include at least one `tuned hyperparameter example <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__, testing of which is part of the CI
+    - must support custom RLModules
+    - must use RLlib abstractions and support distributed execution
+    - must include at least one `tuned hyperparameter example <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__, testing of which is part of the CI
 
 Both integrated and contributed algorithms ship with the ``ray`` PyPI package, and are tested as part of Ray's automated tests.
-
 
 Debugging RLlib
 ---------------
@@ -246,17 +247,6 @@ setups, for example in a single, local process running on the CPU.
 
 To change your config, such that your RLlib program runs in such local setup, you should - before anything else -try
 the following settings.
-
-Finding memory leaks in EnvRunner actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Keeping the memory usage of long running workers stable can be challenging. The ``MemoryTrackingCallbacks`` class can be used to track memory usage of workers.
-
-.. autoclass:: ray.rllib.algorithms.callbacks.MemoryTrackingCallbacks
-
-The objects with the top 20 memory usage in the workers are added as custom metrics. These can then be monitored using tensorboard or other metrics integrations like Weights & Biases:
-
-.. image:: images/MemoryTrackingCallbacks.png
 
 Episode traces
 ~~~~~~~~~~~~~~
