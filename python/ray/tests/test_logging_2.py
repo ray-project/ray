@@ -8,8 +8,10 @@ import json
 
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
-from ray.job_config import LoggingConfig
+from ray._private.ray_logging.logging_config import LoggingConfig, LoggingConfigData
 from ray._private.test_utils import run_string_as_driver
+
+from dataclasses import fields
 
 
 class TestCoreContextFilter:
@@ -492,6 +494,25 @@ new_test_logger = logging.getLogger("ray.test")
 assert old_test_logger.getEffectiveLevel() == logging.DEBUG
 """
     run_string_as_driver(script)
+
+
+def test_same_fields_in_logging_config_and_logging_config_data(shutdown_only):
+    """
+    Test that the fields in LoggingConfig and LoggingConfigData are the same.
+    """
+    logging_config_fields = fields(LoggingConfig)
+    logging_config_data_fields = fields(LoggingConfigData)
+
+    logging_config_fields_info = {
+        (field.name, field.type) for field in logging_config_fields
+    }
+    logging_config_data_fields_info = {
+        (field.name, field.type) for field in logging_config_data_fields
+    }
+
+    assert (
+        logging_config_fields_info == logging_config_data_fields_info
+    ), "Fields in LoggingConfig and LoggingConfigData are not the same."
 
 
 if __name__ == "__main__":

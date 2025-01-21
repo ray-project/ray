@@ -27,7 +27,6 @@ class LoggingConfigurator(ABC):
     def get_supported_encodings(self) -> Set[str]:
         raise NotImplementedError
 
-    @abstractmethod
     @Deprecated
     def configure_logging(self, encoding: str, log_level: str):
         raise NotImplementedError
@@ -37,7 +36,7 @@ class LoggingConfigurator(ABC):
     # Also, assuming the function will only be called inside LoggingConfig._apply() and
     # LoggingConfigData should have all fields in LoggingConfig set.
     def configure_logging_settings(self, logging_config: LoggingConfigData):
-        raise NotImplementedError
+        configure_logging(logging_config.encoding, logging_config.log_level)
 
 
 class DefaultLoggingConfigurator(LoggingConfigurator):
@@ -91,9 +90,8 @@ _logging_configurator: LoggingConfigurator = default_impl.get_logging_configurat
 # To add a new logging configuration: (1) add a new field to this class; (2) add the
 # same field to the LoggingConfigData class defined above; (3) Update the logic in the
 # __post_init__ method in this class to add the validation logic; (4) Update the
-# _configure_logging method in this class to add the new field when initializing
-# LoggingConfigData; (5) Update the configure_logging_settings method in the
-# DefaultLoggingConfigurator class to use the new field.
+# configure_logging_settings method in the DefaultLoggingConfigurator class to use
+# the new field.
 @PublicAPI(stability="alpha")
 @dataclass
 class LoggingConfig:
@@ -122,11 +120,7 @@ class LoggingConfig:
     def _configure_logging(self):
         """Set up the logging configuration for the current process."""
         _logging_configurator.configure_logging_settings(
-            LoggingConfigData(
-                encoding=self.encoding,
-                log_level=self.log_level,
-                additional_log_standard_attrs=self.additional_log_standard_attrs,
-            )
+            LoggingConfigData(**vars(self))
         )
 
     def _apply(self):
@@ -166,7 +160,7 @@ LoggingConfig.__doc__ = f"""
             {list(_logging_configurator.get_supported_encodings())}
         log_level: Log level for the logs. Defaults to 'INFO'. You can set
             it to 'DEBUG' to receive more detailed debug logs.
-        exclude_default_standard_attrs: List of additional standard python logger attributes to 
+        additional_log_standard_attrs: List of additional standard python logger attributes to 
             include in the log records. Defaults to an empty list. The list of already 
             included standard attributes are: "asctime", "levelname", "message", 
             "filename", "lineno", "exc_text". The list of valid attributes are specified
