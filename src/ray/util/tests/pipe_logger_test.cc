@@ -26,6 +26,54 @@
 #include "ray/util/util.h"
 
 /////////////////////////////////////////////////
+// Unit test for both windows and unix platform.
+/////////////////////////////////////////////////
+
+namespace ray {
+
+namespace {
+
+constexpr std::string_view kLogLine1 = "hello\n";
+constexpr std::string_view kLogLine2 = "world\n";
+
+class PipeLoggerTest : public ::testing::TestWithParam<size_t> {};
+
+TEST_P(PipeLoggerTest, NoPipeWrite) {
+  const size_t pipe_buffer_size = GetParam();
+  setenv(kPipeLogReadBufSizeEnv.data(),
+         absl::StrFormat("%d", pipe_buffer_size).data(),
+         /*overwrite=*/1);
+
+  // TODO(hjiang): We should have a better test util, which allows us to create a
+  // temporary testing directory.
+  const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+  // Delete temporary file.
+  absl::Cleanup cleanup_test_file = [&test_file_path]() {
+    EXPECT_TRUE(std::filesystem::remove(test_file_path));
+  };
+
+  // Take the default option, which doesn't have rotation enabled.
+  StreamRedirectionOption stream_redirection_opt{};
+  stream_redirection_opt.file_path = test_file_path;
+  auto stream_redirection_handle = CreateRedirectionFileHandle(stream_redirection_opt);
+  stream_redirection_handle.CompleteWrite(kLogLine1.data(), kLogLine1.length());
+  stream_redirection_handle.CompleteWrite(kLogLine2.data(), kLogLine2.length());
+  stream_redirection_handle.Close();
+
+  // Check log content after completion.
+  const auto actual_content = CompleteReadFile(test_file_path);
+  const std::string expected_content = absl::StrFormat("%s%s", kLogLine1, kLogLine2);
+  EXPECT_EQ(actual_content, expected_content);
+}
+
+INSTANTIATE_TEST_SUITE_P(PipeLoggerTest, PipeLoggerTest, testing::Values(1024, 3));
+
+}  // namespace
+
+}  // namespace ray
+
+/////////////////////////////////////////////////
 // Unit test for both unix platform only.
 /////////////////////////////////////////////////
 
@@ -36,11 +84,6 @@
 namespace ray {
 
 namespace {
-
-constexpr std::string_view kLogLine1 = "hello\n";
-constexpr std::string_view kLogLine2 = "world\n";
-
-class PipeLoggerTest : public ::testing::TestWithParam<size_t> {};
 
 TEST_P(PipeLoggerTest, PipeWrite) {
   const size_t pipe_buffer_size = GetParam();
@@ -77,8 +120,6 @@ TEST_P(PipeLoggerTest, PipeWrite) {
   EXPECT_EQ(CompleteReadFile(log_file_path1), kLogLine2);
   EXPECT_EQ(CompleteReadFile(log_file_path2), kLogLine1);
 }
-
-INSTANTIATE_TEST_SUITE_P(PipeLoggerTest, PipeLoggerTest, testing::Values(1024, 3));
 
 TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   // TODO(hjiang): We should have a better test util, which allows us to create a
@@ -152,48 +193,3 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
 }  // namespace ray
 
 #endif
-
-/////////////////////////////////////////////////
-// Unit test for both windows and unix platform.
-/////////////////////////////////////////////////
-
-namespace ray {
-
-namespace {
-
-class PipeLoggerWithRedirection : public ::testing::TestWithParam<size_t> {};
-
-TEST_P(PipeLoggerWithRedirection, NoPipeWrite) {
-  const size_t pipe_buffer_size = GetParam();
-  setenv(kPipeLogReadBufSizeEnv.data(),
-         absl::StrFormat("%d", pipe_buffer_size).data(),
-         /*overwrite=*/1);
-
-  // TODO(hjiang): We should have a better test util, which allows us to create a
-  // temporary testing directory.
-  const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
-
-  // Delete temporary file.
-  absl::Cleanup cleanup_test_file = [&test_file_path]() {
-    EXPECT_TRUE(std::filesystem::remove(test_file_path));
-  };
-
-  // Take the default option, which doesn't have rotation enabled.
-  StreamRedirectionOption stream_redirection_opt{};
-  stream_redirection_opt.file_path = test_file_path;
-  auto stream_redirection_handle = CreateRedirectionFileHandle(stream_redirection_opt);
-  stream_redirection_handle.CompleteWrite(kLogLine1.data(), kLogLine1.length());
-  stream_redirection_handle.CompleteWrite(kLogLine2.data(), kLogLine2.length());
-  stream_redirection_handle.Close();
-
-  // Check log content after completion.
-  const auto actual_content = CompleteReadFile(test_file_path);
-  const std::string expected_content = absl::StrFormat("%s%s", kLogLine1, kLogLine2);
-  EXPECT_EQ(actual_content, expected_content);
-}
-
-INSTANTIATE_TEST_SUITE_P(PipeLoggerWithRedirection, PipeLoggerWithRedirection, testing::Values(1024, 3));
-
-}  // namespace
-
-}  // namespace ray
