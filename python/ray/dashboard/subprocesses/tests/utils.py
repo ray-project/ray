@@ -74,6 +74,12 @@ class TestModule(SubprocessModule):
             yield f"{i}\n".encode()
         raise ValueError("This is an error")
 
+    @SubprocessRouteTable.post("/run_forever")
+    async def run_forever(self, request_body: bytes) -> aiohttp.web.Response:
+        while True:
+            await asyncio.sleep(1)
+        return aiohttp.web.Response(text="done in the infinite future!")
+
     @SubprocessRouteTable.post("/logging_in_module")
     async def logging_in_module(self, request_body: bytes) -> aiohttp.web.Response:
         logger.info("In /logging_in_module, Not all those who wander are lost.")

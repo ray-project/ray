@@ -97,6 +97,8 @@ class SubprocessModuleHandle:
         self.config = config
 
         # Runtime states, set by start_module(), reset by destroy_module().
+        # Increment this when the module is restarted.
+        self.incarnation = 0
         self.next_request_id = None
         self.child_bound_queue = None
         self.parent_bound_queue = None
@@ -131,8 +133,7 @@ class SubprocessModuleHandle:
         if start_dispatch_parent_bound_messages_thread:
             self.dispatch_parent_bound_messages_thread = threading.Thread(
                 name=f"{self.module_cls.__name__}-dispatch_parent_bound_messages_thread",
-                target=dispatch_parent_bound_messages,
-                args=(self.loop, self.parent_bound_queue, self),
+                target=self.dispatch_parent_bound_messages,
                 daemon=True,
             )
             self.dispatch_parent_bound_messages_thread.start()
@@ -149,6 +150,7 @@ class SubprocessModuleHandle:
         - reason: the exception that caused the module to be destroyed. Propagated to
           active requests so they can be failed.
         """
+        self.incarnation += 1
         self.next_request_id = 0
         self.process.terminate()
         self.process = None
@@ -296,95 +298,94 @@ class SubprocessModuleHandle:
         except Exception as e:
             response_fut.set_exception(e)
 
-
-def handle_parent_bound_message(
-    loop: asyncio.AbstractEventLoop,
-    message: ParentBoundMessage,
-    handle: SubprocessModuleHandle,
-):
-    """Handles a message from the parent bound queue. This function must run on a
-    dedicated thread, called by dispatch_parent_bound_messages."""
-    if isinstance(message, UnaryResponseMessage):
-        active_request = handle.active_requests.pop_or_raise(message.request_id)
-        # set_result is not thread safe.
-        loop.call_soon_threadsafe(
-            active_request.response_fut.set_result,
-            aiohttp.web.Response(
-                status=message.status,
-                body=message.body,
-            ),
-        )
-    elif isinstance(message, StreamResponseStartMessage):
-        active_request = handle.active_requests.get_or_raise(message.request_id)
-        assert active_request.stream_response is None
-        # This assignment is thread safe, because a next read will come from another
-        # handle_parent_bound_message call for a Stream.*Message, which will run on
-        # the same thread and hence will happen-after this assignment.
-        active_request.stream_response = asyncio.run_coroutine_threadsafe(
-            SubprocessModuleHandle.handle_stream_response_start(
-                active_request.request, message.body
-            ),
-            loop,
-        )
-    elif isinstance(message, StreamResponseDataMessage):
-        active_request = handle.active_requests.get_or_raise(message.request_id)
-        assert active_request.stream_response is not None
-        active_request.stream_response = asyncio.run_coroutine_threadsafe(
-            SubprocessModuleHandle.handle_stream_response_data(
-                active_request.stream_response, message.body
-            ),
-            loop,
-        )
-    elif isinstance(message, StreamResponseEndMessage):
-        active_request = handle.active_requests.pop_or_raise(message.request_id)
-        assert active_request.stream_response is not None
-        asyncio.run_coroutine_threadsafe(
-            SubprocessModuleHandle.handle_stream_response_end(
-                active_request.stream_response,
-                active_request.response_fut,
-            ),
-            loop,
-        )
-    elif isinstance(message, ErrorMessage):
-        # Propagate the error to aiohttp.
-        active_request = handle.active_requests.pop_or_raise(message.request_id)
-        if active_request.stream_response is not None:
+    def handle_parent_bound_message(self, message: ParentBoundMessage):
+        """Handles a message from the parent bound queue. This function must run on a
+        dedicated thread, called by dispatch_parent_bound_messages."""
+        loop = self.loop
+        if isinstance(message, UnaryResponseMessage):
+            active_request = self.active_requests.pop_or_raise(message.request_id)
+            # set_result is not thread safe.
+            loop.call_soon_threadsafe(
+                active_request.response_fut.set_result,
+                aiohttp.web.Response(
+                    status=message.status,
+                    body=message.body,
+                ),
+            )
+        elif isinstance(message, StreamResponseStartMessage):
+            active_request = self.active_requests.get_or_raise(message.request_id)
+            assert active_request.stream_response is None
+            # This assignment is thread safe, because a next read will come from another
+            # handle_parent_bound_message call for a Stream.*Message, which will run on
+            # the same thread and hence will happen-after this assignment.
+            active_request.stream_response = asyncio.run_coroutine_threadsafe(
+                SubprocessModuleHandle.handle_stream_response_start(
+                    active_request.request, message.body
+                ),
+                loop,
+            )
+        elif isinstance(message, StreamResponseDataMessage):
+            active_request = self.active_requests.get_or_raise(message.request_id)
+            assert active_request.stream_response is not None
+            active_request.stream_response = asyncio.run_coroutine_threadsafe(
+                SubprocessModuleHandle.handle_stream_response_data(
+                    active_request.stream_response, message.body
+                ),
+                loop,
+            )
+        elif isinstance(message, StreamResponseEndMessage):
+            active_request = self.active_requests.pop_or_raise(message.request_id)
+            assert active_request.stream_response is not None
             asyncio.run_coroutine_threadsafe(
-                SubprocessModuleHandle.handle_stream_response_error(
+                SubprocessModuleHandle.handle_stream_response_end(
                     active_request.stream_response,
-                    message.error,
                     active_request.response_fut,
                 ),
                 loop,
             )
+        elif isinstance(message, ErrorMessage):
+            # Propagate the error to aiohttp.
+            active_request = self.active_requests.pop_or_raise(message.request_id)
+            if active_request.stream_response is not None:
+                asyncio.run_coroutine_threadsafe(
+                    SubprocessModuleHandle.handle_stream_response_error(
+                        active_request.stream_response,
+                        message.error,
+                        active_request.response_fut,
+                    ),
+                    loop,
+                )
+            else:
+                loop.call_soon_threadsafe(
+                    active_request.response_fut.set_exception, message.error
+                )
         else:
-            loop.call_soon_threadsafe(
-                active_request.response_fut.set_exception, message.error
-            )
-    else:
-        raise ValueError(f"Unknown message type: {type(message)}")
+            raise ValueError(f"Unknown message type: {type(message)}")
 
+    def dispatch_parent_bound_messages(self):
+        """
+        Dispatch Messages from the module. This function should be run in a separate thread
+        from the asyncio loop of the parent process.
+        """
+        assert_not_in_asyncio_loop()
+        incarnation = self.incarnation
+        queue = self.parent_bound_queue
+        # Exit if the module has restarted.
+        while incarnation == self.incarnation:
+            try:
+                message = queue.get(timeout=1)
+                self.handle_parent_bound_message(message)
+            except multiprocessing.queues.Empty:
+                # Empty is normal.
+                pass
+            except Exception as e:
+                logger.exception(
+                    "Error handling parent bound message from module"
+                    f" {self.module_cls.__name__}."
+                    " This may result in a http request never being responded to."
+                )
 
-def dispatch_parent_bound_messages(
-    loop: asyncio.AbstractEventLoop,
-    parent_bound_queue: multiprocessing.Queue,
-    handle: SubprocessModuleHandle,
-):
-    """
-    Dispatch Messages from the module. This function should be run in a separate thread
-    from the asyncio loop of the parent process.
-    """
-    assert_not_in_asyncio_loop()
-    while True:
-        try:
-            message = parent_bound_queue.get()
-            handle_parent_bound_message(loop, message, handle)
-        except Exception as e:
-            logger.warning(
-                f"Error handling parent bound message from module {handle.cls.__name__}"
-                f": {e}. This may result in a http request never being responded to."
-            )
-
-    logger.info(
-        f"Dispatching messages thread for module {handle.cls.__name__} is exiting"
-    )
+        logger.info(
+            "dispatch_parent_bound_messages thread for module "
+            f"{self.module_cls.__name__} is exiting"
+        )

@@ -158,13 +158,29 @@ async def test_streamed_iota_with_error(aiohttp_client, default_module_config):
 
 
 async def test_kill_self(aiohttp_client, default_module_config):
+    """
+    If a module died, all pending requests should be failed, and the module should be
+    restarted. After the restart, subsequent requests should be successful.
+    """
     app = await start_http_server_app(default_module_config, [TestModule])
     client = await aiohttp_client(app)
+
+    long_running_task = asyncio.create_task(client.post("/run_forever", data=b""))
+    # Wait for 1s for the long running request to start.
+    await asyncio.sleep(1)
 
     response = await client.post("/kill_self", data=b"")
     assert response.status == 500
     assert (
         await response.text()
+        == "500 Internal Server Error\n\nServer got itself in trouble"
+    )
+
+    # Long running request should get a 500.
+    long_running_response = await long_running_task
+    assert long_running_response.status == 500
+    assert (
+        await long_running_response.text()
         == "500 Internal Server Error\n\nServer got itself in trouble"
     )
 
