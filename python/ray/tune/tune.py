@@ -429,7 +429,7 @@ def run(
             directory name. Otherwise, trials could overwrite artifacts and checkpoints
             of other trials. The return value cannot be a path.
         chdir_to_trial_dir: Deprecated. Set the `RAY_CHDIR_TO_TRIAL_DIR` env var instead
-        sync_config: Configuration object for syncing. See train.SyncConfig.
+        sync_config: Configuration object for syncing. See tune.SyncConfig.
         export_formats: List of formats that exported at the end of
             the experiment. Default is None.
         max_failures: Try to recover a trial at least this many times.

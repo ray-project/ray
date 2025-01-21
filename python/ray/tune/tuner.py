@@ -260,8 +260,8 @@ class Tuner:
         .. code-block:: python
 
             import os
-            from ray.tune import Tuner
-            from ray.train import RunConfig
+
+            from ray.tune import Tuner, RunConfig
 
             def train_fn(config):
                 # Make sure to implement checkpointing so that progress gets
@@ -273,7 +273,11 @@ class Tuner:
             exp_dir = os.path.join(storage_path, name)
 
             if Tuner.can_restore(exp_dir):
-                tuner = Tuner.restore(exp_dir, trainable=train_fn, resume_errored=True)
+                tuner = Tuner.restore(
+                    exp_dir,
+                    trainable=train_fn,
+                    resume_errored=True,
+                )
             else:
                 tuner = Tuner(
                     train_fn,
