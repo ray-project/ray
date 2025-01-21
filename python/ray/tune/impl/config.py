@@ -6,7 +6,7 @@ from ray.air.config import RunConfig as _RunConfig
 from ray.train.constants import _v2_migration_warnings_enabled
 from ray.train.utils import _copy_doc, _log_deprecation_warning
 
-# NOTE: This is just a pass-through wrapper around `ray.train.RunConfig`
+# NOTE: This is just a pass-through wrapper around `ray.tune.RunConfig`
 # in order to detect whether the import module was correct (e.g. `ray.tune.RunConfig`).
 
 

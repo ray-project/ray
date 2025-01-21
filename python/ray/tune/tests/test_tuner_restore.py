@@ -10,9 +10,9 @@ import pytest
 
 import ray
 import ray.cloudpickle as ray_pickle
-from ray import train, tune
+from ray import tune
 from ray.air._internal.uri_utils import URI
-from ray.train import (
+from ray.tune import (
     Checkpoint,
     CheckpointConfig,
     FailureConfig,
@@ -79,7 +79,7 @@ def _dummy_train_fn(config):
 
 
 def _dummy_train_fn_with_report(config):
-    train.report({"score": 1})
+    tune.report({"score": 1})
 
 
 def _train_fn_sometimes_failing(config):
@@ -87,7 +87,7 @@ def _train_fn_sometimes_failing(config):
     # Hangs if hanging is set and marker file exists.
     failing, hanging = config["failing_hanging"]
 
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     if checkpoint:
         checkpoint_dict = load_dict_checkpoint(checkpoint)
         state = {"it": checkpoint_dict["it"]}
@@ -98,7 +98,7 @@ def _train_fn_sometimes_failing(config):
         state["it"] += 1
 
         with create_dict_checkpoint(state) as checkpoint:
-            train.report(state, checkpoint=checkpoint)
+            tune.report(state, checkpoint=checkpoint)
 
     # We fail after reporting num_epochs checkpoints.
     if failing and failing.exists():
@@ -109,7 +109,7 @@ def _train_fn_sometimes_failing(config):
 
     state["it"] += 1
     with create_dict_checkpoint(state) as checkpoint:
-        train.report(state, checkpoint=checkpoint)
+        tune.report(state, checkpoint=checkpoint)
 
 
 class _ClassTrainableSometimesFailing(Trainable):
@@ -626,7 +626,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
     def train_func_1(config):
         data = {"data": config["data"]}
         with create_dict_checkpoint(data) as checkpoint:
-            train.report(data, checkpoint=checkpoint)
+            tune.report(data, checkpoint=checkpoint)
         raise RuntimeError("Failing!")
 
     tuner = Tuner(
@@ -659,7 +659,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
 
     # Can technically change trainable code (not recommended!)
     def train_func_1(config):
-        checkpoint = train.get_checkpoint()
+        checkpoint = tune.get_checkpoint()
         assert checkpoint and load_dict_checkpoint(checkpoint)["data"] == config["data"]
 
     tuner = Tuner.restore(
@@ -788,7 +788,7 @@ def test_tuner_restore_from_moved_experiment_path(
     training_iteration = results[0].metrics["training_iteration"]
     assert (
         training_iteration == 1
-    ), f"Should only have 1 train.report before erroring, got {training_iteration}"
+    ), f"Should only have 1 tune.report before erroring, got {training_iteration}"
     assert results[0].checkpoint.path.endswith("checkpoint_000000")
     assert "new_exp_dir" in results[0].checkpoint.path
 
@@ -813,7 +813,7 @@ def test_tuner_restore_from_moved_experiment_path(
 
     assert len(results.errors) == 0
 
-    # Check that we restored iter=1, then made 2 calls to train.report -> iter=3
+    # Check that we restored iter=1, then made 2 calls to tune.report -> iter=3
     training_iteration = results[0].metrics["training_iteration"]
     assert training_iteration == 3, training_iteration
 

@@ -21,7 +21,7 @@ import ray.cloudpickle as pickle
 import ray.train
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
-from ray.train import ScalingConfig
+from ray.tune import ScalingConfig
 from ray.train._internal.storage import StorageContext, get_fs_and_path
 from ray.train.constants import _v2_migration_warnings_enabled
 from ray.train.utils import _log_deprecation_warning
@@ -418,7 +418,7 @@ class TunerInternal:
             )
 
         # Both Tuner RunConfig + Trainer RunConfig --> prefer Tuner RunConfig
-        if tuner_run_config and trainer.run_config != ray.train.RunConfig():
+        if tuner_run_config and trainer.run_config != ray.tune.RunConfig():
             logger.info(
                 "A `RunConfig` was passed to both the `Tuner` and the "
                 f"`{trainer.__class__.__name__}`. The run config passed to "
@@ -536,7 +536,7 @@ class TunerInternal:
                     "custom training loop, you will need to "
                     "report a checkpoint every `checkpoint_frequency` iterations "
                     "within your training loop using "
-                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "`ray.tune.report(metrics=..., checkpoint=...)` "
                     "to get this behavior."
                 )
             elif handle_checkpoint_freq is True:
@@ -557,7 +557,7 @@ class TunerInternal:
                     "to your CheckpointConfig, but this trainer does not support "
                     "this argument. If you passed in a Trainer that takes in a "
                     "custom training loop, you should include one last call to "
-                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "`ray.tune.report(metrics=..., checkpoint=...)` "
                     "at the end of your training loop to get this behavior."
                 )
             elif handle_cp_at_end is True:

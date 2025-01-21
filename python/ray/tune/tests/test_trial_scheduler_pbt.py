@@ -17,7 +17,7 @@ import ray
 from ray import cloudpickle, train, tune
 from ray._private.test_utils import object_memory_usage
 from ray.air.config import CheckpointConfig, FailureConfig, RunConfig
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 from ray.tune import Callback, Trainable
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
@@ -197,7 +197,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         def train_fn_sync(config):
             iter = 0
 
-            checkpoint = train.get_checkpoint()
+            checkpoint = tune.get_checkpoint()
             if checkpoint:
                 with checkpoint.as_directory() as checkpoint_dir:
                     checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
@@ -219,7 +219,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                     # comparing sync vs. async.
                     time.sleep(a / 20)
                     # Score gets better every iteration.
-                    train.report(
+                    tune.report(
                         {"mean_accuracy": iter + a, "a": a},
                         checkpoint=Checkpoint.from_directory(checkpoint_dir),
                     )
@@ -396,7 +396,7 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
             c2 = config["c"]["c2"]
 
             while True:
-                train.report({"mean_accuracy": a * b * (c1 + c2)})
+                tune.report({"mean_accuracy": a * b * (c1 + c2)})
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -501,8 +501,8 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             a = config["a"]
             b = config["b"]
 
-            if train.get_checkpoint():
-                with train.get_checkpoint().as_directory() as checkpoint_dir:
+            if tune.get_checkpoint():
+                with tune.get_checkpoint().as_directory() as checkpoint_dir:
                     checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
                     with open(checkpoint_path, "rb") as fp:
                         a, b, iter = pickle.load(fp)
@@ -513,7 +513,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                     checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, b, iter), fp)
-                    train.report(
+                    tune.report(
                         {"mean_accuracy": (a - iter) * b},
                         checkpoint=Checkpoint.from_directory(checkpoint_dir),
                     )

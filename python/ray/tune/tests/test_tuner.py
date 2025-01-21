@@ -9,10 +9,10 @@ from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
 from ray.data.block import BlockMetadata
-from ray.train import CheckpointConfig, RunConfig, ScalingConfig
+from ray.tune import CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
@@ -50,7 +50,7 @@ class DummyTrainer(BaseTrainer):
 
     def training_loop(self) -> None:
         for i in range(5):
-            train.report({"step": i})
+            tune.report({"step": i})
 
 
 class FailingTrainer(DummyTrainer):
@@ -390,7 +390,7 @@ def _test_no_chdir(runner_type, runtime_env, use_deprecated_config=False):
 
         # Write operations should happen in each trial's independent logdir to
         # prevent write conflicts
-        trial_dir = Path(train.get_context().get_trial_dir())
+        trial_dir = Path(tune.get_context().get_trial_dir())
         trial_dir.joinpath("write.txt").touch()
 
     if runner_type == "trainer":
@@ -473,7 +473,7 @@ def test_tuner_relative_pathing_with_env_vars(
         assert os.path.exists(data_path) and open(data_path, "r").read() == "data"
 
         # Tune chdirs to the trial working directory
-        storage = train.get_context().get_storage()
+        storage = tune.get_context().get_storage()
         assert Path(storage.trial_working_directory).resolve() == Path.cwd().resolve()
 
         with open("write.txt", "w") as f:
@@ -484,7 +484,7 @@ def test_tuner_relative_pathing_with_env_vars(
         param_space={"id": tune.grid_search(list(range(4)))},
         run_config=RunConfig(
             storage_path=str(tmp_path),
-            sync_config=train.SyncConfig(sync_artifacts=True),
+            sync_config=tune.SyncConfig(sync_artifacts=True),
         ),
     )
     results = tuner.fit()

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import regex as re
 
-from ray import train, tune
+from ray import tune
 from ray._private.test_utils import run_string_as_driver
 from ray.tune.experiment.trial import Trial
 from ray.tune.progress_reporter import (
@@ -303,14 +303,14 @@ def mock_get_trial_location(trial, result):
 def train_fn(config):
     if config["do"] == "complete":
         time.sleep(0.1)
-        ray_train.report(dict(acc=5, done=True))
+        ray_tune.report(dict(acc=5, done=True))
     elif config["do"] == "once":
         time.sleep(0.5)
         return 6
     else:
         time.sleep(1.0)
-        ray_train.report(dict(acc=7))
-        ray_train.report(dict(acc=8))
+        ray_tune.report(dict(acc=7))
+        ray_tune.report(dict(acc=8))
 
 random.seed(1234)
 np.random.seed(1234)
@@ -400,7 +400,7 @@ class ProgressReporterTest(unittest.TestCase):
 
         def test(config):
             for i in range(3):
-                train.report(test_result)
+                tune.report(test_result)
 
         analysis = tune.run(test, num_samples=3, verbose=3)
         all_trials = analysis.trials

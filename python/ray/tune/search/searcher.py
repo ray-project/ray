@@ -400,7 +400,7 @@ class Searcher:
 
             tuner = tune.Tuner(
                 cost,
-                run_config=train.RunConfig(
+                run_config=tune.RunConfig(
                     name=self.experiment_name,
                     storage_path="~/my_results",
                 ),

@@ -13,7 +13,7 @@ import torch.optim as optim
 from torchvision import datasets
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.tune.examples.mnist_pytorch import (
     ConvNet,
     get_data_loaders,
@@ -109,11 +109,11 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         PytorchTrainable,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="pbt_test",
             stop=stopper,
             verbose=1,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_score_attribute="mean_accuracy",
                 checkpoint_frequency=5,
                 num_to_keep=4,

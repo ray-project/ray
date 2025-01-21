@@ -15,7 +15,7 @@ import ray
 import ray.cloudpickle as ray_pickle
 from ray.air._internal.util import exception_cause, skip_exceptions
 from ray.air.constants import TIME_THIS_ITER_S, TIMESTAMP, TRAINING_ITERATION
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
 from ray.train.constants import DEFAULT_STORAGE_PATH
@@ -418,7 +418,7 @@ class Trainable:
 
         This is to get class trainables to work with storage backend used by
         function trainables.
-        This basically re-implements `train.report` for class trainables,
+        This basically re-implements `tune.report` for class trainables,
         making sure to persist the checkpoint to storage.
         """
         if isinstance(checkpoint_dict_or_path, dict):

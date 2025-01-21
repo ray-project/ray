@@ -17,7 +17,7 @@ from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import PlacementGroupResourceManager, ResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.exceptions import RayActorError, RayTaskError
-from ray.train import CheckpointConfig
+from ray.tune import CheckpointConfig
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.tune.callback import Callback, CallbackList
@@ -1500,7 +1500,7 @@ class TuneController:
             if log_once("trial_executor_buffer_checkpoint"):
                 logger.warning(
                     "Disabling buffered training as you passed "
-                    "`checkpoint_at_end` to `train.CheckpointConfig()`."
+                    "`checkpoint_at_end` to `tune.CheckpointConfig()`."
                 )
             return 1, buffer_time_s
 
