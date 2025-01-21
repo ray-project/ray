@@ -237,34 +237,32 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     The most important API methods a Algorithm exposes are `train()`,
     `evaluate()`, `save_to_path()` and `restore_from_path()`.
-
-    Attributes:
-        config: The AlgorithmConfig instance of the Algorithm.
-        metrics: The MetricsLogger instance of the Algorithm. RLlib uses this to log
-            metrics from within the `training_step()` method. Users can use it to log
-            metrics from within their custom Algorithm-based callbacks.
-        env_runner_group: The `EnvRunnerGroup` of the Algorithm. An `EnvRunnerGroup` is
-            composed of a single local `EnvRunner` (see: `self.env_runner`), serving as
-            the reference copy of the models to be trained and optionally one or more
-            remote `EnvRunners` used to generate training samples from the RL
-            environment, in parallel. EnvRunnerGroup is fault-tolerant and elastic. It
-            tracks health states for all the managed remote EnvRunner actors. As a
-            result, Algorithm should never access the underlying actor handles directly.
-            Instead, always access them via all the foreach APIs with assigned IDs of
-            the underlying EnvRunners.
-        eval_env_runner_group: A special EnvRunnerGroup only used for evaluation, not to
-            collect training samples.
-        learner_group: The `LearnerGroup` instance of the Algorithm, managing either
-            one local `Learner` or one or more remote `Learner` actors. Responsible for
-            updating the models from RL environment (episode) data.
-        offline_data: An optional OfflineData instance, used for offline RL.
     """
 
-    #config: Optional[AlgorithmConfig] = None
+    #: The AlgorithmConfig instance of the Algorithm.
+    config: Optional[AlgorithmConfig] = None
+    #: The MetricsLogger instance of the Algorithm. RLlib uses this to log
+    #: metrics from within the `training_step()` method. Users can use it to log
+    #: metrics from within their custom Algorithm-based callbacks.
     metrics: Optional[MetricsLogger] = None
+    #: The `EnvRunnerGroup` of the Algorithm. An `EnvRunnerGroup` is
+    #: composed of a single local `EnvRunner` (see: `self.env_runner`), serving as
+    #: the reference copy of the models to be trained and optionally one or more
+    #: remote `EnvRunners` used to generate training samples from the RL
+    #: environment, in parallel. EnvRunnerGroup is fault-tolerant and elastic. It
+    #: tracks health states for all the managed remote EnvRunner actors. As a
+    #: result, Algorithm should never access the underlying actor handles directly.
+    #: Instead, always access them via all the foreach APIs with assigned IDs of
+    #: the underlying EnvRunners.
     env_runner_group: Optional[EnvRunnerGroup] = None
+    #: A special EnvRunnerGroup only used for evaluation, not to
+    #: collect training samples.
     eval_env_runner_group: Optional[EnvRunnerGroup] = None
+    #: The `LearnerGroup` instance of the Algorithm, managing either
+    #: one local `Learner` or one or more remote `Learner` actors. Responsible for
+    #: updating the models from RL environment (episode) data.
     learner_group: Optional["LearnerGroup"] = None
+    #: An optional OfflineData instance, used for offline RL.
     offline_data: Optional["OfflineData"] = None
 
     # Whether to allow unknown top-level config keys.
