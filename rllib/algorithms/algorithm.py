@@ -2991,6 +2991,16 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @override(Trainable)
     def cleanup(self) -> None:
+        # Stop all Learners.
+        if hasattr(self, "learner_group") and self.learner_group is not None:
+            self.learner_group.shutdown()
+
+        # Stop all aggregation actors.
+        if hasattr(self, "_aggregator_actor_manager") and (
+            self._aggregator_actor_manager is not None
+        ):
+            self._aggregator_actor_manager.clear()
+
         # Stop all EnvRunners.
         if hasattr(self, "env_runner_group") and self.env_runner_group is not None:
             self.env_runner_group.stop()
@@ -2999,10 +3009,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             and self.eval_env_runner_group is not None
         ):
             self.eval_env_runner_group.stop()
-
-        # Stop all Learners.
-        if hasattr(self, "learner_group") and self.learner_group is not None:
-            self.learner_group.shutdown()
 
     @OverrideToImplementCustomLogic
     @classmethod
@@ -3961,6 +3967,16 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             "no_local_replay_buffer"
         ):
             return
+
+        # Add parameters, if necessary.
+        if config["replay_buffer_config"]["type"] in [
+            "EpisodeReplayBuffer",
+            "PrioritizedEpisodeReplayBuffer",
+        ]:
+            # TODO (simon): If all episode buffers have metrics, check for sublassing.
+            config["replay_buffer_config"][
+                "metrics_num_episodes_for_smoothing"
+            ] = self.config.metrics_num_episodes_for_smoothing
 
         return from_config(ReplayBuffer, config["replay_buffer_config"])
 
