@@ -226,7 +226,7 @@
     # cloud_id: cld_em92sg116s6wi32iuysjfeq2yy # anyscale_eks_public_default_cloud_us_west_2
   run:
     timeout: 7200
-    script: python core_nodes_scale_test.py --target_num_nodes 3000 --time_to_run_after_target_num_nodes 300
+    script: python core_nodes_scale_test.py --target_num_nodes 7000 --time_to_run_after_target_num_nodes 300
     wait_for_nodes:
       num_nodes: 1
 

@@ -11,7 +11,7 @@ NUM_SAMPLES_PER_TASK = 1000000
 TOTAL_NUM_SAMPLES = NUM_SAMPLING_TASKS * NUM_SAMPLES_PER_TASK
 
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=0)
 class ProgressActor:
     def __init__(self, total_num_samples: int):
         self.total_num_samples = total_num_samples
@@ -77,7 +77,13 @@ def main():
     time_to_run_after_target_num_nodes = args.time_to_run_after_target_num_nodes
     ray.init()
 
-    progress_actor = ProgressActor.remote(TOTAL_NUM_SAMPLES)
+    local_node_id = ray.get_runtime_context().get_node_id()
+    pin_to_head_node = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+        local_node_id, soft=False
+    )
+    progress_actor = ProgressActor.options(scheduling_strategy=pin_to_head_node).remote(
+        TOTAL_NUM_SAMPLES
+    )
 
     _ = [
         sampling_task.remote(NUM_SAMPLES_PER_TASK, i, progress_actor)
