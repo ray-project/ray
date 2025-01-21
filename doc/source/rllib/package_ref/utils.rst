@@ -14,13 +14,21 @@ MetricsLogger API
 
 RLlib uses the MetricsLogger API to log stats and metrics for the various components. Users can also
 
-
 For example:
 
 .. testcode::
 
     from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 
+    logger = MetricsLogger()
+
+    # Log a scalar float value under the `loss` key. By default, all logged
+    # values under that key are averaged, once `reduce()` is called.
+    logger.log_value("loss", 0.05, reduce="mean", window=2)
+    logger.log_value("loss", 0.1)
+    logger.log_value("loss", 0.2)
+
+    logger.peek("loss")  # expect: 0.15 (mean of last 2 values: 0.1 and 0.2)
 
 
 .. currentmodule:: ray.rllib.utils.metrics.metrics_logger
