@@ -110,6 +110,9 @@ void StartStreamDump(ReadFunc read_func,
         {
           absl::MutexLock lock(&stream_dumper->mu);
           stream_dumper->stopped = true;
+          if (!last_line.empty()) {
+            stream_dumper->content.emplace_back(std::move(last_line));
+          }
         }
 
         // Place IO operation out of critical section.
