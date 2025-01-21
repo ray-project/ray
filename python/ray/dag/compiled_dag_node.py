@@ -99,6 +99,52 @@ def _shutdown_all_compiled_dags():
     _compiled_dags = weakref.WeakValueDictionary()
 
 
+def _check_unused_dag_input_attributes(
+    output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]
+) -> Set[str]:
+    """
+    Helper function to check that all input attributes are used in the DAG.
+    For example, if the user creates an input attribute by calling
+    InputNode()["x"], we ensure that there is a path from the
+    InputAttributeNode corresponding to "x" to the DAG's output. If an
+    input attribute is not used, throw an error.
+
+    Args:
+        output_node: The starting node for the traversal.
+        input_attributes: A set of attributes accessed by the InputNode.
+    """
+    from ray.dag import InputAttributeNode
+
+    used_attributes = set()
+    visited_nodes = set()
+    stack: List["ray.dag.DAGNode"] = [output_node]
+
+    while stack:
+        current_node = stack.pop()
+        if current_node in visited_nodes:
+            continue
+        visited_nodes.add(current_node)
+
+        if isinstance(current_node, InputAttributeNode):
+            used_attributes.add(current_node.key)
+
+        stack.extend(current_node._upstream_nodes)
+
+    unused_attributes = input_attributes - used_attributes
+    if unused_attributes:
+        unused_attributes_str = ", ".join(str(key) for key in unused_attributes)
+        input_attributes_str = ", ".join(str(key) for key in input_attributes)
+        unused_phrase = "is unused" if len(unused_attributes) == 1 else "are unused"
+
+        raise ValueError(
+            "Compiled Graph expects input to be accessed "
+            f"using all of attributes {input_attributes_str}, "
+            f"but {unused_attributes_str} {unused_phrase}. "
+            "Ensure all input attributes are used and contribute "
+            "to the computation of the Compiled Graph output."
+        )
+
+
 @DeveloperAPI
 def do_allocate_channel(
     self,
@@ -948,11 +994,16 @@ class CompiledDAG:
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
         collective_ops: Set[_CollectiveOperation] = set()
 
+        input_attributes: Set[str] = set()
         # Find the input node and input attribute nodes in the DAG.
         for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode):
                 assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
+                # handle_unused_attributes:
+                # Save input attributes in a set.
+                input_node = task.dag_node
+                input_attributes.update(input_node.input_attribute_nodes.keys())
             elif isinstance(task.dag_node, InputAttributeNode):
                 self.input_attr_task_idxs.append(idx)
 
@@ -1065,7 +1116,7 @@ class CompiledDAG:
                         "the driver cannot participate in the NCCL group"
                     )
 
-            if type(dag_node.type_hint) == ChannelOutputType:
+            if type(dag_node.type_hint) is ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
                 dag_node.with_type_hint(self._default_type_hint)
@@ -1131,6 +1182,10 @@ class CompiledDAG:
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL actors of P2P.
                     nccl_actors_p2p.add(downstream_actor_handle)
+
+        # Check that all specified input attributes, e.g., InputNode()["x"],
+        # are used in the DAG.
+        _check_unused_dag_input_attributes(output_node, input_attributes)
 
         # Collect all leaf nodes.
         leaf_nodes: DAGNode = []
@@ -2593,16 +2648,16 @@ class CompiledDAG:
         if channel in self._channel_dict and self._channel_dict[channel] != channel:
             channel = self._channel_dict[channel]
             channel_details += f"\n{type(channel).__name__}"
-            if type(channel) == CachedChannel:
+            if type(channel) is CachedChannel:
                 channel_details += f", {channel._channel_id[:6]}..."
         # get inner channel
         if (
-            type(channel) == CompositeChannel
+            type(channel) is CompositeChannel
             and downstream_actor_id in channel._channel_dict
         ):
             inner_channel = channel._channel_dict[downstream_actor_id]
             channel_details += f"\n{type(inner_channel).__name__}"
-            if type(inner_channel) == IntraProcessChannel:
+            if type(inner_channel) is IntraProcessChannel:
                 channel_details += f", {inner_channel._channel_id[:6]}..."
         return channel_details
 
@@ -2766,7 +2821,7 @@ class CompiledDAG:
                             task.output_channels[0],
                             (
                                 downstream_node._get_actor_handle()._actor_id.hex()
-                                if type(downstream_node) == ClassMethodNode
+                                if type(downstream_node) is ClassMethodNode
                                 else self._proxy_actor._actor_id.hex()
                             ),
                         )
@@ -2784,7 +2839,7 @@ class CompiledDAG:
                             task.dag_node._get_actor_handle()._actor_id.hex(),
                         )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)
-            if type(task.dag_node) == InputAttributeNode:
+            if type(task.dag_node) is InputAttributeNode:
                 # Add an edge from the InputAttributeNode to the InputNode
                 dot.edge(str(self.input_task_idx), str(idx))
         dot.render(filename, view=view)
