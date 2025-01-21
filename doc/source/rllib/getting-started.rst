@@ -108,7 +108,7 @@ method.
 
 .. note::
 
-    See here to learn about the :ref:`methods you can use to configure your Algorithm <rllib-algo-configuration-docs>`.
+    See here to learn about all the :ref:`methods you can use to configure your Algorithm <rllib-algo-configuration-docs>`.
 
 
 Run the algorithm
@@ -177,7 +177,7 @@ results of collecting training samples with its "regular" :py:class:`~ray.rllib.
     )
 
     # Rebuild the PPO, but with the extra evaluation EnvRunnerGroup
-    ppo_with_evaluation = config.build()
+    ppo_with_evaluation = config.build_algo()
 
     for _ in range(3):
         pprint(ppo_with_evaluation.train())
@@ -197,7 +197,7 @@ the :ref:`Ray Tune API <tune-api-ref>`.
     require more work on :ref:`Tune <tune-main>` and :ref:`Ray Data <data>`
     to add Ray Tune support.
 
-The integration of :ref:`Ray Tune <tune-main>` allows you to utilize your configured :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` in
+This integration allows for utilizing your configured :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` in
 :ref:`Ray Tune <tune-main>` experiments.
 
 For example, the following code performs a hyper-parameter sweep of your :ref:`PPO <ppo>`, creating three ``Trials``,
@@ -249,7 +249,7 @@ on your Ray cluster:
     │ PPO_Pendulum-v1_b5c41_00002  RUNNING  0.0001     20         60.0421             -960.293                80000 │
     ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 
-``Tuner.fit()`` returns an ``ResultGrid`` object that allows for a detailed analysis of the
+``Tuner.fit()`` returns a ``ResultGrid`` object that allows for a detailed analysis of the
 training process and for retrieving the :ref:`checkpoints <rllib-checkpoints-docs>` of the trained
 algorithms and their models:
 
@@ -291,9 +291,15 @@ method to compute actions:
     from ray.rllib.core.rl_module import RLModule
 
     # Create only the neural network (RLModule) from our algorithm checkpoint.
+    # See here (https://docs.ray.io/en/master/rllib/checkpoints.html)
+    # to learn more about checkpointing and the specific "path" used.
     rl_module = RLModule.from_checkpoint(
-        Path(best_checkpoint.path) / "learner_group" / "learner" / "rl_module"
-    )["default_policy"]
+        Path(best_checkpoint.path)
+        / "learner_group"
+        / "learner"
+        / "rl_module"
+        / "default_policy"
+    )
 
     # Create the RL environment to test against (same as was used for training earlier).
     env = gym.make("Pendulum-v1", render_mode="human")

@@ -59,6 +59,7 @@ Proximal Policy Optimization (PPO)
 
 .. figure:: images/algos/ppo-architecture.svg
     :width: 750
+    :align: left
 
     **PPO architecture:** In a training iteration, PPO performs three major steps:
     1. Sampling a set of episodes or episode fragments
@@ -92,6 +93,7 @@ Deep Q Networks (DQN, Rainbow, Parametric DQN)
 
 .. figure:: images/algos/dqn-architecture.svg
     :width: 650
+    :align: left
 
     **DQN architecture:** DQN uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
     Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
@@ -137,6 +139,7 @@ Soft Actor Critic (SAC)
 
 .. figure:: images/algos/sac-architecture.svg
     :width: 750
+    :align: left
 
     **SAC architecture:** SAC uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
     Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
@@ -173,6 +176,7 @@ Asynchronous Proximal Policy Optimization (APPO)
 
 .. figure:: images/algos/appo-architecture.svg
     :width: 750
+    :align: left
 
     **APPO architecture:** APPO is an asynchronous variant of :ref:`Proximal Policy Optimization (PPO) <ppo>` based on the IMPALA architecture,
     but using a surrogate policy loss with clipping, allowing for multiple SGD passes per collected train batch.
@@ -205,6 +209,7 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
 
 .. figure:: images/algos/impala-architecture.svg
     :width: 750
+    :align: left
 
     **IMPALA architecture:** In a training iteration, IMPALA requests samples from all EnvRunners asynchronously and the collected episodes
     are returned to the main algorithm process as Ray references rather than actual objects available on the local process.
@@ -248,6 +253,7 @@ DreamerV3
 
 .. figure:: images/algos/dreamerv3-architecture.svg
     :width: 850
+    :align: left
 
     **DreamerV3 architecture:** DreamerV3 trains a recurrent WORLD_MODEL in supervised fashion
     using real environment interactions sampled from a replay buffer. The world model's objective
@@ -308,6 +314,7 @@ Behavior Cloning (BC)
 
 .. figure:: images/algos/bc-architecture.svg
     :width: 750
+    :align: left
 
     **BC architecture:** RLlib's behavioral cloning (BC) uses Ray Data to tap into its parallel data
     processing capabilities. In one training iteration, BC reads episodes in parallel from
@@ -337,6 +344,7 @@ Conservative Q-Learning (CQL)
 
 .. figure:: images/algos/cql-architecture.svg
     :width: 750
+    :align: left
 
     **CQL architecture:** CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values
     outside the dataset distribution through a conservative critic estimate. It adds a simple Q regularizer loss to the standard
@@ -362,6 +370,7 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 
 .. figure:: images/algos/marwil-architecture.svg
     :width: 750
+    :align: left
 
     **MARWIL architecture:** MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on
     batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to plain
@@ -393,6 +402,7 @@ Curiosity-driven Exploration by Self-supervised Prediction
 
 .. figure:: images/algos/curiosity-architecture.svg
     :width: 850
+    :align: left
 
     **Intrinsic Curiosity Model (ICM) architecture:** The main idea behind ICM is to train a world-model
     (in parallel to the "main" policy) to predict the environment's dynamics. The loss of
