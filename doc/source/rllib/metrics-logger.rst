@@ -401,7 +401,7 @@ Example 2: How to use MetricsLogger in custom loss functions
 ------------------------------------------------------------
 
 You can log metrics inside your custom loss functions.
-Use the Learner's own :py:attr:`~ray.rllib.algorithms.algorithm.Algorithm.metrics` attribute for this.
+Use the Learner's ``self.metrics`` attribute for this.
 
 .. note::
 
@@ -434,7 +434,7 @@ Example 3: How to use MetricsLogger in a custom Algorithm
 ---------------------------------------------------------
 
 You can log metrics inside your custom Algorithm :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` method.
-Use the Algorithm's own :py:attr:`~ray.rllib.algorithms.algorithm.Algorithm.metrics` attribute for this.
+Use the Algorithm's own ``self.metrics`` attribute for this.
 
 .. code-block::
 
