@@ -262,12 +262,17 @@ class RayLog {
   static std::string GetLogFilepathFromDirectory(const std::string &log_dir,
                                                  const std::string &app_name);
 
+  static std::string GetErrLogFilepathFromDirectory(const std::string &log_dir,
+                                                    const std::string &app_name);
+
   /// The init function of ray log for a program which should be called only once.
   ///
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
   /// \param log_filepath Logging output filepath. If empty, the log won't output to file,
   /// but to stdout.
+  /// \param err_log_filepath Logging error filepath. If empty, the log won't output to
+  /// file, but to stderr.
   /// Because of log rotations, the logs be saved to log file names with `.<number>`
   /// suffixes.
   /// Example: if log_filepath is /my/path/raylet.out, the output can be
@@ -279,6 +284,7 @@ class RayLog {
       const std::string &app_name,
       RayLogLevel severity_threshold = RayLogLevel::INFO,
       const std::string &log_filepath = "",
+      const std::string &err_log_filepath = "",
       size_t log_rotation_max_size = std::numeric_limits<size_t>::max(),
       size_t log_rotation_file_num = 1);
 

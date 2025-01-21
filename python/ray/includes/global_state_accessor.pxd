@@ -88,6 +88,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                                              "ray_init",
                                              ray::RayLogLevel::WARNING,
                                              /*log_filepath=*/"",
+                                             /*err_log_filepath=*/"",
                                              /*log_rotation_max_size=*/1ULL << 29,
                                              /*log_rotation_file_num=*/10);
 

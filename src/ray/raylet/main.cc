@@ -75,6 +75,10 @@ DEFINE_string(
     ray_log_filepath,
     "",
     "The filename to dump raylet log on stdout, which is written via `RAY_LOG`.");
+DEFINE_string(
+    ray_err_log_filepath,
+    "",
+    "The filename to dump raylet error log on stderr, which is written via `RAY_LOG`.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
@@ -147,6 +151,7 @@ int main(int argc, char *argv[]) {
       /*app_name=*/argv[0],
       ray::RayLogLevel::INFO,
       /*ray_log_filepath=*/FLAGS_ray_log_filepath,
+      /*ray_err_log_filepath=*/FLAGS_ray_err_log_filepath,
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
 

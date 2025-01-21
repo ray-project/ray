@@ -32,6 +32,10 @@ DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
 DEFINE_string(ray_log_filepath,
               "",
               "The log filepath to dump gcs server log, which is written via `RAY_LOG`.");
+DEFINE_string(
+    ray_err_log_filepath,
+    "",
+    "The filepath to dump gcs server error log, which is written via `RAY_LOG`.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
@@ -65,6 +69,7 @@ int main(int argc, char *argv[]) {
       argv[0],
       ray::RayLogLevel::INFO,
       /*log_filepath=*/FLAGS_ray_log_filepath,
+      /*err_log_filepath=*/FLAGS_ray_err_log_filepath,
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
