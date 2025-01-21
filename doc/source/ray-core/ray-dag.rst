@@ -127,4 +127,4 @@ More resources
 You can find more application patterns and examples in the following resources
 from other Ray libraries built on top of Ray DAG API with the same mechanism.
 
-| `Visualization of DAGs <https://docs.ray.io/en/master/serve/model_composition.html#visualizing-the-graph>`_
+| `Visualization of DAGs <https://docs.ray.io/en/master/ray-core/compiled-graph/visualization.html>`_
