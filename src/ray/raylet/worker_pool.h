@@ -431,7 +431,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed);
 
   /// Prestart worker with the given runtime env.
-  void PrestartWorkers(const TaskSpecification &task_spec, int64_t num_needed);
+  void PrestartWorkersWithRuntimeEnv(const TaskSpecification &task_spec,
+                                     int64_t num_needed);
 
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.

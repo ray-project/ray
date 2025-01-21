@@ -1448,7 +1448,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                  << task_spec.DebugString() << " has runtime env "
                  << task_spec.HasRuntimeEnv();
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.HasRuntimeEnv() || task_spec.GetLanguage() != ray::Language::PYTHON) {
+      task_spec.GetLanguage() != ray::Language::PYTHON) {
     return;  // Not handled.
     // TODO(architkulkarni): We'd eventually like to prestart workers with the same
     // runtime env to improve initial startup performance.
@@ -1470,12 +1470,12 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                    << backlog_size << " and available CPUs " << num_available_cpus
                    << " num idle workers " << state.idle.size()
                    << " num registered workers " << state.registered_workers.size();
-    PrestartWorkers(language)
-    PrestartDefaultCpuWorkers(task_spec, num_needed);
+    PrestartWorkersWithRuntimeEnv(task_spec, num_needed);
   }
 }
 
-void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec, int64_t num_needed) {
+void WorkerPool::PrestartWorkersWithRuntimeEnv(const TaskSpecification &task_spec,
+                                               int64_t num_needed) {
   RAY_LOG(DEBUG) << "PrestartWorkers " << num_needed;
   for (int ii = 0; ii < num_needed; ++ii) {
     PopWorkerStatus status;
