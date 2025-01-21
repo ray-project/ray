@@ -309,8 +309,27 @@ Set ``clear_on_reduce=False``, which is the default, if you want the count to ac
 Automatic throughput measurements
 +++++++++++++++++++++++++++++++++
 
+A metrics logged with the settings ``reduce="sum"`` and ``clear_on_reduce=False`` is considered
+a ``lifetime`` counter, accumulating counts over the entire course of the experiment without ever resetting
+the value back to 0.
+The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` automatically compiles an extra key for each such metrics, adding the suffix ``_throughput``
+to the original key and compiling the value for the throughput per second.
 
+You have access to a lifetime metric's throughput value through the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method,
+for example:
 
+.. testcode::
+
+    import time
+    from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+
+    logger = MetricsLogger()
+
+    for _ in range(3):
+        logger.log_value("lifetime_count", 5, reduce="sum")
+        logger.reduce()
+        time.sleep(1.0)
+        print(logger.peek("lifetime_count", throughput=True))  # expect: ~ 5/sec)
 
 
 Example 1: How to use MetricsLogger in EnvRunner callbacks
