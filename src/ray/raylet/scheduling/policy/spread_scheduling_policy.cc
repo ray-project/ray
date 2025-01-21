@@ -47,7 +47,9 @@ scheduling::NodeID SpreadSchedulingPolicy::Schedule(
       if (node_id == local_node_id_ && options.avoid_local_node) {
         continue;
       }
-      if (!is_node_alive_(node_id) || !node.GetLocalView().IsFeasible(resource_request)) {
+      if (!is_node_alive_(node_id) ||
+          !is_node_schedulable_(node_id, options.scheduling_context.get()) ||
+          !node.GetLocalView().IsFeasible(resource_request)) {
         continue;
       }
 

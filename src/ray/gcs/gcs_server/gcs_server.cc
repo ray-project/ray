@@ -25,6 +25,7 @@
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/pubsub/publisher.h"
@@ -105,6 +106,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
           rpc::ChannelType::RAY_LOG_CHANNEL,
           rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
+          rpc::ChannelType::RAY_VIRTUAL_CLUSTER_CHANNEL,
       },
       /*periodical_runner=*/*pubsub_periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
@@ -182,6 +184,9 @@ void GcsServer::GetOrGenerateClusterId(
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init cluster resource scheduler.
   InitClusterResourceScheduler();
+
+  // Init gcs virtual cluster manager.
+  InitGcsVirtualClusterManager(gcs_init_data);
 
   // Init gcs node manager.
   InitGcsNodeManager(gcs_init_data);
@@ -292,7 +297,8 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
                                        gcs_table_storage_.get(),
                                        io_context_provider_.GetDefaultIOContext(),
                                        raylet_client_pool_.get(),
-                                       rpc_server_.GetClusterId());
+                                       rpc_server_.GetClusterId(),
+                                       *gcs_virtual_cluster_manager_);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -330,6 +336,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
       kGCSNodeID,
+      *gcs_virtual_cluster_manager_,
       cluster_task_manager_.get());
 
   // Initialize by gcs tables data.
@@ -392,7 +399,25 @@ void GcsServer::InitClusterResourceScheduler() {
       NodeResources(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
-      /*is_local_node_with_raylet=*/false);
+      /*is_local_node_with_raylet=*/false,
+      /*is_node_schedulable_fn=*/
+      [this](scheduling::NodeID node_id, const SchedulingContext *context) {
+        // Check if the virtual cluster manager exists.
+        if (gcs_virtual_cluster_manager_ == nullptr ||
+            context->virtual_cluster_id.empty() ||
+            context->virtual_cluster_id == kPrimaryClusterID) {
+          return true;
+        }
+        auto node_instance_id = NodeID::FromBinary(node_id.Binary()).Hex();
+        auto virtual_cluster =
+            gcs_virtual_cluster_manager_->GetVirtualCluster(context->virtual_cluster_id);
+        if (virtual_cluster == nullptr) {
+          return true;
+        }
+        RAY_CHECK(!virtual_cluster->Divisible());
+        // Check if the node is contained within the specified virtual cluster.
+        return virtual_cluster->ContainsNodeInstance(node_instance_id);
+      });
 }
 
 void GcsServer::InitClusterTaskManager() {
@@ -421,6 +446,7 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
                                       *gcs_publisher_,
                                       *runtime_env_manager_,
                                       *function_manager_,
+                                      *gcs_virtual_cluster_manager_,
                                       kv_manager_->GetInstance(),
                                       io_context_provider_.GetDefaultIOContext(),
                                       client_factory);
@@ -481,6 +507,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
           gcs_publisher_.get(),
           *runtime_env_manager_,
           *function_manager_,
+          *gcs_virtual_cluster_manager_,
           [this](const ActorID &actor_id) {
             gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(
                 actor_id);
@@ -495,6 +522,25 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
 
   // Initialize by gcs tables data.
   gcs_actor_manager_->Initialize(gcs_init_data);
+  // Add event listeners
+  gcs_actor_manager_->AddActorRegistrationListener(
+      [this](const std::shared_ptr<GcsActor> &actor) {
+        if (gcs_virtual_cluster_manager_ != nullptr) {
+          if (actor->IsDetached()) {
+            gcs_virtual_cluster_manager_->OnDetachedActorRegistration(
+                actor->GetVirtualClusterID(), actor->GetActorID());
+          }
+        }
+      });
+  gcs_actor_manager_->AddActorDestroyListener(
+      [this](const std::shared_ptr<GcsActor> &actor) {
+        if (gcs_virtual_cluster_manager_ != nullptr) {
+          if (actor->IsDetached()) {
+            gcs_virtual_cluster_manager_->OnDetachedActorDestroy(
+                actor->GetVirtualClusterID(), actor->GetActorID());
+          }
+        }
+      });
   // Register service.
   actor_info_service_ = std::make_unique<rpc::ActorInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(), *gcs_actor_manager_);
@@ -520,6 +566,27 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       });
   // Initialize by gcs tables data.
   gcs_placement_group_manager_->Initialize(gcs_init_data);
+  // Add event listeners
+  gcs_placement_group_manager_->AddPlacementGroupRegistrationListener(
+      [this](const std::shared_ptr<GcsPlacementGroup> &placement_group) {
+        if (gcs_virtual_cluster_manager_ != nullptr) {
+          if (placement_group->IsDetached()) {
+            gcs_virtual_cluster_manager_->OnDetachedPlacementGroupRegistration(
+                placement_group->GetVirtualClusterID(),
+                placement_group->GetPlacementGroupID());
+          }
+        }
+      });
+  gcs_placement_group_manager_->AddPlacementGroupDestroyListener(
+      [this](const std::shared_ptr<GcsPlacementGroup> &placement_group) {
+        if (gcs_virtual_cluster_manager_ != nullptr) {
+          if (placement_group->IsDetached()) {
+            gcs_virtual_cluster_manager_->OnDetachedPlacementGroupDestroy(
+                placement_group->GetVirtualClusterID(),
+                placement_group->GetPlacementGroupID());
+          }
+        }
+      });
   // Register service.
   placement_group_info_service_.reset(new rpc::PlacementGroupInfoGrpcService(
       io_context_provider_.GetDefaultIOContext(), *gcs_placement_group_manager_));
@@ -730,6 +797,7 @@ void GcsServer::InstallEventListeners() {
         // placement groups and the pending actors.
         auto node_id = NodeID::FromBinary(node->node_id());
         gcs_resource_manager_->OnNodeAdd(*node);
+        gcs_virtual_cluster_manager_->OnNodeAdd(*node);
         gcs_placement_group_manager_->OnNodeAdd(node_id);
         gcs_actor_manager_->SchedulePendingActors();
         gcs_autoscaler_state_manager_->OnNodeAdd(*node);
@@ -755,6 +823,7 @@ void GcsServer::InstallEventListeners() {
         // All of the related placement groups and actors should be reconstructed when a
         // node is removed from the GCS.
         gcs_resource_manager_->OnNodeDead(node_id);
+        gcs_virtual_cluster_manager_->OnNodeDead(*node);
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node, node_ip_address);
         gcs_job_manager_->OnNodeDead(node_id);
@@ -791,6 +860,7 @@ void GcsServer::InstallEventListeners() {
     const auto job_id = JobID::FromBinary(job_data.job_id());
     gcs_task_manager_->OnJobFinished(job_id, job_data.end_time());
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(job_id);
+    gcs_virtual_cluster_manager_->OnJobFinished(job_data);
   });
 
   // Install scheduling event listeners.

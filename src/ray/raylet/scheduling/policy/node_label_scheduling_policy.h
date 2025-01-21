@@ -24,13 +24,17 @@ namespace raylet_scheduling_policy {
 // Label based node affinity scheduling strategy
 class NodeLabelSchedulingPolicy : public ISchedulingPolicy {
  public:
-  NodeLabelSchedulingPolicy(scheduling::NodeID local_node_id,
-                            const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
-                            std::function<bool(scheduling::NodeID)> is_node_alive)
+  NodeLabelSchedulingPolicy(
+      scheduling::NodeID local_node_id,
+      const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
+      std::function<bool(scheduling::NodeID)> is_node_alive,
+      std::function<bool(scheduling::NodeID, const SchedulingContext *)>
+          is_node_schedulable)
       : local_node_id_(local_node_id),
         nodes_(nodes),
         is_node_alive_(is_node_alive),
-        gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
+        gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
+        is_node_schedulable_(is_node_schedulable) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -50,7 +54,8 @@ class NodeLabelSchedulingPolicy : public ISchedulingPolicy {
       const ResourceRequest &resource_request) const;
 
   absl::flat_hash_map<scheduling::NodeID, const Node *> SelectFeasibleNodes(
-      const ResourceRequest &resource_request) const;
+      const ResourceRequest &resource_request,
+      const SchedulingContext *scheduling_context) const;
 
   absl::flat_hash_map<scheduling::NodeID, const Node *>
   FilterNodesByLabelMatchExpressions(
@@ -71,6 +76,7 @@ class NodeLabelSchedulingPolicy : public ISchedulingPolicy {
   std::function<bool(scheduling::NodeID)> is_node_alive_;
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
+  std::function<bool(scheduling::NodeID, const SchedulingContext *)> is_node_schedulable_;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

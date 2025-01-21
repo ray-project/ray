@@ -132,6 +132,8 @@ ray_cc_library(
         "common_protocol.h",
         "id.h",
         "id_def.h",
+        "simple_id.h",
+        "virtual_cluster_id.h",
     ],
     deps = [
         ":constants",
@@ -240,6 +242,7 @@ ray_cc_library(
     hdrs = [
         "ray_config.h",
         "ray_config_def.h",
+        "ray_config_def.ant.h",
         "ray_internal_flag_def.h",
     ],
     deps = [

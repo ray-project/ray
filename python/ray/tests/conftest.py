@@ -608,6 +608,55 @@ def _ray_start_cluster(**kwargs):
     cluster.shutdown()
 
 
+@contextmanager
+def _ray_start_virtual_cluster(**kwargs):
+    cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
+    if cluster_not_supported_:
+        pytest.skip("Cluster not supported")
+    init_kwargs = get_default_fixture_ray_kwargs()
+    num_nodes = 0
+    do_init = False
+    ntemplates = kwargs["ntemplates"]
+    # num_nodes & do_init are not arguments for ray.init, so delete them.
+    if "num_nodes" in kwargs:
+        num_nodes = kwargs["num_nodes"]
+        del kwargs["num_nodes"]
+    if "do_init" in kwargs:
+        do_init = kwargs["do_init"]
+        del kwargs["do_init"]
+    elif num_nodes > 0:
+        do_init = True
+
+    kwargs.pop("ntemplates")
+    init_kwargs.update(kwargs)
+    namespace = init_kwargs.pop("namespace")
+    template_id_prefix = init_kwargs.pop("template_id_prefix")
+    cluster = Cluster()
+    remote_nodes = []
+    for i in range(num_nodes):
+        if i > 0 and "_system_config" in init_kwargs:
+            del init_kwargs["_system_config"]
+        env_vars = {}
+        if i > 0:
+            env_vars = {
+                "RAY_NODE_TYPE_NAME": template_id_prefix + str((i - 1) % ntemplates)
+            }
+        remote_nodes.append(
+            cluster.add_node(
+                **init_kwargs,
+                env_vars=env_vars,
+            )
+        )
+        # We assume driver will connect to the head (first node),
+        # so ray init will be invoked if do_init is true
+        if len(remote_nodes) == 1 and do_init:
+            ray.init(address=cluster.address, namespace=namespace)
+    yield cluster
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+    cluster.shutdown()
+
+
 # This fixture will start a cluster with empty nodes.
 @pytest.fixture
 def ray_start_cluster(request, maybe_external_redis):

@@ -19,6 +19,7 @@
    Ray RLlib <rllib/index>
    More Libraries <ray-more-libs/index>
    Ray Clusters <cluster/getting-started>
+   Ray Virtual Clusters <virtual-cluster/getting-started>
    Monitoring and Debugging <ray-observability/index>
    Developer Guides <ray-contribute/index>
    Glossary <ray-references/glossary>

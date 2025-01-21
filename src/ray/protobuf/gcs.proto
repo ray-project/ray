@@ -42,6 +42,7 @@ enum TablePrefix {
   PLACEMENT_GROUP = 17;
   KV = 18;
   ACTOR_TASK_SPEC = 19;
+  VIRTUAL_CLUSTER = 20;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -677,6 +678,8 @@ message PlacementGroupTableData {
   // The time that the last bundle of a placement group is committed at,
   // effectively when the placement group has been "scheduled".
   int64 placement_group_final_bundle_placement_timestamp_ms = 16;
+  // The virtual cluster this placement group belongs to.
+  string virtual_cluster_id = 17;
 }
 
 message JobTableData {
@@ -706,5 +709,27 @@ message JobTableData {
   optional bool is_running_tasks = 11;
   // Address of the driver that started this job.
   Address driver_address = 12;
+  // The virtual cluster this job belongs to.
+  string virtual_cluster_id = 13;
 }
 ///////////////////////////////////////////////////////////////////////////////
+
+message NodeInstance {
+  // The Hostname address of the node instance.
+  string hostname = 1;
+  // The template id of the node instance.
+  string template_id = 2;
+}
+
+message VirtualClusterTableData {
+  // The virtual cluster id.
+  string id = 1;
+  // Whether the virtual cluster can splite into many child virtual clusters or not.
+  bool divisible = 2;
+  // Mapping from node id to it's instance.
+  map<string, NodeInstance> node_instances = 3;
+  // Whether this virtual cluster is removed.
+  bool is_removed = 4;
+  // Version number of the last modification to the virtual cluster.
+  uint64 revision = 5;
+}

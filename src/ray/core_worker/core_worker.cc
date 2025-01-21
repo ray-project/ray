@@ -1059,8 +1059,13 @@ void CoreWorker::ConnectToRayletInternal() {
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
   if (options_.worker_type == WorkerType::DRIVER) {
+    // Get virtual cluster id from worker env to put it into job table data
+    std::string virtual_cluster_id = std::getenv(kEnvVarKeyVirtualClusterID)
+                                         ? std::getenv(kEnvVarKeyVirtualClusterID)
+                                         : "";
+
     Status status = local_raylet_client_->AnnounceWorkerPortForDriver(
-        core_worker_server_->GetPort(), options_.entrypoint);
+        core_worker_server_->GetPort(), options_.entrypoint, virtual_cluster_id);
     RAY_CHECK_OK(status) << "Failed to announce driver's port to raylet and GCS";
   } else {
     // TODO(hjiang): In the future this function should only accessed by driver, should

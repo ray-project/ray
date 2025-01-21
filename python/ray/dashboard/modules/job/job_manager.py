@@ -26,6 +26,7 @@ from ray.dashboard.modules.job.common import (
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfo,
     JobInfoStorageClient,
+    VirtualClusterClient,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
@@ -74,6 +75,7 @@ class JobManager:
         self._logs_dir = logs_dir
         self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
         self._gcs_address = gcs_aio_client.address
+        self._virtual_cluster_client = VirtualClusterClient(self._gcs_address)
         self._cluster_id_hex = gcs_aio_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
@@ -103,6 +105,37 @@ class JobManager:
 
         return job_driver_logger
 
+    async def _create_job_cluster(
+        self,
+        submission_id,
+        virtual_cluster_id: Optional[str],
+        replica_sets: Optional[Dict[str, int]],
+    ):
+        if (
+            virtual_cluster_id is not None
+            and replica_sets is not None
+            and len(replica_sets) > 0
+        ):
+            (
+                job_cluster_id,
+                message,
+            ) = await self._virtual_cluster_client.create_job_cluster(
+                submission_id,
+                virtual_cluster_id,
+                replica_sets,
+            )
+            # If cluster creation fails
+            if job_cluster_id is None:
+                message = f"Create Job Cluster Failed, {message}"
+                await self._job_info_client.put_status(
+                    submission_id,
+                    JobStatus.FAILED,
+                    message=message,
+                )
+                raise Exception(message)
+            return job_cluster_id
+        return virtual_cluster_id
+
     async def _recover_running_jobs(self):
         """Recovers all running jobs from the status client.
 
@@ -130,7 +163,9 @@ class JobManager:
             return None
 
     async def _monitor_job(
-        self, job_id: str, job_supervisor: Optional[ActorHandle] = None
+        self,
+        job_id: str,
+        job_supervisor: Optional[ActorHandle] = None,
     ):
         """Monitors the specified job until it enters a terminal state.
 
@@ -148,7 +183,9 @@ class JobManager:
             self.monitored_jobs.remove(job_id)
 
     async def _monitor_job_internal(
-        self, job_id: str, job_supervisor: Optional[ActorHandle] = None
+        self,
+        job_id: str,
+        job_supervisor: Optional[ActorHandle] = None,
     ):
         timeout = float(
             os.environ.get(
@@ -203,6 +240,9 @@ class JobManager:
                                 "`ray status` and specifying fewer resources for the "
                                 "job entrypoint."
                             )
+                        await self._virtual_cluster_client.remove_job_cluster(
+                            job_info.job_cluster_id
+                        )
                         await self._job_info_client.put_status(
                             job_id,
                             JobStatus.FAILED,
@@ -226,6 +266,9 @@ class JobManager:
                         # actor is not created due to some unexpected errors.
                         # We will set the job status to FAILED.
                         logger.error(f"Failed to get job supervisor for job {job_id}.")
+                        await self._virtual_cluster_client.remove_job_cluster(
+                            job_info.job_cluster_id
+                        )
                         await self._job_info_client.put_status(
                             job_id,
                             JobStatus.FAILED,
@@ -258,6 +301,9 @@ class JobManager:
                 elif isinstance(e, RuntimeEnvSetupError):
                     logger.info(f"Failed to set up runtime_env for job {job_id}.")
                     job_error_message = f"runtime_env setup failed: {e}"
+                    await self._virtual_cluster_client.remove_job_cluster(
+                        job_info.job_cluster_id
+                    )
                     job_status = JobStatus.FAILED
                     await self._job_info_client.put_status(
                         job_id,
@@ -272,6 +318,9 @@ class JobManager:
                     job_error_message = (
                         f"Job supervisor actor could not be scheduled: {e}"
                     )
+                    await self._virtual_cluster_client.remove_job_cluster(
+                        job_info.job_cluster_id
+                    )
                     await self._job_info_client.put_status(
                         job_id,
                         JobStatus.FAILED,
@@ -282,6 +331,9 @@ class JobManager:
                         f"Job supervisor for job {job_id} failed unexpectedly: {e}."
                     )
                     job_error_message = f"Unexpected error occurred: {e}"
+                    await self._virtual_cluster_client.remove_job_cluster(
+                        job_info.job_cluster_id
+                    )
                     job_status = JobStatus.FAILED
                     await self._job_info_client.put_status(
                         job_id,
@@ -328,6 +380,7 @@ class JobManager:
         user_runtime_env: Dict[str, Any],
         submission_id: str,
         resources_specified: bool = False,
+        virtual_cluster_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Configure and return the runtime_env for the supervisor actor.
 
@@ -338,6 +391,7 @@ class JobManager:
                 in #24546 for GPU detection and just use the user's resource
                 requests, so that the behavior matches that of the user specifying
                 resources for any other actor.
+            virtual_cluster_id: ID of the virtual cluster the job belongs to.
 
         Returns:
             The runtime_env for the supervisor actor.
@@ -360,6 +414,10 @@ class JobManager:
             # driver can use GPUs if it wants to. This will be removed from
             # the driver's runtime_env so it isn't inherited by tasks & actors.
             env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+
+        if virtual_cluster_id is not None:
+            env_vars[ray_constants.RAY_VIRTUAL_CLUSTER_ID_ENV_VAR] = virtual_cluster_id
+
         runtime_env["env_vars"] = env_vars
 
         if os.getenv(RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR, "0") == "1":
@@ -372,7 +430,7 @@ class JobManager:
         return runtime_env
 
     async def _get_scheduling_strategy(
-        self, resources_specified: bool
+        self, resources_specified: bool, virtual_cluster_id: Optional[str]
     ) -> SchedulingStrategyT:
         """Get the scheduling strategy for the job.
 
@@ -387,6 +445,9 @@ class JobManager:
         Returns:
             The scheduling strategy to use for the job.
         """
+        if virtual_cluster_id is not None:
+            return "DEFAULT"
+
         if resources_specified:
             return "DEFAULT"
 
@@ -426,6 +487,8 @@ class JobManager:
         submission_id: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
+        virtual_cluster_id: Optional[str] = None,
+        replica_sets: Optional[Dict[str, int]] = None,
         entrypoint_num_cpus: Optional[Union[int, float]] = None,
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
@@ -452,6 +515,8 @@ class JobManager:
                 env at ray cluster, task and actor level.
             metadata: Support passing arbitrary data to driver command in
                 case needed.
+            virtual_cluster_id: Virtual Cluster this job belongs to.
+            replica_sets: Replia Sets required by this job.
             entrypoint_num_cpus: The quantity of CPU cores to reserve for the execution
                 of the entrypoint command, separately from any tasks or actors launched
                 by it. Defaults to 0.
@@ -485,6 +550,16 @@ class JobManager:
         # avoid duplicate monitoring of the same job.
         await self._recover_running_jobs_event.wait()
 
+        job_cluster_id = None
+        if (
+            virtual_cluster_id is not None
+            and replica_sets is not None
+            and len(replica_sets) > 0
+        ):
+            job_cluster_id = self._virtual_cluster_client.build_job_cluster_id(
+                submission_id, virtual_cluster_id
+            )
+
         logger.info(f"Starting job with submission_id: {submission_id}")
         job_info = JobInfo(
             entrypoint=entrypoint,
@@ -496,6 +571,7 @@ class JobManager:
             entrypoint_num_gpus=entrypoint_num_gpus,
             entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
+            job_cluster_id=job_cluster_id,
         )
         new_key_added = await self._job_info_client.put_info(
             submission_id, job_info, overwrite=False
@@ -505,6 +581,13 @@ class JobManager:
                 f"Job with submission_id {submission_id} already exists. "
                 "Please use a different submission_id."
             )
+
+        try:
+            virtual_cluster_id = await self._create_job_cluster(
+                submission_id, virtual_cluster_id, replica_sets
+            )
+        except Exception:
+            return submission_id
 
         driver_logger = self._get_job_driver_logger(submission_id)
         # Wait for the actor to start up asynchronously so this call always
@@ -520,12 +603,17 @@ class JobManager:
                 ]
             )
             scheduling_strategy = await self._get_scheduling_strategy(
-                resources_specified
+                resources_specified, virtual_cluster_id
             )
             if self.event_logger:
                 self.event_logger.info(
                     f"Started a ray job {submission_id}.", submission_id=submission_id
                 )
+
+            labels = {}
+            if virtual_cluster_id is not None:
+                # label is used to pass virtual_cluster_id to core worker
+                labels["virtual_cluster_id"] = virtual_cluster_id
 
             driver_logger.info("Runtime env is setting up.")
             supervisor = self._supervisor_actor_cls.options(
@@ -537,9 +625,10 @@ class JobManager:
                 resources=entrypoint_resources,
                 scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(
-                    runtime_env, submission_id, resources_specified
+                    runtime_env, submission_id, resources_specified, virtual_cluster_id
                 ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+                _labels=labels,
             ).remote(
                 submission_id,
                 entrypoint,
@@ -556,13 +645,19 @@ class JobManager:
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
             run_background_task(
-                self._monitor_job(submission_id, job_supervisor=supervisor)
+                self._monitor_job(
+                    submission_id,
+                    job_supervisor=supervisor,
+                )
             )
         except Exception as e:
             tb_str = traceback.format_exc()
             driver_logger.warning(
                 f"Failed to start supervisor actor for job {submission_id}: '{e}'"
                 f". Full traceback:\n{tb_str}"
+            )
+            await self._virtual_cluster_client.remove_job_cluster(
+                job_info.job_cluster_id
             )
             await self._job_info_client.put_status(
                 submission_id,

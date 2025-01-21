@@ -20,8 +20,10 @@ namespace raylet_scheduling_policy {
 bool AffinityWithBundleSchedulingPolicy::IsNodeFeasibleAndAvailable(
     const scheduling::NodeID &node_id,
     const ResourceRequest &resource_request,
-    bool avoid_gpu_nodes) {
+    bool avoid_gpu_nodes,
+    const SchedulingContext *scheduling_context) {
   if (!(nodes_.contains(node_id) && is_node_alive_(node_id) &&
+        is_node_schedulable_(node_id, scheduling_context) &&
         nodes_.at(node_id).GetLocalView().IsFeasible(resource_request) &&
         nodes_.at(node_id).GetLocalView().IsAvailable(resource_request))) {
     return false;
@@ -53,8 +55,10 @@ scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
     const auto &node_id_opt = bundle_location_index_.GetBundleLocation(bundle_id);
     if (node_id_opt) {
       auto target_node_id = scheduling::NodeID(node_id_opt.value().Binary());
-      if (IsNodeFeasibleAndAvailable(
-              target_node_id, resource_request, /*avoid_gpu_nodes=*/false)) {
+      if (IsNodeFeasibleAndAvailable(target_node_id,
+                                     resource_request,
+                                     /*avoid_gpu_nodes=*/false,
+                                     options.scheduling_context.get())) {
         return target_node_id;
       }
     }
@@ -66,8 +70,10 @@ scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
       if (options.avoid_gpu_nodes) {
         for (const auto &iter : *(bundle_locations_opt.value())) {
           auto target_node_id = scheduling::NodeID(iter.second.first.Binary());
-          if (IsNodeFeasibleAndAvailable(
-                  target_node_id, resource_request, /*avoid_gpu_nodes=*/true)) {
+          if (IsNodeFeasibleAndAvailable(target_node_id,
+                                         resource_request,
+                                         /*avoid_gpu_nodes=*/true,
+                                         options.scheduling_context.get())) {
             return target_node_id;
           }
         }
@@ -75,8 +81,10 @@ scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
       // Find a target from all nodes.
       for (const auto &iter : *(bundle_locations_opt.value())) {
         auto target_node_id = scheduling::NodeID(iter.second.first.Binary());
-        if (IsNodeFeasibleAndAvailable(
-                target_node_id, resource_request, /*avoid_gpu_nodes=*/false)) {
+        if (IsNodeFeasibleAndAvailable(target_node_id,
+                                       resource_request,
+                                       /*avoid_gpu_nodes=*/false,
+                                       options.scheduling_context.get())) {
           return target_node_id;
         }
       }

@@ -32,9 +32,12 @@ class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
  public:
   explicit BundleSchedulingPolicy(
       ClusterResourceManager &cluster_resource_manager,
-      std::function<bool(scheduling::NodeID)> is_node_available)
+      std::function<bool(scheduling::NodeID)> is_node_available,
+      std::function<bool(scheduling::NodeID, const SchedulingContext *)>
+          is_node_schedulable)
       : cluster_resource_manager_(cluster_resource_manager),
         is_node_available_(is_node_available),
+        is_node_schedulable_(is_node_schedulable),
         node_scorer_(new LeastResourceScorer()) {}
 
  protected:
@@ -75,6 +78,8 @@ class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
   ClusterResourceManager &cluster_resource_manager_;
   /// Function Checks if node is alive.
   std::function<bool(scheduling::NodeID)> is_node_available_;
+  /// Function Checks if node is schedulable.
+  std::function<bool(scheduling::NodeID, const SchedulingContext *)> is_node_schedulable_;
   /// Scorer to make a grade to the node.
   std::unique_ptr<NodeScorer> node_scorer_;
 };

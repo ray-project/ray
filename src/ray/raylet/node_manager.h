@@ -35,6 +35,7 @@
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
+#include "ray/raylet/virtual_cluster_manager.h"
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/raylet/worker_pool.h"
@@ -745,6 +746,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::shared_ptr<raylet::RayletClient> CreateRayletClient(
       const NodeID &node_id, rpc::ClientCallManager &client_call_manager);
 
+  /// Clean up the local (pending and running) tasks that have mismatched
+  /// virtual cluster id against the one to which the local node currently belongs.
+  ///
+  /// \param local_virtual_cluster_id The ID of the virtual cluster to which the local
+  /// node currently belongs. \return void
+  void CancelMismatchedLocalTasks(const std::string &local_virtual_cluster_id);
+
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -918,6 +926,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<MemoryMonitor> memory_monitor_;
 
   std::unique_ptr<core::experimental::MutableObjectProvider> mutable_object_provider_;
+
+  /// The virtual cluster manager.
+  std::shared_ptr<VirtualClusterManager> virtual_cluster_manager_;
 };
 
 }  // namespace raylet

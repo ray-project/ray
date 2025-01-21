@@ -18,6 +18,7 @@
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/common/virtual_cluster_id.h"
 #include "ray/gcs/callback.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/sequencer.h"
@@ -381,6 +382,16 @@ class NodeInfoAccessor {
   virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                              int64_t timeout_ms);
 
+  /// Get information of all nodes from GCS asynchronously.
+  ///
+  /// \param virtual_cluster_id The ID of the virtual cluster to look up in GCS.
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetByVirtualClusterID(
+      const std::optional<std::string> &virtual_cluster_id,
+      const MultiItemCallback<rpc::GcsNodeInfo> &callback,
+      int64_t timeout_ms);
+
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
   /// \param subscribe Callback that will be called if a node is
@@ -500,6 +511,7 @@ class NodeResourceInfoAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetAllAvailableResources(
+      const std::optional<std::string> &virtual_cluster_id,
       const MultiItemCallback<rpc::AvailableResources> &callback);
 
   /// Get total resources of all nodes from GCS asynchronously.
@@ -507,6 +519,7 @@ class NodeResourceInfoAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetAllTotalResources(
+      const std::optional<std::string> &virtual_cluster_id,
       const MultiItemCallback<rpc::TotalResources> &callback);
 
   /// Get draining nodes from GCS asynchronously.
@@ -997,6 +1010,60 @@ class AutoscalerStateAccessor {
 
  private:
   GcsClient *client_impl_;
+};
+
+class VirtualClusterInfoAccessor {
+ public:
+  VirtualClusterInfoAccessor() = default;
+  explicit VirtualClusterInfoAccessor(GcsClient *client_impl);
+  virtual ~VirtualClusterInfoAccessor() = default;
+
+  /// Get a virtual cluster data from GCS asynchronously by id.
+  ///
+  /// \param virtual_cluster_id The id of a virtual cluster to obtain from GCS.
+  /// \return Status.
+  virtual Status AsyncGet(
+      const VirtualClusterID &virtual_cluster_id,
+      const OptionalItemCallback<rpc::VirtualClusterTableData> &callback);
+
+  /// Get all virtual cluster info from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finished.
+  /// \return Status
+  virtual Status AsyncGetAll(
+      bool include_job_clusters,
+      bool only_include_indivisible_clusters,
+      const MultiItemCallback<rpc::VirtualClusterTableData> &callback);
+
+  /// Subscribe to virtual cluster updates.
+  ///
+  /// \param subscribe Callback that will be called each time when a job updates.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeAll(
+      const SubscribeCallback<VirtualClusterID, rpc::VirtualClusterTableData> &subscribe,
+      const StatusCallback &done);
+
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  /// PubSub server restart will cause GCS server restart. In this case, we need to
+  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
+  /// server.
+  virtual void AsyncResubscribe();
+
+ private:
+  /// Save the fetch data operation in this function, so we can call it again when GCS
+  /// server restarts from a failure.
+  FetchDataOperation fetch_all_data_operation_;
+
+  /// Save the subscribe operation in this function, so we can call it again when PubSub
+  /// server restarts from a failure.
+  SubscribeOperation subscribe_operation_;
+
+  GcsClient *client_impl_;
+
+  // Local cache of the virtual cluster data. It can be used for revision control.
+  absl::flat_hash_map<VirtualClusterID, rpc::VirtualClusterTableData> virtual_clusters_;
 };
 
 }  // namespace gcs

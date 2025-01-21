@@ -120,6 +120,10 @@ rpc::PlacementStrategy GcsPlacementGroup::GetStrategy() const {
   return placement_group_table_data_.strategy();
 }
 
+const std::string &GcsPlacementGroup::GetVirtualClusterID() const {
+  return placement_group_table_data_.virtual_cluster_id();
+}
+
 const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableData()
     const {
   return placement_group_table_data_;
@@ -259,6 +263,10 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
   registered_placement_groups_.emplace(placement_group->GetPlacementGroupID(),
                                        placement_group);
   AddToPendingQueue(placement_group);
+
+  for (auto &listener : placement_group_registration_listeners_) {
+    listener(placement_group);
+  }
 
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id,
@@ -554,6 +562,10 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   if (pending_it != infeasible_placement_groups_.end()) {
     // The placement group is infeasible now, remove it from the queue.
     infeasible_placement_groups_.erase(pending_it);
+  }
+
+  for (auto &listener : placement_group_destroy_listeners_) {
+    listener(placement_group);
   }
 
   // Flush the status and respond to workers.

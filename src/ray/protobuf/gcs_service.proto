@@ -229,6 +229,7 @@ message GetAllNodeInfoRequest {
     optional bytes node_id = 1;
     optional GcsNodeInfo.GcsNodeState state = 2;
     optional string node_name = 3;
+    optional string virtual_cluster_id = 4;
   }
 
   // Maximum number to return.
@@ -270,14 +271,18 @@ message DeleteResourcesReply {
   GcsStatus status = 1;
 }
 
-message GetAllAvailableResourcesRequest {}
+message GetAllAvailableResourcesRequest {
+  string virtual_cluster_id = 1;
+}
 
 message GetAllAvailableResourcesReply {
   GcsStatus status = 1;
   repeated AvailableResources resources_list = 2;
 }
 
-message GetAllTotalResourcesRequest {}
+message GetAllTotalResourcesRequest {
+  string virtual_cluster_id = 1;
+}
 
 message GetAllTotalResourcesReply {
   GcsStatus status = 1;
@@ -863,3 +868,123 @@ service TaskInfoGcsService {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+
+message CreateOrUpdateVirtualClusterRequest {
+  // The virtual cluster id.
+  string virtual_cluster_id = 1;
+  // Whether the virtual cluster can splite into many child virtual clusters or not.
+  bool divisible = 2;
+  // The replica set of the virtual cluster.
+  map<string, int32> replica_sets = 3;
+  // Version number of the last modification to the virtual cluster.
+  uint64 revision = 4;
+}
+
+message CreateOrUpdateVirtualClusterReply {
+  GcsStatus status = 1;
+  // Version number of the last modification to the virtual cluster.
+  uint64 revision = 2;
+  // Mapping from node id to it's instance.
+  map<string, NodeInstance> node_instances = 3;
+  // The replica sets that gcs can fulfill at most to meet the reqest.
+  // This field is only used when the request failed and serving as a suggestion
+  // to adjust the requst or cluster.
+  map<string, int32> replica_sets_to_recommend = 4;
+}
+
+message RemoveVirtualClusterRequest {
+  // ID of the virtual cluster to be removed.
+  string virtual_cluster_id = 1;
+}
+
+message RemoveVirtualClusterReply {
+  GcsStatus status = 1;
+}
+
+message NodeInstanceView {
+  // The Hostname address of the node instance.
+  string hostname = 1;
+  // The template id of the node instance.
+  string template_id = 2;
+  // Whether the node is dead
+  bool is_dead = 3;
+  // Total resources of the node.
+  map<string, double> resources_total = 4;
+  // Available resources of the node.
+  map<string, double> resources_available = 5;
+}
+
+message VirtualClusterView {
+  // The virtual cluster id.
+  string id = 1;
+  // Whether the virtual cluster can splite into many child virtual clusters or not.
+  bool divisible = 2;
+  // Mapping from node id to it's instance.
+  map<string, NodeInstanceView> node_instance_views = 3;
+  // Version number of the last modification to the virtual cluster.
+  uint64 revision = 4;
+}
+
+message GetAllVirtualClusterInfoRequest {
+  // Maximum number to return.
+  // If set, the exact `limit` returned do not have any ordering or selection
+  // guarantee.
+  optional int64 limit = 1;
+}
+
+message GetAllVirtualClusterInfoReply {
+  GcsStatus status = 1;
+  repeated VirtualClusterView virtual_clusters_view = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
+}
+
+message GetVirtualClustersRequest {
+  // ID of the virtual cluster to get.
+  // It will reply all clusters data if virtual_cluster_id is empty.
+  string virtual_cluster_id = 1;
+  // Wether include job clusters.
+  bool include_job_clusters = 2;
+  // It will reply indivisible clusters if only_include_indivisible_clusters is true.
+  bool only_include_indivisible_clusters = 3;
+}
+
+message GetVirtualClustersReply {
+  GcsStatus status = 1;
+  repeated VirtualClusterTableData virtual_cluster_data_list = 2;
+}
+
+message CreateJobClusterRequest {
+  // The job id.
+  string job_id = 1;
+  // ID of the virtual cluster that the job belongs to.
+  string virtual_cluster_id = 2;
+  // The replica set of the job cluster.
+  map<string, int32> replica_sets = 3;
+}
+
+message CreateJobClusterReply {
+  GcsStatus status = 1;
+  // The job cluster id.
+  string job_cluster_id = 2;
+  // The replica sets that gcs can fulfill at most to meet the reqest.
+  // This field is only used when the request failed and serving as a suggestion
+  // to adjust the requst or cluster.
+  map<string, int32> replica_sets_to_recommend = 3;
+}
+
+service VirtualClusterInfoGcsService {
+  // Create or update a virtual cluster.
+  rpc CreateOrUpdateVirtualCluster(CreateOrUpdateVirtualClusterRequest)
+      returns (CreateOrUpdateVirtualClusterReply);
+  // Remove a virtual cluster.
+  rpc RemoveVirtualCluster(RemoveVirtualClusterRequest)
+      returns (RemoveVirtualClusterReply);
+  // Get virtual clusters.
+  rpc GetVirtualClusters(GetVirtualClustersRequest) returns (GetVirtualClustersReply);
+  // Create job cluster.
+  rpc CreateJobCluster(CreateJobClusterRequest) returns (CreateJobClusterReply);
+  // Get all virtual clusters info for display.
+  rpc GetAllVirtualClusterInfo(GetAllVirtualClusterInfoRequest)
+      returns (GetAllVirtualClusterInfoReply);
+}

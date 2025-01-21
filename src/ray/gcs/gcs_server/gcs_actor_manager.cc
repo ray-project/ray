@@ -124,6 +124,11 @@ const ray::rpc::ActorDeathCause GenActorRefDeletedCause(const ray::gcs::GcsActor
   return death_cause;
 }
 
+}  // namespace
+
+namespace ray {
+namespace gcs {
+
 // Returns true if an actor should be loaded to registered_actors_.
 // `false` Cases:
 // 0. state is DEAD, and is not restartable
@@ -162,11 +167,6 @@ bool OnInitializeActorShouldLoad(const ray::gcs::GcsInitData &gcs_init_data,
            root_detached_actor_iter->second.state() != ray::rpc::ActorTableData::DEAD;
   }
 };
-
-}  // namespace
-
-namespace ray {
-namespace gcs {
 
 bool is_uuid(const std::string &str) {
   static const boost::regex e(
@@ -215,6 +215,10 @@ void GcsActor::UpdateState(rpc::ActorTableData::ActorState state) {
 
 rpc::ActorTableData::ActorState GcsActor::GetState() const {
   return actor_table_data_.state();
+}
+
+const std::string &GcsActor::GetVirtualClusterID() const {
+  return task_spec_->scheduling_strategy().virtual_cluster_id();
 }
 
 ActorID GcsActor::GetActorID() const {
@@ -329,6 +333,7 @@ GcsActorManager::GcsActorManager(
     GcsPublisher *gcs_publisher,
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
+    GcsVirtualClusterManager &gcs_virtual_cluster_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     const rpc::CoreWorkerClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
@@ -340,6 +345,7 @@ GcsActorManager::GcsActorManager(
           std::move(destroy_owned_placement_group_if_needed)),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
+      gcs_virtual_cluster_manager_(gcs_virtual_cluster_manager),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
@@ -714,6 +720,18 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
 
+  auto virtual_cluster_id =
+      request.task_spec().scheduling_strategy().virtual_cluster_id();
+  if (!virtual_cluster_id.empty()) {
+    auto virtual_cluster =
+        gcs_virtual_cluster_manager_.GetVirtualCluster(virtual_cluster_id);
+    if (virtual_cluster == nullptr || virtual_cluster->Divisible()) {
+      std::stringstream stream;
+      stream << "Invalid virtual cluster, virtual cluster id: " << virtual_cluster_id;
+      return Status::InvalidArgument(stream.str());
+    }
+  }
+
   auto iter = registered_actors_.find(actor_id);
   if (iter != registered_actors_.end()) {
     auto pending_register_iter = actor_to_register_callbacks_.find(actor_id);
@@ -786,6 +804,10 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     // If it's a detached actor, we need to register the runtime env it used to GC.
     runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
                                          request.task_spec().runtime_env_info());
+  }
+
+  for (auto &listener : actor_registration_listeners_) {
+    listener(actor);
   }
 
   // The backend storage is supposed to be reliable, so the status must be ok.
@@ -1109,6 +1131,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     } else {
       runtime_env_manager_.RemoveURIReference(actor_id.Hex());
     }
+  }
+
+  for (auto &listener : actor_destroy_listeners_) {
+    listener(actor);
   }
 
   auto actor_table_data =
