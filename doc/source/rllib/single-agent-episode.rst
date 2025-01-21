@@ -1,13 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
-
 .. _single-agent-episode-docs:
-
 
 Episodes
 ========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 RLlib stores and transports all trajectory data in the form of `Episodes`, in particular
 :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` for single-agent setups
