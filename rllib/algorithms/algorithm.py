@@ -260,7 +260,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         offline_data: An optional OfflineData instance, used for offline RL.
     """
 
-    config: Optional[AlgorithmConfig] = None
+    #config: Optional[AlgorithmConfig] = None
     metrics: Optional[MetricsLogger] = None
     env_runner_group: Optional[EnvRunnerGroup] = None
     eval_env_runner_group: Optional[EnvRunnerGroup] = None
