@@ -10,7 +10,7 @@ Developing with RLlib and debugging
 
 This page teaches you how to set up Ray RLlib for development. It walks you through cloning your own github fork,
 installing Ray, setting up RLlib so you can modify and customize your own code, creating a pull request (PR),
-debugging RLlib code, and clearing and re-installing Ray and RLlib to stay up to date.
+debugging RLlib code, and clearing and re-installing Ray and RLlib in case of problems with your installation or setup.
 
 
 Forking the git repository
@@ -36,8 +36,8 @@ able to switch between different python and package versions. Take a moment to m
 and have activate the correct environment, including the python version you would like to develop in.
 
 
-Installing Ray
---------------
+Installing RLlib
+----------------
 
 Next, pip install `Ray <https://docs.ray.io/en/latest/>`__, `PyTorch <https://pytorch.org>`__,
 and a few `Farama <https://gymnasium.farama.org>`__ dependencies to be able to run most of RLlib's examples and benchmarks:
@@ -46,7 +46,6 @@ and a few `Farama <https://gymnasium.farama.org>`__ dependencies to be able to r
 
     pip install "ray[rllib]" torch "gymnasium[atari,accept-rom-license,mujoco]"
 
-
 The preceding commands install the latest release of Ray on your system. To further advance to the current master branch version,
 copy the correct `installation link from here <https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies>`__,
 depending on your system and python version and run:
@@ -54,7 +53,6 @@ depending on your system and python version and run:
 .. code-block:: bash
 
     pip install -U [copied link from https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies]
-
 
 Testing your installation
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -69,6 +67,14 @@ Run a quick check to find out whether the above installations were successful:
     >>> ppo = PPOConfig().environment("CartPole-v1").build()
     >>> ppo.train()
 
+
+
+
+Keeping your master-branch installation up to date
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You should pull from the master branch from time to time
+In case you observe
 .. todo (sven): Add here, how to setup RLlib to link into your pip installed ray and how to nuke the setup in case after a `git pull` weird errors unrelated to RLlib show up, b/c of other
 libraries' updates causing problems.
 - Make sure you have everything committed and pushed. Local branch should be free of any uncommitted changes.
@@ -77,6 +83,8 @@ libraries' updates causing problems.
 - pip install -U [pick right wheel from https://docs.ray.io/en/latest/ray-overview/installation.html#daily-releases-nightlies]
 - git stash
 - python python/ray/setup-dev.py (<- only say yes to RLlib, then get your CTRL+C out of there! :slightly_smiling_face: )
+
+
 
 
 Setting up RLlib for development
