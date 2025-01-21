@@ -138,6 +138,8 @@ def test_log_file_exists(shutdown_only):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
+    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
+    # substring of "python-core-worker".
     log_rotating_component = [
         (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
         (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
@@ -146,10 +148,8 @@ def test_log_file_exists(shutdown_only):
         (ray_constants.PROCESS_TYPE_MONITOR, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER, [".log"]),
         (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER, [".log"]),
-        # Below components are not log rotating now.
         (ray_constants.PROCESS_TYPE_RAYLET, [".out", ".err"]),
         (ray_constants.PROCESS_TYPE_GCS_SERVER, [".out", ".err"]),
-        (ray_constants.PROCESS_TYPE_WORKER, [".out", ".err"]),
     ]
 
     # Run the basic workload.
@@ -169,22 +169,21 @@ def test_log_file_exists(shutdown_only):
             filename = path.stem
             suffix = path.suffix
             if component in filename:
-                # core-worker log also contains "worker keyword". We ignore this case.
-                if (
-                    component == ray_constants.PROCESS_TYPE_WORKER
-                    and ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER in filename
-                ):
-                    continue
-                if suffix in suffixes:
-                    return True
-                else:
-                    # unexpected suffix.
-                    return False
+                return suffix in suffixes
 
         return False
 
     for component in log_rotating_component:
         assert component_and_suffix_exists(component, paths), (component, paths)
+
+    # Special handle application log.
+    application_log_prefix = ray_constants.PROCESS_TYPE_WORKER
+    appplication_log_suffixes = [".out", ".err"]
+    for path in paths:
+        filename = path.stem
+        suffix = path.suffix
+        if filename.startswith(application_log_prefix):
+            return suffix in appplication_log_suffixes
 
 
 def test_log_rotation(shutdown_only, monkeypatch):
@@ -196,6 +195,8 @@ def test_log_rotation(shutdown_only, monkeypatch):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
+    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
+    # substring of "python-core-worker".
     log_rotating_component = [
         ray_constants.PROCESS_TYPE_DASHBOARD,
         ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
@@ -203,10 +204,8 @@ def test_log_rotation(shutdown_only, monkeypatch):
         ray_constants.PROCESS_TYPE_MONITOR,
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
-        # Below components are not log rotating now.
-        # ray_constants.PROCESS_TYPE_RAYLET,
-        # ray_constants.PROCESS_TYPE_GCS_SERVER,
-        # ray_constants.PROCESS_TYPE_WORKER,
+        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
     ]
 
     # Run the basic workload.
@@ -218,14 +217,21 @@ def test_log_rotation(shutdown_only, monkeypatch):
     # Create a runtime env to make sure dashboard agent is alive.
     ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
 
-    # Filter out only paths that end in .log, .log.1, etc.
-    # These paths are handled by the logger; the others (.out, .err) are not.
+    # Filter out only paths that end in .log, .log.1, (which is produced by python
+    # rotating log handler) and .out.1 and so on (which is produced by C++ spdlog
+    # rotation handler) . etc. These paths are handled by the logger; the others (.err)
+    # are not.
     paths = []
     for path in log_dir_path.iterdir():
+        # Match all rotated files, which suffixes with `log.x` or `log.x.out`.
         if re.search(r".*\.log(\.\d+)?", str(path)):
+            paths.append(path)
+        elif re.search(r".*\.out(\.\d+)?", str(path)):
             paths.append(path)
 
     def component_exist(component, paths):
+        """Return whether there's at least one log file path is for the given
+        [component]."""
         for path in paths:
             filename = path.stem
             if component in filename:
@@ -266,6 +272,26 @@ def test_log_rotation(shutdown_only, monkeypatch):
             f"{filename} has files that are more than "
             f"backup count {backup_count}, file count: {file_cnt}"
         )
+
+    # TODO(hjiang): Enable after log rotation implemented for user application.
+    #
+    # # Test application log, which starts with `worker-`.
+    # # Should be tested separately with other components since "worker" is a substring
+    # # of "python-core-worker".
+    # #
+    # # Check file count.
+    # application_stdout_paths = []
+    # for path in paths:
+    #    if path.stem.startswith("worker-") and re.search(r".*\.out(\.\d+)?", str(path))
+    # # and path.stat().st_size > 0:
+    #         application_stdout_paths.append(path)
+    # assert len(application_stdout_paths) == 4, application_stdout_paths
+
+    # # Check file content, each file should have one line.
+    # for cur_path in application_stdout_paths:
+    #     with cur_path.open() as f:
+    #         lines = f.readlines()
+    #         assert len(lines) == 1, lines
 
 
 def test_periodic_event_stats(shutdown_only):
@@ -322,7 +348,7 @@ def test_worker_id_names(shutdown_only):
     ray.get(f.remote())
 
     paths = list(log_dir_path.iterdir())
-
+    worker_log_files = list()
     ids = []
     for path in paths:
         if "python-core-worker" in str(path):
@@ -332,12 +358,13 @@ def test_worker_id_names(shutdown_only):
         else:
             continue
         worker_id = re.match(pattern, str(path)).group(1)
+        worker_log_files.append(str(paths))
         ids.append(worker_id)
     counts = Counter(ids).values()
     for count in counts:
-        # There should be a "python-core-.*.log", "worker-.*.out",
-        # and "worker-.*.err"
-        assert count == 3
+        # For each worker, there should be a "python-core-.*.log", "worker-.*.out",
+        # and "worker-.*.err".
+        assert count == 3, worker_log_files
 
 
 def test_log_pid_with_hex_job_id(ray_start_cluster):
@@ -391,7 +418,6 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
 
 
 def test_log_redirect_to_stderr(shutdown_only):
-
     log_components = {
         ray_constants.PROCESS_TYPE_DASHBOARD: "Dashboard head grpc address",
         ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "",
@@ -963,7 +989,6 @@ def test_log_level_settings(
 
 
 def test_log_with_import():
-
     logger = logging.getLogger(__name__)
     assert not logger.disabled
     ray.log.logger_initialized = False
@@ -1085,6 +1110,33 @@ def test_print_worker_logs_multi_color() -> None:
         f"{colorama.Fore.GREEN}(my_task pid=2, ip=10.0.0.1){colorama.Style.RESET_ALL} "
         + "is running\n"
     )
+
+
+class TestSetupLogRecordFactory:
+    def test_setup_log_record_factory_directly(self):
+        # Reset the log record factory to the default.
+        logging.setLogRecordFactory(logging.LogRecord)
+        record_old = logging.makeLogRecord({})
+
+        # Set up the log record factory with _setup_log_record_factory().
+        ray.log._setup_log_record_factory()
+        record_new = logging.makeLogRecord({})
+
+        assert "_ray_timestamp_ns" not in record_old.__dict__
+        assert "_ray_timestamp_ns" in record_new.__dict__
+
+    def test_setup_log_record_factory_in_generate_logging_config(self):
+        # Reset the log record factory to the default.
+        logging.setLogRecordFactory(logging.LogRecord)
+        record_old = logging.makeLogRecord({})
+
+        # generate_logging_config() also setup the log record factory.
+        ray.log.logger_initialized = False
+        ray.log.generate_logging_config()
+        record_new = logging.makeLogRecord({})
+
+        assert "_ray_timestamp_ns" not in record_old.__dict__
+        assert "_ray_timestamp_ns" in record_new.__dict__
 
 
 if __name__ == "__main__":

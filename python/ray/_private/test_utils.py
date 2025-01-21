@@ -283,6 +283,7 @@ def start_redis_instance(
         command += ["--save", "", "--appendonly", "no"]
     if db_dir is not None:
         command += ["--dir", str(db_dir)]
+
     process_info = ray._private.services.start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REDIS_SERVER,
@@ -302,8 +303,8 @@ def start_redis_instance(
                     slots = [str(i) for i in range(16384)]
                     redis_cli.cluster("addslots", *slots)
                 else:
-                    print(redis_cli.cluster("meet", "127.0.0.1", str(replica_of)))
-                    print(redis_cli.cluster("replicate", leader_id))
+                    logger.info(redis_cli.cluster("meet", "127.0.0.1", str(replica_of)))
+                    logger.info(redis_cli.cluster("replicate", leader_id))
                 node_id = redis_cli.cluster("myid")
                 break
             except (
@@ -312,8 +313,22 @@ def start_redis_instance(
             ) as e:
                 from time import sleep
 
-                print(f"Waiting for redis to be up {e} ")
+                logger.info(
+                    f"Waiting for redis to be up. Check failed with error: {e}. "
+                    "Will retry in 0.1s"
+                )
+
+                if process_info.process.poll() is not None:
+                    raise Exception(
+                        f"Redis process exited unexpectedly: {process_info}. "
+                        f"Exit code: {process_info.process.returncode}"
+                    )
+
                 sleep(0.1)
+
+    logger.info(
+        f"Redis started with node_id {node_id} and pid {process_info.process.pid}"
+    )
 
     return node_id, process_info
 
@@ -853,7 +868,7 @@ def wait_until_succeeded_without_exception(
     Return:
         Whether exception occurs within a timeout.
     """
-    if type(exceptions) != tuple:
+    if isinstance(type(exceptions), tuple):
         raise Exception("exceptions arguments should be given as a tuple")
 
     time_elapsed = 0
@@ -1506,6 +1521,7 @@ class ResourceKillerActor:
         head_node_id,
         kill_interval_s: float = 60,
         max_to_kill: int = 2,
+        batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
         self.kill_interval_s = kill_interval_s
@@ -1514,6 +1530,7 @@ class ResourceKillerActor:
         self.killed = set()
         self.done = ray._private.utils.get_or_create_event_loop().create_future()
         self.max_to_kill = max_to_kill
+        self.batch_size_to_kill = batch_size_to_kill
         self.kill_filter_fn = kill_filter_fn
         self.kill_immediately_after_found = False
         # -- logger. --
@@ -1525,7 +1542,7 @@ class ResourceKillerActor:
     async def run(self):
         self.is_running = True
         while self.is_running:
-            to_kill = await self._find_resource_to_kill()
+            to_kills = await self._find_resources_to_kill()
 
             if not self.is_running:
                 break
@@ -1536,14 +1553,15 @@ class ResourceKillerActor:
                 sleep_interval = random.random() * self.kill_interval_s
                 time.sleep(sleep_interval)
 
-            self._kill_resource(*to_kill)
+            for to_kill in to_kills:
+                self._kill_resource(*to_kill)
             if len(self.killed) >= self.max_to_kill:
                 break
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
         self.done.set_result(True)
 
-    async def _find_resource_to_kill(self):
+    async def _find_resources_to_kill(self):
         raise NotImplementedError
 
     def _kill_resource(self, *args):
@@ -1561,38 +1579,38 @@ class ResourceKillerActor:
 
 
 class NodeKillerBase(ResourceKillerActor):
-    async def _find_resource_to_kill(self):
-        node_to_kill_ip = None
-        node_to_kill_port = None
-        node_id = None
-        while node_to_kill_port is None and self.is_running:
-            nodes = ray.nodes()
-            alive_nodes = self._get_alive_nodes(nodes)
-            if self.kill_filter_fn is not None:
-                nodes = list(filter(self.kill_filter_fn(), nodes))
-            for node in nodes:
-                node_id = node["NodeID"]
-                # make sure at least 1 worker node is alive.
-                if (
-                    node["Alive"]
-                    and node_id != self.head_node_id
-                    and node_id not in self.killed
-                    and alive_nodes > 2
-                ):
-                    node_to_kill_ip = node["NodeManagerAddress"]
-                    node_to_kill_port = node["NodeManagerPort"]
-                    break
-            # Give the cluster some time to start.
-            await asyncio.sleep(0.1)
+    async def _find_resources_to_kill(self):
+        nodes_to_kill = []
+        while not nodes_to_kill and self.is_running:
+            worker_nodes = [
+                node
+                for node in ray.nodes()
+                if node["Alive"]
+                and (node["NodeID"] != self.head_node_id)
+                and (node["NodeID"] not in self.killed)
+            ]
+            if self.kill_filter_fn:
+                candidates = list(filter(self.kill_filter_fn(), worker_nodes))
+            else:
+                candidates = worker_nodes
 
-        return node_id, node_to_kill_ip, node_to_kill_port
+            # Ensure at least one worker node remains alive.
+            if len(worker_nodes) < self.batch_size_to_kill + 1:
+                # Give the cluster some time to start.
+                await asyncio.sleep(1)
+                continue
 
-    def _get_alive_nodes(self, nodes):
-        alive_nodes = 0
-        for node in nodes:
-            if node["Alive"]:
-                alive_nodes += 1
-        return alive_nodes
+            # Collect nodes to kill, limited by batch size.
+            for candidate in candidates[: self.batch_size_to_kill]:
+                nodes_to_kill.append(
+                    (
+                        candidate["NodeID"],
+                        candidate["NodeManagerAddress"],
+                        candidate["NodeManagerPort"],
+                    )
+                )
+
+        return nodes_to_kill
 
 
 @ray.remote(num_cpus=0)
@@ -1663,9 +1681,16 @@ class WorkerKillerActor(ResourceKillerActor):
         head_node_id,
         kill_interval_s: float = 60,
         max_to_kill: int = 2,
+        batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
-        super().__init__(head_node_id, kill_interval_s, max_to_kill, kill_filter_fn)
+        super().__init__(
+            head_node_id,
+            kill_interval_s,
+            max_to_kill,
+            batch_size_to_kill,
+            kill_filter_fn,
+        )
 
         # Kill worker immediately so that the task does
         # not finish successfully on its own.
@@ -1682,7 +1707,7 @@ class WorkerKillerActor(ResourceKillerActor):
             ]
         )
 
-    async def _find_resource_to_kill(self):
+    async def _find_resources_to_kill(self):
         from ray.util.state.common import StateResource
 
         process_to_kill_task_id = None
@@ -1707,7 +1732,7 @@ class WorkerKillerActor(ResourceKillerActor):
             # Give the cluster some time to start.
             await asyncio.sleep(0.1)
 
-        return process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id
+        return [(process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id)]
 
     def _kill_resource(
         self, process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id
@@ -1744,6 +1769,7 @@ def get_and_run_resource_killer(
     lifetime=None,
     no_start=False,
     max_to_kill=2,
+    batch_size_to_kill=1,
     kill_delay_s=0,
     kill_filter_fn=None,
 ):
@@ -1762,6 +1788,7 @@ def get_and_run_resource_killer(
         head_node_id,
         kill_interval_s=kill_interval_s,
         max_to_kill=max_to_kill,
+        batch_size_to_kill=batch_size_to_kill,
         kill_filter_fn=kill_filter_fn,
     )
     print("Waiting for ResourceKiller to be ready...")

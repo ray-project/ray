@@ -65,10 +65,6 @@ DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
-# Sync with src/ray/common/constants.h
-AUTOSCALER_V2_ENABLED_KEY = "__autoscaler_v2_enabled"
-AUTOSCALER_NAMESPACE = "__autoscaler"
-
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -221,7 +217,11 @@ DISABLE_DASHBOARD_LOG_INFO = env_integer("RAY_DISABLE_DASHBOARD_LOG_INFO", 0)
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_ESCAPE = json.dumps(LOGGER_FORMAT.replace("%", "%%"))
 LOGGER_FORMAT_HELP = f"The logging format. default={LOGGER_FORMAT_ESCAPE}"
-LOGGER_LEVEL = "info"
+# Configure the default logging levels for various Ray components.
+# TODO (kevin85421): Currently, I don't encourage Ray users to configure
+# `RAY_LOGGER_LEVEL` until its scope and expected behavior are clear and
+# easy to understand. Now, only Ray developers should use it.
+LOGGER_LEVEL = os.environ.get("RAY_LOGGER_LEVEL", "info")
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = (
     "The logging level threshold, choices=['debug', 'info',"
@@ -347,6 +347,8 @@ OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
+REDIS_DEFAULT_USERNAME = ""
+
 REDIS_DEFAULT_PASSWORD = ""
 
 # The default ip address to bind to.
@@ -428,6 +430,7 @@ LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
 
 CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
+ROCR_VISIBLE_DEVICES_ENV_VAR = "ROCR_VISIBLE_DEVICES"
 NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
 NPU_RT_VISIBLE_DEVICES_ENV_VAR = "ASCEND_RT_VISIBLE_DEVICES"

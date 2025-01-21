@@ -5,7 +5,7 @@
 Dashboard configurations may differ depending on how you launch Ray Clusters (e.g., local Ray Cluster v.s. KubeRay). Integrations with Prometheus and Grafana are optional for enhanced Dashboard experience.
 
 :::{note}
-Ray Dashboard is only intended for interactive development and debugging because the Dashboard UI and the underlying data are not accessible after Clusters are terminated. For production monitoring and debugging, users should rely on [persisted logs](../cluster/kubernetes/user-guides/logging.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.rst), and other observability tools.
+Ray Dashboard is useful for interactive development and debugging because when clusters terminate, the dashboard UI and the underlying data are no longer accessible. For production monitoring and debugging, you should rely on [persisted logs](../cluster/kubernetes/user-guides/persist-kuberay-custom-resource-logs.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.rst), and other observability tools.
 :::
 
 ## Changing the Ray Dashboard port
@@ -225,8 +225,15 @@ By default, Ray Dashboard assumes Prometheus is hosted at `localhost:9090`. You 
 Then, configure `RAY_PROMETHEUS_HOST` environment variable properly as stated above. For example, if Prometheus is hosted at port 9000 on a node with ip 55.66.77.88, set `RAY_PROMETHEUS_HOST=http://55.66.77.88:9000`.
 
 
+#### Customize headers for requests from the Ray dashboard to Prometheus
+
+If Prometheus requires additional headers for authentication, set `RAY_PROMETHEUS_HEADERS` in one of the following JSON formats for Ray dashboard to send them to Prometheus:
+1. `{"Header1": "Value1", "Header2": "Value2"}`
+2. `[["Header1", "Value1"], ["Header2", "Value2"], ["Header2", "Value3"]]`
+
+
 #### Alternate Grafana host location
-By default, Ray Dashboard assumes Grafana is hosted at `localhost:3000` You can choose to run Grafana on a non-default port or on a different machine as long as the head node and the browsers of dashboard users can access it.
+By default, Ray Dashboard assumes Grafana is hosted at `localhost:3000`. You can choose to run Grafana on a non-default port or on a different machine as long as the head node and the dashboard browsers of can access it.
 
 If Grafana is exposed with NGINX ingress on a Kubernetes cluster, the following line should be present in the Grafana ingress annotation:
 

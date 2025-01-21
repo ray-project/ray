@@ -31,31 +31,31 @@ class StoreClientInternalKV : public InternalKVInterface {
 
   void Get(const std::string &ns,
            const std::string &key,
-           std::function<void(std::optional<std::string>)> callback) override;
+           Postable<void(std::optional<std::string>)> callback) override;
 
-  void MultiGet(const std::string &ns,
-                const std::vector<std::string> &keys,
-                std::function<void(std::unordered_map<std::string, std::string>)>
-                    callback) override;
+  void MultiGet(
+      const std::string &ns,
+      const std::vector<std::string> &keys,
+      Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
   void Put(const std::string &ns,
            const std::string &key,
-           const std::string &value,
+           std::string value,
            bool overwrite,
-           std::function<void(bool)> callback) override;
+           Postable<void(bool)> callback) override;
 
   void Del(const std::string &ns,
            const std::string &key,
            bool del_by_prefix,
-           std::function<void(int64_t)> callback) override;
+           Postable<void(int64_t)> callback) override;
 
   void Exists(const std::string &ns,
               const std::string &key,
-              std::function<void(bool)> callback) override;
+              Postable<void(bool)> callback) override;
 
   void Keys(const std::string &ns,
             const std::string &prefix,
-            std::function<void(std::vector<std::string>)> callback) override;
+            Postable<void(std::vector<std::string>)> callback) override;
 
  private:
   std::unique_ptr<StoreClient> delegate_;

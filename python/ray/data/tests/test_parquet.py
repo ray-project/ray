@@ -16,7 +16,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
-from ray.data import Schema
+from ray.data import FileShuffleConfig, Schema
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
@@ -50,6 +50,47 @@ def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
 
     # Test that you can read the written files.
     assert pq.read_table(tmp_path).to_pydict() == {"id": [0]}
+
+
+def test_write_parquet_partition_cols(ray_start_regular_shared, tmp_path):
+    num_partitions = 10
+    rows_per_partition = 10
+    num_rows = num_partitions * rows_per_partition
+
+    df = pd.DataFrame(
+        {
+            "a": list(range(num_partitions)) * rows_per_partition,
+            "b": list(range(num_partitions)) * rows_per_partition,
+            "c": list(range(num_rows)),
+            "d": list(range(num_rows)),
+        }
+    )
+
+    ds = ray.data.from_pandas(df)
+    ds.write_parquet(tmp_path, partition_cols=["a", "b"])
+
+    # Test that files are written in partition style
+    for i in range(num_partitions):
+        partition = os.path.join(tmp_path, f"a={i}", f"b={i}")
+        ds_partition = ray.data.read_parquet(partition)
+        dsf_partition = ds_partition.to_pandas()
+        c_expected = [k * i for k in range(rows_per_partition)].sort()
+        d_expected = [k * i for k in range(rows_per_partition)].sort()
+        assert c_expected == dsf_partition["c"].tolist().sort()
+        assert d_expected == dsf_partition["d"].tolist().sort()
+
+    # Test that partition are read back properly into original dataset schema
+    ds1 = ray.data.read_parquet(tmp_path)
+    assert set(ds.schema().names) == set(ds1.schema().names)
+    assert ds.count() == ds1.count()
+
+    df = df.sort_values(by=["a", "b", "c", "d"])
+    df1 = ds1.to_pandas().sort_values(by=["a", "b", "c", "d"])
+    for (index1, row1), (index2, row2) in zip(df.iterrows(), df1.iterrows()):
+        row1_dict = row1.to_dict()
+        row2_dict = row2.to_dict()
+        assert row1_dict["c"] == row2_dict["c"]
+        assert row1_dict["d"] == row2_dict["d"]
 
 
 def test_include_paths(ray_start_regular_shared, tmp_path):
@@ -1353,6 +1394,54 @@ def test_write_auto_infer_nullable_fields(
     ds = ray.data.range(len(row_data)).map(lambda row: row_data[row["id"]])
     # So we force writing to a single file.
     ds.write_parquet(tmp_path, num_rows_per_file=2)
+
+
+def test_seed_file_shuffle(restore_data_context, tmp_path):
+    def write_parquet_file(path, file_index):
+        """Write a dummy Parquet file with test data."""
+        # Create a dummy dataset with unique data for each file
+        data = {
+            "col1": range(10 * file_index, 10 * (file_index + 1)),
+            "col2": ["foo", "bar"] * 5,
+        }
+        table = pa.Table.from_pydict(data)
+        pq.write_table(table, path)
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+
+    # Create temporary Parquet files for testing in the current directory
+    paths = [os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(5)]
+    for i, path in enumerate(paths):
+        # Write dummy Parquet files
+        write_parquet_file(path, i)
+
+    # Read with deterministic shuffling
+    shuffle_config = FileShuffleConfig(seed=42)
+    ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+    ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+
+    # Verify deterministic behavior
+    assert ds1.take_all() == ds2.take_all()
+
+
+def test_read_null_data_in_first_file(tmp_path, ray_start_regular_shared):
+    # The `read_parquet` implementation might infer the schema from the first file.
+    # This test ensures that implementation handles the case where the first file has no
+    # data and the inferred type is `null`.
+    pq.write_table(pa.Table.from_pydict({"data": [None, None, None]}), tmp_path / "1")
+    pq.write_table(pa.Table.from_pydict({"data": ["spam", "ham"]}), tmp_path / "2")
+
+    ds = ray.data.read_parquet(tmp_path)
+
+    rows = sorted(ds.take_all(), key=lambda row: row["data"] or "")
+    assert rows == [
+        {"data": None},
+        {"data": None},
+        {"data": None},
+        {"data": "ham"},
+        {"data": "spam"},
+    ]
 
 
 if __name__ == "__main__":
