@@ -264,7 +264,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     metrics: Optional[MetricsLogger] = None
     env_runner_group: Optional[EnvRunnerGroup] = None
     eval_env_runner_group: Optional[EnvRunnerGroup] = None
-    learner_group: Optional[LearnerGroup] = None
+    learner_group: Optional["LearnerGroup"] = None
     offline_data: Optional["OfflineData"] = None
 
     # Whether to allow unknown top-level config keys.
