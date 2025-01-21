@@ -33,14 +33,31 @@ jobs:
         run: |
           sudo apt-get install python3-sphinx
           pip install -r requirements-doc.txt
-          pip install aiohttp_cors
+          pip install -r ../python/requirements.txt
 
       - name: Build documentation
         run: make develop
+
+      - name: Get branch name
+        id: get-branch
+        run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Prepare deployment directory
+        run: |
+          # Create the branch-specific directory (e.g., deploy/main)
+          mkdir -p ../deploy/${{ steps.get-branch.outputs.branch }}
+          rsync -av _build/html/ ../deploy/${{ steps.get-branch.outputs.branch }}/
+
+          # Create symlinks from root to the main directory (only for the main branch)
+          if [ "${{ steps.get-branch.outputs.branch }}" = "main" ]; then
+            cd ../deploy
+            ln -sfn main/* .  # Symlink all files/dirs from main/ to root
+            ln -sfn main/.nojekyll .  # Include hidden files if needed
+          fi
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: doc/_build/html/
-          keep_files: false
+          publish_dir: ./deploy
+          keep_files: true
