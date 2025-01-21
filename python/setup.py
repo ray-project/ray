@@ -331,6 +331,12 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # NOTE: While we keep ray[all] for compatibility, you probably
+    # shouldn't use it because it contains too many dependencies
+    # and no deployment needs all of them. Instead you should list
+    # the extras you actually need, see
+    # https://docs.ray.io/en/latest/ray-overview/installation.html#from-wheels
+    #
     # "all" will not include "cpp" anymore. It is a big depedendency
     # that most people do not need.
     #
@@ -794,7 +800,6 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.cli.scripts:cli",
             "serve=ray.serve.scripts:cli",
         ]
