@@ -48,7 +48,7 @@ def train_fn(config):
 
 @pytest.fixture
 def tuner(tmp_path):
-    yield tune.Tuner(train_fn, run_config=train.RunConfig(storage_path=str(tmp_path)))
+    yield tune.Tuner(train_fn, run_config=tune.RunConfig(storage_path=str(tmp_path)))
 
 
 @pytest.fixture

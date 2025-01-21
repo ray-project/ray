@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.tune.schedulers.async_hyperband import ASHAScheduler
@@ -14,8 +14,6 @@ from ray.tune.schedulers.resource_changing_scheduler import (
     DistributeResources,
     ResourceChangingScheduler,
 )
-from ray.tune.tune_config import TuneConfig
-from ray.tune.tuner import Tuner
 
 
 @pytest.fixture
@@ -89,7 +87,7 @@ def test_data_parallel_trainer(ray_start_8_cpus):
             num_workers=num_workers, placement_strategy="SPREAD"
         ),
     )
-    tuner = Tuner(
+    tuner = tune.Tuner(
         trainer,
         param_space={
             "train_loop_config": {
@@ -97,7 +95,7 @@ def test_data_parallel_trainer(ray_start_8_cpus):
                 "metric": tune.grid_search([1, 2, 3, 4, 5]),
             }
         },
-        tune_config=TuneConfig(
+        tune_config=tune.TuneConfig(
             mode="max",
             metric="metric",
             scheduler=ResourceChangingScheduler(
@@ -107,7 +105,7 @@ def test_data_parallel_trainer(ray_start_8_cpus):
                 ),
             ),
         ),
-        run_config=RunConfig(failure_config=FailureConfig(fail_fast=True)),
+        run_config=tune.RunConfig(failure_config=tune.FailureConfig(fail_fast=True)),
     )
     result_grid = tuner.fit()
     assert not any(x.error for x in result_grid)
