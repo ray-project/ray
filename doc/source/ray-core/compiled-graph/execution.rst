@@ -17,7 +17,7 @@ In particular:
 
 Ray Compiled Graph remains executable after application exceptions. However, Compiled Graph
 automatically shuts down in the case of system exceptions. If an actor's death causes
-the Compiled Graph to shut down, this doesn't affect the remaining actors. See the
+the Compiled Graph to shut down, this shutdown doesn't affect the remaining actors. See the
 following code as an example:
 
 .. testcode::
