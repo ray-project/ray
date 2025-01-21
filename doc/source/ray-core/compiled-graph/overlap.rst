@@ -1,4 +1,4 @@
-Overlap Communication and Computation
+Overlap communication and computation
 ======================================
 
 Compiled Graph currently provides experimental support for GPU communication and computation overlap. When you turn this feature on, it automatically overlaps the GPU communication with computation operations, thereby hiding the communication overhead and improving performance.
