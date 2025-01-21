@@ -252,12 +252,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             result, Algorithm should never access the underlying actor handles directly.
             Instead, always access them via all the foreach APIs with assigned IDs of
             the underlying EnvRunners.
-        env_runner: The local EnvRunner instance within the algo's `EnvRunnerGroup`
-            under `self.env_runner_group`.
         eval_env_runner_group: A special EnvRunnerGroup only used for evaluation, not to
             collect training samples.
-        eval_env_runner: The local EnvRunner instance within the algo's evaluation
-            `EnvRunnerGroup` under `self.eval_env_runner_group`.
         learner_group: The `LearnerGroup` instance of the Algorithm, managing either
             one local `Learner` or one or more remote `Learner` actors. Responsible for
             updating the models from RL environment (episode) data.
@@ -267,9 +263,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     config: Optional[AlgorithmConfig] = None
     metrics: Optional[MetricsLogger] = None
     env_runner_group: Optional[EnvRunnerGroup] = None
-    env_runner: Optional[EnvRunner] = None
     eval_env_runner_group: Optional[EnvRunnerGroup] = None
-    eval_env_runner: Optional[EnvRunner] = None
     learner_group: Optional[LearnerGroup] = None
     offline_data: Optional["OfflineData"] = None
 
@@ -3664,10 +3658,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @property
     def env_runner(self):
+        """The local EnvRunner instance within the algo's EnvRunnerGroup."""
         return self.env_runner_group.local_env_runner
 
     @property
     def eval_env_runner(self):
+        """The local EnvRunner instance within the algo's evaluation EnvRunnerGroup."""
         return self.eval_env_runner_group.local_env_runner
 
     def _record_usage(self, config):
