@@ -256,4 +256,6 @@ ray_cc_test(
         "//src/ray/util:cmd_line_utils",
         "@com_google_googletest//:gtest_main",
     ],
+    size = "small",
+    tags = ["team:core"],
 )
