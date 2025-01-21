@@ -12,7 +12,7 @@ CHECKPOINT_PATH_KEY = "checkpoint_path"
 
 @DeveloperAPI
 class TuneReportCallback(UserCallback):
-    """Propagate metrics and checkpoint paths from Ray Train to Ray Tune."""
+    """Propagate metrics and checkpoint paths from Ray Train workers to Ray Tune."""
 
     def after_report(
         self,
