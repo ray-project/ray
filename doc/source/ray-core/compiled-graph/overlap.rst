@@ -78,7 +78,7 @@ from overlapping.
         for overlap_gpu_communication in [False, True]:
             test(overlap_gpu_communication)
 
-The output of preceding code includes the following two lines:
+The output of the preceding code includes the following two lines:
 
 .. testoutput::
 
