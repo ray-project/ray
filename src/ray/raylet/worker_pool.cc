@@ -1470,7 +1470,23 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                    << backlog_size << " and available CPUs " << num_available_cpus
                    << " num idle workers " << state.idle.size()
                    << " num registered workers " << state.registered_workers.size();
-    PrestartDefaultCpuWorkers(task_spec.GetLanguage(), num_needed);
+    PrestartWorkers(language)
+    PrestartDefaultCpuWorkers(task_spec, num_needed);
+  }
+}
+
+void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec, int64_t num_needed) {
+  RAY_LOG(DEBUG) << "PrestartWorkers " << num_needed;
+  for (int ii = 0; ii < num_needed; ++ii) {
+    PopWorkerStatus status;
+    StartWorkerProcess(task_spec.GetLanguage(),
+                       rpc::WorkerType::WORKER,
+                       JobID::Nil(),
+                       &status,
+                       /*dynamic_options=*/{},
+                       task_spec.GetRuntimeEnvHash(),
+                       task_spec.SerializedRuntimeEnv(),
+                       task_spec.RuntimeEnvInfo());
   }
 }
 
