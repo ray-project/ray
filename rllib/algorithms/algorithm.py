@@ -183,6 +183,7 @@ from ray.tune.registry import get_trainable_cls
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner_group import LearnerGroup
+    from ray.rllib.offline.offline_data import OfflineData
 
 try:
     from ray.rllib.extensions import AlgorithmBase
@@ -262,6 +263,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             updating the models from RL environment (episode) data.
         offline_data: An optional OfflineData instance, used for offline RL.
     """
+
+    config: Optional[AlgorithmConfig] = None
+    metrics: Optional[MetricsLogger] = None
+    env_runner_group: Optional[EnvRunnerGroup] = None
+    env_runner: Optional[EnvRunner] = None
+    eval_env_runner_group: Optional[EnvRunnerGroup] = None
+    eval_env_runner: Optional[EnvRunner] = None
+    learner_group: Optional[LearnerGroup] = None
+    offline_data: Optional["OfflineData"] = None
 
     # Whether to allow unknown top-level config keys.
     _allow_unknown_configs = False
