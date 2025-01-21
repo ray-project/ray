@@ -9,7 +9,7 @@ from typing import Callable
 import pytest
 
 import ray
-from ray import logger, train, tune
+from ray import logger, tune
 from ray.tune import CheckpointConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune import Trainable, register_trainable, run_experiments

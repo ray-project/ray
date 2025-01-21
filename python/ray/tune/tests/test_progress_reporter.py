@@ -284,7 +284,7 @@ VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+--
 |-------------------+----------+-------------------+----------|
 | train_fn_xxxxx_00000 | RUNNING  | 123.123.123.123:1 | complete |"""
 
-VERBOSE_CMD = """from ray import train as ray_train, tune
+VERBOSE_CMD = """import ray.tune
 import random
 import numpy as np
 import time
@@ -303,14 +303,14 @@ def mock_get_trial_location(trial, result):
 def train_fn(config):
     if config["do"] == "complete":
         time.sleep(0.1)
-        ray_tune.report(dict(acc=5, done=True))
+        ray.tune.report(dict(acc=5, done=True))
     elif config["do"] == "once":
         time.sleep(0.5)
         return 6
     else:
         time.sleep(1.0)
-        ray_tune.report(dict(acc=7))
-        ray_tune.report(dict(acc=8))
+        ray.tune.report(dict(acc=7))
+        ray.tune.report(dict(acc=8))
 
 random.seed(1234)
 np.random.seed(1234)
@@ -318,10 +318,10 @@ np.random.seed(1234)
 
 with patch("ray.tune.progress_reporter._get_trial_location",
            mock_get_trial_location):
-    tune.run(
+    ray.tune.run(
         train_fn,
         config={
-            "do": tune.grid_search(["complete", "once", "twice"])
+            "do": ray.tune.grid_search(["complete", "once", "twice"])
         },"""
 
 # Add "verbose=3)" etc
