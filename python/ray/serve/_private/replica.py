@@ -926,9 +926,13 @@ class ReplicaActor:
         request_metadata, request_args = self._preprocess_request_args(
             pickled_request_metadata, request_args
         )
-        return await self._replica_impl.handle_request(
+        result = await self._replica_impl.handle_request(
             request_metadata, *request_args, **request_kwargs
         )
+        if request_metadata.is_grpc_request:
+            result = (request_metadata.grpc_context, result.SerializeToString())
+
+        return result
 
     async def handle_request_streaming(
         self,
@@ -943,6 +947,9 @@ class ReplicaActor:
         async for result in self._replica_impl.handle_request_streaming(
             request_metadata, *request_args, **request_kwargs
         ):
+            if request_metadata.is_grpc_request:
+                result = (request_metadata.grpc_context, result.SerializeToString())
+
             yield result
 
     async def handle_request_with_rejection(
@@ -972,6 +979,9 @@ class ReplicaActor:
             if isinstance(result, ReplicaQueueLengthInfo):
                 yield pickle.dumps(result)
             else:
+                if request_metadata.is_grpc_request:
+                    result = (request_metadata.grpc_context, result.SerializeToString())
+
                 yield result
 
     async def handle_request_from_java(
@@ -1218,10 +1228,6 @@ class UserCallableWrapper:
                 result = callable(*args, **kwargs)
                 if is_generator:
                     for r in result:
-                        # TODO(edoakes): make this less redundant with the handling in
-                        # _handle_user_method_result.
-                        if request_metadata and request_metadata.is_grpc_request:
-                            r = (request_metadata.grpc_context, r.SerializeToString())
                         generator_result_callback(r)
 
                     result = None
@@ -1445,13 +1451,9 @@ class UserCallableWrapper:
         if request_metadata.is_streaming:
             if result_is_gen:
                 for r in result:
-                    if request_metadata.is_grpc_request:
-                        r = (request_metadata.grpc_context, r.SerializeToString())
                     generator_result_callback(r)
             elif result_is_async_gen:
                 async for r in result:
-                    if request_metadata.is_grpc_request:
-                        r = (request_metadata.grpc_context, r.SerializeToString())
                     generator_result_callback(r)
             elif request_metadata.is_http_request and not user_method_info.is_asgi_app:
                 # For the FastAPI codepath, the response has already been sent over
@@ -1479,8 +1481,6 @@ class UserCallableWrapper:
                     "You must use `handle.options(stream=True)` to call "
                     "generators on a deployment."
                 )
-            if request_metadata.is_grpc_request:
-                result = (request_metadata.grpc_context, result.SerializeToString())
 
         return result
 
