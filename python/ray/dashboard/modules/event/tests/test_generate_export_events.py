@@ -38,7 +38,7 @@ async def check_job_succeeded(job_manager, job_id):
     [
         {
             "env": {
-                "RAY_enable_export_api_write_config": "EXPORT_SUBMISSION_JOB",
+                "RAY_enable_export_api_write_config": "EXPORT_SUBMISSION_JOB,EXPORT_TASK",
             },
             "cmd": "ray start --head",
         }
@@ -47,9 +47,8 @@ async def check_job_succeeded(job_manager, job_id):
 )
 async def test_check_export_api_enabled(call_ray_start, tmp_path):  # noqa: F811
     """
-    Test check_export_api_enabled is True for EXPORT_SUBMISSION_JOB but
-    not for EXPORT_ACTOR because RAY_enable_export_api_write_config
-    is set to 'EXPORT_SUBMISSION_JOB'.
+    Test check_export_api_enabled is True for EXPORT_SUBMISSION_JOB and EXPORT_TASK but
+    not for EXPORT_ACTOR because of the value of RAY_enable_export_api_write_config.
     """
 
     @ray.remote
@@ -60,6 +59,9 @@ async def test_check_export_api_enabled(call_ray_start, tmp_path):  # noqa: F811
         success = True
         success = success and check_export_api_enabled(
             ExportEvent.SourceType.EXPORT_SUBMISSION_JOB
+        )
+        success = success and check_export_api_enabled(
+            ExportEvent.SourceType.EXPORT_TASK
         )
         success = success and (
             not check_export_api_enabled(ExportEvent.SourceType.EXPORT_ACTOR)

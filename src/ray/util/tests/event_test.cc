@@ -557,7 +557,7 @@ TEST_F(EventTest, TestIsExportAPIEnabledSourceType) {
                 "EXPORT_TASK", false, std::vector<std::string>{"invalid resource type"}),
             false);
 
-  const std::string input = "EXPORT_TASK, EXPORT_ACTOR";
+  const std::string input = "EXPORT_TASK,EXPORT_ACTOR";
   const std::vector<std::string> expected_output{"EXPORT_TASK", "EXPORT_ACTOR"};
   auto output = ConvertValue<std::vector<std::string>>("std::vector<std::string>", input);
   ASSERT_EQ(output, expected_output);
