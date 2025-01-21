@@ -38,6 +38,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import _is_local_scheme
 from ray.data.dataset import Dataset
 from ray.data.datasource import Partitioning, PathPartitionFilter
+from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.data.read_api import _resolve_parquet_args, _validate_shuffle_arg
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -730,3 +731,117 @@ def read_files(
     )
     logical_plan = LogicalPlan(read_files_op, execution_plan._context)
     return Dataset(plan=execution_plan, logical_plan=logical_plan)
+
+
+@_try_fallback_to_oss
+def read_delta(
+    path: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    columns: Optional[List[str]] = None,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    meta_provider: Optional[ParquetMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = Partitioning("hive"),
+    shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    **arrow_parquet_args,
+):
+    """Creates a :class:`~ray.data.Dataset` from Delta Lake files.
+
+    Examples:
+
+        >>> import ray
+        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/")
+
+    Args:
+        path: A single file path for a Delta Lake table. Multiple tables are not yet
+            supported.
+        filters: A filter predicate to apply to the data. Only rows that match the
+            filter predicate are read during the file scan.
+        filesystem: The PyArrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
+            used. If ``None``, this function uses a system-chosen implementation.
+        columns: A list of column names to read. Only the specified columns are
+            read during the file scan.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
+            metadata providers may be able to resolve file metadata more quickly and/or
+            accurately. In most cases you do not need to set this parameter.
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
+            with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to HIVE partitioning.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+        arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
+            set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.dataset.Scanner.html\
+                    #pyarrow.dataset.Scanner.from_fragment>`_
+
+    Returns:
+        :class:`~ray.data.Dataset` producing records read from the specified parquet
+        files.
+
+    """
+    # Modified from ray.data._internal.util._check_import, which is meant for objects,
+    # not functions. Move to _check_import if moved to a DataSource object.
+    import importlib
+
+    package = "deltalake"
+    try:
+        importlib.import_module(package)
+    except ImportError:
+        raise ImportError(
+            f"`ray.data.read_delta` depends on '{package}', but '{package}' "
+            f"couldn't be imported. You can install '{package}' by running `pip "
+            f"install {package}`."
+        )
+
+    from deltalake import DeltaTable
+
+    # This seems reasonable to keep it at one table, even Spark doesn't really support
+    # multi-table reads, it's usually up to the developer to keep it in one table.
+    if not isinstance(path, str):
+        raise ValueError("Only a single Delta Lake table path is supported.")
+
+    # Get the parquet file paths from the DeltaTable
+    paths = DeltaTable(path).file_uris()
+    file_extensions = ["parquet"]
+
+    return read_parquet(
+        paths,
+        filesystem=filesystem,
+        columns=columns,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+        **arrow_parquet_args,
+    )
