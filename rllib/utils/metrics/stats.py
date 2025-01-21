@@ -220,10 +220,14 @@ class Stats:
         # previous `reduce()` result in hist[1].
         self._hist = deque([0, 0, 0], maxlen=3)
 
-        self._throughput = throughput if throughput is not True else 0.0
-        if self._throughput is not False:
-            assert self._reduce_method == "sum"
-            assert self._window in [None, float("inf")]
+        self._throughput = 0.0
+        self._measure_throughput = False
+        if (
+            self._reduce_method == "sum"
+            and self._window in [None, float("inf")]
+            and not self._clear_on_reduce
+        ):
+            self._measure_throughput = True
             self._throughput_last_time = -1
 
     def push(self, value) -> None:
@@ -287,7 +291,7 @@ class Stats:
             return self._hist[-abs(previous)]
         # Return the last measured throughput.
         elif throughput:
-            return self._throughput if self._throughput is not False else None
+            return self._throughput if self._measure_throughput else None
         return self._reduced_values()[0]
 
     def reduce(self) -> "Stats":
@@ -306,7 +310,7 @@ class Stats:
         reduced, values = self._reduced_values()
 
         # Keep track and update underlying throughput metric.
-        if self._throughput is not False:
+        if self._measure_throughput:
             # Take the delta between the new (upcoming) reduced value and the most
             # recently reduced value (one `reduce()` call ago).
             delta_sum = reduced - self._hist[-1]
@@ -348,7 +352,7 @@ class Stats:
             self.values = self.values[-self._window :]
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
-        if self._throughput is not False:
+        if self._measure_throughput:
             self._throughput = other._throughput
 
     def merge_in_parallel(self, *others: "Stats") -> None:
