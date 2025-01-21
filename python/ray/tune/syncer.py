@@ -36,4 +36,5 @@ class SyncConfig(TrainSyncConfig):
             This only has an effect if `sync_artifacts` is True.
             Defaults to True.
     """
+
     pass
