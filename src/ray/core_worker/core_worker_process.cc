@@ -91,6 +91,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     RayLog::StartRayLog(app_name,
                         RayLogLevel::INFO,
                         log_filepath,
+                        /*err_log_filepath=*/"",
                         ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
                         ray::RayLog::GetRayLogRotationBackupCountOrDefault());
     if (options_.install_failure_signal_handler) {
