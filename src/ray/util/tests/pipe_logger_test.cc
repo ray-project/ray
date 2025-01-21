@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <cstdlib>
 #include <future>
 #include <string_view>
 
