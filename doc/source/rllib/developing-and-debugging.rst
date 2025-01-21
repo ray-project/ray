@@ -34,7 +34,6 @@ The RLlib team recommends using a python environment management tool, like `Anac
 switch between different python and package versions. Take a moment to make sure you are using such a tool
 and have activate the correct development environment, including your preferred python version.
 
-
 Pip installing Ray and RLlib
 ----------------------------
 
@@ -111,51 +110,78 @@ The Ray team recommends to set up your own Ray fork on your local computer as ``
 
 .. code-block:: bash
 
-    $ git remote add origin https://github.com/[your git username]/ray
-    $ git remote add upstream https://github.com/ray-project/ray
-    $ git fetch
+    git remote add origin https://github.com/[your git username]/ray
+    git remote add upstream https://github.com/ray-project/ray
+    git fetch
 
 From time to time you should pull from the Ray team's `master branch <https://github.com/ray-project/ray>`__, no matter, which
 PR or branch you are currently developing in. The Ray repository moves very fast and several dozen changes may be merged into it every day:
 
-Run the following roughly once a day, or whenever you want to continue developing on your current branch/PR:
+Run the following whenever you want to continue developing on your current branch or PR:
 
 .. code-block:: bash
 
-    $ git pull upstream master
+    git pull upstream master
 
-In case you observe
-.. todo (sven): Add here, how to setup RLlib to link into your pip installed ray and how to nuke the setup in case after a `git pull` weird errors unrelated to RLlib show up, b/c of other
-libraries' updates causing problems.
-- Make sure you have everything committed and pushed. Local branch should be free of any uncommitted changes.
-- pip uninstall -y ray
-- rm -rf [Anaconda ray directory] (if it's still there for some reason after the uninstall)
-- pip install -U [pick right wheel from https://docs.ray.io/en/latest/ray-overview/installation.html#daily-releases-nightlies]
-- git stash
-- python python/ray/setup-dev.py (<- only say yes to RLlib, then get your CTRL+C out of there! :slightly_smiling_face: )
+In case you observe strange error messages that are coming from parts of the code you have not altered, you may have to clean up and reinstall
+Ray in your environment. These errors might come from Ray libraries, other than RLlib, that the Ray team has recently changed and that are now
+conflicting with either the pip-installed Ray or with RLlib's source code.
+
+.. warning::
+    Before you perform the following steps, make sure you have everything committed and pushed to git. Your local branch should be free
+    of any uncommitted changes!
+
+.. code-block:: bash
+
+    pip uninstall -y ray
+    rm -rf [your pip-installed ray directory]  # only, if it's still there for some reason after the uninstall
+    pip install -U [pick right wheel from https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies]
+    git stash
+    python python/ray/setup-dev.py  # <- only say `Y` to linking RLlib, then press CTRL+C to abort the script
 
 
 Modifying your own RLlib branch
 -------------------------------
 
 
+API Stability
++++++++++++++
+
+Objects and methods annotated with ``@PublicAPI``, ``@DeveloperAPI``, or ``@OldAPIStack`` have the following
+API compatibility guarantees:
+
+.. autofunction:: ray.util.annotations.PublicAPI
+    :noindex:
+
+.. autofunction:: ray.util.annotations.DeveloperAPI
+    :noindex:
+
+.. autofunction:: ray.rllib.utils.annotations.OldAPIStack
+    :noindex:
+
 
 Contributing to RLlib and creating a pull request
 -------------------------------------------------
 
-
-
+The Ray team is grateful for any external help we can get from the open-source community in maintaining and developing RLlib.
 
 Contributing Fixes and Enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Feel free to file new RLlib-related PRs through `Ray's github repo <https://github.com/ray-project/ray/pulls>`__.
-The RLlib team is very grateful for any external help they can get from the open-source community. If you are unsure about how to structure your
-bug-fix or enhancement-PRs, create a small PR first, then ask us questions within its conversation section.
-`See here for an example of a good first community PR <https://github.com/ray-project/ray/pull/46317>`__.
+If you are unsure about how to structure your bug-fix or enhancement-PRs, create a small PR first,
+then ask questions to the team within its conversation section.
+
+See here for an `example of a good first community PR <https://github.com/ray-project/ray/pull/46317>`__.
+
+New Features
+++++++++++++
+
+New feature developments, discussions, and upcoming priorities are tracked on the
+`GitHub issues page <https://github.com/ray-project/ray/issues>`__ (note that this may not include all development efforts).
 
 Contributing Algorithms
-~~~~~~~~~~~~~~~~~~~~~~~
++++++++++++++++++++++++
 
 These are the guidelines for merging new algorithms into RLlib.
 We distinguish between two levels of contributions: As an `example script <https://github.com/ray-project/ray/tree/master/rllib/examples>`__
@@ -174,43 +200,6 @@ or as a fully-integrated RLlib Algorithm in `rllib/algorithms <https://github.co
     - should include at least one `tuned hyperparameter example <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__, testing of which is part of the CI
 
 Both integrated and contributed algorithms ship with the ``ray`` PyPI package, and are tested as part of Ray's automated tests.
-
-New Features
-~~~~~~~~~~~~
-
-New feature developments, discussions, and upcoming priorities are tracked on the `GitHub issues page <https://github.com/ray-project/ray/issues>`__
-(note that this may not include all development efforts).
-
-
-API Stability
-=============
-
-
-API Decorators in the Codebase
-------------------------------
-
-Objects and methods annotated with ``@PublicAPI`` (new API stack),
-``@DeveloperAPI`` (new API stack), or ``@OldAPIStack`` (old API stack)
-have the following API compatibility guarantees:
-
-.. autofunction:: ray.util.annotations.PublicAPI
-    :noindex:
-
-.. autofunction:: ray.util.annotations.DeveloperAPI
-    :noindex:
-
-.. autofunction:: ray.rllib.utils.annotations.OldAPIStack
-    :noindex:
-
-
-Benchmarks
-==========
-
-A number of training run results are available in the `rl-experiments repo <https://github.com/ray-project/rl-experiments>`__,
-and there is also a list of working hyperparameter configurations in `tuned_examples <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__, sorted by algorithm.
-Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
-
-
 
 
 Debugging RLlib
