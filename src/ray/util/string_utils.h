@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,16 +14,20 @@
 
 #pragma once
 
-#include <cstdint>
+#include <string>
 
 namespace ray {
 
-// A helper function for doing memcpy with multiple threads. This is required
-// to saturate the memory bandwidth of modern cpus.
-void parallel_memcopy(uint8_t *dst,
-                      const uint8_t *src,
-                      int64_t nbytes,
-                      uintptr_t block_size,
-                      int num_threads);
+// Transfer the string to the Hex format. It can be more readable than the ANSI mode
+inline std::string StringToHex(const std::string &str) {
+  constexpr char hex[] = "0123456789abcdef";
+  std::string result;
+  for (size_t i = 0; i < str.size(); i++) {
+    unsigned char val = str[i];
+    result.push_back(hex[val >> 4]);
+    result.push_back(hex[val & 0xf]);
+  }
+  return result;
+}
 
 }  // namespace ray
