@@ -752,7 +752,7 @@ class CompiledDAG:
         enable_asyncio: bool = False,
         max_inflight_executions: Optional[int] = None,
         overlap_gpu_communication: Optional[bool] = None,
-        default_nccl_group: Optional[Communicator] = None,
+        default_communicator: Optional[Union[Communicator, str]] = None,
     ):
         """
         Args:
@@ -777,11 +777,12 @@ class CompiledDAG:
                 communication and computation can be overlapped, which can improve
                 the performance of the DAG execution. If None, the default value
                 will be used.
-            default_nccl_group: The default NCCL group to use for nodes annotated
-                with `with_tensor_transport(transport='nccl')`, or
-                `with_tensor_transport(transport='auto')` when NCCL transport is
-                needed. If None, Ray creates a default NCCL group and uses it if
-                there are NCCL communications.
+            default_communicator: The default communicator to use to transport tensors
+                for nodes annotated with `with_tensor_transport()` and when shared memory
+                is not the desired option (e.g., when transport="nccl", or when
+                transport="auto" for communication between two different GPUs).
+                If it is "create", a default communicator is created when needed.
+                If None, an error will be thrown. All other values are invalid.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -806,7 +807,16 @@ class CompiledDAG:
         self._overlap_gpu_communication: Optional[bool] = overlap_gpu_communication
         if self._overlap_gpu_communication is None:
             self._overlap_gpu_communication = ctx.overlap_gpu_communication
-        self._default_nccl_group: Optional[Communicator] = default_nccl_group
+        self._create_default_communicator = False
+        if isinstance(default_communicator, str):
+            if default_communicator == "create":
+                self._create_default_communicator = True
+            else:
+                raise ValueError(
+                    "The only allowed string for default_communicator is 'create', "
+                    f"got {default_communicator}"
+                )
+        self._default_communicator: Optional[Communicator] = default_communicator
 
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
             buffer_size_bytes=self._buffer_size_bytes,
@@ -872,8 +882,6 @@ class CompiledDAG:
         # Mapping from the actor handle to the node ID that the actor is on.
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
 
-        # This is set to true when type hint of `transport="nccl"` is used.
-        self._use_default_nccl_group = False
         # This is set to the specified custom communicator
         # if there exists a type hint of `transport=custom_communicator`.
         self._custom_communicator_p2p: Optional[Communicator] = None
@@ -1053,7 +1061,7 @@ class CompiledDAG:
                 if dag_node.type_hint.requires_nccl():
                     custom_communicator = dag_node.type_hint.get_custom_communicator()
                     if custom_communicator is None:
-                        custom_communicator = self._default_nccl_group
+                        custom_communicator = self._get_default_communicator()
                     communicator_to_actors[custom_communicator].add(actor_handle)
 
                 # Collect NCCL collective operations.
@@ -1135,7 +1143,7 @@ class CompiledDAG:
                         upstream_task.dag_node.type_hint.get_custom_communicator()
                     )
                     if custom_communicator is None:
-                        custom_communicator = self._default_nccl_group
+                        custom_communicator = self._get_default_communicator()
                     communicator_to_actors[custom_communicator].add(
                         downstream_actor_handle
                     )
@@ -1153,6 +1161,17 @@ class CompiledDAG:
         else:
             self._input_num_positional_args = max(input_positional_args) + 1
         self._input_kwargs = tuple(input_kwargs)
+
+    def _get_default_communicator(self):
+        """
+        Check and get default communicator.
+        """
+        if self._default_communicator is None and not self._create_default_communicator:
+            raise ValueError(
+                "A default communicator is not available to use for NCCL communication"
+                "Pass a communicator or 'create' as default_communicator when calling"
+                "experimental_compile()"
+            )
 
     def _resolve_auto_transport(
         self,
@@ -1222,7 +1241,7 @@ class CompiledDAG:
                 raise ValueError("Driver cannot participate in the NCCL group.")
 
             if custom_communicator is None:
-                continue
+                assert self._default_communicator
 
             communicator_id = _init_communicator(
                 actors,
@@ -2935,7 +2954,7 @@ def build_compiled_dag_from_ray_dag(
     enable_asyncio: bool = False,
     max_inflight_executions: Optional[int] = None,
     overlap_gpu_communication: Optional[bool] = None,
-    default_nccl_group: Optional[Communicator] = None,
+    default_communicator: Optional[Union[Communicator, str]] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         submit_timeout,
@@ -2943,7 +2962,7 @@ def build_compiled_dag_from_ray_dag(
         enable_asyncio,
         max_inflight_executions,
         overlap_gpu_communication,
-        default_nccl_group,
+        default_communicator,
     )
 
     def _build_compiled_dag(node):
