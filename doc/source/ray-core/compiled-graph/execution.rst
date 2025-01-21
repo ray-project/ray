@@ -1,4 +1,4 @@
-Execution and Failure Semantics
+Execution and failure semantics
 ===============================
 
 Like classic Ray Core, Ray Compiled Graph propagates exceptions to the final output.
