@@ -42,7 +42,6 @@
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/subreaper.h"
-#include "ray/util/util.h"
 
 #ifdef __APPLE__
 extern char **environ;
