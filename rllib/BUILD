@@ -1997,7 +1997,14 @@ py_test(
 
 # subdirectory: actions/
 # ....................................
-# Nested action spaces (flattening obs and learning w/ multi-action distribution).
+py_test(
+    name = "examples/actions/autoregressive_actions",
+    main = "examples/actions/autoregressive_actions.py",
+    tags = ["team:rllib", "examples"],
+    size = "large",
+    srcs = ["examples/actions/autoregressive_actions.py"],
+    args = ["--enable-new-api-stack"],
+)
 py_test(
     name = "examples/actions/nested_action_spaces_ppo",
     main = "examples/actions/nested_action_spaces.py",
@@ -2006,7 +2013,6 @@ py_test(
     srcs = ["examples/actions/nested_action_spaces.py"],
     args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--stop-reward=-500.0", "--algo=PPO"]
 )
-
 py_test(
     name = "examples/actions/nested_action_spaces_multi_agent_ppo",
     main = "examples/actions/nested_action_spaces.py",
@@ -2916,15 +2922,6 @@ py_test(
     srcs = ["examples/rl_modules/action_masking_rl_module.py"],
     args = ["--enable-new-api-stack", "--stop-iters=5"],
 )
-
-py_test(
-    name = "examples/rl_modules/autoregressive_actions_rl_module",
-    main = "examples/rl_modules/autoregressive_actions_rl_module.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/rl_modules/autoregressive_actions_rl_module.py"],
-    args = ["--enable-new-api-stack"],
-)
 py_test(
     name = "examples/rl_modules/custom_cnn_rl_module",
     main = "examples/rl_modules/custom_cnn_rl_module.py",
@@ -2970,26 +2967,6 @@ py_test(
     size = "medium",
     srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--stop-reward-pretraining=250.0", "--stop-reward=250.0", "--stop-iters=3"],
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/autoregressive_action_dist_tf",
-    main = "examples/autoregressive_action_dist.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/autoregressive_action_dist.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=-0.012", "--num-cpus=4"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/autoregressive_action_dist_torch",
-    main = "examples/autoregressive_action_dist.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/autoregressive_action_dist.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=-0.012", "--num-cpus=4"]
 )
 
 #@OldAPIStack
