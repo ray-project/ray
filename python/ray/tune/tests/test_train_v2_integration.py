@@ -42,7 +42,7 @@ def test_e2e(
     num_workers_grid_search,
     limit_concurrency,
 ):
-    num_non_checkpoint_reports = 2    
+    num_non_checkpoint_reports = 2
     num_checkpoint_reports = 1
 
     def train_fn_per_worker(train_fn_config):
@@ -95,7 +95,10 @@ def test_e2e(
 
     world_sizes = set()
     for result in result_grid:
-        assert len(result.metrics_dataframe) == num_non_checkpoint_reports + num_checkpoint_reports
+        assert (
+            len(result.metrics_dataframe)
+            == num_non_checkpoint_reports + num_checkpoint_reports
+        )
         assert "loss" in result.metrics
         assert CHECKPOINT_PATH_KEY in result.metrics
         world_sizes.add(result.metrics["world_size"])
