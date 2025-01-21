@@ -135,8 +135,8 @@ Gradient computation
     Learner.apply_gradients
     Learner._get_clip_function
 
-Saving, loading, checkpointing, and restoring states
-----------------------------------------------------
+Saving and restoring
+--------------------
 
 .. autosummary::
     :nosignatures:
