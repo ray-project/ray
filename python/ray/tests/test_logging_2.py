@@ -188,9 +188,9 @@ class TestJSONFormatter:
         assert len(record_dict) == len(should_exist)
         assert "exc_text" not in record_dict
 
-    def test_record_with_valid_addl_log_std_attrs(self, shutdown_only):
+    def test_record_with_valid_additional_log_standard_attrs(self, shutdown_only):
         formatter = JSONFormatter()
-        formatter.set_addl_log_std_attrs(["name"])
+        formatter.set_additional_log_standard_attrs(["name"])
         record = logging.makeLogRecord({})
         formatted = formatter.format(record)
 
@@ -231,9 +231,9 @@ class TestTextFormatter:
         for s in ["INFO", "Test message", "test.py:1000", "--"]:
             assert s in formatted
 
-    def test_record_with_valid_addl_log_std_attrs(self, shutdown_only):
+    def test_record_with_valid_additional_log_standard_attrs(self, shutdown_only):
         formatter = TextFormatter()
-        formatter.set_addl_log_std_attrs(["name"])
+        formatter.set_additional_log_standard_attrs(["name"])
         record = logging.makeLogRecord({})
         formatted = formatter.format(record)
         assert "name=" in formatted
@@ -244,9 +244,9 @@ def test_invalid_encoding():
         LoggingConfig(encoding="INVALID")
 
 
-def test_invalid_addl_log_std_attrs():
+def test_invalid_additional_log_standard_attrs():
     with pytest.raises(ValueError):
-        LoggingConfig(addl_log_std_attrs=["invalid"])
+        LoggingConfig(additional_log_standard_attrs=["invalid"])
 
 
 class TestTextModeE2E:
@@ -256,7 +256,7 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig(encoding="TEXT", addl_log_std_attrs=["name"])
+    logging_config=ray.LoggingConfig(encoding="TEXT", additional_log_standard_attrs=["name"])
 )
 
 @ray.remote
@@ -288,7 +288,7 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig(encoding="TEXT", addl_log_std_attrs=["name"])
+    logging_config=ray.LoggingConfig(encoding="TEXT", additional_log_standard_attrs=["name"])
 )
 
 @ray.remote
@@ -324,7 +324,7 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig(encoding="TEXT", addl_log_std_attrs=["name"])
+    logging_config=ray.LoggingConfig(encoding="TEXT", additional_log_standard_attrs=["name"])
 )
 
 logger = logging.getLogger()

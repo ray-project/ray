@@ -34,10 +34,12 @@ def _append_flatten_attributes(formatted_attrs: Dict[str, Any], key: str, value:
 class AbstractFormatter(logging.Formatter, ABC):
     def __init__(self, fmt=None, datefmt=None, style="%", validate=True) -> None:
         super().__init__(fmt, datefmt, style, validate)
-        self._addl_log_std_attrs = []
+        self._additional_log_standard_attrs = []
 
-    def set_addl_log_std_attrs(self, addl_log_std_attrs: List[str]) -> None:
-        self._addl_log_std_attrs = addl_log_std_attrs
+    def set_additional_log_standard_attrs(
+        self, additional_log_standard_attrs: List[str]
+    ) -> None:
+        self._additional_log_standard_attrs = additional_log_standard_attrs
 
     def generate_record_format_attrs(
         self,
@@ -64,7 +66,7 @@ class AbstractFormatter(logging.Formatter, ABC):
                 record_format_attrs[LogKey.EXC_TEXT.value] = record.exc_text
 
         # Add the user specified additional standard attributes.
-        for key in self._addl_log_std_attrs:
+        for key in self._additional_log_standard_attrs:
             _append_flatten_attributes(
                 record_format_attrs, key, getattr(record, key, None)
             )

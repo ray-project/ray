@@ -12,6 +12,16 @@ from dataclasses import dataclass, field
 import logging
 
 
+# The class used to pass the logging configs to the logging configurator. This class is
+# used instead of the LoggingConfig class to avoid circular imports.
+# The fields in this class should always match the fields in the LoggingConfig class.
+@dataclass
+class LoggingConfigData:
+    encoding: str
+    log_level: str
+    additional_log_standard_attrs: list
+
+
 class LoggingConfigurator(ABC):
     @abstractmethod
     def get_supported_encodings(self) -> Set[str]:
@@ -25,8 +35,8 @@ class LoggingConfigurator(ABC):
     # Should be marked as @abstractmethod, but we can't do that because of backwards
     # compatibility.
     # Also, assuming the function will only be called inside LoggingConfig._apply() and
-    # the input dictionary should always contain all fields in the LoggingConfig class.
-    def configure_logging(self, logging_config: dict):  # noqa: F811
+    # LoggingConfigData should have all fields in LoggingConfig set.
+    def configure_logging_settings(self, logging_config: LoggingConfigData):
         raise NotImplementedError
 
 
@@ -41,30 +51,32 @@ class DefaultLoggingConfigurator(LoggingConfigurator):
 
     @Deprecated
     def configure_logging(self, encoding: str, log_level: str):
-        self.configure_logging(
-            {
-                "encoding": encoding,
-                "log_level": log_level,
-                "addl_log_std_attrs": [],
-            }
+        self.configure_logging_settings(
+            LoggingConfigData(
+                encoding=encoding,
+                log_level=log_level,
+                additional_log_standard_attrs=[],
+            )
         )
 
-    def configure_logging(self, logging_config: dict):  # noqa: F811
-        formatter = self._encoding_to_formatter[logging_config["encoding"]]
-        formatter.set_addl_log_std_attrs(logging_config["addl_log_std_attrs"])
+    def configure_logging_settings(self, logging_config: LoggingConfigData):
+        formatter = self._encoding_to_formatter[logging_config.encoding]
+        formatter.set_additional_log_standard_attrs(
+            logging_config.additional_log_standard_attrs
+        )
 
         core_context_filter = CoreContextFilter()
         handler = logging.StreamHandler()
-        handler.setLevel(logging_config["log_level"])
+        handler.setLevel(logging_config.log_level)
         handler.setFormatter(formatter)
         handler.addFilter(core_context_filter)
 
         root_logger = logging.getLogger()
-        root_logger.setLevel(logging_config["log_level"])
+        root_logger.setLevel(logging_config.log_level)
         root_logger.addHandler(handler)
 
         ray_logger = logging.getLogger("ray")
-        ray_logger.setLevel(logging_config["log_level"])
+        ray_logger.setLevel(logging_config.log_level)
         # Remove all existing handlers added by `ray/__init__.py`.
         for h in ray_logger.handlers[:]:
             ray_logger.removeHandler(h)
@@ -75,12 +87,21 @@ class DefaultLoggingConfigurator(LoggingConfigurator):
 _logging_configurator: LoggingConfigurator = default_impl.get_logging_configurator()
 
 
+# Class defines the logging configurations for a Ray job.
+# To add a new logging configuration: (1) add a new field to this class; (2) add the
+# same field to the LoggingConfigData class defined above; (3) Update the logic in the
+# __post_init__ method in this class to add the validation logic; (4) Update the
+# _configure_logging method in this class to add the new field when initializing
+# LoggingConfigData; (5) Update the configure_logging_settings method in the
+# DefaultLoggingConfigurator class to use the new field.
 @PublicAPI(stability="alpha")
 @dataclass
 class LoggingConfig:
     encoding: str = "TEXT"
     log_level: str = "INFO"
-    addl_log_std_attrs: list = field(default_factory=list)
+    # The list of valid attributes are defined as LOGRECORD_STANDARD_ATTRS in
+    # constants.py.
+    additional_log_standard_attrs: list = field(default_factory=list)
 
     def __post_init__(self):
         if self.encoding not in _logging_configurator.get_supported_encodings():
@@ -90,7 +111,7 @@ class LoggingConfig:
                 f"{list(_logging_configurator.get_supported_encodings())}"
             )
 
-        for attr in self.addl_log_std_attrs:
+        for attr in self.additional_log_standard_attrs:
             if attr not in LOGRECORD_STANDARD_ATTRS:
                 raise ValueError(
                     f"Unknown python logging standard attribute: {attr}. "
@@ -100,12 +121,12 @@ class LoggingConfig:
 
     def _configure_logging(self):
         """Set up the logging configuration for the current process."""
-        _logging_configurator.configure_logging(
-            {
-                "encoding": self.encoding,
-                "log_level": self.log_level,
-                "addl_log_std_attrs": self.addl_log_std_attrs,
-            }
+        _logging_configurator.configure_logging_settings(
+            LoggingConfigData(
+                encoding=self.encoding,
+                log_level=self.log_level,
+                additional_log_standard_attrs=self.additional_log_standard_attrs,
+            )
         )
 
     def _apply(self):
@@ -125,7 +146,7 @@ LoggingConfig.__doc__ = f"""
             import logging
 
             ray.init(
-                logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO", addl_log_std_attrs=['name'])
+                logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO", additional_log_standard_attrs=['name'])
             )
 
             @ray.remote
@@ -145,7 +166,7 @@ LoggingConfig.__doc__ = f"""
             {list(_logging_configurator.get_supported_encodings())}
         log_level: Log level for the logs. Defaults to 'INFO'. You can set
             it to 'DEBUG' to receive more detailed debug logs.
-        addl_log_std_attrs: List of additional standard python logger attributes to 
+        exclude_default_standard_attrs: List of additional standard python logger attributes to 
             include in the log records. Defaults to an empty list. The list of already 
             included standard attributes are: "asctime", "levelname", "message", 
             "filename", "lineno", "exc_text". The list of valid attributes are specified
