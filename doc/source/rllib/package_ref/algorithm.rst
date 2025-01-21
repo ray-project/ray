@@ -66,23 +66,9 @@ Construction and setup
     ~Algorithm
     ~Algorithm.setup
     ~Algorithm.get_default_config
-
-
-Attributes
-~~~~~~~~~~
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~Algorithm.config
-    ~Algorithm.metrics
-    ~Algorithm.env_runner_group
     ~Algorithm.env_runner
-    ~Algorithm.eval_env_runner_group
     ~Algorithm.eval_env_runner
-    ~Algorithm.learner_group
-    ~Algorithm.offline_data
+
 
 Training
 ~~~~~~~~
