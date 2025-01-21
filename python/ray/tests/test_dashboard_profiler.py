@@ -258,13 +258,15 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
 
-    # Check wrong ip failure
+    # Check wrong node id failure
     response = requests.get(
-        f"{webui_url}/memory_profile?ip=1234567&pid=1234567&node_id={node_id_hex}"
+        f"{webui_url}/memory_profile?ip=1234567&pid=1234567&node_id=1234567"
     )
     content = response.content.decode("utf-8")
     print(content)
-    assert "Failed to execute: No stub with given ip value" in content, content
+    assert (
+        "Failed to execute: no agent address found for node 1234567" in content
+    ), content
 
 
 if __name__ == "__main__":
