@@ -1963,7 +1963,7 @@ py_test(
     name = "examples/actions/autoregressive_actions",
     main = "examples/actions/autoregressive_actions.py",
     tags = ["team:rllib", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/actions/autoregressive_actions.py"],
     args = ["--enable-new-api-stack"],
 )
