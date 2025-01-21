@@ -12,11 +12,10 @@ This page teaches you how to set up Ray RLlib for development. It walks you thro
 installing Ray, setting up RLlib so you can modify and customize your own code, creating a pull request (PR),
 debugging RLlib code, and clearing and re-installing Ray and RLlib in case of problems with your installation or setup.
 
-
 Forking the git repository
 --------------------------
 
-First, create your own fork using your github account.
+First, create your own repository fork using your github account.
 
 .. figure:: images/developing/git_fork.png
     :align: left
@@ -24,20 +23,20 @@ First, create your own fork using your github account.
     Click on the "fork" button to create your own Ray repository fork under your git username.
     You have to create a git account first in order to do so.
 
-Download your fork to your local computer and change to the new ``ray`` directory.
+Then, download the forked files to your local computer and change into the automatically created ``ray`` directory.
 
 .. code-block:: bash
 
     git clone https://github.com/[your git username]/ray
     cd ray
 
-The RLlib team recommends using a python environment management tool, like Anaconda to be
-able to switch between different python and package versions. Take a moment to make sure you are using such a tool
-and have activate the correct environment, including the python version you would like to develop in.
+The RLlib team recommends using a python environment management tool, like `Anaconda <https://www.anaconda.com/download>`__ to easily
+switch between different python and package versions. Take a moment to make sure you are using such a tool
+and have activate the correct development environment, including your preferred python version.
 
 
-Installing RLlib
-----------------
+Pip installing Ray and RLlib
+----------------------------
 
 Next, pip install `Ray <https://docs.ray.io/en/latest/>`__, `PyTorch <https://pytorch.org>`__,
 and a few `Farama <https://gymnasium.farama.org>`__ dependencies to be able to run most of RLlib's examples and benchmarks:
@@ -46,18 +45,50 @@ and a few `Farama <https://gymnasium.farama.org>`__ dependencies to be able to r
 
     pip install "ray[rllib]" torch "gymnasium[atari,accept-rom-license,mujoco]"
 
-The preceding commands install the latest release of Ray on your system. To further advance to the current master branch version,
+The preceding commands install the latest stable release of Ray on your system. To further advance to Ray's master branch,
 copy the correct `installation link from here <https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies>`__,
-depending on your system and python version and run:
+depending on your system and python version and run the following commands:
 
 .. code-block:: bash
 
     pip install -U [copied link from https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies]
 
+.. note::
+    You now have installed Ray through ``pip``, however, the installed package has no connection whatsoever with the
+    downloaded source files from your github fork. To link them into one installation, in which you can edit source files
+    and immediately see the effects of your changes for development and debugging purposes,
+    :ref:`see the next paragraph here<rllib-developing-and-debugging-setup-dev>`.
+
+.. _rllib-developing-and-debugging-setup-dev:
+
+Setting up RLlib for development
+--------------------------------
+
+You can develop RLlib and edit its source files locally without compiling Ray through using the
+`setup-dev.py script <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__:
+
+.. code-block:: bash
+
+    $ python python/ray/setup-dev.py
+    NOTE: Use '-y' to override all python files without confirmation.
+    This will replace:
+    /Users/sven/anaconda3/envs/ray2/lib/python3.11/site-packages/ray/rllib
+    with a symlink to:
+    /Users/sven/Dropbox/Projects/ray/rllib [Y/n]:
+
+Enter `Y` on the prompt, then abort the script through pressing ``CTRL + C`` repeatedly until you return to the command prompt.
+
+This sets up symbolic links between the ``ray/rllib`` dir of your local git clone and the respective directory bundled with the pip-installed ``ray`` package.
+This way, every change you make in the source files in your local git clone will immediately be reflected in your installed ``ray`` as well.
+
+.. note::
+    If you have installed ray from source using `these instructions here <https://docs.ray.io/en/master/ray-overview/installation.html>`__,
+    don't run the ``setup-dev.py`` script, because this should have already created the necessary symbolic links.
+
 Testing your installation
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Run a quick check to find out whether the above installations were successful:
+Run a quick check on whether the above pip-installation and git repository symbolic linking  was successful:
 
 .. code-block:: bash
 
@@ -67,13 +98,32 @@ Run a quick check to find out whether the above installations were successful:
     >>> ppo = PPOConfig().environment("CartPole-v1").build()
     >>> ppo.train()
 
+The above should result in a large print out of training results in your console.
 
+Keeping your master-branch and installation up to date
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+When using the `setup-dev.py script <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__,
+make sure that your git branch is in sync with the installed Ray binaries, meaning you are up-to-date on `master <https://github.com/ray-project/ray>`__
+and have the latest `wheel <https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies>`__ installed.
 
-Keeping your master-branch installation up to date
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The Ray team recommends to set up your own Ray fork on your local computer as ``origin`` and the Ray team's main repository as ``upstream``:
 
-You should pull from the master branch from time to time
+.. code-block:: bash
+
+    $ git remote add origin https://github.com/[your git username]/ray
+    $ git remote add upstream https://github.com/ray-project/ray
+    $ git fetch
+
+From time to time you should pull from the Ray team's `master branch <https://github.com/ray-project/ray>`__, no matter, which
+PR or branch you are currently developing in. The Ray repository moves very fast and several dozen changes may be merged into it every day:
+
+Run the following roughly once a day, or whenever you want to continue developing on your current branch/PR:
+
+.. code-block:: bash
+
+    $ git pull upstream master
+
 In case you observe
 .. todo (sven): Add here, how to setup RLlib to link into your pip installed ray and how to nuke the setup in case after a `git pull` weird errors unrelated to RLlib show up, b/c of other
 libraries' updates causing problems.
@@ -83,36 +133,6 @@ libraries' updates causing problems.
 - pip install -U [pick right wheel from https://docs.ray.io/en/latest/ray-overview/installation.html#daily-releases-nightlies]
 - git stash
 - python python/ray/setup-dev.py (<- only say yes to RLlib, then get your CTRL+C out of there! :slightly_smiling_face: )
-
-
-
-
-Setting up RLlib for development
---------------------------------
-
-You can develop RLlib locally without needing to compile Ray by using the `setup-dev.py script <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__.
-This sets up symlinks between the ``ray/rllib`` dir in your local git clone and the respective directory bundled with the pip-installed ``ray`` package.
-This way, every change you make in the source files in your local git clone will immediately be reflected in your installed ``ray`` as well.
-
-However if you have installed ray from source using `these instructions <https://docs.ray.io/en/master/ray-overview/installation.html>`__ then don't use this,
-as these steps should have already created the necessary symlinks.
-
-When using the `setup-dev.py script <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__,
-make sure that your git branch is in sync with the installed Ray binaries, meaning you are up-to-date on `master <https://github.com/ray-project/ray>`__
-and have the latest `wheel <https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies>`__ installed.
-
-.. code-block:: bash
-
-    # Clone your fork onto your local machine, e.g.:
-    git clone https://github.com/[your username]/ray.git
-    cd ray
-
-    # Only enter 'Y' at the first question on linking RLlib.
-    # This leads to the most stable behavior and you won't have to re-install Ray as often.
-    # If you anticipate making changes to e.g. Tune or Train quite often, consider also symlinking Ray Tune or Train here
-    # (say 'Y' when asked by the script about creating the Tune or Train symlinks).
-    python python/ray/setup-dev.py
-
 
 
 Modifying your own RLlib branch
@@ -209,8 +229,6 @@ setups, for example in a single, local process running on the CPU.
 To change your config, such that your RLlib program runs in such local setup, you should - before anything else -try
 the following settings.
 
-
-
 Finding memory leaks in EnvRunner actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -221,21 +239,6 @@ Keeping the memory usage of long running workers stable can be challenging. The 
 The objects with the top 20 memory usage in the workers are added as custom metrics. These can then be monitored using tensorboard or other metrics integrations like Weights & Biases:
 
 .. image:: images/MemoryTrackingCallbacks.png
-
-
-Troubleshooting
-~~~~~~~~~~~~~~~
-
-If you encounter errors like
-`blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
-try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
-`ulimit -a` for other resource limit errors.
-
-For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
-the stack traces of all Ray workers on the current node, ``ray timeline`` to dump
-a timeline visualization of tasks to a file, and ``ray memory`` to list all object
-references in the cluster.
-
 
 Episode traces
 ~~~~~~~~~~~~~~
@@ -253,34 +256,46 @@ traces to ``/tmp/debug``.
     output-2019-02-23_12-02-03_worker-2_0.json
     output-2019-02-23_12-02-04_worker-1_0.json
 
-
 Log verbosity
 ~~~~~~~~~~~~~
 
-You can control the log level via the ``"log_level"`` flag. Valid values are "DEBUG",
-"INFO", "WARN" (default), and "ERROR". This can be used to increase or decrease the
-verbosity of internal logging.
+You can control the log level through the ``--log_level`` command line argument in most of RLlib's example and tuned example scripts.
+Valid values are "DEBUG", "INFO", "WARN", and "ERROR". This can be used to increase or decrease the verbosity of internal logging.
+
+The default log level is ``WARN``, but you should use at least the ``INFO`` level logging for development.
+
 For example:
 
 .. code-block:: bash
 
     cd rllib/tuned_examples/ppo
-
-    python atari_ppo.py --env ALE/Pong-v5 --log-level INFO
     python atari_ppo.py --env ALE/Pong-v5 --log-level DEBUG
 
-The default log level is ``WARN``, but you should use at least the ``INFO`` level logging
-for development.
+To set the log level in your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm.AlgorithmConfig` instance,
+use the :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.AlgorithmConfig.debugging` method and set the ``log_level`` argument in there:
 
+.. code-block:: python
 
+    config.debugging(log_level="INFO")
 
 Stack traces
 ~~~~~~~~~~~~
 
-You can use the ``ray stack`` command to dump the stack traces of all the
-Python workers on a single node. This can be useful for debugging unexpected
+You can use the ``ray stack`` command to dump the stack traces of all the Python workers on a single node. This can be useful for debugging unexpected
 hangs or performance issues.
 
+Troubleshooting
+~~~~~~~~~~~~~~~
+
+If you encounter errors like
+`blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
+try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
+`ulimit -a` for other resource limit errors.
+
+For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
+the stack traces of all Ray workers on the current node, ``ray timeline`` to dump
+a timeline visualization of tasks to a file, and ``ray memory`` to list all object
+references in the cluster.
 
 Next steps
 ----------
