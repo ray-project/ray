@@ -375,7 +375,7 @@ class ActorDiedError(RayActorError):
             `ActorDiedErrorContext` means the actor has died because of
             an unexpected system error. None means the cause isn't known.
             Theoretically, this shouldn't happen,
-            but it is there as a safety check.
+            but it's there as a safety check.
     """
 
     BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
