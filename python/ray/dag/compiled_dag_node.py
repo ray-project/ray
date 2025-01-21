@@ -1142,7 +1142,7 @@ class CompiledDAG:
             if type(dag_node.type_hint) is ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
-                dag_node.with_type_hint(self._default_type_hint)
+                dag_node.type_hint(self._default_type_hint)
 
             for _, val in task.kwargs.items():
                 if isinstance(val, DAGNode):
