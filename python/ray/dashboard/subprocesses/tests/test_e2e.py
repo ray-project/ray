@@ -145,16 +145,25 @@ async def test_streamed_iota(aiohttp_client, default_module_config):
     assert await response.text() == "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n"
 
 
-async def test_streamed_iota_with_error(aiohttp_client, default_module_config):
+async def test_streamed_iota_with_503(aiohttp_client, default_module_config):
     app = await start_http_server_app(default_module_config, [TestModule])
     client = await aiohttp_client(app)
 
     # Server behavior: sends 200 OK with 0-9, then an error message.
-    response = await client.post("/streamed_iota_with_error", data=b"10")
+    response = await client.post("/streamed_iota_with_503", data=b"10")
     assert response.headers["Transfer-Encoding"] == "chunked"
     assert response.status == 200
     txt = await response.text()
-    assert txt == "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\nThis is an error"
+    assert txt == "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\nService Unavailable after 10 numbers"
+
+
+async def test_streamed_error_before_yielding(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.post("/streamed_401", data=b"")
+    assert response.status == 401
+    assert await response.text() == "401: Unauthorized although I am not a teapot"
 
 
 async def test_kill_self(aiohttp_client, default_module_config):

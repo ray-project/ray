@@ -96,9 +96,9 @@ class SubprocessModuleHandle:
         self.module_cls = module_cls
         self.config = config
 
-        # Runtime states, set by start_module(), reset by destroy_module().
         # Increment this when the module is restarted.
         self.incarnation = 0
+        # Runtime states, set by start_module(), reset by destroy_module().
         self.next_request_id = None
         self.child_bound_queue = None
         self.parent_bound_queue = None
@@ -108,6 +108,14 @@ class SubprocessModuleHandle:
         self.process = None
         self.dispatch_parent_bound_messages_thread = None
         self.health_check_task = None
+
+    def str_for_state(self, incarnation: int, pid: Optional[int]):
+        return f"SubprocessModuleHandle(module_cls={self.module_cls.__name__}, incarnation={incarnation}, pid={pid})"
+
+    def __str__(self):
+        return self.str_for_state(
+            self.incarnation, self.process.pid if self.process else None
+        )
 
     def start_module(self, start_dispatch_parent_bound_messages_thread: bool = True):
         """
@@ -369,23 +377,33 @@ class SubprocessModuleHandle:
         """
         assert_not_in_asyncio_loop()
         incarnation = self.incarnation
+        pid = self.process.pid if self.process else None
+        self_str = self.str_for_state(incarnation, pid)
+
         queue = self.parent_bound_queue
         # Exit if the module has restarted.
         while incarnation == self.incarnation:
+            message = None
             try:
                 message = queue.get(timeout=1)
-                self.handle_parent_bound_message(message)
             except multiprocessing.queues.Empty:
                 # Empty is normal.
-                pass
+                continue
+            except ValueError:
+                # queue is closed.
+                break
             except Exception as e:
                 logger.exception(
-                    "Error handling parent bound message from module"
-                    f" {self.module_cls.__name__}."
+                    f"Error unpickling parent bound message from {self_str}."
+                    " This may result in a http request never being responded to."
+                )
+                continue
+            try:
+                self.handle_parent_bound_message(message)
+            except Exception as e:
+                logger.exception(
+                    f"Error handling parent bound message from {self_str}."
                     " This may result in a http request never being responded to."
                 )
 
-        logger.info(
-            "dispatch_parent_bound_messages thread for module "
-            f"{self.module_cls.__name__} is exiting"
-        )
+        logger.info(f"dispatch_parent_bound_messages thread for {self_str} is exiting")

@@ -186,6 +186,11 @@ def run_module(
     try:
         loop.run_forever()
     except KeyboardInterrupt:
+        # TODO: do graceful shutdown.
+        # 1. define a stop token.
+        # 2. dispatch_child_bound_messages_thread will stop listening.
+        # 3. join the loop to wait for all pending tasks to finish, up until a timeout.
+        # 4. close the loop and exit.
         loop.stop()
     finally:
         loop.close()
