@@ -26,6 +26,7 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     DeploymentStatusInternalTrigger,
     DeploymentStatusTrigger,
+    DeploymentTargetInfo,
     Duration,
     MultiplexedReplicaInfo,
     ReplicaID,
@@ -1296,6 +1297,7 @@ class DeploymentState:
         self._multiplexed_model_ids_updated = False
 
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
+        self._last_broadcasted_availability: bool = True
         self._last_broadcasted_deployment_config = None
 
     def should_autoscale(self) -> bool:
@@ -1392,6 +1394,11 @@ class DeploymentState:
             self._target_state.target_num_replicas * 3,
         )
 
+    @property
+    def is_failed(self) -> bool:
+        """Whether the deployment failed to deploy."""
+        return self._curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {replica.actor_id for replica in self._replicas.get()}
 
@@ -1448,27 +1455,39 @@ class DeploymentState:
         multiplexed model IDs.
         """
         running_replica_infos = self.get_running_replica_infos()
-        if (
+        is_available = not self.is_failed
+
+        running_replicas_changed = (
             set(self._last_broadcasted_running_replica_infos)
-            == set(running_replica_infos)
-            and not self._multiplexed_model_ids_updated
-        ):
+            != set(running_replica_infos)
+            or self._multiplexed_model_ids_updated
+        )
+        availability_changed = is_available != self._last_broadcasted_availability
+        if not running_replicas_changed and not availability_changed:
             return
 
+        deployment_metadata = DeploymentTargetInfo(
+            is_available=is_available,
+            running_replicas=running_replica_infos,
+        )
         self._long_poll_host.notify_changed(
             {
-                (LongPollNamespace.RUNNING_REPLICAS, self._id): running_replica_infos,
+                (
+                    LongPollNamespace.DEPLOYMENT_TARGETS,
+                    self._id,
+                ): deployment_metadata,
                 # NOTE(zcin): notify changed for Java routers. Since Java only
                 # supports 1.x API, there is no concept of applications in Java,
                 # so the key should remain a string describing the deployment
                 # name. If there are no Java routers, this is a no-op.
                 (
-                    LongPollNamespace.RUNNING_REPLICAS,
+                    LongPollNamespace.DEPLOYMENT_TARGETS,
                     self._id.name,
-                ): running_replica_infos,
+                ): deployment_metadata,
             }
         )
         self._last_broadcasted_running_replica_infos = running_replica_infos
+        self._last_broadcasted_availability = is_available
         self._multiplexed_model_ids_updated = False
 
     def broadcast_deployment_config_if_changed(self) -> None:
@@ -2142,13 +2161,11 @@ class DeploymentState:
                 message = (
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' has {len(pending_allocation)} replicas that "
-                    f"have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled.\n"
+                    f"have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
                     "This may be due to waiting for the cluster to auto-scale or for a "
-                    "runtime environment to be installed.\n"
-                    "Resources required for each replica:\n"
-                    f"{required}\n"
-                    "Total resources available:\n"
-                    f"{available}\n"
+                    "runtime environment to be installed. "
+                    f"Resources required for each replica: {required}, "
+                    f"total resources available: {available}. "
                     "Use `ray status` for more details."
                 )
                 logger.warning(message)

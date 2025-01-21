@@ -10,17 +10,17 @@ Getting Started
 
 RLlib's offline RL API enables you to work with experiences read from offline storage (for example, disk, cloud storage,
 streaming systems, Hadoop Distributed File System (HDFS). For example, you might want to read experiences saved from previous training runs, collected
-from experts, or gathered from policies deployed in `web applications <https://arxiv.org/abs/1811.00260>`__. You can 
+from experts, or gathered from policies deployed in `web applications <https://arxiv.org/abs/1811.00260>`__. You can
 also log new agent experiences produced during online training for future use.
 
 RLlib represents trajectory sequences (for example, ``(s, a, r, s', ...)`` tuples) with :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
-objects (multi-agent offline training is currently not supported). Using this episode format 
+objects (multi-agent offline training is currently not supported). Using this episode format
 allows for efficient encoding and compression of experiences, rewriting trajectories, and user-friendly data access through getter methods.
-During online training, RLlib uses :py:class:`~ray.rllib.env.single_agent_env_runner.SingleAgentEnvRunner` actors to generate episodes of experiences 
+During online training, RLlib uses :py:class:`~ray.rllib.env.single_agent_env_runner.SingleAgentEnvRunner` actors to generate episodes of experiences
 in parallel using the current policy. However, RLlib uses this same episode format for reading experiences from and writing experiences to offline storage (see :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner`).
 
-You can store experiences either directly in RLlib's episode format or in table (columns) 
-format. You should use the episode format when 
+You can store experiences either directly in RLlib's episode format or in table (columns)
+format. You should use the episode format when
 
 #. You need experiences grouped by their trajectory and ordered in time (for example, to train stateful modules).
 #. You want to use recorded experiences exclusively within RLlib (for example for offline RL or behavior cloning).
@@ -29,26 +29,26 @@ Contrary, you should prefer the table (columns) format, if
 
 #. You need to read the data easily with other data tools or ML libraries.
 
-.. note:: RLlib's new API stack incorporates principles that support standalone applications. Consequently, the 
-    :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class is usable outside of an RLlib context. To enable faster 
+.. note:: RLlib's new API stack incorporates principles that support standalone applications. Consequently, the
+    :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class is usable outside of an RLlib context. To enable faster
     access through external data tools (for example, for data transformations), it's recommended to use the table record format.
 
-Most importantly, RLlib's offline RL API builds on top of :ref:`Ray Data <data>` and therefore features in general all read and 
+Most importantly, RLlib's offline RL API builds on top of :ref:`Ray Data <data>` and therefore features in general all read and
 write methods supported by Ray Data (for example :py:class:`~ray.data.read_parquet`, :py:class:`~ray.data.read_json`, etc.) with
-:py:class:`~ray.data.read_parquet` and :py:class:`~ray.data.Dataset.write_parquet` being the default read and write methods. A core design principle 
-of the API is to apply as many data transformations as possible on-the-fly prior to engaging the learner, allowing the latter to focus exclusively on model updates. 
+:py:class:`~ray.data.read_parquet` and :py:class:`~ray.data.Dataset.write_parquet` being the default read and write methods. A core design principle
+of the API is to apply as many data transformations as possible on-the-fly prior to engaging the learner, allowing the latter to focus exclusively on model updates.
 
-.. hint:: During the transition phase from old- to new API stack you can use the new offline RL API also with your 
-    :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` data recorded with the old API stack. To enable this feature set 
+.. hint:: During the transition phase from old- to new API stack you can use the new offline RL API also with your
+    :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` data recorded with the old API stack. To enable this feature set
     ``config.offline_data(input_read_sample_batches=True)``.
 
 Example: Training an Expert Policy
 ----------------------------------
-In this example you train a PPO agent on the ``CartPole-v1`` environment until it reaches an episode mean return of ``450.0``. You checkpoint 
+In this example you train a PPO agent on the ``CartPole-v1`` environment until it reaches an episode mean return of ``450.0``. You checkpoint
 this agent and then use its policy to record expert data to local disk.
 
-.. testsetup:: 
-    
+.. testsetup::
+
     # Define a shared variable to store the path to the
     # best checkpoint.
     best_checkpoint = None
@@ -80,7 +80,7 @@ this agent and then use its policy to record expert data to local disk.
             lr=0.0003,
             # Run 6 SGD minibatch iterations on a batch.
             num_epochs=6,
-            # Weigh the value function loss smaller than 
+            # Weigh the value function loss smaller than
             # the policy loss.
             vf_loss_coeff=0.01,
         )
@@ -127,15 +127,15 @@ this agent and then use its policy to record expert data to local disk.
         .checkpoint.path
     )
 
-In this example, you saved a checkpoint from an agent that has become an expert at playing ``CartPole-v1``.  You use this checkpoint in the next 
+In this example, you saved a checkpoint from an agent that has become an expert at playing ``CartPole-v1``.  You use this checkpoint in the next
 example to record expert data to disk, which is later utilized for offline training to clone another agent.
 
 Example: Record Expert Data to Local Disk
 -----------------------------------------
 After you train an expert policy to play `CartPole-v1` you load its policy here to record expert data during evaluation. You use ``5``
 :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` instances to collect ``50`` complete episodes per `sample()` call. In this
-example you store experiences directly in RLlib's :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects with no more than 
-``25`` episode objects per Parquet file. Altogether you run 10 evaluation runs, which should result in ``500`` recorded episodes from the expert policy. 
+example you store experiences directly in RLlib's :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects with no more than
+``25`` episode objects per Parquet file. Altogether you run 10 evaluation runs, which should result in ``500`` recorded episodes from the expert policy.
 You use these data in the next example to train a new policy through Offline RL that should reach a return of ``450.0`` when playing ``CartPole-v1``.
 
 .. code-block:: python
@@ -148,7 +148,7 @@ You use these data in the next example to train a new policy through Offline RL 
         DEFAULT_MODULE_ID,
     )
     from ray.rllib.core.rl_module import RLModuleSpec
-    
+
     # Store recording data under the following path.
     data_path = "/tmp/docs_rllib_offline_recording"
 
@@ -186,7 +186,7 @@ You use these data in the next example to train a new policy through Offline RL 
         )
         # Define the output path and format. In this example you
         # want to store data directly in RLlib's episode objects.
-        # Each Parquet file should hold no more than 25 episodes. 
+        # Each Parquet file should hold no more than 25 episodes.
         .offline_data(
             output=data_path,
             output_write_episodes=True,
@@ -214,10 +214,10 @@ You use these data in the next example to train a new policy through Offline RL 
     # remaining episodes in the `EnvRunner`s buffer isn't written to disk.
     algo.stop()
 
-.. note:: RLlib formats The stored episode data as ``binary``. Each episode is converted into its dictionary representation and serialized using ``msgpack-numpy``, 
+.. note:: RLlib formats The stored episode data as ``binary``. Each episode is converted into its dictionary representation and serialized using ``msgpack-numpy``,
     ensuring version compatibility.
 
-RLlib's  recording process is efficient because it utilizes multiple :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` instances during 
+RLlib's  recording process is efficient because it utilizes multiple :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` instances during
 evaluation, enabling parallel data writing. You can explore the folder to review the stored Parquet data:
 
 .. code-block:: text
@@ -234,9 +234,9 @@ evaluation, enabling parallel data writing. You can explore the folder to review
     drwxr-xr-x.  2 user user 540 21. Nov 17:23 run-000002-00007
 
 
-.. hint:: RLlib stores records under a folder named by the RL environment. Therein, you see one folder of Parquet files for each :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` 
-    and write operation. The write operation count is given in the second numbering. For example: above, env-runner 1 has sampled 25 episodes at 
-    its 4th :py:meth:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner.sample` call and writes then (because ``output_max_rows_per_file=25``) all sampled episodes 
+.. hint:: RLlib stores records under a folder named by the RL environment. Therein, you see one folder of Parquet files for each :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner`
+    and write operation. The write operation count is given in the second numbering. For example: above, env-runner 1 has sampled 25 episodes at
+    its 4th :py:meth:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner.sample` call and writes then (because ``output_max_rows_per_file=25``) all sampled episodes
     to disk into file ``run-000001-00004``.
 
 .. note:: The number of write operations per worker may vary because policy rollouts aren't evenly distributed. Faster workers collect more episodes,
@@ -244,7 +244,7 @@ evaluation, enabling parallel data writing. You can explore the folder to review
 
 Example: Training on Previously Saved Experiences
 -------------------------------------------------
-In this example you are using behavior cloning with the previously recorded Parquet data from your expert policy playing ``CartPole-v1``. The 
+In this example you are using behavior cloning with the previously recorded Parquet data from your expert policy playing ``CartPole-v1``. The
 data needs to be linked in the configuration of the algorithm (through the ``input_`` attribute).
 
 .. code-block:: python
@@ -257,7 +257,7 @@ data needs to be linked in the configuration of the algorithm (through the ``inp
         BCConfig()
         .environment(
             # Use the `CartPole-v1` environment from which the
-            # data was recorded. This is merely for receiving 
+            # data was recorded. This is merely for receiving
             # action and observation spaces and to use it during
             # evaluation.
             env="CartPole-v1",
@@ -280,7 +280,7 @@ data needs to be linked in the configuration of the algorithm (through the ``inp
             # trains on. Note, each batch element is an episode
             # with multiple timesteps.
             input_read_batch_size=512,
-            # Create exactly 2 `DataWorkers` that transform 
+            # Create exactly 2 `DataWorkers` that transform
             # the data on-the-fly. Give each of them a single
             # CPU.
             map_batches_kwargs={
@@ -332,7 +332,7 @@ data needs to be linked in the configuration of the algorithm (through the ``inp
     # Run the experiment.
     analysis = tuner.fit()
 
-Behavior cloning in RLlib is highly performant, completing a single training iteration in approximately 2 milliseconds. The experiment's 
+Behavior cloning in RLlib is highly performant, completing a single training iteration in approximately 2 milliseconds. The experiment's
 results should resemble the following:
 
 .. image:: images/offline/docs_rllib_offline_bc_episode_return_mean.svg
@@ -340,20 +340,20 @@ results should resemble the following:
     :width: 500
     :align: left
 
-It should take you around ``98`` seconds (``456`` iterations) to achieve the same episode return mean as the PPO agent. While this may not seem 
+It should take you around ``98`` seconds (``456`` iterations) to achieve the same episode return mean as the PPO agent. While this may not seem
 impressive compared to the PPO training time, it's important to note that ``CartPole-v1`` is a very simple environment to learn. In more
 complex environments, which require more sophisticated agents and significantly longer training times, pre-training through behavior cloning
-can be highly beneficial. Combining behavior cloning with subsequent fine-tuning using a reinforcement learning algorithm can substantially 
+can be highly beneficial. Combining behavior cloning with subsequent fine-tuning using a reinforcement learning algorithm can substantially
 reduce training time, resource consumption, and associated costs.
 
 Using External Expert Experiences
 ---------------------------------
-Your expert data is often already available, either recorded from an operational system or directly provided by human experts. Typically, 
-you might store this data in a tabular (columnar) format. RLlib's new Offline RL API simplifies the use of such data by allowing direct ingestion 
+Your expert data is often already available, either recorded from an operational system or directly provided by human experts. Typically,
+you might store this data in a tabular (columnar) format. RLlib's new Offline RL API simplifies the use of such data by allowing direct ingestion
 through a specified schema that organizes the expert data. The API default schema for reading data is provided in
 :py:data:`~ray.rllib.offline.offline_prelearner.SCHEMA`.
 
-Lets consider a simple example in which your expert data is stored with the schema: ``(o_t, a_t, r_t, o_tp1, d_t, i_t, logprobs_t)``. In this case 
+Lets consider a simple example in which your expert data is stored with the schema: ``(o_t, a_t, r_t, o_tp1, d_t, i_t, logprobs_t)``. In this case
 you provide this schema as follows:
 
 .. code-block:: python
@@ -377,23 +377,23 @@ you provide this schema as follows:
             },
         )
     )
-        
-.. note:: Internally, the legacy ``gym``'s ``done`` signals are mapped to ``gymnasium``'s ``terminated`` signals, with ``truncated`` values defaulting to 
+
+.. note:: Internally, the legacy ``gym``'s ``done`` signals are mapped to ``gymnasium``'s ``terminated`` signals, with ``truncated`` values defaulting to
     ``False``. RLlib's :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` structures align with ``gymnasium``, adhering to the updated environment API standards in reinforcement learning.
 
 Converting Tabular Data to RLlib's Episode Format
 -------------------------------------------------
-While the tabular format is widely compatible and seamlessly integrates with RLlib's new Offline RL API, there are cases where you may prefer to use RLlib's native episode format. 
+While the tabular format is widely compatible and seamlessly integrates with RLlib's new Offline RL API, there are cases where you may prefer to use RLlib's native episode format.
 As briefly mentioned earlier, such scenarios typically arise when full expert trajectories are required.
 
 .. note::
     RLlib processes tabular data in batches, converting each row into a *single-step episode*. This approach is primarily for procedural simplicity, as data can't
-    generally be assumed to arrive in time-ordered rows grouped by episodes, though this may occasionally be the case (however knowledge of such a structure resides  
+    generally be assumed to arrive in time-ordered rows grouped by episodes, though this may occasionally be the case (however knowledge of such a structure resides
     with the user as RLlib can't easily infer it automatically). While it's possible to concatenate consecutive :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
     chunks, this can't be done with chunks arriving in some scrambled order.
 
-If you require full trajectories you can transform your tabular data into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects and store these in Parquet format. The next example shows 
-how to do this. 
+If you require full trajectories you can transform your tabular data into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects and store these in Parquet format. The next example shows
+how to do this.
 First, you store experiences of the preceding trained expert policy in tabular format (note the `output_write_episodes=False` setting below to activate tabular data output):
 
 .. code-block:: python
@@ -406,7 +406,7 @@ First, you store experiences of the preceding trained expert policy in tabular f
         DEFAULT_MODULE_ID,
     )
     from ray.rllib.core.rl_module import RLModuleSpec
-    
+
     # Set up a path for the tabular data records.
     tabular_data_path = "tmp/docs_rllib_offline_recording_tabular"
 
@@ -442,7 +442,7 @@ First, you store experiences of the preceding trained expert policy in tabular f
             ),
         )
         # Define the output path and format. In this example you
-        # want to store data directly in RLlib's episode objects. 
+        # want to store data directly in RLlib's episode objects.
         .offline_data(
             output=tabular_data_path,
             # You want to store for this example tabular data.
@@ -470,19 +470,19 @@ First, you store experiences of the preceding trained expert policy in tabular f
     # remaining episodes in the `EnvRunner`s buffer isn't written to disk.
     algo.stop()
 
-You may have noticed that recording data in tabular format takes significantly longer than recording in episode format. This slower performance is due to the additional post-processing 
+You may have noticed that recording data in tabular format takes significantly longer than recording in episode format. This slower performance is due to the additional post-processing
 required to convert episode data into a columnar format. To confirm that the recorded data is now in columnar format, you can print its schema:
 
 .. code-block:: python
 
     from ray import data
-    
+
     # Read the tabular data into a Ray dataset.
     ds = ray.data.read_parquet(tabular_data_path)
     # Now, print its schema.
     print("Tabular data schema of expert experiences:\n")
     print(ds.schema())
-    
+
     # Column              Type
     # ------              ----
     # eps_id              string
@@ -501,11 +501,11 @@ required to convert episode data into a columnar format. To confirm that the rec
 .. note::
     ``infos`` aren't stored to disk when they're all empty.
 
-If your expert data is given in columnar format and you need to train on full expert trajectories you can follow the code in the following example to convert 
+If your expert data is given in columnar format and you need to train on full expert trajectories you can follow the code in the following example to convert
 your own data into RLlib's :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects:
 
 .. code-block:: python
-    
+
     import gymnasium as gym
     import msgpack
     import msgpack_numpy as mnp
@@ -594,8 +594,8 @@ your own data into RLlib's :py:class:`~ray.rllib.env.single_agent_episode.Single
 
 Using Old API Stack ``SampleBatch`` Recordings
 ----------------------------------------------
-If you have expert data previously recorded using RLlib's old API stack, it can be seamlessly utilized in the new stack's Offline RL API by setting ``input_read_sample_batches=True``. Alternatively, 
-you can convert your ``SampleBatch`` recordings into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` format using RLlib's 
+If you have expert data previously recorded using RLlib's old API stack, it can be seamlessly utilized in the new stack's Offline RL API by setting ``input_read_sample_batches=True``. Alternatively,
+you can convert your ``SampleBatch`` recordings into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` format using RLlib's
 :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` as demonstrated below:
 
 .. code-block:: python
@@ -619,7 +619,7 @@ you can convert your ``SampleBatch`` recordings into :py:class:`~ray.rllib.env.s
         # Use the RLlib's `OfflinePreLearner` to convert `SampleBatch`es to episodes.
         episodes = OfflinePreLearner._map_sample_batch_to_episode(False, batch)["episodes"]
 
-        # Create a dataset from the episodes. Note, for storing episodes you need to 
+        # Create a dataset from the episodes. Note, for storing episodes you need to
         # serialize them through `msgpack-numpy`.
         episode_ds = data.from_items([msgpack.packb(eps.get_state(), default=mnp.encode) for eps in episodes])
         # Write the batch of episodes to local disk.
@@ -633,13 +633,13 @@ you can convert your ``SampleBatch`` recordings into :py:class:`~ray.rllib.env.s
 Pre-Processing, Filtering and Post-Processing
 ---------------------------------------------
 
-During recording, your expert policy may utilize pre-processing techniques for observations, such as *frame-stacking*, or filtering methods like *mean-std filtering*. Similarly, actions may undergo pre-processing, such as *action 
+During recording, your expert policy may utilize pre-processing techniques for observations, such as *frame-stacking*, or filtering methods like *mean-std filtering*. Similarly, actions may undergo pre-processing, such as *action
 sampling* or *scaling*. In its ``EnvRunner`` instances, RLlib applies such pre-processing and filtering (through the *env-to-module* connector pipeline) **before** observations are passed to the ``RLModule``. However, raw observations (as received
 directly from the environment) are stored in the episodes. Likewise, actions are recorded in their raw form (as output directly from the ``RLModule``) while undergoing pre-processing (through RLlib's *module-to-env* connectors) before being
 sent to the environment.
 
 It's crucial to carefully consider the pre-processing and filtering applied during the recording of experiences, as they significantly influence how the expert policy learns and subsequently performs in the environment. For example, if
-the expert policy uses *mean-std filtering* for observations, it learns a strategy based on the filtered observations, where the filter itself is highly dependent on the experiences collected during training. When deploying this expert 
+the expert policy uses *mean-std filtering* for observations, it learns a strategy based on the filtered observations, where the filter itself is highly dependent on the experiences collected during training. When deploying this expert
 policy, it's essential to use the exact same filter during evaluation to avoid performance degradation. Similarly, a policy trained through behavior cloning may also require a *mean-std filter* for observations to accurately replicate the
 behavior of the expert policy.
 
@@ -647,11 +647,11 @@ Scaling I/O Throughput
 ----------------------
 
 Just as online training can be scaled, offline recording I/O throughput can also be increased by configuring the number of RLlib env-runners. Use the ``num_env_runners`` setting to scale recording during training or ``evaluation_num_env_runners``
-for scaling during evaluation-only recording. Each worker operates independently, writing experiences in parallel, enabling linear scaling of I/O throughput for write operations. Within each :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner`, episodes 
+for scaling during evaluation-only recording. Each worker operates independently, writing experiences in parallel, enabling linear scaling of I/O throughput for write operations. Within each :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner`, episodes
 are sampled and serialized before being written to disk.
 
-Offline RL training in RLlib is highly parallelized, encompassing data reading, post-processing, and, if applicable, updates. When training on offline data, scalability is achieved by increasing the number of ``DataWorker`` instances used to 
-transform offline experiences into a learner-compatible format (:py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch`). Ray Data optimizes reading operations under the hood by leveraging file metadata, predefined concurrency settings for batch post-processing, and available 
+Offline RL training in RLlib is highly parallelized, encompassing data reading, post-processing, and, if applicable, updates. When training on offline data, scalability is achieved by increasing the number of ``DataWorker`` instances used to
+transform offline experiences into a learner-compatible format (:py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch`). Ray Data optimizes reading operations under the hood by leveraging file metadata, predefined concurrency settings for batch post-processing, and available
 system resources. It's strongly recommended not to override these defaults, as doing so may disrupt this optimization process.
 
 Data processing in RLlib involves three key layers, all of which are highly scalable:
@@ -670,7 +670,7 @@ The diagram below illustrates the layers and their scalability:
 the concurrency level specified in the keyword arguments for the mapping operation:
 
 .. code-block:: python
-    
+
     config = (
         AlgorithmConfig()
         .offline_data(
@@ -681,7 +681,7 @@ the concurrency level specified in the keyword arguments for the mapping operati
         )
     )
 
-This initiates an actor pool with 10 ``DataWorker`` instances, each running an instance of RLlib's callable :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` class to post-process batches for updating the 
+This initiates an actor pool with 10 ``DataWorker`` instances, each running an instance of RLlib's callable :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` class to post-process batches for updating the
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
 .. note:: The ``num_cpus`` (and similarly the ``num_gpus``) attribute defines the resources **allocated to each** ``DataWorker`` not the full actor pool.
@@ -689,7 +689,7 @@ This initiates an actor pool with 10 ``DataWorker`` instances, each running an i
 You scale the number of learners in RLlib's :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.learners` configuration block:
 
 .. code-block:: python
-    
+
     config = (
         AlgorithmConfig()
         .learners(
@@ -698,12 +698,12 @@ You scale the number of learners in RLlib's :py:meth:`~ray.rllib.algorithms.algo
         )
     )
 
-With this configuration you start an application with 4 (remote) :py:class:`~ray.rllib.core.learner.learner.Learner`s (see :ref:`Learner (Alpha)` for more details about RLlib's learners) 
-each of them using a single GPU. 
+With this configuration you start an application with 4 (remote) :py:class:`~ray.rllib.core.learner.learner.Learner`s (see :ref:`Learner (Alpha)` for more details about RLlib's learners)
+each of them using a single GPU.
 
 Using Cloud Storage
 -------------------
-Unlike RLlib's previous stack, the new Offline RL API is cloud-agnostic and fully integrates with PyArrow. You can utilize any available cloud storage path or PyArrow-compatible filesystem. If 
+Unlike RLlib's previous stack, the new Offline RL API is cloud-agnostic and fully integrates with PyArrow. You can utilize any available cloud storage path or PyArrow-compatible filesystem. If
 using a PyArrow or compatible filesystem, ensure that your ``input_`` path is a relative path within this filesystem. Similar to Ray Data, you can also use placeholders, lists of files
 or folders, or simply specify a single folder to read recursively from.
 
@@ -718,17 +718,17 @@ For example, to read from a storage bucket in GCS, you can specify the folder lo
         )
     )
 
-This configuration allows RLlib to read data recursively from any folder beneath the specified path. If you are using a filesystem for GCS (for instance, due to authentication requirements), 
+This configuration allows RLlib to read data recursively from any folder beneath the specified path. If you are using a filesystem for GCS (for instance, due to authentication requirements),
 use the following syntax:
 
 .. code-block:: python
 
     import pyarrow.fs
-    
+
     # Define the PyArrow filesystem
     gcs = pyarrow.fs.GcsFilesystem(
         # This is needed to resolve the hostname for public buckets.
-        anonymous=True, 
+        anonymous=True,
         retry_time_limit=timedelta(seconds=15)
     )
 
@@ -797,10 +797,10 @@ layer to some extent, including:
 Available Resources
 ~~~~~~~~~~~~~~~~~~~
 The scheduling strategy employed by :ref:`Ray Data <data>` operates independently of any existing placement group, scheduling tasks and actors separately. Consequently, it's essential to reserve adequate resources for other tasks and actors within your job. To
-optimize :ref:`Ray Data <data>`'s scalability for read operations and improve reading performance, consider increasing the available resources in your cluster while preserving the resource allocation for existing tasks and actors. The key resources to monitor and 
+optimize :ref:`Ray Data <data>`'s scalability for read operations and improve reading performance, consider increasing the available resources in your cluster while preserving the resource allocation for existing tasks and actors. The key resources to monitor and
 provision are CPUs and object store memory. Insufficient object store memory, especially under heavy backpressure, may lead to objects being spilled to disk, which can severely impact application performance.
 
-Bandwidth is a crucial factor influencing the throughput within your cluster. In some cases, scaling the number of nodes can increase bandwidth, thereby enhancing the flow of data from storage to consuming processes. Scenarios where this approach is beneficial 
+Bandwidth is a crucial factor influencing the throughput within your cluster. In some cases, scaling the number of nodes can increase bandwidth, thereby enhancing the flow of data from storage to consuming processes. Scenarios where this approach is beneficial
 include:
 
 - Independent connections to the network backbone: Nodes utilize dedicated bandwidth, avoiding shared up-links and potential bottlenecks (see for ex. `here <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-network-bandwidth.html>`__ for AWS and `here <https://cloud.google.com/compute/docs/network-bandwidth?hl=en>`__ for GCP network bandwidth documentations).
@@ -816,14 +816,14 @@ sufficient to enable efficient streaming for RLlib's Offline RL API. Additional 
 
 Data Sharding
 ~~~~~~~~~~~~~
-Data sharding improves the efficiency of fetching, transferring, and reading data by balancing chunk sizes. If chunks are too large, they can cause delays during transfer and processing, leading to bottlenecks. Conversely, chunks that are too small can result in high metadata fetching overhead, slowing down overall performance. Finding an optimal chunk size is 
-critical for balancing these trade-offs and maximizing throughput. 
+Data sharding improves the efficiency of fetching, transferring, and reading data by balancing chunk sizes. If chunks are too large, they can cause delays during transfer and processing, leading to bottlenecks. Conversely, chunks that are too small can result in high metadata fetching overhead, slowing down overall performance. Finding an optimal chunk size is
+critical for balancing these trade-offs and maximizing throughput.
 
 - As a rule-of-thumb keep data file sizes in between 64MiB to 256MiB.
 
 Data Pruning
 ~~~~~~~~~~~~
-If your data is in **Parquet** format (the recommended offline data format for RLlib), you can leverage data pruning to optimize performance. :ref:`Ray Data <data>` supports pruning in its :py:meth:`~ray.data.read_parquet` method through projection pushdown (column filtering) and filter pushdown (row filtering). These filters are applied directly during file 
+If your data is in **Parquet** format (the recommended offline data format for RLlib), you can leverage data pruning to optimize performance. :ref:`Ray Data <data>` supports pruning in its :py:meth:`~ray.data.read_parquet` method through projection pushdown (column filtering) and filter pushdown (row filtering). These filters are applied directly during file
 scans, reducing the amount of unnecessary data loaded into memory.
 
 For instance, if you only require specific columns from your offline data (for example, to avoid loading the ``infos`` column):
@@ -854,7 +854,7 @@ For instance, if you only require specific columns from your offline data (for e
 Similarly, if you only require specific rows from your dataset, you can apply pushdown filters as shown below:
 
 .. code-block:: python
-    
+
     import pyarrow.dataset
 
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -882,8 +882,8 @@ Tuning the **Post-Processing (Pre-Learner)** layer is generally more straightfor
 
 Actor Pool Size
 ~~~~~~~~~~~~~~~
-Internally, the **Post-Processing (PreLearner)** layer is defined by a :py:meth:`~ray.data.Dataset.map_batches` operation that starts an :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool`. Each actor in this pool runs an :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` 
-instances to transform batches on their way from disk to RLlib's :py:class:`~ray.rllib.core.learner.learner.Learner`. Obviously, the size of this :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool` defines the throughput of this layer and needs to be fine-tuned in regard to the pervious layer's 
+Internally, the **Post-Processing (PreLearner)** layer is defined by a :py:meth:`~ray.data.Dataset.map_batches` operation that starts an :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool`. Each actor in this pool runs an :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner`
+instances to transform batches on their way from disk to RLlib's :py:class:`~ray.rllib.core.learner.learner.Learner`. Obviously, the size of this :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool` defines the throughput of this layer and needs to be fine-tuned in regard to the pervious layer's
 throughput to avoid backpressure. You can use the ``concurrency`` in RLlib's ``map_batches_kwargs`` parameter to define this pool size:
 
 .. code-block:: python
@@ -901,9 +901,9 @@ throughput to avoid backpressure. You can use the ``concurrency`` in RLlib's ``m
 
 With the preceding code you would enable :ref:`Ray Data <data>` to start up to ``4`` parallel :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` actors that can post-process your data for training.
 
-.. note:: :ref:`Ray Data <data>` dynamically adjusts its read operations based on the parallelism of your **Post-Processing (Pre-Learner)** layer. It scales read operations up or down depending on the backpressure 
-    in the **Post-Processing (Pre-Learner)** stage. This means the throughput of your entire streaming pipeline is determined by the performance of the downstream tasks and the resources allocated to the 
-    **Reading Operations** layer (see :ref:`How to tune reading operations <how-to-tune-reading-operations>`). However, due to the overhead associated with scaling reading operations up or down, backpressure - and 
+.. note:: :ref:`Ray Data <data>` dynamically adjusts its read operations based on the parallelism of your **Post-Processing (Pre-Learner)** layer. It scales read operations up or down depending on the backpressure
+    in the **Post-Processing (Pre-Learner)** stage. This means the throughput of your entire streaming pipeline is determined by the performance of the downstream tasks and the resources allocated to the
+    **Reading Operations** layer (see :ref:`How to tune reading operations <how-to-tune-reading-operations>`). However, due to the overhead associated with scaling reading operations up or down, backpressure - and
     in severe cases, object spilling or Out-Of-Memory (OOM) errors - can't always be entirely avoided.
 
 You can also enable auto-scaling in your **Post-Processing (PreLearner)** by providing an interval instead of a straight number:
@@ -924,15 +924,15 @@ You can also enable auto-scaling in your **Post-Processing (PreLearner)** by pro
 This allows :ref:`Ray Data <data>` to start up to ``8`` post-processing actors to downstream data faster, for example in case of backpressure.
 
 .. note:: Implementing an autoscaled actor pool in the **Post-Processing (Pre-Learner)** layer doesn't guarantee you the elimination of backpressure. Adding more :py:class:`~ray.rllib.offline.offline_prelearner.OffLinePreLearner` instances introduces additional overhead to the system. RLlib's offline RL pipeline is
-    optimized for streaming data, which typically exhibits stable throughput and resource usage, except in cases of imbalances between upstream and downstream tasks. As a rule of thumb, consider using autoscaling only under the following conditions: (1) throughput is expected to be highly variable, (2) Cluster resources 
+    optimized for streaming data, which typically exhibits stable throughput and resource usage, except in cases of imbalances between upstream and downstream tasks. As a rule of thumb, consider using autoscaling only under the following conditions: (1) throughput is expected to be highly variable, (2) Cluster resources
     are subject to fluctuations (for example, in shared or dynamic environments), and/or (3) workload characteristics are highly unpredictable.
 
 Allocated Resources
 ~~~~~~~~~~~~~~~~~~~
 Other than the number of post-processing actors you can tune performance on the **Post-Processing (PreLearner)** layer through defining resources to be allocated to each :py:class:`~ray.rllib.offline.offline_prelearner.OffLinePreLearner` in the actor pool. Such resources can be defined either through ``num_cpus`` and ``num_gpus``
-or in the ``ray_remote_args``. 
+or in the ``ray_remote_args``.
 
-.. note:: Typically, increasing the number of CPUs is sufficient for performance tuning in the post-processing stage of your pipeline. GPUs are only needed in specialized cases, such as in customized pipelines. For example, RLlib’s :py:class:`~ray.rllib.algorithms.marwil.marwil.MARWIL` implementation uses the 
+.. note:: Typically, increasing the number of CPUs is sufficient for performance tuning in the post-processing stage of your pipeline. GPUs are only needed in specialized cases, such as in customized pipelines. For example, RLlib’s :py:class:`~ray.rllib.algorithms.marwil.marwil.MARWIL` implementation uses the
     :py:class:`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector in its :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2` to apply `General Advantage Estimation <https://arxiv.org/abs/1506.02438>`__ on experience batches. In these calculations, the value model of the algorithm's
     :py:class:`~ray.rllib.core.rl_module.RLModule` is applied, which you can accelerate by running on a GPU.
 
@@ -957,8 +957,8 @@ As an example, to provide each of your ``4`` :py:class:`~ray.rllib.offline.offli
 
 Read Batch- and Buffer Sizes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-When working with data from :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` or the legacy :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` format, fine-tuning the `input_read_batch_size` parameter provides additional optimization opportunities. This parameter controls the size of batches retrieved from data 
-files. Its effectiveness is particularly notable when handling episodic or legacy :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` data because the streaming pipeline utilizes for these data an :py:class:`~ray.rllib.utils.replay_buffers.episode_replay_buffer.EpisodeReplayBuffer` to handle the multiple timesteps contained in each 
+When working with data from :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` or the legacy :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` format, fine-tuning the `input_read_batch_size` parameter provides additional optimization opportunities. This parameter controls the size of batches retrieved from data
+files. Its effectiveness is particularly notable when handling episodic or legacy :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` data because the streaming pipeline utilizes for these data an :py:class:`~ray.rllib.utils.replay_buffers.episode_replay_buffer.EpisodeReplayBuffer` to handle the multiple timesteps contained in each
 data row. All incoming data is converted into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances - if not already in this format - and stored in an episode replay buffer, which precisely manages the sampling of `train_batch_size_per_learner` for training.
 
 .. image:: images/offline/docs_rllib_offline_prelearner.svg
@@ -966,7 +966,7 @@ data row. All incoming data is converted into :py:class:`~ray.rllib.env.single_a
     :width: 500
     :align: left
 
-Achieving an optimal balance between data ingestion efficiency and sampling variation in your streaming pipeline is crucial. Consider the following example: suppose each :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` has a length of ``100`` timesteps, and your `train_batch_size_per_learner` is configured to be ``1000``. 
+Achieving an optimal balance between data ingestion efficiency and sampling variation in your streaming pipeline is crucial. Consider the following example: suppose each :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` has a length of ``100`` timesteps, and your `train_batch_size_per_learner` is configured to be ``1000``.
 Each :py:class:`~ray.rllib.utils.replay_buffers.episode_replay_buffer.EpisodeReplayBuffer` instance is set with a capacity of ``1000``:
 
 .. code-block:: python
@@ -993,7 +993,7 @@ Each :py:class:`~ray.rllib.utils.replay_buffers.episode_replay_buffer.EpisodeRep
     )
 
 If you configure `input_read_batch_size` to ``10`` as shown in the code, each of the ``10`` :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` fit into the buffer, enabling sampling across a wide variety of timesteps from multiple episodes. This results in high sampling variation. Now, consider the case where the buffer
-capacity is reduced to ``500``: 
+capacity is reduced to ``500``:
 
 .. code-block:: python
 
@@ -1067,9 +1067,9 @@ layer in coordination with the upstream components. Several parameters can be ad
 Actor Pool Size
 ***************
 
-RLlib supports scaling :py:class:`~ray.rllib.core.learner.learner.Learner` instances through the parameter `num_learners`. When this value is ``0``, RLlib uses a Learner instance in the local process, whereas for values ``>0``, RLlib scales out using a :py:class:`~ray.train._internals.backend_executor_BackendExecutor`. This executor spawns your specified 
-number of :py:class:`~ray.rllib.core.learner.learner.Learner` instances, manages distributed training and aggregates intermediate results across :py:class:`~ray.rllib.core.learner.learner.Learner` actors. :py:class:`~ray.rllib.core.learner.learner.Learner` scaling increases training throughput and you should only apply it, if the upstream components in your 
-Offline Data pipeline can supply data at a rate sufficient to match the increased training capacity. RLlib's Offline API offers powerful scalability at its final layer by utilizing :py:class:`~ray.data.Dataset.streaming_split`. This functionality divides the data stream into multiple substreams, which are then processed by individual 
+RLlib supports scaling :py:class:`~ray.rllib.core.learner.learner.Learner` instances through the parameter `num_learners`. When this value is ``0``, RLlib uses a Learner instance in the local process, whereas for values ``>0``, RLlib scales out using a :py:class:`~ray.train._internals.backend_executor_BackendExecutor`. This executor spawns your specified
+number of :py:class:`~ray.rllib.core.learner.learner.Learner` instances, manages distributed training and aggregates intermediate results across :py:class:`~ray.rllib.core.learner.learner.Learner` actors. :py:class:`~ray.rllib.core.learner.learner.Learner` scaling increases training throughput and you should only apply it, if the upstream components in your
+Offline Data pipeline can supply data at a rate sufficient to match the increased training capacity. RLlib's Offline API offers powerful scalability at its final layer by utilizing :py:class:`~ray.data.Dataset.streaming_split`. This functionality divides the data stream into multiple substreams, which are then processed by individual
 :py:class:`~ray.rllib.core.learner.learner.Learner` instances, enabling efficient parallel consumption and enhancing overall throughput.
 
 For example to set the number of learners to ``4``, you use the following syntax:
@@ -1083,13 +1083,13 @@ For example to set the number of learners to ``4``, you use the following syntax
         .learners(num_learners=4)
     )
 
-.. tip::For performance optimization you should choose between using a single local :py:class:`~ray.rllib.core.learner.learner.Learner` or multiple remote ones :py:class:`~ray.rllib.core.learner.learner.Learner`. In case your dataset is small, use scaling of :py:class:`~ray.rllib.core.learner.learner.Learner` instances with caution as it produces significant 
+.. tip::For performance optimization you should choose between using a single local :py:class:`~ray.rllib.core.learner.learner.Learner` or multiple remote ones :py:class:`~ray.rllib.core.learner.learner.Learner`. In case your dataset is small, use scaling of :py:class:`~ray.rllib.core.learner.learner.Learner` instances with caution as it produces significant
     overhead and splits the data pipeline into multiple streams.
 
 Allocated Resources
 ~~~~~~~~~~~~~~~~~~~
-Just as with the Post-Processing (Pre-Learner) layer, allocating additional resources can help address slow training issues. The primary resource to leverage is the GPU, as training involves forward and backward passes through the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, which GPUs can accelerate significantly. If your training 
-already utilizes GPUs and performance still remains an issue, consider scaling up by either adding more GPUs to each :py:class:`~ray.rllib.core.learner.learner.Learner` to increase GPU memory and computational capacity (set `config.learners(num_gpus_per_learner=...)`), or by adding additional :py:class:`~ray.rllib.core.learner.learner.Learner` workers to further distribute the workload (by setting `config.learners(num_learners=...)`). Additionally, ensure that data 
+Just as with the Post-Processing (Pre-Learner) layer, allocating additional resources can help address slow training issues. The primary resource to leverage is the GPU, as training involves forward and backward passes through the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, which GPUs can accelerate significantly. If your training
+already utilizes GPUs and performance still remains an issue, consider scaling up by either adding more GPUs to each :py:class:`~ray.rllib.core.learner.learner.Learner` to increase GPU memory and computational capacity (set `config.learners(num_gpus_per_learner=...)`), or by adding additional :py:class:`~ray.rllib.core.learner.learner.Learner` workers to further distribute the workload (by setting `config.learners(num_learners=...)`). Additionally, ensure that data
 throughput and upstream components are optimized to keep the learners fully utilized, as insufficient upstream capacity can bottleneck the training process.
 
 .. warning::Currently, you can't set both `num_gpus_per_learner` and `num_cpus_per_learner` due to placement group (PG) fragmentation in Ray.
@@ -1122,7 +1122,7 @@ Here is an example of how you can change the scheduling strategy:
     import os
     from ray import data
     from ray.rllib.algorithms.algorithm_config.AlgorithmConfig
-    
+
     # Configure a "SPREAD" scheduling strategy for learners.
     os.environ["TRAIN_ENABLE_WORKER_SPREAD_ENV"] = "1"
 
@@ -1144,8 +1144,8 @@ Here is an example of how you can change the scheduling strategy:
         )
         .offline_data(
             ...,
-            # Run in each RLlib training iteration 10 
-            # iterations per learner (each of them with 
+            # Run in each RLlib training iteration 10
+            # iterations per learner (each of them with
             # `train_batch_size_per_learner`).
             dataset_num_iters_per_learner=20,
         )
@@ -1162,7 +1162,7 @@ Here is an example of how you can change the scheduling strategy:
 
 Batch Size
 ~~~~~~~~~~
-Batch size is one of the simplest parameters to adjust for optimizing performance in RLlib's new Offline RL API. Small batch sizes may under-utilize hardware, leading to inefficiencies, while overly large batch sizes can exceed memory limits. In a streaming pipeline, the selected batch size impacts how data is partitioned and processed across parallel workers. Larger 
+Batch size is one of the simplest parameters to adjust for optimizing performance in RLlib's new Offline RL API. Small batch sizes may under-utilize hardware, leading to inefficiencies, while overly large batch sizes can exceed memory limits. In a streaming pipeline, the selected batch size impacts how data is partitioned and processed across parallel workers. Larger
 batch sizes reduce the overhead of frequent task coordination, but if they exceed hardware constraints, they can slow down the entire pipeline. You can configure the training batch size using the `train_batch_size_per_learner` attribute as shown below.
 
 .. code-block:: python
@@ -1182,7 +1182,7 @@ In `Ray Data <data>`, it's common practice to use batch sizes that are powers of
 
 Batch Prefetching
 ~~~~~~~~~~~~~~~~~
-Batch prefetching allows you to control data consumption on the downstream side of your offline data pipeline. The primary goal is to ensure that learners remain active, maintaining a continuous flow of data. This is achieved by preparing the next batch while the learner processes the current one. Prefetching determines how many batches are kept ready for learners 
+Batch prefetching allows you to control data consumption on the downstream side of your offline data pipeline. The primary goal is to ensure that learners remain active, maintaining a continuous flow of data. This is achieved by preparing the next batch while the learner processes the current one. Prefetching determines how many batches are kept ready for learners
 and should be tuned based on the time required to produce the next batch and the learner's update speed. Prefetching too many batches can lead to memory inefficiencies and, in some cases, backpressure in upstream tasks.
 
 .. tip::The default in RLlib's Offline RL API is to prefetch ``2`` batches per learner instance, which works well with most tested applications.
@@ -1203,12 +1203,12 @@ You can configure batch prefetching in the `iter_batches_kwargs`:
     )
 
 .. warning:: Don't override the ``batch_size`` in RLlib's `map_batches_kwargs`. This usually leads to high performance degradations. Note, this ``batch_size`` differs from the `train_batch_size_per_learner`: the former specifies the batch size
-    in iterating over data output of the streaming pipeline, while the latter defines the batch size used for training within each :py:class:`~ray.rllib.core.learner.learner.Learner`. 
+    in iterating over data output of the streaming pipeline, while the latter defines the batch size used for training within each :py:class:`~ray.rllib.core.learner.learner.Learner`.
 
 Learner Iterations
 ~~~~~~~~~~~~~~~~~~
 This tuning parameter is available only when using multiple instances of ::py:class:`~ray.rllib.core.learner.learner.Learner`. In distributed learning, each :py:class:`~ray.rllib.core.learner.learner.Learner` instance processes a sub-stream of the offline streaming pipeline, iterating over batches from that sub-stream. You can control the number of iterations each
-:py:class:`~ray.rllib.core.learner.learner.Learner` instance runs per RLlib training iteration. Result reporting occurs after each RLlib training iteration. Setting this parameter too low results in inefficiencies, while excessively high values can hinder training monitoring and, in some cases - such as in RLlib's :py:class:`~ray.rllib.algorithms.marwil.marwil.MARWIL` 
+:py:class:`~ray.rllib.core.learner.learner.Learner` instance runs per RLlib training iteration. Result reporting occurs after each RLlib training iteration. Setting this parameter too low results in inefficiencies, while excessively high values can hinder training monitoring and, in some cases - such as in RLlib's :py:class:`~ray.rllib.algorithms.marwil.marwil.MARWIL`
 implementation - lead to stale training data. This happens because some data transformations rely on the same :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` that the :py:class:`~ray.rllib.core.learner.learner.Learner` instances are training on. The number of iterations per sub-stream is controlled by the attribute
 :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.dataset_num_iters_per_learner`, which has a default value of ``None``, meaning it runs one epoch on the sub-stream.
 
@@ -1226,13 +1226,13 @@ You can modify this value as follows:
         )
     )
 
-.. note::The default value of :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.dataset_num_iters_per_learner` is None, which allows each :py:class:`~ray.rllib.core.learner.learner.Learner` instance to process a full epoch on its data substream. While this setting works well for small datasets, it may not be suitable for larger datasets. It's important 
+.. note::The default value of :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.dataset_num_iters_per_learner` is None, which allows each :py:class:`~ray.rllib.core.learner.learner.Learner` instance to process a full epoch on its data substream. While this setting works well for small datasets, it may not be suitable for larger datasets. It's important
     to tune this parameter according to the size of your dataset to ensure optimal performance.
 
 Customization
 -------------
 
-Customization of the Offline RL components in RLlib, such as the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, :py:class:`~ray.rllib.core.learner.learner.Learner`, or :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, follows a similar process to that of their Online RL counterparts. For detailed guidance, refer to the documentation on :ref:`Algorithms <rllib-algorithms-doc>`, 
+Customization of the Offline RL components in RLlib, such as the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, :py:class:`~ray.rllib.core.learner.learner.Learner`, or :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, follows a similar process to that of their Online RL counterparts. For detailed guidance, refer to the documentation on :ref:`Algorithms <rllib-algorithms-doc>`,
 :ref:`Learners <learner-guide>`, and RLlib's :ref:`RLModule <rlmodule-guide>`. The new stack Offline RL streaming pipeline in RLlib supports customization at various levels and locations within the dataflow, allowing for tailored solutions to meet the specific requirements of your offline RL algorithm.
 
 - Connector Level
@@ -1241,12 +1241,12 @@ Customization of the Offline RL components in RLlib, such as the :py:class:`~ray
 
 Connector Level
 ***************
-Small data transformations on instances of :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` can be easily implemented by modifying the :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`, which is part of the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` and prepares episodes for training. You can leverage any connector from 
+Small data transformations on instances of :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` can be easily implemented by modifying the :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`, which is part of the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` and prepares episodes for training. You can leverage any connector from
 RLlib's library (see `RLlib's default connectors <https://github.com/ray-project/ray/blob/master/rllib/connectors>`__) or create a custom connector (see `RLlib's ConnectorV2 examples <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors>`__) to integrate into the :py:class:`~ray.rllib.core.learner.learner.Learner`'s :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`.
 Careful consideration must be given to the order in which :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances are applied, as demonstrated in the implementation of `RLlib's MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>`__ (see the `MARWIL paper <https://www.nematilab.info/bmijc/assets/012819_paper.pdf>`__).
 
 The `MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>`__ computes a loss that extends beyond behavior cloning by improving the expert's strategy during training using advantages. These advantages are calculated through `General Advantage Estimation (GAE) <https://arxiv.org/abs/1506.02438>`__ using a value model. GAE is computed on-the-fly through the
-:py:class:`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector. This connector has specific requirements: it processes a list of :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances and must be one of the final components in the :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`. This is because 
+:py:class:`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector. This connector has specific requirements: it processes a list of :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances and must be one of the final components in the :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`. This is because
 it relies on fully prepared batches containing `OBS`, `REWARDS`, `NEXT_OBS`, `TERMINATED`, and `TRUNCATED` fields. Additionally, the incoming :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances must already include one artificially elongated timestep.
 
 To meet these requirements, the pipeline must include the following sequence of :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances:
@@ -1299,7 +1299,7 @@ Below is the example code snippet from `RLlib's MARWIL algorithm <https://github
 Define a Primer LearnerConnector Pipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 There are multiple ways to customize the :py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`. One approach, as demonstrated above, is to override the `build_learner_connector` method in the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`. Alternatively, you can directly define a custom :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece to the
-:py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline` by utilizing the `learner_connector` attribute: 
+:py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline` by utilizing the `learner_connector` attribute:
 
 .. code-block:: python
 
@@ -1324,7 +1324,7 @@ steps). If your goal is to modify data further along in the :py:class:`~ray.rlli
 
 PreLearner Level
 ****************
-If you need to perform data transformations at a deeper level - before your data reaches the :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` stage - consider overriding the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner`. This class orchestrates the complete data transformation pipeline, converting raw input data into 
+If you need to perform data transformations at a deeper level - before your data reaches the :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` stage - consider overriding the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner`. This class orchestrates the complete data transformation pipeline, converting raw input data into
 :py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch` objects ready for training. For instance, if your data is stored in specialized formats requiring pre-parsing and restructuring (for example, XML, HTML, Protobuf, images, or videos), you may need to handle these custom formats directly. You can leverage tools such as `Ray Data's custom datasources <custom_datasource>` (for example, :py:meth:`~ray.data.read_binary_files`) to manage the ingestion process. To ensure
 this data is appropriately structured and sorted into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects, you can override the :py:meth:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner._map_to_episodes` static method.
 
@@ -1353,7 +1353,7 @@ The following example demonstrates how to use a custom :py:class:`~ray.rllib.off
             is_multi_agent: bool,
             batch: Dict[str, Union[list, np.ndarray]],
             schema: Dict[str, str] = SCHEMA,
-            finalize: bool = False,
+            to_numpy: bool = False,
             input_compress_columns: Optional[List[str]] = None,
             observation_space: gym.Space = None,
             action_space: gym.Space = None,
@@ -1390,7 +1390,7 @@ The following example demonstrates how to use a custom :py:class:`~ray.rllib.off
                     # We use the starting token with all added tokens as observations.
                     observations=[ohv for ohv in one_hot_vectors],
                     observation_space=observation_space,
-                    # Actions are defined to be the "chosen" follow-up token after 
+                    # Actions are defined to be the "chosen" follow-up token after
                     # given the observation.
                     actions=encoded[1:],
                     action_space=action_space,
@@ -1404,13 +1404,13 @@ The following example demonstrates how to use a custom :py:class:`~ray.rllib.off
                     t_started=0,
                 )
 
-                # If episodes should be finalized. Some connectors need this.
-                if finalize:
-                    episode.finalize()
-                
+                # If episodes should be numpy'ized. Some connectors need this.
+                if to_numpy:
+                    episode.to_numpy()
+
                 # Append the episode to the list of episodes.
                 episodes.append(episode)
-            
+
             # Return a batch with key `"episodes"`.
             return {"episodes": episodes}
 
@@ -1419,7 +1419,7 @@ The following example demonstrates how to use a custom :py:class:`~ray.rllib.off
 
     # Create a vocabulary.
     tokens = []
-    for b in ds.iter_rows(): 
+    for b in ds.iter_rows():
         tokens.extend(b["text"].split(" "))
     vocabulary = {token: idx for idx, token in enumerate(set(tokens), start=1)}
 
@@ -1430,7 +1430,7 @@ The following example demonstrates how to use a custom :py:class:`~ray.rllib.off
     episodes = TextOfflinePreLearner._map_to_episodes(
         is_multi_agent=False,
         batch=batch,
-        finalize=True,
+        to_numpy=True,
         schema=None,
         input_compress_columns=False,
         action_space=None,
@@ -1439,7 +1439,7 @@ The following example demonstrates how to use a custom :py:class:`~ray.rllib.off
     )
 
     # Show the constructed episodes.
-    print(f"Episodes: {episodes}")      
+    print(f"Episodes: {episodes}")
 
 The preceding example illustrates the flexibility of RLlib's Offline RL API for custom data transformation. In this case, a customized :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` processes a batch of text data - organized as sentences - and converts each sentence into a :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`. The static method returns a dictionary containing a list of these
 :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances. Similarly, you can extend this functionality by overriding the :py:meth:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner.__call__` method. For instance, you could implement a :py:class:`ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline` that stacks multiple observations (for example, tokens) together. This can be achieved using RLlib's
@@ -1527,7 +1527,7 @@ The preceding example illustrates the flexibility of RLlib's Offline RL API for 
             episodes = TextOfflinePreLearner._map_to_episodes(
                 is_multi_agent=False,
                 batch=batch,
-                finalize=True,
+                to_numpy=True,
                 schema=None,
                 input_compress_columns=False,
                 action_space=self.spaces[0],
@@ -1535,7 +1535,7 @@ The preceding example illustrates the flexibility of RLlib's Offline RL API for 
                 vocabulary=self.vocabulary,
             )["episodes"]
 
-            # Run the learner connector pipeline with the 
+            # Run the learner connector pipeline with the
             # `FrameStackLearner` piece.
             batch = self._learner_connector(
                 rl_module=self._module,
@@ -1557,14 +1557,14 @@ The preceding example illustrates the flexibility of RLlib's Offline RL API for 
 
             # Return the `MultiAgentBatch` under the `"batch"` key.
             return {"batch": batch}
-            
+
         @staticmethod
         @override(OfflinePreLearner)
         def _map_to_episodes(
             is_multi_agent: bool,
             batch: Dict[str, Union[list, np.ndarray]],
             schema: Dict[str, str] = SCHEMA,
-            finalize: bool = False,
+            to_numpy: bool = False,
             input_compress_columns: Optional[List[str]] = None,
             observation_space: gym.Space = None,
             action_space: gym.Space = None,
@@ -1601,7 +1601,7 @@ The preceding example illustrates the flexibility of RLlib's Offline RL API for 
                     # We use the starting token with all added tokens as observations.
                     observations=[ohv for ohv in one_hot_vectors],
                     observation_space=observation_space,
-                    # Actions are defined to be the "chosen" follow-up token after 
+                    # Actions are defined to be the "chosen" follow-up token after
                     # given the observation.
                     actions=encoded[1:],
                     action_space=action_space,
@@ -1615,13 +1615,13 @@ The preceding example illustrates the flexibility of RLlib's Offline RL API for 
                     t_started=0,
                 )
 
-                # If episodes should be finalized. Some connectors need this.
-                if finalize:
-                    episode.finalize()
-                
+                # If episodes should be numpy'ized. Some connectors need this.
+                if to_numpy:
+                    episode.to_numpy()
+
                 # Append the episode to the list of episodes.
                 episodes.append(episode)
-            
+
             # Return a batch with key `"episodes"`.
             return {"episodes": episodes}
 
@@ -1630,7 +1630,7 @@ The preceding example illustrates the flexibility of RLlib's Offline RL API for 
 
     # Create a vocabulary.
     tokens = []
-    for b in ds.iter_rows(): 
+    for b in ds.iter_rows():
         tokens.extend(b["text"].split(" "))
     vocabulary = {token: idx for idx, token in enumerate(set(tokens), start=1)}
 
@@ -1695,7 +1695,7 @@ If these customization capabilities still don't meet your requirements, consider
 
 Pipeline Level
 ~~~~~~~~~~~~~~
-On this level of RLlib's Offline RL API you can redefine your complete pipeline from data reading to batch iteration by overriding the :py:class:`~®ay.rllib.offline.offline_data.OfflineData` class. In most cases however the other two levels should be sufficient for your requirements. Manipulating the complete pipeline needs sensible handling because it could degrade performance of your 
+On this level of RLlib's Offline RL API you can redefine your complete pipeline from data reading to batch iteration by overriding the :py:class:`~®ay.rllib.offline.offline_data.OfflineData` class. In most cases however the other two levels should be sufficient for your requirements. Manipulating the complete pipeline needs sensible handling because it could degrade performance of your
 pipeline to a high degree. Study carefully the :py:class:`~ray.rllib.offline.offline_data.OfflineData` class to reach a good understanding of how the default pipeline works before going over to program your own one. There are mainly two methods that define this pipeline:
 
 - The :py:meth:`~ray.rllib.offline.offline_data.OfflineData.__init__` method that defines the data reading process.
@@ -1710,13 +1710,13 @@ In the code example provided, you define a custom :py:class:`~ray.rllib.offline.
 
 .. literalinclude:: ../../../rllib/examples/offline_rl/classes/image_offline_prelearner.py
     :language: python
-    
-This demonstrates how the entire Offline Data Pipeline can be customized with your own logic. You can run the example by using the following code: 
+
+This demonstrates how the entire Offline Data Pipeline can be customized with your own logic. You can run the example by using the following code:
 
 .. literalinclude:: ../../../rllib/examples/offline_rl/offline_rl_with_image_data.py
     :language: python
 
-.. tip:: Consider this approach carefully: in many cases, fully transforming your data into a suitable format before engaging RLlib's offline RL API can be more efficient. For instance, in the example above, you could preprocess the entire image dataset into `numpy` arrays beforehand and utilize RLlib's default :py:class:`~ray.rllib.offline.offline_data.OfflineData` class for subsequent steps. 
+.. tip:: Consider this approach carefully: in many cases, fully transforming your data into a suitable format before engaging RLlib's offline RL API can be more efficient. For instance, in the example above, you could preprocess the entire image dataset into `numpy` arrays beforehand and utilize RLlib's default :py:class:`~ray.rllib.offline.offline_data.OfflineData` class for subsequent steps.
 
 Monitoring
 ----------
@@ -1749,8 +1749,8 @@ You can configure experience input for an agent using the following options:
         # Keyword args for `input_read_method`. These
         # are passed into the read method without checking. Use these
         # keyword args together with `map_batches_kwargs` and
-        # `iter_batches_kwargs` to tune the performance of the data pipeline. It 
-        # is strongly recommended to rely on Ray Data's automatic read performance 
+        # `iter_batches_kwargs` to tune the performance of the data pipeline. It
+        # is strongly recommended to rely on Ray Data's automatic read performance
         # tuning
         input_read_method_kwargs: Optional[Dict],
         # Table schema for converting offline data to episodes.
@@ -1783,13 +1783,13 @@ You can configure experience input for an agent using the following options:
         # data needs extra transforms and might not concatenate episode chunks
         # contained in different `SampleBatch`es in the data. If possible avoid
         # to read `SampleBatch`es and convert them in a controlled form into
-        # RLlib's `EpisodeType` (i.e. `SingleAgentEpisode`). The default is 
+        # RLlib's `EpisodeType` (i.e. `SingleAgentEpisode`). The default is
         # `False`. `input_read_episodes` and `input_read_sample_batches` can't
         # be True at the same time.
         input_read_sample_batches: Optional[bool],
         # Batch size to pull from the data set. This could
         # differ from the `train_batch_size_per_learner`, if a dataset holds
-        # `EpisodeType` (i.e. `SingleAgentEpisode`) or `SampleBatch`, or any 
+        # `EpisodeType` (i.e. `SingleAgentEpisode`) or `SampleBatch`, or any
         # other data type that contains multiple timesteps in a single row of the
         # dataset. In such cases a single batch of size
         # `train_batch_size_per_learner` potentially pulls a multiple of
@@ -1798,9 +1798,9 @@ You can configure experience input for an agent using the following options:
         input_read_batch_size: Optional[int],
         # A cloud filesystem to handle access to cloud storage when
         # reading experiences. Can be "gcs" for Google Cloud Storage, "s3" for AWS
-        # S3 buckets, "abs" for Azure Blob Storage, or any filesystem supported 
+        # S3 buckets, "abs" for Azure Blob Storage, or any filesystem supported
         # by PyArrow. In general the file path is sufficient for accessing data
-        # from public or local storage systems. See 
+        # from public or local storage systems. See
         # https://arrow.apache.org/docs/python/filesystems.html for details.
         input_filesystem: Optional[str],
         # A dictionary holding the kwargs for the filesystem
@@ -1862,7 +1862,7 @@ You can configure experience input for an agent using the following options:
         # `OfflinePreLearner` class and pass your derived class in here, if you
         # need to make some further transformations specific for your data or
         # loss. The default is `None`` which uses the base `OfflinePreLearner`
-        # defined in `ray.rllib.offline.offline_prelearner`. 
+        # defined in `ray.rllib.offline.offline_prelearner`.
         prelearner_class: Optional[Type],
         # An optional `EpisodeReplayBuffer` class is
         # used to buffer experiences when data is in `EpisodeType` or
@@ -1897,7 +1897,7 @@ You can configure experience output for an agent using the following options:
         # - None: don't save any experiences
         # - a path/URI to save to a custom output directory (for example, "s3://bckt/")
         output: Optional[str],
-        # What sample batch columns to LZ4 compress in the output data. 
+        # What sample batch columns to LZ4 compress in the output data.
         # Note that providing `rllib.core.columns.Columns.OBS` also
         # compresses `rllib.core.columns.Columns.NEXT_OBS`.
         output_compress_columns: Optional[List[str]],
@@ -1916,9 +1916,9 @@ You can configure experience output for an agent using the following options:
         output_write_method_kwargs: Optional[Dict],
         # A cloud filesystem to handle access to cloud storage when
         # writing experiences. Can be "gcs" for Google Cloud Storage, "s3" for AWS
-        # S3 buckets, "abs" for Azure Blob Storage, or any filesystem supported 
+        # S3 buckets, "abs" for Azure Blob Storage, or any filesystem supported
         # by PyArrow. In general the file path is sufficient for accessing data
-        # from public or local storage systems. See 
+        # from public or local storage systems. See
         # https://arrow.apache.org/docs/python/filesystems.html for details.
         output_filesystem: Optional[str],
         # A dictionary holding the keyword arguments for the filesystem

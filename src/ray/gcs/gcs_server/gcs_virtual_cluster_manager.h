@@ -30,11 +30,13 @@ namespace gcs {
 class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
  public:
   explicit GcsVirtualClusterManager(
+      instrumented_io_context &io_context,
       GcsTableStorage &gcs_table_storage,
       GcsPublisher &gcs_publisher,
       const ClusterResourceManager &cluster_resource_manager,
       std::shared_ptr<PeriodicalRunner> periodical_runner = nullptr)
-      : gcs_table_storage_(gcs_table_storage),
+      : io_context_(io_context),
+        gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
         periodical_runner_(periodical_runner),
         primary_cluster_(std::make_shared<PrimaryCluster>(
@@ -118,6 +120,9 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
                          CreateOrUpdateVirtualClusterCallback callback);
 
  private:
+  /// io context. This is to ensure thread safety. Ideally, all public
+  /// funciton needs to post job to this io_context.
+  instrumented_io_context &io_context_;
   /// The storage of the GCS tables.
   GcsTableStorage &gcs_table_storage_;
   /// The publisher of the GCS tables.

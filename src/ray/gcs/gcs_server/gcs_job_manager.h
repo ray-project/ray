@@ -57,6 +57,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
                          GcsFunctionManager &function_manager,
                          GcsVirtualClusterManager &gcs_virtual_cluster_manager,
                          InternalKVInterface &internal_kv,
+                         instrumented_io_context &io_context,
                          rpc::CoreWorkerClientFactoryFn client_factory = nullptr)
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
@@ -64,6 +65,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
         function_manager_(function_manager),
         gcs_virtual_cluster_manager_(gcs_virtual_cluster_manager),
         internal_kv_(internal_kv),
+        io_context_(io_context),
         core_worker_clients_(client_factory) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
@@ -134,7 +136,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   GcsFunctionManager &function_manager_;
   GcsVirtualClusterManager &gcs_virtual_cluster_manager_;
   InternalKVInterface &internal_kv_;
-
+  instrumented_io_context &io_context_;
   /// The cached core worker clients which are used to communicate with workers.
   rpc::CoreWorkerClientPool core_worker_clients_;
 };

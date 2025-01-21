@@ -17,6 +17,7 @@ from ray._private.utils import (
 from ray._raylet import GlobalStateAccessor
 from ray.core.generated import common_pb2
 from ray.core.generated import gcs_pb2
+from ray.core.generated import autoscaler_pb2
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -844,6 +845,17 @@ class GlobalState:
         """
         self._check_connected()
         return self.global_state_accessor.get_draining_nodes()
+
+    def get_cluster_config(self) -> autoscaler_pb2.ClusterConfig:
+        """Get the cluster config of the current cluster."""
+        self._check_connected()
+        serialized_cluster_config = self.global_state_accessor.get_internal_kv(
+            ray._raylet.GCS_AUTOSCALER_STATE_NAMESPACE.encode(),
+            ray._raylet.GCS_AUTOSCALER_CLUSTER_CONFIG_KEY.encode(),
+        )
+        if serialized_cluster_config:
+            return autoscaler_pb2.ClusterConfig.FromString(serialized_cluster_config)
+        return None
 
 
 state = GlobalState()

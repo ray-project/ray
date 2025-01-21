@@ -31,11 +31,13 @@ namespace gcs {
 //////////////////////////////////////////////////////////////////////////////////////////
 GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
                                gcs::GcsTableStorage *gcs_table_storage,
+                               instrumented_io_context &io_context,
                                rpc::NodeManagerClientPool *raylet_client_pool,
                                const ClusterID &cluster_id,
                                GcsVirtualClusterManager &gcs_virtual_cluster_manager)
     : gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
+      io_context_(io_context),
       raylet_client_pool_(raylet_client_pool),
       cluster_id_(cluster_id),
       gcs_virtual_cluster_manager_(gcs_virtual_cluster_manager) {}
@@ -117,15 +119,15 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                     [this, request, on_done, node_id](const Status &status) {
                       RAY_CHECK_OK(status);
                       RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-                          node_id, request.node_info(), on_done));
+                          node_id, request.node_info(), {on_done, io_context_}));
                     });
     } else {
-      RAY_CHECK_OK(
-          gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+      RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+          node_id, request.node_info(), {on_done, io_context_}));
     }
   } else {
-    RAY_CHECK_OK(
-        gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+        node_id, request.node_info(), {on_done, io_context_}));
   }
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
@@ -168,7 +170,8 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     WriteNodeExportEvent(*node);
   };
-  RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
+  RAY_CHECK_OK(
+      gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_}));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
@@ -449,7 +452,8 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
       }
       RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     };
-    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeTable().Put(node_id, *node, {on_done, io_context_}));
   } else if (node_table_updated_callback != nullptr) {
     node_table_updated_callback(Status::OK());
   }
@@ -487,7 +491,8 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
     const auto &node_id = sorted_dead_node_list_.front().first;
-    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(node_id, nullptr));
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeTable().Delete(node_id, {[](auto) {}, io_context_}));
     dead_nodes_.erase(sorted_dead_node_list_.front().first);
     sorted_dead_node_list_.pop_front();
   }

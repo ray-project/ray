@@ -271,31 +271,33 @@ void GcsPlacementGroupManager::RegisterPlacementGroup(
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id,
       placement_group->GetPlacementGroupTableData(),
-      [this, placement_group_id, placement_group](Status status) {
-        // The backend storage is supposed to be reliable, so the status must be ok.
-        RAY_CHECK_OK(status);
-        if (registered_placement_groups_.contains(placement_group_id)) {
-          auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
-          auto callbacks = std::move(iter->second);
-          placement_group_to_register_callbacks_.erase(iter);
-          for (const auto &callback : callbacks) {
-            callback(status);
-          }
-          SchedulePendingPlacementGroups();
-        } else {
-          // The placement group registration is synchronous, so if we found the placement
-          // group was deleted here, it must be triggered by the abnormal exit of job,
-          // we will return directly in this case.
-          RAY_CHECK(placement_group_to_register_callbacks_.count(placement_group_id) == 0)
-              << "The placement group has been removed unexpectedly with an unknown "
-                 "error. Please file a bug report on here: "
-                 "https://github.com/ray-project/ray/issues";
-          RAY_LOG(WARNING) << "Failed to create placement group '"
-                           << placement_group->GetPlacementGroupID()
-                           << "', because the placement group has been removed by GCS.";
-          return;
-        }
-      }));
+      {[this, placement_group_id, placement_group](Status status) {
+         // The backend storage is supposed to be reliable, so the status must be ok.
+         RAY_CHECK_OK(status);
+         if (registered_placement_groups_.contains(placement_group_id)) {
+           auto iter = placement_group_to_register_callbacks_.find(placement_group_id);
+           auto callbacks = std::move(iter->second);
+           placement_group_to_register_callbacks_.erase(iter);
+           for (const auto &callback : callbacks) {
+             callback(status);
+           }
+           SchedulePendingPlacementGroups();
+         } else {
+           // The placement group registration is synchronous, so if we found the
+           // placement group was deleted here, it must be triggered by the abnormal exit
+           // of job, we will return directly in this case.
+           RAY_CHECK(placement_group_to_register_callbacks_.count(placement_group_id) ==
+                     0)
+               << "The placement group has been removed unexpectedly with an unknown "
+                  "error. Please file a bug report on here: "
+                  "https://github.com/ray-project/ray/issues";
+           RAY_LOG(WARNING) << "Failed to create placement group '"
+                            << placement_group->GetPlacementGroupID()
+                            << "', because the placement group has been removed by GCS.";
+           return;
+         }
+       },
+       io_context_}));
 }
 
 PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
@@ -380,27 +382,28 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id,
       placement_group->GetPlacementGroupTableData(),
-      [this, placement_group_id](Status status) {
-        RAY_CHECK_OK(status);
+      {[this, placement_group_id](Status status) {
+         RAY_CHECK_OK(status);
 
-        if (RescheduleIfStillHasUnplacedBundles(placement_group_id)) {
-          // If all the bundles are not created yet, don't complete
-          // the creation and invoke a callback.
-          // The call back will be called when all bundles are created.
-          return;
-        }
-        // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
-        // placement group and remove all of them from
-        // placement_group_to_create_callbacks_.
-        auto pg_to_create_iter =
-            placement_group_to_create_callbacks_.find(placement_group_id);
-        if (pg_to_create_iter != placement_group_to_create_callbacks_.end()) {
-          for (auto &callback : pg_to_create_iter->second) {
-            callback(status);
-          }
-          placement_group_to_create_callbacks_.erase(pg_to_create_iter);
-        }
-      }));
+         if (RescheduleIfStillHasUnplacedBundles(placement_group_id)) {
+           // If all the bundles are not created yet, don't complete
+           // the creation and invoke a callback.
+           // The call back will be called when all bundles are created.
+           return;
+         }
+         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
+         // placement group and remove all of them from
+         // placement_group_to_create_callbacks_.
+         auto pg_to_create_iter =
+             placement_group_to_create_callbacks_.find(placement_group_id);
+         if (pg_to_create_iter != placement_group_to_create_callbacks_.end()) {
+           for (auto &callback : pg_to_create_iter->second) {
+             callback(status);
+           }
+           placement_group_to_create_callbacks_.erase(pg_to_create_iter);
+         }
+       },
+       io_context_}));
   lifetime_num_placement_groups_created_++;
   io_context_.post([this] { SchedulePendingPlacementGroups(); },
                    "GcsPlacementGroupManager.SchedulePendingPlacementGroups");
@@ -572,20 +575,21 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group->GetPlacementGroupID(),
       placement_group->GetPlacementGroupTableData(),
-      [this, on_placement_group_removed, placement_group_id](Status status) {
-        RAY_CHECK_OK(status);
-        // If there is a driver waiting for the creation done, then send a message that
-        // the placement group has been removed.
-        auto it = placement_group_to_create_callbacks_.find(placement_group_id);
-        if (it != placement_group_to_create_callbacks_.end()) {
-          for (auto &callback : it->second) {
-            callback(
-                Status::NotFound("Placement group is removed before it is created."));
-          }
-          placement_group_to_create_callbacks_.erase(it);
-        }
-        on_placement_group_removed(status);
-      }));
+      {[this, on_placement_group_removed, placement_group_id](Status status) {
+         RAY_CHECK_OK(status);
+         // If there is a driver waiting for the creation done, then send a message that
+         // the placement group has been removed.
+         auto it = placement_group_to_create_callbacks_.find(placement_group_id);
+         if (it != placement_group_to_create_callbacks_.end()) {
+           for (auto &callback : it->second) {
+             callback(
+                 Status::NotFound("Placement group is removed before it is created."));
+           }
+           placement_group_to_create_callbacks_.erase(it);
+         }
+         on_placement_group_removed(status);
+       },
+       io_context_}));
 }
 
 void GcsPlacementGroupManager::HandleGetPlacementGroup(
@@ -612,8 +616,8 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
   if (it != registered_placement_groups_.end()) {
     on_done(Status::OK(), it->second->GetPlacementGroupTableData());
   } else {
-    Status status =
-        gcs_table_storage_->PlacementGroupTable().Get(placement_group_id, on_done);
+    Status status = gcs_table_storage_->PlacementGroupTable().Get(
+        placement_group_id, {std::move(on_done), io_context_});
     if (!status.ok()) {
       on_done(status, std::nullopt);
     }
@@ -683,7 +687,8 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
         RAY_LOG(DEBUG) << "Finished getting all placement group info.";
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       };
-  Status status = gcs_table_storage_->PlacementGroupTable().GetAll(on_done);
+  Status status =
+      gcs_table_storage_->PlacementGroupTable().GetAll({std::move(on_done), io_context_});
   if (!status.ok()) {
     on_done(absl::flat_hash_map<PlacementGroupID, PlacementGroupTableData>());
   }
@@ -747,8 +752,8 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
       }
     };
 
-    Status status =
-        gcs_table_storage_->PlacementGroupTable().Get(placement_group_id, on_done);
+    Status status = gcs_table_storage_->PlacementGroupTable().Get(
+        placement_group_id, {std::move(on_done), io_context_});
     if (!status.ok()) {
       on_done(status, std::nullopt);
     }
@@ -827,7 +832,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
         RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
             iter->second->GetPlacementGroupID(),
             iter->second->GetPlacementGroupTableData(),
-            [this](Status status) { SchedulePendingPlacementGroups(); }));
+            {[this](Status status) { SchedulePendingPlacementGroups(); }, io_context_}));
       }
     }
   }
@@ -1136,7 +1141,7 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
         RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
             placement_group->GetPlacementGroupID(),
             placement_group->GetPlacementGroupTableData(),
-            [this](Status status) { SchedulePendingPlacementGroups(); }));
+            {[this](Status status) { SchedulePendingPlacementGroups(); }, io_context_}));
         return true;
       }
     }

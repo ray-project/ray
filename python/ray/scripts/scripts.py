@@ -717,6 +717,8 @@ def start(
     include_log_monitor,
 ):
     """Start Ray processes manually on the local machine."""
+    # TODO(hjiang): Expose physical mode interface to ray cluster start command after
+    # all features implemented.
 
     if gcs_server_port is not None:
         cli_logger.error(
@@ -805,6 +807,7 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
+        enable_physical_mode=False,
         include_log_monitor=include_log_monitor,
     )
 
@@ -1065,6 +1068,9 @@ def start(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
         temp_dir = node.get_temp_dir_path()
+
+        # TODO(hjiang): Validate whether specified resource is true for physical
+        # resource.
 
         # Ray and Python versions should probably be checked before
         # initializing Node.

@@ -822,7 +822,7 @@ class InternalKVAccessor {
                                     const std::string &value,
                                     bool overwrite,
                                     const int64_t timeout_ms,
-                                    const OptionalItemCallback<int> &callback);
+                                    const OptionalItemCallback<bool> &callback);
 
   /// Asynchronously check the existence of a given key
   ///
@@ -996,6 +996,9 @@ class AutoscalerStateAccessor {
 
   virtual Status ReportAutoscalingState(int64_t timeout_ms,
                                         const std::string &serialized_state);
+
+  virtual Status ReportClusterConfig(int64_t timeout_ms,
+                                     const std::string &serialized_cluster_config);
 
   virtual Status DrainNode(const std::string &node_id,
                            int32_t reason,

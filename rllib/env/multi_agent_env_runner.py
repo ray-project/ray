@@ -1,6 +1,7 @@
 from collections import defaultdict
 from functools import partial
 import logging
+import time
 from typing import Collection, DefaultDict, Dict, List, Optional, Union
 
 import gymnasium as gym
@@ -40,6 +41,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -128,6 +130,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         self._weights_seq_no: int = 0
 
+        # Measures the time passed between returning from `sample()`
+        # and receiving the next `sample()` request from the user.
+        self._time_after_sampling = None
+
     @override(EnvRunner)
     def sample(
         self,
@@ -163,6 +169,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             A list of `MultiAgentEpisode` instances, carrying the sampled data.
         """
         assert not (num_timesteps is not None and num_episodes is not None)
+
+        # Log time between `sample()` requests.
+        if self._time_after_sampling is not None:
+            self.metrics.log_value(
+                key=TIME_BETWEEN_SAMPLING,
+                value=time.perf_counter() - self._time_after_sampling,
+            )
 
         # If no execution details are provided, use the config to try to infer the
         # desired timesteps/episodes to sample and the exploration behavior.
@@ -203,6 +216,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 samples=samples,
             ),
         )
+
+        self._time_after_sampling = time.perf_counter()
 
         return samples
 
@@ -283,6 +298,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=[self._episode],
                     explore=explore,
                     shared_data=self._shared_data,
+                    metrics=self.metrics,
                 )
                 self._cached_to_module = None
 
@@ -305,6 +321,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=[self._episode],
                     explore=explore,
                     shared_data=self._shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -366,7 +383,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # the user's connector pipeline performs (permanent) transforms
                 # on each observation (including this final one here). Without such
                 # a call and in case the structure of the observations change
-                # sufficiently, the following `finalize()` call on the episode will
+                # sufficiently, the following `to_numpy()` call on the episode will
                 # fail.
                 if self.module is not None:
                     self._env_to_module(
@@ -374,6 +391,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         explore=explore,
                         rl_module=self.module,
                         shared_data=self._shared_data,
+                        metrics=self.metrics,
                     )
 
                 # Make the `on_episode_end` callback (before finalizing the episode,
@@ -382,9 +400,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # the connector, if applicable).
                 self._make_on_episode_callback("on_episode_end")
 
-                # Finalize (numpy'ize) the episode.
-                self._episode.finalize(drop_zero_len_single_agent_episodes=True)
-                done_episodes_to_return.append(self._episode)
+                self._prune_zero_len_sa_episodes(self._episode)
+
+                # Numpy'ize the episode.
+                if self.config.episodes_to_numpy:
+                    done_episodes_to_return.append(self._episode.to_numpy())
+                # Leave episode as lists of individual (obs, action, etc..) items.
+                else:
+                    done_episodes_to_return.append(self._episode)
 
                 # Create a new episode instance.
                 self._episode = self._new_episode()
@@ -406,6 +429,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 episodes=[self._episode],
                 explore=explore,
                 shared_data=self._shared_data,
+                metrics=self.metrics,
             )
 
         # Store done episodes for metrics.
@@ -423,10 +447,15 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         if self._episode.env_t > 0:
             self._episode.validate()
             self._ongoing_episodes_for_metrics[self._episode.id_].append(self._episode)
-            # Return finalized (numpy'ized) Episodes.
-            ongoing_episodes_to_return.append(
-                self._episode.finalize(drop_zero_len_single_agent_episodes=True)
-            )
+
+            self._prune_zero_len_sa_episodes(self._episode)
+
+            # Numpy'ize the episode.
+            if self.config.episodes_to_numpy:
+                ongoing_episodes_to_return.append(self._episode.to_numpy())
+            # Leave episode as lists of individual (obs, action, etc..) items.
+            else:
+                ongoing_episodes_to_return.append(self._episode)
 
         # Continue collecting into the cut Episode chunk.
         self._episode = ongoing_episode_continuation
@@ -487,6 +516,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=[_episode],
                     explore=explore,
                     shared_data=_shared_data,
+                    metrics=self.metrics,
                 )
 
                 # MultiRLModule forward pass: Explore or not.
@@ -508,6 +538,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=[_episode],
                     explore=explore,
                     shared_data=_shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -577,7 +608,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # the user's connector pipeline performs (permanent) transforms
                 # on each observation (including this final one here). Without such
                 # a call and in case the structure of the observations change
-                # sufficiently, the following `finalize()` call on the episode will
+                # sufficiently, the following `to_numpy()` call on the episode will
                 # fail.
                 if self.module is not None:
                     self._env_to_module(
@@ -585,6 +616,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         explore=explore,
                         rl_module=self.module,
                         shared_data=_shared_data,
+                        metrics=self.metrics,
                     )
 
                 # Make the `on_episode_end` callback (before finalizing the episode,
@@ -593,10 +625,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # the connector, if applicable).
                 self._make_on_episode_callback("on_episode_end", _episode)
 
-                # Finish the episode.
-                done_episodes_to_return.append(
-                    _episode.finalize(drop_zero_len_single_agent_episodes=True)
-                )
+                self._prune_zero_len_sa_episodes(_episode)
+
+                # Numpy'ize the episode.
+                if self.config.episodes_to_numpy:
+                    done_episodes_to_return.append(_episode.to_numpy())
+                # Leave episode as lists of individual (obs, action, etc..) items.
+                else:
+                    done_episodes_to_return.append(_episode)
 
                 # Also early-out if we reach the number of episodes within this
                 # for-loop.
@@ -1038,6 +1074,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             reduce="max",
             window=self.config.metrics_num_episodes_for_smoothing,
         )
+
+    @staticmethod
+    def _prune_zero_len_sa_episodes(episode: MultiAgentEpisode):
+        for agent_id, agent_eps in episode.agent_episodes.copy().items():
+            if len(agent_eps) == 0:
+                del episode.agent_episodes[agent_id]
 
     @Deprecated(
         new="MultiAgentEnvRunner.get_state(components='rl_module')",

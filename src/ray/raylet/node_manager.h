@@ -459,6 +459,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::shared_ptr<ClientConnection> &client,
       const ray::protocol::AnnounceWorkerPort *message);
 
+  // Send status of client registration and port announcement to client side.
+  void SendRegisterClientAndAnnouncePortResponse(
+      const std::shared_ptr<ClientConnection> &client, Status status);
+
   // Send status of port announcement to client side.
   void SendPortAnnouncementResponse(const std::shared_ptr<ClientConnection> &client,
                                     Status status);
@@ -620,11 +624,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `GetTasksInfo` request.
-  void HandleGetTasksInfo(rpc::GetTasksInfoRequest request,
-                          rpc::GetTasksInfoReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetTaskFailureCause` request.
   void HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,

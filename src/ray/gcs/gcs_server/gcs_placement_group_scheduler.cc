@@ -400,12 +400,13 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
   RAY_CHECK_OK(gcs_table_storage_.PlacementGroupTable().Put(
       placement_group_id,
       placement_group->GetPlacementGroupTableData(),
-      [this, lease_status_tracker, schedule_failure_handler, schedule_success_handler](
-          Status status) {
-        RAY_CHECK_OK(status);
-        CommitAllBundles(
-            lease_status_tracker, schedule_failure_handler, schedule_success_handler);
-      }));
+      {[this, lease_status_tracker, schedule_failure_handler, schedule_success_handler](
+           Status status) {
+         RAY_CHECK_OK(status);
+         CommitAllBundles(
+             lease_status_tracker, schedule_failure_handler, schedule_success_handler);
+       },
+       io_context_}));
 }
 
 void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(

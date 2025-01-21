@@ -11,6 +11,8 @@ from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     EndpointInfo,
+    RequestMetadata,
+    RequestProtocol,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
@@ -24,12 +26,11 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.grpc_util import gRPCServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.replica_scheduler import (
-    ActorReplicaWrapper,
-    PowerOfTwoChoicesReplicaScheduler,
-)
+from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
+from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 from ray.serve._private.router import Router, SingletonThreadRouter
 from ray.serve._private.utils import (
+    generate_request_id,
     get_current_actor_id,
     get_head_node_id,
     inside_ray_client_context,
@@ -91,6 +92,34 @@ def create_init_handle_options(**kwargs):
     return InitHandleOptions.create(**kwargs)
 
 
+def get_request_metadata(init_options, handle_options):
+    _request_context = ray.serve.context._serve_request_context.get()
+
+    request_protocol = RequestProtocol.UNDEFINED
+    if init_options and init_options._source == DeploymentHandleSource.PROXY:
+        if _request_context.is_http_request:
+            request_protocol = RequestProtocol.HTTP
+        elif _request_context.grpc_context:
+            request_protocol = RequestProtocol.GRPC
+
+    return RequestMetadata(
+        request_id=_request_context.request_id
+        if _request_context.request_id
+        else generate_request_id(),
+        internal_request_id=_request_context._internal_request_id
+        if _request_context._internal_request_id
+        else generate_request_id(),
+        call_method=handle_options.method_name,
+        route=_request_context.route,
+        app_name=_request_context.app_name,
+        multiplexed_model_id=handle_options.multiplexed_model_id,
+        is_streaming=handle_options.stream,
+        _request_protocol=request_protocol,
+        grpc_context=_request_context.grpc_context,
+        _by_reference=True,
+    )
+
+
 def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
     node_id = ray.get_runtime_context().get_node_id()
     try:
@@ -137,7 +166,7 @@ def create_router(
         use_replica_queue_len_cache=(
             not is_inside_ray_client_context and RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
         ),
-        create_replica_wrapper_func=lambda r: ActorReplicaWrapper(r),
+        create_replica_wrapper_func=lambda r: RunningReplica(r),
     )
 
     return SingletonThreadRouter(

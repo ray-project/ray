@@ -445,12 +445,12 @@ Status GcsVirtualClusterManager::FlushAndPublish(
 
   if (data->is_removed()) {
     return gcs_table_storage_.VirtualClusterTable().Delete(
-        VirtualClusterID::FromBinary(data->id()), on_done);
+        VirtualClusterID::FromBinary(data->id()), {on_done, io_context_});
   }
 
   // Write the virtual cluster data to the storage.
   return gcs_table_storage_.VirtualClusterTable().Put(
-      VirtualClusterID::FromBinary(data->id()), *data, on_done);
+      VirtualClusterID::FromBinary(data->id()), *data, {on_done, io_context_});
 }
 
 void GcsVirtualClusterManager::OnDetachedActorRegistration(

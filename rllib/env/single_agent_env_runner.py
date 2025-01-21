@@ -131,6 +131,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         ] = defaultdict(list)
         self._weights_seq_no: int = 0
 
+        # Measures the time passed between returning from `sample()`
+        # and receiving the next `sample()` request from the user.
         self._time_after_sampling = None
 
     @override(EnvRunner)
@@ -169,6 +171,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
+        # Log time between `sample()` requests.
         if self._time_after_sampling is not None:
             self.metrics.log_value(
                 key=TIME_BETWEEN_SAMPLING,
@@ -304,6 +307,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=episodes,
                     explore=explore,
                     shared_data=shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -363,6 +367,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     explore=explore,
                     rl_module=self.module,
                     shared_data=shared_data,
+                    metrics=self.metrics,
                 )
 
             for env_index in range(self.num_envs):
@@ -387,8 +392,13 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                         "on_episode_end", env_index, episodes
                     )
 
-                    # Then finalize (numpy'ize) the episode.
-                    done_episodes_to_return.append(episodes[env_index].finalize())
+                    # Numpy'ize the episode.
+                    if self.config.episodes_to_numpy:
+                        # Any possibly compress observations.
+                        done_episodes_to_return.append(episodes[env_index].to_numpy())
+                    # Leave episode as lists of individual (obs, action, etc..) items.
+                    else:
+                        done_episodes_to_return.append(episodes[env_index])
 
                     # Also early-out if we reach the number of episodes within this
                     # for-loop.
@@ -429,8 +439,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     continue
                 eps.validate()
                 self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-                # Return finalized (numpy'ized) Episodes.
-                ongoing_episodes_to_return.append(eps.finalize())
+
+                # Numpy'ize the episode.
+                if self.config.episodes_to_numpy:
+                    # Any possibly compress observations.
+                    ongoing_episodes_to_return.append(eps.to_numpy())
+                # Leave episode as lists of individual (obs, action, etc..) items.
+                else:
+                    ongoing_episodes_to_return.append(eps)
 
             # Continue collecting into the cut Episode chunks.
             self._episodes = ongoing_episodes_continuations
@@ -725,6 +741,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 episodes=episodes,
                 explore=explore,
                 shared_data=shared_data,
+                metrics=self.metrics,
             )
 
         # Call `on_episode_start()` callbacks (always after reset).
