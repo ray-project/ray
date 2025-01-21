@@ -113,8 +113,8 @@ Override these private methods to define your custom model's forward behavior.
     ~RLModule._forward_train
 
 
-Saving and Loading
-++++++++++++++++++++++
+Saving and restoring
+++++++++++++++++++++
 
 .. autosummary::
     :nosignatures:

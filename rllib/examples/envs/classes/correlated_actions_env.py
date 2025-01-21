@@ -65,9 +65,9 @@ class CorrelatedActionsEnv(gym.Env):
         a1, a2 = action
         a2 = a2[0]  # dissolve shape=(1,)
 
-        # r1 depends on how well q1 is aligned with obs:
+        # r1 depends on how well a1 is aligned to obs:
         r1 = -abs(1.0 - (self.obs[0] + a1))
-        # r2 depends on how close a2 is aligned to both obs and a1.
+        # r2 depends on how well a2 is aligned to both, obs and a1.
         r2 = -abs(self.obs[0] + a1 + a2)
 
         reward = r1 + r2

@@ -1,12 +1,8 @@
-import abc
-from abc import abstractmethod
-from typing import Dict, Type
+from typing import Dict
 
 import gymnasium as gym
 
 from ray.rllib.core import Columns
-from ray.rllib.core.models.base import ENCODER_OUT
-from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
@@ -15,10 +11,7 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchDiagGaussian,
     TorchMultiDistribution,
 )
-from ray.rllib.utils.annotations import (
-    override,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import one_hot
 from ray.rllib.utils.typing import TensorType

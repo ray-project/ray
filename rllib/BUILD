@@ -1963,7 +1963,7 @@ py_test(
     name = "examples/actions/autoregressive_actions",
     main = "examples/actions/autoregressive_actions.py",
     tags = ["team:rllib", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/actions/autoregressive_actions.py"],
     args = ["--enable-new-api-stack"],
 )
@@ -2632,6 +2632,14 @@ py_test(
 # subdirectory: metrics/
 # ....................................
 
+py_test(
+    name = "examples/metrics/custom_metrics_in_algorithm_training_step",
+    main = "examples/metrics/custom_metrics_in_algorithm_training_step.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    srcs = ["examples/metrics/custom_metrics_in_algorithm_training_step.py"],
+    args = ["--enable-new-api-stack"]
+)
 py_test(
     name = "examples/metrics/custom_metrics_in_env_runners",
     main = "examples/metrics/custom_metrics_in_env_runners.py",
