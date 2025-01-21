@@ -14,6 +14,9 @@
 
 #include "ray/util/event.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <boost/range.hpp>
 #include <csignal>
 #include <filesystem>
@@ -25,6 +28,8 @@
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/event_label.h"
+#include "ray/util/random.h"
+#include "ray/util/string_utils.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 using json = nlohmann::json;
