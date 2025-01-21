@@ -7,12 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Select branch to deploy from'
-        required: true
-        type: choice
-        options:
-          - main
-          - dev  # Add other branches as needed
+        description: 'Enter branch name to deploy from (default: main)'
+        required: false
+        type: string
+        default: 'main'
 
 jobs:
   deploy-docs:
@@ -35,6 +33,7 @@ jobs:
         run: |
           sudo apt-get install python3-sphinx
           pip install -r requirements-doc.txt
+          pip install aiohttp_cors
 
       - name: Build documentation
         run: make develop
