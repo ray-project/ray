@@ -71,6 +71,7 @@ ray_cc_test(
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/common:ray_config",
     ],
 )
 

@@ -509,20 +509,12 @@ void RayEventInit(const std::vector<SourceTypeVariant> source_types,
       });
 }
 
-bool IsExportAPIEnabledSourceType(std::string source_type,
-                                  bool enable_export_api_write_global,
-                                  std::string enable_export_api_write_config_str) {
+bool IsExportAPIEnabledSourceType(
+    std::string source_type,
+    bool enable_export_api_write_global,
+    std::vector<std::string> enable_export_api_write_config) {
   if (enable_export_api_write_global) {
     return true;
-  }
-  nlohmann::json enable_export_api_write_config = {};
-  try {
-    enable_export_api_write_config =
-        nlohmann::json::parse(enable_export_api_write_config_str);
-  } catch (const nlohmann::json::parse_error &e) {
-    RAY_LOG(ERROR) << "Error parsing JSON for RAY_enable_export_api_write_config: "
-                   << e.what();
-    return false;
   }
   for (const auto &element : enable_export_api_write_config) {
     if (element == source_type) {

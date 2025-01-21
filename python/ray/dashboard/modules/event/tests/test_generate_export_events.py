@@ -9,7 +9,7 @@ import pytest
 # RAY_enable_export_api_write_config env var must be set before importing
 # `ray` so the correct value is set for RAY_ENABLE_EXPORT_API_WRITE_CONFIG
 # even outside a Ray driver.
-os.environ["RAY_enable_export_api_write_config"] = '["EXPORT_SUBMISSION_JOB"]'
+os.environ["RAY_enable_export_api_write_config"] = "EXPORT_SUBMISSION_JOB"
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
@@ -38,7 +38,7 @@ async def check_job_succeeded(job_manager, job_id):
     [
         {
             "env": {
-                "RAY_enable_export_api_write_config": '["EXPORT_SUBMISSION_JOB"]',
+                "RAY_enable_export_api_write_config": "EXPORT_SUBMISSION_JOB",
             },
             "cmd": "ray start --head",
         }
@@ -49,7 +49,7 @@ async def test_check_export_api_enabled(call_ray_start, tmp_path):  # noqa: F811
     """
     Test check_export_api_enabled is True for EXPORT_SUBMISSION_JOB but
     not for EXPORT_ACTOR because RAY_enable_export_api_write_config
-    is set to '["EXPORT_SUBMISSION_JOB"]'.
+    is set to 'EXPORT_SUBMISSION_JOB'.
     """
 
     @ray.remote
@@ -111,17 +111,17 @@ async def test_check_export_api_enabled_global(call_ray_start, tmp_path):  # noq
     [
         {
             "env": {
-                "RAY_enable_export_api_write_config": "[EXPORT_SUBMISSION_JOB]",
+                "RAY_enable_export_api_write_config": "invalid source type",
             },
             "cmd": "ray start --head",
         }
     ],
     indirect=True,
 )
-async def test_check_export_api_invalid_config(call_ray_start, tmp_path):  # noqa: F811
+async def test_check_export_api_empty_config(call_ray_start, tmp_path):  # noqa: F811
     """
     Test check_export_api_enabled is False for all sources because
-    RAY_enable_export_api_write_config is not valid JSON.
+    RAY_enable_export_api_write_config is not a vaild source type.
     """
 
     @ray.remote
@@ -147,7 +147,7 @@ async def test_check_export_api_invalid_config(call_ray_start, tmp_path):  # noq
     [
         {
             "env": {
-                "RAY_enable_export_api_write_config": '["EXPORT_SUBMISSION_JOB"]',
+                "RAY_enable_export_api_write_config": "EXPORT_SUBMISSION_JOB",
             },
             "cmd": "ray start --head",
         }

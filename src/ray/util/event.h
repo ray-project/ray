@@ -343,9 +343,10 @@ class RayExportEvent {
   ExportEventDataPtr event_data_ptr_;
 };
 
-bool IsExportAPIEnabledSourceType(std::string source_type,
-                                  bool enable_export_api_write_global,
-                                  std::string enable_export_api_write_config_str);
+bool IsExportAPIEnabledSourceType(
+    std::string source_type,
+    bool enable_export_api_write_global,
+    std::vector<std::string> enable_export_api_write_config_str);
 
 /// Ray Event initialization.
 ///

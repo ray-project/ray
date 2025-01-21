@@ -23,6 +23,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/event_label.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -532,19 +533,29 @@ TEST_F(EventTest, TestExportEvent) {
 }
 
 TEST_F(EventTest, TestIsExportAPIEnabledSourceType) {
+  EXPECT_EQ(
+      IsExportAPIEnabledSourceType(
+          "EXPORT_TASK", false, std::vector<std::string>{"EXPORT_TASK", "EXPORT_ACTOR"}),
+      true);
+  EXPECT_EQ(
+      IsExportAPIEnabledSourceType(
+          "EXPORT_TASK", true, std::vector<std::string>{"EXPORT_TASK", "EXPORT_ACTOR"}),
+      true);
   EXPECT_EQ(IsExportAPIEnabledSourceType(
-                "EXPORT_TASK", false, "[\"EXPORT_TASK\", \"EXPORT_ACTOR\"]"),
-            true);
-  EXPECT_EQ(IsExportAPIEnabledSourceType(
-                "EXPORT_TASK", true, "[\"EXPORT_TASK\", \"EXPORT_ACTOR\"]"),
-            true);
-  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", false, "[\"EXPORT_ACTOR\"]"),
+                "EXPORT_TASK", false, std::vector<std::string>{"EXPORT_ACTOR"}),
             false);
-  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", true, "[\"EXPORT_ACTOR\"]"),
+  EXPECT_EQ(IsExportAPIEnabledSourceType(
+                "EXPORT_TASK", true, std::vector<std::string>{"EXPORT_ACTOR"}),
             true);
 
-  // Invalid JSON
-  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", false, "EXPORT_TASK"), false);
+  EXPECT_EQ(IsExportAPIEnabledSourceType(
+                "EXPORT_TASK", false, std::vector<std::string>{"invalid resource type"}),
+            false);
+
+  const std::string input = "EXPORT_TASK, EXPORT_ACTOR";
+  const std::vector<std::string> expected_output{"EXPORT_TASK", "EXPORT_ACTOR"};
+  auto output = ConvertValue<std::vector<std::string>>("std::vector<std::string>", input);
+  ASSERT_EQ(output, expected_output);
 }
 
 TEST_F(EventTest, TestRayCheckAbort) {
