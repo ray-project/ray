@@ -107,7 +107,7 @@ class RedirectionFileHandle {
     RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(len));
   }
 #elif defined(_WIN32)
-  void CompleteWrite(char *data, size_t len) {
+  void CompleteWrite(const char *data, size_t len) {
     DWORD bytes_written = 0;
     WriteFile(write_handle_, data, len, &bytes_written, nullptr);
   }
