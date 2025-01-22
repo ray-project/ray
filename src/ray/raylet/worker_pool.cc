@@ -1450,8 +1450,6 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
       task_spec.GetLanguage() != ray::Language::PYTHON) {
     return;  // Not handled.
-    // TODO(architkulkarni): We'd eventually like to prestart workers with the same
-    // runtime env to improve initial startup performance.
   }
 
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
