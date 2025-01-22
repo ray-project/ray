@@ -12,7 +12,6 @@ from ray.experimental.collective.conftest import (
     check_nccl_group_teardown,
 )
 from ray.dag import InputNode, MultiOutputNode
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
@@ -148,10 +147,10 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         recvs = [
             # Each of the 2 workers receives from the other.
             workers[0].recv.bind(
-                collectives[1].with_type_hint(TorchTensorType(transport="nccl"))
+                collectives[1].with_tensor_transport(transport="nccl")
             ),
             workers[1].recv.bind(
-                collectives[0].with_type_hint(TorchTensorType(transport="nccl"))
+                collectives[0].with_tensor_transport(transport="nccl")
             ),
         ]
         dag = MultiOutputNode(recvs)
@@ -170,7 +169,7 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         collectives = collective.allreduce.bind(computes)
         # Sender is workers[0] and receiver is workers[1].
         dag = workers[1].recv.bind(
-            collectives[0].with_type_hint(TorchTensorType(transport="nccl"))
+            collectives[0].with_tensor_transport(transport="nccl")
         )
         dag = MultiOutputNode([dag, collectives[1]])
 
@@ -202,7 +201,7 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
         collectives = collective.allreduce.bind(computes, transport=comm)
         collectives = collective.allreduce.bind(collectives)
         dag = workers[0].recv.bind(
-            collectives[1].with_type_hint(TorchTensorType(transport="nccl"))
+            collectives[1].with_tensor_transport(transport="nccl")
         )
         dag = MultiOutputNode([dag, collectives[0]])
 
@@ -220,9 +219,7 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
         computes = [worker.return_tensor.bind(inp) for worker in workers]
         collectives = collective.allreduce.bind(computes)
         collectives = collective.allreduce.bind(collectives)
-        dag = workers[0].recv.bind(
-            collectives[1].with_type_hint(TorchTensorType(transport=comm))
-        )
+        dag = workers[0].recv.bind(collectives[1].with_tensor_transport(transport=comm))
         dag = MultiOutputNode([dag, collectives[0]])
 
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
@@ -255,9 +252,7 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
     with InputNode() as inp:
         tensors = [worker.return_tensor.bind(inp) for worker in workers]
         allreduce = collective.allreduce.bind(tensors, transport=comm)
-        dag = workers[0].recv.bind(
-            allreduce[1].with_type_hint(TorchTensorType(transport=comm))
-        )
+        dag = workers[0].recv.bind(allreduce[1].with_tensor_transport(transport=comm))
         dag = MultiOutputNode([dag, allreduce[0]])
 
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
@@ -278,7 +273,7 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
         allreduce1 = collective.allreduce.bind(tensors, transport=comm_1)
         allreduce2 = collective.allreduce.bind(allreduce1, transport=comm_2)
         dag = workers[0].recv.bind(
-            allreduce2[1].with_type_hint(TorchTensorType(transport=comm_3))
+            allreduce2[1].with_tensor_transport(transport=comm_3)
         )
         dag = MultiOutputNode([dag, allreduce2[0]])
 
