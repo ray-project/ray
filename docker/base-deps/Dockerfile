@@ -70,23 +70,17 @@ RUN <<EOF
 
 set -euo pipefail
 
-# Install miniconda
+# Install miniforge
 wget --quiet \
-    "https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-Linux-${HOSTTYPE}.sh" \
-    -O /tmp/miniconda.sh
+     "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-$(uname)-$(uname -m).sh" \
+     -O /tmp/miniforge.sh
 
-/bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3
-
-$HOME/anaconda3/bin/conda init
+/bin/bash /tmp/miniforge.sh -b -u -p $HOME/anaconda3
 echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc
-rm /tmp/miniconda.sh
+rm /tmp/miniforge.sh
 
-$HOME/anaconda3/bin/conda config --add channels conda-forge
-$HOME/anaconda3/bin/conda config --set channel_priority strict
-$HOME/anaconda3/bin/conda config --set solver classic
-
-$HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
-$HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
+$HOME/anaconda3/bin/conda install -y python=$PYTHON_VERSION
+$HOME/anaconda3/bin/conda install -y libgcc-ng libffi=3.4.2
 $HOME/anaconda3/bin/conda clean -y --all
 
 PIP_PKGS=(
