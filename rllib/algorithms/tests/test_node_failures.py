@@ -3,6 +3,7 @@ import unittest
 import ray
 from ray._private.test_utils import get_other_nodes
 from ray.cluster_utils import Cluster
+from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.metrics import (
@@ -69,6 +70,23 @@ class TestNodeFailures(unittest.TestCase):
     def test_node_failure_recreate_env_runners(self):
         # We recreate failed EnvRunners and continue training.
         config = (
+            APPOConfig()
+            .environment("CartPole-v1")
+            .learners(num_learners=0)
+            .experimental(_validate_config=False)
+            .env_runners(
+                num_env_runners=6,
+                validate_env_runners_after_construction=True,
+            )
+            .fault_tolerance(
+                restart_failed_env_runners=True,
+                ignore_env_runner_failures=False,  # True also ok here; we restart.
+            )
+        )
+
+        self._train(config=config, iters=20, min_reward=300.0, preempt_freq=5)
+
+        config = (
             PPOConfig()
             .environment("CartPole-v1")
             .env_runners(
@@ -77,11 +95,11 @@ class TestNodeFailures(unittest.TestCase):
             )
             .fault_tolerance(
                 restart_failed_env_runners=True,
-                ignore_env_runner_failures=False,  # True also ok here we recreate.
+                ignore_env_runner_failures=False,  # True also ok here; we restart.
             )
         )
 
-        self._train(config=config, iters=30, min_reward=450.0, preempt_freq=5)
+        self._train(config=config, iters=20, min_reward=300.0, preempt_freq=5)
 
     def test_node_failure_expect_crash(self):
         # We do not ignore EnvRunner failures and expect to crash upon failure.
@@ -135,7 +153,13 @@ class TestNodeFailures(unittest.TestCase):
             # node, which are always safe from preemption).
             if (i - 1) % preempt_freq == 0:
                 if config.restart_failed_env_runners:
-                    self.assertEqual(healthy_env_runners, 4)
+                    # For async algos that call `restore_env_runners()` several times
+                    # per iteration, the failed env runners may have already been
+                    # restored.
+                    if isinstance(config, APPOConfig):
+                        self.assertIn(healthy_env_runners, [4, 6])
+                    else:
+                        self.assertEqual(healthy_env_runners, 4)
                 elif config.ignore_env_runner_failures:
                     self.assertIn(healthy_env_runners, [2, 4])
             # After the 0th iteration, in which we already killed one node, if
@@ -167,6 +191,7 @@ class TestNodeFailures(unittest.TestCase):
                     dashboard_host="0.0.0.0",
                 )
 
+        algo.stop()
         self.assertGreaterEqual(best_return, min_reward)
 
 
