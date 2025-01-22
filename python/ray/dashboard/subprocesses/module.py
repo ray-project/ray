@@ -192,8 +192,8 @@ def run_module(
         loop.run_until_complete(module.init())
         logger.info(f"Module {module_name} started")
     except Exception as e:
-        logger.error(f"Error running module {module_name}: {e}")
-        # raise e
+        logger.exception(f"Error running module {module_name}")
+        raise e
 
     dispatch_child_bound_messages_thread = threading.Thread(
         name=f"{module_name}-dispatch_child_bound_messages_thread",
