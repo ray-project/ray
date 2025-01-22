@@ -15,7 +15,7 @@ pre_commit() {
   # TODO(MortalHappiness): Run all pre-commit checks because currently we only run some of them.
   pip install -c python/requirements_compiled.txt pre-commit clang-format
 
-  hooks=(
+  HOOKS=(
     ruff
     check-added-large-files
     check-ast
@@ -32,8 +32,8 @@ pre_commit() {
     check-cpp-files-inclusion
   )
 
-  for hook in "${hooks[@]}"; do
-    pre-commit run "$hook" --all-files --show-diff-on-failure
+  for HOOK in "${HOOKS[@]}"; do
+    pre-commit run "$HOOK" --all-files --show-diff-on-failure
   done
 }
 
