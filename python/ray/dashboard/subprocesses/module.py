@@ -5,6 +5,7 @@ import multiprocessing
 import threading
 import sys
 from dataclasses import dataclass
+from typing import Dict
 import os
 import setproctitle
 
@@ -44,6 +45,13 @@ class SubprocessModuleConfig:
     logging_filename: str
     logging_rotate_bytes: int
     logging_rotate_backup_count: int
+
+
+@dataclass
+class SubprocessModuleRequest:
+    query: Dict[str, str]
+    headers: Dict[str, str]
+    body: bytes
 
 
 class SubprocessModule(abc.ABC):

@@ -16,7 +16,7 @@ from ray.dashboard.subprocesses.message import (
     StreamResponseEndMessage,
     StreamResponseStartMessage,
 )
-from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleRequest
 import logging
 
 logger = logging.getLogger(__name__)
@@ -34,11 +34,11 @@ class SubprocessRouteTable(BaseRouteTable):
     Before decoration:
 
         @SubprocessRouteTable.get("/get_logs")
-        async def get_logs_method(self, request_body: bytes) \
+        async def get_logs_method(self, request: SubprocessModuleRequest) \
             -> aiohttp.web.Response
 
         @SubprocessRouteTable.get("/tail_logs", streaming=True)
-        async def tail_logs_method(self, request_body: bytes) \
+        async def tail_logs_method(self, request: SubprocessModuleRequest) \
             -> AsyncIterator[bytes]
 
     After decoration:
@@ -88,7 +88,9 @@ class SubprocessRouteTable(BaseRouteTable):
 
     @staticmethod
     def _decorated_streaming_handler(
-        handler: Callable[[SubprocessModule, RequestMessage], AsyncIterator[bytes]]
+        handler: Callable[
+            [SubprocessModule, SubprocessModuleRequest], AsyncIterator[bytes]
+        ]
     ) -> Callable[[RequestMessage, multiprocessing.Queue], Awaitable[None]]:
         """
         Requirements to and Behavior of the handler:
@@ -114,7 +116,10 @@ class SubprocessRouteTable(BaseRouteTable):
         ) -> None:
             start_message_sent = False
             try:
-                async_iter = handler(self, message.body)
+                request = SubprocessModuleRequest(
+                    query=message.query, headers=message.headers, body=message.body
+                )
+                async_iter = handler(self, request)
                 async for chunk in async_iter:
                     if not start_message_sent:
                         parent_bound_queue.put(
@@ -155,7 +160,9 @@ class SubprocessRouteTable(BaseRouteTable):
 
     @staticmethod
     def _decorated_non_streaming_handler(
-        handler: Callable[[SubprocessModule, RequestMessage], aiohttp.web.Response]
+        handler: Callable[
+            [SubprocessModule, SubprocessModuleRequest], aiohttp.web.Response
+        ]
     ) -> Callable[[RequestMessage, multiprocessing.Queue], Awaitable[None]]:
         @functools.wraps(handler)
         async def _non_streaming_handler(
@@ -164,7 +171,10 @@ class SubprocessRouteTable(BaseRouteTable):
             parent_bound_queue: multiprocessing.Queue,
         ) -> None:
             try:
-                response = await handler(self, message.body)
+                request = SubprocessModuleRequest(
+                    query=message.query, headers=message.headers, body=message.body
+                )
+                response = await handler(self, request)
                 reply_message = UnaryResponseMessage(
                     request_id=message.request_id,
                     status=response.status,
