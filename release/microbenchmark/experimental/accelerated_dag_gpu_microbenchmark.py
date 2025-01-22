@@ -154,9 +154,9 @@ def exec_ray_dag(
                 results = []
                 for i in range(num_times_execute):
                     if i % 2 == 0:
-                        results.push(dag.execute(b"x"))
+                        results.append(dag.execute(b"x"))
                     else:
-                        results.push(dag.execute(b"yyyyyyy"))
+                        results.append(dag.execute(b"yyyyyyy"))
                 ray.get(results)
 
     else:
