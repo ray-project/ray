@@ -127,18 +127,6 @@ async-generator==1.10
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 async-timeout==4.0.3
     # via redis
-attrs==21.4.0
-    # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   aiohttp
-    #   flake8-bugbear
-    #   glom
-    #   jschema-to-python
-    #   jsonschema
-    #   jupyter-cache
-    #   open-spiel
-    #   sarif-om
-    #   semgrep
 aws-sam-translator==1.81.0
     # via cfn-lint
 aws-xray-sdk==2.12.1

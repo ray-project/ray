@@ -97,7 +97,6 @@ tensorboard
 tensorboard-data-server==0.7.2
 h11==0.12.0
 markdown-it-py
-attrs==21.4.0
 pytz==2022.7.1
 # Compatibility with spacy 3.5 (model en_core_web_sm)
 typing-extensions==4.8.0
