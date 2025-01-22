@@ -39,7 +39,6 @@ logger = logging.getLogger(__name__)
 
 DashboardHeadRouteTable = method_route_table_factory()
 DashboardAgentRouteTable = method_route_table_factory()
-# SubprocessRouteTable re-exported from subprocesses/routes.py
 
 
 # The cache value type used by aiohttp_cache.
