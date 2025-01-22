@@ -878,12 +878,12 @@ def get_trial_dir() -> str:
 
     .. testcode::
 
-        from ray import train, tune
+        import ray.tune
 
         def train_func(config):
-            print(train.get_context().get_trial_dir())
+            print(ray.tune.get_context().get_trial_dir())
 
-        tuner = tune.Tuner(train_func)
+        tuner = ray.tune.Tuner(train_func)
         tuner.fit()
 
     .. testoutput::
