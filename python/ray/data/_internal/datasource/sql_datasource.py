@@ -75,6 +75,8 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
 
 
 class SQLDatasource(Datasource):
+    MIN_ROWS_PER_READ_TASK = 50
+
     def __init__(
         self,
         sql: str,
@@ -122,6 +124,17 @@ class SQLDatasource(Datasource):
                 cursor.execute(self.sql)
                 return [_cursor_to_block(cursor)]
 
+        num_rows_total = self._get_num_rows()
+
+        if num_rows_total == 0:
+            return []
+
+        parallelism = min(
+            parallelism, math.ceil(num_rows_total / self.MIN_ROWS_PER_READ_TASK)
+        )
+        num_rows_per_block = num_rows_total // parallelism
+        num_blocks_with_extra_row = num_rows_total % parallelism
+
         # Check if sharding is supported by the database
         # If not, fall back to reading all data in a single task
         if not self.supports_sharding(parallelism):
@@ -134,9 +147,12 @@ class SQLDatasource(Datasource):
 
         tasks = []
         for i in range(parallelism):
+            num_rows = num_rows_per_block
+            if i < num_blocks_with_extra_row:
+                num_rows += 1
             read_fn = self._create_read_fn(i, parallelism)
             metadata = BlockMetadata(
-                num_rows=None,
+                num_rows=num_rows,
                 size_bytes=None,
                 schema=None,
                 input_files=None,
@@ -145,6 +161,11 @@ class SQLDatasource(Datasource):
             tasks.append(ReadTask(read_fn, metadata))
 
         return tasks
+
+    def _get_num_rows(self) -> int:
+        with _connect(self.connection_factory) as cursor:
+            cursor.execute(f"SELECT COUNT(*) FROM ({self.sql}) as T")
+            return cursor.fetchone()[0]
 
     def _create_read_fn(self, task_id: int, parallelism: int):
         def read_fn() -> Iterable[Block]:
