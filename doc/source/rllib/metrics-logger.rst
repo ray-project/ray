@@ -20,7 +20,7 @@ in `custom loss functions <https://github.com/ray-project/ray/blob/master/rllib/
 implementations.
 
 .. figure:: images/metrics_logger_overview.svg
-    :width: 500
+    :width: 750
     :align: left
 
     **RLlib's MetricsLogger system**: Every subcomponent of an RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` has-a
@@ -43,17 +43,17 @@ implementations.
 Features of MetricsLogger
 -------------------------
 
-The :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` API offers the following features:
+The :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` API offers the following functionalities:
 
-- Log scalar values over time, such as losses or rewards.
+- Log scalar values over time, such as losses, individual rewards, or episode returns.
 - Configure different reduction types, in particular ``mean``, ``min``, ``max``, or ``sum``. Also, users can chose to not
-  reduce at all through the ``reduce=None`` setting, leaving the logged values as-is inside the logger.
-  A separate ``clear_on_reduce=True`` setting allows for automatically clearing all logged values thus far on each ``reduce`` event.
-- Specify sliding windows, over which these reductions take place, for example ``window=100`` to average over the
+  reduce at all through the ``reduce=None`` setting, leaving the logged values untouched.
+  A separate ``clear_on_reduce=True`` setting allows for automatically clearing all logged values on each ``reduce`` event.
+- Specify sliding windows, over which reductions take place, for example ``window=100`` to average over the
   last 100 logged values, or specify exponential moving average (EMA) coefficients, through which the weight of older values
   in the computed mean should decay over time.
 - Merge ``n`` result dicts from ``n`` parallel subcomponents into the local :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`.
-  Each of these ``n`` dicts is the result of a "reduce" operation on each subcomponent's own :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`
+  Each of these ``n`` dicts is the result of a ``reduce`` operation on each subcomponent's own :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`
   instance.
 - Log execution times for distinct code blocks through convenient ``with ...`` blocks.
 - Add up lifetime counts and automatically compute the corresponding throughput metrics per second along the way.
@@ -99,7 +99,7 @@ use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.log_valu
     # values under that key are averaged, once `reduce()` is called.
     logger.log_value("loss", 0.01, reduce="mean", window=2)
 
-By default, MetricsLogger reduces values through averaging them (``reduce="mean"``).
+By default, :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` reduces values through averaging them (``reduce="mean"``).
 Other available reduce types are ``reduce="min"``, ``reduce="max"``, and ``reduce="sum"``.
 
 Specifying a ``window`` causes the reduction to take place over the last ``window`` logged values.
@@ -129,14 +129,14 @@ check the current underlying reduced result for some key, without actually havin
 
 .. warning::
 
-    You **shouldn't call the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.reduce` method ever** on any
-    :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` object in your custom code.
+    You **shouldn't call the reduce() method yourself** on any
+    :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` from your custom code.
     The only time RLlib invokes this API is at the end of a task cycle.
     RLlib controls all of these "hand over" points entirely, so unless you write your own subcomponent that reports to a parent component, such as
-    :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, you should refrain from calling the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.reduce`
-    method on any :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`.
+    :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, you should refrain from calling the
+    :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.reduce` method.
 
-    To get the current reduced result, use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method instead,
+    To get the current reduced results, use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method instead,
     which doesn't alter any underlying values.
 
 
@@ -158,7 +158,8 @@ To use reduce methods, other than "mean", specify the ``reduce`` argument in
     logger.log_value(key="max_value", value=0.0, reduce="max")
 
 Because you didn't specify a ``window`` and are using ``reduce="max"``, the window used is the infinite window,
-meaning MetricsLogger reports the lifetime maximum value, whenever reduction takes place or you peek at the current value:
+meaning :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` reports the lifetime maximum value,
+whenever reduction takes place or you peek at the current value:
 
 .. testcode::
 
@@ -347,12 +348,12 @@ to access the throughput value. For example:
 Example 1: How to use MetricsLogger in EnvRunner callbacks
 ----------------------------------------------------------
 
-To demonstrate how to use the MetricsLogger on an EnvRunner, take a look at this end-to-end example here, which
+To demonstrate how to use the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` on an :py:class:`~ray.rllib.env.env_runner.EnvRunner`, take a look at this end-to-end example here, which
 makes use of the :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` API to inject custom code into the RL environment loop.
 
 The example computes the average "first-joint angle" of the
 `Acrobot-v1 RL environment <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/acrobot.py>`__
-and logs the results through the MetricsLogger API.
+and logs the results through the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` API.
 
 Note that this example is :ref:`identical to the one described here <rllib-callback-example-on-episode-step-and-end>`, but the focus has shifted to explain
 only the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` aspects of the code.
@@ -404,11 +405,10 @@ Also take a look at this more complex example on
 `how to generate and log a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__ here.
 
 
-Example 2: How to use MetricsLogger in custom loss functions
-------------------------------------------------------------
+Example 2: How to use MetricsLogger in a custom loss function
+-------------------------------------------------------------
 
-You can log metrics inside your custom loss functions.
-Use the Learner's ``self.metrics`` attribute for this.
+You can log metrics inside your custom loss functions. Use the Learner's ``self.metrics`` attribute for this.
 
 .. note::
 
@@ -454,7 +454,7 @@ Use the Algorithm's own ``self.metrics`` attribute for this.
 
         ...
 
-        with self.metrics.log_time():
+        with self.metrics.log_time(("timers", "some_code")):
             ... # time some code
 
 
