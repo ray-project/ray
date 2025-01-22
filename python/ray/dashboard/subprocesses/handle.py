@@ -260,12 +260,21 @@ class SubprocessModuleHandle:
             request=request, response_fut=self.loop.create_future()
         )
         self.active_requests.put_new(request_id, new_active_request)
-        if request is None:
-            body = b""
-        else:
+        body = b""
+        query = {}
+        headers = {}
+        if request is not None:
             body = await request.read()
+            query = dict(request.query)
+            headers = dict(request.headers)
         self._send_message(
-            RequestMessage(request_id=request_id, method_name=method_name, body=body)
+            RequestMessage(
+                request_id=request_id,
+                method_name=method_name,
+                query=query,
+                headers=headers,
+                body=body,
+            )
         )
         return await new_active_request.response_fut
 

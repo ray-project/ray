@@ -1,4 +1,3 @@
-import concurrent.futures
 import enum
 import json
 import logging
@@ -9,16 +8,16 @@ from typing import Optional
 import aiohttp.web
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
 from ray import ActorID
 from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._private.storage import _load_class
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
+from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleRequest
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 SNAPSHOT_API_TIMEOUT_SECONDS = 30
 
@@ -71,16 +70,14 @@ class RayActivityResponse(BaseModel, extra=Extra.allow):
         return v
 
 
-class APIHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
-        # For offloading CPU intensive work.
-        self._thread_pool = concurrent.futures.ThreadPoolExecutor(
-            max_workers=2, thread_name_prefix="api_head"
-        )
+class APIHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-    @routes.get("/api/actors/kill")
-    async def kill_actor_gcs(self, req) -> aiohttp.web.Response:
+    @SubprocessRouteTable.get("/api/actors/kill")
+    async def kill_actor_gcs(
+        self, req: SubprocessModuleRequest
+    ) -> aiohttp.web.Response:
         actor_id = req.query.get("actor_id")
         force_kill = req.query.get("force_kill", False) in ("true", "True")
         no_restart = req.query.get("no_restart", False) in ("true", "True")
@@ -105,8 +102,10 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         return dashboard_optional_utils.rest_response(success=True, message=message)
 
-    @routes.get("/api/component_activities")
-    async def get_component_activities(self, req) -> aiohttp.web.Response:
+    @SubprocessRouteTable.get("/api/component_activities")
+    async def get_component_activities(
+        self, req: SubprocessModuleRequest
+    ) -> aiohttp.web.Response:
         timeout = req.query.get("timeout", None)
         if timeout and timeout.isdigit():
             timeout = int(timeout)
@@ -227,9 +226,5 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 timestamp=datetime.now().timestamp(),
             )
 
-    async def run(self, server):
+    async def init(self):
         pass
-
-    @staticmethod
-    def is_minimal_module():
-        return False

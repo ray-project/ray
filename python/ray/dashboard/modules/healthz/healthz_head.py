@@ -1,8 +1,8 @@
-from aiohttp.web import HTTPServiceUnavailable, Request, Response
+from aiohttp.web import HTTPServiceUnavailable, Response
 
 from ray.dashboard.modules.healthz.utils import HealthChecker
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
-from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleRequest
 
 import logging
 
@@ -21,7 +21,7 @@ class HealthzHead(SubprocessModule):
         self._health_checker = HealthChecker(self.gcs_aio_client)
 
     @SubprocessRouteTable.get("/api/gcs_healthz")
-    async def health_check(self, req: Request) -> Response:
+    async def health_check(self, req: SubprocessModuleRequest) -> Response:
         alive = False
         try:
             alive = await self._health_checker.check_gcs_liveness()

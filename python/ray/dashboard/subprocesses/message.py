@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Union
+from typing import Dict, Union
 
 """
 Child bound messages.
@@ -12,8 +12,9 @@ class RequestMessage:
     request_id: int
     # Name of the Module method to call, not the REST method name.
     method_name: str
-    # aiohttp.web.Request is explicitly not serializable, so we use bytes instead.
-    # TODO(ryw): add headers if needed
+    # aiohttp.web.Request is explicitly not serializable, so we pass these fields.
+    query: Dict[str, str]
+    headers: Dict[str, str]
     body: bytes
 
 
