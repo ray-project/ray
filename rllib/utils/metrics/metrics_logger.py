@@ -30,8 +30,8 @@ class MetricsLogger:
     - Reducing these collected values using a user specified reduction method (for
     example "min" or "mean") and other settings controlling the reduction and internal
     data, such as sliding windows or EMA coefficients.
-    - Optionally clearing all logged values after a `reduce()` call in order to make
-    space for new data.
+    - Optionally clearing all logged values after a `reduce()` call to make space for
+    new data.
 
     .. testcode::
 
@@ -335,7 +335,8 @@ class MetricsLogger:
                 object under the logged key then keeps track of the time passed
                 between two consecutive calls to `reduce()` and update its throughput
                 estimate. The current throughput estimate of a key can be obtained
-                through: `MetricsLogger.peek([some key], throughput=True)`.
+                through: peeked_value, throuthput_per_sec =
+                <MetricsLogger>.peek([key], throughput=True).
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
@@ -701,13 +702,8 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
-        key_for_throughput: Optional[Union[str, Tuple[str, ...]]] = None,
-        key_for_unit_count: Optional[Union[str, Tuple[str, ...]]] = None,
     ) -> Stats:
         """Measures and logs a time delta value under `key` when used with a with-block.
-
-        Additionally, measures and logs the throughput for the timed code, iff
-        `key_for_throughput` and `key_for_unit_count` are provided.
 
         .. testcode::
 
@@ -769,11 +765,6 @@ class MetricsLogger:
             clear_on_reduce = True
 
         if not self._key_in_stats(key):
-            measure_throughput = None
-            if key_for_unit_count is not None:
-                measure_throughput = True
-                key_for_throughput = key_for_throughput or (key + "_throughput_per_s")
-
             self._set_key(
                 key,
                 Stats(
@@ -781,20 +772,6 @@ class MetricsLogger:
                     window=window,
                     ema_coeff=ema_coeff,
                     clear_on_reduce=clear_on_reduce,
-                    on_exit=(
-                        lambda time_delta_s, kt=key_for_throughput, ku=key_for_unit_count, r=reduce, w=window, e=ema_coeff, c=clear_on_reduce: (  # noqa
-                            self.log_value(
-                                kt,
-                                value=self.peek(ku) / time_delta_s,
-                                reduce=r,
-                                window=w,
-                                ema_coeff=e,
-                                clear_on_reduce=c,
-                            )
-                        )
-                    )
-                    if measure_throughput
-                    else None,
                 ),
             )
 
@@ -933,7 +910,9 @@ class MetricsLogger:
 
         try:
             with self._threading_lock:
-                assert not self.tensor_mode
+                assert (
+                    not self.tensor_mode
+                ), "Can't reduce if `self.tensor_mode` is True!"
                 reduced = copy.deepcopy(
                     tree.map_structure_with_path(_reduce, stats_to_return)
                 )
@@ -1048,7 +1027,8 @@ class MetricsLogger:
                 object under the logged key then keeps track of the time passed
                 between two consecutive calls to `reduce()` and update its throughput
                 estimate. The current throughput estimate of a key can be obtained
-                through: `MetricsLogger.peek([some key], throughput=True)`.
+                through: peeked_value, throuthput_per_sec =
+                <MetricsLogger>.peek([key], throughput=True).
         """
         # Key already in self -> Erase internal values list with [`value`].
         if self._key_in_stats(key):
