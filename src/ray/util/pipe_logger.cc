@@ -24,6 +24,7 @@
 #include <thread>
 
 #include "absl/strings/str_split.h"
+#include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
@@ -31,12 +32,6 @@
 namespace ray {
 
 namespace {
-
-// TODO(hjiang): Investigate how we could notify reader thread to stop by close write pipe
-// directly, instead of relying on eof indicator.
-//
-// An indicator which represents EOF, so read thread could exit.
-const std::string kEofIndicator = GenerateUUIDV4();
 
 // Default pipe log read buffer size.
 constexpr size_t kDefaultPipeLogReadBufSize = 1024;
@@ -83,12 +78,6 @@ size_t Read(int read_fd, char *data, size_t len) {
   RAY_CHECK(bytes_read != -1) << "Fails to read from pipe because " << strerror(errno);
   return bytes_read;
 }
-void CompleteWriteEOFIndicator(int write_fd) {
-  ssize_t bytes_written = write(write_fd, kEofIndicator.data(), kEofIndicator.length());
-  RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(kEofIndicator.length()));
-  bytes_written = write(write_fd, "\n", /*count=*/1);
-  RAY_CHECK_EQ(bytes_written, 1);
-}
 #endif
 
 template <typename ReadFunc, typename WriteFunc, typename FlushFunc>
@@ -115,29 +104,32 @@ void StartStreamDump(ReadFunc read_func,
 
     while (true) {
       size_t bytes_read = read_func(content.data(), content.length());
+
+      // Bytes read of size 0 indicates write-side of pipe has been closed.
+      if (bytes_read == 0) {
+        {
+          absl::MutexLock lock(&stream_dumper->mu);
+          stream_dumper->stopped = true;
+        }
+
+        // Place IO operation out of critical section.
+        close_read_handle();
+
+        return;
+      }
+
       std::string_view cur_content{content.data(), bytes_read};
       std::vector<std::string_view> newlines = absl::StrSplit(cur_content, '\n');
 
       for (size_t idx = 0; idx < newlines.size() - 1; ++idx) {
         std::string cur_new_line = std::move(last_line);
         cur_new_line += newlines[idx];
-
-        // Reached the end of stream.
-        if (cur_new_line == kEofIndicator) {
-          {
-            absl::MutexLock lock(&stream_dumper->mu);
-            stream_dumper->stopped = true;
-          }
-
-          // Place IO operation out of critical section.
-          close_read_handle();
-
-          return;
-        }
-
         last_line.clear();
 
         // We only log non-empty lines.
+        //
+        // TODO(hjiang): Newliners should also appear in the stdout/stderr/log, current
+        // behavior simply ignore everything.
         if (!cur_new_line.empty()) {
           absl::MutexLock lock(&stream_dumper->mu);
           stream_dumper->content.emplace_back(std::move(cur_new_line));
@@ -314,7 +306,6 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   auto read_func = [read_fd](char *data, size_t len) { return Read(read_fd, data, len); };
   auto close_read_handle = [read_fd]() { RAY_CHECK_EQ(close(read_fd), 0); };
   auto close_fn = [write_fd, promise]() {
-    CompleteWriteEOFIndicator(write_fd);
     RAY_CHECK_EQ(close(write_fd), 0);
     // Block until destruction finishes.
     promise->get_future().get();

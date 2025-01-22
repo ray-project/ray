@@ -16,7 +16,6 @@ config = (
     APPOConfig().env_runners(
         num_envs_per_env_runner=32,  # Note: Old stack yaml uses 16.
         rollout_fragment_length=512,  # Note: [1] uses 1024.
-        max_requests_in_flight_per_env_runner=1,
     )
     # Train on 1 (local learner) GPU.
     .learners(num_learners=0, num_gpus_per_learner=1)

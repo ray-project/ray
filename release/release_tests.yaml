@@ -2732,56 +2732,6 @@
       frequency: weekly
       python: "3.12"
 
-- name: microbenchmark_unstable
-  group: core-daily-test
-  team: core
-  frequency: nightly
-  working_dir: microbenchmark
-
-  stable: false
-
-  cluster:
-    byod: {}
-    cluster_compute: tpl_64.yaml
-
-  run:
-    timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
-
-- name: microbenchmark_gpu_unstable
-  group: core-daily-test
-  team: core
-  frequency: nightly
-  working_dir: microbenchmark
-
-  stable: false
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: experimental/compute_gpu_2_aws.yaml
-
-  run:
-    timeout: 1800
-    script: python experimental/accelerated_dag_gpu_microbenchmark.py
-
-- name: microbenchmark_gpu_multinode_unstable
-  group: core-daily-test
-  team: core
-  frequency: nightly
-  working_dir: microbenchmark
-
-  stable: false
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: experimental/compute_gpu_2x1_aws.yaml
-
-  run:
-    timeout: 1800
-    script: python experimental/accelerated_dag_gpu_microbenchmark.py --distributed
-
 - name: compiled_graphs
   group: core-daily-test
   team: core

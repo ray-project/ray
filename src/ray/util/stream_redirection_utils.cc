@@ -36,17 +36,11 @@ namespace {
 int GetStdoutHandle() { return STDOUT_FILENO; }
 int GetStderrHandle() { return STDERR_FILENO; }
 #elif defined(_WIN32)
-int GetStdoutHandle() {
-  HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
-  return _open_osfhandle(reinterpret_cast<intptr_t>(stdout_handle), _O_WRONLY);
-}
-int GetStderrHandle() {
-  HANDLE stderr_handle = GetStdHandle(STD_ERROR_HANDLE);
-  return _open_osfhandle(reinterpret_cast<intptr_t>(stderr_handle), _O_WRONLY);
-}
+int GetStdoutHandle() { return _fileno(stdout); }
+int GetStderrHandle() { return _fileno(stderr); }
 #endif
 
-// TODO(hjiang): Revisit later, should be able to save some heap alllocation with
+// TODO(hjiang): Revisit later, should be able to save some heap allocation with
 // absl::InlinedVector.
 //
 // Maps from original stream file handle (i.e. stdout/stderr) to its stream redirector.
@@ -74,8 +68,9 @@ void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
       << "Fails to duplicate file descritor " << strerror(errno);
 #elif defined(_WIN32)
-  int windows_pipe_write_fd = _open_osfhandle(handle.GetWriteHandle(), _O_WTEXT);
-  RAY_CHECK_NE(_dup2(windows_pipe_write_fd, stream_fd), -1)
+  int pipe_write_fd =
+      _open_osfhandle(reinterpret_cast<intptr_t>(handle.GetWriteHandle()), _O_WRONLY);
+  RAY_CHECK_NE(_dup2(pipe_write_fd, stream_fd), -1)
       << "Fails to duplicate file descritor.";
 #endif
 
