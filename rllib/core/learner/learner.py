@@ -1341,7 +1341,16 @@ class Learner(Checkpointable):
         if isinstance(episodes, ray.ObjectRef) or (
             isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef)
         ):
-            episodes = ray.get(episodes)
+            try:
+                episodes = ray.get(episodes)
+            except Exception:
+                eps = []
+                for ref in episodes:
+                    try:
+                        eps.append(ray.get(ref))
+                    except Exception as e:
+                        pass
+                episodes = eps
             episodes = tree.flatten(episodes)
 
         # Call the learner connector on the given `episodes` (if we have one).
