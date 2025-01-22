@@ -12,20 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This file contains a series of testing utils which are specific to linux platform.
-
 #pragma once
 
-#if defined(__APPLE__) || defined(__linux__)
-
-#include <string>
+#include <chrono>
 
 namespace ray {
 
-// Read the whole content for the given [fname], and return as string.
-// If any error happens, throw exception.
-std::string CompleteReadFile(const std::string &fname);
+inline int64_t current_sys_time_s() {
+  std::chrono::seconds s_since_epoch = std::chrono::duration_cast<std::chrono::seconds>(
+      std::chrono::system_clock::now().time_since_epoch());
+  return s_since_epoch.count();
+}
 
 }  // namespace ray
-
-#endif
