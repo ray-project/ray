@@ -628,7 +628,7 @@ def test_numpy_ufunc(ray_start_shared_local_modes):
     @ray.remote
     def f():
         # add reference to the numpy ufunc
-        log
+        log  # noqa: B018
 
     ray.get(f.remote())
 
@@ -747,7 +747,7 @@ def test_cannot_out_of_band_serialize_object_ref(shutdown_only, monkeypatch):
 
         @ray.remote
         def f():
-            ref
+            ref  # noqa: B018
 
         with pytest.raises(ray.exceptions.OufOfBandObjectRefSerializationException):
             ray.get(f.remote())
@@ -774,7 +774,7 @@ def test_can_out_of_band_serialize_object_ref_with_env_var(shutdown_only, monkey
 
         @ray.remote
         def f():
-            ref
+            ref  # noqa: B018
 
         ray.get(f.remote())
 

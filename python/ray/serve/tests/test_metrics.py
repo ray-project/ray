@@ -487,7 +487,7 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 
     # Should generate 404 responses
     broken_url = "http://127.0.0.1:8000/fake_route"
-    requests.get(broken_url).text
+    requests.get(broken_url)
     print("Sent requests to broken URL.")
 
     # Ping gRPC proxy for not existing application.
@@ -540,7 +540,7 @@ def test_proxy_metrics_fields_internal_error(serve_start_shutdown):
 
     # Deployment should generate divide-by-zero errors
     correct_url = "http://127.0.0.1:8000/real_route"
-    requests.get(correct_url).text
+    requests.get(correct_url)
     print("Sent requests to correct URL.")
 
     # Ping gPRC proxy for broken app

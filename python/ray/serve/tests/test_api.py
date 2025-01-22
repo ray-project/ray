@@ -844,7 +844,7 @@ def test_status_constructor_error(serve_instance):
     @serve.deployment
     class A:
         def __init__(self):
-            1 / 0
+            raise ZeroDivisionError
 
     serve._run(A.bind(), _blocking=False)
 

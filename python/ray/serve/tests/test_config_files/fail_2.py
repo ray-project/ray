@@ -7,7 +7,7 @@ from ray import serve
 class A:
     def __init__(self):
         time.sleep(5)
-        1 / 0
+        raise ZeroDivisionError
 
 
 node = A.bind()

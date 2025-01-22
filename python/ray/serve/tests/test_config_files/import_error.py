@@ -1,6 +1,6 @@
 from ray import serve
 
-1 / 0
+raise ZeroDivisionError
 
 
 @serve.deployment(ray_actor_options={"num_cpus": 0.1})
