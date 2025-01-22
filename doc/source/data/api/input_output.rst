@@ -65,7 +65,7 @@ Text
    read_text
 
 Audio
-----
+-----
 
 .. autosummary::
    :nosignatures:
@@ -299,7 +299,7 @@ TensorFlow
    from_tf
 
 Video
-----
+-----
 
 .. autosummary::
    :nosignatures:
