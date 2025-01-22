@@ -101,6 +101,12 @@ class TypeHintResolver:
         writer = writer_and_node[0]
         readers = [reader for reader, _ in reader_and_node_list]
 
+        if any(reader is None for reader in readers):
+            # None means reader is the driver, currently driver on GPU
+            # is not supported, so we always use shared memory to transfer
+            # tensors.
+            return TorchTensorType()
+
         # Case 1: writer and readers don't both use GPU, use shared memory
         # to transport the tensors
         if not (self._use_gpu(writer) and self._use_gpu(readers)):
