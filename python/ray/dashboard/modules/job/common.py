@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
 from ray._private import ray_constants
-from ray._private.event.export_event_logger import get_export_event_logger
+from ray._private.event.export_event_logger import (
+    check_export_api_enabled,
+    get_export_event_logger,
+)
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.packaging import parse_uri
 from ray.core.generated.export_event_pb2 import ExportEvent
@@ -213,7 +216,7 @@ class JobInfoStorageClient:
         self._export_submission_job_event_logger: logging.Logger = None
         try:
             if (
-                ray_constants.RAY_ENABLE_EXPORT_API_WRITE
+                check_export_api_enabled(ExportEvent.SourceType.EXPORT_SUBMISSION_JOB)
                 and export_event_log_dir_root is not None
             ):
                 self._export_submission_job_event_logger = get_export_event_logger(

@@ -52,6 +52,7 @@ class GcsActor {
           counter)
       : actor_table_data_(std::move(actor_table_data)), counter_(counter) {
     RefreshMetrics();
+    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   /// Create a GcsActor by actor_table_data and task_spec.
@@ -70,6 +71,7 @@ class GcsActor {
         counter_(counter) {
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
+    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   /// Create a GcsActor by TaskSpec.
@@ -140,6 +142,7 @@ class GcsActor {
       actor_table_data_.set_call_site(task_spec.call_site());
     }
     RefreshMetrics();
+    export_event_write_enabled_ = IsExportAPIEnabledActor();
   }
 
   ~GcsActor() {
@@ -196,6 +199,13 @@ class GcsActor {
   /// Write an event containing this actor's ActorTableData
   /// to file for the Export API.
   void WriteActorExportEvent() const;
+  // Verify if export events should be written for EXPORT_ACTOR source types
+  bool IsExportAPIEnabledActor() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_ACTOR",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
 
   const ResourceRequest &GetAcquiredResources() const;
   void SetAcquiredResources(ResourceRequest &&resource_request);
@@ -256,6 +266,8 @@ class GcsActor {
   bool grant_or_reject_ = false;
   /// The last recorded metric state.
   std::optional<rpc::ActorTableData::ActorState> last_metric_state_;
+  /// If true, actor events are exported for Export API
+  bool export_event_write_enabled_ = false;
 };
 
 using RegisterActorCallback =
