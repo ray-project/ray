@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import gymnasium as gym
 import numpy as np
@@ -34,9 +34,6 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.util.debug import log_once
-
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import Episode
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -308,7 +305,7 @@ class TFPolicy(Policy):
         input_dict: Union[SampleBatch, Dict[str, TensorType]],
         explore: bool = None,
         timestep: Optional[int] = None,
-        episodes: Optional[List["Episode"]] = None,
+        episode=None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         explore = explore if explore is not None else self.config["explore"]
@@ -349,7 +346,7 @@ class TFPolicy(Policy):
         prev_action_batch: Union[List[TensorType], TensorType] = None,
         prev_reward_batch: Union[List[TensorType], TensorType] = None,
         info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["Episode"]] = None,
+        episodes=None,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         **kwargs,

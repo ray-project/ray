@@ -1,27 +1,18 @@
-import time
-
 import pytest
 
 from ray.serve._private.common import (
     REPLICA_ID_FULL_ID_STR_PREFIX,
-    ApplicationStatus,
-    ApplicationStatusInfo,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
     ReplicaID,
     RunningReplicaInfo,
-    StatusOverview,
 )
 from ray.serve._private.utils import get_random_string
 from ray.serve.generated.serve_pb2 import (
-    ApplicationStatusInfo as ApplicationStatusInfoProto,
-)
-from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 
 
 def test_replica_id_formatting():
@@ -116,138 +107,6 @@ class TestDeploymentStatusInfo:
         reconstructed_info = DeploymentStatusInfo.from_proto(deserialized_proto)
 
         assert deployment_status_info == reconstructed_info
-
-
-class TestApplicationStatusInfo:
-    def test_application_status_required(self):
-        with pytest.raises(TypeError):
-            ApplicationStatusInfo(
-                message="context about status", deployment_timestamp=time.time()
-            )
-
-    @pytest.mark.parametrize("status", list(ApplicationStatus))
-    def test_proto(self, status):
-        serve_application_status_info = ApplicationStatusInfo(
-            status=status,
-            message="context about status",
-            deployment_timestamp=time.time(),
-        )
-        serialized_proto = serve_application_status_info.to_proto().SerializeToString()
-        deserialized_proto = ApplicationStatusInfoProto.FromString(serialized_proto)
-        reconstructed_info = ApplicationStatusInfo.from_proto(deserialized_proto)
-
-        assert serve_application_status_info == reconstructed_info
-
-
-class TestStatusOverview:
-    def get_valid_serve_application_status_info(self):
-        return ApplicationStatusInfo(
-            status=ApplicationStatus.RUNNING,
-            message="",
-            deployment_timestamp=time.time(),
-        )
-
-    def test_app_status_required(self):
-        with pytest.raises(TypeError):
-            StatusOverview(deployment_statuses=[])
-
-    def test_empty_list_valid(self):
-        """Should be able to create StatusOverview with no deployment statuses."""
-
-        # Check default is empty list
-        status_info = StatusOverview(
-            app_status=self.get_valid_serve_application_status_info()
-        )
-        status_info.deployment_statuses == []
-
-        # Ensure empty list can be passed in explicitly
-        status_info = StatusOverview(
-            app_status=self.get_valid_serve_application_status_info(),
-            deployment_statuses=[],
-        )
-        status_info.deployment_statuses == []
-
-    def test_equality_mismatched_deployment_statuses(self):
-        """Check that StatusOverviews with different numbers of statuses are unequal."""
-
-        status_info_few_deployments = StatusOverview(
-            app_status=self.get_valid_serve_application_status_info(),
-            deployment_statuses=[
-                DeploymentStatusInfo(
-                    name="1",
-                    status=DeploymentStatus.HEALTHY,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-                DeploymentStatusInfo(
-                    name="2",
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-            ],
-        )
-
-        status_info_many_deployments = StatusOverview(
-            app_status=self.get_valid_serve_application_status_info(),
-            deployment_statuses=[
-                DeploymentStatusInfo(
-                    name="1",
-                    status=DeploymentStatus.HEALTHY,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-                DeploymentStatusInfo(
-                    name="2",
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-                DeploymentStatusInfo(
-                    name="3",
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-                DeploymentStatusInfo(
-                    name="4",
-                    status=DeploymentStatus.UPDATING,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-            ],
-        )
-
-        assert status_info_few_deployments != status_info_many_deployments
-
-    @pytest.mark.parametrize("application_status", list(ApplicationStatus))
-    def test_proto(self, application_status):
-        status_info = StatusOverview(
-            app_status=ApplicationStatusInfo(
-                status=application_status,
-                message="context about this status",
-                deployment_timestamp=time.time(),
-            ),
-            deployment_statuses=[
-                DeploymentStatusInfo(
-                    name="name1",
-                    status=DeploymentStatus.UPDATING,
-                    message="deployment updating",
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-                DeploymentStatusInfo(
-                    name="name2",
-                    status=DeploymentStatus.HEALTHY,
-                    message="",
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-                DeploymentStatusInfo(
-                    name="name3",
-                    status=DeploymentStatus.UNHEALTHY,
-                    message="this deployment is unhealthy",
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-            ],
-        )
-        serialized_proto = status_info.to_proto().SerializeToString()
-        deserialized_proto = StatusOverviewProto.FromString(serialized_proto)
-        reconstructed_info = StatusOverview.from_proto(deserialized_proto)
-
-        assert status_info == reconstructed_info
 
 
 def test_running_replica_info():

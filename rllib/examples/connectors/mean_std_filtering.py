@@ -74,6 +74,7 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import (
@@ -146,17 +147,16 @@ if __name__ == "__main__":
             train_batch_size_per_learner=512,
             gamma=0.95,
             # Linearly adjust learning rate based on number of GPUs.
-            lr=0.0003 * (args.num_gpus or 1),
+            lr=0.0003 * (args.num_learners or 1),
             vf_loss_coeff=0.01,
         )
         .rl_module(
-            model_config_dict={
-                "fcnet_activation": "relu",
-                "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
-                "fcnet_bias_initializer": torch.nn.init.constant_,
-                "fcnet_bias_initializer_config": {"val": 0.0},
-                "uses_new_env_runners": True,
-            }
+            model_config=DefaultModelConfig(
+                fcnet_activation="relu",
+                fcnet_kernel_initializer=torch.nn.init.xavier_uniform_,
+                fcnet_bias_initializer=torch.nn.init.constant_,
+                fcnet_bias_initializer_kwargs={"val": 0.0},
+            ),
         )
         # In case you would like to run with a evaluation EnvRunners, make sure your
         # `evaluation_config` key contains the `use_worker_filter_stats=False` setting

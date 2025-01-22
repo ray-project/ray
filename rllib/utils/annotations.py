@@ -171,7 +171,7 @@ def OverrideToImplementCustomLogic(obj):
             ...
 
     """
-    obj.__is_overriden__ = False
+    obj.__is_overridden__ = False
     return obj
 
 
@@ -196,7 +196,7 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
             super().setup(config)
             # ... or here (after having called super()'s setup method.
     """
-    obj.__is_overriden__ = False
+    obj.__is_overridden__ = False
     return obj
 
 
@@ -206,7 +206,7 @@ def is_overridden(obj):
     Note, this only works for API calls decorated with OverrideToImplementCustomLogic
     or OverrideToImplementCustomLogic_CallToSuperRecommended.
     """
-    return getattr(obj, "__is_overriden__", True)
+    return getattr(obj, "__is_overridden__", True)
 
 
 # Backward compatibility.

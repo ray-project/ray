@@ -73,6 +73,7 @@ Results to expect
 """
 from ray.tune.registry import register_env
 from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.cartpole_with_dict_observation_space import (
     CartPoleWithDictObservationSpace,
 )
@@ -88,14 +89,11 @@ from ray.tune.registry import get_trainable_cls
 
 # Read in common example script command line arguments.
 parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=400.0)
+parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     # Define env-to-module-connector pipeline for the new stack.
     def _env_to_module_pipeline(env):
@@ -123,12 +121,11 @@ if __name__ == "__main__":
             lr=0.0003,
         )
         .rl_module(
-            model_config_dict={
-                "fcnet_hiddens": [32],
-                "fcnet_activation": "linear",
-                "vf_share_layers": True,
-                "uses_new_env_runners": True,
-            },
+            model_config=DefaultModelConfig(
+                fcnet_hiddens=[32],
+                fcnet_activation="linear",
+                vf_share_layers=True,
+            ),
         )
     )
 
@@ -151,12 +148,6 @@ if __name__ == "__main__":
             lr=0.0005,
             vf_loss_coeff=0.05,
             entropy_coeff=0.0,
-        )
-        base_config.rl_module(
-            model_config_dict={
-                "vf_share_layers": True,
-                "uses_new_env_runners": True,
-            }
         )
 
     # Run everything as configured.

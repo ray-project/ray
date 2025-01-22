@@ -1,15 +1,15 @@
 # isort: skip_file
-# flake8: noqa E402
+# ruff: noqa: E402
 import json
 import os
 import sys
 
 import pytest
 
-# RAY_enable_export_api_write env var must be set before importing
-# `ray` so the correct value is set for RAY_ENABLE_EXPORT_API_WRITE
+# RAY_enable_export_api_write_config env var must be set before importing
+# `ray` so the correct value is set for RAY_ENABLE_EXPORT_API_WRITE_CONFIG
 # even outside a Ray driver.
-os.environ["RAY_enable_export_api_write"] = "true"
+os.environ["RAY_enable_export_api_write_config"] = "EXPORT_SUBMISSION_JOB"
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
@@ -38,7 +38,118 @@ async def check_job_succeeded(job_manager, job_id):
     [
         {
             "env": {
+                "RAY_enable_export_api_write_config": "EXPORT_SUBMISSION_JOB,EXPORT_TASK",
+            },
+            "cmd": "ray start --head",
+        }
+    ],
+    indirect=True,
+)
+async def test_check_export_api_enabled(call_ray_start, tmp_path):  # noqa: F811
+    """
+    Test check_export_api_enabled is True for EXPORT_SUBMISSION_JOB and EXPORT_TASK but
+    not for EXPORT_ACTOR because of the value of RAY_enable_export_api_write_config.
+    """
+
+    @ray.remote
+    def test_check_export_api_enabled_remote():
+        from ray._private.event.export_event_logger import check_export_api_enabled
+        from ray.core.generated.export_event_pb2 import ExportEvent
+
+        success = True
+        success = success and check_export_api_enabled(
+            ExportEvent.SourceType.EXPORT_SUBMISSION_JOB
+        )
+        success = success and check_export_api_enabled(
+            ExportEvent.SourceType.EXPORT_TASK
+        )
+        success = success and (
+            not check_export_api_enabled(ExportEvent.SourceType.EXPORT_ACTOR)
+        )
+        return success
+
+    assert ray.get(test_check_export_api_enabled_remote.remote())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        {
+            "env": {
                 "RAY_enable_export_api_write": "true",
+            },
+            "cmd": "ray start --head",
+        }
+    ],
+    indirect=True,
+)
+async def test_check_export_api_enabled_global(call_ray_start, tmp_path):  # noqa: F811
+    """
+    Test check_export_api_enabled always returns True because RAY_enable_export_api_write
+    is set to True.
+    """
+
+    @ray.remote
+    def test_check_export_api_enabled_remote():
+        from ray._private.event.export_event_logger import check_export_api_enabled
+        from ray.core.generated.export_event_pb2 import ExportEvent
+
+        success = True
+        success = success and check_export_api_enabled(
+            ExportEvent.SourceType.EXPORT_SUBMISSION_JOB
+        )
+        success = success and check_export_api_enabled(
+            ExportEvent.SourceType.EXPORT_ACTOR
+        )
+        return success
+
+    assert ray.get(test_check_export_api_enabled_remote.remote())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        {
+            "env": {
+                "RAY_enable_export_api_write_config": "invalid source type",
+            },
+            "cmd": "ray start --head",
+        }
+    ],
+    indirect=True,
+)
+async def test_check_export_api_empty_config(call_ray_start, tmp_path):  # noqa: F811
+    """
+    Test check_export_api_enabled is False for all sources because
+    RAY_enable_export_api_write_config is not a vaild source type.
+    """
+
+    @ray.remote
+    def test_check_export_api_enabled_remote():
+        from ray._private.event.export_event_logger import check_export_api_enabled
+        from ray.core.generated.export_event_pb2 import ExportEvent
+
+        success = True
+        success = success and not (
+            check_export_api_enabled(ExportEvent.SourceType.EXPORT_SUBMISSION_JOB)
+        )
+        success = success and (
+            not check_export_api_enabled(ExportEvent.SourceType.EXPORT_ACTOR)
+        )
+        return success
+
+    assert ray.get(test_check_export_api_enabled_remote.remote())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        {
+            "env": {
+                "RAY_enable_export_api_write_config": "EXPORT_SUBMISSION_JOB",
             },
             "cmd": "ray start --head",
         }
@@ -68,7 +179,7 @@ async def test_submission_job_export_events(call_ray_start, tmp_path):  # noqa: 
     )
 
     # Verify export events are written
-    event_dir = f"{tmp_path}/events"
+    event_dir = f"{tmp_path}/export_events"
     assert os.path.isdir(event_dir)
     event_file = f"{event_dir}/event_EXPORT_SUBMISSION_JOB.log"
     assert os.path.isfile(event_file)

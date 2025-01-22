@@ -8,6 +8,7 @@ import socket
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pprint import pprint
 
@@ -16,9 +17,14 @@ import pytest
 import requests
 
 import ray
-from ray._private.event.event_logger import filter_event_by_level, get_event_logger
+from ray._private.event.event_logger import (
+    filter_event_by_level,
+    get_event_id,
+    get_event_logger,
+)
 from ray._private.event.export_event_logger import get_export_event_logger
 from ray._private.protobuf_compat import message_to_dict
+from ray._private.state_api_test_utils import create_api_options, verify_schema
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
@@ -32,10 +38,12 @@ from ray.core.generated import (
     export_submission_job_event_pb2,
 )
 from ray.dashboard.modules.event import event_consts
+from ray.dashboard.modules.event.event_head import _list_cluster_events_impl
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobSubmissionClient
 from ray.util.state import list_cluster_events
+from ray.util.state.common import ClusterEventState
 
 logger = logging.getLogger(__name__)
 
@@ -555,6 +563,75 @@ def test_cluster_events_retention(monkeypatch, shutdown_only):
         pprint(list_cluster_events())
 
 
+@pytest.mark.asyncio
+async def test_list_cluster_events_impl():
+    executor = ThreadPoolExecutor(
+        max_workers=1,
+        thread_name_prefix="event_head_executor",
+    )
+
+    event_id_1 = get_event_id()
+    event_id_2 = get_event_id()
+    events = {
+        "job_1": {
+            event_id_1: {
+                "timestamp": 10,
+                "severity": "DEBUG",
+                "message": "a",
+                "event_id": event_id_1,
+                "source_type": "GCS",
+            },
+            event_id_2: {
+                "timestamp": 10,
+                "severity": "INFO",
+                "message": "b",
+                "event_id": event_id_2,
+                "source_type": "GCS",
+            },
+        }
+    }
+    result = await _list_cluster_events_impl(
+        all_events=events, executor=executor, option=create_api_options()
+    )
+    data = result.result
+    data = data[0]
+    verify_schema(ClusterEventState, data)
+    assert result.total == 2
+
+    """
+    Test detail
+    """
+    # TODO(sang)
+
+    """
+    Test limit
+    """
+    assert len(result.result) == 2
+    result = await _list_cluster_events_impl(
+        all_events=events, executor=executor, option=create_api_options(limit=1)
+    )
+    data = result.result
+    assert len(data) == 1
+    assert result.total == 2
+
+    """
+    Test filters
+    """
+    # If the column is not supported for filtering, it should raise an exception.
+    with pytest.raises(ValueError):
+        result = await _list_cluster_events_impl(
+            all_events=events,
+            executor=executor,
+            option=create_api_options(filters=[("time", "=", "20")]),
+        )
+    result = await _list_cluster_events_impl(
+        all_events=events,
+        executor=executor,
+        option=create_api_options(filters=[("severity", "=", "INFO")]),
+    )
+    assert len(result.result) == 1
+
+
 def test_export_event_logger(tmp_path):
     """
     Unit test a mock export event of type ExportSubmissionJobEventData
@@ -574,7 +651,7 @@ def test_export_event_logger(tmp_path):
     )
     logger.send_event(event_data)
 
-    event_dir = tmp_path / "events"
+    event_dir = tmp_path / "export_events"
     assert event_dir.exists()
     event_file = event_dir / "event_EXPORT_SUBMISSION_JOB.log"
     assert event_file.exists()

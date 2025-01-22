@@ -24,7 +24,7 @@ from ray.rllib.execution.train_ops import (
     train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
@@ -39,9 +39,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED_LIFETIME,
-    NUM_MODULE_STEPS_TRAINED,
-    NUM_MODULE_STEPS_TRAINED_LIFETIME,
     NUM_TARGET_UPDATES,
     OFFLINE_SAMPLING_TIMER,
     TARGET_NET_UPDATE_TIMER,
@@ -89,9 +86,22 @@ class CQLConfig(SACConfig):
         # Note, the new stack defines learning rates for each component.
         # The base learning rate `lr` has to be set to `None`, if using
         # the new stack.
-        self.actor_lr = 1e-4,
+        self.actor_lr = 1e-4
         self.critic_lr = 1e-3
         self.alpha_lr = 1e-3
+
+        self.replay_buffer_config = {
+            "_enable_replay_buffer_api": True,
+            "type": "MultiAgentPrioritizedReplayBuffer",
+            "capacity": int(1e6),
+            # If True prioritized replay buffer will be used.
+            "prioritized_replay": False,
+            "prioritized_replay_alpha": 0.6,
+            "prioritized_replay_beta": 0.4,
+            "prioritized_replay_eps": 1e-6,
+            # Whether to compute priorities already on the remote worker side.
+            "worker_side_prioritization": False,
+        }
 
         # Changes to Algorithm's/SACConfig's default:
 
@@ -241,7 +251,7 @@ class CQLConfig(SACConfig):
             and not self.dataset_num_iters_per_learner
             and self.enable_rl_module_and_learner
         ):
-            raise ValueError(
+            self._value_error(
                 "When using a single local learner the number of iterations "
                 "per learner, `dataset_num_iters_per_learner` has to be defined. "
                 "Set this hyperparameter in the `AlgorithmConfig.offline_data`."
@@ -249,14 +259,12 @@ class CQLConfig(SACConfig):
 
     @override(SACConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
-        from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
-
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.cql.torch.cql_torch_rl_module import (
-                CQLTorchRLModule,
+            from ray.rllib.algorithms.cql.torch.default_cql_torch_rl_module import (
+                DefaultCQLTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=CQLTorchRLModule, catalog_class=SACCatalog)
+            return RLModuleSpec(module_class=DefaultCQLTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."
@@ -288,20 +296,10 @@ class CQL(SAC):
             return CQLTFPolicy
 
     @override(SAC)
-    def training_step(self) -> ResultDict:
-        if self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_new_api_stack()
-        elif self.config.enable_rl_module_and_learner:
-            raise ValueError(
-                "Hybrid API stack is not supported. Either set "
-                "`enable_rl_module_and_learner=True` and "
-                "`enable_env_runner_and_connector_v2=True` or set both "
-                "attributed to `False`."
-            )
-        else:
+    def training_step(self) -> None:
+        # Old API stack (Policy, RolloutWorker, Connector).
+        if not self.config.enable_env_runner_and_connector_v2:
             return self._training_step_old_api_stack()
-
-    def _training_step_new_api_stack(self) -> ResultDict:
 
         # Sampling from offline data.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
@@ -324,22 +322,6 @@ class CQL(SAC):
 
             # Log training results.
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-            self.metrics.log_value(
-                NUM_ENV_STEPS_TRAINED_LIFETIME,
-                self.metrics.peek(
-                    (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
-                ),
-                reduce="sum",
-            )
-            self.metrics.log_dict(
-                {
-                    (LEARNER_RESULTS, mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): (
-                        stats[NUM_MODULE_STEPS_TRAINED]
-                    )
-                    for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
-                },
-                reduce="sum",
-            )
 
         # Synchronize weights.
         # As the results contain for each policy the loss and in addition the
@@ -347,19 +329,19 @@ class CQL(SAC):
         # removed.
         modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
 
-        # Update weights - after learning on the local worker -
-        # on all remote workers. Note, we only have the local `EnvRunner`,
-        # but from this `EnvRunner` the evaulation `EnvRunner`s get updated.
-        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-            self.env_runner_group.sync_weights(
-                # Sync weights from learner_group to all EnvRunners.
-                from_worker_or_learner_group=self.learner_group,
-                policies=modules_to_update,
-                inference_only=True,
-            )
+        if self.eval_env_runner_group:
+            # Update weights - after learning on the local worker -
+            # on all remote workers. Note, we only have the local `EnvRunner`,
+            # but from this `EnvRunner` the evaulation `EnvRunner`s get updated.
+            with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+                self.eval_env_runner_group.sync_weights(
+                    # Sync weights from learner_group to all EnvRunners.
+                    from_worker_or_learner_group=self.learner_group,
+                    policies=modules_to_update,
+                    inference_only=True,
+                )
 
-        return self.metrics.reduce()
-
+    @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         with self._timers[SAMPLE_TIMER]:

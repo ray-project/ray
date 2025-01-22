@@ -39,6 +39,8 @@ TASK_STATUS = [
     "PENDING_OBJ_STORE_MEM_AVAIL",
     "PENDING_ARGS_FETCH",
     "SUBMITTED_TO_WORKER",
+    "PENDING_ACTOR_TASK_ARGS_FETCH",
+    "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY",
     "RUNNING",
     "RUNNING_IN_RAY_GET",
     "RUNNING_IN_RAY_WAIT",
@@ -114,7 +116,10 @@ def validate_protobuf_enum(grpc_enum, custom_enum):
     # Sometimes, the grpc enum is mocked, and it
     # doesn't include any values in that case.
     if len(enum_vals) > 0:
-        assert enum_vals == set(custom_enum)
+        assert enum_vals == set(
+            custom_enum
+        ), """Literals and protos out of sync,\
+consider building //:install_py_proto with bazel?"""
 
 
 # Do the enum validation here.

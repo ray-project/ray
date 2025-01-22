@@ -4,7 +4,8 @@ exclude: |
     python/ray/serve/generated/|
     python/ray/cloudpickle/|
     python/ray/_private/runtime_env/_clonevirtualenv.py|
-    doc/external/
+    doc/external/|
+    doc/source/
   )
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -29,6 +30,12 @@ repos:
           )
       - id: check-toml
 
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [ --fix, --exit-non-zero-on-fix ]
+
   - repo: https://github.com/psf/black
     rev: 22.10.0
     hooks:
@@ -45,17 +52,6 @@ repos:
             doc/external/
           )
         types_or: [python]
-
-  - repo: https://github.com/pycqa/flake8
-    rev: 3.9.1
-    hooks:
-      - id: flake8
-        additional_dependencies:
-          [
-            flake8-comprehensions==3.10.1,
-            flake8-quotes==2.0.0,
-            flake8-bugbear==21.9.2,
-          ]
 
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: v3.0.3
@@ -80,15 +76,8 @@ repos:
           )
         additional_dependencies:
           [
-            types-PyYAML
+            types-PyYAML==6.0.12.2,
           ]
-
-  - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
-    hooks:
-      - id: isort
-        name: isort (python)
-        types_or: [python]
 
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
@@ -143,3 +132,12 @@ repos:
         types: [python]
         pass_filenames: false
         args: [".", "-s", "ci", "-s", "python/ray/thirdparty_files", "-s", "python/build", "-s", "lib"]
+
+  - repo: local
+    hooks:
+      - id: check-cpp-files-inclusion
+        name: Check ray core C++ files inclusion violations
+        entry: ci/lint/check_cpp_files_inclusion.py
+        language: python
+        files: '^src/ray/'
+        types: [c++]

@@ -51,6 +51,7 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gce", "v4-2048", "TPU-V4"),
         ("gce", "v5p-8", "TPU-V5P"),
         ("gce", "v5litepod-8", "TPU-V5LITEPOD"),
+        ("gce", "v6e-8", "TPU-V6E"),
         ("gke", "v2-8", "TPU-V2"),
         ("gke", "v2-32", "TPU-V2"),
         ("gke", "v3-8", "TPU-V3"),
@@ -59,6 +60,7 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gke", "v4-2048", "TPU-V4"),
         ("gke", "v5p-8", "TPU-V5P"),
         ("gke", "v5litepod-8", "TPU-V5LITEPOD"),
+        ("gke", "v6e-8", "TPU-V6E"),
     ],
 )
 @patch("requests.get")
@@ -277,14 +279,40 @@ def test_empty_get_current_pod_name_returns_none():
     assert name is None
 
 
-def test_worker_count():
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        (4, "v4-16", 4),
+        (8, "v6e-8", 1),
+    ],
+)
+@patch("glob.glob")
+def test_worker_count(mock_glob, test_case):
+    num_devices, accelerator_type, expected_worker_count = test_case
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+
     with patch(
         "ray._private.accelerators.tpu.TPUAcceleratorManager."
-        "get_num_workers_in_current_tpu_pod",
-        return_value=4,
+        "_get_current_node_tpu_pod_type",
+        return_value=accelerator_type,
     ):
         worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()
-    assert worker_count == 4
+
+    assert worker_count == expected_worker_count
+
+
+@patch("glob.glob")
+def test_num_tpu_chips(mock_glob):
+    mock_glob.return_value = [
+        "/dev/accel0",
+        "/dev/accel1",
+        "/dev/accel2",
+        "/dev/accel3",
+    ]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    num_tpu_chips = ray.util.accelerators.tpu.get_num_tpu_chips_on_node()
+    assert num_tpu_chips == 4
 
 
 if __name__ == "__main__":

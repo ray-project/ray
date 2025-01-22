@@ -24,18 +24,6 @@ cdef class Config:
                 .object_timeout_milliseconds())
 
     @staticmethod
-    def get_timeout_milliseconds():
-        return RayConfig.instance().get_timeout_milliseconds()
-
-    @staticmethod
-    def worker_get_request_size():
-        return RayConfig.instance().worker_get_request_size()
-
-    @staticmethod
-    def worker_fetch_request_size():
-        return RayConfig.instance().worker_fetch_request_size()
-
-    @staticmethod
     def raylet_client_num_connect_attempts():
         return RayConfig.instance().raylet_client_num_connect_attempts()
 
@@ -168,3 +156,7 @@ cdef class Config:
     @staticmethod
     def gcs_rpc_server_reconnect_timeout_s():
         return RayConfig.instance().gcs_rpc_server_reconnect_timeout_s()
+
+    @staticmethod
+    def maximum_gcs_destroyed_actor_cached_count():
+        return RayConfig.instance().maximum_gcs_destroyed_actor_cached_count()

@@ -581,7 +581,7 @@ def test_options():
     # TODO(suquark): The current implementation of `.options()` is so bad that we
     # cannot even access its options from outside. Here we hack the closures to
     # achieve our goal. Need futher efforts to clean up the tech debt.
-    assert f2.remote.__closure__[1].cell_contents == {
+    assert f2.remote.__closure__[2].cell_contents == {
         "_metadata": {"namespace": {"a": 11, "b": 2, "c": 3}},
         "num_cpus": 1,
         "num_gpus": 1,
@@ -593,7 +593,7 @@ def test_options():
 
     f3 = foo.options(num_cpus=1, num_gpus=1, **mock_options2(a=11, c=3))
 
-    assert f3.remote.__closure__[1].cell_contents == {
+    assert f3.remote.__closure__[2].cell_contents == {
         "_metadata": {"namespace": {"a": 1, "b": 2}, "namespace2": {"a": 11, "c": 3}},
         "num_cpus": 1,
         "num_gpus": 1,
@@ -866,9 +866,9 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes)
     assert ray.get(f.remote(s)) == s
 
     # Test types.
-    assert ray.get(f.remote(int)) == int
-    assert ray.get(f.remote(float)) == float
-    assert ray.get(f.remote(str)) == str
+    assert ray.get(f.remote(int)) is int
+    assert ray.get(f.remote(float)) is float
+    assert ray.get(f.remote(str)) is str
 
     class Foo:
         def __init__(self):

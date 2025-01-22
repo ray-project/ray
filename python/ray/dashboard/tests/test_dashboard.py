@@ -11,6 +11,7 @@ import sys
 import time
 import warnings
 from unittest.mock import MagicMock
+from urllib.parse import quote_plus
 
 import pytest
 import requests
@@ -370,7 +371,9 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
     while True:
         time.sleep(3)
         try:
-            response = requests.get(webui_url + "/test/http_get?url=" + target_url)
+            response = requests.get(
+                webui_url + "/test/http_get?url=" + quote_plus(target_url)
+            )
             response.raise_for_status()
             try:
                 dump_info = response.json()
@@ -385,7 +388,8 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             http_port, grpc_port = ports
 
             response = requests.get(
-                f"http://{ip}:{http_port}" f"/test/http_get_from_agent?url={target_url}"
+                f"http://{ip}:{http_port}"
+                f"/test/http_get_from_agent?url={quote_plus(target_url)}"
             )
             response.raise_for_status()
             try:
@@ -783,7 +787,7 @@ def test_immutable_types():
     d["list"][0] = {str(i): i for i in range(1000)}
     d["dict"] = {str(i): i for i in range(1000)}
     immutable_dict = dashboard_utils.make_immutable(d)
-    assert type(immutable_dict) == dashboard_utils.ImmutableDict
+    assert type(immutable_dict) is dashboard_utils.ImmutableDict
     assert immutable_dict == dashboard_utils.ImmutableDict(d)
     assert immutable_dict == d
     assert dashboard_utils.ImmutableDict(immutable_dict) == immutable_dict
@@ -795,14 +799,14 @@ def test_immutable_types():
     assert "512" in d["dict"]
 
     # Test type conversion
-    assert type(dict(immutable_dict)["list"]) == dashboard_utils.ImmutableList
-    assert type(list(immutable_dict["list"])[0]) == dashboard_utils.ImmutableDict
+    assert type(dict(immutable_dict)["list"]) is dashboard_utils.ImmutableList
+    assert type(list(immutable_dict["list"])[0]) is dashboard_utils.ImmutableDict
 
     # Test json dumps / loads
-    json_str = json.dumps(immutable_dict, cls=dashboard_optional_utils.CustomEncoder)
+    json_str = json.dumps(immutable_dict, cls=dashboard_utils.CustomEncoder)
     deserialized_immutable_dict = json.loads(json_str)
-    assert type(deserialized_immutable_dict) == dict
-    assert type(deserialized_immutable_dict["list"]) == list
+    assert type(deserialized_immutable_dict) is dict
+    assert type(deserialized_immutable_dict["list"]) is list
     assert immutable_dict.mutable() == deserialized_immutable_dict
     dashboard_optional_utils.rest_response(True, "OK", data=immutable_dict)
     dashboard_optional_utils.rest_response(True, "OK", **immutable_dict)
@@ -815,12 +819,12 @@ def test_immutable_types():
 
     # Test get default immutable
     immutable_default_value = immutable_dict.get("not exist list", [1, 2])
-    assert type(immutable_default_value) == dashboard_utils.ImmutableList
+    assert type(immutable_default_value) is dashboard_utils.ImmutableList
 
     # Test recursive immutable
-    assert type(immutable_dict["list"]) == dashboard_utils.ImmutableList
-    assert type(immutable_dict["dict"]) == dashboard_utils.ImmutableDict
-    assert type(immutable_dict["list"][0]) == dashboard_utils.ImmutableDict
+    assert type(immutable_dict["list"]) is dashboard_utils.ImmutableList
+    assert type(immutable_dict["dict"]) is dashboard_utils.ImmutableDict
+    assert type(immutable_dict["list"][0]) is dashboard_utils.ImmutableDict
 
     # Test exception
     with pytest.raises(TypeError):
@@ -1181,6 +1185,57 @@ def test_dashboard_module_load(tmpdir):
     loaded_modules = head._load_modules()
     loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
     assert loaded_modules_actual == loaded_modules_expected
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_extra_prom_headers_validation(tmpdir, monkeypatch):
+    from ray.dashboard.modules.metrics.metrics_head import PROMETHEUS_HEADERS_ENV_VAR
+
+    """Test the extra Prometheus headers validation in DashboardHead."""
+    head = DashboardHead(
+        http_host="127.0.0.1",
+        http_port=8265,
+        http_port_retries=1,
+        node_ip_address="127.0.0.1",
+        gcs_address="127.0.0.1:6379",
+        cluster_id_hex=ray.ClusterID.from_random().hex(),
+        grpc_port=0,
+        log_dir=str(tmpdir),
+        temp_dir=str(tmpdir),
+        session_dir=str(tmpdir),
+        minimal=False,
+        serve_frontend=True,
+    )
+    loaded_modules_expected = {"MetricsHead", "DataHead"}
+
+    # Test the base case.
+    head._load_modules(modules_to_load=loaded_modules_expected)
+
+    # Test the supported case.
+    monkeypatch.setenv(PROMETHEUS_HEADERS_ENV_VAR, '{"H1": "V1", "H2": "V2"}')
+    head._load_modules(modules_to_load=loaded_modules_expected)
+
+    # Test the supported case.
+    monkeypatch.setenv(
+        PROMETHEUS_HEADERS_ENV_VAR,
+        '[["H1", "V1"], ["H2", "V2"], ["H2", "V3"]]',
+    )
+    head._load_modules(modules_to_load=loaded_modules_expected)
+
+    # Test the unsupported case.
+    with pytest.raises(ValueError):
+        monkeypatch.setenv(
+            PROMETHEUS_HEADERS_ENV_VAR, '{"H1": "V1", "H2": ["V1", "V2"]}'
+        )
+        head._load_modules(modules_to_load=loaded_modules_expected)
+
+    # Test the unsupported case.
+    with pytest.raises(ValueError):
+        monkeypatch.setenv(PROMETHEUS_HEADERS_ENV_VAR, "not_json")
+        head._load_modules(modules_to_load=loaded_modules_expected)
 
 
 @pytest.mark.skipif(

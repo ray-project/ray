@@ -1,3 +1,5 @@
+# @OldAPIStack
+
 import unittest
 
 import gymnasium as gym
@@ -29,7 +31,7 @@ class TestActionConnector(unittest.TestCase):
         self.assertFalse(bool(pipeline.timers.values()))
         pipeline(ActionConnectorDataType(0, 0, {}, ([1], [], None)))
         # After a first input, there should be one timer
-        self.assertEquals(len(pipeline.timers.values()), 1)
+        self.assertEqual(len(pipeline.timers.values()), 1)
 
     def test_convert_to_numpy_connector(self):
         ctx = ConnectorContext()

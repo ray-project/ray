@@ -64,14 +64,14 @@ class TfRLModule(tf.keras.Model, RLModule):
     def get_inference_action_dist_cls(self) -> Type[TfDistribution]:
         if self.action_dist_cls is not None:
             return self.action_dist_cls
-        elif isinstance(self.config.action_space, gym.spaces.Discrete):
+        elif isinstance(self.action_space, gym.spaces.Discrete):
             return TfCategorical
-        elif isinstance(self.config.action_space, gym.spaces.Box):
+        elif isinstance(self.action_space, gym.spaces.Box):
             return TfDiagGaussian
         else:
             raise ValueError(
                 f"Default action distribution for action space "
-                f"{self.config.action_space} not supported! Either set the "
+                f"{self.action_space} not supported! Either set the "
                 f"`self.action_dist_cls` property in your RLModule's `setup()` method "
                 f"to a subclass of `ray.rllib.models.tf.tf_distributions."
                 f"TfDistribution` or - if you need different distributions for "

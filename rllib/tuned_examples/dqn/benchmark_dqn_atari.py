@@ -302,11 +302,6 @@ config = (
         },
         clip_rewards=True,
     )
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .env_runners(
         # Every 4 agent steps a training update is performed.
         rollout_fragment_length=4,

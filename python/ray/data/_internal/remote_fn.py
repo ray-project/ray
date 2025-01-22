@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict, Hashable, List
 
 import ray
 
@@ -12,11 +12,22 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
     (ray imports ray.data in order to allow ``ray.data.read_foo()`` to work,
     which means ray.remote cannot be used top-level in ray.data).
 
-    Note: Dynamic arguments should not be passed in directly,
+    NOTE: Dynamic arguments should not be passed in directly,
     and should be set with ``options`` instead:
     ``cached_remote_fn(fn, **static_args).options(**dynamic_args)``.
     """
-    if fn not in CACHED_FUNCTIONS:
+
+    # NOTE: Hash of the passed in arguments guarantees that we're caching
+    #       complete instantiation of the Ray's remote method
+    #
+    # To compute the hash of passed in arguments and make sure it's deterministic
+    #   - Sort all KV-pairs by the keys
+    #   - Convert sorted list into tuple
+    #   - Compute hash of the resulting tuple
+    hashable_args = _make_hashable(ray_remote_args)
+    args_hash = hash(hashable_args)
+
+    if (fn, args_hash) not in CACHED_FUNCTIONS:
         default_ray_remote_args = {
             # Use the default scheduling strategy for all tasks so that we will
             # not inherit a placement group from the caller, if there is one.
@@ -27,8 +38,22 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
         }
         ray_remote_args = {**default_ray_remote_args, **ray_remote_args}
         _add_system_error_to_retry_exceptions(ray_remote_args)
-        CACHED_FUNCTIONS[fn] = ray.remote(**ray_remote_args)(fn)
-    return CACHED_FUNCTIONS[fn]
+
+        CACHED_FUNCTIONS[(fn, args_hash)] = ray.remote(**ray_remote_args)(fn)
+
+    return CACHED_FUNCTIONS[(fn, args_hash)]
+
+
+def _make_hashable(obj):
+    if isinstance(obj, (List, tuple)):
+        return tuple([_make_hashable(o) for o in obj])
+    elif isinstance(obj, Dict):
+        converted = [(_make_hashable(k), _make_hashable(v)) for k, v in obj.items()]
+        return tuple(sorted(converted, key=lambda t: t[0]))
+    elif isinstance(obj, Hashable):
+        return obj
+    else:
+        raise ValueError(f"Type {type(obj)} is not hashable")
 
 
 def _add_system_error_to_retry_exceptions(ray_remote_args) -> None:

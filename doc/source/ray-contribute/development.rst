@@ -92,8 +92,8 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 
 .. code-block:: shell
 
-    # For example, for Python 3.8:
-    pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+    # For example, for Python 3.9:
+    pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 
 4. Replace Python files in the installed package with your local editable copy. We provide a simple script to help you do this: ``python python/ray/setup-dev.py``. Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscaler`` dir (among other directories) bundled with the ``ray`` pip package, and replace them with links to your local code. This way, changing files in your git clone will directly affect the behavior of your installed Ray.
 
@@ -134,12 +134,13 @@ To build Ray on Ubuntu, run the following commands:
   ci/env/install-bazel.sh
 
   # Install node version manager and node 14
-  $(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh)
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
   nvm install 14
   nvm use 14
 
 .. note::
-  The `install-bazel.sh` script installs `bazelisk` for building Ray. 
+  The `install-bazel.sh` script installs `bazelisk` for building Ray.
+  It's worth noticing `bazel` is installed at `$HOME/bin/bazel`, please make sure it's on the executable `PATH`.
   If you prefer to use `bazel`, only version `6.5.0` is currently supported.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:

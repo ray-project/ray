@@ -126,7 +126,7 @@ Here are some of the subfields of the pod `template` to pay attention to:
 #### containers
 A Ray pod template specifies at minimum one container, namely the container
 that runs the Ray processes. A Ray pod template may also specify additional sidecar
-containers, for purposes such as {ref}`log processing <kuberay-logging>`. However, the KubeRay operator assumes that
+containers, for purposes such as {ref}`log processing <persist-kuberay-custom-resource-logs>`. However, the KubeRay operator assumes that
 the first container in the containers list is the main Ray container.
 Therefore, make sure to specify any sidecar containers
 **after** the main Ray container. In other words, the Ray container should be the **first**

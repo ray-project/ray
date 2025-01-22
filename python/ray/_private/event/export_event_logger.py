@@ -102,7 +102,7 @@ def _build_export_event_file_logger(
 ) -> logging.Logger:
     logger = logging.getLogger("_ray_export_event_logger_" + source)
     logger.setLevel(logging.INFO)
-    dir_path = pathlib.Path(sink_dir) / "events"
+    dir_path = pathlib.Path(sink_dir) / "export_events"
     filepath = dir_path / f"event_{source}.log"
     dir_path.mkdir(exist_ok=True)
     filepath.touch(exist_ok=True)
@@ -142,3 +142,23 @@ def get_export_event_logger(
             _export_event_logger[source_name] = ExportEventLoggerAdapter(source, logger)
 
         return _export_event_logger[source_name]
+
+
+def check_export_api_enabled(
+    source: ExportEvent.SourceType,
+) -> bool:
+    """
+    Check RAY_ENABLE_EXPORT_API_WRITE and RAY_ENABLE_EXPORT_API_WRITE_CONFIG environment
+    variables to verify if export events should be written for the given source type.
+
+    Args:
+        source: The source of the export event.
+    """
+    if ray_constants.RAY_ENABLE_EXPORT_API_WRITE:
+        return True
+    source_name = ExportEvent.SourceType.Name(source)
+    return (
+        source_name in ray_constants.RAY_ENABLE_EXPORT_API_WRITE_CONFIG
+        if ray_constants.RAY_ENABLE_EXPORT_API_WRITE_CONFIG
+        else False
+    )

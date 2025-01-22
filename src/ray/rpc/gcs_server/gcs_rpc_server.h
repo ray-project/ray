@@ -54,6 +54,10 @@ class AutoscalerStateServiceHandler {
   virtual void HandleDrainNode(DrainNodeRequest request,
                                DrainNodeReply *reply,
                                SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportClusterConfig(ReportClusterConfigRequest request,
+                                         ReportClusterConfigReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `AutoscalerStateService`.
@@ -74,6 +78,7 @@ class AutoscalerStateGrpcService : public GrpcService {
       const ClusterID &cluster_id) override {
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(GetClusterResourceState);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(ReportAutoscalingState);
+    AUTOSCALER_STATE_SERVICE_RPC_HANDLER(ReportClusterConfig);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(RequestClusterResourceConstraint);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(GetClusterStatus);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(DrainNode);
@@ -326,10 +331,6 @@ class NodeInfoGcsServiceHandler {
   virtual void HandleGetAllNodeInfo(GetAllNodeInfoRequest request,
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetInternalConfig(GetInternalConfigRequest request,
-                                       GetInternalConfigReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeInfoGcsService`.
@@ -360,7 +361,6 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
     NODE_INFO_SERVICE_RPC_HANDLER(CheckAlive);
   }
 
@@ -573,6 +573,10 @@ class InternalKVGcsServiceHandler {
   virtual void HandleInternalKVExists(InternalKVExistsRequest request,
                                       InternalKVExistsReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetInternalConfig(GetInternalConfigRequest request,
+                                       GetInternalConfigReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
 };
 
 class InternalKVGrpcService : public GrpcService {
@@ -593,6 +597,7 @@ class InternalKVGrpcService : public GrpcService {
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVDel);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVExists);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVKeys);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(GetInternalConfig);
   }
 
  private:

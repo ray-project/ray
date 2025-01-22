@@ -55,9 +55,12 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include "ray/util/macros.h"
 
 #if defined(_WIN32)
 #ifndef _WINDOWS_
@@ -86,19 +89,19 @@ enum { ERROR = 0 };
 
 namespace ray {
 /// Sync with ray._private.ray_logging.constants.LogKey
-constexpr std::string_view kLogKeyAsctime = "asctime";
-constexpr std::string_view kLogKeyLevelname = "levelname";
-constexpr std::string_view kLogKeyMessage = "message";
-constexpr std::string_view kLogKeyFilename = "filename";
-constexpr std::string_view kLogKeyLineno = "lineno";
-constexpr std::string_view kLogKeyComponent = "component";
-constexpr std::string_view kLogKeyJobID = "job_id";
-constexpr std::string_view kLogKeyWorkerID = "worker_id";
-constexpr std::string_view kLogKeyNodeID = "node_id";
-constexpr std::string_view kLogKeyActorID = "actor_id";
-constexpr std::string_view kLogKeyTaskID = "task_id";
-constexpr std::string_view kLogKeyObjectID = "object_id";
-constexpr std::string_view kLogKeyPlacementGroupID = "placement_group_id";
+inline constexpr std::string_view kLogKeyAsctime = "asctime";
+inline constexpr std::string_view kLogKeyLevelname = "levelname";
+inline constexpr std::string_view kLogKeyMessage = "message";
+inline constexpr std::string_view kLogKeyFilename = "filename";
+inline constexpr std::string_view kLogKeyLineno = "lineno";
+inline constexpr std::string_view kLogKeyComponent = "component";
+inline constexpr std::string_view kLogKeyJobID = "job_id";
+inline constexpr std::string_view kLogKeyWorkerID = "worker_id";
+inline constexpr std::string_view kLogKeyNodeID = "node_id";
+inline constexpr std::string_view kLogKeyActorID = "actor_id";
+inline constexpr std::string_view kLogKeyTaskID = "task_id";
+inline constexpr std::string_view kLogKeyObjectID = "object_id";
+inline constexpr std::string_view kLogKeyPlacementGroupID = "placement_group_id";
 
 // Define your specialization DefaultLogKey<your_type>::key to get .WithField(t)
 // See src/ray/common/id.h
@@ -127,21 +130,28 @@ enum class RayLogLevel {
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)) \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
+// `cond` is a `Status` class, could be `ray::Status`, or from third-party like
+// `grpc::Status`.
+#define RAY_LOG_IF_ERROR(level, cond) \
+  if (RAY_PREDICT_FALSE(!(cond).ok())) RAY_LOG(level)
+
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK(condition)                                                          \
-  (condition)                                                                         \
-      ? RAY_IGNORE_EXPR(0)                                                            \
-      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
-                               << " Check failed: " #condition " "
+#define RAY_CHECK_WITH_DISPLAY(condition, display)                                \
+  RAY_PREDICT_TRUE((condition))                                                   \
+  ? RAY_IGNORE_EXPR(0)                                                            \
+  : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
+                           << " Check failed: " display " "
+
+#define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(condition, #condition)
 
 #ifdef NDEBUG
 
-#define RAY_DCHECK(condition)                                                         \
-  (condition)                                                                         \
-      ? RAY_IGNORE_EXPR(0)                                                            \
-      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
-                               << " Debug check failed: " #condition " "
+#define RAY_DCHECK(condition)                                                     \
+  RAY_PREDICT_TRUE((condition))                                                   \
+  ? RAY_IGNORE_EXPR(0)                                                            \
+  : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
+                           << " Debug check failed: " #condition " "
 #else
 
 #define RAY_DCHECK(condition) RAY_CHECK(condition)
@@ -151,7 +161,7 @@ enum class RayLogLevel {
 #define RAY_CHECK_OP(left, op, right)        \
   if (const auto &_left_ = (left); true)     \
     if (const auto &_right_ = (right); true) \
-  RAY_CHECK((_left_ op _right_)) << " " << _left_ << " vs " << _right_
+  RAY_CHECK(RAY_PREDICT_TRUE(_left_ op _right_)) << " " << _left_ << " vs " << _right_
 
 #define RAY_CHECK_EQ(left, right) RAY_CHECK_OP(left, ==, right)
 #define RAY_CHECK_NE(left, right) RAY_CHECK_OP(left, !=, right)
@@ -247,18 +257,44 @@ class RayLog {
   /// This function to judge whether current log is fatal or not.
   bool IsFatal() const;
 
+  /// Get filepath to dump log from [log_dir] and [app_name].
+  /// If [log_dir] empty, return empty filepath.
+  static std::string GetLogFilepathFromDirectory(const std::string &log_dir,
+                                                 const std::string &app_name);
+
   /// The init function of ray log for a program which should be called only once.
   ///
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
-  /// \param logDir Logging output file name. If empty, the log won't output to file.
-  static void StartRayLog(const std::string &appName,
-                          RayLogLevel severity_threshold = RayLogLevel::INFO,
-                          const std::string &logDir = "");
+  /// \param log_filepath Logging output filepath. If empty, the log won't output to file,
+  /// but to stdout.
+  /// Because of log rotations, the logs be saved to log file names with `.<number>`
+  /// suffixes.
+  /// Example: if log_filepath is /my/path/raylet.out, the output can be
+  /// /my/path/raylet.out, /my/path/raylet.out.1 and /my/path/raylet.out.2
+  ///
+  /// \param log_rotation_max_size max bytes for of log rotation.
+  /// \param log_rotation_file_num max number of rotating log files.
+  static void StartRayLog(
+      const std::string &app_name,
+      RayLogLevel severity_threshold = RayLogLevel::INFO,
+      const std::string &log_filepath = "",
+      size_t log_rotation_max_size = std::numeric_limits<size_t>::max(),
+      size_t log_rotation_file_num = 1);
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   /// If `StartRayLog` wasn't called before, it will be no-op.
   static void ShutDownRayLog();
+
+  /// Get max bytes value from env variable.
+  /// Return default value, which indicates no rotation, if env not set, parse failure or
+  /// value 0.
+  static size_t GetRayLogRotationMaxBytesOrDefault();
+
+  /// Get log rotation backup count.
+  /// Return default value, which indicates no rotation, if env not set, parse failure or
+  /// value 0.
+  static size_t GetRayLogRotationBackupCountOrDefault();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
   static void UninstallSignalAction();
@@ -369,9 +405,6 @@ class RayLog {
   /// to indicate which component generates the log.
   /// This is empty if we log to file.
   static std::string component_name_;
-  /// The directory where the log files are stored.
-  /// If this is empty, logs are printed to stdout.
-  static std::string log_dir_;
   /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
   /// InstallFailureSignalHandler was not called.
   static bool is_failure_signal_handler_installed_;
@@ -380,9 +413,9 @@ class RayLog {
   // Log format pattern.
   static std::string log_format_pattern_;
   // Log rotation file size limitation.
-  static long log_rotation_max_size_;
+  inline static size_t log_rotation_max_size_ = std::numeric_limits<size_t>::max();
   // Log rotation file number.
-  static long log_rotation_file_num_;
+  inline static size_t log_rotation_file_num_ = 1;
   // Ray default logger name.
   static std::string logger_name_;
 

@@ -6,13 +6,21 @@ import pytest
 from google.protobuf.any_pb2 import Any as AnyProto
 
 from ray import cloudpickle
+from ray.serve._private.default_impl import add_grpc_address
 from ray.serve._private.grpc_util import (
     DummyServicer,
-    create_serve_grpc_server,
-    gRPCServer,
+    gRPCGenericServer,
 )
 from ray.serve._private.test_utils import FakeGrpcContext
 from ray.serve.grpc_util import RayServegRPCContext
+
+
+class FakeGrpcServer:
+    def __init__(self):
+        self.address = None
+
+    def add_insecure_port(self, address):
+        self.address = address
 
 
 def fake_service_handler_factory(service_method: str, stream: bool) -> Callable:
@@ -36,24 +44,10 @@ def test_dummy_servicer_can_take_any_methods():
     dummy_servicer.Predict
 
 
-def test_create_serve_grpc_server():
-    """Test `create_serve_grpc_server()` creates the correct server.
-
-    The server created by `create_serve_grpc_server()` should be an instance of
-    Serve defined `gRPCServer`. Also, the handler factory passed with the function
-    should be used to initialize the `gRPCServer`.
-    """
-    grpc_server = create_serve_grpc_server(
-        service_handler_factory=fake_service_handler_factory
-    )
-    assert isinstance(grpc_server, gRPCServer)
-    assert grpc_server.service_handler_factory == fake_service_handler_factory
-
-
 def test_grpc_server():
-    """Test `gRPCServer` did the correct overrides.
+    """Test `gRPCGenericServer` did the correct overrides.
 
-    When a add_servicer_to_server function is called on an instance of `gRPCServer`,
+    When a add_servicer_to_server function is called on an instance of `gRPCGenericServer`,
     it correctly overrides `response_serializer` to None, and `unary_unary` and
     `unary_stream` to be generated from the factory function.
     """
@@ -73,15 +67,7 @@ def test_grpc_server():
         )
         server.add_generic_rpc_handlers((generic_handler,))
 
-    grpc_server = gRPCServer(
-        thread_pool=None,
-        generic_handlers=(),
-        interceptors=(),
-        options=(),
-        maximum_concurrent_rpcs=None,
-        compression=None,
-        service_handler_factory=fake_service_handler_factory,
-    )
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
     dummy_servicer = DummyServicer()
 
     # Ensure `generic_rpc_handlers` is not populated before calling
@@ -118,6 +104,15 @@ def test_ray_serve_grpc_context_serializable():
     cloudpickled_context = cloudpickle.dumps(context)
     deserialized_context = pickle.loads(cloudpickled_context)
     assert deserialized_context.__dict__ == context.__dict__
+
+
+def test_add_grpc_address():
+    """Test `add_grpc_address` adds the address to the gRPC server."""
+    fake_grpc_server = FakeGrpcServer()
+    grpc_address = "fake_address:50051"
+    assert fake_grpc_server.address is None
+    add_grpc_address(fake_grpc_server, grpc_address)
+    assert fake_grpc_server.address == grpc_address
 
 
 if __name__ == "__main__":
