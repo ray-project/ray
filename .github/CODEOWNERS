@@ -3,10 +3,9 @@
 #
 # We will remove CODEOWNER when the test infra is synced with upstream and more
 # mature
-anyscale/ci @aslonnie @can-anyscale @khluu
-anyscale/docker @aslonnie @can-anyscale @khluu
-anyscale/go @aslonnie @lanbochen-anyscale
+anyscale/ci @aslonnie @khluu
+anyscale/docker @aslonnie @khluu
 
 # Data team
-/python/ray/anyscale/data @bveeramani @scottjlee @raulchen @omatthew98 @alexeykudinkin @srinathk10
-/release/anyscale/data @bveeramani @scottjlee @raulchen @omatthew98 @alexeykudinkin @srinathk10
+/python/ray/anyscale/data @bveeramani @raulchen @omatthew98 @alexeykudinkin @srinathk10
+/release/anyscale/data @bveeramani @raulchen @omatthew98 @alexeykudinkin @srinathk10
