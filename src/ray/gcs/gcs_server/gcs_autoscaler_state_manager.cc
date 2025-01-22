@@ -434,6 +434,9 @@ std::string GcsAutoscalerStateManager::DebugString() const {
   stream << "GcsAutoscalerStateManager: "
          << "\n- last_seen_autoscaler_state_version_: "
          << last_seen_autoscaler_state_version_
+         << "\n - autoscaling_status_.autoscaler_state_version"
+         << (autoscaling_state_.has_value() ? autoscaling_state_->autoscaler_state_version()
+                                            : -1)
          << "\n- last_cluster_resource_state_version_: "
          << last_cluster_resource_state_version_ << "\n- pending demands:\n";
 
