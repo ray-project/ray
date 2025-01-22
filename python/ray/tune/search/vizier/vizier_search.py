@@ -2,8 +2,9 @@
 
 import datetime
 import json
+import logging
 import uuid
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search import UNDEFINED_METRIC_MODE, UNRESOLVED_SEARCH_SPACE, Searcher
@@ -21,11 +22,15 @@ except ImportError:
     IMPORT_SUCCESSFUL = False
 
 
+logger = logging.getLogger(__name__)
+
+
 class VizierSearch(Searcher):
     """A wrapper around OSS Vizier to provide trial suggestions.
 
-    OSS Vizier is a Python-based service for black-box optimization based on Google Vizier,
-    one of the first hyperparameter tuning services designed to work at scale.
+    OSS Vizier is a Python-based service for black-box optimization based on
+    Google Vizier, one of the first hyperparameter tuning services
+    designed to work at scale.
 
     More info can be found here: https://github.com/google/vizier.
 
@@ -36,14 +41,16 @@ class VizierSearch(Searcher):
         pip install google-vizier[jax]
 
     Args:
-        space: A dict mapping parameter names to Tune search spaces or a Vizier SearchSpace object.
+        space: A dict mapping parameter names to Tune search spaces
+            or a Vizier SearchSpace object.
         metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
         mode: One of {"min", "max"}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        algorithm: Specific algorithm from Vizier's library to use. "DEFAULT" corresponds to GP-UCB-PE. See
-            https://oss-vizier.readthedocs.io/en/latest/guides/user/supported_algorithms.html for more options.
+        algorithm: Specific algorithm from Vizier's library to use.
+        "DEFAULT" corresponds to GP-UCB-PE. See https://oss-vizier.readthedocs.io\
+/en/latest/guides/user/supported_algorithms.html for more options.
 
     Tune automatically converts search spaces to Vizier's format:
 
