@@ -81,7 +81,7 @@ ray_cc_library(
         "subreaper.cc",
     ],
     deps = [
-        ":cmd_line_utils"
+        ":cmd_line_utils",
         ":logging",
         ":macros",
         "@boost//:asio",
