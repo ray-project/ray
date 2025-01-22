@@ -25,7 +25,6 @@ from ray._private.utils import (
     get_or_create_event_loop,
 )
 from ray.dag import DAGContext
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_pid_to_exit,
@@ -891,13 +890,13 @@ class TestMultiArgs:
         a2 = Actor.remote(0)
         c = Collector.remote()
         with InputNode() as i:
-            i.with_type_hint(TorchTensorType())
+            i.with_tensor_transport()
             branch1 = a1.echo.bind(i[0])
-            branch1.with_type_hint(TorchTensorType())
+            branch1.with_tensor_transport()
             branch2 = a2.echo.bind(i[1])
-            branch2.with_type_hint(TorchTensorType())
+            branch2.with_tensor_transport()
             dag = c.collect_two.bind(branch2, branch1)
-            dag.with_type_hint(TorchTensorType())
+            dag.with_tensor_transport()
 
         compiled_dag = dag.experimental_compile()
 
@@ -2850,7 +2849,7 @@ def test_torch_tensor_type(shutdown_only):
                     inp,
                     self._base.generate_torch_tensor.bind(
                         inp,
-                    ).with_type_hint(TorchTensorType()),
+                    ).with_tensor_transport(),
                 )
             self._cdag = dag.experimental_compile()
 
