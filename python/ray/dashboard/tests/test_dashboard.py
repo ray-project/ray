@@ -153,7 +153,7 @@ def test_basic(ray_start_regular):
         namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
     )
     assert dashboard_rpc_address is not None
-    key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_PREFIX}{node_id}"
+    key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
     agent_addr = ray.experimental.internal_kv._internal_kv_get(
         key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )

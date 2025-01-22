@@ -250,12 +250,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         attempt_number = req.query.get("attempt_number")
         node_id_hex = req.query.get("node_id")
 
-        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
-        if not ip_ports:
+        addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
+        if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
                 text=f"Failed to get agent address for node {node_id_hex}"
             )
-        ip, http_port, grpc_port = ip_ports
+        node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
 
         # Default not using `--native` for profiling
@@ -353,12 +353,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
-        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
-        if not ip_ports:
+        addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
+        if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
                 text=f"Failed to get agent address for node {node_id_hex}"
             )
-        ip, http_port, grpc_port = ip_ports
+        node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
 
         try:
@@ -416,28 +416,30 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     async def get_traceback(self, req) -> aiohttp.web.Response:
         """
         Params:
-            pid: The PID of the worker.
-            node_id: The ID of the node.
-        """
-        if "pid" not in req.query:
-            raise ValueError("pid is required")
-        if "node_id" not in req.query:
-            raise ValueError("node_id is required")
+            pid: Required. The PID of the worker.
+            ip: Required. The IP address of the node.
 
-        node_id_hex = req.query["node_id"]
-        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
-        if not ip_ports:
+        """
+        pid = req.query.get("pid")
+        ip = req.query.get("ip")
+        if not pid:
+            raise ValueError("pid is required")
+        if not ip:
+            raise ValueError("ip is required")
+
+        addrs = await self._get_stub_address_by_ip(ip)
+        if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
-                text=f"Failed to get agent address for node {node_id_hex}"
+                text=f"Failed to get agent address for node at IP {ip}"
             )
-        ip, http_port, grpc_port = ip_ports
+        node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
-        pid = int(req.query["pid"])
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
         logger.info(
             f"Sending stack trace request to {ip}:{grpc_port}, pid {pid}, with native={native}"
         )
+        pid = int(pid)
         reply = await reporter_stub.GetTraceback(
             reporter_pb2.GetTracebackRequest(pid=pid, native=native)
         )
@@ -451,24 +453,25 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     async def cpu_profile(self, req) -> aiohttp.web.Response:
         """
         Params:
-            pid: The PID of the worker.
-            node_id: The ID of the node.
+            pid: Required. The PID of the worker.
+            ip: Required. The IP address of the node.
         """
-        if "pid" not in req.query:
+        pid = req.query.get("pid")
+        ip = req.query.get("ip")
+        if not pid:
             raise ValueError("pid is required")
-        if "node_id" not in req.query:
-            raise ValueError("node_id is required")
+        if not ip:
+            raise ValueError("ip is required")
 
-        node_id_hex = req.query["node_id"]
-        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
-        if not ip_ports:
+        addrs = await self._get_stub_address_by_ip(ip)
+        if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
-                text=f"Failed to get agent address for node {node_id_hex}"
+                text=f"Failed to get agent address for node at IP {ip}"
             )
-        ip, http_port, grpc_port = ip_ports
+        node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
 
-        pid = int(req.query["pid"])
+        pid = int(pid)
         duration_s = int(req.query.get("duration", 5))
         if duration_s > 60:
             raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
@@ -514,7 +517,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         Params (1):
             pid: The PID of the worker.
-            node_id: The ID of the node.
+            ip: The IP address of the node.
         Params (2):
             task_id: The ID of the task.
             attempt_number: The attempt number of the task.
@@ -536,6 +539,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         """
         is_task = "task_id" in req.query
 
+        # Either is_task or not, we need to get ip and grpc_port.
         if is_task:
             if "attempt_number" not in req.query:
                 return aiohttp.web.HTTPInternalServerError(
@@ -560,12 +564,28 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 )
             except ValueError as e:
                 raise aiohttp.web.HTTPInternalServerError(text=str(e))
+            node_id_hex = req.query.get("node_id")
+            addrs = await self._get_stub_address_by_node_id(
+                NodeID.from_hex(node_id_hex)
+            )
+            if not addrs:
+                return aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to execute: no agent address found for node {node_id_hex}"
+                )
+            _, ip, _, grpc_port = addrs
         else:
             pid = int(req.query["pid"])
+            ip = req.query.get("ip")
+            addrs = await self._get_stub_address_by_ip(ip)
+            if not addrs:
+                return aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to execute: no agent address found for node {ip}"
+                )
+            _, ip, _, grpc_port = addrs
 
         assert pid is not None
+        ip_port = f"{ip}:{grpc_port}"
 
-        node_id_hex = req.query.get("node_id")
         duration_s = int(req.query.get("duration", 10))
 
         # Default not using `--native`, `--leaks` and `--format` for profiling
@@ -574,13 +594,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         leaks = req.query.get("leaks", False) == "1"
         trace_python_allocators = req.query.get("trace_python_allocators", False) == "1"
 
-        ip_ports = await self._get_stub_address(NodeID.from_hex(node_id_hex))
-        if not ip_ports:
-            return aiohttp.web.HTTPInternalServerError(
-                text=f"Failed to execute: no agent address found for node {node_id_hex}"
-            )
-        ip, http_port, grpc_port = ip_ports
-        reporter_stub = self._make_stub(f"{ip}:{grpc_port}")
+        reporter_stub = self._make_stub(ip_port)
 
         logger.info(
             f"Retrieving memory profiling request to {ip}:{grpc_port}, pid {pid}, with native={native}"
@@ -641,9 +655,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             headers={"Content-Type": "text/html"},
         )
 
-    async def _get_stub_address(
+    async def _get_stub_address_by_node_id(
         self, node_id: NodeID
-    ) -> Optional[Tuple[str, int, int]]:
+    ) -> Optional[Tuple[NodeID, str, int, int]]:
         """
         Given a NodeID, get agent port from InternalKV.
 
@@ -652,14 +666,27 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         If not found, return None.
         """
         agent_addr_json = await self.gcs_aio_client.internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_PREFIX}{node_id.hex()}".encode(),
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
             namespace=KV_NAMESPACE_DASHBOARD,
             timeout=GCS_RPC_TIMEOUT_SECONDS,
         )
         if not agent_addr_json:
             return None
         ip, http_port, grpc_port = json.loads(agent_addr_json)
-        return ip, http_port, grpc_port
+        return node_id, ip, http_port, grpc_port
+
+    async def _get_stub_address_by_ip(
+        self, ip: str
+    ) -> Optional[Tuple[NodeID, str, int, int]]:
+        agent_addr_json = await self.gcs_aio_client.internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{ip}".encode(),
+            namespace=KV_NAMESPACE_DASHBOARD,
+            timeout=GCS_RPC_TIMEOUT_SECONDS,
+        )
+        if not agent_addr_json:
+            return None
+        node_id, http_port, grpc_port = json.loads(agent_addr_json)
+        return node_id, ip, http_port, grpc_port
 
     def _make_stub(
         self, ip_port: str

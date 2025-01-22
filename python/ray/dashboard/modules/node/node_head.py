@@ -216,7 +216,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         present until agent.py starts, so we need to loop waiting for agent.py writes
         its port to internal kv.
         """
-        key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_PREFIX}{node_id}".encode()
+        key = (
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode()
+        )
         while True:
             try:
                 agent_addr = await self.gcs_aio_client.internal_kv_get(
