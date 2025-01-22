@@ -11,7 +11,7 @@ from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext
-from ray.train.v2._internal.util import _copy_doc, invoke_callbacks_context_managers
+from ray.train.v2._internal.util import _copy_doc, invoke_context_managers
 from ray.train.v2.api.config import RunConfig
 
 if TYPE_CHECKING:
@@ -256,10 +256,12 @@ class TrainContext(TrainRunContext):
         would also require the `TrainContextCallback` to be updated as well.
         """
 
-        with invoke_callbacks_context_managers(
-            self.get_context_callbacks(), "on_report"
+        with invoke_context_managers(
+            [
+                callback.on_report
+                for callback in self.execution_context.train_context_callbacks
+            ]
         ):
-
             # Step 1: sync the checkpoint dir name across ranks.
             checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
                 checkpoint_dir_name

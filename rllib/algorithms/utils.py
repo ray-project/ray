@@ -7,9 +7,12 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.actor_manager import FaultAwareApply
-from ray.rllib.utils.framework import get_device
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import DeveloperAPI
+
+torch, _ = try_import_torch()
 
 
 @DeveloperAPI(stability="alpha")
@@ -45,7 +48,12 @@ class AggregatorActor(FaultAwareApply):
 
         # Set device and node.
         self._node = platform.node()
-        self._device = get_device(self.config, 1)
+        self._device = torch.device(
+            f"cuda:{ray.get_gpu_ids()[0]}"
+            if self.config.num_gpus_per_learner > 0
+            else "cpu"
+        )
+        self.metrics = MetricsLogger()
 
         # Create the RLModule.
         # TODO (sven): For now, this RLModule (its weights) never gets updated.
@@ -64,7 +72,18 @@ class AggregatorActor(FaultAwareApply):
         )
 
     def get_batch(self, episode_refs: List[ray.ObjectRef]):
-        episodes: List[EpisodeType] = tree.flatten(ray.get(episode_refs))
+        episodes: List[EpisodeType] = []
+        # It's possible that individual refs are invalid due to the EnvRunner
+        # that produced the ref has crashed or had its entire node go down.
+        # In this case, try each ref individually and collect only valid results.
+        try:
+            episodes = tree.flatten(ray.get(episode_refs))
+        except ray.exceptions.OwnerDiedError:
+            for ref in episode_refs:
+                try:
+                    episodes.extend(ray.get(ref))
+                except ray.exceptions.OwnerDiedError:
+                    pass
 
         env_steps = sum(len(e) for e in episodes)
 
@@ -73,6 +92,7 @@ class AggregatorActor(FaultAwareApply):
         batch_on_gpu = self._learner_connector(
             episodes=episodes,
             rl_module=self._module,
+            metrics=self.metrics,
         )
         # Convert to a dict into a `MultiAgentBatch`.
         # TODO (sven): Try to get rid of dependency on MultiAgentBatch (once our mini-
@@ -84,3 +104,6 @@ class AggregatorActor(FaultAwareApply):
             env_steps=env_steps,
         )
         return ma_batch_on_gpu
+
+    def get_metrics(self):
+        return self.metrics.reduce()

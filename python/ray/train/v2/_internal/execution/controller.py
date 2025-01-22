@@ -15,17 +15,17 @@ from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupTimeoutError,
 )
 from ray.train.v2._internal.execution.callback import (
-    Callback,
     ControllerCallback,
+    ReportCallback,
     TrainContextCallback,
     WorkerCallback,
     WorkerGroupCallback,
 )
-from ray.train.v2._internal.execution.checkpoint.checkpoint_handler import (
-    CheckpointHandler,
-)
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
+)
+from ray.train.v2._internal.execution.checkpoint.report_handler import (
+    ReportCallbackHandler,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.failure_handling import (
@@ -42,6 +42,7 @@ from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGro
 from ray.train.v2._internal.logging.logging import configure_controller_logger
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.result import Result, _build_result
+from ray.train.v2.api.callback import RayTrainCallback
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ class TrainController:
         train_run_context: TrainRunContext,
         scaling_policy: ScalingPolicy,
         failure_policy: FailurePolicy,
-        callbacks: Optional[List[Callback]] = None,
+        callbacks: Optional[List[RayTrainCallback]] = None,
     ):
         self._train_run_context = train_run_context
         configure_controller_logger(self._train_run_context)
@@ -106,8 +107,12 @@ class TrainController:
             checkpoint_config=self._run_config.checkpoint_config,
             storage_context=self._storage_context,
         )
-
-        self._checkpoint_handler = CheckpointHandler(self._checkpoint_manager)
+        report_handler = ReportCallbackHandler(
+            report_callbacks=(
+                [self._checkpoint_manager]
+                + [c for c in self._callbacks if isinstance(c, ReportCallback)]
+            )
+        )
 
         # Group callbacks by the hooks they're subscribed to.
         self._controller_callbacks = [self._scaling_policy] + [
@@ -115,7 +120,7 @@ class TrainController:
         ]
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
-        worker_group_callbacks_to_propagate = [self._checkpoint_handler] + [
+        worker_group_callbacks_to_propagate = [report_handler] + [
             c
             for c in self._callbacks
             if isinstance(
@@ -230,10 +235,10 @@ class TrainController:
                 placement_strategy=placement_strategy,
                 checkpoint=latest_checkpoint,
             )
-        except (WorkerGroupStartupTimeoutError, WorkerGroupStartupFailedError):
-            logger.exception(
-                "Retrying training worker group startup. "
-                "The previous attempt encountered the following failure:"
+        except (WorkerGroupStartupTimeoutError, WorkerGroupStartupFailedError) as e:
+            logger.error(
+                "Retrying the launch of the training worker group. "
+                f"The previous launch attempt encountered the following failure:\n{e}"
             )
 
             # TODO: Should this logic go through the failure policy?

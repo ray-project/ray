@@ -1,12 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
-
 .. _rllib-examples-overview-docs:
 
 Examples
 ========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 This page contains an index of all the python scripts in the
 `examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__
@@ -56,6 +55,13 @@ All example sub-folders
 
 Actions
 +++++++
+
+.. _rllib-examples-overview-autoregressive-actions:
+
+- `Auto-regressive actions <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/autoregressive_actions.py>`__:
+   Configures an RL module that generates actions in an autoregressive manner, where the second component of an action depends on
+   the previously sampled first component of the same action.
+
 - `Nested Action Spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/nested_action_spaces.py>`__:
    Sets up an environment with nested action spaces using custom single- or multi-agent
    configurations. This example demonstrates how RLlib manages complex action structures,
@@ -248,6 +254,11 @@ Learners
 Metrics
 +++++++
 
+- `Logging custom metrics in Algorithm.training_step <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__:
+   Shows how to log custom metrics inside a custom :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` through overriding
+   the :py:meth:`` method and making calls to the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.log_value` method
+   of the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` instance.
+
 - `Logging custom metrics in EnvRunners <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__:
    Demonstrates adding custom metrics to :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors, providing a way to track specific
    performance- and environment indicators beyond the standard RLlib metrics.
@@ -346,9 +357,8 @@ RLModules
    Implements an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` with action masking, where certain disallowed actions are
    masked based on parts of the observation dict, useful for environments with conditional action availability.
 
-- `Auto-regressive actions <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/autoregressive_actions_rl_module.py>`__:
-   Configures an RL module that generates actions in an autoregressive manner, where the second component of an action depends on
-   the previously sampled first component of the same action.
+- `Auto-regressive actions <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/autoregressive_actions.py>`__:
+   :ref:`See here for more details <rllib-examples-overview-autoregressive-actions>`.
 
 - `Custom CNN-based RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__:
    Demonstrates a custom CNN architecture realized as an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, enabling convolutional

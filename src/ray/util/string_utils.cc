@@ -12,20 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This file contains a series of testing utils which are specific to linux platform.
-
-#pragma once
-
-#if !defined(__APPLE__) && !defined(__linux__)
-#error "This header file can only be used in unix"
-#endif
-
-#include <string>
+#include "ray/util/string_utils.h"
 
 namespace ray {
 
-// Read the whole content for the given [fname], and return as string.
-// If any error happens, throw exception.
-std::string CompleteReadFile(const std::string &fname);
+std::string StringToHex(const std::string &str) {
+  constexpr char hex[] = "0123456789abcdef";
+  std::string result;
+  for (size_t i = 0; i < str.size(); i++) {
+    unsigned char val = str[i];
+    result.push_back(hex[val >> 4]);
+    result.push_back(hex[val & 0xf]);
+  }
+  return result;
+}
+
+std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
+  int i = 0;
+  std::string result;
+  format += "%n";
+  if (static_cast<size_t>(sscanf(&*c_str, format.c_str(), &i)) <= 1) {
+    result.insert(result.end(), c_str, c_str + i);
+    c_str += i;
+  }
+  return result;
+}
 
 }  // namespace ray
