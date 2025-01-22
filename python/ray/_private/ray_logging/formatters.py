@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 import logging
 import json
 from ray._private.log import INTERNAL_TIMESTAMP_LOG_KEY
@@ -83,6 +83,10 @@ class AbstractFormatter(logging.Formatter, ABC):
             )
 
         return record_format_attrs
+
+    @abstractmethod
+    def format(self, record: logging.LogRecord) -> str:
+        pass
 
 
 class JSONFormatter(AbstractFormatter):
