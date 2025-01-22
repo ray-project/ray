@@ -183,6 +183,7 @@ from ray.tune.registry import get_trainable_cls
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner_group import LearnerGroup
+    from ray.rllib.offline.offline_data import OfflineData
 
 try:
     from ray.rllib.extensions import AlgorithmBase
@@ -225,35 +226,44 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI
 class Algorithm(Checkpointable, Trainable, AlgorithmBase):
-    """An RLlib algorithm responsible for optimizing one or more Policies.
-
-    Algorithms contain a EnvRunnerGroup under `self.env_runner_group`. An EnvRunnerGroup
-    is composed of a single local EnvRunner (`self.env_runner_group.local_env_runner`),
-    serving as the reference copy of the NeuralNetwork(s) to be trained and optionally
-    one or more remote EnvRunners used to generate environment samples in parallel.
-    EnvRunnerGroup is fault-tolerant and elastic. It tracks health states for all
-    the managed remote EnvRunner actors. As a result, Algorithm should never
-    access the underlying actor handles directly. Instead, always access them
-    via all the foreach APIs with assigned IDs of the underlying EnvRunners.
-
-    Each EnvRunners (remotes or local) contains a PolicyMap, which itself
-    may contain either one policy for single-agent training or one or more
-    policies for multi-agent training. Policies are synchronized
-    automatically from time to time using ray.remote calls. The exact
-    synchronization logic depends on the specific algorithm used,
-    but this usually happens from local worker to all remote workers and
-    after each training update.
+    """An RLlib algorithm responsible for training one or more neural network models.
 
     You can write your own Algorithm classes by sub-classing from `Algorithm`
-    or any of its built-in sub-classes.
-    This allows you to override the `training_step` method to implement
-    your own algorithm logic. You can find the different built-in
-    algorithms' `training_step()` methods in their respective main .py files,
-    e.g. rllib.algorithms.dqn.dqn.py or rllib.algorithms.impala.impala.py.
+    or any of its built-in subclasses.
+    Override the `training_step` method to implement your own algorithm logic.
+    Find the various built-in `training_step()` methods for different algorithms in
+    their respective [algo name].py files, for example:
+    `ray.rllib.algorithms.dqn.dqn.py` or `ray.rllib.algorithms.impala.impala.py`.
 
     The most important API methods a Algorithm exposes are `train()`,
     `evaluate()`, `save_to_path()` and `restore_from_path()`.
     """
+
+    #: The AlgorithmConfig instance of the Algorithm.
+    config: Optional[AlgorithmConfig] = None
+    #: The MetricsLogger instance of the Algorithm. RLlib uses this to log
+    #: metrics from within the `training_step()` method. Users can use it to log
+    #: metrics from within their custom Algorithm-based callbacks.
+    metrics: Optional[MetricsLogger] = None
+    #: The `EnvRunnerGroup` of the Algorithm. An `EnvRunnerGroup` is
+    #: composed of a single local `EnvRunner` (see: `self.env_runner`), serving as
+    #: the reference copy of the models to be trained and optionally one or more
+    #: remote `EnvRunners` used to generate training samples from the RL
+    #: environment, in parallel. EnvRunnerGroup is fault-tolerant and elastic. It
+    #: tracks health states for all the managed remote EnvRunner actors. As a
+    #: result, Algorithm should never access the underlying actor handles directly.
+    #: Instead, always access them via all the foreach APIs with assigned IDs of
+    #: the underlying EnvRunners.
+    env_runner_group: Optional[EnvRunnerGroup] = None
+    #: A special EnvRunnerGroup only used for evaluation, not to
+    #: collect training samples.
+    eval_env_runner_group: Optional[EnvRunnerGroup] = None
+    #: The `LearnerGroup` instance of the Algorithm, managing either
+    #: one local `Learner` or one or more remote `Learner` actors. Responsible for
+    #: updating the models from RL environment (episode) data.
+    learner_group: Optional["LearnerGroup"] = None
+    #: An optional OfflineData instance, used for offline RL.
+    offline_data: Optional["OfflineData"] = None
 
     # Whether to allow unknown top-level config keys.
     _allow_unknown_configs = False
@@ -442,7 +452,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Return the new algo.
         return new_algo
 
-    @PublicAPI
     def __init__(
         self,
         config: Optional[AlgorithmConfig] = None,
@@ -2991,6 +3000,16 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @override(Trainable)
     def cleanup(self) -> None:
+        # Stop all Learners.
+        if hasattr(self, "learner_group") and self.learner_group is not None:
+            self.learner_group.shutdown()
+
+        # Stop all aggregation actors.
+        if hasattr(self, "_aggregator_actor_manager") and (
+            self._aggregator_actor_manager is not None
+        ):
+            self._aggregator_actor_manager.clear()
+
         # Stop all EnvRunners.
         if hasattr(self, "env_runner_group") and self.env_runner_group is not None:
             self.env_runner_group.stop()
@@ -2999,10 +3018,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             and self.eval_env_runner_group is not None
         ):
             self.eval_env_runner_group.stop()
-
-        # Stop all Learners.
-        if hasattr(self, "learner_group") and self.learner_group is not None:
-            self.learner_group.shutdown()
 
     @OverrideToImplementCustomLogic
     @classmethod
@@ -3641,10 +3656,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @property
     def env_runner(self):
+        """The local EnvRunner instance within the algo's EnvRunnerGroup."""
         return self.env_runner_group.local_env_runner
 
     @property
     def eval_env_runner(self):
+        """The local EnvRunner instance within the algo's evaluation EnvRunnerGroup."""
         return self.eval_env_runner_group.local_env_runner
 
     def _record_usage(self, config):

@@ -2998,6 +2998,36 @@ def test_signature_mismatch(shutdown_only):
             _ = worker.g.bind(inp)
 
 
+def test_missing_input_node():
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+        def f(self, input):
+            return input
+
+        def add(self, a, b):
+            return a + b
+
+    actor = Actor.remote()
+
+    with ray.dag.InputNode() as dag_input:
+        input0, input1, input2 = dag_input[0], dag_input[1], dag_input[2]
+        _ = actor.f.bind(input1)
+        dag = actor.add.bind(input0, input2)
+
+    with pytest.raises(
+        ValueError,
+        match="Compiled Graph expects input to be accessed "
+        "using all of attributes 0, 1, 2, "
+        "but 1 is unused. "
+        "Ensure all input attributes are used and contribute "
+        "to the computation of the Compiled Graph output.",
+    ):
+        dag.experimental_compile()
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Sigint not supported on Windows")
 def test_sigint_get_dagref(ray_start_cluster):
     driver_script = """
