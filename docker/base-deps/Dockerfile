@@ -76,6 +76,8 @@ wget --quiet \
      -O /tmp/miniforge.sh
 
 /bin/bash /tmp/miniforge.sh -b -u -p $HOME/anaconda3
+
+$HOME/anaconda3/bin/conda init
 echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc
 rm /tmp/miniforge.sh
 
