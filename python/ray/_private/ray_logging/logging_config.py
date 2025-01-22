@@ -7,7 +7,7 @@ from ray._private.ray_logging.formatters import TextFormatter
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray.util.annotations import PublicAPI, Deprecated
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import logging
 
@@ -36,7 +36,7 @@ class LoggingConfigurator(ABC):
     # Also, assuming the function will only be called inside LoggingConfig._apply() and
     # LoggingConfigData should have all fields in LoggingConfig set.
     def configure_logging_settings(self, logging_config: LoggingConfigData):
-        configure_logging(logging_config.encoding, logging_config.log_level)
+        self.configure_logging(logging_config.encoding, logging_config.log_level)
 
 
 class DefaultLoggingConfigurator(LoggingConfigurator):
@@ -120,7 +120,7 @@ class LoggingConfig:
     def _configure_logging(self):
         """Set up the logging configuration for the current process."""
         _logging_configurator.configure_logging_settings(
-            LoggingConfigData(**vars(self))
+            LoggingConfigData(asdict(self))
         )
 
     def _apply(self):
