@@ -43,7 +43,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
             terminated=False,
             truncated=False,
             len_lookback_buffer=0,
-        ).finalize()
+        ).to_numpy()
         check(len(episode1), 2)
         check(episode1.is_truncated, False)
 
@@ -54,7 +54,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
             terminated=True,  # a terminated episode
             truncated=False,
             len_lookback_buffer=0,
-        ).finalize()
+        ).to_numpy()
         check(len(episode2), 5)
         check(episode2.is_truncated, False)
         check(episode2.is_terminated, True)

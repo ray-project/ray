@@ -10,6 +10,14 @@ clang_format() {
   ./ci/lint/check-git-clang-format-output.sh
 }
 
+pre_commit() {
+  # Run pre-commit on all files
+  # TODO(MortalHappiness): Run all pre-commit checks
+  # Currently, we only run the ruff format check
+  pip install -c python/requirements_compiled.txt pre-commit
+  pre-commit run ruff --all-files --show-diff-on-failure
+}
+
 code_format() {
   pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
   FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts

@@ -1,12 +1,11 @@
 import logging
 import re
 from collections import defaultdict
-from typing import AsyncIterable, Callable, Dict, List, Optional, Tuple
+from typing import AsyncIterable, Awaitable, Callable, Dict, List, Optional, Tuple
 
+from ray import ActorID, NodeID, WorkerID
 from ray._private.pydantic_compat import BaseModel
-
-# TODO(sang): Remove the usage of this class.
-from ray.dashboard.datacenter import DataSource
+from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
 from ray.util.state.common import (
     DEFAULT_RPC_TIMEOUT,
@@ -84,6 +83,7 @@ class LogsManager:
     async def stream_logs(
         self,
         options: GetLogOptions,
+        get_actor_fn: Callable[[ActorID], Awaitable[Optional[ActorTableData]]],
     ) -> AsyncIterable[bytes]:
         """Generate a stream of logs in bytes.
 
@@ -102,7 +102,7 @@ class LogsManager:
             task_id=options.task_id,
             attempt_number=options.attempt_number,
             pid=options.pid,
-            get_actor_fn=DataSource.actors.get,
+            get_actor_fn=get_actor_fn,
             timeout=options.timeout,
             suffix=options.suffix,
             submission_id=options.submission_id,
@@ -169,33 +169,34 @@ class LogsManager:
 
     async def _resolve_worker_file(
         self,
-        node_id: str,
-        worker_id: Optional[str],
+        node_id_hex: str,
+        worker_id_hex: Optional[str],
         pid: Optional[int],
         suffix: str,
         timeout: int,
     ) -> Optional[str]:
         """Resolve worker log file."""
-        if worker_id is not None and pid is not None:
+        if worker_id_hex is not None and pid is not None:
             raise ValueError(
-                f"Only one of worker id({worker_id}) or pid({pid}) should be provided."
+                f"Only one of worker id({worker_id_hex}) or pid({pid}) should be"
+                "provided."
             )
 
-        if worker_id is not None:
+        if worker_id_hex is not None:
             log_files = await self.list_logs(
-                node_id, timeout, glob_filter=f"*{worker_id}*{suffix}"
+                node_id_hex, timeout, glob_filter=f"*{worker_id_hex}*{suffix}"
             )
         else:
             log_files = await self.list_logs(
-                node_id, timeout, glob_filter=f"*{pid}*{suffix}"
+                node_id_hex, timeout, glob_filter=f"*{pid}*{suffix}"
             )
 
         # Find matching worker logs.
         for filename in [*log_files["worker_out"], *log_files["worker_err"]]:
             # Worker logs look like worker-[worker_id]-[job_id]-[pid].out
-            if worker_id is not None:
+            if worker_id_hex is not None:
                 worker_id_from_filename = WORKER_LOG_PATTERN.match(filename).group(1)
-                if worker_id_from_filename == worker_id:
+                if worker_id_from_filename == worker_id_hex:
                     return filename
             else:
                 worker_pid_from_filename = int(
@@ -207,8 +208,8 @@ class LogsManager:
 
     async def _resolve_actor_filename(
         self,
-        actor_id: str,
-        get_actor_fn: Callable[[str], Dict],
+        actor_id: ActorID,
+        get_actor_fn: Callable[[ActorID], Awaitable[Optional[ActorTableData]]],
         suffix: str,
         timeout: int,
     ):
@@ -228,34 +229,35 @@ class LogsManager:
         if get_actor_fn is None:
             raise ValueError("get_actor_fn needs to be specified for actor_id")
 
-        actor_data = get_actor_fn(actor_id)
+        actor_data = await get_actor_fn(actor_id)
         if actor_data is None:
             raise ValueError(f"Actor ID {actor_id} not found.")
-
         # TODO(sang): Only the latest worker id can be obtained from
         # actor information now. That means, if actors are restarted,
         # there's no way for us to get the past worker ids.
-        worker_id = actor_data["address"].get("workerId")
-        if not worker_id:
+        worker_id_binary = actor_data.address.worker_id
+        if not worker_id_binary:
             raise ValueError(
                 f"Worker ID for Actor ID {actor_id} not found. "
                 "Actor is not scheduled yet."
             )
-        node_id = actor_data["address"].get("rayletId")
-        if not node_id:
+        worker_id = WorkerID(worker_id_binary)
+        node_id_binary = actor_data.address.raylet_id
+        if not node_id_binary:
             raise ValueError(
                 f"Node ID for Actor ID {actor_id} not found. "
                 "Actor is not scheduled yet."
             )
-        self._verify_node_registered(node_id)
+        node_id = NodeID(node_id_binary)
+        self._verify_node_registered(node_id.hex())
         log_filename = await self._resolve_worker_file(
-            node_id=node_id,
-            worker_id=worker_id,
+            node_id_hex=node_id.hex(),
+            worker_id_hex=worker_id.hex(),
             pid=None,
             suffix=suffix,
             timeout=timeout,
         )
-        return node_id, log_filename
+        return node_id.hex(), log_filename
 
     async def _resolve_task_filename(
         self, task_id: str, attempt_number: int, suffix: str, timeout: int
@@ -360,7 +362,9 @@ class LogsManager:
         task_id: Optional[str] = None,
         attempt_number: Optional[int] = None,
         pid: Optional[str] = None,
-        get_actor_fn: Optional[Callable[[str], Dict]] = None,
+        get_actor_fn: Optional[
+            Callable[[ActorID], Awaitable[Optional[ActorTableData]]]
+        ] = None,
         timeout: int = DEFAULT_RPC_TIMEOUT,
         suffix: str = "out",
         submission_id: Optional[str] = None,
@@ -389,7 +393,7 @@ class LogsManager:
         # filename
         if actor_id:
             node_id, log_filename = await self._resolve_actor_filename(
-                actor_id, get_actor_fn, suffix, timeout
+                ActorID.from_hex(actor_id), get_actor_fn, suffix, timeout
             )
 
         elif task_id:
@@ -413,8 +417,8 @@ class LogsManager:
                 )
             self._verify_node_registered(node_id)
             log_filename = await self._resolve_worker_file(
-                node_id=node_id,
-                worker_id=None,
+                node_id_hex=node_id,
+                worker_id_hex=None,
                 pid=pid,
                 suffix=suffix,
                 timeout=timeout,

@@ -1,9 +1,11 @@
-.. include:: /_includes/rllib/new_api_stack.rst
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 .. _rllib-callback-docs:
 
 Callbacks
 =========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 Callbacks are the most straightforward way to inject code into experiments. You can define the code to execute at certain events and pass it to your
 :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`.
@@ -93,7 +95,7 @@ a subclass of :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback`.
 Callback events
 ---------------
 
-During a training iteration, the Algorithm normally walks through the following event tree, 
+During a training iteration, the Algorithm normally walks through the following event tree,
 a high-level overview of all supported events in RLlib's callbacks system:
 
 .. code-block:: text
@@ -223,8 +225,10 @@ The following are two examples showing you how to setup custom callbacks on the
 :ref:`EnvRunner <rllib-key-concepts-env-runners>` processes.
 
 
+.. _rllib-callback-example-on-train-result:
+
 Example 1: `on_train_result`
-----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following example demonstrates how to implement a simple custom function writing the replay buffer
 contents to disk from time to time.
@@ -270,8 +274,11 @@ controlled fashion through a custom callback could be a good compromise.
 
 See :ref:`Callbacks invoked in Algorithm <rllib-callback-reference-algorithm-bound>` for the exact call signatures of all available callbacks and the argument types that they expect.
 
+
+.. _rllib-callback-example-on-episode-step-and-end:
+
 Example 2: `on_episode_step` and `on_episode_end`
--------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following example demonstrates how to implement a custom :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` class
 computing the average "first-joint angle" of the
@@ -354,4 +361,3 @@ See this more complex example that `generates and logs a PacMan heatmap (image) 
 
 See :ref:`Callbacks invoked in Algorithm <rllib-callback-reference-algorithm-bound>`
 for the exact call signatures of all available callbacks and the argument types they expect.
-
