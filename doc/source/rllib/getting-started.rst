@@ -223,9 +223,10 @@ one for each of the configured learning rates:
         param_space=config,
         # Specify a stopping criterion. Note that the criterion has to match one of the
         # pretty printed result metrics from the results returned previously by
-        # ``.train()``.
+        # ``.train()``. Also note that -1100 is not a good episode return for
+        # Pendulum-v1, we are using it here to shorten the experiment time.
         run_config=train.RunConfig(
-            stop={"env_runners/episode_return_mean": -1000.0},
+            stop={"env_runners/episode_return_mean": -1100.0},
         ),
     )
     # Run the Tuner and capture the results.
@@ -317,14 +318,21 @@ method to compute actions:
         # Compute the next action from a batch (B=1) of observations.
         obs_batch = torch.from_numpy(obs).unsqueeze(0)  # add batch B=1 dimension
         model_outputs = rl_module.forward_inference({"obs": obs_batch})
-        # Extract the logits from the output and dissolve batch again.
-        action_logits = model_outputs["action_dist_inputs"][0]
-        # PPO's default RLModule produces action logits (from which
-        # you have to sample an action or use the max-likelihood one).
-        action = numpy.argmax(action_logits.numpy())
+
+        # Extract the action distribution parameters from the output and dissolve batch dim.
+        action_dist_params = model_outputs["action_dist_inputs"][0].numpy()
+
+        # We have continuous actions -> take the mean (max likelihood).
+        greedy_action = np.clip(
+            action_dist_params[0:1],  # 0=mean, 1=log(stddev), [0:1]=use mean, but keep shape=(1,)
+            a_min=env.action_space.low[0],
+            a_max=env.action_space.high[0],
+        )
+        # For discrete actions, you should take the argmax over the logits:
+        # greedy_action = np.argmax(action_dist_params)
 
         # Send the action to the environment for the next step.
-        obs, reward, terminated, truncated, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(greedy_action)
 
         # Perform env-loop bookkeeping.
         episode_return += reward
