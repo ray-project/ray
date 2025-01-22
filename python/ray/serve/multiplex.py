@@ -173,7 +173,7 @@ class _ModelMultiplexWrapper:
             The user-constructed model object.
         """
 
-        if type(model_id) != str:
+        if type(model_id) is not str:
             raise TypeError("The model ID must be a string.")
 
         if not model_id:

@@ -49,7 +49,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import add_grpc_address, get_proxy_handle
-from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
+from ray.serve._private.grpc_util import DummyServicer, gRPCGenericServer
 from ray.serve._private.http_util import (
     MessageQueue,
     convert_object_to_asgi_messages,
@@ -727,11 +727,8 @@ class gRPCProxy(GenericProxy):
         }
         set_span_attributes(trace_attributes)
 
-        handle_arg = proxy_request.request_object()
         response_generator = ProxyResponseGenerator(
-            # NOTE(edoakes): it's important that the request is sent as raw bytes to
-            # skip the Ray cloudpickle serialization codepath for performance.
-            handle.remote(pickle.dumps(handle_arg)),
+            handle.remote(proxy_request.serialized_replica_arg()),
             timeout_s=self.request_timeout_s,
         )
         try:
@@ -988,12 +985,8 @@ class HTTPProxy(GenericProxy):
             # Response is returned as raw bytes, convert it to ASGI messages.
             result_callback = convert_object_to_asgi_messages
         else:
-            # NOTE(edoakes): it's important that the request is sent as raw bytes to
-            # skip the Ray cloudpickle serialization codepath for performance.
-            handle_arg_bytes = pickle.dumps(
-                proxy_request.request_object(
-                    proxy_actor_name=self.self_actor_name,
-                )
+            handle_arg_bytes = proxy_request.serialized_replica_arg(
+                proxy_actor_name=self.self_actor_name,
             )
             # Messages are returned as pickled dictionaries.
             result_callback = pickle.loads
@@ -1464,7 +1457,7 @@ class ProxyActor:
         if not self.should_start_grpc_service():
             return self.grpc_setup_complete.set()
 
-        grpc_server = create_serve_grpc_server(
+        grpc_server = gRPCGenericServer(
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
 

@@ -102,7 +102,7 @@ def test_replica_memory_growth(serve_instance):
         for item in gc.garbage[:]:
             if getattr(type(item), "__name__", None) == "_Metadatum":
                 gc.garbage.remove(item)
-            elif type(item) == tuple and all(
+            elif isinstance(item, tuple) and all(
                 getattr(type(s), "__name__", None) == "_Metadatum" for s in item
             ):
                 gc.garbage.remove(item)
