@@ -88,7 +88,7 @@ def test_to_object_ref_error_message():
     h.remote().result()
 
 
-def test_deploy_multiple_apps_batched(serve_instance):
+def test_deploy_multiple_apps_batched() -> None:
     @serve.deployment
     class A:
         def __call__(self):
@@ -111,7 +111,7 @@ def test_deploy_multiple_apps_batched(serve_instance):
     assert serve.get_app_handle("b").remote().result() == "b"
 
 
-def test_redeploy_multiple_apps_batched(serve_instance):
+def test_redeploy_multiple_apps_batched() -> None:
     @serve.deployment
     class A:
         def __call__(self):
