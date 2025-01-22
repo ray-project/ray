@@ -127,6 +127,9 @@ void StartStreamDump(ReadFunc read_func,
         last_line.clear();
 
         // We only log non-empty lines.
+        //
+        // TODO(hjiang): Newliners should also appear in the stdout/stderr/log, current
+        // behavior simply ignore everything.
         if (!cur_new_line.empty()) {
           absl::MutexLock lock(&stream_dumper->mu);
           stream_dumper->content.emplace_back(std::move(cur_new_line));
@@ -231,6 +234,33 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
 
   return RedirectionFileHandle{fd, std::move(flush_fn), std::move(close_fn)};
 }
+#elif defined(_WIN32)
+#include <windows.h>
+RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
+  HANDLE file_handle = CreateFile(file_path.c_str(),
+                                  GENERIC_WRITE,
+                                  0,                      // No sharing
+                                  NULL,                   // Default security attributes
+                                  CREATE_ALWAYS,          // Always create a new file
+                                  FILE_ATTRIBUTE_NORMAL,  // Normal file attributes
+                                  NULL                    // No template file
+  );
+  RAY_CHECK(file_handle != INVALID_HANDLE_VALUE)
+      << "Fails to open file " << file_path << " with error "
+      << std::to_string(GetLastError());
+
+  auto flush_fn = [file_handle]() {
+    RAY_CHECK(FlushFileBuffers(file_handle))
+        << "Failed to flush data to disk with error: " << std::to_string(GetLastError());
+  };
+  auto close_fn = [file_handle]() {
+    RAY_CHECK(FlushFileBuffers(file_handle))
+        << "Failed to flush data to disk with error: " << std::to_string(GetLastError());
+    RAY_CHECK(CloseHandle(file_handle))
+        << "Failed to close file with error: " << std::to_string(GetLastError());
+  };
+  return RedirectionFileHandle{file_handle, std::move(flush_fn), std::move(close_fn)};
+}
 #endif
 
 }  // namespace
@@ -328,7 +358,9 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 #elif defined(_WIN32)
 RedirectionFileHandle CreateRedirectionFileHandle(
     const StreamRedirectionOption &stream_redirect_opt) {
-  return RedirectionFileHandle{};
+  // TODO(hjiang): For windows, we currently doesn't support redirection with rotation and
+  // tee to stdout/stderr.
+  return OpenFileForRedirection(stream_redirect_opt.file_path);
 }
 #endif
 
