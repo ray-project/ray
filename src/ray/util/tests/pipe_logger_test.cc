@@ -202,6 +202,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
 
     const std::string stdout_content = testing::internal::GetCapturedStdout();
     EXPECT_EQ(stdout_content, kContent);
+    // Pipe logger automatically adds a newliner at the end.
     EXPECT_EQ(CompleteReadFile(test_file_path), "hello\n");
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
@@ -244,8 +245,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
 
     const std::string stdout_content = testing::internal::GetCapturedStdout();
     EXPECT_EQ(stdout_content, kContent);
-    // Pipe logger doesn't know about the boundary for a whole user's content, so extra
-    // newliner is added in between.
+    // Pipe logger automatically adds a newliner at the end.
     EXPECT_EQ(CompleteReadFile(test_file_path), "hello\nworld\n");
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
@@ -267,8 +267,6 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
 
     const std::string stdout_content = testing::internal::GetCapturedStdout();
     EXPECT_EQ(stdout_content, kContent);
-    // Pipe logger doesn't know about the boundary for a whole user's content, so extra
-    // newliner is added in between.
     EXPECT_EQ(CompleteReadFile(test_file_path), "hello\nworld\n");
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
@@ -290,8 +288,6 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
 
     const std::string stdout_content = testing::internal::GetCapturedStdout();
     EXPECT_EQ(stdout_content, kContent);
-    // Pipe logger cannot tell the newliners are from an empty line or just trailing
-    // characters, so an extra newliner is appended with each newliner.
     EXPECT_EQ(CompleteReadFile(test_file_path), "helloworld\n\n\n");
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
@@ -313,8 +309,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
 
     const std::string stdout_content = testing::internal::GetCapturedStdout();
     EXPECT_EQ(stdout_content, kContent);
-    // Pipe logger cannot tell the newliners are from an empty line or just trailing
-    // characters, so an extra newliner is appended with each newliner.
+    // Pipe logger automatically adds a newliner at the end.
     EXPECT_EQ(CompleteReadFile(test_file_path), "hello\n\n\nworld\n");
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
@@ -336,8 +331,6 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
 
     const std::string stdout_content = testing::internal::GetCapturedStdout();
     EXPECT_EQ(stdout_content, kContent);
-    // Pipe logger cannot tell the newliners are from an empty line or just trailing
-    // characters, so an extra newliner is appended with each newliner.
     EXPECT_EQ(CompleteReadFile(test_file_path), "hello\n\nworld\n\n");
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
