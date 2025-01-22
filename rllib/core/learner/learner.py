@@ -1338,20 +1338,22 @@ class Learner(Checkpointable):
         # actual batch/episodes objects).
         if isinstance(batch, ray.ObjectRef):
             batch = ray.get(batch)
-        if isinstance(episodes, ray.ObjectRef) or (
-            isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef)
-        ):
+        if isinstance(episodes, ray.ObjectRef):
+            episodes = ray.get(episodes)
+        elif isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef):
+            # It's possible that individual refs are invalid due to the EnvRunner
+            # that produced the ref has crashed or had its entire node go down.
+            # In this case, try each ref individually and collect only valid results.
             try:
-                episodes = ray.get(episodes)
-            except Exception:
-                eps = []
-                for ref in episodes:
+                episodes = tree.flatten(ray.get(episodes))
+            except ray.exceptions.OwnerDiedError:
+                episode_refs = episodes
+                episodes = []
+                for ref in episode_refs:
                     try:
-                        eps.append(ray.get(ref))
-                    except Exception as e:
+                        episodes.extend(ray.get(ref))
+                    except ray.exceptions.OwnerDiedError:
                         pass
-                episodes = eps
-            episodes = tree.flatten(episodes)
 
         # Call the learner connector on the given `episodes` (if we have one).
         if episodes is not None and self._learner_connector is not None:
