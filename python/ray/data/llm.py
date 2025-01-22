@@ -1,40 +1,19 @@
 from ray.llm._internal.batch.processor import (
-    ProcessorConfig as _ProcessorConfig,
-    Processor as _Processor,
-    HttpRequestProcessorConfig as _HttpRequestProcessorConfig,
-    vLLMEngineProcessorConfig as _vLLMEngineProcessorConfig,
+    ProcessorConfig,
+    Processor,
+    HttpRequestProcessorConfig,
 )
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class ProcessorConfig(_ProcessorConfig):
-    """TBA."""
-
-    pass
-
-
-@PublicAPI(stability="alpha")
-class Processor(_Processor):
-    """A Processor is ... TBA ...
-
-    Examples:
-        .. testcode::
-            :skipif: True
-
-            ... TBA ...
-    """
-
-    pass
-
-
-@PublicAPI(stability="alpha")
 def build_llm_processor(config: ProcessorConfig, **kwargs) -> Processor:
-    """Build a LLM processor.
+    """Build a LLM processor using the given config.
 
     Args:
         config: The processor config.
-        **kwargs: Additional keyword arguments to pass to the processor builder.
+        **kwargs: Additional keyword arguments to pass to the processor.
+            See `Processor` for argument details.
 
     Returns:
         The built processor.
@@ -44,15 +23,9 @@ def build_llm_processor(config: ProcessorConfig, **kwargs) -> Processor:
     return ProcessorBuilder.build(config, **kwargs)
 
 
-@PublicAPI(stability="alpha")
-class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
-    """TBA."""
-
-    pass
-
-
-@PublicAPI(stability="alpha")
-class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
-    """TBA."""
-
-    pass
+__all__ = [
+    "ProcessorConfig",
+    "Processor",
+    "HttpRequestProcessorConfig",
+    "build_llm_processor",
+]

@@ -12,9 +12,7 @@ from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 class HttpRequestUDF(StatefulStageUDF):
     def __init__(
         self,
-        input_column: str,
-        output_column: str,
-        carry_over: bool,
+        data_column: str,
         url: str,
         additional_header: Optional[Dict[str, Any]] = None,
         qps: Optional[int] = None,
@@ -23,14 +21,12 @@ class HttpRequestUDF(StatefulStageUDF):
         Initialize the HttpRequestUDF.
 
         Args:
-            input_column: The input column name.
-            output_column: The output column name.
-            carry_over: Whether to carry over the input column to the output column.
+            data_column: The data column name.
             url: The URL to send the HTTP request to.
             additional_header: The additional headers to send with the HTTP request.
             qps: The maximum number of requests per second.
         """
-        super().__init__(input_column, output_column, carry_over)
+        super().__init__(data_column)
         self.url = url
         self.additional_header = additional_header or {}
         self.qps = qps
