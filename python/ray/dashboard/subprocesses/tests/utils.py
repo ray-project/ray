@@ -61,10 +61,8 @@ class TestModule(SubprocessModule):
             await asyncio.sleep(0.001)
             yield f"{i}\n".encode()
 
-    @SubprocessRouteTable.post("/streamed_iota_with_error", streaming=True)
-    async def streamed_iota_with_error(
-        self, request_body: bytes
-    ) -> AsyncIterator[bytes]:
+    @SubprocessRouteTable.post("/streamed_iota_with_503", streaming=True)
+    async def streamed_iota_with_503(self, request_body: bytes) -> AsyncIterator[bytes]:
         """
         Streams the numbers 0 to N, then raises an error.
         """
@@ -72,7 +70,26 @@ class TestModule(SubprocessModule):
         for i in range(n):
             await asyncio.sleep(0.001)
             yield f"{i}\n".encode()
-        raise ValueError("This is an error")
+        raise aiohttp.web.HTTPServiceUnavailable(
+            reason=f"Service Unavailable after {n} numbers"
+        )
+
+    @SubprocessRouteTable.post("/streamed_401", streaming=True)
+    async def streamed_401(self, request_body: bytes) -> AsyncIterator[bytes]:
+        """
+        Raises an error directly in a streamed handler before yielding any data.
+        """
+        raise aiohttp.web.HTTPUnauthorized(
+            reason="Unauthorized although I am not a teapot"
+        )
+        # To make sure Python treats this method as an async generator, we yield something.
+        yield b"Hello, World"
+
+    @SubprocessRouteTable.post("/run_forever")
+    async def run_forever(self, request_body: bytes) -> aiohttp.web.Response:
+        while True:
+            await asyncio.sleep(1)
+        return aiohttp.web.Response(text="done in the infinite future!")
 
     @SubprocessRouteTable.post("/logging_in_module")
     async def logging_in_module(self, request_body: bytes) -> aiohttp.web.Response:

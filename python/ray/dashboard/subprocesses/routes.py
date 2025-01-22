@@ -98,7 +98,8 @@ class SubprocessRouteTable(BaseRouteTable):
             After the handler yields the first chunk of data, the server prepares the
             streaming response with default headers and starts streaming the data to the
             client. If an exception is raised BEFORE the first chunk of data is yielded,
-            the server will catch it and respond a 500 error. If an exception is raised
+            the server will catch it and respond an error of specified HttpException
+            status code, or 500 if it's other exceptions. If an exception is raised
             AFTER the first chunk of data is yielded, the server will stream the error
             message to the client and close the connection.
 
@@ -111,9 +112,9 @@ class SubprocessRouteTable(BaseRouteTable):
             message: RequestMessage,
             parent_bound_queue: multiprocessing.Queue,
         ) -> None:
+            start_message_sent = False
             try:
                 async_iter = handler(self, message.body)
-                start_message_sent = False
                 async for chunk in async_iter:
                     if not start_message_sent:
                         parent_bound_queue.put(
@@ -132,18 +133,22 @@ class SubprocessRouteTable(BaseRouteTable):
                     StreamResponseEndMessage(request_id=message.request_id)
                 )
             except aiohttp.web.HTTPException as e:
-                # aiohttp.web.HTTPException cannot be pickled. Instead we send a
-                # UnaryResponseMessage with status and body.
-                parent_bound_queue.put(
-                    UnaryResponseMessage(
-                        request_id=message.request_id,
-                        status=e.status,
-                        body=e.text,
+                if not start_message_sent:
+                    parent_bound_queue.put(
+                        UnaryResponseMessage(
+                            request_id=message.request_id,
+                            status=e.status,
+                            body=e.text,
+                        )
                     )
-                )
+                else:
+                    # HTTPException can't be pickled. Instead we just send its str.
+                    parent_bound_queue.put(
+                        ErrorMessage(request_id=message.request_id, error=str(e))
+                    )
             except Exception as e:
                 parent_bound_queue.put(
-                    ErrorMessage(request_id=message.request_id, error=e)
+                    ErrorMessage(request_id=message.request_id, error=str(e))
                 )
 
         return _streaming_handler
@@ -223,12 +228,13 @@ class SubprocessRouteTable(BaseRouteTable):
             ) -> aiohttp.web.Response:
                 bind_info = cls._bind_map[method][path]
                 subprocess_module_handle = bind_info.instance
-                logger.debug(f"Sending request to {subprocess_module_handle}")
                 task = subprocess_module_handle.send_request(handler.__name__, request)
                 return await task
 
+            # Used in bind().
             handler.__route_method__ = method
             handler.__route_path__ = path
+            # Used in bound_routes().
             parent_side_handler.__route_method__ = method
             parent_side_handler.__route_path__ = path
 

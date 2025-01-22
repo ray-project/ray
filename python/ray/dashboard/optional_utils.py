@@ -29,7 +29,6 @@ from ray.dashboard.utils import (
 )
 from ray.dashboard.routes import method_route_table_factory, rest_response
 
-
 try:
     create_task = asyncio.create_task
 except AttributeError:
