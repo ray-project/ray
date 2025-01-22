@@ -72,7 +72,18 @@ class AggregatorActor(FaultAwareApply):
         )
 
     def get_batch(self, episode_refs: List[ray.ObjectRef]):
-        episodes: List[EpisodeType] = tree.flatten(ray.get(episode_refs))
+        episodes: List[EpisodeType] = []
+        # It's possible that individual refs are invalid due to the EnvRunner
+        # that produced the ref has crashed or had its entire node go down.
+        # In this case, try each ref individually and collect only valid results.
+        try:
+            episodes = tree.flatten(ray.get(episode_refs))
+        except ray.exceptions.OwnerDiedError:
+            for ref in episode_refs:
+                try:
+                    episodes.extend(ray.get(ref))
+                except ray.exceptions.OwnerDiedError:
+                    pass
 
         env_steps = sum(len(e) for e in episodes)
 
