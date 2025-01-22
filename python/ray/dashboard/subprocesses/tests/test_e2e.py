@@ -61,7 +61,13 @@ def test_module_side_handler(default_module_config):
     subprocess.start_module(start_dispatch_parent_bound_messages_thread=False)
     # No parent bound listening thread, manually check the queue.
     subprocess._send_message(
-        RequestMessage(request_id="request_for_test", method_name="test", body=b"")
+        RequestMessage(
+            request_id="request_for_test",
+            method_name="test",
+            query={},
+            headers={},
+            body=b"",
+        )
     )
     response = subprocess.parent_bound_queue.get()
     assert isinstance(response, UnaryResponseMessage)
@@ -71,7 +77,11 @@ def test_module_side_handler(default_module_config):
 
     subprocess._send_message(
         RequestMessage(
-            request_id="request_for_echo", method_name="echo", body=b"a new dashboard"
+            request_id="request_for_echo",
+            method_name="echo",
+            query={},
+            headers={},
+            body=b"a new dashboard",
         )
     )
     response = subprocess.parent_bound_queue.get()
@@ -82,7 +92,11 @@ def test_module_side_handler(default_module_config):
 
     subprocess._send_message(
         RequestMessage(
-            request_id="request_for_error", method_name="make_error", body=b""
+            request_id="request_for_error",
+            method_name="make_error",
+            query={},
+            headers={},
+            body=b"",
         )
     )
     response = subprocess.parent_bound_queue.get()
