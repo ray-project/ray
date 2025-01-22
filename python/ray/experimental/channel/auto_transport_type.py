@@ -47,7 +47,21 @@ class TypeHintResolver:
         Args:
             actor_to_gpu_ids: Mapping from actor handle to its GPU IDs.
         """
-        self.actor_to_gpu_ids = actor_to_gpu_ids
+        self._actor_to_gpu_ids = actor_to_gpu_ids
+
+    def _get_gpu_ids(self, actor: "ray.actor.ActorHandle") -> List[str]:
+        """
+        Get the GPU IDs of the actor.
+
+        Returns:
+            The GPU IDs of the actor. If the actor is not found, return an empty list.
+        """
+        gpu_ids = self._actor_to_gpu_ids.get(actor, [])
+        assert len(gpu_ids) <= 1, (
+            "Compiled Graphs currently don't support allocating multiple GPUs "
+            "to a single actor"
+        )
+        return gpu_ids
 
     def _use_same_gpu(
         self,
@@ -74,12 +88,8 @@ class TypeHintResolver:
             )
         if writer_and_node[1] != reader_and_node[1]:
             return False
-        writer_gpu_ids = self._check_single_gpu(
-            self.actor_to_gpu_ids.get(writer_and_node[0], [])
-        )
-        reader_gpu_ids = self._check_single_gpu(
-            self.actor_to_gpu_ids.get(reader_and_node[0], [])
-        )
+        writer_gpu_ids = self._get_gpu_ids(writer_and_node[0])
+        reader_gpu_ids = self._get_gpu_ids(reader_and_node[0])
         return writer_gpu_ids == reader_gpu_ids
 
     def _use_gpu(
@@ -96,27 +106,14 @@ class TypeHintResolver:
         """
         if isinstance(actors, list):
             return all(self._use_gpu(actor) for actor in actors)
-        gpu_ids = self.actor_to_gpu_ids.get(actors, [])
-        return len(self._check_single_gpu(gpu_ids)) > 0
-
-    def _check_single_gpu(self, gpu_ids: List[str]) -> List[str]:
-        """
-        Check and assert gpu_ids has only one GPU ID.
-
-        Returns:
-            The same list of GPU IDs as passed in.
-        """
-        assert len(gpu_ids) <= 1, (
-            "Compiled Graphs currently don't support allocating multiple GPUs "
-            "to a single actor"
-        )
-        return gpu_ids
+        gpu_ids = self._get_gpu_ids(actors)
+        return len(gpu_ids) > 0
 
     def resolve(
         self,
         auto_transport_type: AutoTransportType,
-        writer_and_node: Tuple["ray.actor.ActorHandle", str],
-        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        writer_and_node: Tuple[Optional["ray.actor.ActorHandle"], str],
+        reader_and_node_list: List[Tuple[Optional["ray.actor.ActorHandle"], str]],
     ) -> "ChannelOutputType":
         """
         Resolve auto_transport_type to the actual channel output type
@@ -125,8 +122,9 @@ class TypeHintResolver:
         Args:
             auto_transport_type: The type to resolve
             writer_and_node: A tuple of writer actor handle and its node ID.
+                A None writer actor handle means the writer is the driver.
             reader_and_node_list: A list of tuples of reader actor handle and its
-                node ID.
+                node ID. A None reader actor handle means the reader is the driver.
 
         Returns:
             The actual channel type.
@@ -134,8 +132,8 @@ class TypeHintResolver:
         writer = writer_and_node[0]
         readers = [reader for reader, _ in reader_and_node_list]
 
-        if any(reader is None for reader in readers):
-            # None means reader is the driver, currently driver on GPU
+        if writer is None or any(reader is None for reader in readers):
+            # None means actor is the driver, currently driver on GPU
             # is not supported, so we always use shared memory to transfer
             # tensors.
             return TorchTensorType(
