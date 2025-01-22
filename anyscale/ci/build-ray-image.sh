@@ -44,10 +44,7 @@ else
     IMG_SUFFIX="-aarch64"
 fi
 
-if [[ "${PY_VERSION}" == "3.8" ]]; then
-    PY_VERSION_CODE="py38"
-    WHEEL_PYTHON_CODE="cp38-cp38"
-elif [[ "${PY_VERSION}" == "3.9" ]]; then
+if [[ "${PY_VERSION}" == "3.9" ]]; then
     PY_VERSION_CODE="py39"
     WHEEL_PYTHON_CODE="cp39-cp39"
 elif [[ "${PY_VERSION}" == "3.10" ]]; then
@@ -78,6 +75,8 @@ if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
         IMG_TYPE_CODE="cu121"
     elif [[ "${IMG_TYPE}" == "cu12.3.2" ]]; then
         IMG_TYPE_CODE="cu123"
+    elif [[ "${IMG_TYPE}" == "cu12.4.1" ]]; then
+        IMG_TYPE_CODE="cu124"
     else
         echo "Unknown image type: ${IMG_TYPE}" >/dev/stderr
         exit 1
@@ -93,6 +92,8 @@ else
         IMG_TYPE_CODE="cu121"
     elif [[ "${IMG_TYPE}" == "cu12.3.2-cudnn9" ]]; then
         IMG_TYPE_CODE="cu123"
+    elif [[ "${IMG_TYPE}" == "cu12.4.1-cudnn" ]]; then
+        IMG_TYPE_CODE="cu124"
     else
         echo "Unknown image type: ${IMG_TYPE}" >/dev/stderr
         exit 1
