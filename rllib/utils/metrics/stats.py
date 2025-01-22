@@ -137,6 +137,7 @@ class Stats:
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         on_exit: Optional[Callable] = None,
+        throughput: Union[bool, float] = False,
     ):
         """Initializes a Stats instance.
 
@@ -174,6 +175,15 @@ class Stats:
                 to True is useful for cases, in which the internal values list would
                 otherwise grow indefinitely, for example if reduce is None and there
                 is no `window` provided.
+            throughput: If True, track a throughput estimate together with this
+                Stats. This is only supported for `reduce=sum` and
+                `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
+                then keeps track of the time passed between two consecutive calls to
+                `reduce()` and update its throughput estimate. The current throughput
+                estimate of a key can be obtained through:
+                `peeked_val, throughput_per_sec = Stats.peek([key], throughput=True)`.
+                If a float, track throughput and also set current throughput estimate
+                to the given value.
         """
         # Thus far, we only support mean, max, min, and sum.
         if reduce not in [None, "mean", "min", "max", "sum"]:
@@ -220,14 +230,10 @@ class Stats:
         # previous `reduce()` result in hist[1].
         self._hist = deque([0, 0, 0], maxlen=3)
 
-        self._throughput = 0.0
-        self._measure_throughput = False
-        if (
-            self._reduce_method == "sum"
-            and self._window in [None, float("inf")]
-            and not self._clear_on_reduce
-        ):
-            self._measure_throughput = True
+        self._throughput = throughput if throughput is not True else 0.0
+        if self._throughput is not False:
+            assert self._reduce_method == "sum"
+            assert self._window in [None, float("inf")]
             self._throughput_last_time = -1
 
     def push(self, value) -> None:
@@ -291,11 +297,7 @@ class Stats:
             return self._hist[-abs(previous)]
         # Return the last measured throughput.
         elif throughput:
-            return (
-                self._throughput
-                if self._measure_throughput and not np.isnan(self._throughput)
-                else None
-            )
+            return self._throughput if self._throughput is not False else None
         return self._reduced_values()[0]
 
     def reduce(self) -> "Stats":
@@ -314,7 +316,7 @@ class Stats:
         reduced, values = self._reduced_values()
 
         # Keep track and update underlying throughput metric.
-        if self._measure_throughput:
+        if self._throughput is not False:
             # Take the delta between the new (upcoming) reduced value and the most
             # recently reduced value (one `reduce()` call ago).
             delta_sum = reduced - self._hist[-1]
@@ -357,7 +359,7 @@ class Stats:
             self.values = self.values[-self._window :]
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
-        if self._measure_throughput:
+        if self._throughput is not False:
             self._throughput = other._throughput
 
     def merge_in_parallel(self, *others: "Stats") -> None:
@@ -648,8 +650,8 @@ class Stats:
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
+            throughput=other._throughput,
         )
-        stats._throughput = other._throughput
         stats._hist = other._hist
         return stats
 

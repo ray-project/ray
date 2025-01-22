@@ -233,6 +233,7 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
+        with_throughput: bool = False,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -328,6 +329,14 @@ class MetricsLogger:
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
+            with_throughput: Whether to track a throughput estimate together with this
+                metric. This is only supported for `reduce=sum` and
+                `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
+                object under the logged key then keeps track of the time passed
+                between two consecutive calls to `reduce()` and update its throughput
+                estimate. The current throughput estimate of a key can be obtained
+                through: peeked_value, throuthput_per_sec =
+                <MetricsLogger>.peek([key], throughput=True).
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
@@ -350,6 +359,7 @@ class MetricsLogger:
                             window=window,
                             ema_coeff=ema_coeff,
                             clear_on_reduce=clear_on_reduce,
+                            throughput=with_throughput,
                         )
                     ),
                 )
@@ -900,9 +910,9 @@ class MetricsLogger:
 
         try:
             with self._threading_lock:
-                assert not self.tensor_mode, (
-                    "Can't reduce if `self.tensor_mode` is True!"
-                )
+                assert (
+                    not self.tensor_mode
+                ), "Can't reduce if `self.tensor_mode` is True!"
                 reduced = copy.deepcopy(
                     tree.map_structure_with_path(_reduce, stats_to_return)
                 )
@@ -974,6 +984,7 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
+        with_throughput: bool = False,
     ) -> None:
         """Overrides the logged values under `key` with `value`.
 
@@ -1010,6 +1021,14 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
                 Note that this is only applied if `key` does not exist in `self` yet.
+            with_throughput: Whether to track a throughput estimate together with this
+                metric. This is only supported for `reduce=sum` and
+                `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
+                object under the logged key then keeps track of the time passed
+                between two consecutive calls to `reduce()` and update its throughput
+                estimate. The current throughput estimate of a key can be obtained
+                through: peeked_value, throuthput_per_sec =
+                <MetricsLogger>.peek([key], throughput=True).
         """
         # Key already in self -> Erase internal values list with [`value`].
         if self._key_in_stats(key):
@@ -1025,6 +1044,7 @@ class MetricsLogger:
                 window=window,
                 ema_coeff=ema_coeff,
                 clear_on_reduce=clear_on_reduce,
+                with_throughput=with_throughput,
             )
 
     def reset(self) -> None:
