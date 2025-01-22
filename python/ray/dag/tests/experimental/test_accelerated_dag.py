@@ -25,7 +25,6 @@ from ray._private.utils import (
     get_or_create_event_loop,
 )
 from ray.dag import DAGContext
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_pid_to_exit,
@@ -891,13 +890,13 @@ class TestMultiArgs:
         a2 = Actor.remote(0)
         c = Collector.remote()
         with InputNode() as i:
-            i.with_type_hint(TorchTensorType())
+            i.with_tensor_transport()
             branch1 = a1.echo.bind(i[0])
-            branch1.with_type_hint(TorchTensorType())
+            branch1.with_tensor_transport()
             branch2 = a2.echo.bind(i[1])
-            branch2.with_type_hint(TorchTensorType())
+            branch2.with_tensor_transport()
             dag = c.collect_two.bind(branch2, branch1)
-            dag.with_type_hint(TorchTensorType())
+            dag.with_tensor_transport()
 
         compiled_dag = dag.experimental_compile()
 
@@ -2850,7 +2849,7 @@ def test_torch_tensor_type(shutdown_only):
                     inp,
                     self._base.generate_torch_tensor.bind(
                         inp,
-                    ).with_type_hint(TorchTensorType()),
+                    ).with_tensor_transport(),
                 )
             self._cdag = dag.experimental_compile()
 
@@ -2994,6 +2993,36 @@ def test_signature_mismatch(shutdown_only):
     ):
         with InputNode() as inp:
             _ = worker.g.bind(inp)
+
+
+def test_missing_input_node():
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+        def f(self, input):
+            return input
+
+        def add(self, a, b):
+            return a + b
+
+    actor = Actor.remote()
+
+    with ray.dag.InputNode() as dag_input:
+        input0, input1, input2 = dag_input[0], dag_input[1], dag_input[2]
+        _ = actor.f.bind(input1)
+        dag = actor.add.bind(input0, input2)
+
+    with pytest.raises(
+        ValueError,
+        match="Compiled Graph expects input to be accessed "
+        "using all of attributes 0, 1, 2, "
+        "but 1 is unused. "
+        "Ensure all input attributes are used and contribute "
+        "to the computation of the Compiled Graph output.",
+    ):
+        dag.experimental_compile()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Sigint not supported on Windows")
