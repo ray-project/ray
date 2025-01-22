@@ -10,6 +10,7 @@ import time
 import traceback
 import warnings
 from abc import ABC, abstractmethod
+from collections import defaultdict, deque
 from contextlib import contextmanager
 from dataclasses import dataclass
 from importlib import import_module
@@ -52,6 +53,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
+    RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RECONFIGURE_METHOD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
@@ -134,6 +136,10 @@ class ReplicaMetricsManager:
         )
         self._num_ongoing_requests = 0
 
+        # If the interval is set to 0, eagerly sets all metrics.
+        self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
+        self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
+
         # Request counter (only set on replica startup).
         self._restart_counter = metrics.Counter(
             "serve_deployment_replica_starts",
@@ -151,6 +157,8 @@ class ReplicaMetricsManager:
             ),
             tag_keys=("route",),
         )
+        if self._cached_metrics_enabled:
+            self._cached_request_counter = defaultdict(int)
 
         self._error_counter = metrics.Counter(
             "serve_deployment_error_counter",
@@ -159,6 +167,8 @@ class ReplicaMetricsManager:
             ),
             tag_keys=("route",),
         )
+        if self._cached_metrics_enabled:
+            self._cached_error_counter = defaultdict(int)
 
         self._processing_latency_tracker = metrics.Histogram(
             "serve_deployment_processing_latency_ms",
@@ -166,6 +176,8 @@ class ReplicaMetricsManager:
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=("route",),
         )
+        if self._cached_metrics_enabled:
+            self._cached_latencies = defaultdict(deque)
 
         self._num_ongoing_requests_gauge = metrics.Gauge(
             "serve_replica_processing_queries",
@@ -173,6 +185,44 @@ class ReplicaMetricsManager:
         )
 
         self.set_autoscaling_config(autoscaling_config)
+
+        if self._cached_metrics_enabled:
+            event_loop.create_task(self._report_cached_metrics_forever())
+
+    def _report_cached_metrics(self):
+        for route, count in self._cached_request_counter.items():
+            self._request_counter.inc(count, tags={"route": route})
+        self._cached_request_counter.clear()
+
+        for route, count in self._cached_error_counter.items():
+            self._error_counter.inc(count, tags={"route": route})
+        self._cached_error_counter.clear()
+
+        for route, latencies in self._cached_latencies.items():
+            for latency_ms in latencies:
+                self._processing_latency_tracker.observe(
+                    latency_ms, tags={"route": route}
+                )
+        self._cached_latencies.clear()
+
+        self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
+
+    async def _report_cached_metrics_forever(self):
+        assert self._cached_metrics_interval_s > 0
+
+        consecutive_errors = 0
+        while True:
+            try:
+                await asyncio.sleep(self._cached_metrics_interval_s)
+                self._report_cached_metrics()
+                consecutive_errors = 0
+            except Exception:
+                logger.exception("Unexpected error reporting metrics.")
+
+                # Exponential backoff starting at 1s and capping at 10s.
+                backoff_time_s = min(10, 2**consecutive_errors)
+                consecutive_errors += 1
+                await asyncio.sleep(backoff_time_s)
 
     async def shutdown(self):
         """Stop periodic background tasks."""
@@ -209,26 +259,33 @@ class ReplicaMetricsManager:
     def inc_num_ongoing_requests(self) -> int:
         """Increment the current total queue length of requests for this replica."""
         self._num_ongoing_requests += 1
-        self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
+        if not self._cached_metrics_enabled:
+            self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
 
     def dec_num_ongoing_requests(self) -> int:
         """Decrement the current total queue length of requests for this replica."""
         self._num_ongoing_requests -= 1
-        self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
+        if not self._cached_metrics_enabled:
+            self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
 
     def get_num_ongoing_requests(self) -> int:
         """Get current total queue length of requests for this replica."""
         return self._num_ongoing_requests
 
-    def record_request_metrics(
-        self, *, route: str, status_str: str, latency_ms: float, was_error: bool
-    ):
+    def record_request_metrics(self, *, route: str, latency_ms: float, was_error: bool):
         """Records per-request metrics."""
-        self._processing_latency_tracker.observe(latency_ms, tags={"route": route})
-        if was_error:
-            self._error_counter.inc(tags={"route": route})
+        if self._cached_metrics_enabled:
+            self._cached_latencies[route].append(latency_ms)
+            if was_error:
+                self._cached_error_counter[route] += 1
+            else:
+                self._cached_request_counter[route] += 1
         else:
-            self._request_counter.inc(tags={"route": route})
+            self._processing_latency_tracker.observe(latency_ms, tags={"route": route})
+            if was_error:
+                self._error_counter.inc(tags={"route": route})
+            else:
+                self._request_counter.inc(tags={"route": route})
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
@@ -439,7 +496,6 @@ class ReplicaBase(ABC):
         )
         self._metrics_manager.record_request_metrics(
             route=http_route,
-            status_str=status_str,
             latency_ms=latency_ms,
             was_error=user_exception is not None,
         )
@@ -926,9 +982,13 @@ class ReplicaActor:
         request_metadata, request_args = self._preprocess_request_args(
             pickled_request_metadata, request_args
         )
-        return await self._replica_impl.handle_request(
+        result = await self._replica_impl.handle_request(
             request_metadata, *request_args, **request_kwargs
         )
+        if request_metadata.is_grpc_request:
+            result = (request_metadata.grpc_context, result.SerializeToString())
+
+        return result
 
     async def handle_request_streaming(
         self,
@@ -943,6 +1003,9 @@ class ReplicaActor:
         async for result in self._replica_impl.handle_request_streaming(
             request_metadata, *request_args, **request_kwargs
         ):
+            if request_metadata.is_grpc_request:
+                result = (request_metadata.grpc_context, result.SerializeToString())
+
             yield result
 
     async def handle_request_with_rejection(
@@ -972,6 +1035,9 @@ class ReplicaActor:
             if isinstance(result, ReplicaQueueLengthInfo):
                 yield pickle.dumps(result)
             else:
+                if request_metadata.is_grpc_request:
+                    result = (request_metadata.grpc_context, result.SerializeToString())
+
                 yield result
 
     async def handle_request_from_java(
@@ -1218,10 +1284,6 @@ class UserCallableWrapper:
                 result = callable(*args, **kwargs)
                 if is_generator:
                     for r in result:
-                        # TODO(edoakes): make this less redundant with the handling in
-                        # _handle_user_method_result.
-                        if request_metadata and request_metadata.is_grpc_request:
-                            r = (request_metadata.grpc_context, r.SerializeToString())
                         generator_result_callback(r)
 
                     result = None
@@ -1445,13 +1507,9 @@ class UserCallableWrapper:
         if request_metadata.is_streaming:
             if result_is_gen:
                 for r in result:
-                    if request_metadata.is_grpc_request:
-                        r = (request_metadata.grpc_context, r.SerializeToString())
                     generator_result_callback(r)
             elif result_is_async_gen:
                 async for r in result:
-                    if request_metadata.is_grpc_request:
-                        r = (request_metadata.grpc_context, r.SerializeToString())
                     generator_result_callback(r)
             elif request_metadata.is_http_request and not user_method_info.is_asgi_app:
                 # For the FastAPI codepath, the response has already been sent over
@@ -1479,8 +1537,6 @@ class UserCallableWrapper:
                     "You must use `handle.options(stream=True)` to call "
                     "generators on a deployment."
                 )
-            if request_metadata.is_grpc_request:
-                result = (request_metadata.grpc_context, result.SerializeToString())
 
         return result
 
