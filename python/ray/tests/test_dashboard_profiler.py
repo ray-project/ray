@@ -250,12 +250,12 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
 
-    # Check wrong node id failure
-    response = requests.get(f"{webui_url}/memory_profile?pid=1234567&ip=1234567")
+    # Check wrong ip failure
+    response = requests.get(f"{webui_url}/memory_profile?pid=1234567&ip=1.2.3.4")
     content = response.content.decode("utf-8")
     print(content)
     assert (
-        "Failed to execute: no agent address found for node 1234567" in content
+        "Failed to execute: no agent address found for node IP 1.2.3.4" in content
     ), content
 
 
