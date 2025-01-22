@@ -120,7 +120,7 @@ class LoggingConfig:
     def _configure_logging(self):
         """Set up the logging configuration for the current process."""
         _logging_configurator.configure_logging_settings(
-            LoggingConfigData(asdict(self))
+            LoggingConfigData(**asdict(self))
         )
 
     def _apply(self):
