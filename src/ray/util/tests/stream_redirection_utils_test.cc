@@ -22,7 +22,7 @@
 #include <iostream>
 #include <thread>
 
-#include "ray/util/tests/unix_test_utils.h"
+#include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
 namespace ray {
