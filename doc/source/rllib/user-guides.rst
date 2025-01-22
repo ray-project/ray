@@ -24,7 +24,6 @@ User Guides
     rllib-learner
     rllib-torch2x
     rllib-fault-tolerance
-    rllib-dev
     scaling-guide
 
 .. _rllib-feature-guide:
@@ -99,14 +98,6 @@ RLlib Feature Guides
         .. button-ref:: rllib-replay-buffers
 
             Working with replay buffers
-
-    .. grid-item-card::
-        :img-top: /rllib/images/rllib-logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: rllib-dev
-
-            Contribute to RLlib
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
