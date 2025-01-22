@@ -236,3 +236,14 @@ ray_cc_test(
     size = "small",
     tags = ["team:core"],
 )
+
+ray_cc_test(
+    name = "cmd_line_utils_test",
+    srcs = ["cmd_line_utils_test.cc"],
+    deps = [
+        "//src/ray/util:cmd_line_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
