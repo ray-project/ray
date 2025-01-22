@@ -316,12 +316,14 @@ Automatic throughput measurements
 
 A metrics logged with the settings ``reduce="sum"`` and ``clear_on_reduce=False`` is considered
 a ``lifetime`` counter, accumulating counts over the entire course of the experiment without ever resetting
-the value back to 0.
-The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` automatically compiles an extra key for each such metrics, adding the suffix ``_throughput``
-to the original key and compiling the value for the throughput per second.
+the value back to 0. If you also add the ``with_throughput=True`` flag, the underlying metric automatically computes the throughput per second
+on each ``reduce()`` operation.
 
-You have access to a lifetime metric's throughput value through the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method,
-for example:
+The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` automatically compiles an extra key for each such metric, adding the suffix ``_throughput``
+to the original key and assigning it the value for the throughput per second.
+
+You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method with the call argument ``throughput=True``
+to access the throughput value. For example:
 
 .. testcode::
 
@@ -331,10 +333,15 @@ for example:
     logger = MetricsLogger()
 
     for _ in range(3):
-        logger.log_value("lifetime_count", 5, reduce="sum")
+        logger.log_value("lifetime_count", 5, reduce="sum", with_throughput=True)
+
+        # RLlib triggers a new throughput computation at each `reduce()` call
         logger.reduce()
         time.sleep(1.0)
-        print(logger.peek("lifetime_count", throughput=True))  # expect: ~ 5/sec)
+
+        # Expect the first call to return NaN b/c we don't have a proper start time for the time delta.
+        # From the second call on, expect a value of roughly 5/sec.
+        print(logger.peek("lifetime_count", throughput=True))
 
 
 Example 1: How to use MetricsLogger in EnvRunner callbacks
