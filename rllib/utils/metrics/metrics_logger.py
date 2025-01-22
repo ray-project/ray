@@ -900,7 +900,9 @@ class MetricsLogger:
 
         try:
             with self._threading_lock:
-                assert not self.tensor_mode
+                assert not self.tensor_mode, (
+                    "Can't reduce if `self.tensor_mode` is True!"
+                )
                 reduced = copy.deepcopy(
                     tree.map_structure_with_path(_reduce, stats_to_return)
                 )

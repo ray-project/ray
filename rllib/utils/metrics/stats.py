@@ -291,7 +291,11 @@ class Stats:
             return self._hist[-abs(previous)]
         # Return the last measured throughput.
         elif throughput:
-            return self._throughput if self._measure_throughput else None
+            return (
+                self._throughput
+                if self._measure_throughput and not np.isnan(self._throughput)
+                else None
+            )
         return self._reduced_values()[0]
 
     def reduce(self) -> "Stats":
@@ -314,9 +318,10 @@ class Stats:
             # Take the delta between the new (upcoming) reduced value and the most
             # recently reduced value (one `reduce()` call ago).
             delta_sum = reduced - self._hist[-1]
-            assert delta_sum >= 0
             time_now = time.perf_counter()
-            if self._throughput_last_time == -1:
+            # `delta_sum` may be < 0.0 if user overrides a metric through
+            # `.set_value()`.
+            if self._throughput_last_time == -1 or delta_sum < 0.0:
                 self._throughput = np.nan
             else:
                 delta_time = time_now - self._throughput_last_time
