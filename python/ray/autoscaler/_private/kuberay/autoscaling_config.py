@@ -49,10 +49,10 @@ class AutoscalingConfigProducer:
     """
 
     def __init__(self, ray_cluster_name, ray_cluster_namespace):
-        self.kubernetes_api_client = node_provider.KubernetesHttpApiClient(
-            namespace=ray_cluster_namespace
+        self._headers, self._verify = node_provider.load_k8s_secrets()
+        self._ray_cr_url = node_provider.url_from_resource(
+            namespace=ray_cluster_namespace, path=f"rayclusters/{ray_cluster_name}"
         )
-        self._ray_cr_path = f"rayclusters/{ray_cluster_name}"
 
     def __call__(self):
         ray_cr = self._fetch_ray_cr_from_k8s_with_retries()
@@ -67,7 +67,7 @@ class AutoscalingConfigProducer:
         """
         for i in range(1, MAX_RAYCLUSTER_FETCH_TRIES + 1):
             try:
-                return self.kubernetes_api_client.get(self._ray_cr_path)
+                return self._fetch_ray_cr_from_k8s()
             except requests.HTTPError as e:
                 if i < MAX_RAYCLUSTER_FETCH_TRIES:
                     logger.exception(
@@ -79,6 +79,18 @@ class AutoscalingConfigProducer:
 
         # This branch is inaccessible. Raise to satisfy mypy.
         raise AssertionError
+
+    def _fetch_ray_cr_from_k8s(self) -> Dict[str, Any]:
+        result = requests.get(
+            self._ray_cr_url,
+            headers=self._headers,
+            timeout=node_provider.KUBERAY_REQUEST_TIMEOUT_S,
+            verify=self._verify,
+        )
+        if not result.status_code == 200:
+            result.raise_for_status()
+        ray_cr = result.json()
+        return ray_cr
 
 
 def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, Any]:
@@ -167,7 +179,7 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
 
 
 def _generate_available_node_types_from_ray_cr_spec(
-    ray_cr_spec: Dict[str, Any],
+    ray_cr_spec: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Formats autoscaler "available_node_types" field based on the Ray CR's group
     specs.

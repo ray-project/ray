@@ -1,4 +1,3 @@
-import datetime
 import json
 import logging
 import os
@@ -54,8 +53,6 @@ KUBERNETES_SERVICE_PORT = os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443")
 KUBERNETES_HOST = f"{KUBERNETES_SERVICE_HOST}:{KUBERNETES_SERVICE_PORT}"
 # Key for GKE label that identifies which multi-host replica a pod belongs to
 REPLICA_INDEX_KEY = "replicaIndex"
-
-TOKEN_REFRESH_PERIOD = datetime.timedelta(minutes=1)
 
 # Design:
 
@@ -267,19 +264,7 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
     def __init__(self, namespace: str, kuberay_crd_version: str = KUBERAY_CRD_VER):
         self._kuberay_crd_version = kuberay_crd_version
         self._namespace = namespace
-        self._token_expires_at = datetime.datetime.now() + TOKEN_REFRESH_PERIOD
-        self._headers, self._verify = None, None
-
-    def _get_refreshed_headers_and_verify(self):
-        if (datetime.datetime.now() >= self._token_expires_at) or (
-            self._headers is None or self._verify is None
-        ):
-            logger.info("Refreshing K8s API client token and certs.")
-            self._headers, self._verify = load_k8s_secrets()
-            self._token_expires_at = datetime.datetime.now() + TOKEN_REFRESH_PERIOD
-            return self._headers, self._verify
-        else:
-            return self._headers, self._verify
+        self._headers, self._verify = load_k8s_secrets()
 
     def get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers.
@@ -298,13 +283,11 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             path=path,
             kuberay_crd_version=self._kuberay_crd_version,
         )
-
-        headers, verify = self._get_refreshed_headers_and_verify()
         result = requests.get(
             url,
-            headers=headers,
+            headers=self._headers,
             timeout=KUBERAY_REQUEST_TIMEOUT_S,
-            verify=verify,
+            verify=self._verify,
         )
         if not result.status_code == 200:
             result.raise_for_status()
@@ -328,12 +311,11 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             path=path,
             kuberay_crd_version=self._kuberay_crd_version,
         )
-        headers, verify = self._get_refreshed_headers_and_verify()
         result = requests.patch(
             url,
             json.dumps(payload),
-            headers={**headers, "Content-type": "application/json-patch+json"},
-            verify=verify,
+            headers={**self._headers, "Content-type": "application/json-patch+json"},
+            verify=self._verify,
         )
         if not result.status_code == 200:
             result.raise_for_status()
