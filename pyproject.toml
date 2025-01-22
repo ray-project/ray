@@ -48,7 +48,6 @@ avoid-escape = false
 
 [tool.ruff.lint.per-file-ignores]
 # Ignore `B024` (abstract base class with no abstract methods or properties) in specific files.
-"python/ray/_private/runtime_env/plugin.py" = ["B024"]
 "python/ray/air/_internal/device_manager/torch_device_manager.py" = ["B024"]
 "python/ray/air/execution/resources/resource_manager.py" = ["B024"]
 "python/ray/air/util/torch_dist.py" = ["B024"]

@@ -188,6 +188,30 @@ class DummyPlugin(RuntimeEnvPlugin):
     def validate(runtime_env_dict: dict) -> str:
         return 1
 
+    def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:
+        raise NotImplementedError
+
+    async def create(
+        self,
+        uri: str,
+        runtime_env: "RuntimeEnv",
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,
+    ) -> float:
+        raise NotImplementedError
+
+    def modify_context(
+        self,
+        uris: List[str],
+        runtime_env: "RuntimeEnv",
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,
+    ) -> None:
+        raise NotImplementedError
+
+    def delete_uri(self, uri: str, logger: logging.Logger) -> float:
+        raise NotImplementedError
+
 
 class HangPlugin(DummyPlugin):
     name = HANG_PLUGIN_NAME
