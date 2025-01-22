@@ -1489,14 +1489,8 @@ void WorkerPool::PrestartWorkersInternal(const TaskSpecification &task_spec,
     // Prestart worker with no runtime env.
     if (IsRuntimeEnvEmpty(task_spec.SerializedRuntimeEnv())) {
       PopWorkerStatus status;
-      StartWorkerProcess(task_spec.GetLanguage(),
-                         rpc::WorkerType::WORKER,
-                         JobID::Nil(),
-                         &status,
-                         /*dynamic_options=*/{},
-                         task_spec.GetRuntimeEnvHash(),
-                         task_spec.SerializedRuntimeEnv(),
-                         task_spec.RuntimeEnvInfo());
+      StartWorkerProcess(
+          task_spec.GetLanguage(), rpc::WorkerType::WORKER, JobID::Nil(), &status);
       return;
     }
 
@@ -1505,10 +1499,9 @@ void WorkerPool::PrestartWorkersInternal(const TaskSpecification &task_spec,
         task_spec.SerializedRuntimeEnv(),
         task_spec.RuntimeEnvConfig(),
         JobID::Nil(),
-        [this, task_spec = task_spec](
-            bool successful,
-            const std::string &serialized_runtime_env_context /*unused*/,
-            const std::string &setup_error_message) {
+        [this, task_spec = task_spec](bool successful,
+                                      const std::string &serialized_runtime_env_context,
+                                      const std::string &setup_error_message) {
           if (!successful) {
             RAY_LOG(ERROR) << "Fails to create or get runtime env "
                            << setup_error_message;
@@ -1521,7 +1514,7 @@ void WorkerPool::PrestartWorkersInternal(const TaskSpecification &task_spec,
                              &status,
                              /*dynamic_options=*/{},
                              task_spec.GetRuntimeEnvHash(),
-                             task_spec.SerializedRuntimeEnv(),
+                             serialized_runtime_env_context,
                              task_spec.RuntimeEnvInfo());
         });
   }
