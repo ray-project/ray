@@ -63,7 +63,7 @@ from ray.data.read_api import (  # noqa: F401
     read_sql,
     read_text,
     read_tfrecords,
-    read_video,
+    read_videos,
     read_webdataset,
 )
 
@@ -158,7 +158,7 @@ __all__ = [
     "read_parquet_bulk",
     "read_sql",
     "read_tfrecords",
-    "read_video",
+    "read_videos",
     "read_webdataset",
     "Preprocessor",
     "TFXReadOptions",

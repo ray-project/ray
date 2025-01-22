@@ -305,7 +305,7 @@ Video
    :nosignatures:
    :toctree: doc/
 
-   read_video
+   read_videos
 
 WebDataset
 ----------
