@@ -72,15 +72,14 @@ set -euo pipefail
 
 # Install miniforge
 wget --quiet \
-     "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-Linux-${HOSTTYPE}.sh" \
-     -O /tmp/miniforge.sh
+    "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-Linux-${HOSTTYPE}.sh" \
+    -O /tmp/miniforge.sh
 
 /bin/bash /tmp/miniforge.sh -b -u -p $HOME/anaconda3
 
 $HOME/anaconda3/bin/conda init
 echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc
 rm /tmp/miniforge.sh
-
 $HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
 $HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
 $HOME/anaconda3/bin/conda clean -y --all
