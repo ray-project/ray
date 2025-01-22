@@ -579,7 +579,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             addrs = await self._get_stub_address_by_ip(ip)
             if not addrs:
                 return aiohttp.web.HTTPInternalServerError(
-                    text=f"Failed to execute: no agent address found for node {ip}"
+                    text=f"Failed to execute: no agent address found for node IP {ip}"
                 )
             _, ip, _, grpc_port = addrs
 
