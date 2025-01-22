@@ -175,13 +175,15 @@ class Stats:
                 to True is useful for cases, in which the internal values list would
                 otherwise grow indefinitely, for example if reduce is None and there
                 is no `window` provided.
-            with_throughput: Whether to track a throughput estimate together with this
+            throughput: If True, track a throughput estimate together with this
                 Stats. This is only supported for `reduce=sum` and
                 `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
                 then keeps track of the time passed between two consecutive calls to
                 `reduce()` and update its throughput estimate. The current throughput
                 estimate of a key can be obtained through:
-                `Stats.peek([some key], throughput=True)`.
+                `peeked_val, throughput_per_sec = Stats.peek([key], throughput=True)`.
+                If a float, track throughput and also set current throughput estimate
+                to the given value.
         """
         # Thus far, we only support mean, max, min, and sum.
         if reduce not in [None, "mean", "min", "max", "sum"]:
@@ -318,9 +320,10 @@ class Stats:
             # Take the delta between the new (upcoming) reduced value and the most
             # recently reduced value (one `reduce()` call ago).
             delta_sum = reduced - self._hist[-1]
-            assert delta_sum >= 0
             time_now = time.perf_counter()
-            if self._throughput_last_time == -1:
+            # `delta_sum` may be < 0.0 if user overrides a metric through
+            # `.set_value()`.
+            if self._throughput_last_time == -1 or delta_sum < 0.0:
                 self._throughput = np.nan
             else:
                 delta_time = time_now - self._throughput_last_time
