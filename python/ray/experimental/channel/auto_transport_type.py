@@ -54,7 +54,8 @@ class TypeHintResolver:
         Get the GPU IDs of the actor.
 
         Returns:
-            The GPU IDs of the actor. If the actor is not found, return an empty list.
+            The GPU IDs of the actor. If the actor is not found,
+            return an empty list.
         """
         gpu_ids = self._actor_to_gpu_ids.get(actor, [])
         assert len(gpu_ids) <= 1, (

@@ -912,6 +912,7 @@ class CompiledDAG:
             "ray.actor.ActorHandle", List[_DAGNodeOperation]
         ] = defaultdict(list)
         # Mapping from the actor handle to the node ID that the actor is on.
+        # A None actor handle means the actor is the driver.
         self.actor_to_node_id: Dict[Optional["ray.actor.ActorHandle"], str] = {}
 
         # This is set to true when type hint of `transport="nccl"` is used.
@@ -1057,6 +1058,8 @@ class CompiledDAG:
         input_positional_args: Set[int] = set()
         input_kwargs: Set[str] = set()
         # Set of tasks with annotation of with_tensor_transport("auto").
+        # These only correspond to ClassMethodNodes, but not InputNodes
+        # or InputAttributeNodes.
         auto_transport_tasks: Set["CompiledTask"] = set()
 
         # For each task node, set its upstream and downstream task nodes.
