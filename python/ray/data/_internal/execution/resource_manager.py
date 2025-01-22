@@ -282,6 +282,11 @@ class OpResourceAllocator(ABC):
         ...
 
     @abstractmethod
+    def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
+        """Return the budget for the given operator."""
+        ...
+
+    @abstractmethod
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         """Return the maximum bytes of pending task outputs can be read for
         the given operator. None means no limit."""
@@ -499,6 +504,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         budget = self._op_budgets[op]
         res = op.incremental_resource_usage().satisfies_limit(budget)
         return res
+
+    def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
+        return self._op_budgets[op]
 
     def _should_unblock_streaming_output_backpressure(
         self, op: PhysicalOperator

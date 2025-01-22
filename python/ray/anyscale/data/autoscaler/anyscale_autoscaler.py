@@ -322,6 +322,17 @@ class AnyscaleAutoscaler(Autoscaler):
                         )
                         - current_size
                     )
+
+                    # When we launch an actor for one operator, it decreases the number
+                    # of resources available to other operators. So, if we don't update
+                    # the budgets before scaling up, we might launch more actors than
+                    # the cluster can handle.
+                    self._resource_manager.update_usages()
+                    budget = self._resource_manager.op_resource_allocator.get_budget(op)
+                    max_num_to_scale_up = self._get_max_scale_up(actor_pool, budget)
+                    if max_num_to_scale_up is not None:
+                        num_to_scale_up = min(num_to_scale_up, max_num_to_scale_up)
+
                     new_size = actor_pool.scale_up(num_to_scale_up) + current_size
                     logger.debug(
                         "Scaled up actor pool %s: %d -> %d, current util: %.2f",
@@ -330,6 +341,36 @@ class AnyscaleAutoscaler(Autoscaler):
                         new_size,
                         util,
                     )
+
+    def _get_max_scale_up(
+        self,
+        actor_pool: AutoscalingActorPool,
+        budget: ExecutionResources,
+    ) -> Optional[int]:
+        assert budget.cpu >= 0 and budget.gpu >= 0
+
+        num_cpus_per_actor = actor_pool.per_actor_resource_usage().cpu
+        num_gpus_per_actor = actor_pool.per_actor_resource_usage().gpu
+        assert num_cpus_per_actor >= 0 and num_gpus_per_actor >= 0
+
+        max_cpu_scale_up: float = float("inf")
+        if num_cpus_per_actor > 0 and not math.isinf(budget.cpu):
+            max_cpu_scale_up = budget.cpu // num_cpus_per_actor
+
+        max_gpu_scale_up: float = float("inf")
+        if num_gpus_per_actor > 0 and not math.isinf(budget.gpu):
+            max_gpu_scale_up = budget.gpu // num_gpus_per_actor
+
+        max_scale_up = min(max_cpu_scale_up, max_gpu_scale_up)
+        if math.isinf(max_scale_up):
+            return None
+        else:
+            assert not math.isnan(max_scale_up), (
+                budget,
+                num_cpus_per_actor,
+                num_gpus_per_actor,
+            )
+            return int(max_scale_up)
 
     def _get_node_resource_spec_and_count(self) -> Dict[_NodeResourceSpec, int]:
         """Get the unique node resource specs and their count in the cluster.
