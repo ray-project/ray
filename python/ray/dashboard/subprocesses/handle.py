@@ -133,6 +133,7 @@ class SubprocessModuleHandle:
                 self.parent_bound_queue,
                 self.module_cls,
                 self.config,
+                self.incarnation,
             ),
             daemon=True,
         )
@@ -207,12 +208,13 @@ class SubprocessModuleHandle:
         3. fail all active requests
         4. restart the module
         """
+        incarnation = self.incarnation
         while True:
             try:
                 await self._do_once_health_check()
             except Exception as e:
                 filename = module_logging_filename(
-                    self.module_cls.__name__, self.config.logging_filename
+                    self.module_cls.__name__, incarnation, self.config.logging_filename
                 )
                 logger.exception(
                     f"Module {self.module_cls.__name__} is unhealthy. Please refer to"

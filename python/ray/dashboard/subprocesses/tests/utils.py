@@ -93,7 +93,8 @@ class TestModule(SubprocessModule):
 
     @SubprocessRouteTable.post("/logging_in_module")
     async def logging_in_module(self, request_body: bytes) -> aiohttp.web.Response:
-        logger.info("In /logging_in_module, Not all those who wander are lost.")
+        request_body_str = request_body.decode()
+        logger.info(f"In /logging_in_module, {request_body_str}.")
         return aiohttp.web.Response(text="done!")
 
     @SubprocessRouteTable.post("/kill_self")

@@ -165,6 +165,7 @@ def run_module(
     parent_bound_queue: multiprocessing.Queue,
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
+    incarnation: int,
 ):
     """
     Entrypoint for a subprocess module.
@@ -173,7 +174,9 @@ def run_module(
     `module.init()`.
     """
     module_name = cls.__name__
-    logging_filename = module_logging_filename(module_name, config.logging_filename)
+    logging_filename = module_logging_filename(
+        module_name, incarnation, config.logging_filename
+    )
     setup_component_logger(
         logging_level=config.logging_level,
         logging_format=config.logging_format,
@@ -183,7 +186,9 @@ def run_module(
         backup_count=config.logging_rotate_backup_count,
     )
 
-    logger.info(f"Starting module {module_name} with config {config}")
+    logger.info(
+        f"Starting module {module_name} with incarnation {incarnation} and config {config}"
+    )
 
     try:
         assert_not_in_asyncio_loop()
