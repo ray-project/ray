@@ -562,7 +562,7 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
                 total_num_nodes += 1
         return total_num_nodes
     except Exception as e:
-        logger.info(f"Faile to query number of nodes in the cluster: {e}")
+        logger.exception("Faile to query number of nodes in the cluster")
         return None
 
 
@@ -593,7 +593,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
                 k, v = kv.split("=")
                 extra_usage_tags[k] = v
         except Exception as e:
-            logger.info(f"Failed to parse extra usage tags env var. Error: {e}")
+            logger.exception("Failed to parse extra usage tags env var")
 
     valid_tag_keys = [tag_key.lower() for tag_key in TagKey.keys()]
     try:
@@ -601,16 +601,16 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
             usage_constant.EXTRA_USAGE_TAG_PREFIX.encode(),
             namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
         )
-        for key in keys:
-            value = gcs_client.internal_kv_get(
-                key, namespace=usage_constant.USAGE_STATS_NAMESPACE.encode()
-            )
+        kv = gcs_client.internal_kv_multi_get(
+            keys, namespace=usage_constant.USAGE_STATS_NAMESPACE.encode()
+        )
+        for key, value in kv.items():
             key = key.decode("utf-8")
             key = key[len(usage_constant.EXTRA_USAGE_TAG_PREFIX) :]
             assert key in valid_tag_keys
             extra_usage_tags[key] = value.decode("utf-8")
     except Exception as e:
-        logger.info(f"Failed to get extra usage tags from kv store {e}")
+        logger.exception("Failed to get extra usage tags from kv store")
     return extra_usage_tags
 
 

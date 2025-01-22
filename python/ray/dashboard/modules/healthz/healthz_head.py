@@ -35,5 +35,5 @@ class HealthzHead(SubprocessModule):
 
         return HTTPServiceUnavailable(reason="Health check failed")
 
-    async def run(self):
+    async def init(self):
         pass
