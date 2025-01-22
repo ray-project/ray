@@ -7,7 +7,7 @@ from ray._private.ray_logging.formatters import TextFormatter
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray.util.annotations import PublicAPI, Deprecated
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 
 import logging
 

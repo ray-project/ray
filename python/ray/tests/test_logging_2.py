@@ -11,8 +11,6 @@ from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.test_utils import run_string_as_driver
 
-from dataclasses import fields
-
 
 class TestCoreContextFilter:
     def test_driver_process(self, shutdown_only):
