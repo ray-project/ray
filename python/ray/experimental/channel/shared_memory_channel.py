@@ -702,22 +702,11 @@ class CompositeChannel(ChannelInterface):
         # We create a BufferedSharedMemoryChannel for readers on the same node, and
         # a single Channel for readers on different nodes due to
         # https://github.com/ray-project/ray/issues/49044
-        if (
-            self._writer is None
-            or self._writer == ray.get_runtime_context().current_actor
-        ):
-            writer_node = ray.get_runtime_context().get_node_id()
-        else:
-            writer_node = ray.get(
-                self._writer.__ray_call__.remote(
-                    lambda self: ray.get_runtime_context().get_node_id()
-                )
-            )
         (
             readers_same_node,
             readers_different_node,
         ) = utils.split_readers_by_node_locality(
-            ray.get_runtime_context().get_node_id(), remote_reader_and_node_list
+            utils.get_writer_node(self._writer), remote_reader_and_node_list
         )
 
         if len(readers_same_node) != 0:
