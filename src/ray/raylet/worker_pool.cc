@@ -1476,15 +1476,29 @@ void WorkerPool::PrestartWorkersWithRuntimeEnv(const TaskSpecification &task_spe
                                                int64_t num_needed) {
   RAY_LOG(DEBUG) << "PrestartWorkers " << num_needed;
   for (int ii = 0; ii < num_needed; ++ii) {
-    PopWorkerStatus status;
-    StartWorkerProcess(task_spec.GetLanguage(),
-                       rpc::WorkerType::WORKER,
-                       JobID::Nil(),
-                       &status,
-                       /*dynamic_options=*/{},
-                       task_spec.GetRuntimeEnvHash(),
-                       task_spec.SerializedRuntimeEnv(),
-                       task_spec.RuntimeEnvInfo());
+    GetOrCreateRuntimeEnv(
+        task_spec.SerializedRuntimeEnv(),
+        task_spec.RuntimeEnvConfig(),
+        JobID::Nil(),
+        [this, task_spec = task_spec](
+            bool successful,
+            const std::string &serialized_runtime_env_context /*unused*/,
+            const std::string &setup_error_message) {
+          if (!successful) {
+            RAY_LOG(ERROR) << "Fails to create or get runtime env "
+                           << setup_error_message;
+            return;
+          }
+          PopWorkerStatus status;
+          StartWorkerProcess(task_spec.GetLanguage(),
+                             rpc::WorkerType::WORKER,
+                             JobID::Nil(),
+                             &status,
+                             /*dynamic_options=*/{},
+                             task_spec.GetRuntimeEnvHash(),
+                             task_spec.SerializedRuntimeEnv(),
+                             task_spec.RuntimeEnvInfo());
+        });
   }
 }
 
