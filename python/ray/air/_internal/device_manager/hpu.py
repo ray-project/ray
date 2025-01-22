@@ -48,3 +48,9 @@ class HPUTorchDeviceManager(TorchDeviceManager):
             yield
 
         return default_context_manager()
+
+    def create_stream(self, device: torch.device):
+        raise NotImplementedError
+
+    def get_current_stream(self):
+        raise NotImplementedError

@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import List
+from typing import List, Union
 
 import torch
 
@@ -28,3 +28,12 @@ class CPUTorchDeviceManager(TorchDeviceManager):
             yield
 
         return default_context_manager()
+
+    def set_device(self, device: Union[torch.device, int, str, None]):
+        raise NotImplementedError
+
+    def create_stream(self, device: torch.device):
+        raise NotImplementedError
+
+    def get_current_stream(self):
+        raise NotImplementedError
