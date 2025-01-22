@@ -6,7 +6,6 @@ from typing import Callable
 from benchmark import Benchmark
 
 import ray
-import ray.data
 
 # Add a random prefix to avoid conflicts between different runs.
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
