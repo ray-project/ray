@@ -10,6 +10,7 @@ import ray
 from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.tests.conftest import *  # noqa
@@ -55,6 +56,7 @@ class TestActorPool(unittest.TestCase):
                 max_tasks_in_flight_per_actor=max_tasks_in_flight,
             ),
             create_actor_fn=self._create_actor_fn,
+            per_actor_resource_usage=ExecutionResources(cpu=1),
         )
         return pool
 
