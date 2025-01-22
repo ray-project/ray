@@ -134,8 +134,8 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
     NUM_TRAINING_STEP_CALLS_PER_ITERATION,
-    RESTORE_WORKERS_TIMER,
-    RESTORE_EVAL_WORKERS_TIMER,
+    RESTORE_ENV_RUNNERS_TIMER,
+    RESTORE_EVAL_ENV_RUNNERS_TIMER,
     SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -1685,8 +1685,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         return env_runner_results, env_steps, agent_steps, all_batches
 
     @OverrideToImplementCustomLogic
-    @DeveloperAPI
-    def restore_workers(self, workers: EnvRunnerGroup) -> None:
+    def restore_env_runners(self, env_runner_group: EnvRunnerGroup) -> None:
         """Try bringing back unhealthy EnvRunners and - if successful - sync with local.
 
         Algorithms that use custom EnvRunners may override this method to
@@ -1695,33 +1694,31 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         after such a restart of a (previously failed) worker.
 
         Args:
-            workers: The EnvRunnerGroup to restore. This may be the training or the
-                evaluation EnvRunnerGroup.
+            env_runner_group: The EnvRunnerGroup to restore. This may be the training or
+                the evaluation EnvRunnerGroup.
         """
-        # If `workers` is None, or
-        # 1. `workers` (EnvRunnerGroup) does not have a local worker, and
+        # If `env_runner_group` is None, or
+        # 1. `env_runner_group` (EnvRunnerGroup) does not have a local worker, and
         # 2. `self.env_runner_group` (EnvRunnerGroup used for training) does not have a
-        # local EnvRunner -> we don't have a local worker to get state from, so we can't
-        # recover remote EnvRunners in this case.
-        if not workers or (
-            not workers.local_env_runner and not self.env_runner_group.local_env_runner
+        # local EnvRunner -> we don't have an EnvRunner to get state from, so we can't
+        # recover remote EnvRunner actors in this case.
+        if not env_runner_group or (
+            not env_runner_group.local_env_runner and not self.env_runner
         ):
             return
 
-        # This is really cheap, since probe_unhealthy_workers() is a no-op
+        # This is really cheap, since probe_unhealthy_env_runners() is a no-op
         # if there are no unhealthy workers.
-        restored = workers.probe_unhealthy_workers()
+        restored = env_runner_group.probe_unhealthy_env_runners()
 
         if restored:
             # Count the restored workers.
             self._counters["total_num_restored_workers"] += len(restored)
 
-            from_worker = (
-                workers.local_env_runner or self.env_runner_group.local_env_runner
-            )
+            from_env_runner = env_runner_group.local_env_runner or self.env_runner
             # Get the state of the correct (reference) worker. For example the local
             # worker of an EnvRunnerGroup.
-            state = from_worker.get_state()
+            state = from_env_runner.get_state()
             state_ref = ray.put(state)
 
             def _sync_env_runner(er):
@@ -1734,7 +1731,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
             elif self.config.is_multi_agent:
 
-                multi_rl_module_spec = MultiRLModuleSpec.from_module(from_worker.module)
+                multi_rl_module_spec = MultiRLModuleSpec.from_module(
+                    from_env_runner.module
+                )
 
                 def _sync_env_runner(er):  # noqa
                     # Remove modules, if necessary.
@@ -1752,7 +1751,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
             # By default, entire local EnvRunner state is synced after restoration
             # to bring the previously failed EnvRunner up to date.
-            workers.foreach_env_runner(
+            env_runner_group.foreach_env_runner(
                 func=_sync_env_runner,
                 remote_worker_ids=restored,
                 # Don't update the local EnvRunner, b/c it's the one we are synching
@@ -1768,9 +1767,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 callbacks_functions=self.config.callbacks_on_env_runners_recreated,
                 kwargs=dict(
                     algorithm=self,
-                    env_runner_group=workers,
+                    env_runner_group=env_runner_group,
                     env_runner_indices=restored,
-                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                    is_evaluation=(
+                        env_runner_group.local_env_runner.config.in_evaluation
+                    ),
                 ),
             )
             # TODO (sven): Deprecate this call.
@@ -1779,9 +1780,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 callbacks_objects=self.callbacks,
                 kwargs=dict(
                     algorithm=self,
-                    worker_set=workers,
+                    worker_set=env_runner_group,
                     worker_ids=restored,
-                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                    is_evaluation=(
+                        env_runner_group.local_env_runner.config.in_evaluation
+                    ),
                 ),
             )
 
@@ -3371,8 +3374,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 # when we have reached `min_time_s_per_iteration`).
                 while not train_iter_ctx.should_stop(has_run_once):
                     # Before training step, try to bring failed workers back.
-                    with self.metrics.log_time((TIMERS, RESTORE_WORKERS_TIMER)):
-                        self.restore_workers(self.env_runner_group)
+                    with self.metrics.log_time((TIMERS, RESTORE_ENV_RUNNERS_TIMER)):
+                        self.restore_env_runners(self.env_runner_group)
 
                     # Try to train one step.
                     with self.metrics.log_time((TIMERS, TRAINING_STEP_TIMER)):
@@ -3447,11 +3450,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         """
         if self.eval_env_runner_group is not None:
             if self.config.enable_env_runner_and_connector_v2:
-                with self.metrics.log_time((TIMERS, RESTORE_EVAL_WORKERS_TIMER)):
-                    self.restore_workers(self.eval_env_runner_group)
+                with self.metrics.log_time((TIMERS, RESTORE_EVAL_ENV_RUNNERS_TIMER)):
+                    self.restore_env_runners(self.eval_env_runner_group)
             else:
-                with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
-                    self.restore_workers(self.eval_env_runner_group)
+                with self._timers["restore_eval_workers"]:
+                    self.restore_env_runners(self.eval_env_runner_group)
 
         # Run `self.evaluate()` only once per training iteration.
         if self.config.enable_env_runner_and_connector_v2:
@@ -4001,8 +4004,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             training_step_results = None
             with TrainIterCtx(algo=self) as train_iter_ctx:
                 while not train_iter_ctx.should_stop(training_step_results):
-                    with self._timers[RESTORE_WORKERS_TIMER]:
-                        self.restore_workers(self.env_runner_group)
+                    with self._timers["restore_workers"]:
+                        self.restore_env_runners(self.env_runner_group)
 
                     with self._timers[TRAINING_STEP_TIMER]:
                         training_step_results = self.training_step()
@@ -4130,6 +4133,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         results["info"].update(counters)
 
         return results
+
+    @Deprecated(new="Algorithm.restore_env_runners", error=False)
+    def restore_workers(self, *args, **kwargs):
+        return self.restore_env_runners(*args, **kwargs)
 
     @Deprecated(
         new="Algorithm.env_runner_group",
