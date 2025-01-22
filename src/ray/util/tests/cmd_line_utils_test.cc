@@ -128,7 +128,7 @@ TEST(UtilTest, CreateCommandLineTest) {
 }  // namespace
 
 int main(int argc, char **argv) {
-  ray::argv0 = argv[0];
+  argv0 = argv[0];
   int result = 0;
   if (argc > 1 && strcmp(argv[1], "--println") == 0) {
     // If we're given this special command, emit each argument on a new line
