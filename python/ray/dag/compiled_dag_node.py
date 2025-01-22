@@ -99,6 +99,52 @@ def _shutdown_all_compiled_dags():
     _compiled_dags = weakref.WeakValueDictionary()
 
 
+def _check_unused_dag_input_attributes(
+    output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]
+) -> Set[str]:
+    """
+    Helper function to check that all input attributes are used in the DAG.
+    For example, if the user creates an input attribute by calling
+    InputNode()["x"], we ensure that there is a path from the
+    InputAttributeNode corresponding to "x" to the DAG's output. If an
+    input attribute is not used, throw an error.
+
+    Args:
+        output_node: The starting node for the traversal.
+        input_attributes: A set of attributes accessed by the InputNode.
+    """
+    from ray.dag import InputAttributeNode
+
+    used_attributes = set()
+    visited_nodes = set()
+    stack: List["ray.dag.DAGNode"] = [output_node]
+
+    while stack:
+        current_node = stack.pop()
+        if current_node in visited_nodes:
+            continue
+        visited_nodes.add(current_node)
+
+        if isinstance(current_node, InputAttributeNode):
+            used_attributes.add(current_node.key)
+
+        stack.extend(current_node._upstream_nodes)
+
+    unused_attributes = input_attributes - used_attributes
+    if unused_attributes:
+        unused_attributes_str = ", ".join(str(key) for key in unused_attributes)
+        input_attributes_str = ", ".join(str(key) for key in input_attributes)
+        unused_phrase = "is unused" if len(unused_attributes) == 1 else "are unused"
+
+        raise ValueError(
+            "Compiled Graph expects input to be accessed "
+            f"using all of attributes {input_attributes_str}, "
+            f"but {unused_attributes_str} {unused_phrase}. "
+            "Ensure all input attributes are used and contribute "
+            "to the computation of the Compiled Graph output."
+        )
+
+
 @DeveloperAPI
 def do_allocate_channel(
     self,
@@ -783,6 +829,7 @@ class CompiledDAG:
         self._submit_timeout: Optional[float] = submit_timeout
         if self._submit_timeout is None:
             self._submit_timeout = ctx.submit_timeout
+        self._get_timeout: Optional[float] = ctx.get_timeout
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = ctx.buffer_size_bytes
@@ -891,6 +938,11 @@ class CompiledDAG:
         self._proxy_actor = _create_proxy_actor()
         # Set to True when `teardown` API is called.
         self._is_teardown = False
+        # execution indices -> set of channel indices of destructed CompiledDAGRefs
+        # When a CompiledDagRef is destructed and its result has not been cached and
+        # ray.get has not been called on it, we will add it to this dict, so that
+        # we can lazily release the native buffers
+        self._destructed_ref_idxs: Dict[int, Set[Optional[int]]] = defaultdict(set)
 
     @property
     def communicator_id_p2p(self) -> Optional[str]:
@@ -942,11 +994,16 @@ class CompiledDAG:
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
         collective_ops: Set[_CollectiveOperation] = set()
 
+        input_attributes: Set[str] = set()
         # Find the input node and input attribute nodes in the DAG.
         for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode):
                 assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
+                # handle_unused_attributes:
+                # Save input attributes in a set.
+                input_node = task.dag_node
+                input_attributes.update(input_node.input_attribute_nodes.keys())
             elif isinstance(task.dag_node, InputAttributeNode):
                 self.input_attr_task_idxs.append(idx)
 
@@ -1059,7 +1116,7 @@ class CompiledDAG:
                         "the driver cannot participate in the NCCL group"
                     )
 
-            if type(dag_node.type_hint) == ChannelOutputType:
+            if type(dag_node.type_hint) is ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
                 dag_node.with_type_hint(self._default_type_hint)
@@ -1125,6 +1182,10 @@ class CompiledDAG:
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL actors of P2P.
                     nccl_actors_p2p.add(downstream_actor_handle)
+
+        # Check that all specified input attributes, e.g., InputNode()["x"],
+        # are used in the DAG.
+        _check_unused_dag_input_attributes(output_node, input_attributes)
 
         # Collect all leaf nodes.
         leaf_nodes: DAGNode = []
@@ -1955,7 +2016,12 @@ class CompiledDAG:
         """
         if not self._has_execution_results(execution_index):
             for chan_idx, res in enumerate(result):
-                self._result_buffer[execution_index][chan_idx] = res
+                # avoid caching for any CompiledDAGRef that has already been destructed.
+                if not (
+                    execution_index in self._destructed_ref_idxs
+                    and chan_idx in self._destructed_ref_idxs[execution_index]
+                ):
+                    self._result_buffer[execution_index][chan_idx] = res
 
     def _get_execution_results(
         self, execution_index: int, channel_index: Optional[int]
@@ -1997,16 +2063,41 @@ class CompiledDAG:
                 del self._result_buffer[execution_index]
         return result
 
-    def release_output_channel_buffers(self, execution_index: int):
-        from ray.dag import DAGContext
+    def _next_execution_can_be_released(self) -> bool:
+        """
+        Check if the next buffers for the next execution which will be completed
+        can be released. The next execution can be released if the next
+        execution index is in _destructed_ref_idxs and the number of destructed
+        channel indices is equal to the number of output channels.
+        """
+        return (
+            self._max_finished_execution_index + 1 in self._destructed_ref_idxs
+            and len(self._destructed_ref_idxs[self._max_finished_execution_index + 1])
+            == len(self.dag_output_channels)
+        )
 
-        ctx = DAGContext.get_current()
-        timeout = ctx.get_timeout
-
-        while self._max_finished_execution_index < execution_index:
-            self._max_finished_execution_index += 1
+    def _try_release_buffers(self):
+        """
+        This will try to repeatedly release channel buffers as long as
+        max_finished_execution_index + 1 is in the set of destructed indices.
+        We should be checking to release buffers any time we are incrementing
+        or checking the max_finished_execution_index or the _destructed_ref_idxs.
+        """
+        timeout = self._get_timeout
+        while self._next_execution_can_be_released():
             start_time = time.monotonic()
-            self._dag_output_fetcher.release_channel_buffers(timeout)
+            try:
+                self._dag_output_fetcher.release_channel_buffers(timeout)
+            except RayChannelTimeoutError as e:
+                raise RayChannelTimeoutError(
+                    "Releasing native buffers corresponding to a stale CompiledDAGRef "
+                    "is taking a long time. If this is expected, increase "
+                    f"RAY_CGRAPH_get_timeout which is currently {self._get_timeout} "
+                    "seconds. Otherwise, this may indicate that the execution "
+                    "is hanging."
+                ) from e
+
+            self._max_finished_execution_index += 1
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
@@ -2017,11 +2108,14 @@ class CompiledDAG:
         execution_index: int,
         channel_index: Optional[int] = None,
         timeout: Optional[float] = None,
-    ) -> List[Any]:
-        """Repeatedly execute this DAG until the given execution index,
-        and buffer all results up to that index. If the DAG has already
-        been executed up to the given index, just return the result
-        corresponding to the given index and channel.
+    ):
+        """Repeatedly execute this DAG until the given execution index and
+        buffer results for all CompiledDagRef's.
+        If the DAG has already been executed up to the given index, it will do nothing.
+
+        Note: If this comes across execution indices for which the corresponding
+        CompiledDAGRef's have been destructed, it will release the buffer and not
+        cache the result.
 
         Args:
             execution_index: The execution index to execute until.
@@ -2029,49 +2123,44 @@ class CompiledDAG:
                 Channel indexing is consistent with the order of
                 self.dag_output_channels. None means wrapping results from all output
                 channels into a single list.
-            timeout: The maximum time in seconds to wait for the result.
+            timeout: The maximum time in seconds to wait for the execution.
                 None means using default timeout (DAGContext.get_timeout),
                 0 means immediate timeout (immediate success or timeout without
                 blocking), -1 means infinite timeout (block indefinitely).
 
-        Returns:
-            The execution result corresponding to the given execution index and
-            channel index.
-
         TODO(rui): catch the case that user holds onto the CompiledDAGRefs
         """
-        if self._max_finished_execution_index < execution_index:
-            from ray.dag import DAGContext
-
-            ctx = DAGContext.get_current()
-            if timeout is None:
-                timeout = ctx.get_timeout
-
+        if timeout is None:
+            timeout = self._get_timeout
         while self._max_finished_execution_index < execution_index:
             start_time = time.monotonic()
 
             # Fetch results from each output channel up to execution_index and cache
             # them separately to enable individual retrieval
+            # If a CompiledDagRef for a specific execution index has been destructed,
+            # release the channel buffers for that execution index instead of caching
             try:
-                result = self._dag_output_fetcher.read(timeout)
+                if self._next_execution_can_be_released():
+                    self._dag_output_fetcher.release_channel_buffers(timeout)
+                else:
+                    result = self._dag_output_fetcher.read(timeout)
+                    self._cache_execution_results(
+                        self._max_finished_execution_index + 1,
+                        result,
+                    )
             except RayChannelTimeoutError as e:
                 raise RayChannelTimeoutError(
                     "If the execution is expected to take a long time, increase "
-                    f"RAY_CGRAPH_get_timeout which is currently {timeout} seconds. "
-                    "Otherwise, this may indicate that the execution is hanging."
+                    f"RAY_CGRAPH_get_timeout which is currently {self._get_timeout} "
+                    "seconds. Otherwise, this may indicate that the execution is "
+                    "hanging."
                 ) from e
 
             self._max_finished_execution_index += 1
-            self._cache_execution_results(
-                self._max_finished_execution_index,
-                result,
-            )
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
-
-        return self._get_execution_results(execution_index, channel_index)
 
     def execute(
         self,
@@ -2109,6 +2198,10 @@ class CompiledDAG:
         else:
             inp = CompiledDAGArgs(args=args, kwargs=kwargs)
 
+        # We want to release any buffers we can at this point based on the
+        # max_finished_execution_index so that the number of inflight executions
+        # is up to date.
+        self._try_release_buffers()
         self._raise_if_too_many_inflight_executions()
         try:
             self._dag_submitter.write(inp, self._submit_timeout)
@@ -2555,16 +2648,16 @@ class CompiledDAG:
         if channel in self._channel_dict and self._channel_dict[channel] != channel:
             channel = self._channel_dict[channel]
             channel_details += f"\n{type(channel).__name__}"
-            if type(channel) == CachedChannel:
+            if type(channel) is CachedChannel:
                 channel_details += f", {channel._channel_id[:6]}..."
         # get inner channel
         if (
-            type(channel) == CompositeChannel
+            type(channel) is CompositeChannel
             and downstream_actor_id in channel._channel_dict
         ):
             inner_channel = channel._channel_dict[downstream_actor_id]
             channel_details += f"\n{type(inner_channel).__name__}"
-            if type(inner_channel) == IntraProcessChannel:
+            if type(inner_channel) is IntraProcessChannel:
                 channel_details += f", {inner_channel._channel_id[:6]}..."
         return channel_details
 
@@ -2728,7 +2821,7 @@ class CompiledDAG:
                             task.output_channels[0],
                             (
                                 downstream_node._get_actor_handle()._actor_id.hex()
-                                if type(downstream_node) == ClassMethodNode
+                                if type(downstream_node) is ClassMethodNode
                                 else self._proxy_actor._actor_id.hex()
                             ),
                         )
@@ -2746,7 +2839,7 @@ class CompiledDAG:
                             task.dag_node._get_actor_handle()._actor_id.hex(),
                         )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)
-            if type(task.dag_node) == InputAttributeNode:
+            if type(task.dag_node) is InputAttributeNode:
                 # Add an edge from the InputAttributeNode to the InputNode
                 dot.edge(str(self.input_task_idx), str(idx))
         dot.render(filename, view=view)

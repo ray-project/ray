@@ -13,6 +13,7 @@ PLATFORMS_RAY = [
     "cu11.8.0-cudnn8",
     "cu12.1.1-cudnn8",
     "cu12.3.2-cudnn9",
+    "cu12.4.1-cudnn",
 ]
 PLATFORMS_RAY_ML = [
     "cpu",
