@@ -145,7 +145,10 @@ class DAGNode(DAGNodeBase):
         _direct_return: bool = False,
     ):
         if transport == "auto":
-            self._type_hint = AutoTransportType()
+            self._type_hint = AutoTransportType(
+                _static_shape=_static_shape,
+                _direct_return=_direct_return,
+            )
         elif transport == "nccl":
             self._type_hint = TorchTensorType(
                 transport=transport,
@@ -596,6 +599,7 @@ class DAGNode(DAGNodeBase):
         )
         instance._stable_uuid = self._stable_uuid
         instance._type_hint = copy.deepcopy(self._type_hint)
+        instance._original_type_hint = copy.deepcopy(self._original_type_hint)
         return instance
 
     def __getstate__(self):

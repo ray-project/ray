@@ -1253,7 +1253,9 @@ class CompiledDAG:
             # the resolved type hint's `register_custom_serializer` will be called
             # in preparation for channel I/O.
             task.dag_node.type_hint = type_hint_resolver.resolve(
-                writer_and_node, reader_and_node_list
+                task.dag_node.type_hint,
+                writer_and_node,
+                reader_and_node_list,
             )
             if task.dag_node.type_hint.requires_nccl():
                 nccl_actors_p2p.add(writer)
@@ -1350,7 +1352,7 @@ class CompiledDAG:
         """
         accelerator_ids = ray.get(
             actor_handle.__ray_call__.remote(
-                lambda: ray.get_runtime_context().get_accelerator_ids()
+                lambda self: ray.get_runtime_context().get_accelerator_ids()
             )
         )
         return accelerator_ids.get("GPU", [])

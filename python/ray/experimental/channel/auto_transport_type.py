@@ -5,6 +5,36 @@ from ray.experimental.channel import ChannelOutputType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 
+class AutoTransportType(ChannelOutputType):
+    """
+    Type hint for automatic transport selection for tensors.
+
+    With this type hint Compiled Graphs automatically decide the best transport
+    to use (e.g., NCCL or shared memory) based on the node locations and GPU IDs
+    of the readers and writers.
+    """
+
+    def __init__(self, _static_shape: bool = False, _direct_return: bool = False):
+        self._static_shape = _static_shape
+        self._direct_return = _direct_return
+
+    def create_channel(
+        self,
+        writer: Optional["ray.actor.ActorHandle"],
+        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        driver_actor_id: Optional[str] = None,
+    ) -> "ChannelOutputType":
+        """
+        Directly calling create_channel() on AutoTransportType should not happen,
+        just raise an exception with informative message.
+        """
+        raise ValueError(
+            "This should not happen: AutoTransportType should "
+            "have been resolved before creating a channel. "
+            "Please file a Ray GitHub issue for bug report."
+        )
+
+
 class TypeHintResolver:
     """
     This class is used to resolve `AutoChannelType` into an actual channel type
@@ -84,13 +114,16 @@ class TypeHintResolver:
 
     def resolve(
         self,
+        auto_transport_type: AutoTransportType,
         writer_and_node: Tuple["ray.actor.ActorHandle", str],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     ) -> "ChannelOutputType":
         """
-        Resolve to the actual channel type based on the node locations and GPU IDs.
+        Resolve auto_transport_type to the actual channel output type
+        based on the node locations and GPU IDs.
 
         Args:
+            auto_transport_type: The type to resolve
             writer_and_node: A tuple of writer actor handle and its node ID.
             reader_and_node_list: A list of tuples of reader actor handle and its
                 node ID.
@@ -105,44 +138,31 @@ class TypeHintResolver:
             # None means reader is the driver, currently driver on GPU
             # is not supported, so we always use shared memory to transfer
             # tensors.
-            return TorchTensorType()
+            return TorchTensorType(
+                _static_shape=auto_transport_type._static_shape,
+                _direct_return=auto_transport_type._direct_return,
+            )
 
         # Case 1: writer and readers don't both use GPU, use shared memory
         # to transport the tensors
         if not (self._use_gpu(writer) and self._use_gpu(readers)):
-            return TorchTensorType()
+            return TorchTensorType(
+                _static_shape=auto_transport_type._static_shape,
+                _direct_return=auto_transport_type._direct_return,
+            )
 
         # Case 2: writer and readers use the same GPU are are on the same node,
         # use shared memory to transport the tensors
         if self._use_same_gpu(writer_and_node, reader_and_node_list):
-            return TorchTensorType()
+            return TorchTensorType(
+                _static_shape=auto_transport_type._static_shape,
+                _direct_return=auto_transport_type._direct_return,
+            )
 
         # Case 3: writer and readers use different GPUs, use NCCL to transport
         # the tensors
-        return TorchTensorType(transport="nccl")
-
-
-class AutoTransportType(ChannelOutputType):
-    """
-    Type hint for automatic transport selection for tensors.
-
-    With this type hint Compiled Graphs automatically decide the best transport
-    to use (e.g., NCCL or shared memory) based on the node locations and GPU IDs
-    of the readers and writers.
-    """
-
-    def create_channel(
-        self,
-        writer: Optional["ray.actor.ActorHandle"],
-        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-        driver_actor_id: Optional[str] = None,
-    ) -> "ChannelOutputType":
-        """
-        Directly calling create_channel() on AutoTransportType should not happen,
-        just raise an exception with informative message.
-        """
-        raise ValueError(
-            "This should not happen: AutoTransportType should "
-            "have been resolved before creating a channel. "
-            "Please file a Ray GitHub issue for bug report."
+        return TorchTensorType(
+            transport="nccl",
+            _static_shape=auto_transport_type._static_shape,
+            _direct_return=auto_transport_type._direct_return,
         )
