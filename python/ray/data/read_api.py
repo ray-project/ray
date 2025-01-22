@@ -3276,6 +3276,7 @@ def read_clickhouse(
     table: str,
     dsn: str,
     columns: Optional[List[str]] = None,
+    filter: Optional[str] = None,
     order_by: Optional[Tuple[List[str], bool]] = None,
     client_settings: Optional[Dict[str, Any]] = None,
     client_kwargs: Optional[Dict[str, Any]] = None,
@@ -3292,6 +3293,7 @@ def read_clickhouse(
         ...     table="default.table",
         ...     dsn="clickhouse+http://username:password@host:8124/default",
         ...     columns=["timestamp", "age", "status", "text", "label"],
+        ...     filter="age > 18 AND status = 'active'",
         ...     order_by=(["timestamp"], False),
         ... )
 
@@ -3304,6 +3306,12 @@ def read_clickhouse(
             <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
         columns: Optional list of columns to select from the data source.
             If no columns are specified, all columns will be selected by default.
+        filter: Optional SQL filter string that will be used in the WHERE statement
+            (e.g., "label = 2 AND text IS NOT NULL"). The filter string must be valid for use in
+            a ClickHouse SQL WHERE clause. Please Note: Parallel reads are not currently supported
+            when a filter is set. Specifying a filter forces the parallelism to 1 to ensure
+            deterministic and consistent results. For more information, see `ClickHouse SQL WHERE Clause doc
+            <https://clickhouse.com/docs/en/sql-reference/statements/select/where>`_.
         order_by: Optional tuple containing a list of columns to order by and a boolean indicating whether the order
             should be descending (True for DESC, False for ASC). Please Note: order_by is required to support
             parallelism. If not provided, the data will be read in a single task. This is to ensure
@@ -3330,6 +3338,7 @@ def read_clickhouse(
         table=table,
         dsn=dsn,
         columns=columns,
+        filter=filter,
         order_by=order_by,
         client_settings=client_settings,
         client_kwargs=client_kwargs,

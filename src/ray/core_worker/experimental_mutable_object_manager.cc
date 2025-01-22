@@ -15,6 +15,7 @@
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 
 #include "absl/strings/str_format.h"
+#include "ray/common/ray_config.h"
 #include "ray/object_manager/common.h"
 
 namespace ray {
@@ -42,7 +43,7 @@ Status MutableObjectManager::RegisterChannel(
     const ObjectID &object_id,
     std::unique_ptr<plasma::MutableObject> mutable_object,
     bool reader) {
-  absl::MutexLock guard(&channel_lock_);
+  absl::WriterMutexLock guard(&channel_lock_);
   const auto &[channel_pair, success] =
       channels_.emplace(object_id, std::move(mutable_object));
   Channel &channel = channel_pair->second;
@@ -66,7 +67,7 @@ Status MutableObjectManager::RegisterChannel(
 
 MutableObjectManager::Channel *MutableObjectManager::GetChannel(
     const ObjectID &object_id) {
-  absl::MutexLock guard(&channel_lock_);
+  absl::ReaderMutexLock guard(&channel_lock_);
   auto entry = channels_.find(object_id);
   if (entry == channels_.end()) {
     return nullptr;
@@ -75,16 +76,18 @@ MutableObjectManager::Channel *MutableObjectManager::GetChannel(
 }
 
 MutableObjectManager::~MutableObjectManager() {
-  destructor_lock_.Lock();
+  absl::WriterMutexLock destructor_guard(&destructor_lock_);
 
   // Copy `semaphores_` into `tmp` because `DestroySemaphores()` mutates `semaphores_`.
   absl::flat_hash_map<ObjectID, PlasmaObjectHeader::Semaphores> tmp = semaphores_;
   for (const auto &[object_id, _] : tmp) {
-    (void)SetErrorInternal(object_id);
+    if (auto *channel = GetChannel(object_id)) {
+      (void)SetErrorInternal(object_id, *channel);
+    }
     DestroySemaphores(object_id);
   }
+  absl::WriterMutexLock channel_guard(&channel_lock_);
   channels_.clear();
-  destructor_lock_.Unlock();
 }
 
 PlasmaObjectHeader *MutableObjectManager::GetHeader(const ObjectID &object_id) {
@@ -316,8 +319,16 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   auto timeout_point = ToTimeoutPoint(timeout_ms);
   bool locked = false;
   bool expired = false;
+  auto check_signal_interval = std::chrono::milliseconds(
+      RayConfig::instance().get_check_signal_interval_milliseconds());
+  auto last_signal_check_time = std::chrono::steady_clock::now();
   do {
     RAY_RETURN_NOT_OK(object->header->CheckHasError());
+    if (check_signals_ && std::chrono::steady_clock::now() - last_signal_check_time >=
+                              check_signal_interval) {
+      RAY_RETURN_NOT_OK(check_signals_());
+      last_signal_check_time = std::chrono::steady_clock::now();
+    }
     // The channel is still open. This lock ensures that there is only one reader
     // at a time. The lock is released in `ReadRelease()`.
     locked = channel->lock->try_lock();
@@ -331,8 +342,12 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
 
   channel->reading = true;
   int64_t version_read = 0;
-  Status s = object->header->ReadAcquire(
-      object_id, sem, channel->next_version_to_read, version_read, timeout_point);
+  Status s = object->header->ReadAcquire(object_id,
+                                         sem,
+                                         channel->next_version_to_read,
+                                         version_read,
+                                         check_signals_,
+                                         timeout_point);
   if (!s.ok()) {
     RAY_LOG(DEBUG) << "ReadAcquire error was set, returning " << object_id;
     // Failed because the error bit was set on the mutable object.
@@ -428,50 +443,38 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
 Status MutableObjectManager::SetError(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "SetError " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
-  return SetErrorInternal(object_id);
-}
-
-Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
-  Channel *channel = GetChannel(object_id);
-  if (channel != nullptr) {
-    PlasmaObjectHeader::Semaphores sem{};
-    if (!GetSemaphores(object_id, sem)) {
-      return Status::ChannelError(
-          "Channel has not been registered (cannot get semaphores)");
-    }
-    channel->mutable_object->header->SetErrorUnlocked(sem);
-    channel->reader_registered = false;
-    channel->writer_registered = false;
-    // TODO(jhumphri): Free the channel.
+  if (auto *channel = GetChannel(object_id)) {
+    return SetErrorInternal(object_id, *channel);
   } else {
     return Status::ChannelError("Channel has not been registered");
   }
+}
+
+Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id,
+                                              Channel &channel) {
+  PlasmaObjectHeader::Semaphores sem{};
+  if (!GetSemaphores(object_id, sem)) {
+    return Status::ChannelError(
+        "Channel has not been registered (cannot get semaphores)");
+  }
+  channel.mutable_object->header->SetErrorUnlocked(sem);
+  channel.reader_registered = false;
+  channel.writer_registered = false;
+  // TODO(jhumphri): Free the channel.
   return Status::OK();
 }
 
 Status MutableObjectManager::SetErrorAll() {
-  absl::ReaderMutexLock guard(&destructor_lock_);
-
+  absl::ReaderMutexLock destructor_guard(&destructor_lock_);
+  absl::ReaderMutexLock channel_guard(&channel_lock_);
   Status ret = Status::OK();
-  for (const auto &[object_id, _] : channels_) {
-    ret = SetErrorInternal(object_id);
+  for (auto &[object_id, channel] : channels_) {
+    ret = SetErrorInternal(object_id, channel);
     if (ret.code() != StatusCode::OK) {
       break;
     }
   }
   return ret;
-}
-
-std::unique_ptr<std::chrono::steady_clock::time_point>
-MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
-  if (timeout_ms == -1) {
-    return nullptr;
-  }
-  auto now = std::chrono::steady_clock::now();
-  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
-  auto timeout_point =
-      std::make_unique<std::chrono::steady_clock::time_point>(now + timeout_duration);
-  return timeout_point;
 }
 
 Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {
@@ -558,17 +561,13 @@ Status MutableObjectManager::SetError(const ObjectID &object_id) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
+Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id,
+                                              Channel &channel) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
 Status MutableObjectManager::SetErrorAll() {
   return Status::NotImplemented("Not supported on Windows.");
-}
-
-std::unique_ptr<std::chrono::steady_clock::time_point>
-MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
-  return nullptr;
 }
 
 Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {

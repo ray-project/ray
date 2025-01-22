@@ -205,7 +205,7 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
 // limit in Ray to avoid crashing with many small inlined task arguments.
 // Keep in sync with GCS_STORAGE_MAX_SIZE in packaging.py.
-RAY_CONFIG(int64_t, max_grpc_message_size, 512 * 1024 * 1024)
+RAY_CONFIG(size_t, max_grpc_message_size, 512 * 1024 * 1024)
 
 // The max gRPC message size (the gRPC internal default is 4MB) in communication with the
 // Agent.
@@ -245,11 +245,11 @@ RAY_CONFIG(int64_t, worker_lease_timeout_milliseconds, 500)
 /// When this happens, they will kill themselves.
 RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 
-/// These are used by the worker to set timeouts and to batch requests when
-/// getting objects.
-RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
-RAY_CONFIG(int64_t, worker_get_request_size, 10000)
+/// These are used by the worker to set the interval for checking signals and
+/// batching requests when getting objects.
+RAY_CONFIG(int64_t, get_check_signal_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
+
 /// How long to wait for a fetch to complete during ray.get before warning the
 /// user.
 RAY_CONFIG(int64_t, fetch_warn_timeout_milliseconds, 60000)
@@ -759,7 +759,7 @@ RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HP
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
-/// Ray-internal auxiliary tasks (e.g., accelerated dag workers).
+/// Ray-internal auxiliary tasks (e.g., compiled graph workers).
 RAY_CONFIG(std::string, system_concurrency_group_name, "_ray_system")
 
 // Maximum size of the batches when broadcasting resources to raylet.
@@ -927,5 +927,15 @@ RAY_CONFIG(int, object_manager_client_connection_num, 4)
 // Update this to overwrite it.
 RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
 
-// Write export API events to file if enabled
+// Write export API event of all resource types to file if enabled.
+// RAY_enable_export_api_write_config will not be considered if
+// this is enabled.
 RAY_CONFIG(bool, enable_export_api_write, false)
+
+// Comma separated string containing individual resource
+// types to write export API events for. This configuration is only used if
+// RAY_enable_export_api_write is not enabled. Full list of valid
+// resource types in ExportEvent.SourceType enum in
+// src/ray/protobuf/export_api/export_event.proto
+// Example config: `export RAY_enable_export_api_write_config='EXPORT_ACTOR,EXPORT_TASK'`
+RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})

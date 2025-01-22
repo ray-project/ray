@@ -299,6 +299,61 @@ Status CoreWorker::RegisterWorkerToRaylet(raylet::RayletConnection &conn,
   return Status::OK();
 }
 
+Status CoreWorker::RegisterWorkerToRayletWithPort(
+    raylet::RayletConnection &conn,
+    const WorkerID &worker_id,
+    rpc::WorkerType worker_type,
+    const JobID &job_id,
+    int runtime_env_hash,
+    const Language &language,
+    const std::string &ip_address,
+    const std::string &serialized_job_config,
+    const StartupToken &startup_token,
+    int port) {
+  flatbuffers::FlatBufferBuilder fbb;
+  // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
+  auto register_client_request =
+      protocol::CreateRegisterClientRequest(fbb,
+                                            static_cast<int>(worker_type),
+                                            to_flatbuf(fbb, worker_id),
+                                            getpid(),
+                                            startup_token,
+                                            to_flatbuf(fbb, job_id),
+                                            runtime_env_hash,
+                                            language,
+                                            fbb.CreateString(ip_address),
+                                            /*port=*/port,
+                                            fbb.CreateString(serialized_job_config));
+  auto announce_port_message =
+      protocol::CreateAnnounceWorkerPort(fbb, port, fbb.CreateString(""));
+  auto message_with_port = protocol::CreateRegisterWorkerWithPortRequest(
+      fbb, std::move(register_client_request), std::move(announce_port_message));
+  fbb.Finish(message_with_port);
+
+  // Register the process ID with the raylet.
+  // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
+  std::vector<uint8_t> reply;
+  auto request_status =
+      conn.AtomicRequestReply(MessageType::RegisterWorkerWithPortRequest,
+                              MessageType::RegisterWorkerWithPortReply,
+                              &reply,
+                              &fbb);
+  if (!request_status.ok()) {
+    return Status(
+        request_status.code(),
+        std::string("[RayletClient] Unable to register worker with port to raylet. ") +
+            request_status.message());
+  }
+  auto reply_message =
+      flatbuffers::GetRoot<protocol::RegisterWorkerWithPortReply>(reply.data());
+  bool success = reply_message->success();
+  if (!success) {
+    return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+  }
+
+  return Status::OK();
+}
+
 CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
@@ -408,26 +463,42 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   auto raylet_conn = std::make_unique<raylet::RayletConnection>(
       io_service_, options_.raylet_socket, /*num_retries=*/-1, /*timeout=*/-1);
-  NodeID local_raylet_id;
-  int assigned_port = 0;
-  Status raylet_client_status = RegisterWorkerToRaylet(*raylet_conn,
-                                                       GetWorkerID(),
-                                                       options_.worker_type,
-                                                       worker_context_.GetCurrentJobID(),
-                                                       options_.runtime_env_hash,
-                                                       options_.language,
-                                                       options_.node_ip_address,
-                                                       options_.serialized_job_config,
-                                                       options_.startup_token,
-                                                       &local_raylet_id,
-                                                       &assigned_port);
-  if (!raylet_client_status.ok()) {
-    // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
-    RAY_LOG(ERROR).WithField(worker_id)
-        << "Failed to register worker to Raylet: " << raylet_client_status;
-    QuickExit();
+
+  const bool raylet_id_assigned = options_.assigned_raylet_id.has_value();
+  const bool worker_port_assigned = options_.assigned_worker_port.has_value();
+  NodeID local_raylet_id = raylet_id_assigned ? *options_.assigned_raylet_id : NodeID{};
+  int assigned_port = worker_port_assigned ? *options_.assigned_worker_port : 0;
+  // Sanity check invariant: both should be assigned for worker, neither assigned for
+  // driver.
+  RAY_CHECK((raylet_id_assigned && worker_port_assigned) ||
+            (!raylet_id_assigned && !worker_port_assigned));
+
+  // TODO(hjiang): Use `is_worker` / `is_driver` boolean to replace repeated `has_value`
+  // check.
+  if (!options_.assigned_worker_port.has_value()) {
+    // TODO(hjiang): In the next PR we will pass down port number and raylet id and use
+    // them directly. Then we need to rename `RegisterWorkerToRaylet` to
+    // `RegisterDriverToRaylet`.
+    Status raylet_client_status =
+        RegisterWorkerToRaylet(*raylet_conn,
+                               GetWorkerID(),
+                               options_.worker_type,
+                               worker_context_.GetCurrentJobID(),
+                               options_.runtime_env_hash,
+                               options_.language,
+                               options_.node_ip_address,
+                               options_.serialized_job_config,
+                               options_.startup_token,
+                               &local_raylet_id,
+                               &assigned_port);
+    if (!raylet_client_status.ok()) {
+      // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
+      RAY_LOG(ERROR).WithField(worker_id)
+          << "Failed to register worker to Raylet: " << raylet_client_status;
+      QuickExit();
+    }
+    RAY_CHECK_GE(assigned_port, 0);
   }
-  RAY_CHECK_GE(assigned_port, 0);
 
   local_raylet_client_ = std::make_shared<raylet::RayletClient>(
       std::move(raylet_conn), std::move(grpc_client), GetWorkerID());
@@ -612,7 +683,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       };
   experimental_mutable_object_provider_ =
       std::make_shared<experimental::MutableObjectProvider>(
-          *plasma_store_provider_->store_client(), raylet_channel_client_factory);
+          *plasma_store_provider_->store_client(),
+          raylet_channel_client_factory,
+          options_.check_signals);
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,
@@ -682,14 +755,15 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     // Add the driver task info.
     if (task_event_buffer_->Enabled() &&
         !RayConfig::instance().task_events_skip_driver_for_test()) {
-      const auto spec = builder.Build();
+      auto spec = std::move(builder).ConsumeAndBuild();
+      auto job_id = spec.JobId();
       auto task_event = std::make_unique<worker::TaskStatusEvent>(
           task_id,
-          spec.JobId(),
-          /* attempt_number */ 0,
+          std::move(job_id),
+          /*attempt_number=*/0,
           rpc::TaskStatus::RUNNING,
-          /* timestamp */ absl::GetCurrentTimeNanos(),
-          std::make_shared<const TaskSpecification>(spec));
+          /*timestamp=*/absl::GetCurrentTimeNanos(),
+          std::make_shared<const TaskSpecification>(std::move(spec)));
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
   }
@@ -735,11 +809,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     return addr;
   };
   auto lease_policy = RayConfig::instance().locality_aware_leasing_enabled()
-                          ? std::shared_ptr<LeasePolicyInterface>(
-                                std::make_shared<LocalityAwareLeasePolicy>(
+                          ? std::unique_ptr<LeasePolicyInterface>(
+                                std::make_unique<LocalityAwareLeasePolicy>(
                                     *reference_counter_, node_addr_factory, rpc_address_))
-                          : std::shared_ptr<LeasePolicyInterface>(
-                                std::make_shared<LocalLeasePolicy>(rpc_address_));
+                          : std::unique_ptr<LeasePolicyInterface>(
+                                std::make_unique<LocalLeasePolicy>(rpc_address_));
 
   normal_task_submitter_ = std::make_unique<NormalTaskSubmitter>(
       rpc_address_,
@@ -748,7 +822,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       raylet_client_factory,
       std::move(lease_policy),
       memory_store_,
-      task_manager_,
+      *task_manager_,
       local_raylet_id,
       GetWorkerType(),
       RayConfig::instance().worker_lease_timeout_milliseconds(),
@@ -906,10 +980,25 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   RAY_CHECK_EQ(options_.worker_type != WorkerType::DRIVER, niced);
 #endif
 
-  // Tell the raylet the port that we are listening on.
-  // NOTE: This also marks the worker as available in Raylet. We do this at the
-  // very end in case there is a problem during construction.
-  ConnectToRayletInternal();
+  // Tell the raylet the port that we are listening on, only do when port hasn't been
+  // announced.
+  // NOTE: This also marks the worker as available in Raylet. We do this at the very end
+  // in case there is a problem during construction.
+  if (options_.assigned_worker_port.has_value()) {
+    Status s = RegisterWorkerToRayletWithPort(*raylet_conn,
+                                              GetWorkerID(),
+                                              options_.worker_type,
+                                              worker_context_.GetCurrentJobID(),
+                                              options_.runtime_env_hash,
+                                              options_.language,
+                                              options_.node_ip_address,
+                                              options_.serialized_job_config,
+                                              options_.startup_token,
+                                              assigned_port);
+    RAY_CHECK_OK(s);
+  } else {
+    ConnectToRayletInternal();
+  }
 }
 
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
@@ -974,6 +1063,8 @@ void CoreWorker::ConnectToRayletInternal() {
         core_worker_server_->GetPort(), options_.entrypoint);
     RAY_CHECK_OK(status) << "Failed to announce driver's port to raylet and GCS";
   } else {
+    // TODO(hjiang): In the future this function should only accessed by driver, should
+    // delete worker branch.
     Status status =
         local_raylet_client_->AnnounceWorkerPortForWorker(core_worker_server_->GetPort());
     RAY_CHECK_OK(status) << "Failed to announce worker's port to raylet and GCS";
@@ -1674,12 +1765,6 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   return Status::OK();
-}
-
-Status CoreWorker::ExperimentalChannelReadRelease(
-    const std::vector<ObjectID> &object_ids) {
-  RAY_CHECK_EQ(object_ids.size(), 1UL);
-  return experimental_mutable_object_provider_->ReadRelease(object_ids[0]);
 }
 
 Status CoreWorker::ExperimentalRegisterMutableObjectWriter(
@@ -2459,7 +2544,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                             serialized_retry_exception_allowlist,
                             scheduling_strategy,
                             root_detached_actor_id);
-  TaskSpecification task_spec = builder.Build();
+  TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
@@ -2470,7 +2555,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 
     io_service_.post(
         [this, task_spec]() {
-          RAY_UNUSED(normal_task_submitter_->SubmitTask(task_spec));
+          RAY_UNUSED(normal_task_submitter_->SubmitTask(std::move(task_spec)));
         },
         "CoreWorker.SubmitTask");
   }
@@ -2595,7 +2680,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       std::move(actor_handle), CurrentCallSite(), rpc_address_, /*owned=*/!is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
-  TaskSpecification task_spec = builder.Build();
+  TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor creation task " << task_spec.DebugString();
   if (options_.is_local_mode) {
     // TODO(suquark): Should we consider namespace in local mode? Currently
@@ -2810,7 +2895,7 @@ Status CoreWorker::SubmitActorTask(
                                  retry_exceptions,
                                  serialized_retry_exception_allowlist);
   // Submit task.
-  TaskSpecification task_spec = builder.Build();
+  TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {

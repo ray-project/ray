@@ -44,7 +44,7 @@ from ray.rllib.utils.metrics import (
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor, copy_torch_tensors
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
     ModuleID,
     Optimizer,
@@ -321,21 +321,25 @@ class TorchLearner(Learner):
         for name, optim in self._named_optimizers.items():
             ret[name] = {
                 "module_id": self._optimizer_name_to_module[name],
-                "state": copy_torch_tensors(optim.state_dict(), device="cpu"),
+                "state": convert_to_numpy(optim.state_dict()),
             }
         return ret
 
     @override(Learner)
     def _set_optimizer_state(self, state: StateDict) -> None:
         for name, state_dict in state.items():
-            if name not in self._named_optimizers:
+            # Ignore updating optimizers matching to submodules not present in this
+            # Learner's MultiRLModule.
+            module_id = state_dict["module_id"]
+            if name not in self._named_optimizers and module_id in self.module:
                 self.configure_optimizers_for_module(
-                    state_dict["module_id"],
-                    config=self.config.get_config_for_module(state_dict["module_id"]),
+                    module_id=module_id,
+                    config=self.config.get_config_for_module(module_id=module_id),
                 )
-            self._named_optimizers[name].load_state_dict(
-                copy_torch_tensors(state_dict["state"], device=self._device)
-            )
+            if name in self._named_optimizers:
+                self._named_optimizers[name].load_state_dict(
+                    convert_to_torch_tensor(state_dict["state"], device=self._device)
+                )
 
     @override(Learner)
     def get_param_ref(self, param: Param) -> Hashable:
@@ -406,6 +410,8 @@ class TorchLearner(Learner):
                     override=True,
                 )
 
+        self._log_trainable_parameters()
+
         return marl_spec
 
     @override(Learner)
@@ -423,6 +429,8 @@ class TorchLearner(Learner):
                 mode=self._torch_compile_cfg.torch_dynamo_mode,
                 **self._torch_compile_cfg.kwargs,
             )
+
+        self._log_trainable_parameters()
 
         return marl_spec
 
@@ -468,37 +476,6 @@ class TorchLearner(Learner):
                     )
 
             self._possibly_compiled_update = self._uncompiled_update
-
-        # Log number of non-trainable and trainable parameters of our RLModule.
-        num_trainable_params = {
-            (mid, NUM_TRAINABLE_PARAMETERS): sum(
-                p.numel() for p in rlm.parameters() if p.requires_grad
-            )
-            for mid, rlm in self.module._rl_modules.items()
-            if isinstance(rlm, TorchRLModule)
-        }
-        num_non_trainable_params = {
-            (mid, NUM_NON_TRAINABLE_PARAMETERS): sum(
-                p.numel() for p in rlm.parameters() if not p.requires_grad
-            )
-            for mid, rlm in self.module._rl_modules.items()
-            if isinstance(rlm, TorchRLModule)
-        }
-
-        self.metrics.log_dict(
-            {
-                **{
-                    (ALL_MODULES, NUM_TRAINABLE_PARAMETERS): sum(
-                        num_trainable_params.values()
-                    ),
-                    (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS): sum(
-                        num_non_trainable_params.values()
-                    ),
-                },
-                **num_trainable_params,
-                **num_non_trainable_params,
-            }
-        )
 
         self._make_modules_ddp_if_necessary()
 
@@ -550,7 +527,7 @@ class TorchLearner(Learner):
                             override=True,
                         )
 
-    def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
+    def rl_module_is_compatible(self, module: RLModule) -> bool:
         return isinstance(module, nn.Module)
 
     @override(Learner)
@@ -586,6 +563,39 @@ class TorchLearner(Learner):
             for key in module.keys():
                 if isinstance(module[key], torch.nn.Module):
                     module[key].to(self._device)
+
+    @override(Learner)
+    def _log_trainable_parameters(self) -> None:
+        # Log number of non-trainable and trainable parameters of our RLModule.
+        num_trainable_params = {
+            (mid, NUM_TRAINABLE_PARAMETERS): sum(
+                p.numel() for p in rlm.parameters() if p.requires_grad
+            )
+            for mid, rlm in self.module._rl_modules.items()
+            if isinstance(rlm, TorchRLModule)
+        }
+        num_non_trainable_params = {
+            (mid, NUM_NON_TRAINABLE_PARAMETERS): sum(
+                p.numel() for p in rlm.parameters() if not p.requires_grad
+            )
+            for mid, rlm in self.module._rl_modules.items()
+            if isinstance(rlm, TorchRLModule)
+        }
+
+        self.metrics.log_dict(
+            {
+                **{
+                    (ALL_MODULES, NUM_TRAINABLE_PARAMETERS): sum(
+                        num_trainable_params.values()
+                    ),
+                    (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS): sum(
+                        num_non_trainable_params.values()
+                    ),
+                },
+                **num_trainable_params,
+                **num_non_trainable_params,
+            }
+        )
 
     def _compute_off_policyness(self, batch):
         # Log off-policy'ness of this batch wrt the current weights.

@@ -6,7 +6,7 @@ from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.utils import update_target_network
-from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import TargetNetworkAPI, ValueFunctionAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import override
@@ -99,8 +99,7 @@ class APPOLearner(IMPALALearner):
                     config.target_network_update_freq
                     * config.circular_buffer_num_batches
                     * config.circular_buffer_iterations_per_batch
-                    * config.total_train_batch_size
-                    / (config.num_learners or 1)
+                    * config.train_batch_size_per_learner
                 )
             ):
                 for (
@@ -123,6 +122,13 @@ class APPOLearner(IMPALALearner):
                 > 0
             ):
                 self._update_module_kl_coeff(module_id=module_id, config=config)
+
+    @classmethod
+    @override(Learner)
+    def rl_module_required_apis(cls) -> list[type]:
+        # In order for a PPOLearner to update an RLModule, it must implement the
+        # following APIs:
+        return [TargetNetworkAPI, ValueFunctionAPI]
 
     @abc.abstractmethod
     def _update_module_kl_coeff(self, module_id: ModuleID, config: APPOConfig) -> None:

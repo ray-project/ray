@@ -116,6 +116,8 @@ class SACConfig(AlgorithmConfig):
         # .env_runners()
         # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
+
+        # .training()
         self.train_batch_size_per_learner = 256
         self.train_batch_size = 256  # @OldAPIstack
         # Number of timesteps to collect from rollout workers before we start
@@ -503,17 +505,12 @@ class SACConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
-        from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
-
         if self.framework_str == "torch":
             from ray.rllib.algorithms.sac.torch.default_sac_torch_rl_module import (
                 DefaultSACTorchRLModule,
             )
 
-            return RLModuleSpec(
-                module_class=DefaultSACTorchRLModule,
-                catalog_class=SACCatalog,
-            )
+            return RLModuleSpec(module_class=DefaultSACTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."

@@ -12,18 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+
 #include <chrono>
 #include <memory>
 #include <thread>
 
-// clang-format off
-#include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/util/event.h"
+#include "ray/util/string_utils.h"
+
+// clang-format off
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/util/event.h"
 // clang-format on
 
 using json = nlohmann::json;
@@ -45,7 +48,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
         [this](const rpc::Address &) { return raylet_client_; });
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
 
     RayConfig::instance().initialize(
         R"(
@@ -82,6 +85,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
   // Test export event is written when a node is added with HandleRegisterNode
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
+                                   io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
   auto node = Mocker::GenNodeInfo();
@@ -106,6 +110,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   // Test export event is written when a node is removed with HandleUnregisterNode
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
+                                   io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil());
   auto node = Mocker::GenNodeInfo();
