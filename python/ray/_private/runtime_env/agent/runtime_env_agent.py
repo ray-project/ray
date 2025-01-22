@@ -117,6 +117,7 @@ class ReferenceTable:
         self._runtime_env_reference[serialized_env] += 1
 
     def _decrease_reference_for_runtime_env(self, serialized_env: str):
+        """Decrease reference count for the given [serialized_env]. Return whether decrement succeeds or not."""
         default_logger.debug(f"Decrease reference for runtime env {serialized_env}.")
         unused = False
         if self._runtime_env_reference[serialized_env] > 0:
@@ -126,10 +127,11 @@ class ReferenceTable:
                 del self._runtime_env_reference[serialized_env]
         else:
             default_logger.warning(f"Runtime env {serialized_env} does not exist.")
+            return False
         if unused:
             default_logger.info(f"Unused runtime env {serialized_env}.")
             self._unused_runtime_env_callback(serialized_env)
-        return unused
+        return True
 
     def increase_reference(
         self, runtime_env: RuntimeEnv, serialized_env: str, source_process: str
@@ -142,12 +144,15 @@ class ReferenceTable:
 
     def decrease_reference(
         self, runtime_env: RuntimeEnv, serialized_env: str, source_process: str
-    ) -> None:
+    ) -> bool:
+        """Decrease reference count for runtime env and uri. Return whether decrement succeeds or not."""
         if source_process in self._reference_exclude_sources:
-            return list()
-        self._decrease_reference_for_runtime_env(serialized_env)
+            return True
+        if not self._decrease_reference_for_runtime_env(serialized_env):
+            return False
         uris = self._uris_parser(runtime_env)
         self._decrease_reference_for_uris(uris)
+        return True
 
     @property
     def runtime_env_refs(self) -> Dict[str, int]:
@@ -543,9 +548,14 @@ class RuntimeEnvAgent:
                 ),
             )
 
-        self._reference_table.decrease_reference(
+        deref_succ = self._reference_table.decrease_reference(
             runtime_env, request.serialized_runtime_env, request.source_process
         )
+        if not deref_succ:
+            return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message=f"Fails to dereference for runtime env {request.serialized_runtime_env}",
+            )
 
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK
