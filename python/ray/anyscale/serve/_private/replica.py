@@ -228,9 +228,13 @@ class AnyscaleReplica(ReplicaBase):
         *request_args,
         **request_kwargs,
     ):
-        return await self.handle_request(
+        result = await self.handle_request(
             request_metadata, *request_args, **request_kwargs
         )
+        if request_metadata.is_grpc_request:
+            result = (request_metadata.grpc_context, result.SerializeToString())
+
+        return result
 
     @_wrap_grpc_call
     async def HandleRequestStreaming(
@@ -243,6 +247,9 @@ class AnyscaleReplica(ReplicaBase):
         async for result in self.handle_request_streaming(
             request_metadata, *request_args, **request_kwargs
         ):
+            if request_metadata.is_grpc_request:
+                result = (request_metadata.grpc_context, result.SerializeToString())
+
             yield result
 
     @_wrap_grpc_call
@@ -280,4 +287,7 @@ class AnyscaleReplica(ReplicaBase):
             return
 
         async for result in result_gen:
+            if request_metadata.is_grpc_request:
+                result = (request_metadata.grpc_context, result.SerializeToString())
+
             yield result

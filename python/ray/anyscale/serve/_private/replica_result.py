@@ -80,7 +80,7 @@ class gRPCReplicaResult(ReplicaResult):
 
         # Keep track of in-flight requests.
         self._response_id = generate_request_id()
-        request_context = ray.serve.context._serve_request_context.get()
+        request_context = ray.serve.context._get_serve_request_context()
         _add_in_flight_request(
             request_context._internal_request_id, self._response_id, self._call
         )
@@ -104,7 +104,7 @@ class gRPCReplicaResult(ReplicaResult):
                 # If it's an HTTP request, then the proxy response generator is
                 # expecting a pickled dictionary, so we return result directly
                 # without deserializing. Otherwise, we deserialize the result.
-                if ray.serve.context._serve_request_context.get().is_http_request:
+                if ray.serve.context._get_serve_request_context().is_http_request:
                     return grpc_response.serialized_message
                 else:
                     return cloudpickle.loads(grpc_response.serialized_message)

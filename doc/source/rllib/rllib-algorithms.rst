@@ -1,11 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-algorithms-doc:
 
 Algorithms
 ==========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 The following table is an overview of all available algorithms in RLlib. Note that all algorithms support
 multi-GPU training on a single (GPU) node in `Ray (open-source) <https://docs.ray.io/en/latest/index.html>`__ (|multi_gpu|)
