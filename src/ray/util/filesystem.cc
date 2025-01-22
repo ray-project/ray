@@ -15,6 +15,7 @@
 #include "ray/util/filesystem.h"
 
 #include <cstdlib>
+#include <fstream>
 
 #include "ray/util/logging.h"
 
@@ -58,6 +59,20 @@ std::string GetUserTempDir() {
   }
   RAY_CHECK(!result.empty());
   return result;
+}
+
+std::string CompleteReadFile(const std::string &fname) {
+  std::ifstream file(fname);
+  RAY_CHECK(file.good()) << "Fails to open file " << fname;
+
+  std::ostringstream buffer;
+  buffer << file.rdbuf();
+  RAY_CHECK(file.good()) << "Fails to read from file " << fname;
+
+  std::string content = buffer.str();
+  file.close();
+
+  return content;
 }
 
 }  // namespace ray
