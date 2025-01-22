@@ -44,7 +44,10 @@
 #include <thread>
 #include <unordered_map>
 
+// TODO(hjiang): Revisit these inclusion when we split `util` dependency targets; keep
+// them here for backward compatibility and avoid breaking too much compilation.
 #include "absl/container/flat_hash_map.h"
+#include "ray/util/cmd_line_utils.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/process.h"
@@ -68,8 +71,6 @@ class basic_endpoint;
 class stream_protocol;
 
 }  // namespace boost::asio::generic
-
-enum class CommandLineSyntax { System, POSIX, Windows };
 
 // Append append_str to the begining of each line of str.
 inline std::string AppendToEachLine(const std::string &str,
@@ -122,23 +123,6 @@ inline int64_t current_sys_time_us() {
 }
 
 std::string GenerateUUIDV4();
-
-/// A helper function to parse command-line arguments in a platform-compatible manner.
-///
-/// \param cmdline The command-line to split.
-///
-/// \return The command-line arguments, after processing any escape sequences.
-std::vector<std::string> ParseCommandLine(
-    const std::string &cmdline, CommandLineSyntax syntax = CommandLineSyntax::System);
-
-/// A helper function to combine command-line arguments in a platform-compatible manner.
-/// The result of this function is intended to be suitable for the shell used by popen().
-///
-/// \param cmdline The command-line arguments to combine.
-///
-/// \return The command-line string, including any necessary escape sequences.
-std::string CreateCommandLine(const std::vector<std::string> &args,
-                              CommandLineSyntax syntax = CommandLineSyntax::System);
 
 /// Converts the given endpoint (such as TCP or UNIX domain socket address) to a string.
 /// \param include_scheme Whether to include the scheme prefix (such as tcp://).
