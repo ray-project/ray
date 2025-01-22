@@ -177,7 +177,12 @@ void WorkerPool::Start() {
   }
 
   if (RayConfig::instance().enable_worker_prestart()) {
-    PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+    rpc::TaskSpec rpc_task_spec;
+    rpc_task_spec.set_language(Language::PYTHON);
+    rpc_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+
+    TaskSpecification task_spec{std::move(rpc_task_spec)};
+    PrestartWorkersInternal(task_spec, num_prestart_python_workers);
   }
 }
 
@@ -898,7 +903,12 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
     if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
         !RayConfig::instance().enable_worker_prestart()) {
       RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
-      PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+      rpc::TaskSpec rpc_task_spec;
+      rpc_task_spec.set_language(Language::PYTHON);
+      rpc_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+
+      TaskSpecification task_spec{std::move(rpc_task_spec)};
+      PrestartWorkersInternal(task_spec, num_prestart_python_workers);
     }
 
     // Invoke the `send_reply_callback` later to only finish driver
@@ -1472,10 +1482,25 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
   }
 }
 
-void WorkerPool::PrestartWorkersWithRuntimeEnv(const TaskSpecification &task_spec,
-                                               int64_t num_needed) {
+void WorkerPool::PrestartWorkersInternal(const TaskSpecification &task_spec,
+                                         int64_t num_needed) {
   RAY_LOG(DEBUG) << "PrestartWorkers " << num_needed;
   for (int ii = 0; ii < num_needed; ++ii) {
+    // Prestart worker with no runtime env.
+    if (IsRuntimeEnvEmpty(task_spec.SerializedRuntimeEnv())) {
+      PopWorkerStatus status;
+      StartWorkerProcess(task_spec.GetLanguage(),
+                         rpc::WorkerType::WORKER,
+                         JobID::Nil(),
+                         &status,
+                         /*dynamic_options=*/{},
+                         task_spec.GetRuntimeEnvHash(),
+                         task_spec.SerializedRuntimeEnv(),
+                         task_spec.RuntimeEnvInfo());
+      return;
+    }
+
+    // Prestart worker with runtime env.
     GetOrCreateRuntimeEnv(
         task_spec.SerializedRuntimeEnv(),
         task_spec.RuntimeEnvConfig(),
@@ -1499,20 +1524,6 @@ void WorkerPool::PrestartWorkersWithRuntimeEnv(const TaskSpecification &task_spe
                              task_spec.SerializedRuntimeEnv(),
                              task_spec.RuntimeEnvInfo());
         });
-  }
-}
-
-void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed) {
-  // default workers don't use runtime env.
-  RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_needed;
-  for (int i = 0; i < num_needed; i++) {
-    PopWorkerStatus status;
-    StartWorkerProcess(language,
-                       rpc::WorkerType::WORKER,
-                       JobID::Nil(),
-                       &status,
-                       /*dynamic_options*/ {},
-                       CalculateRuntimeEnvHash("{}"));
   }
 }
 
