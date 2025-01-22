@@ -1360,30 +1360,29 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testConvertVizier(self):
         from vizier import pyvizier as vz
+
         from ray.tune.search.vizier import VizierSearch
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
             VizierSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
-        config = {
-            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
-            "b": ray.tune.search.sample.Integer(0, 5),
-            "c": ray.tune.search.sample.Float(1e-4, 1e-2),
-        },
+        config = (
+            {
+                "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
+                "b": ray.tune.search.sample.Integer(0, 5),
+                "c": ray.tune.search.sample.Float(1e-4, 1e-2),
+            },
+        )
         converted_config = VizierSearch.convert_search_space(config)
 
         vizier_space = vz.SearchSpace()
-        vizier_space.root.add_discrete_param('a', [2, 3, 4])
-        vizier_space.root.add_int_param('b', 0, 4)
-        vizier_space.root.add_float_param('c', 1e-4, 1e-2)
+        vizier_space.root.add_discrete_param("a", [2, 3, 4])
+        vizier_space.root.add_int_param("b", 0, 4)
+        vizier_space.root.add_float_param("c", 1e-4, 1e-2)
 
-        searcher1 = VizierSearch(
-            space=converted_config, metric="a", mode="max"
-        )
-        searcher2 = VizierSearch(
-            space=vizier_space, metric="a", mode="max"
-        )
+        searcher1 = VizierSearch(space=converted_config, metric="a", mode="max")
+        searcher2 = VizierSearch(space=vizier_space, metric="a", mode="max")
 
         # Very first trial is a centering trial.
         config1 = searcher1.suggest("0")
@@ -1433,7 +1432,7 @@ class SearchSpaceTest(unittest.TestCase):
                 yield searcher.suggest(f"trial_{i}")
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
-    
+
     def testConvertZOOpt(self):
         from zoopt import ValueType
 
