@@ -1,22 +1,14 @@
-from functools import partial
-from gymnasium.spaces import Box, Dict, Tuple
+from gymnasium.spaces import Box
 import numpy as np
-from scipy.stats import beta, norm
-import tree  # pip install dm_tree
+from scipy.stats import norm
 import unittest
 
 from ray.rllib.models.torch.torch_action_dist import (
-    TorchBeta,
     TorchCategorical,
     TorchDiagGaussian,
-    TorchMultiActionDistribution,
-    TorchMultiCategorical,
-    TorchSquashedGaussian,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import (
-    MIN_LOG_NN_OUTPUT,
-    MAX_LOG_NN_OUTPUT,
     softmax,
     SMALL_NUMBER,
     LARGE_INTEGER,
