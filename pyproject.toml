@@ -33,7 +33,6 @@ ignore = [
     "F841",
     "B018",
     "B023",
-    "B024",
     "B026",
     "B027",
     "B035",
@@ -46,3 +45,21 @@ ignore = [
 
 [tool.ruff.lint.flake8-quotes]
 avoid-escape = false
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore `B024` (abstract base class with no abstract methods or properties) in specific files.
+"python/ray/_private/runtime_env/plugin.py" = ["B024"]
+"python/ray/air/_internal/device_manager/torch_device_manager.py" = ["B024"]
+"python/ray/air/execution/resources/resource_manager.py" = ["B024"]
+"python/ray/air/util/torch_dist.py" = ["B024"]
+"python/ray/data/preprocessor.py" = ["B024"]
+"python/ray/tests/spark/test_basic.py" = ["B024"]
+"python/ray/train/_internal/accelerator.py" = ["B024"]
+"python/ray/tune/logger/logger.py" = ["B024"]
+"python/ray/tune/stopper/stopper.py" = ["B024"]
+"python/ray/tune/tune.py" = ["B024"]
+"python/ray/util/state/common.py" = ["B024"]
+"release/ray_release/cluster_manager/cluster_manager.py" = ["B024"]
+"release/ray_release/command_runner/command_runner.py" = ["B024"]
+"release/ray_release/file_manager/file_manager.py" = ["B024"]
+"rllib/connectors/connector.py" = ["B024"]
