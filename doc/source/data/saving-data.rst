@@ -148,7 +148,7 @@ number of output files, configure ``min_rows_per_write``.
 .. note::
 
     ``min_rows_per_write`` is a hint, not a strict limit. Ray Data might write more or
-    fewer rows to each file. Underneath the hood, if the number of rows per block is
+    fewer rows to each file. Under the hood, if the number of rows per block is
     larger than the specified value, Ray Data writes
     the number of rows per block to each file.
 
