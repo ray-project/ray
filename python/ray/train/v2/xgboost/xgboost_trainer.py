@@ -67,7 +67,7 @@ class XGBoostTrainer(DataParallelTrainer):
         train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
         trainer = XGBoostTrainer(
-            train_fn_per_worker,
+            train_loop_per_worker=train_fn_per_worker,
             datasets={"train": train_ds, "validation": eval_ds},
             scaling_config=ray.train.ScalingConfig(num_workers=4),
         )
@@ -116,7 +116,9 @@ class XGBoostTrainer(DataParallelTrainer):
 
     def __init__(
         self,
-        train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
+        train_loop_per_worker: Optional[
+            Union[Callable[[], None], Callable[[Dict], None]]
+        ] = None,
         train_loop_config: Optional[Dict] = None,
         xgboost_config: Optional[XGBoostConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
@@ -125,7 +127,32 @@ class XGBoostTrainer(DataParallelTrainer):
         dataset_config: Optional[ray.train.DataConfig] = None,
         metadata: Optional[Dict[str, Any]] = _UNSUPPORTED,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
+        label_column: Optional[str] = None,
+        params: Optional[Dict[str, Any]] = None,
+        num_boost_round: Optional[int] = None,
     ):
+        if (
+            label_column is not None
+            or params is not None
+            or num_boost_round is not None
+        ):
+            raise DeprecationWarning(
+                "The legacy XGBoostTrainer API is deprecated and is not "
+                "supported in the revamped Ray Train API. "
+                "Please switch to using `train_loop_per_worker` and "
+                "`train_loop_config` instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/50042"
+            )
+
+        if not train_loop_per_worker:
+            raise ValueError(
+                "`train_loop_per_worker` must be provided to the XGBoostTrainer. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/50042"
+            )
+
         super(XGBoostTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
             train_loop_config=train_loop_config,
