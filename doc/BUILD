@@ -457,7 +457,7 @@ doctest(
 )
 
 doctest(
-    name = "doctest[rllib-getting-started]",
+    name = "doctest[rllib]",
     size = "large",
     files = glob(
         include = [
