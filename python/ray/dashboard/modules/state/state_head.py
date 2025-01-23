@@ -126,12 +126,11 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             self._state_api_data_source_client.unregister_agent_client(node_id)
         if change.new:
             # When a new node information is written to DataSource.
-            node_id, ports = change.new
-            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
+            node_id, (node_ip, http_port, grpc_port) = change.new
             self._state_api_data_source_client.register_agent_client(
                 node_id,
-                ip,
-                int(ports[1]),
+                node_ip,
+                grpc_port,
             )
 
     @routes.get("/api/v0/actors")
