@@ -375,7 +375,7 @@ class MARWILConfig(AlgorithmConfig):
         )
 
         # If training on GPU, do not convert batches to tensors.
-        if self.num_gpus_per_learner > 0 and self.dataset_num_iters_per_learner != 1:
+        if self.num_gpus_per_learner > 0:
             pipeline.remove("NumpyToTensor")
 
         return pipeline

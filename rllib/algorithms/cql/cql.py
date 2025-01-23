@@ -214,10 +214,7 @@ class CQLConfig(SACConfig):
         )
 
         # If training on GPU, do not convert batches to tensors.
-        # TODO (simon): This does not work in case we are running on a local learner
-        # and use `dataset_num_iter_per_learner=1`. This needs functionality in the
-        # `Learner.update_from_batch_or_episodes`.
-        if self.num_gpus_per_learner > 0 and self.dataset_num_iters_per_learner != 1:
+        if self.num_gpus_per_learner > 0:
             pipeline.remove("NumpyToTensor")
 
         return pipeline
