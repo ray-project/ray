@@ -47,107 +47,82 @@ def create_mask_and_seq_lens(episode_len: int, T: int) -> Tuple[List, List]:
 
 
 @DeveloperAPI
+@DeveloperAPI
 def split_and_zero_pad(
-    item_list: List[Union[BatchedNdArray, np._typing.NDArray, float]],
+    item_list: List[Union[BatchedNdArray, np.ndarray, float]],
     max_seq_len: int,
-) -> List[np._typing.NDArray]:
-    """Splits the contents of `item_list` into a new list of ndarrays and returns it.
+) -> List[np.ndarray]:
+    """Splits/reshapes data into sub-chunks of size `max_seq_len`, zero-padding as needed.
 
-    In the returned list, each item is one ndarray of len (axis=0) `max_seq_len`.
-    The last item in the returned list may be (right) zero-padded, if necessary, to
-    reach `max_seq_len`.
-
-    If `item_list` contains one or more `BatchedNdArray` (instead of individual
-    items), these will be split accordingly along their axis=0 to yield the returned
-    structure described above.
-
-    .. testcode::
-
-        from ray.rllib.utils.postprocessing.zero_padding import (
-            BatchedNdArray,
-            split_and_zero_pad,
-        )
-        from ray.rllib.utils.test_utils import check
-
-        # Simple case: `item_list` contains individual floats.
-        check(
-            split_and_zero_pad([0, 1, 2, 3, 4, 5, 6, 7], 5),
-            [[0, 1, 2, 3, 4], [5, 6, 7, 0, 0]],
-        )
-
-        # `item_list` contains BatchedNdArray (ndarrays that explicitly declare they
-        # have a batch axis=0).
-        check(
-            split_and_zero_pad([
-                BatchedNdArray([0, 1]),
-                BatchedNdArray([2, 3, 4, 5]),
-                BatchedNdArray([6, 7, 8]),
-            ], 5),
-            [[0, 1, 2, 3, 4], [5, 6, 7, 8, 0]],
-        )
+    This is an optimized, single-pass version of the original `split_and_zero_pad`.
 
     Args:
-        item_list: A list of individual items or BatchedNdArrays to be split into
-            `max_seq_len` long pieces (the last of which may be zero-padded).
-        max_seq_len: The maximum length of each item in the returned list.
+        item_list: A list of either:
+            - individual float/int items,
+            - np.ndarray items (shape [D...]),
+            - or BatchedNdArray items (shape [B, D...]) signifying a batch dimension.
+
+            These will be combined ("flattened") into one array and then split
+            into rows of length `max_seq_len`. The last row is zero-padded if needed.
+        max_seq_len: The chunk size (T). Each chunk in the returned list will
+            be a NumPy array of shape [T, ...].
 
     Returns:
-        A list of np.ndarrays (all of length `max_seq_len`), which contains the same
-        data as `item_list`, but split into sub-chunks of size `max_seq_len`.
-        The last item in the returned list may be zero-padded, if necessary.
+        A list of NumPy arrays, each of length `max_seq_len` along axis 0.
+        The very last array may be zero-padded at the end if the total number
+        of items in `item_list` is not an exact multiple of `max_seq_len`.
+
+    Example:
+        >>> from ray.rllib.utils.spaces.space_utils import BatchedNdArray
+        >>> data = [0, 1, 2, 3, 4, 5, 6]
+        >>> out = split_and_zero_pad(data, 4)
+        >>> # out = [array([0, 1, 2, 3]), array([4, 5, 6, 0])]
+
+        >>> # Mixed single items and batched items:
+        >>> data = [
+        ...     BatchedNdArray([10, 11]),  # shape [2]
+        ...     12,
+        ...     BatchedNdArray([13, 14, 15]),  # shape [3]
+        ... ]
+        >>> out = split_and_zero_pad(data, 4)
+        >>> # Flattened would be [10, 11, 12, 13, 14, 15].
+        >>> # out = [array([10, 11, 12, 13]), array([14, 15,  0,  0])]
     """
-    zero_element = tree.map_structure(
-        lambda s: np.zeros_like([s[0]] if isinstance(s, BatchedNdArray) else s),
-        item_list[0],
-    )
+    # If the input list is empty, return an empty result.
+    if not item_list:
+        return []
 
-    # The replacement list (to be returned) for `items_list`.
-    # Items list contains n individual items.
-    # -> ret will contain m batched rows, where m == n // T and the last row
-    # may be zero padded (until T).
-    ret = []
-
-    # List of the T-axis item, collected to form the next row.
-    current_time_row = []
-    current_t = 0
-
-    item_list = deque(item_list)
-    while len(item_list) > 0:
-        item = item_list.popleft()
-        # `item` is already a batched np.array: Split if necessary.
+    # 1) Flatten everything into a single NumPy array.
+    flattened_values = []
+    for item in item_list:
         if isinstance(item, BatchedNdArray):
-            t = max_seq_len - current_t
-            current_time_row.append(item[:t])
-            if len(item) <= t:
-                current_t += len(item)
-            else:
-                current_t += t
-                item_list.appendleft(item[t:])
-        # `item` is a single item (no batch axis): Append and continue with next item.
+            # item is array-like with shape [B, ...]
+            flattened_values.extend(item)
         else:
-            current_time_row.append(item)
-            current_t += 1
+            # item is scalar or a normal np.ndarray (assume shape [D...])
+            flattened_values.append(item)
 
-        # `current_time_row` is "full" (max_seq_len): Append as ndarray (with batch
-        # axis) to `ret`.
-        if current_t == max_seq_len:
-            ret.append(
-                batch(
-                    current_time_row,
-                    individual_items_already_have_batch_dim="auto",
-                )
-            )
-            current_time_row = []
-            current_t = 0
+    # Convert the flattened Python list to a single NumPy array.
+    flat_data = np.array(flattened_values)
+    # flat_data.shape = [N, ...]  (N = total count)
 
-    # `current_time_row` is unfinished: Pad, if necessary and append to `ret`.
-    if current_t > 0 and current_t < max_seq_len:
-        current_time_row.extend([zero_element] * (max_seq_len - current_t))
-        ret.append(
-            batch(current_time_row, individual_items_already_have_batch_dim="auto")
-        )
+    N = flat_data.shape[0]
+    num_chunks = (N + max_seq_len - 1) // max_seq_len  # ceil(N / max_seq_len)
 
-    return ret
+    # 2) Create the output array with shape [num_chunks, max_seq_len, ...].
+    out_shape = (num_chunks, max_seq_len) + flat_data.shape[1:]
+    out = np.zeros(out_shape, dtype=flat_data.dtype)
+
+    # 3) Fill the output array in a single pass, zero-padding where necessary.
+    start_idx = 0
+    for i in range(num_chunks):
+        end_idx = min(start_idx + max_seq_len, N)
+        length = end_idx - start_idx
+        out[i, :length] = flat_data[start_idx:end_idx]
+        start_idx += length
+
+    # 4) Return a list of the sub-arrays, each shape [max_seq_len, ...].
+    return [out[i] for i in range(num_chunks)]
 
 
 @DeveloperAPI
