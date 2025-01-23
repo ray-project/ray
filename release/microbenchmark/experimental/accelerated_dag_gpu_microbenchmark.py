@@ -34,7 +34,7 @@ class TorchIpcWorker:
     def __init__(self):
         self.device = torch_utils.get_devices()[0]
 
-    def send(self, shape, dtype, value: int):
+    def send(self, shape, dtype, value):
         t = torch.ones(shape, dtype=dtype, device=self.device) * value
         if self.device.type == "cuda":
             # NOTE(swang): This is needed because the IPC can get sent before
@@ -75,7 +75,7 @@ class TorchTensorWorkerWithDataTransfer:
     def __init__(self):
         self.device = torch_utils.get_devices()[0]
 
-    def send(self, shape, dtype, value):
+    def send(self, shape, dtype, value: int):
         t = torch.ones(shape, dtype=dtype, device=self.device) * value
         return t
 
