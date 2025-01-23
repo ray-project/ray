@@ -30,7 +30,6 @@ ignore = [
     # TODO(MortalHappiness): Remove the following rules from the ignore list
     # The above are rules ignored originally in flake8
     # The following are rules ignored in ruff
-    "F841",
     "B018",
     "B023",
     "B024",

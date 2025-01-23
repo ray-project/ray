@@ -131,7 +131,6 @@ def get_regressions(old_path, new_path):
         new_values.keys(),
     )
 
-    regressions = []
     throughput_regressions = []
     latency_regression = []
     for perf_metric_name in to_compare:
