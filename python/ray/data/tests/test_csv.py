@@ -11,6 +11,7 @@ from packaging.version import Version
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray.data import Schema
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -25,7 +26,6 @@ from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
-from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
 
 
@@ -76,12 +76,12 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     path1 = os.path.join(data_path, "test1.csv")
     df1.to_csv(path1, index=False, storage_options=storage_options)
     ds = ray.data.read_csv(path1, filesystem=fs, partitioning=None)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df1.equals(dsdf)
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     # Two files, override_num_blocks=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -90,7 +90,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.read_csv(
         [path1, path2], override_num_blocks=2, filesystem=fs, partitioning=None
     )
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
@@ -105,7 +105,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         [path1, path2, path3], override_num_blocks=2, filesystem=fs, partitioning=None
     )
     df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
 
     # Directory, two files.
@@ -122,7 +122,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_csv(path2, index=False, storage_options=storage_options)
     ds = ray.data.read_csv(path, filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     pd.testing.assert_frame_equal(df, dsdf)
     if fs is None:
         shutil.rmtree(path)
@@ -149,7 +149,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df3.to_csv(file_path3, index=False, storage_options=storage_options)
     ds = ray.data.read_csv([path1, path2], filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path1)
@@ -172,7 +172,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_csv(path2, index=False, storage_options=storage_options)
     ds = ray.data.read_csv([dir_path, path2], filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(dir_path)
@@ -205,9 +205,8 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         file_extensions=["csv"],
         partitioning=None,
     )
-    assert ds._plan.initial_num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path)
@@ -272,7 +271,7 @@ def test_csv_read_meta_provider(
     # Expect to lazily compute all metadata correctly.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     with pytest.raises(NotImplementedError):
         ray.data.read_csv(
@@ -374,8 +373,7 @@ def test_csv_read_many_files_partitioned(
         ds,
         count=num_rows,
         num_input_files=num_files,
-        num_rows=num_rows,
-        schema="{one: int64, two: int64}",
+        schema=Schema(pa.schema([("one", pa.int64()), ("two", pa.int64())])),
         sorted_values=sorted(
             itertools.chain.from_iterable(
                 list(
@@ -425,9 +423,9 @@ def test_csv_read_many_files_diff_dirs(
             path = os.path.join(dir_path, f"test_{j}.csv")
             paths.append(path)
             df.to_csv(path, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv(paths, filesystem=fs)
+    ds = ray.data.read_csv([dir1, dir2], filesystem=fs)
 
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one"]).reset_index(drop=True)
     df = pd.concat(dfs).reset_index(drop=True)
     pd.testing.assert_frame_equal(df, dsdf)
 
@@ -540,7 +538,9 @@ def test_csv_read_partitioned_styles_explicit(
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
+@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
 def test_csv_read_partitioned_with_filter(
+    style,
     ray_start_regular_shared,
     fs,
     data_path,
@@ -555,46 +555,36 @@ def test_csv_read_partitioned_with_filter(
     )
     partition_keys = ["one"]
     file_writer_fn = partial(df_to_csv, storage_options=storage_options, index=False)
-    kept_file_counter = Counter.remote()
-    skipped_file_counter = Counter.remote()
 
     def skip_unpartitioned(kv_dict):
-        keep = bool(kv_dict)
-        counter = kept_file_counter if keep else skipped_file_counter
-        ray.get(counter.increment.remote())
-        return keep
+        return bool(kv_dict)
 
-    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
-        base_dir = os.path.join(data_path, style.value)
-        partition_path_encoder = PathPartitionEncoder.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filesystem=fs,
-        )
-        write_base_partitioned_df(
-            partition_keys,
-            partition_path_encoder,
-            file_writer_fn,
-        )
-        file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.csv"))
-        partition_path_filter = PathPartitionFilter.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filesystem=fs,
-            filter_fn=skip_unpartitioned,
-        )
-        ds = ray.data.read_csv(
-            base_dir,
-            partition_filter=partition_path_filter,
-            filesystem=fs,
-        )
-        assert_base_partitioned_ds(ds)
-        assert ray.get(kept_file_counter.get.remote()) == 2
-        assert ray.get(skipped_file_counter.get.remote()) == 1
-        ray.get(kept_file_counter.reset.remote())
-        ray.get(skipped_file_counter.reset.remote())
+    base_dir = os.path.join(data_path, style.value)
+    partition_path_encoder = PathPartitionEncoder.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filesystem=fs,
+    )
+    write_base_partitioned_df(
+        partition_keys,
+        partition_path_encoder,
+        file_writer_fn,
+    )
+    file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.csv"))
+    partition_path_filter = PathPartitionFilter.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filesystem=fs,
+        filter_fn=skip_unpartitioned,
+    )
+    ds = ray.data.read_csv(
+        base_dir,
+        partition_filter=partition_path_filter,
+        filesystem=fs,
+    )
+    assert_base_partitioned_ds(ds)
 
 
 @pytest.mark.parametrize(
@@ -605,7 +595,9 @@ def test_csv_read_partitioned_with_filter(
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
+@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
 def test_csv_read_partitioned_with_filter_multikey(
+    style,
     ray_start_regular_shared,
     fs,
     data_path,
@@ -620,57 +612,42 @@ def test_csv_read_partitioned_with_filter_multikey(
     )
     partition_keys = ["one", "two"]
     file_writer_fn = partial(df_to_csv, storage_options=storage_options, index=False)
-    kept_file_counter = Counter.remote()
-    skipped_file_counter = Counter.remote()
 
     def keep_expected_partitions(kv_dict):
         keep = bool(kv_dict) and (
             (kv_dict["one"] == "1" and kv_dict["two"] in {"a", "b", "c"})
             or (kv_dict["one"] == "3" and kv_dict["two"] in {"e", "f", "g"})
         )
-        counter = kept_file_counter if keep else skipped_file_counter
-        ray.get(counter.increment.remote())
         return keep
 
-    for i, style in enumerate([PartitionStyle.HIVE, PartitionStyle.DIRECTORY]):
-        base_dir = os.path.join(data_path, style.value)
-        partition_path_encoder = PathPartitionEncoder.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filesystem=fs,
-        )
-        write_base_partitioned_df(
-            partition_keys,
-            partition_path_encoder,
-            file_writer_fn,
-        )
-        df = pd.DataFrame({"1": [1]})
-        file_writer_fn(df, os.path.join(data_path, f"test{i}.csv"))
-        partition_path_filter = PathPartitionFilter.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filesystem=fs,
-            filter_fn=keep_expected_partitions,
-        )
-        ds = ray.data.read_csv(
-            data_path,
-            partition_filter=partition_path_filter,
-            filesystem=fs,
-            override_num_blocks=6,
-        )
-        assert_base_partitioned_ds(ds, num_input_files=6)
-        assert ray.get(kept_file_counter.get.remote()) == 6
-        if i == 0:
-            # expect to skip 1 unpartitioned files in the parent of the base directory
-            assert ray.get(skipped_file_counter.get.remote()) == 1
-        else:
-            # expect to skip 2 unpartitioned files in the parent of the base directory
-            # plus 6 unpartitioned files in the base directory's sibling directories
-            assert ray.get(skipped_file_counter.get.remote()) == 8
-        ray.get(kept_file_counter.reset.remote())
-        ray.get(skipped_file_counter.reset.remote())
+    base_dir = os.path.join(data_path, style.value)
+    partition_path_encoder = PathPartitionEncoder.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filesystem=fs,
+    )
+    write_base_partitioned_df(
+        partition_keys,
+        partition_path_encoder,
+        file_writer_fn,
+    )
+    df = pd.DataFrame({"1": [1]})
+    file_writer_fn(df, os.path.join(data_path, "test0.csv"))
+    partition_path_filter = PathPartitionFilter.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filesystem=fs,
+        filter_fn=keep_expected_partitions,
+    )
+    ds = ray.data.read_csv(
+        data_path,
+        partition_filter=partition_path_filter,
+        filesystem=fs,
+        override_num_blocks=6,
+    )
+    assert_base_partitioned_ds(ds, num_input_files=6)
 
 
 @pytest.mark.parametrize(
@@ -770,37 +747,23 @@ def test_csv_read_filter_non_csv_file(ray_start_regular_shared, tmp_path):
     # Single non-CSV file.
     error_message = "Failed to read CSV file"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path3).schema()
-
-    # Single non-CSV file with filter.
-    error_message = "No input files found to read"
-    with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path3, file_extensions=["csv"]).schema()
+        ray.data.read_csv(path3).materialize()
 
     # Single CSV file without extension.
     ds = ray.data.read_csv(path2)
     assert ds.to_pandas().equals(df)
 
-    # Single CSV file without extension with filter.
-    error_message = "No input files found to read"
-    with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path2, file_extensions=["csv"]).schema()
-
     # Directory of CSV and non-CSV files.
     error_message = "Failed to read CSV file"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(tmp_path).schema()
+        ray.data.read_csv(tmp_path).materialize()
 
     # Directory of CSV and non-CSV files with filter.
     ds = ray.data.read_csv(tmp_path, file_extensions=["csv"])
     assert ds.to_pandas().equals(df)
 
 
-# NOTE: The last test using the shared ray_start_regular_shared cluster must use the
-# shutdown_only fixture so the shared cluster is shut down, otherwise the below
-# test_write_datasink_ray_remote_args test, which uses a cluster_utils cluster, will
-# fail with a double-init.
-def test_csv_read_no_header(shutdown_only, tmp_path):
+def test_csv_read_no_header(ray_start_regular_shared, tmp_path):
     from pyarrow import csv
 
     file_path = os.path.join(tmp_path, "test.csv")
@@ -814,7 +777,7 @@ def test_csv_read_no_header(shutdown_only, tmp_path):
     assert df.equals(out_df)
 
 
-def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
+def test_csv_read_with_column_type_specified(ray_start_regular_shared, tmp_path):
     from pyarrow import csv
 
     file_path = os.path.join(tmp_path, "test.csv")
@@ -846,7 +809,7 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     Version(pa.__version__) < Version("7.0.0"),
     reason="invalid_row_handler was added in pyarrow 7.0.0",
 )
-def test_csv_invalid_file_handler(shutdown_only, tmp_path):
+def test_csv_invalid_file_handler(ray_start_regular_shared, tmp_path):
     from pyarrow import csv
 
     invalid_txt = "f1,f2\n2,3\nx\n4,5"

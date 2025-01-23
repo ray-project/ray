@@ -32,6 +32,7 @@ steps:
           - "11.8.0-cudnn8"
           - "12.1.1-cudnn8"
           - "12.3.2-cudnn9"
+          - "12.4.1-cudnn"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{matrix.python}}"
@@ -81,7 +82,7 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
         --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
-        --platform cpu
+        --platform cu12.4.1-cudnn --platform cpu
         --image-type ray --architecture aarch64 --upload
     depends_on:
       - manylinux-aarch64
@@ -99,7 +100,7 @@ steps:
     tags: linux_wheels
     instance_type: medium-arm64
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core
         --build-type wheel-aarch64
         --build-name oss-ci-base_build-aarch64
         --parallelism-per-worker 3
@@ -115,7 +116,7 @@ steps:
     tags: linux_wheels
     instance_type: medium-arm64
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //doc/... serve 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //doc/... serve
         --build-type wheel-aarch64
         --build-name oss-ci-base_build-aarch64
         --parallelism-per-worker 3

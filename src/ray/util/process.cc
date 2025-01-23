@@ -30,19 +30,20 @@
 #include <unistd.h>
 #endif
 
-#include <string.h>
-
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <string>
 #include <vector>
 
+#include "ray/util/cmd_line_utils.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/subreaper.h"
-#include "ray/util/util.h"
 
 #ifdef __APPLE__
 extern char **environ;
@@ -409,7 +410,7 @@ std::string Process::Exec(const std::string command) {
 #else
   std::unique_ptr<FILE, int (*)(FILE *)> pipe(popen(command.c_str(), "r"), pclose);
 #endif
-  RAY_CHECK(pipe) << "popen() failed for command: " + command;
+  RAY_CHECK(pipe != nullptr) << "popen() failed for command: " << command;
   while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
     result += buffer.data();
   }
@@ -441,6 +442,7 @@ std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string
                                                    const std::string &pid_file,
                                                    const ProcessEnvironment &env) {
   std::vector<const char *> argv;
+  argv.reserve(args.size() + 1);
   for (size_t i = 0; i != args.size(); ++i) {
     argv.push_back(args[i].c_str());
   }

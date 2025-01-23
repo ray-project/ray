@@ -36,6 +36,10 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         .environment(
             CartPoleWithRemoteParamServer,
             env_config={"param_server": "param-server"},

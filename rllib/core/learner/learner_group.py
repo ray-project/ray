@@ -20,7 +20,6 @@ import ray
 from ray import ObjectRef
 from ray.rllib.core import (
     COMPONENT_LEARNER,
-    COMPONENT_MULTI_RL_MODULE_SPEC,
     COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.learner.learner import Learner
@@ -38,6 +37,7 @@ from ray.rllib.utils.actor_manager import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.minibatch_utils import (
     ShardBatchIterator,
     ShardEpisodesIterator,
@@ -142,7 +142,11 @@ class LearnerGroup(Checkpointable):
                 if not self.config.num_gpus_per_learner
                 else 0
             )
-            num_gpus_per_learner = self.config.num_gpus_per_learner
+            num_gpus_per_learner = max(
+                0,
+                self.config.num_gpus_per_learner
+                - (0.01 * self.config.num_aggregator_actors_per_learner),
+            )
             resources_per_learner = {
                 "CPU": num_cpus_per_learner,
                 "GPU": num_gpus_per_learner,
@@ -170,11 +174,9 @@ class LearnerGroup(Checkpointable):
 
             self._worker_manager = FaultTolerantActorManager(
                 self._workers,
-                # TODO (sven): This probably works even without any restriction
-                #  (allowing for any arbitrary number of requests in-flight). Test with
-                #  3 first, then with unlimited, and if both show the same behavior on
-                #  an async algo, remove this restriction entirely.
-                max_remote_requests_in_flight_per_actor=3,
+                max_remote_requests_in_flight_per_actor=(
+                    self.config.max_requests_in_flight_per_learner
+                ),
             )
             # Counters for the tags for asynchronous update requests that are
             # in-flight. Used for keeping trakc of and grouping together the results of
@@ -389,10 +391,17 @@ class LearnerGroup(Checkpointable):
                     num_total_minibatches=_num_total_minibatches,
                     **_kwargs,
                 )
-            if _return_state:
+            if _return_state and result:
                 result["_rl_module_state_after_update"] = _learner.get_state(
-                    components=COMPONENT_RL_MODULE, inference_only=True
-                )[COMPONENT_RL_MODULE]
+                    # Only return the state of those RLModules that actually returned
+                    # results and thus got probably updated.
+                    components=[
+                        COMPONENT_RL_MODULE + "/" + mid
+                        for mid in result
+                        if mid != ALL_MODULES
+                    ],
+                    inference_only=True,
+                )
 
             return result
 
@@ -404,6 +413,10 @@ class LearnerGroup(Checkpointable):
                     "Cannot call `update_from_batch(async_update=True)` when running in"
                     " local mode! Try setting `config.num_learners > 0`."
                 )
+
+            if isinstance(batch, list) and isinstance(batch[0], ray.ObjectRef):
+                assert len(batch) == 1
+                batch = ray.get(batch[0])
 
             results = [
                 _learner_update(
@@ -438,6 +451,18 @@ class LearnerGroup(Checkpointable):
                     # Note, `OfflineData` defines exactly as many iterators as there
                     # are learners.
                     for i, iterator in enumerate(batch)
+                ]
+            elif isinstance(batch, list) and isinstance(batch[0], ObjectRef):
+                assert len(batch) == len(self._workers)
+                partials = [
+                    partial(
+                        _learner_update,
+                        _batch_shard=batch_shard,
+                        _timesteps=timesteps,
+                        _return_state=(return_state and i == 0),
+                        **kwargs,
+                    )
+                    for i, batch_shard in enumerate(batch)
                 ]
             elif batch is not None:
                 partials = [
@@ -534,7 +559,9 @@ class LearnerGroup(Checkpointable):
                         break
                     tags_to_get.append(tag)
 
-                # Send out new request(s), if there is still capacity on the actors.
+                # Send out new request(s), if there is still capacity on the actors
+                # (each actor is allowed only some number of max in-flight requests
+                # at the same time).
                 update_tag = self._update_request_tag
                 self._update_request_tag += 1
                 num_sent_requests = self._worker_manager.foreach_actor_async(
@@ -545,7 +572,6 @@ class LearnerGroup(Checkpointable):
 
                 # Some requests were dropped, record lost ts/data.
                 if num_sent_requests != len(self._workers):
-                    # assert num_sent_requests == 0, num_sent_requests
                     factor = 1 - (num_sent_requests / len(self._workers))
                     # Batch: Measure its length.
                     if episodes is None:
@@ -589,7 +615,7 @@ class LearnerGroup(Checkpointable):
                 raise result_or_error
         return processed_results
 
-    def _get_async_results(self, tags_to_get):  # results):
+    def _get_async_results(self, tags_to_get):
         """Get results from the worker manager and group them by tag.
 
         Returns:
@@ -597,9 +623,6 @@ class LearnerGroup(Checkpointable):
             for same tags.
 
         """
-        # if results is None:
-        #    return []
-
         unprocessed_results = defaultdict(list)
         for tag in tags_to_get:
             results = self._update_request_results[tag]
@@ -793,8 +816,6 @@ class LearnerGroup(Checkpointable):
                 )
             ]
         state = self.get_state(components)[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-        # Remove the MultiRLModuleSpec to just get the weights.
-        state.pop(COMPONENT_MULTI_RL_MODULE_SPEC, None)
         return state
 
     def set_weights(self, weights) -> None:
@@ -836,7 +857,7 @@ class LearnerGroup(Checkpointable):
         remote_actor_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
         **kwargs,
     ) -> RemoteCallResults:
         """Calls the given function on each Learner L with the args: (L, \*\*kwargs).

@@ -1,13 +1,34 @@
-from typing import Any, Iterable, List, Optional
+import logging
+from dataclasses import dataclass
+from typing import Generic, Iterable, List, Optional, TypeVar
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.util.annotations import DeveloperAPI
 
+logger = logging.getLogger(__name__)
+
+
+WriteReturnType = TypeVar("WriteReturnType")
+"""Generic type for the return value of `Datasink.write`."""
+
+
+@dataclass
+@DeveloperAPI
+class WriteResult(Generic[WriteReturnType]):
+    """Aggregated result of the Datasink write operations."""
+
+    # Total number of written rows.
+    num_rows: int
+    # Total size in bytes of written data.
+    size_bytes: int
+    # All returned values of `Datasink.write`.
+    write_returns: List[WriteReturnType]
+
 
 @DeveloperAPI
-class Datasink:
+class Datasink(Generic[WriteReturnType]):
     """Interface for defining write-related logic.
 
     If you want to write data to something that isn't built-in, subclass this class
@@ -26,7 +47,7 @@ class Datasink:
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> WriteReturnType:
         """Write blocks. This is used by a single write task.
 
         Args:
@@ -34,12 +55,13 @@ class Datasink:
             ctx: ``TaskContext`` for the write task.
 
         Returns:
-            A user-defined output. Can be anything, and the returned value is passed to
-            :meth:`~ray.data.Datasink.on_write_complete`.
+            Result of this write task. When the entire write operator finishes,
+            All returned values will be passed as `WriteResult.write_returns`
+            to `Datasink.on_write_complete`.
         """
         raise NotImplementedError
 
-    def on_write_complete(self, write_results: List[Any]) -> None:
+    def on_write_complete(self, write_result: WriteResult[WriteReturnType]):
         """Callback for when a write job completes.
 
         This can be used to "commit" a write output. This method must
@@ -47,8 +69,8 @@ class Datasink:
         method fails, then ``on_write_failed()`` is called.
 
         Args:
-            write_results: The objects returned by every
-                :meth:`~ray.data.Datasink.write` task.
+            write_result: Aggregated result of the
+            the Write operator, containing write results and stats.
         """
         pass
 
@@ -90,7 +112,7 @@ class Datasink:
 
 
 @DeveloperAPI
-class DummyOutputDatasink(Datasink):
+class DummyOutputDatasink(Datasink[None]):
     """An example implementation of a writable datasource for testing.
     Examples:
         >>> import ray
@@ -111,10 +133,9 @@ class DummyOutputDatasink(Datasink):
                 self.rows_written = 0
                 self.enabled = True
 
-            def write(self, block: Block) -> str:
+            def write(self, block: Block) -> None:
                 block = BlockAccessor.for_block(block)
                 self.rows_written += block.num_rows()
-                return "ok"
 
             def get_rows_written(self):
                 return self.rows_written
@@ -128,17 +149,15 @@ class DummyOutputDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> None:
         tasks = []
         if not self.enabled:
             raise ValueError("disabled")
         for b in blocks:
             tasks.append(self.data_sink.write.remote(b))
         ray.get(tasks)
-        return "ok"
 
-    def on_write_complete(self, write_results: List[Any]) -> None:
-        assert all(w == "ok" for w in write_results), write_results
+    def on_write_complete(self, write_result: WriteResult[None]):
         self.num_ok += 1
 
     def on_write_failed(self, error: Exception) -> None:

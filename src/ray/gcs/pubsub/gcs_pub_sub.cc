@@ -14,20 +14,18 @@
 
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 
-#include "absl/strings/str_cat.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
-#include "ray/rpc/grpc_client.h"
 
 namespace ray {
 namespace gcs {
 
 Status GcsPublisher::PublishActor(const ActorID &id,
-                                  const rpc::ActorTableData &message,
+                                  rpc::ActorTableData message,
                                   const StatusCallback &done) {
   rpc::PubMessage msg;
   msg.set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
   msg.set_key_id(id.Binary());
-  *msg.mutable_actor_message() = message;
+  *msg.mutable_actor_message() = std::move(message);
   publisher_->Publish(std::move(msg));
   if (done != nullptr) {
     done(Status::OK());

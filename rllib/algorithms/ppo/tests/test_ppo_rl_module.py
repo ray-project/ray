@@ -7,11 +7,11 @@ import tree
 
 import ray
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-    PPOTorchRLModule,
+from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+    DefaultPPOTorchRLModule,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -19,17 +19,6 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 
 torch, nn = try_import_torch()
-
-
-def get_expected_module_config(env, model_config_dict, observation_space):
-    config = RLModuleConfig(
-        observation_space=observation_space,
-        action_space=env.action_space,
-        model_config_dict=model_config_dict,
-        catalog_class=PPOCatalog,
-    )
-
-    return config
 
 
 def dummy_torch_ppo_loss(module, batch, fwd_out):
@@ -43,15 +32,6 @@ def dummy_torch_ppo_loss(module, batch, fwd_out):
     loss = actor_loss + critic_loss
 
     return loss
-
-
-def _get_ppo_module(env, lstm, observation_space):
-    model_config_dict = {"use_lstm": lstm}
-    config = get_expected_module_config(
-        env, model_config_dict=model_config_dict, observation_space=observation_space
-    )
-    module = PPOTorchRLModule(config)
-    return module
 
 
 def _get_input_batch_from_obs(obs, lstm):
@@ -74,7 +54,7 @@ class TestPPO(unittest.TestCase):
 
     def test_rollouts(self):
         # TODO: Add FrozenLake-v1 to cover LSTM case.
-        env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
+        env_names = ["CartPole-v1", "Pendulum-v1", "ale_py:ALE/Breakout-v5"]
         fwd_fns = ["forward_exploration", "forward_inference"]
         lstm = [True, False]
         config_combinations = [env_names, fwd_fns, lstm]
@@ -86,11 +66,13 @@ class TestPPO(unittest.TestCase):
             preprocessor_cls = get_preprocessor(env.observation_space)
             preprocessor = preprocessor_cls(env.observation_space)
 
-            module = _get_ppo_module(
-                env=env,
-                lstm=lstm,
+            module = DefaultPPOTorchRLModule(
                 observation_space=preprocessor.observation_space,
+                action_space=env.action_space,
+                model_config=DefaultModelConfig(use_lstm=lstm),
+                catalog_class=PPOCatalog,
             )
+
             obs, _ = env.reset()
             obs = preprocessor.transform(obs)
 
@@ -109,7 +91,7 @@ class TestPPO(unittest.TestCase):
 
     def test_forward_train(self):
         # TODO: Add FrozenLake-v1 to cover LSTM case.
-        env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
+        env_names = ["CartPole-v1", "Pendulum-v1", "ale_py:ALE/Breakout-v5"]
         lstm = [False, True]
         config_combinations = [env_names, lstm]
         for config in itertools.product(*config_combinations):
@@ -120,10 +102,11 @@ class TestPPO(unittest.TestCase):
             preprocessor_cls = get_preprocessor(env.observation_space)
             preprocessor = preprocessor_cls(env.observation_space)
 
-            module = _get_ppo_module(
-                env=env,
-                lstm=lstm,
+            module = DefaultPPOTorchRLModule(
                 observation_space=preprocessor.observation_space,
+                action_space=env.action_space,
+                model_config=DefaultModelConfig(use_lstm=lstm),
+                catalog_class=PPOCatalog,
             )
 
             # collect a batch of data

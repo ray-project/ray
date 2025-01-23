@@ -1,6 +1,6 @@
 import logging
 import posixpath
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from urllib.parse import urlparse
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
@@ -9,7 +9,7 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _is_local_scheme, call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.datasink import Datasink
+from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.filename_provider import (
     FilenameProvider,
     _DefaultFilenameProvider,
@@ -27,7 +27,7 @@ WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
 
-class _FileDatasink(Datasink):
+class _FileDatasink(Datasink[None]):
     def __init__(
         self,
         path: str,
@@ -79,6 +79,9 @@ class _FileDatasink(Datasink):
         return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
     def on_write_start(self) -> None:
+        self.has_created_dir = self._create_dir(self.path)
+
+    def _create_dir(self, dest) -> bool:
         """Create a directory to write files to.
 
         If ``try_create_dir`` is ``False``, this method is a no-op.
@@ -96,25 +99,27 @@ class _FileDatasink(Datasink):
         # a policy only allows users to write blobs prefixed with s3://bucket/foo
         # a call to create_dir for s3://bucket/foo/bar will fail even though it
         # should not.
-        parsed_uri = urlparse(self.path)
+        parsed_uri = urlparse(dest)
         is_s3_uri = parsed_uri.scheme == "s3"
         skip_create_dir_for_s3 = (
             is_s3_uri and not DataContext.get_current().s3_try_create_dir
         )
 
         if self.try_create_dir and not skip_create_dir_for_s3:
-            if self.filesystem.get_file_info(self.path).type is FileType.NotFound:
+            if self.filesystem.get_file_info(dest).type is FileType.NotFound:
                 # Arrow's S3FileSystem doesn't allow creating buckets by default, so we
                 # add a query arg enabling bucket creation if an S3 URI is provided.
-                tmp = _add_creatable_buckets_param_if_s3_uri(self.path)
+                tmp = _add_creatable_buckets_param_if_s3_uri(dest)
                 self.filesystem.create_dir(tmp, recursive=True)
-                self.has_created_dir = True
+                return True
+
+        return False
 
     def write(
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> None:
         builder = DelegatingBlockBuilder()
         for block in blocks:
             builder.add_block(block)
@@ -123,21 +128,16 @@ class _FileDatasink(Datasink):
 
         if block_accessor.num_rows() == 0:
             logger.warning(f"Skipped writing empty block to {self.path}")
-            return "skip"
+            return
 
         self.write_block(block_accessor, 0, ctx)
-        # TODO: decide if we want to return richer object when the task
-        # succeeds.
-        return "ok"
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         raise NotImplementedError
 
-    def on_write_complete(self, write_results: List[Any]) -> None:
-        if not self.has_created_dir:
-            return
-
-        if all(write_results == "skip" for write_results in write_results):
+    def on_write_complete(self, write_result: WriteResult[None]):
+        # If no rows were written, we can delete the directory.
+        if self.has_created_dir and write_result.num_rows == 0:
             self.filesystem.delete_dir(self.path)
 
     @property
@@ -191,13 +191,15 @@ class RowBasedFileDatasink(_FileDatasink):
             )
             write_path = posixpath.join(self.path, filename)
 
-            def write_row_to_path():
+            def write_row_to_path(row, write_path):
                 with self.open_output_stream(write_path) as file:
                     self.write_row_to_file(row, file)
 
             logger.debug(f"Writing {write_path} file.")
             call_with_retry(
-                write_row_to_path,
+                lambda row=row, write_path=write_path: write_row_to_path(
+                    row, write_path
+                ),
                 description=f"write '{write_path}'",
                 match=DataContext.get_current().retried_io_errors,
                 max_attempts=WRITE_FILE_MAX_ATTEMPTS,

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import ray
+from ray._private.ray_constants import env_bool
 from ray.air.constants import (  # noqa: F401
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     EVALUATION_DATASET_KEY,
@@ -56,6 +57,10 @@ ENABLE_DETAILED_AUTOFILLED_METRICS_ENV = (
 # Backend.share_cuda_visible_devices. 1 for True, 0 for False.
 ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_CUDA_VISIBLE_DEVICES"
 
+# Integer value which if set will not share ROCR accelerator visible devices
+# across workers. 1 for True (default), 0 for False.
+ENABLE_SHARE_ROCR_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_ROCR_VISIBLE_DEVICES"
+
 # Integer value which if set will not share neuron-core accelerator visible cores
 # across workers. 1 for True (default), 0 for False.
 ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV = (
@@ -85,6 +90,14 @@ RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE = "RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE"
 # Set this to 1 to start a StateActor and collect information Train Runs
 # Defaults to 0
 RAY_TRAIN_ENABLE_STATE_TRACKING = "RAY_TRAIN_ENABLE_STATE_TRACKING"
+
+# Set this to 1 to enable deprecation warnings for V2 migration.
+ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR = "RAY_TRAIN_ENABLE_V2_MIGRATION_WARNINGS"
+
+
+def _v2_migration_warnings_enabled() -> bool:
+    return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, False)
+
 
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {

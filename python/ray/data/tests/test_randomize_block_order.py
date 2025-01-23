@@ -15,18 +15,21 @@ from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
 from ray.data._internal.planner.planner import Planner
+from ray.data.context import DataContext
 from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import extract_values
 
 
 def test_randomize_blocks_operator(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = RandomizeBlocks(
         read_op,
         seed=0,
     )
-    plan = LogicalPlan(op)
+    plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "RandomizeBlockOrder"
@@ -36,11 +39,13 @@ def test_randomize_blocks_operator(ray_start_regular_shared):
 
 
 def test_randomize_block_order_rule():
+    ctx = DataContext.get_current()
+
     read = get_parquet_read_logical_op()
     operator1 = RandomizeBlocks(input_op=read, seed=None)
     operator2 = RandomizeBlocks(input_op=operator1, seed=None)
     operator3 = MapBatches(input_op=operator2, fn=lambda x: x)
-    original_plan = LogicalPlan(dag=operator3)
+    original_plan = LogicalPlan(dag=operator3, context=ctx)
 
     rule = ReorderRandomizeBlocksRule()
     optimized_plan = rule.apply(original_plan)
@@ -59,11 +64,13 @@ def test_randomize_block_order_rule():
 
 
 def test_randomize_block_order_rule_seed():
+    ctx = DataContext.get_current()
+
     read = get_parquet_read_logical_op()
     operator1 = RandomizeBlocks(input_op=read, seed=None)
     operator2 = RandomizeBlocks(input_op=operator1, seed=2)
     operator3 = MapBatches(input_op=operator2, fn=lambda x: x)
-    original_plan = LogicalPlan(dag=operator3)
+    original_plan = LogicalPlan(dag=operator3, context=ctx)
 
     rule = ReorderRandomizeBlocksRule()
     optimized_plan = rule.apply(original_plan)
@@ -86,6 +93,8 @@ def test_randomize_block_order_rule_seed():
 
 
 def test_randomize_block_order_after_repartition():
+    ctx = DataContext.get_current()
+
     read = get_parquet_read_logical_op()
     operator1 = RandomizeBlocks(input_op=read)
     operator2 = Repartition(input_op=operator1, num_outputs=1, shuffle=False)
@@ -93,7 +102,7 @@ def test_randomize_block_order_after_repartition():
     operator4 = RandomizeBlocks(input_op=operator3)
     operator5 = MapBatches(input_op=operator4, fn=lambda x: x)
     operator6 = Repartition(input_op=operator5, num_outputs=1, shuffle=False)
-    original_plan = LogicalPlan(dag=operator6)
+    original_plan = LogicalPlan(dag=operator6, context=ctx)
 
     rule = ReorderRandomizeBlocksRule()
     optimized_plan = rule.apply(original_plan)

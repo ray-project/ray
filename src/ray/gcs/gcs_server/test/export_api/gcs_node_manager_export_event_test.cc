@@ -12,19 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+
 #include <chrono>
 #include <memory>
 #include <thread>
 
-// clang-format off
-#include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/util/event.h"
+#include "ray/util/string_utils.h"
+
+// clang-format off
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/util/event.h"
 // clang-format on
+
+using json = nlohmann::json;
 
 namespace ray {
 
@@ -39,11 +44,11 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
  public:
   GcsNodeManagerExportAPITest() {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+    client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+    gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
 
     RayConfig::instance().initialize(
         R"(
@@ -68,9 +73,9 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
   }
 
  protected:
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
-  std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
+  std::unique_ptr<rpc::NodeManagerClientPool> client_pool_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   instrumented_io_context io_service_;
   std::string log_dir_;
@@ -78,8 +83,11 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
 
 TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
   // Test export event is written when a node is added with HandleRegisterNode
-  gcs::GcsNodeManager node_manager(
-      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   io_service_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil());
   auto node = Mocker::GenNodeInfo();
 
   rpc::RegisterNodeRequest register_request;
@@ -100,8 +108,11 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
 
 TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   // Test export event is written when a node is removed with HandleUnregisterNode
-  gcs::GcsNodeManager node_manager(
-      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   io_service_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil());
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   node_manager.AddNode(node);

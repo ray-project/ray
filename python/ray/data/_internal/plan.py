@@ -165,7 +165,7 @@ class ExecutionPlan:
                 else:
                     assert len(sources) == 1
                     plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
-                    plan.link_logical_plan(LogicalPlan(sources[0]))
+                    plan.link_logical_plan(LogicalPlan(sources[0], plan._context))
                     schema = plan.schema()
                     count = plan.meta_count()
         else:
@@ -279,6 +279,7 @@ class ExecutionPlan:
         execution plan.
         """
         self._logical_plan = logical_plan
+        self._logical_plan._context = self._context
 
     def copy(self) -> "ExecutionPlan":
         """Create a shallow copy of this execution plan.
@@ -419,7 +420,7 @@ class ExecutionPlan:
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
         metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-        executor = StreamingExecutor(copy.deepcopy(ctx.execution_options), metrics_tag)
+        executor = StreamingExecutor(ctx, metrics_tag)
         bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
@@ -491,7 +492,7 @@ class ExecutionPlan:
 
                 metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
                 executor = StreamingExecutor(
-                    copy.deepcopy(context.execution_options),
+                    context,
                     metrics_tag,
                 )
                 blocks = execute_to_legacy_block_list(

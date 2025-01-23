@@ -43,30 +43,32 @@ class TorchRLModule(nn.Module, RLModule):
     framework: str = "torch"
 
     # Stick with torch default.
-    STATE_FILE_NAME = "module_state.pt"
+    STATE_FILE_NAME = "module_state"
 
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
-        # If an inference-only class AND self.config.inference_only is True,
+        # If an inference-only class AND self.inference_only is True,
         # remove all attributes that are returned by
         # `self.get_non_inference_attributes()`.
-        if self.config.inference_only and isinstance(self, InferenceOnlyAPI):
+        if self.inference_only and isinstance(self, InferenceOnlyAPI):
             for attr in self.get_non_inference_attributes():
                 parts = attr.split(".")
                 if not hasattr(self, parts[0]):
                     continue
-                target = getattr(self, parts[0])
+                target_name = parts[0]
+                target_obj = getattr(self, target_name)
                 # Traverse from the next part on (if nested).
                 for part in parts[1:]:
-                    if not hasattr(target, part):
-                        target = None
+                    if not hasattr(target_obj, part):
+                        target_obj = None
                         break
-                    target = getattr(target, part)
+                    target_name = part
+                    target_obj = getattr(target_obj, target_name)
                 # Delete, if target is valid.
-                if target is not None:
-                    del target
+                if target_obj is not None:
+                    delattr(self, target_name)
 
     def compile(self, compile_config: TorchCompileConfig):
         """Compile the forward methods of this module.
@@ -109,7 +111,7 @@ class TorchRLModule(nn.Module, RLModule):
         # InferenceOnlyAPI).
         if (
             inference_only
-            and not self.config.inference_only
+            and not self.inference_only
             and isinstance(self, InferenceOnlyAPI)
         ):
             attr = self.get_non_inference_attributes()
@@ -135,14 +137,14 @@ class TorchRLModule(nn.Module, RLModule):
     def get_inference_action_dist_cls(self) -> Type[TorchDistribution]:
         if self.action_dist_cls is not None:
             return self.action_dist_cls
-        elif isinstance(self.config.action_space, gym.spaces.Discrete):
+        elif isinstance(self.action_space, gym.spaces.Discrete):
             return TorchCategorical
-        elif isinstance(self.config.action_space, gym.spaces.Box):
+        elif isinstance(self.action_space, gym.spaces.Box):
             return TorchDiagGaussian
         else:
             raise ValueError(
                 f"Default action distribution for action space "
-                f"{self.config.action_space} not supported! Either set the "
+                f"{self.action_space} not supported! Either set the "
                 f"`self.action_dist_cls` property in your RLModule's `setup()` method "
                 f"to a subclass of `ray.rllib.models.torch.torch_distributions."
                 f"TorchDistribution` or - if you need different distributions for "
@@ -161,7 +163,6 @@ class TorchRLModule(nn.Module, RLModule):
     def get_train_action_dist_cls(self) -> Type[TorchDistribution]:
         return self.get_inference_action_dist_cls()
 
-    @override(nn.Module)
     def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE!
 
@@ -177,14 +178,27 @@ class TorchRLModule(nn.Module, RLModule):
         training sample collection (w/ exploration behavior).
         `_forward_train()` to define the forward pass prior to loss computation.
         """
-        return self.forward_train(batch, **kwargs)
+        # TODO (sven): Experimental to make ONNX exported models work.
+        if self.config.inference_only:
+            return self.forward_exploration(batch, **kwargs)
+        else:
+            return self.forward_train(batch, **kwargs)
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def __init__(self, *args, **kwargs) -> None:
         nn.parallel.DistributedDataParallel.__init__(self, *args, **kwargs)
-        # we do not want to call RLModule.__init__ here because all we need is
+        # We do not want to call RLModule.__init__ here because all we need is
         # the interface of that base-class not the actual implementation.
+        # RLModule.__init__(self, *args, **kwargs)
+        self.observation_space = self.unwrapped().observation_space
+        self.action_space = self.unwrapped().action_space
+        self.inference_only = self.unwrapped().inference_only
+        self.learner_only = self.unwrapped().learner_only
+        self.model_config = self.unwrapped().model_config
+        self.catalog = self.unwrapped().catalog
+
+        # Deprecated.
         self.config = self.unwrapped().config
 
     @override(RLModule)

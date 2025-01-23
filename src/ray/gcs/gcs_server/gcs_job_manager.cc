@@ -15,17 +15,21 @@
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 
 #include "ray/gcs/pb_util.h"
+#include "ray/stats/metric.h"
 
 namespace ray {
 namespace gcs {
 
 void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
-  for (auto &pair : gcs_init_data.Jobs()) {
-    const auto &job_id = pair.first;
-    const auto &job_table_data = pair.second;
+  for (const auto &[job_id, job_table_data] : gcs_init_data.Jobs()) {
     cached_job_configs_[job_id] =
         std::make_shared<rpc::JobConfig>(job_table_data.config());
     function_manager_.AddJobReference(job_id);
+
+    // Recover [running_job_ids_] from storage.
+    if (!job_table_data.is_dead()) {
+      running_job_ids_.insert(job_id);
+    }
   }
 }
 
@@ -33,7 +37,7 @@ void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const 
   /// Write job_data as a export driver job event if
   /// enable_export_api_write() is enabled and if this job is
   /// not in the _ray_internal_ namespace.
-  if (!RayConfig::instance().enable_export_api_write()) {
+  if (!export_event_write_enabled_) {
     return;
   }
   if (job_data.config().ray_namespace().find(kRayInternalNamespacePrefix) == 0) {
@@ -82,33 +86,43 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
   auto time = current_sys_time_ms();
   mutable_job_table_data.set_start_time(time);
   mutable_job_table_data.set_timestamp(time);
-  JobID job_id = JobID::FromBinary(mutable_job_table_data.job_id());
+  const JobID job_id = JobID::FromBinary(mutable_job_table_data.job_id());
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
                 << ", driver pid = " << mutable_job_table_data.driver_pid();
 
-  auto on_done = [this, job_id, mutable_job_table_data, reply, send_reply_callback](
-                     const Status &status) {
+  auto on_done = [this,
+                  job_id,
+                  job_table_data = mutable_job_table_data,
+                  reply,
+                  send_reply_callback =
+                      std::move(send_reply_callback)](const Status &status) {
+    RAY_CHECK(thread_checker_.IsOnSameThread());
+
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
-                     << ", driver pid = " << mutable_job_table_data.driver_pid();
+                     << ", driver pid = " << job_table_data.driver_pid();
     } else {
-      RAY_CHECK_OK(gcs_publisher_->PublishJob(job_id, mutable_job_table_data, nullptr));
-      if (mutable_job_table_data.config().has_runtime_env_info()) {
-        runtime_env_manager_.AddURIReference(
-            job_id.Hex(), mutable_job_table_data.config().runtime_env_info());
+      RAY_CHECK_OK(gcs_publisher_.PublishJob(job_id, job_table_data, /*done=*/nullptr));
+      if (job_table_data.config().has_runtime_env_info()) {
+        runtime_env_manager_.AddURIReference(job_id.Hex(),
+                                             job_table_data.config().runtime_env_info());
       }
       function_manager_.AddJobReference(job_id);
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
-                    << ", driver pid = " << mutable_job_table_data.driver_pid();
+                    << ", driver pid = " << job_table_data.driver_pid();
       cached_job_configs_[job_id] =
-          std::make_shared<rpc::JobConfig>(mutable_job_table_data.config());
+          std::make_shared<rpc::JobConfig>(job_table_data.config());
+
+      // Intentionally not checking return value, since the function could be invoked for
+      // multiple times and requires idempotency (i.e. due to retry).
+      running_job_ids_.insert(job_id);
     }
-    WriteDriverJobExportEvent(mutable_job_table_data);
+    WriteDriverJobExportEvent(job_table_data);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status =
-      gcs_table_storage_->JobTable().Put(job_id, mutable_job_table_data, on_done);
+  Status status = gcs_table_storage_.JobTable().Put(
+      job_id, mutable_job_table_data, {on_done, io_context_});
   if (!status.ok()) {
     on_done(status);
   }
@@ -122,21 +136,32 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
   job_table_data.set_timestamp(time);
   job_table_data.set_end_time(time);
   job_table_data.set_is_dead(true);
-  auto on_done = [this, job_id, job_table_data, done_callback](const Status &status) {
+  auto on_done = [this, job_id, job_table_data, done_callback = std::move(done_callback)](
+                     const Status &status) {
+    RAY_CHECK(thread_checker_.IsOnSameThread());
+
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
     } else {
-      RAY_CHECK_OK(gcs_publisher_->PublishJob(job_id, job_table_data, nullptr));
+      RAY_CHECK_OK(gcs_publisher_.PublishJob(job_id, job_table_data, nullptr));
       runtime_env_manager_.RemoveURIReference(job_id.Hex());
       ClearJobInfos(job_table_data);
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
     }
     function_manager_.RemoveJobReference(job_id);
     WriteDriverJobExportEvent(job_table_data);
+
+    // Update running job status.
+    auto iter = running_job_ids_.find(job_id);
+    RAY_CHECK(iter != running_job_ids_.end());
+    running_job_ids_.erase(iter);
+    ++finished_jobs_count_;
+
     done_callback(status);
   };
 
-  Status status = gcs_table_storage_->JobTable().Put(job_id, job_table_data, on_done);
+  Status status =
+      gcs_table_storage_.JobTable().Put(job_id, job_table_data, {on_done, io_context_});
   if (!status.ok()) {
     on_done(status);
   }
@@ -147,22 +172,32 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
                                           rpc::SendReplyCallback send_reply_callback) {
   const JobID job_id = JobID::FromBinary(request.job_id());
 
-  auto send_reply = [send_reply_callback, reply](Status status) {
+  auto send_reply = [send_reply_callback = std::move(send_reply_callback),
+                     reply](Status status) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_table_storage_->JobTable().Get(
+  Status status = gcs_table_storage_.JobTable().Get(
       job_id,
-      [this, job_id, send_reply](Status status,
-                                 const std::optional<rpc::JobTableData> &result) {
-        if (status.ok() && result) {
-          MarkJobAsFinished(*result, send_reply);
-        } else {
-          RAY_LOG(ERROR) << "Tried to mark job " << job_id
-                         << " as finished, but there was no record of it starting!";
-          send_reply(status);
-        }
-      });
+      {[this, job_id, send_reply](Status status,
+                                  std::optional<rpc::JobTableData> result) {
+         RAY_CHECK(thread_checker_.IsOnSameThread());
+
+         if (status.ok() && result) {
+           MarkJobAsFinished(*result, send_reply);
+           return;
+         }
+
+         if (!result.has_value()) {
+           RAY_LOG(ERROR) << "Tried to mark job " << job_id
+                          << " as finished, but there was no record of it starting!";
+         } else if (!status.ok()) {
+           RAY_LOG(ERROR) << "Fails to mark job " << job_id << " as finished due to "
+                          << status;
+         }
+         send_reply(status);
+       },
+       io_context_});
   if (!status.ok()) {
     send_reply(status);
   }
@@ -239,6 +274,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
   };
   auto on_done = [this, filter_ok, request, reply, send_reply_callback, limit](
                      const absl::flat_hash_map<JobID, JobTableData> &&result) {
+    RAY_CHECK(thread_checker_.IsOnSameThread());
+
     // Internal KV keys for jobs that were submitted via the Ray Job API.
     std::vector<std::string> job_api_data_keys;
 
@@ -277,7 +314,13 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     // do async calls to:
     //
     // - N outbound RPCs, one to each jobs' core workers on GcsServer::main_service_.
-    // - One InternalKV MultiGet call on GcsServer::kv_service_.
+    // - One InternalKV MultiGet call on GcsServer::kv_service_, posted to
+    //   GcsServer::main_service_.
+    //
+    // Since all accesses are on the same thread, we don't need to do atomic operations
+    // but we kept it for legacy reasons.
+    // TODO(ryw): Define a struct with a size_t, a ThreadChecker and auto send reply on
+    // remaining tasks == 0.
     //
     // And then we wait all by examining an atomic num_finished_tasks counter and then
     // reply. The wait counter is written from 2 different thread, which requires an
@@ -360,7 +403,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
            send_reply_callback,
            job_data_key_to_indices,
            num_finished_tasks,
-           try_send_reply](std::unordered_map<std::string, std::string> &&result) {
+           try_send_reply](auto result) {
             for (const auto &data : result) {
               const std::string &job_data_key = data.first;
               // The JobInfo stored by the Ray Job API.
@@ -385,10 +428,11 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
             size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
             try_send_reply(updated_finished_tasks);
           };
-      internal_kv_.MultiGet("job", job_api_data_keys, kv_multi_get_callback);
+      internal_kv_.MultiGet(
+          "job", job_api_data_keys, {kv_multi_get_callback, io_context_});
     }
   };
-  Status status = gcs_table_storage_->JobTable().GetAll(on_done);
+  Status status = gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
   if (!status.ok()) {
     on_done(absl::flat_hash_map<JobID, JobTableData>());
   }
@@ -398,15 +442,19 @@ void GcsJobManager::HandleReportJobError(rpc::ReportJobErrorRequest request,
                                          rpc::ReportJobErrorReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   auto job_id = JobID::FromBinary(request.job_error().job_id());
-  RAY_CHECK_OK(gcs_publisher_->PublishError(job_id.Hex(), request.job_error(), nullptr));
+  RAY_CHECK_OK(gcs_publisher_.PublishError(job_id.Hex(), request.job_error(), nullptr));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void GcsJobManager::HandleGetNextJobID(rpc::GetNextJobIDRequest request,
                                        rpc::GetNextJobIDReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  reply->set_job_id(gcs_table_storage_->GetNextJobID());
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  auto callback = [reply,
+                   send_reply_callback = std::move(send_reply_callback)](int job_id) {
+    reply->set_job_id(job_id);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
+  RAY_CHECK_OK(gcs_table_storage_.AsyncGetNextJobID({std::move(callback), io_context_}));
 }
 
 std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id) const {
@@ -420,11 +468,13 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
       << "Node failed, mark all jobs from this node as finished";
 
   auto on_done = [this, node_id](const absl::flat_hash_map<JobID, JobTableData> &result) {
+    RAY_CHECK(thread_checker_.IsOnSameThread());
+
     // If job is not dead and from driver in current node, then mark it as finished
     for (auto &data : result) {
       if (!data.second.is_dead() &&
           NodeID::FromBinary(data.second.driver_address().raylet_id()) == node_id) {
-        RAY_LOG(DEBUG) << "Marking job: " << data.first << " as finished";
+        RAY_LOG(DEBUG).WithField(data.first) << "Marking job as finished";
         MarkJobAsFinished(data.second, [data](Status status) {
           if (!status.ok()) {
             RAY_LOG(WARNING) << "Failed to mark job as finished. Status: " << status;
@@ -435,7 +485,12 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
   };
 
   // make all jobs in current node to finished
-  RAY_CHECK_OK(gcs_table_storage_->JobTable().GetAll(on_done));
+  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll({on_done, io_context_}));
+}
+
+void GcsJobManager::RecordMetrics() {
+  ray::stats::STATS_running_jobs.Record(running_job_ids_.size());
+  ray::stats::STATS_finished_jobs.Record(finished_jobs_count_);
 }
 
 }  // namespace gcs

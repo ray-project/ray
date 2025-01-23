@@ -1,14 +1,14 @@
 {
-    "_dashboard_memory_usage_mb": 1280.004096,
+    "_dashboard_memory_usage_mb": 768.884736,
     "_dashboard_test_success": true,
-    "_peak_memory": 5.0,
-    "_peak_process_memory": "PID\tMEM\tCOMMAND\n3387\t2.1GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n3503\t1.26GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa\n4331\t0.74GiB\tpython distributed/test_many_tasks.py --num-tasks=10000\n1885\t0.24GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n1139\t0.22GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n3668\t0.1GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/agen\n4535\t0.09GiB\tray::DashboardTester.run\n4609\t0.08GiB\tray::StateAPIGeneratorActor.start\n1914\t0.08GiB\t/usr/bin/python3 /app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/product/\n3670\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/runti",
+    "_peak_memory": 3.56,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n3463\t1.13GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n3579\t0.84GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa\n4464\t0.74GiB\tpython distributed/test_many_tasks.py --num-tasks=10000\n2768\t0.24GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n1076\t0.24GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n580\t0.12GiB\t/app/go/infra/anyscaled/anyscaled_/anyscaled_shim --cloud_provider=aws\n3772\t0.09GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/agen\n2955\t0.09GiB\t/usr/bin/python3 /app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/product/\n4609\t0.08GiB\tray::DashboardTester.run\n4665\t0.08GiB\tray::StateAPIGeneratorActor.start",
     "num_tasks": 10000,
     "perf_metrics": [
         {
             "perf_metric_name": "tasks_per_second",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 568.6168662449907
+            "perf_metric_value": 552.9063643030292
         },
         {
             "perf_metric_name": "used_cpus_by_deadline",
@@ -18,21 +18,21 @@
         {
             "perf_metric_name": "dashboard_p50_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 69.512
+            "perf_metric_value": 148.169
         },
         {
             "perf_metric_name": "dashboard_p95_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 367.275
+            "perf_metric_value": 626.809
         },
         {
             "perf_metric_name": "dashboard_p99_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 553.345
+            "perf_metric_value": 873.471
         }
     ],
     "success": "1",
-    "tasks_per_second": 568.6168662449907,
-    "time": 317.5865342617035,
+    "tasks_per_second": 552.9063643030292,
+    "time": 318.08624505996704,
     "used_cpus": 2500.0
 }

@@ -9,13 +9,15 @@ from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
 
 import ray
+from ray.air.util.tensor_extensions.arrow import (
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
 )
 from ray.data.datasource import Partitioning
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
-from ray.data.extensions import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -27,7 +29,7 @@ class TestReadImages:
         ds = ray.data.read_images("example://image-datasets/simple")
         assert ds.schema().names == ["image"]
         column_type = ds.schema().types[0]
-        assert isinstance(column_type, ArrowTensorType)
+        assert isinstance(column_type, get_arrow_extension_fixed_shape_tensor_types())
         assert all(record["image"].shape == (32, 32, 3) for record in ds.take())
 
     @pytest.mark.parametrize("num_threads", [-1, 0, 1, 2, 4])
@@ -139,7 +141,7 @@ class TestReadImages:
         assert ds.schema().names == ["image", "label"]
 
         image_type, label_type = ds.schema().types
-        assert isinstance(image_type, ArrowTensorType)
+        assert isinstance(image_type, get_arrow_extension_fixed_shape_tensor_types())
         assert pa.types.is_string(label_type)
 
         df = ds.to_pandas()
@@ -274,6 +276,13 @@ class TestReadImages:
         with tempfile.NamedTemporaryFile(suffix=".png") as file:
             with pytest.raises(ValueError):
                 ray.data.read_images(paths=file.name).materialize()
+
+    def test_custom_meta_provider_emits_deprecation_warning(ray_start_regular_shared):
+        with pytest.warns(DeprecationWarning):
+            ray.data.read_images(
+                paths=["example://image-datasets/simple/image1.jpg"],
+                meta_provider=FastFileMetadataProvider(),
+            )
 
 
 class TestWriteImages:

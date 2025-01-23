@@ -27,14 +27,14 @@ def train_func(config):
                 state = json.load(f)
             step = state["step"] + 1
 
-    for step in range(step, 100):
-        intermediate_score = evaluation_fn(step, width, height)
+    for current_step in range(step, 100):
+        intermediate_score = evaluation_fn(current_step, width, height)
 
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             with open(os.path.join(temp_checkpoint_dir, "checkpoint.json"), "w") as f:
-                json.dump({"step": step}, f)
+                json.dump({"step": current_step}, f)
             train.report(
-                {"iterations": step, "mean_loss": intermediate_score},
+                {"iterations": current_step, "mean_loss": intermediate_score},
                 checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
             )
 

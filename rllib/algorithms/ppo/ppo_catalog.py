@@ -48,7 +48,7 @@ class PPOCatalog(Catalog):
         - Value Function Head: The head used to compute the value function.
 
     The ActorCriticEncoder is a wrapper around Encoders to produce separate outputs
-    for the policy and value function. See implementations of PPORLModule for
+    for the policy and value function. See implementations of DefaultPPORLModule for
     more details.
 
     Any custom ActorCriticEncoder can be built by overriding the
@@ -85,16 +85,15 @@ class PPOCatalog(Catalog):
             action_space=action_space,
             model_config_dict=model_config_dict,
         )
-
         # Replace EncoderConfig by ActorCriticEncoderConfig
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
             base_encoder_config=self._encoder_config,
             shared=self._model_config_dict["vf_share_layers"],
         )
 
-        self.pi_and_vf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
+        self.pi_and_vf_head_hiddens = self._model_config_dict["head_fcnet_hiddens"]
         self.pi_and_vf_head_activation = self._model_config_dict[
-            "post_fcnet_activation"
+            "head_fcnet_activation"
         ]
 
         # We don't have the exact (framework specific) action dist class yet and thus

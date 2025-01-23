@@ -19,7 +19,6 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
 
         import numpy as np
         import gymnasium as gym
-        from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 
         B = 10  # batch size
         T = 5  # seq len
@@ -27,12 +26,11 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         CELL = 32  # LSTM cell size
 
         # Construct the RLModule.
-        rl_module_config = RLModuleConfig(
+        my_net = LSTMContainingRLModule(
             observation_space=gym.spaces.Box(-1.0, 1.0, (e,), np.float32),
             action_space=gym.spaces.Discrete(4),
-            model_config_dict={"lstm_cell_size": CELL}
+            model_config={"lstm_cell_size": CELL}
         )
-        my_net = LSTMContainingRLModule(rl_module_config)
 
         # Create some dummy input.
         obs = torch.from_numpy(
@@ -63,27 +61,26 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         """Use this method to create all the model components that you require.
 
         Feel free to access the following useful properties in this class:
-        - `self.config.model_config_dict`: The config dict for this RLModule class,
+        - `self.model_config`: The config dict for this RLModule class,
         which should contain flxeible settings, for example: {"hiddens": [256, 256]}.
-        - `self.config.observation|action_space`: The observation and action space that
+        - `self.observation|action_space`: The observation and action space that
         this RLModule is subject to. Note that the observation space might not be the
         exact space from your env, but that it might have already gone through
         preprocessing through a connector pipeline (for example, flattening,
         frame-stacking, mean/std-filtering, etc..).
         """
         # Assume a simple Box(1D) tensor as input shape.
-        in_size = self.config.observation_space.shape[0]
+        in_size = self.observation_space.shape[0]
 
-        # Get the LSTM cell size from our RLModuleConfig's (self.config)
-        # `model_config_dict` property:
-        self._lstm_cell_size = self.config.model_config_dict.get("lstm_cell_size", 256)
+        # Get the LSTM cell size from the `model_config` attribute:
+        self._lstm_cell_size = self.model_config.get("lstm_cell_size", 256)
         self._lstm = nn.LSTM(in_size, self._lstm_cell_size, batch_first=True)
         in_size = self._lstm_cell_size
 
         # Build a sequential stack.
         layers = []
         # Get the dense layer pre-stack configuration from the same config dict.
-        dense_layers = self.config.model_config_dict.get("dense_layers", [128, 128])
+        dense_layers = self.model_config.get("dense_layers", [128, 128])
         for out_size in dense_layers:
             # Dense layer.
             layers.append(nn.Linear(in_size, out_size))
@@ -94,7 +91,7 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         self._fc_net = nn.Sequential(*layers)
 
         # Logits layer (no bias, no activation).
-        self._pi_head = nn.Linear(in_size, self.config.action_space.n)
+        self._pi_head = nn.Linear(in_size, self.action_space.n)
         # Single-node value layer.
         self._values = nn.Linear(in_size, 1)
 

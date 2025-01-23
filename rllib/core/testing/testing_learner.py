@@ -47,15 +47,15 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
 
         spec = RLModuleSpec(
             module_class=cls,
-            model_config_dict={"fcnet_hiddens": [32]},
+            model_config={"fcnet_hiddens": [32]},
         )
 
-        if self.is_multi_agent():
+        if self.is_multi_agent:
             # TODO (Kourosh): Make this more multi-agent for example with policy ids
             #  "1" and "2".
             return MultiRLModuleSpec(
                 multi_rl_module_class=MultiRLModule,
-                module_specs={DEFAULT_MODULE_ID: spec},
+                rl_module_specs={DEFAULT_MODULE_ID: spec},
             )
         else:
             return spec
