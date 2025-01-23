@@ -335,20 +335,19 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         """Creates a new algorithm instance from a given checkpoint.
 
         Args:
-            path: The path (str) to the checkpoint directory to use
-                or an AIR Checkpoint instance to restore from.
+            path: The path (str) to the checkpoint directory to use or a Ray Train
+                Checkpoint instance to restore from.
             filesystem: PyArrow FileSystem to use to access data at the `path`. If not
                 specified, this is inferred from the URI scheme of `path`.
             policy_ids: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
-            policy_mapping_fn: An optional (updated) policy mapping function
-                to use from here on.
-            policies_to_train: An optional list of policy IDs to be trained
-                or a callable taking PolicyID and SampleBatchType and
-                returning a bool (trainable or not?).
-                If None, will keep the existing setup in place. Policies,
-                whose IDs are not in the list (or for which the callable
+            policy_mapping_fn: An optional (updated) policy mapping function to use from
+                here on.
+            policies_to_train: An optional list of policy IDs to be trained or a
+                callable taking PolicyID and SampleBatchType and returning a bool
+                (trainable or not?). If None, will keep the existing setup in place.
+                Policies, whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
 
         Returns:
@@ -364,6 +363,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # New API stack -> Use Checkpointable's default implementation.
         if checkpoint_info["checkpoint_version"] >= version.Version("2.0"):
+            # `path` is a Checkpoint instance: Translate to directory and continue.
+            if isinstance(path, Checkpoint):
+                path = path.to_directory()
             return super().from_checkpoint(path, filesystem=filesystem, **kwargs)
 
         # Not possible for (v0.1) (algo class and config information missing
