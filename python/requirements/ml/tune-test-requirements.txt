@@ -19,3 +19,6 @@ zoopt==0.4.1
 statsforecast==1.7.0
 prophet==1.1.5
 holidays==0.39
+
+# Google Vizier
+google-vizier-dev[jax]==0.1.20.dev20241220194642; python_version >= "3.10"
