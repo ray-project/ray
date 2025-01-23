@@ -426,7 +426,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// We aim to prestart 1 worker per CPU, up to the the backlog size.
   void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size);
 
-  void PrestartWorkersInternal(const TaskSpecification &task_spec, int64 num_needed);
+  void PrestartWorkersInternal(const TaskSpecification &task_spec, int64_t num_needed);
 
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.

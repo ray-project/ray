@@ -1478,7 +1478,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                    << backlog_size << " and available CPUs " << num_available_cpus
                    << " num idle workers " << state.idle.size()
                    << " num registered workers " << state.registered_workers.size();
-    PrestartWorkersWithRuntimeEnv(task_spec, num_needed);
+    PrestartWorkersInternal(task_spec, num_needed);
   }
 }
 
