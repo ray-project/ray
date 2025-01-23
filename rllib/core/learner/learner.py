@@ -55,8 +55,8 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
-    DATASET_NUM_ITERS_PER_LEARNER_TRAINED,
-    DATASET_NUM_ITERS_PER_LEARNER_TRAINED_LIFETIME,
+    DATASET_NUM_ITERS_TRAINED,
+    DATASET_NUM_ITERS_TRAINED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
@@ -1186,13 +1186,13 @@ class Learner(Checkpointable):
             )
         # Record the number of batches pulled from the dataset in this RLlib iteration.
         self.metrics.log_value(
-            DATASET_NUM_ITERS_PER_LEARNER_TRAINED,
+            DATASET_NUM_ITERS_TRAINED,
             i,
             reduce="sum",
             clear_on_reduce=True,
         )
         self.metrics.log_value(
-            DATASET_NUM_ITERS_PER_LEARNER_TRAINED_LIFETIME,
+            DATASET_NUM_ITERS_TRAINED_LIFETIME,
             i,
             reduce="sum",
         )
