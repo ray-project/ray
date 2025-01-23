@@ -83,7 +83,7 @@ you can call the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfi
 
 .. testcode::
 
-    config.env_runners(num_env_runners=3)
+    config.env_runners(num_env_runners=2)
 
 For training-related settings or any algorithm-specific settings, use the
 :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training` method:
@@ -122,7 +122,7 @@ which returns a result dictionary that you can pretty-print for debugging purpos
 
     from pprint import pprint
 
-    for _ in range(5):
+    for _ in range(4):
         pprint(ppo.train())
 
 
@@ -317,8 +317,8 @@ method to compute actions:
     obs, info = env.reset()
 
     while not done:
-        # Render the env.
-        env.render()
+        # Uncomment this line to render the env.
+        # env.render()
 
         # Compute the next action from a batch (B=1) of observations.
         obs_batch = torch.from_numpy(obs).unsqueeze(0)  # add batch B=1 dimension
