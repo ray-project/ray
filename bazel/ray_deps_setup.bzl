@@ -168,6 +168,24 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
+        name = "com_github_facebook_zstd",
+        url = "https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz",
+        sha256 = "",
+    )
+
+    auto_http_archive(
+        name = "com_sourceware_bzip2",
+        url = "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
+        sha256 = "",
+    )
+
+    auto_http_archive(
+        name = "com_github_tukaani-project_xz",
+        url = "https://github.com/tukaani-project/xz/releases/download/v5.4.5/xz-5.4.5.tar.gz",
+        sha256 = "135c90b934aee8fbc0d467de87a05cb70d627da36abe518c357a873709e5b7d6",
+    )
+
+    auto_http_archive(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
         url = "https://github.com/nelhage/rules_boost/archive/efae02e8be5a38e836e289e6122bf7344f28c62d.tar.gz",
