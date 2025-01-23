@@ -72,13 +72,15 @@ def check_content_in_stdout_log(content: str):
     session_path = Path("/tmp/ray/session_latest")
     log_dir_path = session_path / "logs"
     paths = list(log_dir_path.iterdir())
+    all_content = list() # Used for assertion
     for path in paths:
         if not str(path).endswith(".out") and not str(path).endswith(".log"):
             continue
         log_content = path.read_text()
+        all_content.append(log_content)
         if content not in log_content:
             continue
-    assert False, f"Content {content} not in stdout log"
+    assert False, f"Content {content} not in stdout log {all_content}"
 
 
 def check_content_in_stderr_log(content: str):
@@ -86,16 +88,18 @@ def check_content_in_stderr_log(content: str):
     session_path = Path("/tmp/ray/session_latest")
     log_dir_path = session_path / "logs"
     paths = list(log_dir_path.iterdir())
+    all_content = list() # Used for assertion
     for path in paths:
         if not str(path).endswith(".err"):
             continue
         log_content = path.read_text()
+        all_content.append(log_content)
         if content not in log_content:
             continue
-    assert False, f"Content {content} not in stderr log"
+    assert False, f"Content {content} not in stderr log {all_content}"
 
 
-def get_redirected_stdout_for_component(component: str):
+def get_redirected_stdout_for_component(component: str) -> str:
     """Get the content for redirect stdout. Return empty string if component doesn't exist."""
     session_path = Path("/tmp/ray/session_latest")
     log_dir_path = session_path / "logs"
@@ -676,13 +680,13 @@ def run_string_as_driver_and_get_redirected_stdout_stderr(
     proc.communicate(driver_script.encode(encoding=encode))
     proc.wait()
 
-    stdout_content_list = get_redirected_stdout_for_component(
+    stdout_content = get_redirected_stdout_for_component(
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER
     )
-    stderr_content_list = get_redirected_stderr_for_component(
+    stderr_content = get_redirected_stderr_for_component(
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER
     )
-    return " ".join(stdout_content_list), " ".join(stderr_content_list)
+    return stdout_content, stderr_content
 
 
 def run_string_as_driver_nonblocking(
