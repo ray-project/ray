@@ -86,7 +86,6 @@ class OfflinePreLearner:
         self,
         *,
         config: "AlgorithmConfig",
-        learner: Union[Learner, list[ActorHandle]],
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
@@ -96,18 +95,12 @@ class OfflinePreLearner:
         self.config = config
         self.input_read_episodes = self.config.input_read_episodes
         self.input_read_sample_batches = self.config.input_read_sample_batches
-        # We need this learner to run the learner connector pipeline.
-        # If it is a `Learner` instance, the `Learner` is local.
-        if isinstance(learner, Learner):
-            self._learner = learner
-            self.learner_is_remote = False
-            self._module = self._learner._module
-        # Otherwise we have remote `Learner`s.
-        else:
-            self.learner_is_remote = True
-            # Build the module from spec. Note, this will be a MultiRLModule.
-            self._module = module_spec.build()
-            self._module.set_state(module_state)
+        ## Build the module from spec. Note, this will be a MultiRLModule.
+        self._module = module_spec.build()
+        self._module.set_state(module_state)
+        # Map the module to the device, if necessary.
+        # TODO (simon): Check here if we already have a list.
+        # self._set_device(device_strings)
 
         # Store the observation and action space if defined, otherwise we
         # set them to `None`. Note, if `None` the `convert_from_jsonable`

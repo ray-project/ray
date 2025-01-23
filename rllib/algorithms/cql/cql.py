@@ -213,6 +213,13 @@ class CQLConfig(SACConfig):
             AddNextObservationsFromEpisodesToTrainBatch(),
         )
 
+        # If training on GPU, do not convert batches to tensors.
+        # TODO (simon): This does not work in case we are running on a local learner
+        # and use `dataset_num_iter_per_learner=1`. This needs functionality in the
+        # `Learner.update_from_batch_or_episodes`.
+        if self.num_gpus_per_learner > 0 and self.dataset_num_iters_per_learner != 1:
+            pipeline.remove("NumpyToTensor")
+
         return pipeline
 
     @override(SACConfig)
@@ -307,7 +314,9 @@ class CQL(SAC):
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
-                return_iterator=self.config.num_learners > 1,
+                return_iterator=self.config.dataset_num_iters_per_learner > 1
+                if self.config.dataset_num_iters_per_learner
+                else True,
             )
 
         # Updating the policy.

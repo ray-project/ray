@@ -51,7 +51,7 @@ config = (
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
         # iteration. For single-learner mode, 1 is the only option.
-        dataset_num_iters_per_learner=1 if not args.num_learners else None,
+        dataset_num_iters_per_learner=5,  # 1 if not args.num_learners else None,
     )
     .training(
         train_batch_size_per_learner=1024,

@@ -55,6 +55,8 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    DATASET_NUM_ITERS_PER_LEARNER_TRAINED,
+    DATASET_NUM_ITERS_PER_LEARNER_TRAINED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
@@ -1125,48 +1127,50 @@ class Learner(Checkpointable):
 
         i = 0
         logger.debug(f"===> [Learner {id(self)}]: Looping through batches ... ")
-        for batch in self.iterator.iter_batches(
-            # Note, this needs to be one b/c data is already mapped to
-            # `MultiAgentBatch`es of `minibatch_size`.
-            batch_size=1,
-            _finalize_fn=_finalize_fn,
-            **kwargs,
-        ):
-            # Update the iteration counter.
-            i += 1
+        while num_iters is None or i < num_iters:
+            for batch in self.iterator.iter_batches(
+                # Note, this needs to be one b/c data is already mapped to
+                # `MultiAgentBatch`es of `minibatch_size`.
+                batch_size=1,
+                _finalize_fn=_finalize_fn,
+                **kwargs,
+            ):
+                # TODO (simon): Add metrics for the `dataset_num_iter`.
+                # Update the iteration counter.
+                i += 1
 
-            # Note, `_finalize_fn`  must return a dictionary.
-            batch = batch["batch"]
-            logger.debug(
-                f"===> [Learner {id(self)}]: batch {i} with {batch.env_steps()} rows."
-            )
-            # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
-            # found in this batch. If not, throw an error.
-            unknown_module_ids = set(batch.policy_batches.keys()) - set(
-                self.module.keys()
-            )
-            if len(unknown_module_ids) > 0:
-                raise ValueError(
-                    "Batch contains one or more ModuleIDs that are not in this "
-                    f"Learner! Found IDs: {unknown_module_ids}"
+                # Note, `_finalize_fn`  must return a dictionary.
+                batch = batch["batch"]
+                logger.debug(
+                    f"===> [Learner {id(self)}]: batch {i} with {batch.env_steps()} rows."
                 )
+                # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
+                # found in this batch. If not, throw an error.
+                unknown_module_ids = set(batch.policy_batches.keys()) - set(
+                    self.module.keys()
+                )
+                if len(unknown_module_ids) > 0:
+                    raise ValueError(
+                        "Batch contains one or more ModuleIDs that are not in this "
+                        f"Learner! Found IDs: {unknown_module_ids}"
+                    )
 
-            # Log metrics.
-            self._log_steps_trained_metrics(batch)
+                # Log metrics.
+                self._log_steps_trained_metrics(batch)
 
-            # Make the actual in-graph/traced `_update` call. This should return
-            # all tensor values (no numpy).
-            fwd_out, loss_per_module, tensor_metrics = self._update(
-                batch.policy_batches
-            )
-            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-            # to actual (numpy) values.
-            self.metrics.tensors_to_numpy(tensor_metrics)
+                # Make the actual in-graph/traced `_update` call. This should return
+                # all tensor values (no numpy).
+                fwd_out, loss_per_module, tensor_metrics = self._update(
+                    batch.policy_batches
+                )
+                # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+                # to actual (numpy) values.
+                self.metrics.tensors_to_numpy(tensor_metrics)
 
-            self._set_slicing_by_batch_id(batch, value=False)
-            # If `num_iters` is reached break and return.
-            if num_iters and i == num_iters:
-                break
+                self._set_slicing_by_batch_id(batch, value=False)
+                # If `num_iters` is reached break and return.
+                if num_iters and i == num_iters:
+                    break
 
         logger.debug(
             f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
@@ -1180,6 +1184,18 @@ class Learner(Checkpointable):
                 value=loss,
                 window=1,
             )
+        # Record the number of batches pulled from the dataset in this RLlib iteration.
+        self.metrics.log_value(
+            DATASET_NUM_ITERS_PER_LEARNER_TRAINED,
+            i,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            DATASET_NUM_ITERS_PER_LEARNER_TRAINED_LIFETIME,
+            i,
+            reduce="sum",
+        )
         # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
         # TODO (simon): Check, if this should stay here, when running multiple
@@ -1374,6 +1390,11 @@ class Learner(Checkpointable):
             batch = MultiAgentBatch(
                 {next(iter(self.module.keys())): batch}, env_steps=len(batch)
             )
+        # If we have already an `MultiAgentBatch` but with `numpy` array, convert to tensors.
+        elif isinstance(batch, MultiAgentBatch) and isinstance(
+            next(iter(batch.policy_batches.values()))["obs"], numpy.ndarray
+        ):
+            batch = self._convert_batch_type(batch)
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.

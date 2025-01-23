@@ -340,6 +340,19 @@ py_test(
     ],
     args = ["--as-test", "--enable-new-api-stack"]
 )
+# GPU.
+py_test(
+    name = "learning_tests_pendulum_cql",
+    main = "tuned_examples/cql/pendulum_cql.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "large",
+    srcs = ["tuned_examples/cql/pendulum_cql.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tests/data/pendulum/pendulum-v1_enormous",
+    ],
+    args = ["--as-test", "--enable-new-api-stack"]
+)
 
 # DQN
 # CartPole

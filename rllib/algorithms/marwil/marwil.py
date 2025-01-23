@@ -374,6 +374,10 @@ class MARWILConfig(AlgorithmConfig):
             GeneralAdvantageEstimation(gamma=self.gamma, lambda_=self.lambda_)
         )
 
+        # If training on GPU, do not convert batches to tensors.
+        if self.num_gpus_per_learner > 0 and self.dataset_num_iters_per_learner != 1:
+            pipeline.remove("NumpyToTensor")
+
         return pipeline
 
     @override(AlgorithmConfig)
@@ -461,7 +465,9 @@ class MARWIL(Algorithm):
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
-                return_iterator=self.config.num_learners > 1,
+                return_iterator=self.config.dataset_num_iters_per_learner > 1
+                if self.config.dataset_num_iters_per_learner
+                else True,
             )
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
