@@ -19,6 +19,12 @@ steps:
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy
 
+  - label: ":tapioca: build: pip-compile llm dependencies"
+    key: pip_compile_llm_dependencies
+    instance_type: small
+    commands:
+      - echo TODO
+
   # docs
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
