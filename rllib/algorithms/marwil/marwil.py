@@ -465,6 +465,8 @@ class MARWIL(Algorithm):
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
+                # Return an iterator, if a `Learner` should update
+                # multiple times per RLlib iteration.
                 return_iterator=self.config.dataset_num_iters_per_learner > 1
                 if self.config.dataset_num_iters_per_learner
                 else True,

@@ -76,7 +76,7 @@ config = (
 if not args.no_tune:
     warnings.warn(
         "You are running the example with Ray Tune. Offline RL uses "
-        "Ray Data, which doesn't interact seamlessly with Ray Tune. "
+        "Ray Data, which doesn't does not interact seamlessly with Ray Tune. "
         "If you encounter difficulties try to run the example without "
         "Ray Tune using `--no-tune`."
     )

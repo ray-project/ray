@@ -81,10 +81,8 @@ NUM_EPISODES = "num_episodes"
 NUM_EPISODES_LIFETIME = "num_episodes_lifetime"
 TIME_BETWEEN_SAMPLING = "time_between_sampling"
 
-DATASET_NUM_ITERS_PER_LEARNER_TRAINED = "dataset_num_iters_per_learner_trained"
-DATASET_NUM_ITERS_PER_LEARNER_TRAINED_LIFETIME = (
-    "dataset_num_iters_per_learner_trained_lifetime"
-)
+DATASET_NUM_ITERS_TRAINED = "dataset_num_iters_trained"
+DATASET_NUM_ITERS_TRAINED_LIFETIME = "dataset_num_iters_trained_lifetime"
 MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED = "mean_num_learner_group_update_called"
 MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED = "mean_num_learner_group_results_received"
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
