@@ -292,6 +292,11 @@ class OpResourceAllocator(ABC):
         the given operator. None means no limit."""
         ...
 
+    @abstractmethod
+    def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
+        """Return the budget for the given operator."""
+        ...
+
 
 class ReservationOpResourceAllocator(OpResourceAllocator):
     """An OpResourceAllocator implementation that reserves resources for each operator.
