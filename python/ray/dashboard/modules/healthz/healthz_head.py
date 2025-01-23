@@ -33,7 +33,7 @@ class HealthzHead(dashboard_utils.DashboardHeadModule):
 
         return HTTPServiceUnavailable(reason="Health check failed")
 
-    async def run(self, server):
+    async def run(self):
         pass
 
     @staticmethod

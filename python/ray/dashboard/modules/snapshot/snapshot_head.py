@@ -227,7 +227,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 timestamp=datetime.now().timestamp(),
             )
 
-    async def run(self, server):
+    async def run(self):
         pass
 
     @staticmethod

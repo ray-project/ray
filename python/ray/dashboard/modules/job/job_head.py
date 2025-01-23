@@ -577,7 +577,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         return self._agents[driver_node_id]
 
-    async def run(self, server):
+    async def run(self):
         if not self._job_info_client:
             self._job_info_client = JobInfoStorageClient(self.gcs_aio_client)
 

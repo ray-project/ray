@@ -380,7 +380,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             partial_failure_warning=None,
         )
 
-    async def run(self, server):
+    async def run(self):
         gcs_channel = self.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
             gcs_channel, self.gcs_aio_client

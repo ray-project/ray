@@ -189,7 +189,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
     async def periodically_report_usage(self):
         await self._report_usage_async()
 
-    async def run(self, server):
+    async def run(self):
         self.cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
             os.path.expanduser("~/ray_bootstrap_config.yaml")
         )

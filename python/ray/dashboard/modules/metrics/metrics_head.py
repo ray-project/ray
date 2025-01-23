@@ -422,7 +422,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             )
             self._event_loop_lag_s_max = None
 
-    async def run(self, server):
+    async def run(self):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
 

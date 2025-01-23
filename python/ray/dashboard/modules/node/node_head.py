@@ -484,7 +484,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     "Error receiving node physical stats from _update_node_physical_stats."
                 )
 
-    async def run(self, server):
+    async def run(self):
         await asyncio.gather(
             self._update_nodes(),
             self._update_node_stats(),

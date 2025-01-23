@@ -124,7 +124,7 @@ class TestHead(dashboard_utils.DashboardHeadModule):
             timestamp=time.time(),
         )
 
-    async def run(self, server):
+    async def run(self):
         pass
 
 

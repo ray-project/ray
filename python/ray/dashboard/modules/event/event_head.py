@@ -207,7 +207,7 @@ class EventHead(
 
         return await handle_list_api(list_api_fn, req)
 
-    async def run(self, server):
+    async def run(self):
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: self._update_events(parse_event_strings(data)),

@@ -282,7 +282,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             success=True, message="Actor details fetched.", detail=actors[actor_id]
         )
 
-    async def run(self, server):
+    async def run(self):
         await asyncio.gather(self._update_actors(), self._cleanup_actors())
 
     @staticmethod
