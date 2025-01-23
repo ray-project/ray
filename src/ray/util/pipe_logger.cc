@@ -110,6 +110,9 @@ void StartStreamDump(ReadFunc read_func,
         {
           absl::MutexLock lock(&stream_dumper->mu);
           stream_dumper->stopped = true;
+          if (!last_line.empty()) {
+            stream_dumper->content.emplace_back(std::move(last_line));
+          }
         }
 
         // Place IO operation out of critical section.
@@ -126,11 +129,9 @@ void StartStreamDump(ReadFunc read_func,
         cur_new_line += newlines[idx];
         last_line.clear();
 
-        // We only log non-empty lines.
-        //
-        // TODO(hjiang): Newliners should also appear in the stdout/stderr/log, current
-        // behavior simply ignore everything.
-        if (!cur_new_line.empty()) {
+        // Backfill newliner for current segment.
+        cur_new_line += '\n';
+        {
           absl::MutexLock lock(&stream_dumper->mu);
           stream_dumper->content.emplace_back(std::move(cur_new_line));
         }
@@ -177,7 +178,7 @@ void StartStreamDump(ReadFunc read_func,
       }
 
       // Perform IO operation out of critical section.
-      write_func(curline);
+      write_func(std::move(curline));
     }
   }).detach();
 }
@@ -313,22 +314,26 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
   auto logger = CreateLogger(stream_redirect_opt);
 
-  // [content] doesn't have trailing newliner.
+  // [content] is exactly what application writes to pipe, including the trailing
+  // newliner, if any.
   auto write_fn = [logger,
                    stream_redirect_opt = stream_redirect_opt,
-                   std_stream_fd = std_stream_fd](const std::string &content) {
-    if (logger != nullptr) {
-      logger->log(spdlog::level::info, content);
-    }
+                   std_stream_fd = std_stream_fd](std::string content) {
     if (stream_redirect_opt.tee_to_stdout) {
       RAY_CHECK_EQ(write(std_stream_fd.stdout_fd, content.data(), content.length()),
                    static_cast<ssize_t>(content.length()));
-      RAY_CHECK_EQ(write(std_stream_fd.stdout_fd, "\n", 1), 1);
     }
     if (stream_redirect_opt.tee_to_stderr) {
       RAY_CHECK_EQ(write(std_stream_fd.stderr_fd, content.data(), content.length()),
                    static_cast<ssize_t>(content.length()));
-      RAY_CHECK_EQ(write(std_stream_fd.stderr_fd, "\n", 1), 1);
+    }
+    if (logger != nullptr) {
+      // spdlog adds newliner for every content, no need to maintan the application-passed
+      // one.
+      if (!content.empty() && content.back() == '\n') {
+        content.pop_back();
+      }
+      logger->log(spdlog::level::info, content);
     }
   };
   auto flush_fn = [logger,
