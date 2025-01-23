@@ -179,7 +179,7 @@ class SubprocessModuleHandle:
         self.health_check_task.cancel()
         self.health_check_task = None
 
-    async def health_check(self) -> aiohttp.web.Response:
+    async def _health_check(self) -> aiohttp.web.Response:
         """
         Do internal health check. The module should respond immediately with a 200 OK.
         This can be used to measure module responsiveness in RTT, it also indicates
@@ -195,7 +195,7 @@ class SubprocessModuleHandle:
         Do a health check once. We check for:
         1. if the process exits, it's considered died.
 
-        # TODO(ryw): also do `await self.health_check()` and define a policy to
+        # TODO(ryw): also do `await self._health_check()` and define a policy to
         # determine if the process is dead.
         """
         if self.process.exitcode is not None:
