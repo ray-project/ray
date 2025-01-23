@@ -1490,8 +1490,8 @@ void WorkerPool::PrestartWorkersInternal(const TaskSpecification &task_spec,
     if (IsRuntimeEnvEmpty(task_spec.SerializedRuntimeEnv())) {
       PopWorkerStatus status;
       StartWorkerProcess(
-          task_spec.GetLanguage(), rpc::WorkerType::WORKER, JobID::Nil(), &status);
-      return;
+          task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status);
+      continue;
     }
 
     // Prestart worker with runtime env.
@@ -1510,7 +1510,7 @@ void WorkerPool::PrestartWorkersInternal(const TaskSpecification &task_spec,
           PopWorkerStatus status;
           StartWorkerProcess(task_spec.GetLanguage(),
                              rpc::WorkerType::WORKER,
-                             JobID::Nil(),
+                             task_spec.JobId(),
                              &status,
                              /*dynamic_options=*/{},
                              task_spec.GetRuntimeEnvHash(),
