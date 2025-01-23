@@ -706,7 +706,7 @@ class CompositeChannel(ChannelInterface):
             readers_same_node,
             readers_different_node,
         ) = utils.split_readers_by_node_locality(
-            utils.get_writer_node(self._writer), remote_reader_and_node_list
+            utils.get_actor_node(self._writer), remote_reader_and_node_list
         )
 
         if len(readers_same_node) != 0:

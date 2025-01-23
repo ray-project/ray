@@ -72,20 +72,20 @@ def split_readers_by_node_locality(
     return readers_on_same_node, readers_on_different_node
 
 
-def get_writer_node(writer: "ray.actor.ActorHandle"):
-    """Get the node of the writer.
+def get_actor_node(actor: Optional["ray.actor.ActorHandle"]) -> str:
+    """Get the node of the actor.
 
     Args:
-        writer: The actor handle of the writer
+        actor: The actor handle of the actor
 
     Returns:
-        The node of the writer
+        The node of the actor
     """
-    if writer is None or writer == ray.get_runtime_context().current_actor:
+    if actor is None or actor == ray.get_runtime_context().current_actor:
         return ray.get_runtime_context().get_node_id()
     else:
         return ray.get(
-            writer.__ray_call__.remote(
+            actor.__ray_call__.remote(
                 lambda self: ray.get_runtime_context().get_node_id()
             )
         )
