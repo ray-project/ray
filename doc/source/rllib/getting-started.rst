@@ -182,6 +182,11 @@ results of collecting training samples with its "regular" :py:class:`~ray.rllib.
     for _ in range(3):
         pprint(ppo_with_evaluation.train())
 
+.. testcode::
+    :hide:
+
+    ppo_with_evaluation.stop()
+
 
 .. _rllib-with-ray-tune:
 
@@ -345,9 +350,9 @@ Alternatively, if you still have an :py:class:`~ray.rllib.algorithms.algorithm.A
 in your script, you can get the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` through the
 :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.get_module` method:
 
-.. testcode::
+.. code-block:: python
 
-    rl_module = ppo_with_evaluation.get_module("default_policy")
+    rl_module = ppo.get_module("default_policy")  # Equivalent to `rl_module = ppo.get_module()`
 
 
 Customizing your RL environment
