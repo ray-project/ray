@@ -528,7 +528,6 @@ def build(build_python, build_java, build_cpp):
     # version of Python to build packages inside the build.sh script. Note
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
-    """
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
         pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
@@ -557,7 +556,6 @@ def build(build_python, build_java, build_cpp):
         ]
         + runtime_env_agent_pip_packages
     )
-    """
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:
