@@ -361,7 +361,18 @@ class RLModule(Checkpointable, abc.ABC):
 
 
     Args:
-        config: The config for the RLModule.
+        observation_space: The observation space of the model. Note that in multi-agent
+            setups, this is typically the observation space of an agent that maps to
+            this RLModule.
+        action_space: The action space of the model. Note that in multi-agent
+            setups, this is typically the action space of an agent that maps to
+            this RLModule.
+        inference_only: If True, this RLModule should construct itself in an inference-
+            only fashion. This is done automatically, if the user implements the
+            `InferenceOnlyAPI` with their custom RLModule subclass. False by default.
+        learner_only: If True, RLlib won't built this RLModule on EnvRunner actors.
+            False by default.
+        model_config: A config dict to specify features of this RLModule.
 
     Abstract Methods:
         ``~_forward_train``: Forward pass during training.
