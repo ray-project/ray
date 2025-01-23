@@ -32,6 +32,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
     get_all_redirected_stdout,
+    get_all_redirected_stderr,
 )
 from ray.cross_language import java_actor_class
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -551,7 +552,7 @@ public class MyClass {
     def check():
         out_str_list = get_all_redirected_stdout()
         out_str = " ".join(out_str_list)
-        err_str_list = get_all_redirected_stdout()
+        err_str_list = get_all_redirected_stderr()
         err_str = " ".join(err_str_list)
 
         target_content = "here's my random line!"
