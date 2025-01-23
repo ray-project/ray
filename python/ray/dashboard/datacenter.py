@@ -212,8 +212,7 @@ class DataOrganizer:
             return {}
 
         def _create_agent_info(node_id: str):
-            (http_port, grpc_port) = DataSource.agents[node_id]
-            node_ip = DataSource.nodes[node_id]["nodeManagerAddress"]
+            (node_ip, http_port, grpc_port) = DataSource.agents[node_id]
 
             return dict(
                 ipAddress=node_ip,
