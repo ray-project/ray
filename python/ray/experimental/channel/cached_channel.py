@@ -101,7 +101,7 @@ class CachedChannel(ChannelInterface):
         # improvements.
         # https://github.com/ray-project/ray/issues/47409
         return ctx.get_data(self._channel_id)
-    
+
     def release_buffer(self, timeout: Optional[float] = None) -> None:
         self.read(timeout)
 

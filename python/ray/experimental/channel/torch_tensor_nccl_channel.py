@@ -270,7 +270,8 @@ class TorchTensorNcclChannel(ChannelInterface):
             self._send_cpu_and_gpu_data(value, timeout)
 
     def _recv_cpu_and_gpu_data(
-        self, tensors: List["torch.Tensor"],
+        self,
+        tensors: List["torch.Tensor"],
         timeout: Optional[float] = None,
         release_buffer: bool = False,
     ) -> Any:
@@ -302,7 +303,9 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         return None if release_buffer else data
 
-    def read(self, timeout: Optional[float] = None, release_buffer: bool = False) -> Any:
+    def read(
+        self, timeout: Optional[float] = None, release_buffer: bool = False
+    ) -> Any:
         """
         Read a value that may contain torch.Tensors sent via external
         transport.
