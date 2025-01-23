@@ -43,33 +43,33 @@ def split_readers_by_locality(
     return remote_readers, local_readers
 
 
-def split_readers_by_node_locality(
-    writer_node: str,
-    reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+def split_actors_by_node_locality(
+    node: str,
+    actor_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
 ) -> Tuple[
     List[Tuple["ray.actor.ActorHandle", str]], List[Tuple["ray.actor.ActorHandle", str]]
 ]:
-    """Split readers into remote and local readers based on writer.
+    """Split actors into remote and local actors based on writer.
 
     Args:
         writer_node: The node of the writer
-        reader_and_node_list: List of (reader, node) tuples
+        reader_and_node_list: List of (actor, node) tuples
 
     Returns:
         Tuple containing:
-            - List of (reader, node) tuples for readers on the same node
-            - List of (reader, node) tuples for readers on a different node
+            - List of (reader, node) tuples for actors on the same node
+            - List of (reader, node) tuples for actors on a different node
     """
-    readers_on_same_node = []
-    readers_on_different_node = []
+    actors_on_same_node = []
+    actors_on_different_node = []
 
-    for reader, node in reader_and_node_list:
-        if node == writer_node:
-            readers_on_same_node.append((reader, node))
+    for actor, actor_node in reader_and_node_list:
+        if node == actor_node:
+            actors_on_same_node.append((actor, actor_node))
         else:
-            readers_on_different_node.append((reader, node))
+            actor_on_different_node.append((actor, actor_node))
 
-    return readers_on_same_node, readers_on_different_node
+    return actors_on_same_node, actors_on_different_node
 
 
 def get_actor_node(actor: Optional["ray.actor.ActorHandle"]) -> str:
