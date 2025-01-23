@@ -78,8 +78,8 @@ def check_content_in_stdout_log(content: str):
             continue
         log_content = path.read_text()
         all_content.append(log_content)
-        if content not in log_content:
-            continue
+        if content in log_content:
+            return
     assert False, f"Content {content} not in stdout log {all_content}"
 
 
@@ -94,8 +94,8 @@ def check_content_in_stderr_log(content: str):
             continue
         log_content = path.read_text()
         all_content.append(log_content)
-        if content not in log_content:
-            continue
+        if content in log_content:
+            return
     assert False, f"Content {content} not in stderr log {all_content}"
 
 
