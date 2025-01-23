@@ -2261,7 +2261,7 @@ def test_simulate_pipeline_parallelism(ray_start_regular, single_fetch):
     deserialization for each forward pass.
     """
 
-    @ray.remote
+    @ray.remote(max_concurrency=2)
     class Worker:
         def __init__(self, rank):
             self.rank = rank
@@ -2597,8 +2597,8 @@ def test_result_buffer_exceeds_capacity(ray_start_regular):
 def test_event_profiling(ray_start_regular, monkeypatch):
     monkeypatch.setattr(ray.dag.constants, "RAY_CGRAPH_ENABLE_PROFILING", True)
 
-    a = Actor.options(name="a").remote(0)
-    b = Actor.options(name="b").remote(0)
+    a = Actor.options(name="a", max_concurrency=2).remote(0)
+    b = Actor.options(name="b", max_concurrency=2).remote(0)
     with InputNode() as inp:
         x = a.inc.bind(inp)
         y = b.inc.bind(inp)

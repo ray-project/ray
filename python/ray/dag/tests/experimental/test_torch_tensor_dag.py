@@ -1409,7 +1409,7 @@ class TestTorchTensorTypeHintCustomSerializer:
         if not USE_GPU:
             pytest.skip("Test requires GPU")
 
-        worker = Worker.options(num_gpus=1).remote()
+        worker = Worker.options(num_gpus=1, max_concurrency=2).remote()
 
         with InputNode() as inp:
             dag = worker.echo.bind(inp)
@@ -1445,7 +1445,7 @@ class TestTorchTensorTypeHintCustomSerializer:
         if not USE_GPU:
             pytest.skip("Test requires GPU")
 
-        worker = Worker.options(num_gpus=1).remote()
+        worker = Worker.options(num_gpus=1, max_concurrency=2).remote()
 
         with InputNode() as inp:
             dag = worker.echo.bind(inp.with_type_hint(TorchTensorType()))
@@ -1491,8 +1491,8 @@ class TestTorchTensorTypeHintCustomSerializer:
         if not USE_GPU:
             pytest.skip("Test requires GPU")
 
-        worker1 = Worker.options(num_gpus=1).remote()
-        worker2 = Worker.options(num_gpus=1).remote()
+        worker1 = Worker.options(num_gpus=1, max_concurrency=2).remote()
+        worker2 = Worker.options(num_gpus=1, max_concurrency=2).remote()
         with InputNode() as inp:
             dag = inp[0].with_type_hint(TorchTensorType())
             branch1 = worker1.echo.bind(dag)
@@ -1552,8 +1552,8 @@ class TestTorchTensorTypeHintCustomSerializer:
         if not USE_GPU:
             pytest.skip("Test requires GPU")
 
-        worker1 = Worker.options(num_gpus=1).remote()
-        worker2 = Worker.options(num_gpus=1).remote()
+        worker1 = Worker.options(num_gpus=1, max_concurrency=2).remote()
+        worker2 = Worker.options(num_gpus=1, max_concurrency=2).remote()
 
         with InputNode() as inp:
             dag = inp[0].with_type_hint(TorchTensorType())

@@ -35,15 +35,8 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
     name_to_executor_index_[name] = executor;
   }
 
-  // If max concurrency of default group is 1 and there is no other concurrency group of
-  // this actor, the tasks of default group will be performed in main thread instead of
-  // any executor pool, otherwise tasks in any concurrency group should be performed in
-  // the thread pools instead of main thread.
-  if (ExecutorType::NeedDefaultExecutor(max_concurrency_for_default_concurrency_group) ||
-      !concurrency_groups.empty()) {
-    default_executor_ =
-        std::make_shared<ExecutorType>(max_concurrency_for_default_concurrency_group);
-  }
+  default_executor_ =
+      std::make_shared<ExecutorType>(max_concurrency_for_default_concurrency_group);
 }
 
 template <typename ExecutorType>

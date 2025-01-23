@@ -293,7 +293,7 @@ class Channel(ChannelInterface):
                 fn = reader.__ray_call__
                 self._node_id_to_reader_ref_info[node_id] = ReaderRefInfo(
                     reader_ref=ray.get(
-                        fn.remote(_create_channel_ref, buffer_size_bytes)
+                        fn.options(concurrency_group="_ray_system").remote(_create_channel_ref, buffer_size_bytes)
                     ),
                     ref_owner_actor_id=reader._actor_id,
                     num_reader_actors=len(readers),
