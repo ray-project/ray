@@ -165,7 +165,7 @@ async def get_driver_jobs(
         job_or_submission_id=job_or_submission_id,
         skip_submission_job_info_field=True,
         skip_is_running_tasks_field=True,
-        timeout=float(timeout),
+        timeout=float(timeout) if timeout else None,
     )
     # Sort jobs from GCS to follow convention of returning only last driver
     # of submission job.
