@@ -1122,15 +1122,11 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
         ray.get(ref)
 
     # The DAG will be torn down after any task throws an application-level
-    # exception, such as when the task returns torch.Tensors of the wrong
+    # exception, such as when the task returns torch tensors of the wrong
     # shape or dtype. Check that we can no longer submit to the DAG.
     ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
-    try:
-        ray.get(ref)
-    except Exception:
-        pass
     with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+        ray.get(ref)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
