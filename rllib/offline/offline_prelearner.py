@@ -5,9 +5,7 @@ import uuid
 
 from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
 
-from ray.actor import ActorHandle
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
