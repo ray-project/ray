@@ -1,7 +1,7 @@
 group: runtime data tests
 steps:
   - label: ":database: data: runtime arrow 9 tests"
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data
         --parallelism-per-worker 3
@@ -11,7 +11,7 @@ steps:
     job_env: forge
 
   - label: ":database: data: runtime arrow 17 (latest) tests"
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data 
         --parallelism-per-worker 3
@@ -22,7 +22,7 @@ steps:
 
   - label: ":database: data: runtime arrow nightly tests"
     soft_fail: true
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data
         --parallelism-per-worker 3
