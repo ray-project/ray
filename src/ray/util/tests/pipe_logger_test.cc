@@ -62,9 +62,10 @@ TEST_P(PipeLoggerTest, NoPipeWrite) {
   stream_redirection_handle.Close();
 
   // Check log content after completion.
-  RAY_ASSIGN_OR_EXPECT(const auto actual_content, CompleteReadFile(test_file_path));
+  const auto actual_content = CompleteReadFile(test_file_path);
+  RAY_ASSERT_OK(actual_content);
   const std::string expected_content = absl::StrFormat("%s%s", kLogLine1, kLogLine2);
-  EXPECT_EQ(actual_content, expected_content);
+  EXPECT_EQ(*actual_content, expected_content);
 }
 
 INSTANTIATE_TEST_SUITE_P(PipeLoggerTest, PipeLoggerTest, testing::Values(1024, 3));
@@ -115,11 +116,11 @@ TEST_P(PipeLoggerTest, PipeWrite) {
   stream_redirection_handle.Close();
 
   // Check log content after completion.
-  const auto actual_content1 = CompleteReadFile(test_file_path1);
+  const auto actual_content1 = CompleteReadFile(log_file_path1);
   RAY_ASSERT_OK(actual_content1);
   EXPECT_EQ(*actual_content1, kLogLine2);
 
-  const auto actual_content2 = CompleteReadFile(test_file_path2);
+  const auto actual_content2 = CompleteReadFile(log_file_path2);
   RAY_ASSERT_OK(actual_content1);
   EXPECT_EQ(*actual_content2, kLogLine1);
 }
@@ -188,11 +189,11 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
   EXPECT_EQ(stderr_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Check log content after completion.
-  const auto actual_content1 = CompleteReadFile(test_file_path1);
+  const auto actual_content1 = CompleteReadFile(log_file_path1);
   RAY_ASSERT_OK(actual_content1);
   EXPECT_EQ(*actual_content1, kLogLine2);
 
-  const auto actual_content2 = CompleteReadFile(test_file_path2);
+  const auto actual_content2 = CompleteReadFile(log_file_path2);
   RAY_ASSERT_OK(actual_content2);
   EXPECT_EQ(*actual_content2, kLogLine1);
 }
