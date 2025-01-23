@@ -16,6 +16,19 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
+LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE = (
+    "The legacy XGBoostTrainer API is deprecated in favor of the new "
+    "XGBoostTrainer API which accepts a ``train_loop_per_worker`` argument, "
+    "similar to the other DataParallelTrainer APIs (ex: TorchTrainer). "
+    "This gives more flexibility in how users want to train their XGBoost models, "
+    "compared to the legacy API which is a restrictive, opaque wrapper API "
+    "that only allows training models via the ``xgboost.train()`` function "
+    "and must be constantly updated to support new XGBoost features. "
+    "See this issue for more context: "
+    "https://github.com/ray-project/ray/issues/50042"
+)
+
+
 def _xgboost_train_fn_per_worker(
     config: dict,
     label_column: str,
@@ -126,7 +139,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
         trainer = XGBoostTrainer(
-            train_fn_per_worker,
+            train_loop_per_worker=train_fn_per_worker,
             datasets={"train": train_ds, "validation": eval_ds},
             scaling_config=ray.train.ScalingConfig(num_workers=4),
         )
@@ -188,7 +201,6 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
         label_column: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
-        dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = _DEPRECATED_VALUE,
         num_boost_round: Optional[int] = None,
         **train_kwargs,
     ):
@@ -196,15 +208,6 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
             raise ImportError(
                 "`XGBoostTrainer` requires the `xgboost` version to be >= 1.7.0. "
                 'Upgrade with: `pip install -U "xgboost>=1.7"`'
-            )
-
-        # TODO(justinvyu): [Deprecated] Remove in 2.11
-        if dmatrix_params != _DEPRECATED_VALUE:
-            raise DeprecationWarning(
-                "`dmatrix_params` is deprecated, since XGBoostTrainer no longer "
-                "depends on the `xgboost_ray.RayDMatrix` utility. "
-                "You can remove this argument and use `dataset_config` instead "
-                "to customize Ray Dataset ingestion."
             )
 
         # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
@@ -217,7 +220,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                 num_boost_round=num_boost_round,
                 datasets=datasets,
             )
-            train_loop_config = params
+            train_loop_config = params or {}
 
         super(XGBoostTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
@@ -235,18 +238,24 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         self,
         xgboost_train_kwargs: Dict,
         run_config: Optional[ray.train.RunConfig],
+        datasets: Optional[Dict[str, GenDataset]],
         label_column: Optional[str],
         num_boost_round: Optional[int],
-        datasets: Optional[Dict[str, GenDataset]],
     ) -> Callable[[Dict], None]:
-        if not datasets:
+        """Get the training function for the legacy XGBoostTrainer API."""
+
+        if not datasets or not datasets.get(TRAIN_DATASET_KEY):
             raise ValueError(
-                "`datasets` must be provided for the legacy XGBoostTrainer API"
+                "`datasets` must be provided for the legacy XGBoostTrainer API. "
+                "This dict must contain the training dataset under the "
+                f"key '{TRAIN_DATASET_KEY}'."
             )
         if not label_column:
             raise ValueError(
-                "`label_column` must be provided for the legacy XGBoostTrainer API"
+                "`label_column` must be provided for the legacy XGBoostTrainer API. "
+                "This is the column name of the label in the dataset."
             )
+
         num_boost_round = num_boost_round or 10
 
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
