@@ -465,6 +465,9 @@ def main(distributed):
     results += exec_ray_core_cpu(sender_hint, receiver_hint)
     results += exec_ray_dag_cpu(sender_hint, receiver_hint)
     results += exec_ray_dag_cpu_five_times(sender_hint, receiver_hint)
+    results += exec_ray_dag_cpu_five_times_uneven_data_transfer(
+        sender_hint, receiver_hint
+    )
     results += exec_ray_core_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_cpu_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_nccl(
