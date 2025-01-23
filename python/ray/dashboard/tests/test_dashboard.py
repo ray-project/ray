@@ -1389,5 +1389,69 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     wait_for_condition(check_lag_metrics)
 
 
+@pytest.fixture
+def enable_flamegraph_profiling(monkeypatch):
+    # If lag is > 1s, make a flamegraph for 2s, then sleep 1s and repeat. Limit to 2.
+    monkeypatch.setenv("RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S", "1")
+    monkeypatch.setenv("RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S", "2")
+    monkeypatch.setenv("RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S", "1")
+    monkeypatch.setenv("RAY_DASHBOARD_RECORD_FLAMEGRAPH_MAX_COUNT", "2")
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_dashboard_profiles_flamegraph_on_event_loop_lag(
+    enable_flamegraph_profiling, enable_test_module, ray_start_with_dashboard
+):
+    """
+    When the event loop is blocked, the dashboard should make a flamegraph.
+    """
+    import aiohttp
+
+    ray_context = ray_start_with_dashboard
+
+    await asyncio.sleep(1)  # Wait for the node to start.
+
+    assert wait_until_server_available(ray_context["webui_url"]) is True
+    webui_url = format_web_url(ray_context["webui_url"])
+    blocking_api = "/test/block_event_loop?seconds=1&busy_loop=True"
+
+    async def call_api(api):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(webui_url + api) as resp:
+                resp.raise_for_status()
+                return await resp.text()
+
+    async def generate_lag():
+        while True:
+            tasks = [call_api(blocking_api) for _ in range(5)]
+            await asyncio.gather(*tasks)
+            await asyncio.sleep(1)
+
+    asyncio.create_task(generate_lag())
+
+    def all_svg_file():
+        log_dir = "/tmp/ray/session_latest/logs"
+        return [f for f in os.listdir(log_dir) if f.endswith(".svg")]
+
+    # Can't use wait_for_condition because it's not async.
+    num_svg_files = 0
+    for i in range(60):
+        svg_files = all_svg_file()
+        num_svg_files = len(svg_files)
+        print(f"Found {len(svg_files)} flamegraphs: {svg_files}.")
+        # We expect 2 flamegraphs. However there can be 1 flamegraph in the middle of
+        # creation and is not removed yet.
+        assert (
+            num_svg_files <= 3
+        ), f"Expected at most 3 flamegraphs, got {num_svg_files}."
+        await asyncio.sleep(1)
+
+    assert num_svg_files <= 3, f"Expected at most 3 flamegraphs, got {num_svg_files}."
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
