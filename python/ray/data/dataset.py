@@ -1220,6 +1220,10 @@ class Dataset:
         expr: Optional[str] = None,
         *,
         compute: Union[str, ComputeStrategy] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
@@ -1250,6 +1254,16 @@ class Dataset:
                 that can be instantiated to create such a callable.
             expr: An expression string needs to be a valid Python expression that
                 will be converted to ``pyarrow.dataset.Expression`` type.
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
@@ -1270,6 +1284,15 @@ class Dataset:
         if not ((fn is None) ^ (expr is None)):
             raise ValueError("Exactly one of 'fn' or 'expr' must be provided.")
         elif expr is not None:
+            if (
+                fn_args is not None
+                or fn_kwargs is not None
+                or fn_constructor_args is not None
+                or fn_constructor_kwargs is not None
+            ):
+                raise ValueError(
+                    "when 'expr' is used, 'fn_args/fn_kwargs' or 'fn_constructor_args/fn_constructor_kwargs' can not be used."
+                )
             from ray.data._internal.compute import TaskPoolStrategy
             from ray.data._internal.planner.plan_expression.expression_evaluator import (  # noqa: E501
                 ExpressionEvaluator,
@@ -1290,6 +1313,7 @@ class Dataset:
             if callable(fn):
                 compute = get_compute_strategy(
                     fn=fn,
+                    fn_constructor_args=fn_constructor_args,
                     compute=compute,
                     concurrency=concurrency,
                 )
@@ -1303,6 +1327,10 @@ class Dataset:
         op = Filter(
             input_op=self._logical_plan.dag,
             fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
             filter_expr=resolved_expr,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,

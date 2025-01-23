@@ -196,6 +196,27 @@ def test_callable_classes(shutdown_only):
     ).take()
     assert sorted(extract_values("id", result)) == list(range(10)), result
 
+    class StatefulFilterFnWithArgs:
+        def __init__(self, arg, kwarg):
+            assert arg == 1
+            assert kwarg == 2
+
+        def __call__(self, x, arg, kwarg):
+            assert arg == 1
+            assert kwarg == 2
+            return True
+
+    # fiter with args & kwargs
+    result = ds.filter(
+        StatefulFilterFnWithArgs,
+        concurrency=1,
+        fn_args=(1,),
+        fn_kwargs={"kwarg": 2},
+        fn_constructor_args=(1,),
+        fn_constructor_kwargs={"kwarg": 2},
+    ).take()
+    assert sorted(extract_values("id", result)) == list(range(10)), result
+
 
 def test_concurrent_callable_classes(shutdown_only):
     """Test that concurrenct actor pool runs user UDF in a separate thread."""
