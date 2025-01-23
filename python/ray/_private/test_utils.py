@@ -123,6 +123,32 @@ def get_redirected_stderr_for_component(component: str):
     return ""
 
 
+def get_all_redirected_stdout() -> List[str]:
+    """Get the content for all redirect stdout."""
+    session_path = Path("/tmp/ray/session_latest")
+    log_dir_path = session_path / "logs"
+    paths = list(log_dir_path.iterdir())
+    all_content = list()
+    for path in paths:
+        if not str(path).endswith(".out") and not str(path).endswith(".log"):
+            continue
+        all_content.append(path.read_text())
+    return []
+
+
+def get_all_redirected_stderr() -> List[str]:
+    """Get the content for all redirect stderr."""
+    session_path = Path("/tmp/ray/session_latest")
+    log_dir_path = session_path / "logs"
+    paths = list(log_dir_path.iterdir())
+    all_content = list()
+    for path in paths:
+        if not str(path).endswith(".err"):
+            continue
+        all_content.append(path.read_text())
+    return []
+
+
 class RayTestTimeoutException(Exception):
     """Exception used to identify timeouts from test utilities."""
 
@@ -609,18 +635,20 @@ def run_string_as_driver_and_get_redirected_stdout_stderr(
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=open(os.devnull, "w"),
+        stderr=open(os.devnull, "w"),
         env=env,
     )
     proc.communicate(driver_script.encode(encoding=encode))
     proc.wait()
 
-    return get_redirected_stdout_for_component(
-        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER
-    ), get_redirected_stderr_for_component(
+    stdout_content_list = get_redirected_stdout_for_component(
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER
     )
+    stderr_content_list = get_redirected_stderr_for_component(
+        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER
+    )
+    return " ".join(stdout_content_list), " ".join(stderr_content_list)
 
 
 def run_string_as_driver_nonblocking(

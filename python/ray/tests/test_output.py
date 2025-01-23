@@ -13,6 +13,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     run_string_as_driver_stdout_stderr,
     check_content_in_stderr_log,
+    run_string_as_driver_and_get_redirected_stdout_stderr,
 )
 from ray.autoscaler.v2.utils import is_autoscaler_v2
 
@@ -104,13 +105,13 @@ for _ in range(10):
     x.append(ray.put(bytes(100 * 1024 * 1024)))
 
 """
-    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
+    stdout_str, stderr_str = run_string_as_driver_and_get_redirected_stdout_stderr(
         script, env={"RAY_verbose_spill_logs": "1"}
     )
     out_str = stdout_str + stderr_str
-    assert "Spilled " in out_str
+    assert "Spilled " in out_str, out_str
 
-    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
+    stdout_str, stderr_str = run_string_as_driver_and_get_redirected_stdout_stderr(
         script, env={"RAY_verbose_spill_logs": "0"}
     )
     out_str = stdout_str + stderr_str
