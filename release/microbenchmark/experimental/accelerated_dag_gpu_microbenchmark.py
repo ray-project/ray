@@ -84,7 +84,7 @@ class TorchTensorWorkerWithDataTransfer:
         # actors. To minimize the overhead of shared memory transfer,
         # we return only a byte string.
         assert tensor.device == self.device
-        return tensor
+        return (tensor[0].item(), tensor.shape, tensor.dtype)
 
 
 @ray.remote(num_gpus=1)
