@@ -16,7 +16,6 @@ import ray.cluster_utils
 from ray.dag import InputNode, DAGContext
 from ray.util.collective.collective_group import nccl_util
 
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray._private.ray_microbenchmark_helpers import timeit
 
 
@@ -128,12 +127,10 @@ def exec_ray_dag(
         dag = sender.send.bind(SHAPE, DTYPE, inp)
 
         if use_cgraph:
-            dag = dag.with_type_hint(
-                TorchTensorType(
-                    _static_shape=static_shape,
-                    _direct_return=direct_return,
-                    transport="nccl" if use_nccl else "auto",
-                )
+            dag = dag.with_tensor_transport(
+                transport="nccl" if use_nccl else "auto",
+                _static_shape=static_shape,
+                _direct_return=direct_return,
             )
 
         dag = receiver.recv.bind(dag)
