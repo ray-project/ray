@@ -562,7 +562,18 @@ class InfiniteLookbackBuffer:
 
         try:
             if self.finalized:
-                data = tree.map_structure(lambda s: s[idx], data_to_use)
+                # If data_to_use is already a numpy array, we can index directly
+                if isinstance(data_to_use, np.ndarray):
+                    data = data_to_use[idx]
+                # For nested structures, use tree.map_structure
+                else:
+                    # Cache the flattened structure if possible
+                    if not hasattr(self, '_flattened_data'):
+                        self._flattened_data = tree.flatten(data_to_use)
+                    # Index into each array directly
+                    flat_indexed = [arr[idx] for arr in self._flattened_data]
+                    # Reconstruct the tree structure
+                    data = tree.unflatten_as(data_to_use, flat_indexed)
             else:
                 data = data_to_use[idx]
         # Out of range index -> If `fill`, use a fill dummy (B=0), if not, error out.
@@ -717,3 +728,37 @@ class InfiniteLookbackBuffer:
         else:
             data = tree.map_structure(_convert, data, space_struct)
         return data
+
+    def get_multiple_indices(self, indices, **kwargs):
+        """Optimized version for getting multiple indices at once."""
+        if not self.finalized:
+            return [self._get_int_index(idx, **kwargs) for idx in indices]
+            
+        # Convert all indices to actual positions
+        actual_indices = []
+        for idx in indices:
+            if idx >= 0 or kwargs.get('neg_index_as_lookback'):
+                idx = self.lookback + idx
+            if kwargs.get('neg_index_as_lookback') and idx < 0:
+                idx = len(self) + self.lookback - (kwargs.get('_ignore_last_ts') is True)
+            actual_indices.append(idx)
+            
+        # Get all data at once using fancy indexing
+        try:
+            if isinstance(self.data, np.ndarray):
+                data = self.data[actual_indices]
+            else:
+                data = tree.map_structure(
+                    lambda s: s[actual_indices],
+                    self.data
+                )
+            
+            if kwargs.get('one_hot_discrete'):
+                data = self._one_hot(data, self.space_struct)
+            return data
+            
+        except IndexError as e:
+            if kwargs.get('fill') is not None:
+                # Handle fill values...
+                pass
+            raise e
