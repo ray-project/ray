@@ -732,7 +732,7 @@ def _init_communicator(
         custom_communicator: A custom NCCL group to initialize.
         use_communication_streams: Whether to use dedicated send and recv
                 streams for communication. If True, communication and computation
-                can be overlapped to improve perfomrance.
+                can be overlapped to improve performance.
     """
     ctx = ChannelContext.get_current()
 
