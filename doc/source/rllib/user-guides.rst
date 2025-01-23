@@ -17,6 +17,7 @@ User Guides
     rllib-callback
     rllib-models
     checkpoints
+    metrics-logger
     single-agent-episode
     rllib-replay-buffers
     rllib-offline
@@ -58,6 +59,14 @@ RLlib Feature Guides
         .. button-ref:: rllib-callback
 
             Injecting custom code into RLlib through callbacks
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: metrics-logger
+
+            Logging metrics and statistics from your custom code
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
