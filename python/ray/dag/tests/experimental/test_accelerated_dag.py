@@ -225,6 +225,7 @@ class TestDAGRefDestruction:
         ref = compiled_dag.execute(2)
         ref2 = compiled_dag.execute(2)
         ref3 = compiled_dag.execute(2)
+        del ref
         del ref2
         # Test that ray.get() works correctly if preceding ref was destructed
         assert ray.get(ref3) == 6
@@ -241,6 +242,7 @@ class TestDAGRefDestruction:
         del ref3
         ray.get(ref)
         ref4 = compiled_dag.execute(3)
+        del ref4
         # Test that max_inflight error is not raised as ref2 and ref3
         # should be destructed and not counted in the inflight executions
         ref5 = compiled_dag.execute(3)
