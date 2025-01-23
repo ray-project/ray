@@ -103,7 +103,7 @@ class Datasink(Generic[WriteReturnType]):
         return True
 
     @property
-    def num_rows_per_write(self) -> Optional[int]:
+    def min_rows_per_write(self) -> Optional[int]:
         """The target number of rows to pass to each :meth:`~ray.data.Datasink.write` call.
 
         If ``None``, Ray Data passes a system-chosen number of rows.

@@ -28,7 +28,7 @@ class ParquetDatasink(_FileDatasink):
         partition_cols: Optional[List[str]] = None,
         arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         arrow_parquet_args: Optional[Dict[str, Any]] = None,
-        num_rows_per_file: Optional[int] = None,
+        min_rows_per_file: Optional[int] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
@@ -43,7 +43,7 @@ class ParquetDatasink(_FileDatasink):
 
         self.arrow_parquet_args_fn = arrow_parquet_args_fn
         self.arrow_parquet_args = arrow_parquet_args
-        self.num_rows_per_file = num_rows_per_file
+        self.min_rows_per_file = min_rows_per_file
         self.partition_cols = partition_cols
 
         super().__init__(
@@ -168,5 +168,5 @@ class ParquetDatasink(_FileDatasink):
                     writer.write_table(group_table)
 
     @property
-    def num_rows_per_write(self) -> Optional[int]:
-        return self.num_rows_per_file
+    def min_rows_per_write(self) -> Optional[int]:
+        return self.min_rows_per_file

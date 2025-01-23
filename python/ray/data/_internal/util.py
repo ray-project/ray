@@ -1216,6 +1216,36 @@ def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
     return num_bytes_str
 
 
+def _validate_rows_per_file_args(
+    *, num_rows_per_file: Optional[int] = None, min_rows_per_file: Optional[int] = None
+) -> Optional[int]:
+    """Helper method to validate and handle rows per file arguments.
+
+    Args:
+        num_rows_per_file: Deprecated parameter for number of rows per file
+        min_rows_per_file: New parameter for minimum rows per file
+
+    Returns:
+        The effective min_rows_per_file value to use
+    """
+    if num_rows_per_file is not None:
+        import warnings
+
+        warnings.warn(
+            "`num_rows_per_file` is deprecated and will be removed in a future release. "
+            "Use `min_rows_per_file` instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        if min_rows_per_file is not None:
+            raise ValueError(
+                "Cannot specify both `num_rows_per_file` and `min_rows_per_file`. "
+                "Use `min_rows_per_file` as `num_rows_per_file` is deprecated."
+            )
+        return num_rows_per_file
+    return min_rows_per_file
+
+
 def is_nan(value):
     try:
         return isinstance(value, float) and np.isnan(value)
