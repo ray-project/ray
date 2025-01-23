@@ -1170,15 +1170,17 @@ def test_dashboard_module_load(tmpdir):
     )
 
     # Test basic.
-    loaded_modules_expected = {"UsageStatsHead", "JobHead"}
-    loaded_modules = head._load_modules(modules_to_load=loaded_modules_expected)
-    loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
-    assert loaded_modules_actual == loaded_modules_expected
+    dashboard_head_modules, subprocess_module_handles = head._load_modules()
+    assert {type(m).__name__ for m in dashboard_head_modules} == {
+        "UsageStatsHead",
+        "JobHead",
+    }
+    assert len(subprocess_module_handles) == 0
 
     # Test modules that don't exist.
     loaded_modules_expected = {"StateHea"}
     with pytest.raises(AssertionError):
-        loaded_modules = head._load_modules(modules_to_load=loaded_modules_expected)
+        head._load_modules(modules_to_load=loaded_modules_expected)
 
     # Test the base case.
     # It is needed to pass assertion check from one of modules.
@@ -1187,9 +1189,9 @@ def test_dashboard_module_load(tmpdir):
     loaded_modules_expected = {
         m.__name__ for m in dashboard_utils.get_all_modules(DashboardHeadModule)
     }
-    loaded_modules = head._load_modules()
-    loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
-    assert loaded_modules_actual == loaded_modules_expected
+    dashboard_head_modules, subprocess_module_handles = head._load_modules()
+    assert {type(m).__name__ for m in dashboard_head_modules} == loaded_modules_expected
+    assert len(subprocess_module_handles) == 0
 
 
 @pytest.mark.skipif(
