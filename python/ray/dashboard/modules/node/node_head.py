@@ -11,7 +11,6 @@ import aiohttp.web
 import grpc
 
 import ray._private.utils
-import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
@@ -125,7 +124,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         return {
             "head_node_registration_time_s": self._head_node_registration_time_s,
             "registered_nodes": len(DataSource.nodes),
-            "registered_agents": len(DataSource.agents),
             "module_lifetime_s": time.time() - self._module_start_time,
         }
 
@@ -195,48 +193,11 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             )
         assert node["state"] in ["ALIVE", "DEAD"]
         is_alive = node["state"] == "ALIVE"
-        # Prepare agents for alive node, and pop agents for dead node.
-        if is_alive:
-            if node_id not in DataSource.agents:
-                # Agent port is read from internal KV, which is only populated
-                # upon Agent startup. In case this update received before agent
-                # fully started up, we schedule a task to asynchronously update
-                # DataSource with appropriate agent port.
-                asyncio.create_task(self._update_agent(node_id))
-        else:
-            DataSource.agents.pop(node_id, None)
+        if not is_alive:
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
                 DataSource.nodes.pop(self._dead_node_queue.popleft(), None)
         DataSource.nodes[node_id] = node
-
-    async def _update_agent(self, node_id):
-        """
-        Given a node, update the agent_port in DataSource.agents. Problem is it's not
-        present until agent.py starts, so we need to loop waiting for agent.py writes
-        its port to internal kv.
-        """
-        key = (
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode()
-        )
-        while True:
-            try:
-                agent_addr = await self.gcs_aio_client.internal_kv_get(
-                    key,
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=None,
-                )
-                # The node may be dead already. Only update DataSource.agents if the
-                # node is still alive.
-                if DataSource.nodes.get(node_id, {}).get("state") != "ALIVE":
-                    return
-                if agent_addr:
-                    DataSource.agents[node_id] = json.loads(agent_addr)
-                    return
-            except Exception:
-                logger.exception(f"Error getting agent port for node {node_id}.")
-
-            await asyncio.sleep(node_consts.RAY_DASHBOARD_AGENT_POLL_INTERVAL_S)
 
     async def _update_nodes(self):
         """
