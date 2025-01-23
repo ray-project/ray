@@ -77,8 +77,9 @@ method:
     )
 
 
-To scale your setup and define, how many EnvRunner actors you want to leverage,
-you can call the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners` method:
+To scale your setup and define, how many :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors you want to leverage,
+you can call the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners` method.
+``EnvRunners`` are used to collect samples for training updates from your :ref:`environment <rllib-key-concepts-environments>`.
 
 .. testcode::
 
@@ -107,7 +108,7 @@ method.
 
 .. note::
 
-    See here to learn about the :ref:`methods you can use to configure your Algorithm <rllib-algo-configuration-docs>`.
+    See here to learn about all the :ref:`methods you can use to configure your Algorithm <rllib-algo-configuration-docs>`.
 
 
 Run the algorithm
@@ -129,10 +130,10 @@ Checkpoint the algorithm
 ++++++++++++++++++++++++
 
 To save the current state of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`,
-create a ``checkpoint`` through calling its :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.save_to_path` method,
+create a checkpoint through calling its :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.save_to_path` method,
 which returns the directory of the saved checkpoint.
 
-Instead of not passing any arguments to this call and letting the algorithm decide where to save
+Instead of not passing any arguments to this call and letting the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` decide where to save
 the checkpoint, you can also provide a checkpoint directory yourself:
 
 .. testcode::
@@ -147,7 +148,7 @@ Evaluate the algorithm
 ++++++++++++++++++++++
 
 RLlib supports setting up a separate :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
-for the sole purpose of evaluating your model from time to time on the RL environment.
+for the sole purpose of evaluating your model from time to time on the :ref:`RL environment <rllib-key-concepts-environments>`.
 
 Use your config's :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.evaluation` method
 to set up the details. By default, RLlib doesn't perform evaluation during training and only reports the
@@ -176,7 +177,7 @@ results of collecting training samples with its "regular" :py:class:`~ray.rllib.
     )
 
     # Rebuild the PPO, but with the extra evaluation EnvRunnerGroup
-    ppo_with_evaluation = config.build()
+    ppo_with_evaluation = config.build_algo()
 
     for _ in range(3):
         pprint(ppo_with_evaluation.train())
@@ -187,14 +188,20 @@ results of collecting training samples with its "regular" :py:class:`~ray.rllib.
 RLlib with Ray Tune
 +++++++++++++++++++
 
-All RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` classes are compatible with
+All online RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` classes are compatible with
 the :ref:`Ray Tune API <tune-api-ref>`.
 
-This allows for easy utilization of your configured :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` in
+.. note::
+
+    The offline RL algorithms, like :ref:`BC <bc>`, :ref:`CQL <cql>`, and :ref:`MARWIL <marwil>`
+    require more work on :ref:`Tune <tune-main>` and :ref:`Ray Data <data>`
+    to add Ray Tune support.
+
+This integration allows for utilizing your configured :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` in
 :ref:`Ray Tune <tune-main>` experiments.
 
-For example, the following code performs a simple hyper-parameter sweep of your :ref:`PPO <ppo>`
-through creating three ``Trials``, one for each configured learning rate:
+For example, the following code performs a hyper-parameter sweep of your :ref:`PPO <ppo>`, creating three ``Trials``,
+one for each of the configured learning rates:
 
 .. testcode::
 
@@ -216,9 +223,10 @@ through creating three ``Trials``, one for each configured learning rate:
         param_space=config,
         # Specify a stopping criterion. Note that the criterion has to match one of the
         # pretty printed result metrics from the results returned previously by
-        # ``.train()``.
+        # ``.train()``. Also note that -1100 is not a good episode return for
+        # Pendulum-v1, we are using it here to shorten the experiment time.
         run_config=train.RunConfig(
-            stop={"env_runners/episode_return_mean": -1000.0},
+            stop={"env_runners/episode_return_mean": -1100.0},
         ),
     )
     # Run the Tuner and capture the results.
@@ -234,22 +242,24 @@ on your Ray cluster:
     Trial status: 3 RUNNING
     Current time: 2025-01-17 18:47:33. Total running time: 3min 0s
     Logical resource usage: 9.0/12 CPUs, 0/0 GPUs
-    ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-    │ Trial name                    status         lr     iter     total time (s)  episode_return_mean    ..._sampled_lifetime │
-    ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
-    │ PPO_Pendulum-v1_b5c41_00000   RUNNING    0.01         29            86.2426             -998.449                  108000 │
-    │ PPO_Pendulum-v1_b5c41_00001   RUNNING    0.001        25            74.4335             -997.079                  100000 │
-    │ PPO_Pendulum-v1_b5c41_00002   RUNNING    0.0001       20            60.0421             -960.293                   80000 │
-    ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+    ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+    │ Trial name                   status       lr   iter  total time (s)  episode_return_mean  .._sampled_lifetime │
+    ├───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+    │ PPO_Pendulum-v1_b5c41_00000  RUNNING  0.01       29         86.2426             -998.449               108000 │
+    │ PPO_Pendulum-v1_b5c41_00001  RUNNING  0.001      25         74.4335             -997.079               100000 │
+    │ PPO_Pendulum-v1_b5c41_00002  RUNNING  0.0001     20         60.0421             -960.293                80000 │
+    ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 
-``Tuner.fit()`` returns an ``ResultGrid`` object that allows for a detailed analysis of the
+``Tuner.fit()`` returns a ``ResultGrid`` object that allows for a detailed analysis of the
 training process and for retrieving the :ref:`checkpoints <rllib-checkpoints-docs>` of the trained
 algorithms and their models:
 
 .. testcode::
-    # Get the best result based on a particular metric.
+    # Get the best result of the final iteration, based on a particular metric.
     best_result = results.get_best_result(
-        metric="env_runners/episode_return_mean", mode="max"
+        metric="env_runners/episode_return_mean",
+        mode="max",
+        scope="last",
     )
 
     # Get the best checkpoint corresponding to the best result
@@ -282,9 +292,15 @@ method to compute actions:
     from ray.rllib.core.rl_module import RLModule
 
     # Create only the neural network (RLModule) from our algorithm checkpoint.
+    # See here (https://docs.ray.io/en/master/rllib/checkpoints.html)
+    # to learn more about checkpointing and the specific "path" used.
     rl_module = RLModule.from_checkpoint(
-        Path(best_checkpoint.path) / "learner_group" / "learner" / "rl_module"
-    )["default_policy"]
+        Path(best_checkpoint.path)
+        / "learner_group"
+        / "learner"
+        / "rl_module"
+        / "default_policy"
+    )
 
     # Create the RL environment to test against (same as was used for training earlier).
     env = gym.make("Pendulum-v1", render_mode="human")
@@ -302,14 +318,21 @@ method to compute actions:
         # Compute the next action from a batch (B=1) of observations.
         obs_batch = torch.from_numpy(obs).unsqueeze(0)  # add batch B=1 dimension
         model_outputs = rl_module.forward_inference({"obs": obs_batch})
-        # Extract the logits from the output and dissolve batch again.
-        action_logits = model_outputs["action_dist_inputs"][0]
-        # PPO's default RLModule produces action logits (from which
-        # you have to sample an action or use the max-likelihood one).
-        action = numpy.argmax(action_logits.numpy())
+
+        # Extract the action distribution parameters from the output and dissolve batch dim.
+        action_dist_params = model_outputs["action_dist_inputs"][0].numpy()
+
+        # We have continuous actions -> take the mean (max likelihood).
+        greedy_action = np.clip(
+            action_dist_params[0:1],  # 0=mean, 1=log(stddev), [0:1]=use mean, but keep shape=(1,)
+            a_min=env.action_space.low[0],
+            a_max=env.action_space.high[0],
+        )
+        # For discrete actions, you should take the argmax over the logits:
+        # greedy_action = np.argmax(action_dist_params)
 
         # Send the action to the environment for the next step.
-        obs, reward, terminated, truncated, info = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(greedy_action)
 
         # Perform env-loop bookkeeping.
         episode_return += reward
@@ -358,7 +381,10 @@ and how to customize them.
             """
             def __init__(self, config=None):
                 # Since actions should repeat observations, their spaces must be the same.
-                self.observation_space = gym.spaces.Box(-1.0, 1.0, (1,), np.float32)
+                self.observation_space = config.get(
+                    "obs_act_space",
+                    gym.spaces.Box(-1.0, 1.0, (1,), np.float32),
+                )
                 self.action_space = self.observation_space
                 self._cur_obs = None
                 self._episode_len = 0
@@ -386,7 +412,10 @@ and how to customize them.
         # Point your config to your custom env class:
         config = (
             PPOConfig()
-            .environment(ParrotEnv)  # add `env_config=[some Box space] to customize the env
+            .environment(
+                ParrotEnv,
+                # Add `env_config={"obs_act_space": [some Box space]}` to customize.
+            )
         )
 
         # Build a PPO algorithm and train it.

@@ -142,17 +142,14 @@ on the collected data, and a model update step.
     for _ in range(5):
         pprint(algo.train())
 
-At the end of your script, you evaluate the trained Algorithm:
+At the end of your script, you evaluate the trained Algorithm and release all its resources:
 
 .. testcode::
 
     # ... and evaluate it.
     pprint(algo.evaluate())
 
-
-.. testcode::
-    :hide:
-
+    # Release the algo's resources (remote actors, like EnvRunners and Learners).
     algo.stop()
 
 
@@ -166,7 +163,7 @@ You can also tweak the NN architecture used by tweaking RLlib's :py:class:`~ray.
 as well as, set up a separate config for the evaluation
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors through the ``config.evaluation()`` method.
 
-`See here <rllib-training.html#using-the-python-api>`_, if you want to learn more about the RLlib training APIs.
+:ref:`See here <rllib-python-api>`, if you want to learn more about the RLlib training APIs.
 Also, `see here <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__
 for a simple example on how to write an action inference loop after training.
 
