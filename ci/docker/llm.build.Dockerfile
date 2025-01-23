@@ -26,6 +26,8 @@ pip install -U --ignore-installed \
   -r python/requirements.txt \
   -r python/requirements/test-requirements.txt
 
+pip install -Ur ./python/requirements/ml/llm-requirements.txt
 
+RUN pip install ray[llm]
 
 EOF
