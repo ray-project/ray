@@ -255,6 +255,20 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
+    def release_buffer(self, timeout: Optional[float] = None) -> None:
+        """
+        Reads the latest value out of the buffer without actually deserializing it.
+        We use this throughout when dagrefs are destructed without ever having ray.get
+        called on them, so that we can avoid the cost of deserializing.
+
+        Args:
+            timeout: The maximum time in seconds to wait to read the value.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
+        """
+        raise NotImplementedError
+
     def close(self) -> None:
         """
         Close this channel. This method must not block and it must be made

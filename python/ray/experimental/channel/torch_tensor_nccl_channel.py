@@ -270,7 +270,9 @@ class TorchTensorNcclChannel(ChannelInterface):
             self._send_cpu_and_gpu_data(value, timeout)
 
     def _recv_cpu_and_gpu_data(
-        self, tensors: List["torch.Tensor"], timeout: Optional[float] = None
+        self, tensors: List["torch.Tensor"],
+        timeout: Optional[float] = None,
+        release_buffer: bool = False,
     ) -> Any:
         """
         Helper method to receive data that contains a mix of CPU and GPU data.
@@ -285,9 +287,12 @@ class TorchTensorNcclChannel(ChannelInterface):
         # Next, read and deserialize the non-tensor data. The registered custom
         # deserializer will replace the found tensor placeholders with
         # `tensors`.
-        data = self._cpu_data_channel.read(
-            timeout=timeout,
-        )
+        if release_buffer:
+            self._cpu_data_channel.release_buffer(timeout=timeout)
+        else:
+            data = self._cpu_data_channel.read(
+                timeout=timeout,
+            )
         # Check that all placeholders had a corresponding tensor.
         (
             _,
@@ -295,9 +300,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         ) = self.serialization_ctx.reset_out_of_band_tensors([])
         assert deserialized_tensor_placeholders == set(range(len(tensors)))
 
-        return data
+        return None if release_buffer else data
 
-    def read(self, timeout: Optional[float] = None) -> Any:
+    def read(self, timeout: Optional[float] = None, release_buffer: bool = False) -> Any:
         """
         Read a value that may contain torch.Tensors sent via external
         transport.
@@ -333,9 +338,12 @@ class TorchTensorNcclChannel(ChannelInterface):
             assert len(tensors) == 1
             data = tensors[0]
         else:
-            data = self._recv_cpu_and_gpu_data(tensors, timeout)
+            data = self._recv_cpu_and_gpu_data(tensors, timeout, release_buffer)
 
         return data
+
+    def release_buffer(self, timeout: Optional[float] = None) -> None:
+        self.read(timeout=timeout, release_buffer=True)
 
     def close(self) -> None:
         self._gpu_data_channel.close()
@@ -622,6 +630,9 @@ class _TorchTensorNcclChannel(ChannelInterface):
         # TODO: Sync CUDA stream after receiving all tensors, instead of after
         # each tensor.
         return bufs
+
+    def release_buffer(self, timeout: Optional[float] = None) -> None:
+        self.read(timeout)
 
     def close(self) -> None:
         self._meta_channel.close()

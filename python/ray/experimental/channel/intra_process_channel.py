@@ -65,6 +65,9 @@ class IntraProcessChannel(ChannelInterface):
         ctx = ChannelContext.get_current().serialization_context
         return ctx.get_data(self._channel_id)
 
+    def release_buffer(self, timeout: Optional[float] = None) -> None:
+        self.read(timeout)
+
     def close(self) -> None:
         ctx = ChannelContext.get_current().serialization_context
         ctx.reset_data(self._channel_id)
