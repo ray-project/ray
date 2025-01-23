@@ -136,12 +136,13 @@ class SubprocessModuleHandle:
                 self.incarnation,
             ),
             daemon=True,
+            name=f"{self.module_cls.__name__}-{self.incarnation}",
         )
         self.process.start()
 
         if start_dispatch_parent_bound_messages_thread:
             self.dispatch_parent_bound_messages_thread = threading.Thread(
-                name=f"{self.module_cls.__name__}-dispatch_parent_bound_messages_thread",
+                name=f"{self.module_cls.__name__}-{self.incarnation}-dispatch_parent_bound_messages_thread",
                 target=self.dispatch_parent_bound_messages,
                 daemon=True,
             )
