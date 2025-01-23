@@ -141,7 +141,7 @@ def exec_ray_dag(
 
     if use_cgraph:
         dag = dag.experimental_compile()
-        if num_executions == 5:
+        if num_executions == 1:
 
             def _run():
                 ref = dag.execute(b"x")

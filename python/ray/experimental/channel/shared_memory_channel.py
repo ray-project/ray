@@ -113,7 +113,7 @@ class SharedMemoryType(ChannelOutputType):
             buffer_size_bytes = ctx.buffer_size_bytes
         self.buffer_size_bytes = buffer_size_bytes
         if num_shm_buffers is None:
-            num_shm_buffers = ctx.max_inflight_executions
+            num_shm_buffers = 1
         self._num_shm_buffers = num_shm_buffers
 
     def create_channel(
