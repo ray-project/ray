@@ -16,7 +16,7 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
 
 .. todo (sven): redo toctree:
     suggestion:
-    getting-started (replaces rllib-training)
+    getting-started
     key-concepts
     rllib-env (single-agent)
         ...  <- multi-agent
@@ -47,7 +47,7 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
 .. toctree::
     :hidden:
 
-    rllib-training
+    getting-started
     key-concepts
     rllib-env
     algorithm-config

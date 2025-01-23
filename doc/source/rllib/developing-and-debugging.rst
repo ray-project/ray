@@ -280,7 +280,7 @@ For example:
     python atari_ppo.py --env ALE/Pong-v5 --log-level DEBUG
 
 To set the log level in your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm.AlgorithmConfig` instance,
-use the :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.AlgorithmConfig.debugging` method and set the ``log_level`` argument in there:
+use the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.debugging` method and set the ``log_level`` argument in there:
 
 .. code-block:: python
 
