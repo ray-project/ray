@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import os
+from ray._private import ray_constants
 import pathlib
 import random
 import socket
@@ -28,9 +29,6 @@ import requests
 from ray._raylet import Config
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
-from ray._private import (
-    ray_constants,
-)
 from ray._private.worker import RayContext
 import yaml
 
@@ -95,6 +93,34 @@ def check_content_in_stderr_log(content: str):
         if content not in log_content:
             continue
     assert False, f"Content {content} not in stderr log"
+
+
+def get_redirected_stdout_for_component(component: str):
+    """Get the content for redirect stdout. Return empty string if component doesn't exist."""
+    session_path = Path("/tmp/ray/session_latest")
+    log_dir_path = session_path / "logs"
+    paths = list(log_dir_path.iterdir())
+    for path in paths:
+        if not str(path).endswith(".out") and not str(path).endswith(".log"):
+            continue
+        if component not in str(path):
+            continue
+        return path.read_text()
+    return ""
+
+
+def get_redirected_stderr_for_component(component: str):
+    """Get the content for redirect stdout. Return empty string if component doesn't exist."""
+    session_path = Path("/tmp/ray/session_latest")
+    log_dir_path = session_path / "logs"
+    paths = list(log_dir_path.iterdir())
+    for path in paths:
+        if not str(path).endswith(".err"):
+            continue
+        if component not in str(path):
+            continue
+        return path.read_text()
+    return ""
 
 
 class RayTestTimeoutException(Exception):
@@ -566,6 +592,35 @@ def run_string_as_driver_stdout_stderr(
                 proc.returncode, proc.args, out_str, err_str
             )
         return out_str, err_str
+
+
+def run_string_as_driver_and_get_redirected_stdout_stderr(
+    driver_script: str, env: Dict = None, encode: str = "utf-8"
+) -> Tuple[str, str]:
+    """Run a driver as a separate process.
+
+    Args:
+        driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
+
+    Returns:
+        The script's redirected stdout and stderr.
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    proc.communicate(driver_script.encode(encoding=encode))
+    proc.wait()
+
+    return get_redirected_stdout_for_component(
+        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER
+    ), get_redirected_stderr_for_component(
+        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER
+    )
 
 
 def run_string_as_driver_nonblocking(

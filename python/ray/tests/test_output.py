@@ -12,6 +12,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     run_string_as_driver_stdout_stderr,
+    check_content_in_stderr_log,
 )
 from ray.autoscaler.v2.utils import is_autoscaler_v2
 
@@ -555,9 +556,8 @@ ray._private.utils.push_error_to_driver(
     """
 
     proc = run_string_as_driver_nonblocking(script)
-    err_str = proc.stderr.read().decode("ascii")
-
-    assert "Hello there" in err_str, err_str
+    proc.wait()
+    check_content_in_stderr_log("Hello there")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
