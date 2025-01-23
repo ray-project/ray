@@ -9,22 +9,16 @@ from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
 )
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
-from ray.experimental.util.types import ReduceScatterOp
-from ray.util.collective.types import ReduceOp as RayReduceOp
-
-# TODO(wxdeng): Unify `ReduceOp` and `RayReduceOp`. Directly importing `RayReduceOp`
-# has dependency issues for some tests.
 
 logger = logging.getLogger(__name__)
 
 
-class ReduceScatterWrapper:
-    """Wrapper for NCCL reduce-scatter."""
+class AllGatherWrapper:
+    """Wrapper for NCCL all-gather."""
 
     def bind(
         self,
         input_nodes: List["ray.dag.DAGNode"],
-        op: ReduceScatterOp = ReduceScatterOp.SUM,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
         """
@@ -53,7 +47,7 @@ class ReduceScatterWrapper:
         """
         if transport is None:
             transport = TorchTensorType.NCCL
-        collective_op = _CollectiveOperation(input_nodes, transport=transport, op=op)
+        collective_op = _CollectiveOperation(input_nodes, transport=transport)
         collective_output_nodes: List[CollectiveOutputNode] = []
 
         for input_node in input_nodes:
@@ -63,7 +57,7 @@ class ReduceScatterWrapper:
             if actor_handle is None:
                 raise ValueError("Expected an actor handle from the input node")
             collective_output_node = CollectiveOutputNode(
-                method_name=f"reducescatter.{op}",
+                method_name=f"allgather",
                 method_args=(input_node,),
                 method_kwargs=dict(),
                 method_options=dict(),
@@ -80,13 +74,13 @@ class ReduceScatterWrapper:
 
     def __call__(
         self,
+        tensor_list,
         tensor,
         group_name: str = "default",
-        op: RayReduceOp = RayReduceOp.SUM,
     ):
-        from ray.util.collective.collective import reducescatter
+        from ray.util.collective.collective import allgather
 
-        return reducescatter(tensor, group_name, op)
+        return allgather(tensor_list, tensor, group_name)
 
 
-reducescatter = ReduceScatterWrapper()
+allgather = AllGatherWrapper()

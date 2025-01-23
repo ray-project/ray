@@ -4,12 +4,10 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.experimental.channel.communicator import (
-    AllReduceReduceOp,
     Communicator,
-    ReduceScatterReduceOp,
+    AllReduceOp,
     TorchTensorAllocator,
 )
-from ray.experimental.util.types import ReduceOp
 
 if TYPE_CHECKING:
     import torch
@@ -38,7 +36,7 @@ class CPUCommBarrier:
         # relevant data.
         self.num_actors_read = defaultdict(int)
 
-    async def wait_collective(self, op_id: int, data: "torch.Tensor", op: ReduceOp):
+    async def wait_collective(self, op_id: int, data: "torch.Tensor", op: AllReduceOp):
         """
         Wait at the communicator until all actors have sent `op_id` and `data`.
         Once data from all actors is received, execute the collective `op`
@@ -68,29 +66,23 @@ class CPUCommBarrier:
 
             return data
 
-    def _apply_op(self, op: ReduceOp, tensors: List["torch.Tensor"]) -> "torch.Tensor":
+    def _apply_op(self, op: AllReduceOp, tensors: List["torch.Tensor"]) -> "torch.Tensor":
         """Apply the specified reduction operation across a list of tensors."""
 
-        SUM = 0
-        PRODUCT = 1
-        MAX = 2
-        MIN = 3
-        AVG = 4
-
         result = tensors[0].clone()
-        if op == SUM:
+        if op == AllReduceOp.SUM:
             for tensor in tensors[1:]:
                 result += tensor
-        elif op == PRODUCT:
+        elif op == AllReduceOp.PRODUCT:
             for tensor in tensors[1:]:
                 result *= tensor
-        elif op == MAX:
+        elif op == AllReduceOp.MAX:
             for tensor in tensors[1:]:
                 result = torch.max(result, tensor)
-        elif op == MIN:
+        elif op == AllReduceOp.MIN:
             for tensor in tensors[1:]:
                 result = torch.min(result, tensor)
-        elif op == AVG:
+        elif op == AllReduceOp.AVG:
             result = sum(tensors) / len(tensors)
         else:
             raise ValueError(f"Operation {op} not supported")
@@ -133,7 +125,7 @@ class CPUCommunicator(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: AllReduceReduceOp = AllReduceReduceOp.SUM,
+        op: AllReduceOp = AllReduceOp.SUM,
     ):
         all_ranks = [
             self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()
@@ -149,34 +141,6 @@ class CPUCommunicator(Communicator):
         )
         assert recv_buf is not None, "Receiving buffer required for CPUCommunicator"
         recv_buf[:] = result[:]
-        self.num_ops[barrier_key] += 1
-
-    def reducescatter(
-        self,
-        send_buf: "torch.Tensor",
-        recv_buf: "torch.Tensor",
-        op: ReduceScatterReduceOp = ReduceScatterReduceOp.SUM,
-    ):
-        all_ranks = [
-            self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()
-        ]
-        barrier_key = "barrier-collective-" + "-".join(map(str, sorted(all_ranks)))
-        barrier = CPUCommBarrier.options(name=barrier_key, get_if_exists=True).remote(
-            self._world_size
-        )
-        self.barriers.add(barrier)
-
-        result = ray.get(
-            barrier.wait_collective.remote(self.num_ops[barrier_key], send_buf, op)
-        )
-        assert recv_buf is not None, "Receiving buffer required for CPUCommunicator"
-        recv_buf[:] = result[
-            send_buf.shape[0]
-            // len(all_ranks)
-            * self.get_self_rank() : send_buf.shape[0]
-            // len(all_ranks)
-            * (self.get_self_rank() + 1)
-        ]
         self.num_ops[barrier_key] += 1
 
     def destroy(self) -> None:

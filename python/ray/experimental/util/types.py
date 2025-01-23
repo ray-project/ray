@@ -13,7 +13,7 @@ class ReduceOp(_CollectiveOp):
 
 
 @PublicAPI
-class AllReduceReduceOp(ReduceOp):
+class AllReduceOp(ReduceOp):
     SUM = 0
     PRODUCT = 1
     MAX = 2
@@ -25,7 +25,7 @@ class AllReduceReduceOp(ReduceOp):
 
 
 @PublicAPI
-class ReduceScatterReduceOp(ReduceOp):
+class ReduceScatterOp(ReduceOp):
     SUM = 0
     PRODUCT = 1
     MAX = 2
