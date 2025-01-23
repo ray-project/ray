@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 
 from ray.air.constants import TRAINING_ITERATION
@@ -51,7 +52,7 @@ config = (
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
         # iteration. For single-learner mode, 1 is the only option.
-        dataset_num_iters_per_learner=5,  # 1 if not args.num_learners else None,
+        dataset_num_iters_per_learner=5,
     )
     .training(
         train_batch_size_per_learner=1024,
@@ -71,6 +72,14 @@ config = (
         evaluation_parallel_to_training=True,
     )
 )
+
+if not args.no_tune:
+    warnings.warn(
+        "You are running the example with Ray Tune. Offline RL uses "
+        "Ray Data and Ray Data does not interact seamlessly with Ray Tune. "
+        "If you encounter difficulties try to run the example without "
+        "Ray Tune using `--no-tune`."
+    )
 
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0,
