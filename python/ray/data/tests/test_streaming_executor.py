@@ -1,7 +1,7 @@
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -637,7 +637,7 @@ ray.data.range(1).map(map).take_all()
     ), out_str
 
 
-def test_time_scheduling():
+def test_time_scheduling(ray_start_regular_shared):
     ds = ray.data.range(1000).map_batches(lambda x: x)
     for _ in ds.iter_batches():
         continue
@@ -646,7 +646,7 @@ def test_time_scheduling():
     assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
 
 
-def test_executor_callbacks():
+def test_executor_callbacks(ray_start_regular_shared):
     """Test ExecutionCallback."""
 
     class CustomExecutionCallback(ExecutionCallback):
@@ -680,7 +680,7 @@ def test_executor_callbacks():
     remove_execution_callback(callback, ctx)
     assert get_execution_callbacks(ctx) == []
 
-    # Test the failure case.
+    # Test the case where the dataset fails due to an error in the UDF.
     ds = ray.data.range(10)
     ctx = ds.context
     ctx.raise_original_map_exception = True
@@ -697,6 +697,27 @@ def test_executor_callbacks():
     assert not callback._after_execution_succeeds_called
     error = callback._execution_error
     assert isinstance(error, ValueError), error
+
+    # Test the case the dataset is canceled by "ctrl-c".
+    ds = ray.data.range(10)
+    ctx = ds.context
+    callback = CustomExecutionCallback()
+    add_execution_callback(callback, ctx)
+
+    def patched_get_outupt_blocking(*args, **kwargs):
+        raise KeyboardInterrupt()
+
+    with patch(
+        "ray.data._internal.execution.streaming_executor.OpState.get_output_blocking",
+        new=patched_get_outupt_blocking,
+    ):
+        with pytest.raises(KeyboardInterrupt):
+            ds.take_all()
+
+    assert callback._before_execution_starts_called
+    assert not callback._after_execution_succeeds_called
+    error = callback._execution_error
+    assert isinstance(error, KeyboardInterrupt), error
 
 
 if __name__ == "__main__":
