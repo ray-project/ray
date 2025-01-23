@@ -57,7 +57,7 @@ class AllGatherWrapper:
             if actor_handle is None:
                 raise ValueError("Expected an actor handle from the input node")
             collective_output_node = CollectiveOutputNode(
-                method_name=f"allgather",
+                method_name="allgather",
                 method_args=(input_node,),
                 method_kwargs=dict(),
                 method_options=dict(),

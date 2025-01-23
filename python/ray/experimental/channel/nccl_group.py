@@ -321,7 +321,7 @@ class _NcclGroup(Communicator):
                 "There may be a dtype mismatch between input tensors from "
                 "different ranks."
             )
-        
+
     def allgather(
         self,
         send_buf: "torch.Tensor",
@@ -335,7 +335,7 @@ class _NcclGroup(Communicator):
             "so send_buf and recv_buf must have the same dtype. "
             "If you see this error, please file an issue at Ray repository."
         )
-        
+
         self._comm.allGather(
             self.nccl_util.get_tensor_ptr(send_buf),
             self.nccl_util.get_tensor_ptr(recv_buf),

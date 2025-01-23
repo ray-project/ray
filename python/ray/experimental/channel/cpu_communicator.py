@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.experimental.channel.communicator import (
-    Communicator,
     AllReduceOp,
+    Communicator,
     TorchTensorAllocator,
 )
 
@@ -66,7 +66,9 @@ class CPUCommBarrier:
 
             return data
 
-    def _apply_op(self, op: AllReduceOp, tensors: List["torch.Tensor"]) -> "torch.Tensor":
+    def _apply_op(
+        self, op: AllReduceOp, tensors: List["torch.Tensor"]
+    ) -> "torch.Tensor":
         """Apply the specified reduction operation across a list of tensors."""
 
         result = tensors[0].clone()
