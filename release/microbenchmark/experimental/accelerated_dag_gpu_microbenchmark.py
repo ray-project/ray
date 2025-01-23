@@ -307,11 +307,11 @@ def exec_ray_dag_cpu(sender_hint, receiver_hint):
     return exec_ray_dag("exec_ray_dag_cpu", sender, receiver)
 
 
-def exec_ray_dag_cpu_ten_times(sender_hint, receiver_hint):
+def exec_ray_dag_cpu_five_times(sender_hint, receiver_hint):
     sender = TorchTensorWorker.options(scheduling_strategy=sender_hint).remote()
     receiver = TorchTensorWorker.options(scheduling_strategy=receiver_hint).remote()
     return exec_ray_dag(
-        "exec_ray_dag_cpu_ten_times", sender, receiver, num_executions=5
+        "exec_ray_dag_cpu_five_times", sender, receiver, num_executions=5
     )
 
 
@@ -426,7 +426,7 @@ def main(distributed):
 
     results += exec_ray_core_cpu(sender_hint, receiver_hint)
     results += exec_ray_dag_cpu(sender_hint, receiver_hint)
-    results += exec_ray_dag_cpu_ten_times(sender_hint, receiver_hint)
+    results += exec_ray_dag_cpu_five_times(sender_hint, receiver_hint)
     results += exec_ray_core_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_cpu_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_nccl(
