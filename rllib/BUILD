@@ -963,6 +963,13 @@ py_test(
     size = "small",
     srcs = ["algorithms/impala/tests/test_vtrace_v2.py"]
 )
+# @OldAPIStack
+py_test(
+    name = "test_vtrace_old_api_stack",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "small",
+    srcs = ["algorithms/impala/tests/test_vtrace_old_api_stack.py"]
+)
 
 # MARWIL
 py_test(
