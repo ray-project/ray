@@ -267,6 +267,7 @@ ray_cc_library(
         ":stream_redirection_options",
         ":thread_utils",
         ":util",
+        "@boost//:iostreams",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/strings",
     ],

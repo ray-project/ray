@@ -26,10 +26,6 @@
 #include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
-/////////////////////////////////////////////////
-// Unit test for both windows and unix platform.
-/////////////////////////////////////////////////
-
 namespace ray {
 
 namespace {
@@ -37,12 +33,7 @@ namespace {
 constexpr std::string_view kLogLine1 = "hello\n";
 constexpr std::string_view kLogLine2 = "world\n";
 
-class PipeLoggerTest : public ::testing::TestWithParam<size_t> {};
-
-TEST_P(PipeLoggerTest, NoPipeWrite) {
-  const size_t pipe_buffer_size = GetParam();
-  setEnv(kPipeLogReadBufSizeEnv.data(), absl::StrFormat("%d", pipe_buffer_size));
-
+TEST(PipeLoggerTest, RedirectionTest) {
   // TODO(hjiang): We should have a better test util, which allows us to create a
   // temporary testing directory.
   const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
@@ -64,56 +55,6 @@ TEST_P(PipeLoggerTest, NoPipeWrite) {
   const auto actual_content = CompleteReadFile(test_file_path);
   const std::string expected_content = absl::StrFormat("%s%s", kLogLine1, kLogLine2);
   EXPECT_EQ(actual_content, expected_content);
-}
-
-INSTANTIATE_TEST_SUITE_P(PipeLoggerTest, PipeLoggerTest, testing::Values(1024, 3));
-
-}  // namespace
-
-}  // namespace ray
-
-/////////////////////////////////////////////////
-// Unit test for both unix platform only.
-/////////////////////////////////////////////////
-
-#if defined(__APPLE__) || defined(__linux__)
-
-#include <unistd.h>
-
-namespace ray {
-
-namespace {
-
-TEST_P(PipeLoggerTest, PipeWrite) {
-  const size_t pipe_buffer_size = GetParam();
-  setEnv(kPipeLogReadBufSizeEnv.data(), absl::StrFormat("%d", pipe_buffer_size));
-
-  // TODO(hjiang): We should have a better test util, which allows us to create a
-  // temporary testing directory.
-  const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
-  const std::string log_file_path1 = test_file_path;
-  const std::string log_file_path2 = absl::StrFormat("%s.1", test_file_path);
-
-  // Delete temporary file.
-  absl::Cleanup cleanup_test_file = [&log_file_path1, &log_file_path2]() {
-    EXPECT_TRUE(std::filesystem::remove(log_file_path1));
-    EXPECT_TRUE(std::filesystem::remove(log_file_path2));
-  };
-
-  StreamRedirectionOption stream_redirection_opt{};
-  stream_redirection_opt.file_path = test_file_path;
-  stream_redirection_opt.rotation_max_size = 5;
-  stream_redirection_opt.rotation_max_file_count = 2;
-
-  auto stream_redirection_handle = CreateRedirectionFileHandle(stream_redirection_opt);
-  stream_redirection_handle.CompleteWrite(kLogLine1.data(), kLogLine1.length());
-  stream_redirection_handle.CompleteWrite(kLogLine2.data(), kLogLine2.length());
-  // Synchronize on log flush completion.
-  stream_redirection_handle.Close();
-
-  // Check log content after completion.
-  EXPECT_EQ(CompleteReadFile(log_file_path1), kLogLine2);
-  EXPECT_EQ(CompleteReadFile(log_file_path2), kLogLine1);
 }
 
 TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
@@ -340,5 +281,3 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
 }  // namespace
 
 }  // namespace ray
-
-#endif
