@@ -160,6 +160,38 @@ class SubprocessModule(abc.ABC):
             )
 
 
+async def run_module_inner(
+    child_bound_queue: multiprocessing.Queue,
+    parent_bound_queue: multiprocessing.Queue,
+    cls: type[SubprocessModule],
+    config: SubprocessModuleConfig,
+    incarnation: int,
+):
+
+    module_name = cls.__name__
+
+    logger.info(
+        f"Starting module {module_name} with incarnation {incarnation} and config {config}"
+    )
+
+    try:
+        module = cls(config, child_bound_queue, parent_bound_queue)
+        logger.info(f"Module {module_name} created")
+        # First init the module, then start dispatching messages.
+        await module.init()
+    except Exception as e:
+        logger.exception(f"Error creating module {module_name}")
+        raise e
+    loop = asyncio.get_running_loop()
+    dispatch_child_bound_messages_thread = threading.Thread(
+        name=f"{module_name}-dispatch_child_bound_messages_thread",
+        target=module.dispatch_child_bound_messages,
+        args=(loop,),
+        daemon=True,
+    )
+    dispatch_child_bound_messages_thread.start()
+
+
 def run_module(
     child_bound_queue: multiprocessing.Queue,
     parent_bound_queue: multiprocessing.Queue,
@@ -186,36 +218,15 @@ def run_module(
         backup_count=config.logging_rotate_backup_count,
     )
 
-    logger.info(
-        f"Starting module {module_name} with incarnation {incarnation} and config {config}"
+    loop = asyncio.new_event_loop()
+    loop.create_task(
+        run_module_inner(
+            child_bound_queue, parent_bound_queue, cls, config, incarnation
+        )
     )
-
-    try:
-        assert_not_in_asyncio_loop()
-        loop = asyncio.new_event_loop()
-        module = cls(config, child_bound_queue, parent_bound_queue)
-        loop.run_until_complete(module.init())
-        logger.info(f"Module {module_name} started")
-    except Exception as e:
-        logger.exception(f"Error running module {module_name}")
-        raise e
-
-    dispatch_child_bound_messages_thread = threading.Thread(
-        name=f"{module_name}-dispatch_child_bound_messages_thread",
-        target=module.dispatch_child_bound_messages,
-        args=(loop,),
-        daemon=True,
-    )
-    dispatch_child_bound_messages_thread.start()
-
-    try:
-        loop.run_forever()
-    except KeyboardInterrupt:
-        # TODO: do graceful shutdown.
-        # 1. define a stop token.
-        # 2. dispatch_child_bound_messages_thread will stop listening.
-        # 3. join the loop to wait for all pending tasks to finish, up until a timeout.
-        # 4. close the loop and exit.
-        loop.stop()
-    finally:
-        loop.close()
+    # TODO: do graceful shutdown.
+    # 1. define a stop token.
+    # 2. dispatch_child_bound_messages_thread will stop listening.
+    # 3. join the loop to wait for all pending tasks to finish, up until a timeout.
+    # 4. close the loop and exit.
+    loop.run_forever()
