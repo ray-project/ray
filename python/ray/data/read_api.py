@@ -513,7 +513,7 @@ def read_audio(
 
 
 @PublicAPI(stability="alpha")
-def read_video(
+def read_videos(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
