@@ -11,6 +11,7 @@ import os
 import pathlib
 import random
 import socket
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
@@ -66,6 +67,34 @@ except (ImportError, ModuleNotFoundError):
 
     def text_string_to_metric_families(*args, **kwargs):
         raise ModuleNotFoundError("`prometheus_client` not found")
+
+
+def check_content_in_stdout_log(content: str):
+    """Check the given [content] exists in stdout log files."""
+    session_path = Path("/tmp/ray/session_latest")
+    log_dir_path = session_path / "logs"
+    paths = list(log_dir_path.iterdir())
+    for path in paths:
+        if not str(path).endswith(".out") and not str(path).endswith(".log"):
+            continue
+        log_content = path.read_text()
+        if content not in log_content:
+            continue
+    assert False, f"Content {content} not in stdout log"
+
+
+def check_content_in_stderr_log(content: str):
+    """Check the given [content] exists in stderr log files."""
+    session_path = Path("/tmp/ray/session_latest")
+    log_dir_path = session_path / "logs"
+    paths = list(log_dir_path.iterdir())
+    for path in paths:
+        if not str(path).endswith(".err"):
+            continue
+        log_content = path.read_text()
+        if content not in log_content:
+            continue
+    assert False, f"Content {content} not in stderr log"
 
 
 class RayTestTimeoutException(Exception):
