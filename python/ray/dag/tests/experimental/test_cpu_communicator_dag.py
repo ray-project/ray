@@ -7,7 +7,6 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray.exceptions import RayChannelError
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.dag import InputNode
 import ray.experimental.collective as collective
@@ -83,7 +82,7 @@ def test_p2p_basic(ray_start_cluster):
 
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport=cpu_group))
+        dag = dag.with_tensor_transport(transport=cpu_group)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -273,9 +272,9 @@ def test_allreduce_scheduling(ray_start_cluster):
         x = workers[0].send.bind(shape, dtype, inp)
         y = workers[1].send.bind(shape, dtype, inp)
 
-        # Tensor to be sent from workes[0] to workers[1].
+        # Tensor to be sent from workers[0] to workers[1].
         t = workers[0].send.bind(shape, dtype, inp)
-        t.with_type_hint(TorchTensorType(transport=cpu_group))
+        t = t.with_tensor_transport(transport=cpu_group)
 
         collectives = collective.allreduce.bind([x, y], transport=cpu_group)
         recv = workers[1].recv.bind(t)
