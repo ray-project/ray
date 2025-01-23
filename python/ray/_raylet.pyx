@@ -641,7 +641,28 @@ def compute_task_id(ObjectRef object_ref):
 
 cdef increase_recursion_limit():
     """Double the recusion limit if current depth is close to the limit"""
-    pass
+    cdef:
+        CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
+        int current_limit = Py_GetRecursionLimit()
+        int new_limit = current_limit * 2
+        cdef extern from *:
+            """
+#if PY_VERSION_HEX >= 0x30C0000
+    #define CURRENT_DEPTH(x) ((x)->py_recursion_limit - (x)->py_recursion_remaining)
+#elif PY_VERSION_HEX >= 0x30B00A4
+    #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
+#else
+    #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
+#endif
+            """
+            int CURRENT_DEPTH(CPyThreadState *x)
+
+        int current_depth = CURRENT_DEPTH(s)
+    if current_limit - current_depth < 500:
+        Py_SetRecursionLimit(new_limit)
+        logger.debug("Increasing Python recursion limit to {} "
+                     "current recursion depth is {}.".format(
+                         new_limit, current_depth))
 
 
 cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
