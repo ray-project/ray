@@ -7,8 +7,9 @@ from packaging.version import Version
 
 import ray.train
 from ray.train import Checkpoint
-from ray.train.constants import _DEPRECATED_VALUE, TRAIN_DATASET_KEY
+from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.trainer import GenDataset
+from ray.train.utils import _log_deprecation_warning
 from ray.train.xgboost import RayTrainReportCallback, XGBoostConfig
 from ray.train.xgboost.v2 import XGBoostTrainer as SimpleXGBoostTrainer
 from ray.util.annotations import PublicAPI
@@ -257,6 +258,8 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
             )
 
         num_boost_round = num_boost_round or 10
+
+        _log_deprecation_warning(LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE)
 
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
         callbacks = xgboost_train_kwargs.get("callbacks", [])
