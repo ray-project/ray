@@ -79,7 +79,7 @@ class DataOpTask(OpTask):
         bytes_read = 0
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
             try:
-                block_ref = self._streaming_gen._next_sync(0)
+                block_ref = self._streaming_gen._next_sync(0.0)
                 if block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
