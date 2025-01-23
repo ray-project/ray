@@ -141,20 +141,12 @@ def exec_ray_dag(
 
     if use_cgraph:
         dag = dag.experimental_compile()
-        if num_executions == 1:
 
-            def _run():
-                ref = dag.execute(b"x")
-                result = ray.get(ref)
-                assert result == b"x"
-
-        else:
-
-            def _run():
-                results = []
-                for i in range(num_executions):
-                    results.append(dag.execute(b"x"))
-                ray.get(results)
+        def _run():
+            results = []
+            for i in range(num_executions):
+                results.append(dag.execute(b"x"))
+            ray.get(results)
 
     else:
 
