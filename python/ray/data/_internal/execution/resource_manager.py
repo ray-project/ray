@@ -282,11 +282,6 @@ class OpResourceAllocator(ABC):
         ...
 
     @abstractmethod
-    def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
-        """Return the budget for the given operator."""
-        ...
-
-    @abstractmethod
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         """Return the maximum bytes of pending task outputs can be read for
         the given operator. None means no limit."""
