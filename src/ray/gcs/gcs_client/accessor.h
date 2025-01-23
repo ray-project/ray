@@ -17,6 +17,7 @@
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
+#include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/rpc/client_call.h"
@@ -377,9 +378,12 @@ class NodeInfoAccessor {
   /// Get information of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
+  /// \param timeout_ms The timeout for this request.
+  /// \param node_id If not nullopt, only return the node info of the specified node.
   /// \return Status
   virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                             int64_t timeout_ms);
+                             int64_t timeout_ms,
+                             std::optional<NodeID> node_id = std::nullopt);
 
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
@@ -414,8 +418,14 @@ class NodeInfoAccessor {
 
   /// Get information of all nodes from an RPC to GCS synchronously.
   ///
-  /// \return All nodes in cache.
+  /// \return All nodes from gcs without cache.
   virtual Status GetAllNoCache(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &nodes);
+
+  /// Get information of all nodes from an RPC to GCS synchronously with filters.
+  ///
+  /// \return All nodes that match the given filters from the gcs without the cache.
+  virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCacheWithFilters(
+      int64_t timeout_ms, rpc::GetAllNodeInfoRequest_Filters filters);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -809,7 +819,7 @@ class InternalKVAccessor {
                                     const std::string &value,
                                     bool overwrite,
                                     const int64_t timeout_ms,
-                                    const OptionalItemCallback<int> &callback);
+                                    const OptionalItemCallback<bool> &callback);
 
   /// Asynchronously check the existence of a given key
   ///
@@ -983,6 +993,9 @@ class AutoscalerStateAccessor {
 
   virtual Status ReportAutoscalingState(int64_t timeout_ms,
                                         const std::string &serialized_state);
+
+  virtual Status ReportClusterConfig(int64_t timeout_ms,
+                                     const std::string &serialized_cluster_config);
 
   virtual Status DrainNode(const std::string &node_id,
                            int32_t reason,

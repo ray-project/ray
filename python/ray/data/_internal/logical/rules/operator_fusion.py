@@ -1,7 +1,11 @@
+import itertools
 from typing import List, Optional, Tuple
 
-# TODO(Clark): Remove compute dependency once we delete the legacy compute.
-from ray.data._internal.compute import get_compute, is_task_compute
+from ray.data._internal.compute import (
+    ActorPoolStrategy,
+    ComputeStrategy,
+    TaskPoolStrategy,
+)
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
@@ -23,7 +27,10 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomShuffle,
     Repartition,
 )
-from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
+from ray.data._internal.logical.operators.map_operator import (
+    AbstractMap,
+    AbstractUDFMap,
+)
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
@@ -50,7 +57,8 @@ class OperatorFusionRule(Rule):
         self._remove_output_depes(fused_dag)
         self._update_output_depes(fused_dag)
 
-        return PhysicalPlan(fused_dag, self._op_map)
+        new_plan = PhysicalPlan(fused_dag, self._op_map, plan.context)
+        return new_plan
 
     def _remove_output_depes(self, op: PhysicalOperator) -> None:
         for input in op._input_dependencies:
@@ -129,11 +137,6 @@ class OperatorFusionRule(Rule):
               the same class AND constructor args are the same for both.
             * They have compatible remote arguments.
         """
-        from ray.data._internal.logical.operators.map_operator import (
-            AbstractMap,
-            AbstractUDFMap,
-        )
-
         if not up_op.supports_fusion() or not down_op.supports_fusion():
             return False
 
@@ -189,15 +192,16 @@ class OperatorFusionRule(Rule):
         if isinstance(down_logical_op, Repartition) and not down_logical_op._shuffle:
             return False
 
-        if isinstance(down_logical_op, AbstractUDFMap) and isinstance(
-            up_logical_op, AbstractUDFMap
+        if isinstance(down_logical_op, AbstractMap) and isinstance(
+            up_logical_op, AbstractMap
         ):
-            # Allow fusing tasks->actors if the resources are compatible (read->map),
-            # but not the other way around. The latter (downstream op) will be used as
-            # the compute if fused.
-            if is_task_compute(down_logical_op._compute) and get_compute(
-                up_logical_op._compute
-            ) != get_compute(down_logical_op._compute):
+            if (
+                self._fuse_compute_strategy(
+                    up_logical_op._compute,
+                    down_logical_op._compute,
+                )
+                is None
+            ):
                 return False
 
         # Only fuse if the ops' remote arguments are compatible.
@@ -215,25 +219,50 @@ class OperatorFusionRule(Rule):
             return False
 
         if not self._can_merge_target_max_block_size(
-            up_op.target_max_block_size, down_op.target_max_block_size
+            up_op.target_max_block_size,
+            down_op.target_max_block_size,
+            up_op.data_context,
         ):
             return False
 
         # Otherwise, ops are compatible for fusion.
         return True
 
+    def _fuse_compute_strategy(
+        self, up_compute: ComputeStrategy, down_compute: ComputeStrategy
+    ) -> Optional[ComputeStrategy]:
+        """Fuse the compute strategies of the upstream and downstream operators.
+        Returns None if they are not compatible.
+
+        Task->Task and Task->Actor are allowed.
+        Actor->Actor and Actor->Task are not allowed.
+        """
+        if isinstance(up_compute, ActorPoolStrategy):
+            return None
+        assert isinstance(up_compute, TaskPoolStrategy)
+        if isinstance(down_compute, TaskPoolStrategy):
+            # For Task->Task, the sizes must match.
+            if up_compute.size != down_compute.size:
+                return None
+            return down_compute
+        else:
+            assert isinstance(down_compute, ActorPoolStrategy)
+            # For Task->Actor, if Task's size is set, it must match Actor's max_size.
+            if up_compute.size is not None and up_compute.size != down_compute.max_size:
+                return None
+            return down_compute
+
     def _can_merge_target_max_block_size(
         self,
         up_target_max_block_size: Optional[int],
         down_target_max_block_size: Optional[int],
+        data_context: DataContext,
     ):
         # If the upstream op overrode the target max block size, only fuse if
         # they are equal.
         if up_target_max_block_size is not None:
             if down_target_max_block_size is None:
-                down_target_max_block_size = (
-                    DataContext.get_current().target_max_block_size
-                )
+                down_target_max_block_size = data_context.target_max_block_size
             if up_target_max_block_size != down_target_max_block_size:
                 return False
         return True
@@ -260,8 +289,6 @@ class OperatorFusionRule(Rule):
     def _get_fused_map_operator(
         self, down_op: MapOperator, up_op: MapOperator
     ) -> MapOperator:
-        from ray.data._internal.logical.operators.map_operator import AbstractMap
-
         assert self._can_fuse(down_op, up_op), (
             "Current rule supports fusing MapOperator->MapOperator, but received: "
             f"{type(up_op).__name__} -> {type(down_op).__name__}"
@@ -272,18 +299,12 @@ class OperatorFusionRule(Rule):
 
         down_logical_op = self._op_map.pop(down_op)
         up_logical_op = self._op_map.pop(up_op)
+        assert isinstance(down_logical_op, AbstractMap)
+        assert isinstance(up_logical_op, AbstractMap)
 
         # Merge minimum block sizes.
-        down_min_rows_per_bundled_input = (
-            down_logical_op._min_rows_per_bundled_input
-            if isinstance(down_logical_op, AbstractMap)
-            else None
-        )
-        up_min_rows_per_bundled_input = (
-            up_logical_op._min_rows_per_bundled_input
-            if isinstance(up_logical_op, AbstractMap)
-            else None
-        )
+        down_min_rows_per_bundled_input = down_logical_op._min_rows_per_bundled_input
+        up_min_rows_per_bundled_input = up_logical_op._min_rows_per_bundled_input
         if (
             down_min_rows_per_bundled_input is not None
             and up_min_rows_per_bundled_input is not None
@@ -300,11 +321,10 @@ class OperatorFusionRule(Rule):
             up_op.target_max_block_size, down_op.target_max_block_size
         )
 
-        # We take the downstream op's compute in case we're fusing upstream tasks with a
-        # downstream actor pool (e.g. read->map).
-        compute = None
-        if isinstance(down_logical_op, AbstractUDFMap):
-            compute = get_compute(down_logical_op._compute)
+        compute = self._fuse_compute_strategy(
+            up_logical_op._compute, down_logical_op._compute
+        )
+        assert compute is not None
         ray_remote_args = up_logical_op._ray_remote_args
         ray_remote_args_fn = (
             up_logical_op._ray_remote_args_fn or down_logical_op._ray_remote_args_fn
@@ -315,9 +335,11 @@ class OperatorFusionRule(Rule):
         input_op = input_deps[0]
 
         # Fused physical map operator.
+        assert up_op.data_context is down_op.data_context
         op = MapOperator.create(
             up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
             input_op,
+            up_op.data_context,
             target_max_block_size=target_max_block_size,
             name=name,
             compute_strategy=compute,
@@ -325,6 +347,11 @@ class OperatorFusionRule(Rule):
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
         )
+        op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
+        for map_task_kwargs_fn in itertools.chain(
+            up_op._map_task_kwargs_fns, down_op._map_task_kwargs_fns
+        ):
+            op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
         # Build a map logical operator to be used as a reference for further fusion.
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based
@@ -349,8 +376,6 @@ class OperatorFusionRule(Rule):
                 ray_remote_args,
             )
         else:
-            from ray.data._internal.logical.operators.map_operator import AbstractMap
-
             # The downstream op is AbstractMap instead of AbstractUDFMap.
             logical_op = AbstractMap(
                 name,
@@ -374,8 +399,10 @@ class OperatorFusionRule(Rule):
         # Fuse operator names.
         name = up_op.name + "->" + down_op.name
 
-        down_logical_op: AbstractAllToAll = self._op_map.pop(down_op)
-        up_logical_op: AbstractUDFMap = self._op_map.pop(up_op)
+        down_logical_op = self._op_map.pop(down_op)
+        up_logical_op = self._op_map.pop(up_op)
+        assert isinstance(down_logical_op, AbstractAllToAll)
+        assert isinstance(up_logical_op, AbstractMap)
 
         # Fuse transformation functions.
         ray_remote_args = up_logical_op._ray_remote_args
@@ -401,9 +428,11 @@ class OperatorFusionRule(Rule):
             up_op.target_max_block_size, down_op.target_max_block_size
         )
 
+        assert up_op.data_context is down_op.data_context
         op = AllToAllOperator(
             fused_all_to_all_transform_fn,
             input_op,
+            up_op.data_context,
             target_max_block_size=target_max_block_size,
             num_outputs=down_op._num_outputs,
             # Transfer over the existing sub-progress bars from

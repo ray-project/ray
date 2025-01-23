@@ -1,4 +1,8 @@
+from ray.rllib.core import ALL_MODULES  # noqa
+
+
 # Algorithm ResultDict keys.
+AGGREGATOR_ACTOR_RESULTS = "aggregator_actors"
 EVALUATION_RESULTS = "evaluation"
 ENV_RUNNER_RESULTS = "env_runners"
 REPLAY_BUFFER_RESULTS = "replay_buffer"
@@ -11,6 +15,9 @@ TIMERS = "timers"
 NUM_TRAINABLE_PARAMETERS = "num_trainable_parameters"
 NUM_NON_TRAINABLE_PARAMETERS = "num_non_trainable_parameters"
 
+# Number of times `training_step()` was called in one iteration.
+NUM_TRAINING_STEP_CALLS_PER_ITERATION = "num_training_step_calls_per_iteration"
+
 # Counters for sampling, sampling (on eval workers) and
 # training steps (env- and agent steps).
 MEAN_NUM_EPISODE_LISTS_RECEIVED = "mean_num_episode_lists_received"
@@ -19,12 +26,49 @@ NUM_AGENT_STEPS_SAMPLED_LIFETIME = "num_agent_steps_sampled_lifetime"
 NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"  # @OldAPIStack
 NUM_ENV_STEPS_SAMPLED = "num_env_steps_sampled"
 NUM_ENV_STEPS_SAMPLED_LIFETIME = "num_env_steps_sampled_lifetime"
+NUM_ENV_STEPS_SAMPLED_PER_SECOND = "num_env_steps_sampled_per_second"
 NUM_ENV_STEPS_SAMPLED_THIS_ITER = "num_env_steps_sampled_this_iter"  # @OldAPIStack
 NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
     "num_env_steps_sampled_for_evaluation_this_iter"
 )
 NUM_MODULE_STEPS_SAMPLED = "num_module_steps_sampled"
 NUM_MODULE_STEPS_SAMPLED_LIFETIME = "num_module_steps_sampled_lifetime"
+ENV_TO_MODULE_SUM_EPISODES_LENGTH_IN = "env_to_module_sum_episodes_length_in"
+ENV_TO_MODULE_SUM_EPISODES_LENGTH_OUT = "env_to_module_sum_episodes_length_out"
+
+# Counters for adding and evicting in replay buffers.
+ACTUAL_N_STEP = "actual_n_step"
+AGENT_ACTUAL_N_STEP = "agent_actual_n_step"
+AGENT_STEP_UTILIZATION = "agent_step_utilization"
+ENV_STEP_UTILIZATION = "env_step_utilization"
+NUM_AGENT_EPISODES_STORED = "num_agent_episodes"
+NUM_AGENT_EPISODES_ADDED = "num_agent_episodes_added"
+NUM_AGENT_EPISODES_ADDED_LIFETIME = "num_agent_episodes_added_lifetime"
+NUM_AGENT_EPISODES_EVICTED = "num_agent_episodes_evicted"
+NUM_AGENT_EPISODES_EVICTED_LIFETIME = "num_agent_episodes_evicted_lifetime"
+NUM_AGENT_EPISODES_PER_SAMPLE = "num_agent_episodes_per_sample"
+NUM_AGENT_RESAMPLES = "num_agent_resamples"
+NUM_AGENT_STEPS_ADDED = "num_agent_steps_added"
+NUM_AGENT_STEPS_ADDED_LIFETIME = "num_agent_steps_added_lifetime"
+NUM_AGENT_STEPS_EVICTED = "num_agent_steps_evicted"
+NUM_AGENT_STEPS_EVICTED_LIFETIME = "num_agent_steps_evicted_lifetime"
+NUM_AGENT_STEPS_PER_SAMPLE = "num_agent_steps_per_sample"
+NUM_AGENT_STEPS_PER_SAMPLE_LIFETIME = "num_agent_steps_per_sample_lifetime"
+NUM_AGENT_STEPS_STORED = "num_agent_steps"
+NUM_ENV_STEPS_STORED = "num_env_steps"
+NUM_ENV_STEPS_ADDED = "num_env_steps_added"
+NUM_ENV_STEPS_ADDED_LIFETIME = "num_env_steps_added_lifetime"
+NUM_ENV_STEPS_EVICTED = "num_env_steps_evicted"
+NUM_ENV_STEPS_EVICTED_LIFETIME = "num_env_steps_evicted_lifetime"
+NUM_ENV_STEPS_PER_SAMPLE = "num_env_steps_per_sample"
+NUM_ENV_STEPS_PER_SAMPLE_LIFETIME = "num_env_steps_per_sample_lifetime"
+NUM_EPISODES_STORED = "num_episodes"
+NUM_EPISODES_ADDED = "num_episodes_added"
+NUM_EPISODES_ADDED_LIFETIME = "num_episodes_added_lifetime"
+NUM_EPISODES_EVICTED = "num_episodes_evicted"
+NUM_EPISODES_EVICTED_LIFETIME = "num_episodes_evicted_lifetime"
+NUM_EPISODES_PER_SAMPLE = "num_episodes_per_sample"
+NUM_RESAMPLES = "num_resamples"
 
 EPISODE_DURATION_SEC_MEAN = "episode_duration_sec_mean"
 EPISODE_LEN_MEAN = "episode_len_mean"
@@ -37,7 +81,9 @@ NUM_EPISODES = "num_episodes"
 NUM_EPISODES_LIFETIME = "num_episodes_lifetime"
 TIME_BETWEEN_SAMPLING = "time_between_sampling"
 
+
 MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED = "mean_num_learner_group_update_called"
+MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED = "mean_num_learner_group_results_received"
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
 NUM_AGENT_STEPS_TRAINED_LIFETIME = "num_agent_steps_trained_lifetime"
 NUM_AGENT_STEPS_TRAINED_THIS_ITER = "num_agent_steps_trained_this_iter"  # @OldAPIStack
@@ -47,6 +93,9 @@ NUM_ENV_STEPS_TRAINED_THIS_ITER = "num_env_steps_trained_this_iter"  # @OldAPISt
 NUM_MODULE_STEPS_TRAINED = "num_module_steps_trained"
 NUM_MODULE_STEPS_TRAINED_LIFETIME = "num_module_steps_trained_lifetime"
 MODULE_TRAIN_BATCH_SIZE_MEAN = "module_train_batch_size_mean"
+LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_IN = "learner_connector_sum_episodes_length_in"
+LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_OUT = "learner_connector_sum_episodes_length_out"
+
 # Backward compatibility: Replace with num_env_steps_... or num_agent_steps_...
 STEPS_TRAINED_THIS_ITER_COUNTER = "num_steps_trained_this_iter"
 
@@ -65,7 +114,7 @@ WEIGHTS_SEQ_NO = "weights_seq_no"
 NUM_GRAD_UPDATES_LIFETIME = "num_grad_updates_lifetime"
 # Average difference between the number of grad-updates that the policy/ies had
 # that collected the training batch vs the policy that was just updated (trained).
-# Good measuere for the off-policy'ness of training. Should be 0.0 for PPO and PG,
+# Good measure for the off-policy'ness of training. Should be 0.0 for PPO and PG,
 # small for IMPALA and APPO, and any (larger) value for DQN and other off-policy algos.
 DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY = "diff_num_grad_updates_vs_sampler_policy"
 
@@ -73,8 +122,8 @@ DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY = "diff_num_grad_updates_vs_sampler_poli
 LAST_TARGET_UPDATE_TS = "last_target_update_ts"
 NUM_TARGET_UPDATES = "num_target_updates"
 
-# Performance timers (keys for Algorithm._timers).
-# ------------------------------------------------
+# Performance timers
+# ------------------
 # Duration of n `Algorithm.training_step()` calls making up one "iteration".
 # Note that n may be >1 if the user has set up a min time (sec) or timesteps per
 # iteration.
@@ -86,8 +135,8 @@ TRAINING_STEP_TIMER = "training_step"
 APPLY_GRADS_TIMER = "apply_grad"
 COMPUTE_GRADS_TIMER = "compute_grads"
 GARBAGE_COLLECTION_TIMER = "garbage_collection"
-RESTORE_WORKERS_TIMER = "restore_workers"
-RESTORE_EVAL_WORKERS_TIMER = "restore_eval_workers"
+RESTORE_ENV_RUNNERS_TIMER = "restore_env_runners"
+RESTORE_EVAL_ENV_RUNNERS_TIMER = "restore_eval_env_runners"
 SYNCH_WORKER_WEIGHTS_TIMER = "synch_weights"
 SYNCH_ENV_CONNECTOR_STATES_TIMER = "synch_env_connectors"
 SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER = "synch_eval_env_connectors"
@@ -100,11 +149,10 @@ REPLAY_BUFFER_SAMPLE_TIMER = "replay_buffer_sampling_timer"
 REPLAY_BUFFER_UPDATE_PRIOS_TIMER = "replay_buffer_update_prios_timer"
 LEARNER_UPDATE_TIMER = "learner_update_timer"
 LEARN_ON_BATCH_TIMER = "learn"  # @OldAPIStack
-LEARNER_CONNECTOR_TIMER = "learner_connector_timer"
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"
+CONNECTOR_TIMERS = "connectors"
 
 # Learner.
 LEARNER_STATS_KEY = "learner_stats"
-ALL_MODULES = "__all_modules__"
 TD_ERROR_KEY = "td_error"

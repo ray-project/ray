@@ -20,6 +20,66 @@
 namespace ray {
 class StatusTest : public ::testing::Test {};
 
+TEST_F(StatusTest, CopyAndMoveForOkStatus) {
+  // OK status.
+  Status ok_status = Status::OK();
+
+  // Copy constructor.
+  {
+    Status new_status = ok_status;
+    EXPECT_TRUE(new_status.ok());
+  }
+  // Copy assignment.
+  {
+    Status new_status = Status::Invalid("invalid");
+    new_status = ok_status;
+    EXPECT_TRUE(new_status.ok());
+  }
+
+  // Move constructor.
+  Status copied_ok_status = ok_status;
+  {
+    Status new_status = std::move(ok_status);
+    EXPECT_TRUE(new_status.ok());
+  }
+  // Move assignment.
+  {
+    Status new_status = Status::Invalid("invalid");
+    new_status = std::move(copied_ok_status);
+    EXPECT_TRUE(new_status.ok());
+  }
+}
+
+TEST_F(StatusTest, CopyAndMoveErrorStatus) {
+  // Invalid status.
+  Status invalid_status = Status::Invalid("invalid");
+
+  // Copy constructor.
+  {
+    Status new_status = invalid_status;
+    EXPECT_EQ(new_status.code(), StatusCode::Invalid);
+  }
+  // Copy assignment.
+  {
+    Status new_status = Status::OK();
+    new_status = invalid_status;
+    EXPECT_EQ(new_status.code(), StatusCode::Invalid);
+  }
+
+  // Move constructor.
+  Status copied_invalid_status = invalid_status;
+  {
+    Status new_status = std::move(invalid_status);
+    EXPECT_EQ(new_status.code(), StatusCode::Invalid);
+  }
+  // Move assignment.
+  {
+    Status new_status = Status::OK();
+    new_status = std::move(copied_invalid_status);
+    EXPECT_EQ(new_status.code(), StatusCode::Invalid);
+  }
+}
+
 TEST_F(StatusTest, StringToCode) {
   auto ok = Status::OK();
   StatusCode status = Status::StringToCode(ok.CodeAsString());
@@ -63,8 +123,3 @@ TEST_F(StatusTest, GrpcStatusToRayStatus) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

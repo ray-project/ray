@@ -43,6 +43,13 @@ To view the full list of supported file formats, see the
             petal.width   double
             variety       string
 
+        .. tip::
+
+            When reading parquet files, you can take advantage of column pruning to
+            efficiently filter columns at the file scan level. See
+            :ref:`Parquet column pruning <parquet_column_pruning>` for more details
+            on the projection pushdown feature.
+
     .. tab-item:: Images
 
         To read raw images, call :func:`~ray.data.read_images`. Ray Data represents

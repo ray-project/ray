@@ -35,7 +35,7 @@ class ImageClassifier:
         return await self.classify(req["image_url"])
 
 
-app = ImageClassifier.options(route_prefix="/classify").bind(downloader.bind())
+app = ImageClassifier.bind(downloader.bind())
 # __serve_example_end__
 
 
@@ -65,7 +65,7 @@ class ModifiedImageClassifier:
         # __serve_example_modified_end__
 
 
-serve.run(app, name="app1")
+serve.run(app, name="app1", route_prefix="/classify")
 # __request_begin__
 bear_url = "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"  # noqa
 resp = requests.post("http://localhost:8000/classify", json={"image_url": bear_url})

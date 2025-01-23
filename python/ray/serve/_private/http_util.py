@@ -399,8 +399,8 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
             for parameter in old_parameters[1:]
         ]
         new_signature = old_signature.replace(parameters=new_parameters)
-        setattr(route.endpoint, "__signature__", new_signature)
-        setattr(route.endpoint, "_serve_cls", cls)
+        route.endpoint.__signature__ = new_signature
+        route.endpoint._serve_cls = cls
         new_router.routes.append(route)
     fastapi_app.include_router(new_router)
 
@@ -470,6 +470,10 @@ class ASGIAppReplicaWrapper:
 
         # Replace uvicorn logger with our own.
         self._serve_asgi_lifespan.logger = logger
+
+    @property
+    def app(self) -> ASGIApp:
+        return self._asgi_app
 
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy

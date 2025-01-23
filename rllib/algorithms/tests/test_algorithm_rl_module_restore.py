@@ -10,6 +10,7 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModuleSpec,
@@ -48,10 +49,6 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(rollout_fragment_length=4)
             .learners(**scaling_config)
             .environment(MultiAgentCartPole, env_config={"num_agents": num_agents})
@@ -73,11 +70,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 action_space=env.get_action_space(0),
                 # If we want to use this externally created module in the algorithm,
                 # we need to provide the same config as the algorithm.
-                model_config_dict=config.model_config
-                | {"fcnet_hiddens": [32 * (i + 1)]},
+                model_config=DefaultModelConfig(fcnet_hiddens=[32 * (i + 1)]),
                 catalog_class=PPOCatalog,
             )
-        multi_rl_module_spec = MultiRLModuleSpec(module_specs=module_specs)
+        multi_rl_module_spec = MultiRLModuleSpec(rl_module_specs=module_specs)
         multi_rl_module = multi_rl_module_spec.build()
         multi_rl_module_weights = convert_to_numpy(multi_rl_module.get_state())
         marl_checkpoint_path = tempfile.mkdtemp()
@@ -85,12 +81,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         # create a new MARL_spec with the checkpoint from the previous one
         multi_rl_module_spec_from_checkpoint = MultiRLModuleSpec(
-            module_specs=module_specs,
+            rl_module_specs=module_specs,
             load_state_path=marl_checkpoint_path,
         )
-        config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
-            rl_module_spec=multi_rl_module_spec_from_checkpoint,
-        )
+        config.rl_module(rl_module_spec=multi_rl_module_spec_from_checkpoint)
 
         # create the algorithm with multiple nodes and check if the weights
         # are the same as the original MultiRLModule
@@ -115,11 +109,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 action_space=env.get_action_space(0),
                 # If we want to use this externally created module in the algorithm,
                 # we need to provide the same config as the algorithm.
-                model_config_dict=config.model_config
-                | {"fcnet_hiddens": [32 * (i + 1)]},
+                model_config=DefaultModelConfig(fcnet_hiddens=[32 * (i + 1)]),
                 catalog_class=PPOCatalog,
             )
-        multi_rl_module_spec = MultiRLModuleSpec(module_specs=module_specs)
+        multi_rl_module_spec = MultiRLModuleSpec(rl_module_specs=module_specs)
         multi_rl_module = multi_rl_module_spec.build()
         marl_checkpoint_path = tempfile.mkdtemp()
         multi_rl_module.save_to_path(marl_checkpoint_path)
@@ -131,7 +124,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             action_space=env.get_action_space(0),
             # Note, we need to pass in the default model config for the algorithm
             # to be able to use this module later.
-            model_config_dict=config.model_config | {"fcnet_hiddens": [64]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[64]),
             catalog_class=PPOCatalog,
         ).build()
 
@@ -144,17 +137,15 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             module_class=PPOTorchRLModule,
             observation_space=env.get_observation_space(0),
             action_space=env.get_action_space(0),
-            model_config_dict={"fcnet_hiddens": [64]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[64]),
             catalog_class=PPOCatalog,
             load_state_path=module_to_swap_in_path,
         )
         multi_rl_module_spec_from_checkpoint = MultiRLModuleSpec(
-            module_specs=module_specs,
+            rl_module_specs=module_specs,
             load_state_path=marl_checkpoint_path,
         )
-        config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
-            rl_module_spec=multi_rl_module_spec_from_checkpoint,
-        )
+        config = config.rl_module(rl_module_spec=multi_rl_module_spec_from_checkpoint)
 
         # create the algorithm with multiple nodes and check if the weights
         # are the same as the original MultiRLModule
@@ -185,10 +176,6 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(rollout_fragment_length=4)
             .learners(**scaling_config)
             .environment("CartPole-v1")
@@ -202,7 +189,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             action_space=env.action_space,
             # If we want to use this externally created module in the algorithm,
             # we need to provide the same config as the algorithm.
-            model_config_dict=config.model_config | {"fcnet_hiddens": [32]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[32]),
             catalog_class=PPOCatalog,
         )
         module = module_spec.build()
@@ -214,14 +201,12 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[32]),
             catalog_class=PPOCatalog,
             load_state_path=module_ckpt_path,
         )
 
-        config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
-            rl_module_spec=module_to_load_spec,
-        )
+        config.rl_module(rl_module_spec=module_to_load_spec)
 
         # create the algorithm with multiple nodes and check if the weights
         # are the same as the original MultiRLModule
@@ -256,11 +241,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 action_space=env.get_action_space(0),
                 # Note, we need to pass in the default model config for the
                 # algorithm to be able to use this module later.
-                model_config_dict=config.model_config
-                | {"fcnet_hiddens": [32 * (i + 1)]},
+                model_config=DefaultModelConfig(fcnet_hiddens=[32 * (i + 1)]),
                 catalog_class=PPOCatalog,
             )
-        multi_rl_module_spec = MultiRLModuleSpec(module_specs=module_specs)
+        multi_rl_module_spec = MultiRLModuleSpec(rl_module_specs=module_specs)
         multi_rl_module = multi_rl_module_spec.build()
         marl_checkpoint_path = tempfile.mkdtemp()
         multi_rl_module.save_to_path(marl_checkpoint_path)
@@ -272,7 +256,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             action_space=env.get_action_space(0),
             # Note, we need to pass in the default model config for the algorithm
             # to be able to use this module later.
-            model_config_dict=config.model_config | {"fcnet_hiddens": [64]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[64]),
             catalog_class=PPOCatalog,
         ).build()
 
@@ -285,20 +269,18 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             module_class=PPOTorchRLModule,
             observation_space=env.get_observation_space(0),
             action_space=env.get_action_space(0),
-            model_config_dict={"fcnet_hiddens": [64]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[64]),
             catalog_class=PPOCatalog,
             load_state_path=module_to_swap_in_path,
         )
         multi_rl_module_spec_from_checkpoint = MultiRLModuleSpec(
-            module_specs=module_specs,
+            rl_module_specs=module_specs,
             load_state_path=marl_checkpoint_path,
             modules_to_load={
                 "policy_0",
             },
         )
-        config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
-            rl_module_spec=multi_rl_module_spec_from_checkpoint,
-        )
+        config.rl_module(rl_module_spec=multi_rl_module_spec_from_checkpoint)
 
         # create the algorithm with multiple nodes and check if the weights
         # are the same as the original MultiRLModule

@@ -3,7 +3,8 @@ import os
 from ray._private.ray_constants import env_bool, env_integer
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
-DASHBOARD_AGENT_PORT_PREFIX = "DASHBOARD_AGENT_PORT_PREFIX:"
+DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX = "DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX:"
+DASHBOARD_AGENT_ADDR_IP_PREFIX = "DASHBOARD_AGENT_ADDR_IP_PREFIX:"
 DASHBOARD_AGENT_LOG_FILENAME = "dashboard_agent.log"
 DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S_ENV_NAME = (
     "RAY_DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S"  # noqa
@@ -65,7 +66,12 @@ DEFAULT_JOB_START_TIMEOUT_SECONDS = 60 * 15
 RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR = "RAY_JOB_START_TIMEOUT_SECONDS"
 # Port that dashboard prometheus metrics will be exported to
 DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
+
+NODE_TAG_KEYS = ["ip", "Version", "SessionName", "IsHeadNode"]
+GPU_TAG_KEYS = NODE_TAG_KEYS + ["GpuDeviceName", "GpuIndex"]
+CLUSTER_TAG_KEYS = ["node_type", "Version", "SessionName"]
 COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Version", "Component", "SessionName"]
+
 # Dashboard metrics are tracked separately at the dashboard. TODO(sang): Support GCS.
 AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
     "workers",

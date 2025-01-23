@@ -8,7 +8,7 @@ import pytest
 
 import ray
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data import DataContext
+from ray.data import DataContext, Schema
 from ray.data.block import BlockAccessor
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
@@ -42,16 +42,19 @@ def test_large_tensor_creation(
     assert end_time - start_time < 20
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensors_basic(ray_start_regular_shared, restore_data_context, tensor_format):
+@pytest.mark.parametrize(
+    "tensor_format, tensor_type", [("v1", ArrowTensorType), ("v2", ArrowTensorTypeV2)]
+)
+def test_tensors_basic(
+    ray_start_regular_shared, restore_data_context, tensor_format, tensor_type
+):
     DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
 
     # Create directly.
     tensor_shape = (3, 5)
     ds = ray.data.range_tensor(6, shape=tensor_shape, override_num_blocks=6)
-    assert str(ds) == (
-        "Dataset(num_rows=6, schema={data: numpy.ndarray(shape=(3, 5), dtype=int64)})"
-    )
+    assert ds.count() == 6
+    assert ds.schema() == Schema(pa.schema([("data", tensor_type((3, 5), pa.int64()))]))
     # The actual size is slightly larger due to metadata.
     # We add 6 (one per tensor) offset values of 8 bytes each to account for the
     # in-memory representation of the PyArrow LargeList type
@@ -224,23 +227,15 @@ def test_tensors_basic(ray_start_regular_shared, restore_data_context, tensor_fo
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 def test_batch_tensors(ray_start_regular_shared, restore_data_context, tensor_format):
-    import torch
-
     DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
 
     ds = ray.data.from_items(
-        [torch.tensor([0, 0]) for _ in range(40)], override_num_blocks=40
+        [np.array([0, 0]) for _ in range(40)], override_num_blocks=40
     )
-    res = (
-        "MaterializedDataset(\n"
-        "   num_blocks=40,\n"
-        "   num_rows=40,\n"
-        "   schema={item: numpy.ndarray(shape=(2,), dtype=int64)}\n"
-        ")"
-    )
-    assert str(ds) == res, str(ds)
-    df = next(iter(ds.iter_batches(batch_format="pandas")))
-    assert df.to_dict().keys() == {"item"}
+
+    batch = next(iter(ds.iter_batches()))
+    assert set(batch) == {"item"}
+    assert batch["item"].shape == (40, 2)
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])

@@ -99,7 +99,7 @@ py_test(
 
 py_test(
     name = "test_arrow_block",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_arrow_block.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -226,6 +226,14 @@ py_test(
 )
 
 py_test(
+    name = "test_hudi",
+    size = "small",
+    srcs = ["tests/test_hudi.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_image",
     size = "small",
     srcs = ["tests/test_image.py"],
@@ -337,11 +345,13 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+# Added "data_non_parallel" tag to prevent parallel execution of this test.
+# It needs about 5GB memory.
 py_test(
     name = "test_dynamic_block_split",
     size = "medium",
     srcs = ["tests/test_dynamic_block_split.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "data_non_parallel"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -588,9 +598,25 @@ py_test(
 )
 
 py_test(
+    name = "test_bundle_queue",
+    size = "small",
+    srcs = ["tests/test_bundle_queue.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_autoscaler",
     size = "small",
     srcs = ["tests/test_autoscaler.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_clickhouse",
+    size = "small",
+    srcs = ["tests/test_clickhouse.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -623,6 +649,22 @@ py_test(
     name = "test_context",
     size = "small",
     srcs = ["tests/test_context.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_expression_evaluator",
+    size = "small",
+    srcs = ["tests/test_expression_evaluator.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_block_boundaries",
+    size = "small",
+    srcs = ["tests/test_block_boundaries.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

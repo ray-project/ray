@@ -1,18 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
-.. |new_stack| image:: /rllib/images/sigils/new-api-stack.svg
-    :class: inline-figure
-    :width: 64
-
-.. |old_stack| image:: /rllib/images/sigils/old-api-stack.svg
-    :class: inline-figure
-    :width: 64
-
+.. _rllib-examples-overview-docs:
 
 Examples
 ========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 This page contains an index of all the python scripts in the
 `examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__
@@ -20,28 +13,27 @@ of RLlib, demonstrating the different use cases and features of the library.
 
 .. note::
 
-    RLlib is currently in a transition state from "old API stack" to "new API stack".
-    Some of the examples here haven't been translated yet to the new stack and are tagged
-    with the following comment line on top: ``# @OldAPIStack``. The moving of all example
-    scripts over to the "new API stack" is work in progress and expected to be completed
-    by the end of 2024.
+    RLlib is currently in a transition state from old- to new API stack.
+    The Ray team has translated most of the example scripts to the new stack and tag those
+    still on the old stack with this comment line on top: ``# @OldAPIStack``.
+    The moving of all example scripts over to the new stack is work in progress.
 
 .. note::
 
-    If any new-API-stack example is broken, or if you'd like to add an example to this page,
-    feel free to raise an issue on `RLlib's github repository <https://github.com/ray-project/ray/issues/new/choose>`__.
+    If you find any new API stack example broken, or if you'd like to add an example to this page,
+    create an issue in the `RLlib GitHub repository <https://github.com/ray-project/ray/issues/new/choose>`__.
 
 
-Folder Structure
-++++++++++++++++
-The `examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__ is
-structured into several sub-directories, the contents of all of which are described in detail below.
+Folder structure
+----------------
+The `examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__ has
+several sub-directories described in detail below.
 
 
 How to run an example script
-++++++++++++++++++++++++++++
+----------------------------
 
-Most of the example scripts are self-executable, meaning you can just ``cd`` into the respective
+Most of the example scripts are self-executable, meaning you can ``cd`` into the respective
 directory and run the script as-is with python:
 
 .. code-block:: bash
@@ -53,290 +45,421 @@ directory and run the script as-is with python:
 Use the `--help` command line argument to have each script print out its supported command line options.
 
 Most of the scripts share a common subset of generally applicable command line arguments,
-for example `--num-env-runners`, `--no-tune`, or `--wandb-key`.
+for example `--num-env-runners`, to scale the number of EnvRunner actors, `--no-tune`, to switch off running with Ray Tune,
+`--wandb-key`, to log to WandB, or `--verbose`, to control log chattiness.
 
 
-All sub-folders
-+++++++++++++++
+All example sub-folders
+-----------------------
+
+
+Actions
++++++++
+
+.. _rllib-examples-overview-autoregressive-actions:
+
+- `Auto-regressive actions <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/autoregressive_actions.py>`__:
+   Configures an RL module that generates actions in an autoregressive manner, where the second component of an action depends on
+   the previously sampled first component of the same action.
+
+- `Nested Action Spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/nested_action_spaces.py>`__:
+   Sets up an environment with nested action spaces using custom single- or multi-agent
+   configurations. This example demonstrates how RLlib manages complex action structures,
+   such as multi-dimensional or hierarchical action spaces.
 
 
 Algorithms
-----------
+++++++++++
+- `Custom "vanilla policy gradient" (VPG) algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/vpg_custom_algorithm.py>`__:
+   Shows how to write a very simple policy gradient :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` from scratch,
+   including a matching :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`,
+   a matching :py:class:`~ray.rllib.core.learner.learner.Learner` which defines the loss function,
+   and the Algorithm's :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` implementation.
 
-- |new_stack| `How to write a custom Algorith.training_step() method combining on- and off-policy training <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/custom_training_step_on_and_off_policy_combined.py>`__:
-   Example of how to override the :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` method
-   to train two different policies in parallel (also using multi-agent API).
 
 Checkpoints
------------
++++++++++++
 
-- |new_stack| `How to extract a checkpoint from n Tune trials using one or more custom criteria. <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/checkpoint_by_custom_criteria.py>`__:
-   Example of how to find a :ref:`checkpoint <rllib-saving-and-loading-algos-and-policies-docs>` after a `Tuner.fit()` with some custom defined criteria.
+- `Checkpoint by custom criteria <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/checkpoint_by_custom_criteria.py>`__:
+   Shows how to create checkpoints based on custom criteria, giving users control over when to save model snapshots during training.
+
+- `Continue training from checkpoint <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/continue_training_from_checkpoint.py>`__:
+   Illustrates resuming training from a saved checkpoint, useful for extending training sessions or recovering from interruptions.
+
+- `Restore 1 out of N agents from checkpoint <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py>`__:
+   Restores one specific agent from a multi-agent checkpoint, allowing selective loading for environments where only certain agents need
+   to resume training.
+
 
 Connectors
-----------
+++++++++++
 
 .. note::
-    RLlib's Connector API has been re-written from scratch for the new API stack (|new_stack|).
+    RLlib's Connector API has been re-written from scratch for the new API stack.
     Connector-pieces and -pipelines are now referred to as :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2`
-    (as opposed to ``Connector``, which only continue to work on the old API stack |old_stack|).
+    to distinguish against the ``Connector`` class, which only continue to work on the old API stack.
 
 
-- |new_stack| `How to frame-stack Atari image observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/frame_stacking.py>`__:
-   An example using Atari framestacking in a very efficient manner, not in the environment itself (as a `gym.Wrapper`),
-   but by stacking the observations on-the-fly using `EnvToModule` and `LearnerConnector` pipelines.
-   This method of framestacking is more efficient as it avoids having to send large observation
-   tensors through the network (ray).
+- `Flatten and one-hot observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/flatten_observations_dict_space.py>`__:
+   Demonstrates how to one-hot discrete observation spaces and/or flatten complex observations, Dict or Tuple, allowing RLlib to process arbitrary
+   observation data as flattened 1D vectors. Useful for environments with complex, discrete, or hierarchical observations.
 
-- |new_stack| `How to mean/std-filter observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/mean_std_filtering.py>`__:
-   An example of a :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` that filters all observations from the environment using a
-   plain mean/std-filter (shift by the mean and divide by std-dev). This example demonstrates
-   how a stateful :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` class has its states
-   (here the means and standard deviations of the individual observation items) coming from the different
-   :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances a) merged into one common state and
-   then b) broadcast again back to the remote :py:class:`~ray.rllib.env.env_runner.EnvRunner` workers.
+- `Observation frame-stacking <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/frame_stacking.py>`__:
+   Implements frame stacking, where N consecutive frames stack together to provide temporal context to the agent.
+   This technique is common in environments with continuous state changes, like video frames in Atari games.
+   Using connectors for frame stacking is more efficient as it avoids having to send large observation tensors through
+   ray remote calls.
 
-- |new_stack| `How to include previous-actions and/or previous rewards in RLModule inputs <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py>`__:
-   An example of a :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` that adds the n previous actions
-   and/or the m previous rewards to the RLModule's input dict (to perform its forward passes, both
-   for inference and training).
+- `Mean/Std filtering <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/mean_std_filtering.py>`__:
+   Adds mean and standard deviation normalization for observations, shifting by the mean and dividing by std-dev.
+   This type of filtering can improve learning stability in environments with highly variable state magnitudes
+   by scaling observations to a normalized range.
 
-- |new_stack| `How to train with nested action spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/nested_action_spaces.py>`__:
-   Learning in arbitrarily nested action spaces, using an env in which the action space equals the
-   observation space (both are complex, nested Dicts) and the policy has to pick actions
-   that closely match (or are identical) to the previously seen observations.
+- `Prev-actions, prev-rewards connector <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py>`__:
+   Augments observations with previous actions and rewards, giving the agent a short-term memory of past events, which can improve
+   decision-making in partially observable or sequentially dependent tasks.
 
-- |new_stack| `How to train with nested observation spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/nested_observation_spaces.py>`__:
-   Learning in arbitrarily nested observation spaces
-   (using a CartPole-v1 variant with a nested Dict observation space).
 
-Curriculum Learning
--------------------
+Curiosity
++++++++++
 
--  |new_stack| `How to set up curriculum learning with the custom callbacks API <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py>`__:
-    Example of how to make the environment go through different levels of difficulty (from easy to harder to solve)
-    and thus help the learning algorithm to cope with an otherwise unsolvable task.
-    Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
+- `Count-based curiosity <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py>`__:
+   Implements count-based intrinsic motivation to encourage exploration of less visited states.
+   Using curiosity is beneficial in sparse-reward environments where agents may struggle to find rewarding paths.
+   However, count-based methods are only feasible for environments with small observation spaces.
 
-Debugging
----------
-- |old_stack| `How to train an RLlib algorithm using a deterministic/reproducible setup <https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_training.py>`__:
-   Example showing how you can train an RLlib algorithm in a deterministic, reproducible fashion using seeding.
+- `Euclidian distance-based curiosity <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/euclidian_distance_based_curiosity.py>`__:
+   Uses Euclidean distance between states and the initial state to measure novelty, encouraging exploration by rewarding the agent for reaching "far away"
+   regions of the environment.
+   Suitable for sparse-reward tasks, where diverse exploration is key to success.
+
+- `Intrinsic-curiosity-model (ICM) Based Curiosity <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__:
+   Adds an `Intrinsic Curiosity Model (ICM) <https://arxiv.org/pdf/1705.05363.pdf>`__ that learns to predict the next state as well as the action in
+   between two states to measure novelty. The higher the loss of the ICM, the higher the "novelty" and thus the intrinsic reward.
+   Ideal for complex environments with large observation spaces where reward signals are sparse.
+
+
+Curriculum learning
++++++++++++++++++++
+
+- `Custom env rendering method <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py>`__:
+   Demonstrates curriculum learning, where the environment difficulty increases as the agent improves.
+   This approach enables gradual learning, allowing agents to master simpler tasks before progressing to more challenging ones,
+   ideal for environments with hierarchical or staged difficulties. Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
+
 
 Environments
-------------
-- |new_stack| `How to register a custom gymnasium environment <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__:
-   Example showing how to write your own RL environment using ``gymnasium`` and register it to run train your algorithm against this env with RLlib.
+++++++++++++
 
-- |new_stack| `How to set up rendering (and recording) of the environment trajectories during training with WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_rendering_and_recording.py>`__:
-   Example showing how you can render and record episode trajectories of your gymnasium envs and log the videos to WandB.
+- `Async gym vectorization, parallelizing sub-environments <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/async_gym_env_vectorization.py>`__:
+   Shows how the `gym_env_vectorize_mode` config setting can significantly speed up your
+   :py:class`~ray.rllib.env.env_runner.EnvRunner` actors, if your RL environment is slow and you are
+   using `num_envs_per_env_runner > 1`. The reason for the performance gain is that each sub-environment runs in its own process.
 
-- |old_stack| `How to run a Unity3D multi-agent environment locally <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/unity3d_env_local.py>`__:
-   Example of how to setup an RLlib Algorithm against a locally running Unity3D editor instance to
-   learn any Unity3D game (including support for multi-agent).
-   Use this example to try things out and watch the game and the learning progress live in the editor.
-   Providing a compiled game, this example could also run in distributed fashion with `num_env_runners > 0`.
-   For a more heavy-weight, distributed, cloud-based example, see ``Unity3D client/server`` below.
+- `Custom env rendering method <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_env_render_method.py>`__:
+   Demonstrates how to add a custom `render()` method to a (custom) environment, allowing visualizations of agent interactions.
 
-- |old_stack| `How to run with a Unity3D client/server setup <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/unity3d_server.py>`__:
-   Example of how to setup n distributed Unity3D (compiled) games in the cloud that function as data collecting
-   clients against a central RLlib Policy server learning how to play the game.
-   The n distributed clients could themselves be servers for external/human players and allow for control
-   being fully in the hands of the Unity entities instead of RLlib.
-   Note: Uses Unity's MLAgents SDK (>=1.0) and supports all provided MLAgents example games and multi-agent setups.
+- `Custom gymnasium env <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__:
+   Implements a custom `gymnasium <https://gymnasium.farama.org>`__ environment from scratch, showing how to define observation and action spaces,
+   arbitrary reward functions, as well as, step- and reset logic.
 
-- |old_stack| `How to run with a CartPole client/server setup <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/cartpole_server.py>`__:
-   Example of online serving of predictions for a simple CartPole policy.
+- `Env connecting to RLlib through a tcp client <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__:
+   An external environment, running outside of RLlib and acting as a client, connects to RLlib as a server. The external env performs its own
+   action inference using an ONNX model, sends collected data back to RLlib for training, and receives model updates from time to time from RLlib.
+
+- `Env rendering and recording <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_rendering_and_recording.py>`__:
+   Illustrates environment rendering and recording setups within RLlib, capturing visual outputs for later review (ex. on WandB), which is essential
+   for tracking agent behavior in training.
+
+- `Env with protobuf observations <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_w_protobuf_observations.py>`__:
+   Uses Protobuf for observations, demonstrating an advanced way of handling serialized data in environments. This approach is useful for
+   integrating complex external data sources as observations.
 
 
 Evaluation
-----------
+++++++++++
 
-- |new_stack| `How to run evaluation with a custom evaluation function <https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_evaluation.py>`__:
-   Example of how to write a custom evaluation function that's called instead of the default behavior, which is running with the evaluation worker set through n episodes.
+- `Custom evaluation <https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_evaluation.py>`__:
+   Configures custom evaluation metrics for agent performance, allowing users to define specific success criteria beyond standard RLlib evaluation metrics.
 
-- |new_stack| `How to run evaluation in parallel to training <https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/evaluation_parallel_to_training.py>`__:
-   Example showing how the evaluation workers and the "normal" rollout workers can run (to some extend) in parallel to speed up training.
+- `Evaluation parallel to training <https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/evaluation_parallel_to_training.py>`__:
+   Runs evaluation episodes in parallel with training, reducing training time by offloading evaluation to separate processes.
+   This method is beneficial when you require frequent evaluation without interrupting learning.
 
-GPU (for Training and Sampling)
--------------------------------
 
-- |new_stack| `How to use fractional GPUs for training an RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus_per_learner.py>`__:
-   If your model is small and easily fits on a single GPU and you want to therefore train
-   other models alongside it to save time and cost, this script shows you how to set up
-   your RLlib config with a fractional number of GPUs on the learner (model training)
-   side.
+Fault tolerance
++++++++++++++++
 
-Hierarchical Training
----------------------
+- `Crashing and stalling env <https://github.com/ray-project/ray/blob/master/rllib/examples/fault_tolerance/crashing_and_stalling_env.py>`__:
+   Simulates an environment that randomly crashes or stalls, allowing users to test RLlib's fault-tolerance mechanisms.
+   This script is useful for evaluating how RLlib handles interruptions and recovers from unexpected failures during training.
 
-- |old_stack| `How to setup hierarchical training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__:
-   Example of hierarchical training using the multi-agent API.
 
-Inference (of Models/Policies)
-------------------------------
+GPUs for training and sampling
+++++++++++++++++++++++++++++++
 
-- |old_stack| `How to do inference with an already trained policy <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__:
-   Example of how to perform inference (compute actions) on an already trained policy.
-- |old_stack| `How to do inference with an already trained (LSTM) policy <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_with_lstm.py>`__:
-   Example of how to perform inference (compute actions) on an already trained (LSTM) policy.
-- |old_stack| `How to do inference with an already trained (attention) policy <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_with_attention.py>`__:
-   Example of how to perform inference (compute actions) on an already trained (attention) policy.
+- `Float16 training and inference <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/float16_training_and_inference.py>`__:
+   Configures a setup for float16 training and inference, optimizing performance by reducing memory usage and speeding up computation.
+   This is especially useful for large-scale models on compatible GPUs.
+
+- `Fractional GPUs per Learner <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus_per_learner.py>`__:
+   Demonstrates allocating fractional GPUs to individual learners, enabling finer resource allocation in multi-model setups.
+   Useful for saving resources when training smaller models, many of which can fit on a single GPU.
+
+- `Mixed precision training and float16 inference <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/mixed_precision_training_float16_inference.py>`__:
+   Uses mixed precision, float32 and float16, for training, while switching to float16 precision for inference, balancing stability during training
+   with performance improvements during evaluation.
+
+- `Using GPUs on EnvRunners <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/gpus_on_env_runners.py>`__:
+   Demos how :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances, single- or multi-agent, can request GPUs through
+   the `config.env_runners(num_gpus_per_env_runner=..)` setting.
+
+
+Hierarchical training
++++++++++++++++++++++
+
+- `Hierarchical RL training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__:
+   Showcases a hierarchical RL setup inspired by automatic subgoal discovery and subpolicy specialization. A high-level policy selects subgoals and assigns one of three
+   specialized low-level policies to achieve them within a time limit, encouraging specialization and efficient task-solving.
+   The agent has to navigate a complex grid-world environment. The example highlights the advantages of hierarchical
+   learning over flat approaches by demonstrating significantly improved learning performance in challenging, goal-oriented tasks.
+
+
+Inference of models or policies
++++++++++++++++++++++++++++++++
+
+- `Policy inference after training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__:
+   Demonstrates performing inference with a trained policy, showing how to load a trained model and use it to make decisions in a simulated environment.
+
+- `Policy inference after training, with ConnectorV2 <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_w_connector.py>`__:
+   Runs inference with a trained, LSTM-based policy using connectors, which preprocess observations and actions, allowing for more modular and flexible inference setups.
+
+
+Learners
+++++++++
+
+- `Custom loss function, simple <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__:
+   Implements a custom loss function for training, demonstrating how users can define tailored loss objectives for specific environments or
+   behaviors.
+
+- `Custom torch learning rate schedulers <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_torch_lr_schedulers.py>`__:
+   Adds learning rate scheduling to PPO, showing how to adjust the learning rate dynamically using PyTorch schedulers for improved
+   training stability.
+
+- `Separate learning rate and optimizer for value function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/separate_vf_lr_and_optimizer.py>`__:
+   Configures a separate learning rate and a separate optimizer for the value function vs the policy network,
+   enabling differentiated training dynamics between policy and value estimation in RL algorithms.
+
 
 Metrics
--------
++++++++
 
-- |old_stack| `How to write your own custom metrics and callbacks in RLlib <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_and_callbacks.py>`__:
-   Example of how to output custom training metrics to TensorBoard.
+- `Logging custom metrics in Algorithm.training_step <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__:
+   Shows how to log custom metrics inside a custom :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` through overriding
+   the :py:meth:`` method and making calls to the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.log_value` method
+   of the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` instance.
+
+- `Logging custom metrics in EnvRunners <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__:
+   Demonstrates adding custom metrics to :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors, providing a way to track specific
+   performance- and environment indicators beyond the standard RLlib metrics.
 
 
-Multi-Agent RL
---------------
+Multi-agent RL
+++++++++++++++
 
-- |new_stack| `How to set up independent multi-agent training <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_independent_learning.py>`__:
-   Set up RLlib to run any algorithm in (independent) multi-agent mode against a multi-agent environment.
-- |new_stack| `How to set up shared-parameter multi-agent training <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__:
-   Set up RLlib to run any algorithm in (shared-parameter) multi-agent mode against a multi-agent environment.
-- |new_stack| `How to compare a heuristic policy vs a trained one on rock-paper-scissors <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__ and `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__:
-   Two examples of different heuristic and learned policies competing against each other in the rock-paper-scissors environment.
-- |new_stack| `How to use agent grouping in a multi-agent environment (two-step game) <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_step_game_with_grouped_agents.py>`__:
-   Example on how to use agent grouping in a multi-agent environment (the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__).
-- |new_stack| `How to set up multi-agent training vs a PettingZoo environment <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__:
-   Example on how to use RLlib to learn in `PettingZoo <https://www.pettingzoo.ml>`__ multi-agent environments.
-- |new_stack| `How to hand-code a (heuristic) policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/custom_heuristic_policy.py>`__:
-   Example of running a custom hand-coded policy alongside trainable policies.
-- |new_stack| `How to train a single policy (weight sharing) controlling more than one agents <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/multi_agent_cartpole.py>`__:
-   Example of how to define weight-sharing layers between two different policies.
+- `Custom heuristic policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/custom_heuristic_policy.py>`__:
+   Demonstrates running a hybrid policy setup within the `MultiAgentCartPole` environment, where one agent follows
+   a hand-coded random policy while another agent trains with PPO. This example highlights integrating static and dynamic policies,
+   suitable for environments with a mix of fixed-strategy and adaptive agents.
 
-- |old_stack| `Hwo to write and set up a model with centralized critic <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__:
-   Example of customizing PPO to leverage a centralized value function.
-- |old_stack| `How to write and set up a model with centralized critic in the env <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__:
-   A simpler method of implementing a centralized critic by augmenting agent observations with global information.
-- |old_stack| `How to combine multiple algorithms into onw using the multi-agent API <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_algorithms.py>`__:
-   Example of alternating training between DQN and PPO.
+- `Different spaces for agents <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/different_spaces_for_agents.py>`__:
+   Configures agents with differing observation and action spaces within the same environment, showcasing RLlib's support for heterogeneous agents with varying space requirements in a single multi-agent environment.
+
+- `Grouped agents, two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_step_game_with_grouped_agents.py>`__:
+   Implements a multi-agent, grouped setup within a two-step game environment from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
+   N agents form M teams in total, where N >= M, and agents in each team share rewards and one policy.
+   This example demonstrates RLlib's ability to manage collective objectives and interactions among grouped agents.
+
+- `Multi-agent CartPole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/multi_agent_cartpole.py>`__:
+   Runs a multi-agent version of the CartPole environment with each agent independently learning to balance its pole.
+   This example serves as a foundational test for multi-agent reinforcement learning scenarios in simple, independent tasks.
+
+- `Multi-agent Pendulum <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/multi_agent_pendulum.py>`__:
+   Extends the classic Pendulum environment into a multi-agent setting, where multiple agents attempt to balance
+   their respective pendulums.
+   This example highlights RLlib's support for environments with replicated dynamics but distinct agent policies.
+
+- `PettingZoo independent learning <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_independent_learning.py>`__:
+   Integrates RLlib with `PettingZoo <https://pettingzoo.farama.org/>`__ to facilitate independent learning among multiple agents.
+   Each agent independently optimizes its policy within a shared environment.
+
+- `PettingZoo parameter sharing <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__:
+   Uses `PettingZoo <https://pettingzoo.farama.org/>`__ for an environment where all agents share a single policy.
+
+- `PettingZoo shared value function <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_shared_value_function.py>`__:
+   Also using PettingZoo, this example explores shared value functions among agents.
+   It demonstrates collaborative learning scenarios where agents collectively estimate a value function rather than individual policies.
+
+- `Rock-paper-scissors heuristic vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__:
+   Simulates a rock-paper-scissors game with one heuristic-driven agent and one learning agent.
+   It provides insights into performance when combining fixed and adaptive strategies in adversarial games.
+
+- `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__:
+   Sets up a rock-paper-scissors game where you train both agents to learn strategies on how to play against each other.
+   Useful for evaluating performance in simple adversarial settings.
+
+- `Self-play, league-based, with OpenSpiel <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_league_based_with_open_spiel.py>`__:
+   Uses OpenSpiel to demonstrate league-based self-play, where agents play against various
+   versions of themselves, frozen or in-training, to improve through competitive interaction.
+
+- `Self-play with OpenSpiel <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_with_open_spiel.py>`__:
+   Similar to the league-based self-play, but simpler. This script leverages OpenSpiel for two-player games, allowing agents to improve
+   through direct self-play without building a complex, structured league.
+
 
 Offline RL
-----------
+++++++++++
 
-- |old_stack| `How to run an offline RL experiment with CQL <https://github.com/ray-project/ray/tree/master/rllib/examples/offline_rl/offline_rl.py>`__:
-   Example showing how to run an offline RL training job using a historic-data JSON file.
-
-- |old_stack| `How to save experiences from an environment for offline RL <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/saving_experiences.py>`__:
-   Example of how to externally generate experience batches in RLlib-compatible format.
+- `Train with behavioral cloning (BC), Finetune with PPO <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py>`__:
+   Combines behavioral cloning pre-training with PPO fine-tuning, providing a two-phase
+   training strategy. Offline imitation learning as a first step followed by online reinforcement learning.
 
 
 Ray Serve and RLlib
--------------------
++++++++++++++++++++
 
-- |new_stack| `How to use a trained RLlib algorithm with Ray Serve <https://github.com/ray-project/ray/tree/master/rllib/examples/ray_serve/ray_serve_with_rllib.py>`__
-   This script offers a simple workflow for 1) training a policy with RLlib first, 2) creating a new policy 3) restoring its weights from the trained
-   one and serving the new policy with Ray Serve.
+- `Using Ray Serve with RLlib <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_serve/ray_serve_with_rllib.py>`__:
+   Integrates RLlib with `Ray Serve <https://docs.ray.io/en/latest/serve/index.html>`__, showcasing how to deploy trained
+   :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances as RESTful services. This setup is ideal for deploying models
+   in production environments with API-based interactions.
+
 
 Ray Tune and RLlib
-------------------
-- |new_stack| `How to define a custom progress reporter and use it with Ray Tune and RLlib <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_progress_reported.py>`__:
-   Example of how to write your own progress reporter (for a multi-agent experiment) and use it with Ray Tune and RLlib.
+++++++++++++++++++
 
-- |new_stack| `How to define and plug in your custom logger into Ray Tune and RLlib <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_logger.py>`__:
-   How to setup a custom Logger object in RLlib and use it with Ray Tune.
+- `Custom experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_experiment.py>`__:
+   Configures a custom experiment with `Ray Tune <https://docs.ray.io/en/latest/tune/index.html>`__, demonstrating advanced options
+   for custom training- and evaluation phases
 
-- |new_stack| `How to Custom tune experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_experiment.py>`__:
-   How to run a custom Ray Tune experiment with RLlib with custom training- and evaluation phases.
+- `Custom logger <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_logger.py>`__:
+   Shows how to implement a custom logger within `Ray Tune <https://docs.ray.io/en/latest/tune/index.html>`__,
+   allowing users to define specific logging behaviors and outputs during training.
+
+- `Custom progress reporter <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_progress_reporter.py>`__:
+   Demonstrates a custom progress reporter in `Ray Tune <https://docs.ray.io/en/latest/tune/index.html>`__, which enables
+   tracking and displaying specific training metrics or status updates in a customized format.
+
 
 RLModules
----------
++++++++++
 
-- |new_stack| `How to configure an autoregressive action distribution <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/autoregressive_actions.py>`__:
-   Learning with an auto-regressive action distribution (for example, two action components, where distribution of the second component depends on the first's actually sampled value).
+- `Action masking <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/action_masking_rl_module.py>`__:
+   Implements an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` with action masking, where certain disallowed actions are
+   masked based on parts of the observation dict, useful for environments with conditional action availability.
 
-- |old_stack| `How to train with parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/parametric_actions_cartpole.py>`__:
-   Example of how to handle variable-length or parametric action spaces.
-- |old_stack| `How to using the "Repeated" space of RLlib for variable lengths observations <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/complex_struct_space.py>`__:
-   How to use RLlib's `Repeated` space to handle variable length observations.
-- |old_stack| `How to write a custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/custom_keras_model.py>`__:
-   Example of using a custom Keras model.
-- |old_stack| `How to register a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
-   Example of defining and registering a custom model with a supervised loss.
-- |old_stack| `How to train with batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/batch_norm_model.py>`__:
-   Example of adding batch norm layers to a custom model.
-- |old_stack| `How to write a custom model with its custom API <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_api.py>`__:
-   Shows how to define a custom Model API in RLlib, such that it can be used inside certain algorithms.
-- |old_stack| `How to write a "trajectory ciew API" utilizing model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py>`__:
-   An example on how a model can use the trajectory view API to specify its own input.
-- |old_stack| `How to wrap MobileNetV2 into your RLlib model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/mobilenet_v2_with_lstm_models.py>`__:
-   Implementations of `tf.keras.applications.mobilenet_v2.MobileNetV2` and `torch.hub (mobilenet_v2)`-wrapping example models.
-- |old_stack| `How to setup a Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/neural_computer.py>`__:
-   Example of DeepMind's Differentiable Neural Computer for partially observable environments.
+- `Auto-regressive actions <https://github.com/ray-project/ray/blob/master/rllib/examples/actions/autoregressive_actions.py>`__:
+   :ref:`See here for more details <rllib-examples-overview-autoregressive-actions>`.
+
+- `Custom CNN-based RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__:
+   Demonstrates a custom CNN architecture realized as an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, enabling convolutional
+   feature extraction tailored to the environment's visual observations.
+
+- `Custom LSTM-based RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__:
+   Uses a custom LSTM within an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, allowing for temporal sequence processing,
+   beneficial for partially observable environments with sequential dependencies.
+
+- `Migrate ModelV2 to RLModule by config <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py>`__:
+   Shows how to migrate a ModelV2-based setup (old API stack) to the new API stack's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`,
+   using an (old API stack) :py:class:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig` instance.
+
+- `Migrate ModelV2 to RLModule by Policy Checkpoint <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py>`__:
+   Migrates a ModelV2 (old API stack) to the new API stack's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` by directly loading a
+   policy checkpoint, enabling smooth transitions to the new API stack while preserving learned parameters.
+
+- `Pretrain single-agent policy, then train in multi-agent Env <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/pretraining_single_agent_training_multi_agent.py>`__:
+   Demonstrates pretraining a single-agent model and transferring it to a multi-agent setting, useful for initializing
+   multi-agent scenarios with pre-trained policies.
 
 
-Tuned Examples
-++++++++++++++
+.. _rllib-tuned-examples-docs:
+
+Tuned examples
+--------------
 
 The `tuned examples <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__ folder
-contains python config files (yaml for the old API stack) that can be executed analogously to
-all other example scripts described here in order to run tuned learning experiments
-for the different algorithms and different environment types.
+contains python config files that you can execute analogously to all other example scripts described
+here to run tuned learning experiments for the different algorithms and environment types.
 
-For example, see this tuned Atari example for PPO, which learns to solve the Pong environment
-in roughly 5min. It can be run like this on a single g5.24xlarge (or g6.24xlarge) machine with
-4 GPUs and 96 CPUs:
+For example, see this `tuned Atari example for PPO <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/atari_ppo.py>`__,
+which learns to solve the Pong environment in roughly 5 minutes. You can run it as follows on a single
+g5.24xlarge or g6.24xlarge machine with 4 GPUs and 96 CPUs:
 
 .. code-block:: bash
 
     $ cd ray/rllib/tuned_examples/ppo
-    $ python atari_ppo.py --env ALE/Pong-v5 --num-gpus=4 --num-env-runners=95
+    $ python atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=95
 
-Note that some of the files in this folder are used for RLlib's daily or weekly
-release tests as well.
+Note that RLlib's daily or weekly release tests use some of the files in this folder as well.
 
 
-Community Examples
-++++++++++++++++++
-- |old_stack| `Arena AI <https://sites.google.com/view/arena-unity/home>`__:
+Community examples
+------------------
+
+.. note::
+
+    The community examples listed here all refer to the old API stack of RLlib.
+
+
+- `Arena AI <https://sites.google.com/view/arena-unity/home>`__:
    A General Evaluation Platform and Building Toolkit for Single/Multi-Agent Intelligence
    with RLlib-generated baselines.
-- |old_stack| `CARLA <https://github.com/layssi/Carla_Ray_Rlib>`__:
+- `CARLA <https://github.com/layssi/Carla_Ray_Rlib>`__:
    Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.
-- |old_stack| `The Emergence of Adversarial Communication in Multi-Agent Reinforcement Learning <https://arxiv.org/pdf/2008.02616.pdf>`__:
+- `The Emergence of Adversarial Communication in Multi-Agent Reinforcement Learning <https://arxiv.org/pdf/2008.02616.pdf>`__:
    Using Graph Neural Networks and RLlib to train multiple cooperative and adversarial agents to solve the
-   "cover the area"-problem, thereby learning how to best communicate (or - in the adversarial case - how to disturb communication) (`code <https://github.com/proroklab/adversarial_comms>`__).
-- |old_stack| `Flatland <https://flatland.aicrowd.com/intro.html>`__:
+   "cover the area"-problem, thereby learning how to best communicate or - in the adversarial case - how to disturb communication (`code <https://github.com/proroklab/adversarial_comms>`__).
+- `Flatland <https://flatland.aicrowd.com/intro.html>`__:
    A dense traffic simulating environment with RLlib-generated baselines.
-- |old_stack| `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
+- `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
    Example of setting up a multi-agent version of `GFootball <https://github.com/google-research>`__ with RLlib.
-- |old_stack| `mobile-env <https://github.com/stefanbschneider/mobile-env>`__:
+- `mobile-env <https://github.com/stefanbschneider/mobile-env>`__:
    An open, minimalist Gymnasium environment for autonomous coordination in wireless mobile networks.
    Includes an example notebook using Ray RLlib for multi-agent RL with mobile-env.
-- |old_stack| `Neural MMO <https://github.com/NeuralMMO/environment>`__:
+- `Neural MMO <https://github.com/NeuralMMO/environment>`__:
    A multiagent AI research environment inspired by Massively Multiplayer Online (MMO) role playing games –
    self-contained worlds featuring thousands of agents per persistent macrocosm, diverse skilling systems, local and global economies, complex emergent social structures,
    and ad-hoc high-stakes single and team based conflict.
-- |old_stack| `NeuroCuts <https://github.com/neurocuts/neurocuts>`__:
+- `NeuroCuts <https://github.com/neurocuts/neurocuts>`__:
    Example of building packet classification trees using RLlib / multi-agent in a bandit-like setting.
-- |old_stack| `NeuroVectorizer <https://github.com/ucb-bar/NeuroVectorizer>`__:
+- `NeuroVectorizer <https://github.com/ucb-bar/NeuroVectorizer>`__:
    Example of learning optimal LLVM vectorization compiler pragmas for loops in C and C++ codes using RLlib.
-- |old_stack| `Roboschool / SageMaker <https://github.com/aws/amazon-sagemaker-examples/tree/0cd3e45f425b529bf06f6155ca71b5e4bc515b9b/reinforcement_learning/rl_roboschool_ray>`__:
+- `Roboschool / SageMaker <https://github.com/aws/amazon-sagemaker-examples/tree/0cd3e45f425b529bf06f6155ca71b5e4bc515b9b/reinforcement_learning/rl_roboschool_ray>`__:
    Example of training robotic control policies in SageMaker with RLlib.
-- |old_stack| `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
+- `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.
-- |old_stack| `Simple custom environment for single RL with Ray and RLlib <https://github.com/lcipolina/Ray_tutorials/blob/main/RLLIB_Ray2_0.ipynb>`__:
+- `Simple custom environment for single RL with Ray and RLlib <https://github.com/lcipolina/Ray_tutorials/blob/main/RLLIB_Ray2_0.ipynb>`__:
    Create a custom environment and train a single agent RL using Ray 2.0 with Tune.
-- |old_stack| `StarCraft2 <https://github.com/oxwhirl/smac>`__:
+- `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
-- |old_stack| `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
+- `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
 
 
-Blog Posts
-++++++++++
+Blog posts
+----------
 
-- |old_stack| `Attention Nets and More with RLlib’s Trajectory View API <https://medium.com/distributed-computing-with-ray/attention-nets-and-more-with-rllibs-trajectory-view-api-d326339a6e65>`__:
-   Blog describing RLlib's new "trajectory view API" and how it enables implementations of GTrXL (attention net) architectures.
-- |old_stack| `Reinforcement Learning with RLlib in the Unity Game Engine <https://medium.com/distributed-computing-with-ray/reinforcement-learning-with-rllib-in-the-unity-game-engine-1a98080a7c0d>`__:
+.. note::
+
+    The blog posts listed here all refer to the old API stack of RLlib.
+
+
+- `Attention Nets and More with RLlib’s Trajectory View API <https://medium.com/distributed-computing-with-ray/attention-nets-and-more-with-rllibs-trajectory-view-api-d326339a6e65>`__:
+   Blog describing RLlib's new "trajectory view API" and how it enables implementations of GTrXL attention net architectures.
+- `Reinforcement Learning with RLlib in the Unity Game Engine <https://medium.com/distributed-computing-with-ray/reinforcement-learning-with-rllib-in-the-unity-game-engine-1a98080a7c0d>`__:
    How-To guide about connecting RLlib with the Unity3D game engine for running visual- and physics-based RL experiments.
-- |old_stack| `Lessons from Implementing 12 Deep RL Algorithms in TF and PyTorch <https://medium.com/distributed-computing-with-ray/lessons-from-implementing-12-deep-rl-algorithms-in-tf-and-pytorch-1b412009297d>`__:
+- `Lessons from Implementing 12 Deep RL Algorithms in TF and PyTorch <https://medium.com/distributed-computing-with-ray/lessons-from-implementing-12-deep-rl-algorithms-in-tf-and-pytorch-1b412009297d>`__:
    Discussion on how the Ray Team ported 12 of RLlib's algorithms from TensorFlow to PyTorch and the lessons learned.
-- |old_stack| `Scaling Multi-Agent Reinforcement Learning <http://bair.berkeley.edu/blog/2018/12/12/rllib>`__:
+- `Scaling Multi-Agent Reinforcement Learning <http://bair.berkeley.edu/blog/2018/12/12/rllib>`__:
    Blog post of a brief tutorial on multi-agent RL and its design in RLlib.
-- |old_stack| `Functional RL with Keras and TensorFlow Eager <https://medium.com/riselab/functional-rl-with-keras-and-tensorflow-eager-7973f81d6345>`__:
+- `Functional RL with Keras and TensorFlow Eager <https://medium.com/riselab/functional-rl-with-keras-and-tensorflow-eager-7973f81d6345>`__:
    Exploration of a functional paradigm for implementing reinforcement learning (RL) algorithms.

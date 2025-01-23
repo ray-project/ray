@@ -18,18 +18,18 @@ routes = dashboard_optional_utils.DashboardHeadRouteTable
     enable=env_bool(test_consts.TEST_MODULE_ENVIRONMENT_KEY, False)
 )
 class TestHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
         self._notified_agents = {}
         DataSource.agents.signal.append(self._update_notified_agents)
 
     async def _update_notified_agents(self, change):
         if change.old:
-            ip, port = change.old
-            self._notified_agents.pop(ip)
+            node_id, _ = change.old
+            self._notified_agents.pop(node_id)
         if change.new:
-            ip, ports = change.new
-            self._notified_agents[ip] = ports
+            node_id, (node_ip, http_port, grpc_port) = change.new
+            self._notified_agents[node_id] = (node_ip, http_port, grpc_port)
 
     @staticmethod
     def is_minimal_module():
@@ -84,7 +84,7 @@ class TestHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/test/http_get")
     async def get_url(self, req) -> aiohttp.web.Response:
         url = req.query.get("url")
-        result = await test_utils.http_get(self._dashboard_head.http_session, url)
+        result = await test_utils.http_get(self.http_session, url)
         return aiohttp.web.json_response(result)
 
     @routes.get("/test/aiohttp_cache/{sub_path}")

@@ -30,13 +30,9 @@
 
 // clang-format on
 
-namespace ray {
+using json = nlohmann::json;
 
-class MockInMemoryStoreClient : public gcs::InMemoryStoreClient {
- public:
-  explicit MockInMemoryStoreClient(instrumented_io_context &main_io_service)
-      : gcs::InMemoryStoreClient(main_io_service) {}
-};
+namespace ray {
 
 class GcsJobManagerTest : public ::testing::Test {
  public:
@@ -52,11 +48,11 @@ class GcsJobManagerTest : public ::testing::Test {
 
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    store_client_ = std::make_shared<MockInMemoryStoreClient>(io_service_);
+    store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
-    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
+    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
 
     // Mock client factory which abuses the "address" argument to return a
     // CoreWorkerClient whose number of running tasks equal to the address port. This is
@@ -83,7 +79,7 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
-  rpc::ClientFactoryFn client_factory_;
+  rpc::CoreWorkerClientFactoryFn client_factory_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
   std::string log_dir_;
@@ -105,14 +101,15 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                 log_dir_,
                 "warning",
                 false);
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
+                                     io_service_,
                                      client_factory_);
 
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   auto job_api_job_id = JobID::FromInt(100);

@@ -36,13 +36,14 @@ class ResourceManager:
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
     # when `ReservationOpResourceAllocator` is not enabled.
-    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION = 0.25
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_NO_RESERVATION = 0.25
 
     def __init__(
         self,
         topology: "Topology",
         options: ExecutionOptions,
         get_total_resources: Callable[[], ExecutionResources],
+        data_context: DataContext,
     ):
         self._topology = topology
         self._options = options
@@ -69,9 +70,8 @@ class ResourceManager:
         self._downstream_object_store_memory: Dict[PhysicalOperator, float] = {}
 
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
-        ctx = DataContext.get_current()
 
-        if ctx.op_resource_reservation_enabled:
+        if data_context.op_resource_reservation_enabled:
             # We'll enable memory reservation if all operators have
             # implemented accurate memory accounting.
             should_enable = all(
@@ -79,8 +79,18 @@ class ResourceManager:
             )
             if should_enable:
                 self._op_resource_allocator = ReservationOpResourceAllocator(
-                    self, ctx.op_resource_reservation_ratio
+                    self, data_context.op_resource_reservation_ratio
                 )
+
+        self._object_store_memory_limit_fraction = (
+            data_context.override_object_store_memory_limit_fraction
+            if data_context.override_object_store_memory_limit_fraction is not None
+            else (
+                self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
+                if self.op_resource_allocator_enabled()
+                else self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_NO_RESERVATION
+            )
+        )
 
     def _estimate_object_store_memory(self, op, state) -> int:
         # Don't count input refs towards dynamic memory usage, as they have been
@@ -127,6 +137,7 @@ class ResourceManager:
         for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`, `self._op_running_usages`,
             # and `self._op_pending_usages`.
+            op.update_resource_usage()
             op_usage = op.current_processor_usage()
             op_running_usage = op.running_processor_usage()
             op_pending_usage = op.pending_processor_usage()
@@ -197,11 +208,7 @@ class ResourceManager:
         default_limits = self._options.resource_limits
         exclude = self._options.exclude_resources
         total_resources = self._get_total_resources()
-        default_mem_fraction = (
-            self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
-            if self.op_resource_allocator_enabled()
-            else self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION
-        )
+        default_mem_fraction = self._object_store_memory_limit_fraction
         total_resources.object_store_memory *= default_mem_fraction
         self._global_limits = default_limits.min(total_resources).subtract(exclude)
         return self._global_limits
@@ -278,6 +285,11 @@ class OpResourceAllocator(ABC):
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         """Return the maximum bytes of pending task outputs can be read for
         the given operator. None means no limit."""
+        ...
+
+    @abstractmethod
+    def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
+        """Return the budget for the given operator."""
         ...
 
 
@@ -493,6 +505,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         res = op.incremental_resource_usage().satisfies_limit(budget)
         return res
 
+    def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
+        return self._op_budgets[op]
+
     def _should_unblock_streaming_output_backpressure(
         self, op: PhysicalOperator
     ) -> bool:
@@ -556,8 +571,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def _get_downstream_eligible_ops(
         self, op: PhysicalOperator
     ) -> Iterable[PhysicalOperator]:
-        """Get the downstream eligible operators of the given operator, ignoring intermediate
-        ineligible operators.
+        """Get the downstream eligible operators of the given operator, ignoring
+        intermediate ineligible operators.
 
         E.g.,
           - "cur_map->downstream_map" will return [downstream_map].

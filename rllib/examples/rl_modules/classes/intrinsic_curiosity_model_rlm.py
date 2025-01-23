@@ -47,7 +47,6 @@ class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
             import torch
 
             from ray.rllib.core import Columns
-            from ray.rllib.core.rl_module.rl_module import RLModuleConfig
             from ray.rllib.examples.rl_modules.classes.intrinsic_curiosity_model_rlm import (  # noqa
                 IntrinsicCuriosityModel
             )
@@ -58,11 +57,10 @@ class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
             f = 25  # feature dim
 
             # Construct the RLModule.
-            rl_module_config = RLModuleConfig(
+            icm_net = IntrinsicCuriosityModel(
                 observation_space=gym.spaces.Box(-1.0, 1.0, (O,), np.float32),
                 action_space=gym.spaces.Discrete(A),
             )
-            icm_net = IntrinsicCuriosityModel(rl_module_config)
 
             # Create some dummy input.
             obs = torch.from_numpy(
@@ -92,9 +90,8 @@ class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
 
     @override(TorchRLModule)
     def setup(self):
-        # Get the ICM achitecture settings from the RLModuleConfig's (self.config)
-        # `model_config_dict` property:
-        cfg = self.config.model_config_dict
+        # Get the ICM achitecture settings from the `model_config` attribute:
+        cfg = self.model_config
 
         feature_dim = cfg.get("feature_dim", 288)
 
@@ -102,7 +99,7 @@ class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
         layers = []
         dense_layers = cfg.get("feature_net_hiddens", (256, 256))
         # `in_size` is the observation space (assume a simple Box(1D)).
-        in_size = self.config.observation_space.shape[0]
+        in_size = self.observation_space.shape[0]
         for out_size in dense_layers:
             layers.append(nn.Linear(in_size, out_size))
             if cfg.get("feature_net_activation") not in [None, "linear"]:
@@ -127,7 +124,7 @@ class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
                 )
             in_size = out_size
         # Last feature layer of n nodes (action space).
-        layers.append(nn.Linear(in_size, self.config.action_space.n))
+        layers.append(nn.Linear(in_size, self.action_space.n))
         self._inverse_net = nn.Sequential(*layers)
 
         # Build the forward model (predicting the next observation from current one and
@@ -135,7 +132,7 @@ class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
         layers = []
         dense_layers = cfg.get("forward_net_hiddens", (256,))
         # `in_size` is the feature dim + action space (one-hot).
-        in_size = feature_dim + self.config.action_space.n
+        in_size = feature_dim + self.action_space.n
         for out_size in dense_layers:
             layers.append(nn.Linear(in_size, out_size))
             if cfg.get("forward_net_activation") not in [None, "linear"]:
@@ -166,9 +163,7 @@ class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
             torch.cat(
                 [
                     phi,
-                    one_hot(
-                        batch[Columns.ACTIONS].long(), self.config.action_space
-                    ).float(),
+                    one_hot(batch[Columns.ACTIONS].long(), self.action_space).float(),
                 ],
                 dim=-1,
             )
