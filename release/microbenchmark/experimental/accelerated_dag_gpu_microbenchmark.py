@@ -139,7 +139,7 @@ def exec_ray_dag(
     use_cgraph=True,
     static_shape=False,
     direct_return=False,
-    num_executions=5,
+    num_executions=1,
     data_transfer=False,
 ):
     # Test torch.Tensor sent between actors.
