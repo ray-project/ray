@@ -3,21 +3,52 @@
 Quickstart
 ==========
 
-Learn about :class:`Dataset <ray.data.Dataset>` and the capabilities it provides.
+This page introduces the :class:`Dataset <ray.data.Dataset>` concept and the capabilities it provides.
 
 This guide provides a lightweight introduction to:
 
+* :ref:`Key Concepts: Datasets and Blocks <data_key_concepts>`
 * :ref:`Loading data <loading_key_concept>`
 * :ref:`Transforming data <transforming_key_concept>`
 * :ref:`Consuming data <consuming_key_concept>`
 * :ref:`Saving data <saving_key_concept>`
+* :ref:`Streaming Execution Model <streaming_execution_model>`
 
-Datasets
---------
+.. _data_key_concepts:
 
-Ray Data's main abstraction is a :class:`Dataset <ray.data.Dataset>`, which
-is a distributed data collection. Datasets are designed for machine learning, and they
-can represent data collections that exceed a single machine's memory.
+Key Concepts: Datasets and Blocks
+---------------------------------
+
+There are two main concepts in Ray Data:
+
+* :class:`Dataset <ray.data.Dataset>`
+* :ref:`Blocks <blocks_key_concept>`
+
+:class:`Dataset <ray.data.Dataset>` is the main user-facing Python API. It represents a
+distributed data collection and defines data loading and processing operations. You
+typically use the API in this way:
+
+1. Create a Dataset from external storage or in-memory data.
+2. Apply transformations to the data.
+3. Write the outputs to external storage or feed the outputs to training workers.
+
+The Dataset API is lazy, meaning that operations are not executed until you call an action
+like :meth:`~ray.data.Dataset.show`. This allows Ray Data to optimize the execution plan
+and execute operations in parallel.
+
+A *block* is the basic unit of data that Ray Data operates on. A block is a contiguous
+subset of rows from a dataset.
+
+The following figure visualizes a dataset with three blocks, each holding 1000 rows.
+Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
+(which is usually the driver) and stores the blocks as objects in Ray's shared-memory
+:ref:`object store <objects-in-ray>`.
+
+.. image:: images/dataset-arch.svg
+
+..
+  https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
+
 
 .. _loading_key_concept:
 
@@ -137,3 +168,46 @@ or remote filesystems.
 
 
 To learn more about saving dataset contents, see :ref:`Saving data <saving-data>`.
+
+.. _streaming_execution_model:
+
+Streaming Execution Model
+-------------------------
+
+Ray Data uses a streaming execution model to efficiently process large datasets.
+Rather than materializing the entire dataset in memory at once,
+Ray Data can process data in a streaming fashion through a pipeline of operations.
+
+Here's how it works:
+
+.. code-block:: python
+
+    import ray
+
+    # Create a dataset with 1K rows
+    ds = ray.data.range(1_000)
+
+    # Define a pipeline of operations
+    ds = ds.map(lambda x: x * 2)
+    ds = ds.filter(lambda x: x % 4 == 0)
+
+    # Data starts flowing when you call an action like show()
+    ds.show(5)
+
+Key benefits of streaming execution include:
+
+* **Memory Efficient**: Processes data in chunks rather than loading everything into memory
+* **Pipeline Parallelism**: Different stages of the pipeline can execute concurrently
+* **Automatic Memory Management**: Ray Data automatically spills data to disk if memory pressure is high
+* **Lazy Evaluation**: Transformations are not executed until an action triggers the pipeline
+
+The streaming model allows Ray Data to efficiently handle datasets much larger than memory while maintaining high performance through parallel execution.
+
+.. note::
+   Operations like :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>` require materializing data, which may impact memory usage for very large datasets.
+
+
+Deep Dive into Ray Data
+-----------------------
+
+To learn more about Ray Data, see :ref:`Ray Data Internals <data_internals>`.
