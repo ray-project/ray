@@ -459,7 +459,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
 std::unique_ptr<BundleSchedulingContext>
 GcsPlacementGroupScheduler::CreateSchedulingContext(
     const PlacementGroupID &placement_group_id) {
-  auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   committed_bundle_location_index_.AddNodes(alive_nodes);
   auto bundle_locations =
       committed_bundle_location_index_.GetBundleLocations(placement_group_id);
@@ -525,7 +525,7 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
   // previous lifecycle. In this case, GCS will send a list of bundle ids that
   // are still needed. And Raylet will release other bundles. If the node is
   // dead, there is no need to send the request of release unused bundles.
-  const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   for (const auto &alive_node : alive_nodes) {
     const auto &node_id = alive_node.first;
     nodes_of_releasing_unused_bundles_.insert(node_id);
@@ -555,7 +555,7 @@ void GcsPlacementGroupScheduler::Initialize(
   // it will get an empty bundle set when raylet fo occurred after GCS server restart.
 
   // Init the container that contains the map relation between node and bundle.
-  auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   committed_bundle_location_index_.AddNodes(alive_nodes);
 
   for (const auto &group : committed_bundles) {

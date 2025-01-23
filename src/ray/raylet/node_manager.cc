@@ -325,6 +325,9 @@ NodeManager::NodeManager(
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
   };
+  auto get_shared_ptr_node_info = [this](const NodeID &node_id) {
+    return std::make_shared<rpc::GcsNodeInfo>(*gcs_client_->Nodes().Get(node_id));
+  };
   auto announce_infeasible_task = [this](const RayTask &task) {
     PublishInfeasibleTaskError(task);
   };
@@ -360,7 +363,7 @@ NodeManager::NodeManager(
   cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
       self_node_id_,
       *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
-      get_node_info_func,
+      get_shared_ptr_node_info,
       announce_infeasible_task,
       *local_task_manager_);
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(

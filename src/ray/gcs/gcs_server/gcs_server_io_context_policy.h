@@ -19,6 +19,7 @@
 #include <type_traits>
 
 #include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/util/array.h"
@@ -42,6 +43,9 @@ struct GcsServerIOContextPolicy {
     } else if constexpr (std::is_same_v<T, syncer::RaySyncer>) {
       return IndexOf("ray_syncer_io_context");
     } else if constexpr (std::is_same_v<T, GcsInternalKVManager>) {
+      // default io context
+      return -1;
+    } else if constexpr (std::is_same_v<T, GcsNodeManager>) {
       // default io context
       return -1;
     } else {

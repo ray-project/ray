@@ -150,7 +150,7 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const {
-  auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   if (alive_nodes.empty()) {
     return nullptr;
   }
@@ -236,7 +236,7 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id,
     node_to_actors_when_leasing_.erase(node_it);
   }
 
-  const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   const auto &iter = alive_nodes.find(node_id);
   if (iter != alive_nodes.end()) {
     const auto &node_info = iter->second;
@@ -279,7 +279,7 @@ void GcsActorScheduler::ReleaseUnusedActorWorkers(
   // And Raylet will release other leased workers.
   // If the node is dead, there is no need to send the request of release unused
   // workers.
-  const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   for (const auto &alive_node : alive_nodes) {
     const auto &node_id = alive_node.first;
     nodes_of_releasing_unused_workers_.insert(node_id);

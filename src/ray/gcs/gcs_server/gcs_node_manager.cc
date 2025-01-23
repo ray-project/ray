@@ -42,7 +42,7 @@ GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
   export_event_write_enabled_ = IsExportAPIEnabledNode();
 }
 
-void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
+void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info) const {
   /// Write node_info as a export node event if
   /// enable_export_api_write() is enabled.
   if (!export_event_write_enabled_) {
@@ -107,9 +107,12 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     // 2. happens when a new head node is started
 
     std::vector<NodeID> head_nodes;
-    for (auto &node : alive_nodes_) {
-      if (node.second->is_head_node()) {
-        head_nodes.push_back(node.first);
+    {
+      absl::ReaderMutexLock lock{&alive_nodes_mutex_};
+      for (auto &[node_id, node_info] : alive_nodes_) {
+        if (node_info->is_head_node()) {
+          head_nodes.push_back(node_id);
+        }
       }
     }
 
@@ -271,14 +274,32 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
       request.filters().has_state() ? std::make_optional(request.filters().state())
                                     : std::nullopt;
   if (filter_state == std::nullopt) {
-    add_to_response(alive_nodes_);
-    add_to_response(dead_nodes_);
+    {
+      absl::ReaderMutexLock lock(&alive_nodes_mutex_);
+      add_to_response(alive_nodes_);
+    }
+    {
+      absl::ReaderMutexLock lock(&dead_nodes_mutex_);
+      add_to_response(dead_nodes_);
+    }
   } else if (filter_state == rpc::GcsNodeInfo::ALIVE) {
-    add_to_response(alive_nodes_);
-    num_filtered += dead_nodes_.size();
+    {
+      absl::ReaderMutexLock lock(&alive_nodes_mutex_);
+      add_to_response(alive_nodes_);
+    }
+    {
+      absl::ReaderMutexLock lock(&dead_nodes_mutex_);
+      num_filtered += dead_nodes_.size();
+    }
   } else if (filter_state == rpc::GcsNodeInfo::DEAD) {
-    add_to_response(dead_nodes_);
-    num_filtered += alive_nodes_.size();
+    {
+      absl::ReaderMutexLock lock(&dead_nodes_mutex_);
+      add_to_response(dead_nodes_);
+    }
+    {
+      absl::ReaderMutexLock lock(&alive_nodes_mutex_);
+      num_filtered += alive_nodes_.size();
+    }
   } else {
     Status s = Status::InvalidArgument(
         absl::StrCat("Unexpected filter: state = ", *filter_state));
@@ -286,7 +307,11 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
     return;
   }
-  reply->set_total(alive_nodes_.size() + dead_nodes_.size());
+  {
+    absl::ReaderMutexLock lock(&alive_nodes_mutex_);
+    absl::ReaderMutexLock lock_dead(&dead_nodes_mutex_);
+    reply->set_total(alive_nodes_.size() + dead_nodes_.size());
+  }
   reply->set_num_filtered(num_filtered);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
@@ -294,11 +319,11 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
 
 absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
     const ray::NodeID &node_id) const {
+  absl::ReaderMutexLock lock(&alive_nodes_mutex_);
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     return {};
   }
-
   return iter->second;
 }
 
@@ -332,15 +357,22 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
 
 void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto node_id = NodeID::FromBinary(node->node_id());
-  auto iter = alive_nodes_.find(node_id);
-  if (iter == alive_nodes_.end()) {
+  bool contains_node_id = false;
+  {
+    absl::ReaderMutexLock lock(&alive_nodes_mutex_);
+    contains_node_id = alive_nodes_.contains(node_id);
+  }
+  if (!contains_node_id) {
     auto node_addr =
         node->node_manager_address() + ":" + std::to_string(node->node_manager_port());
     node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
-    alive_nodes_.emplace(node_id, node);
+    {
+      absl::WriterMutexLock lock(&alive_nodes_mutex_);
+      alive_nodes_.emplace(node_id, node);
+    }
     // Notify all listeners.
-    for (auto &listener : node_added_listeners_) {
-      listener(node);
+    if (node_added_listener_.has_value()) {
+      node_added_listener_->Post("GcsServer.NodeAddedListener", std::move(node));
     }
   }
 }
@@ -371,10 +403,17 @@ void GcsNodeManager::SetNodeDraining(
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     const ray::NodeID &node_id, const rpc::NodeDeathInfo &node_death_info) {
   std::shared_ptr<rpc::GcsNodeInfo> removed_node;
-  auto iter = alive_nodes_.find(node_id);
-  if (iter != alive_nodes_.end()) {
-    removed_node = std::move(iter->second);
-
+  bool contains_node_id = false;
+  {
+    absl::WriterMutexLock lock(&alive_nodes_mutex_);
+    auto iter = alive_nodes_.find(node_id);
+    contains_node_id = iter != alive_nodes_.end();
+    if (contains_node_id) {
+      removed_node = iter->second;
+      alive_nodes_.erase(iter);
+    }
+  }
+  if (contains_node_id) {
     // Set node death info.
     auto death_info = removed_node->mutable_death_info();
     death_info->CopyFrom(node_death_info);
@@ -385,8 +424,6 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
         << ", death message = " << death_info->reason_message();
     // Record stats that there's a new removed node.
     stats::NodeFailureTotal.Record(1);
-    // Remove from alive nodes.
-    alive_nodes_.erase(iter);
     node_map_.left.erase(node_id);
     // Remove from draining nodes if present.
     draining_nodes_.erase(node_id);
@@ -415,8 +452,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     }
 
     // Notify all listeners.
-    for (auto &listener : node_removed_listeners_) {
-      listener(removed_node);
+    if (node_removed_listener_.has_value()) {
+      node_removed_listener_->Post("GcsServer.RemovedNodeListener", removed_node);
     }
   }
   return removed_node;
@@ -472,6 +509,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
       raylet_client->NotifyGCSRestart(nullptr);
     } else if (node_info.state() == rpc::GcsNodeInfo::DEAD) {
+      absl::WriterMutexLock lock(&dead_nodes_mutex_);
       dead_nodes_.emplace(node_id, std::make_shared<rpc::GcsNodeInfo>(node_info));
       sorted_dead_node_list_.emplace_back(node_id, node_info.end_time_ms());
     }
@@ -483,6 +521,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
 }
 
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
+  absl::WriterMutexLock lock(&dead_nodes_mutex_);
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
     const auto &node_id = sorted_dead_node_list_.front().first;
     RAY_CHECK_OK(
@@ -493,6 +532,31 @@ void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) 
   auto node_id = NodeID::FromBinary(node->node_id());
   dead_nodes_.emplace(node_id, node);
   sorted_dead_node_list_.emplace_back(node_id, node->end_time_ms());
+}
+
+void GcsNodeManager::UpdateNodeResourceUsage(
+    NodeID node_id,
+    int64_t idle_duration_ms,
+    google::protobuf::RepeatedPtrField<std::string> node_activity,
+    bool is_draining) {
+  absl::WriterMutexLock lock(&alive_nodes_mutex_);
+  auto iter = alive_nodes_.find(node_id);
+  if (iter != alive_nodes_.end()) {
+    auto node_info_replace = std::make_shared<rpc::GcsNodeInfo>(*iter->second);
+    alive_nodes_.erase(iter);
+    auto *snapshot = node_info_replace->mutable_state_snapshot();
+    if (idle_duration_ms > 0) {
+      snapshot->set_state(rpc::NodeSnapshot::IDLE);
+      snapshot->set_idle_duration_ms(idle_duration_ms);
+    } else {
+      snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
+      *snapshot->mutable_node_activity() = std::move(node_activity);
+    }
+    if (is_draining) {
+      snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+    }
+    alive_nodes_.emplace(node_id, std::move(node_info_replace));
+  }
 }
 
 std::string GcsNodeManager::DebugString() const {

@@ -52,7 +52,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ClusterTaskManager(
       const NodeID &self_node_id,
       ClusterResourceScheduler &cluster_resource_scheduler,
-      internal::NodeInfoGetter get_node_info,
+      std::function<std::shared_ptr<rpc::GcsNodeInfo>(NodeID)> get_node_info,
       std::function<void(const RayTask &)> announce_infeasible_task,
       ILocalTaskManager &local_task_manager,
       std::function<int64_t(void)> get_time_ms = []() {
@@ -164,7 +164,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ClusterResourceScheduler &cluster_resource_scheduler_;
 
   /// Function to get the node information of a given node id.
-  internal::NodeInfoGetter get_node_info_;
+  std::function<std::shared_ptr<rpc::GcsNodeInfo>(NodeID)> get_node_info_;
   /// Function to announce infeasible task to GCS.
   std::function<void(const RayTask &)> announce_infeasible_task_;
 

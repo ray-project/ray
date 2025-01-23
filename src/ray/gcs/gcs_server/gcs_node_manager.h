@@ -125,33 +125,31 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Get all alive nodes.
   ///
   /// \return all alive nodes.
-  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllAliveNodes()
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> GetAllAliveNodes()
       const {
+    absl::ReaderMutexLock lock(&alive_nodes_mutex_);
     return alive_nodes_;
   }
 
   /// Get all dead nodes.
-  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllDeadNodes()
-      const {
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> GetAllDeadNodes() const {
+    absl::ReaderMutexLock lock(&dead_nodes_mutex_);
     return dead_nodes_;
   }
 
   /// Add listener to monitor the remove action of nodes.
   ///
   /// \param listener The handler which process the remove of nodes.
-  void AddNodeRemovedListener(
-      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
-    RAY_CHECK(listener);
-    node_removed_listeners_.emplace_back(std::move(listener));
+  void SetNodeRemovedListener(
+      Postable<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
+    node_removed_listener_.emplace(std::move(listener));
   }
 
   /// Add listener to monitor the add action of nodes.
   ///
   /// \param listener The handler which process the add of nodes.
-  void AddNodeAddedListener(
-      std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
-    RAY_CHECK(listener);
-    node_added_listeners_.emplace_back(std::move(listener));
+  void SetNodeAddedListener(Postable<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
+    node_added_listener_.emplace(std::move(listener));
   }
 
   /// Initialize with the gcs tables data synchronously.
@@ -167,6 +165,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// This is technically not draining a node. It should be just called "kill node".
   virtual void DrainNode(const NodeID &node_id);
 
+  void UpdateNodeResourceUsage(
+      NodeID node_id,
+      int64_t idle_duration_ms,
+      google::protobuf::RepeatedPtrField<std::string> node_activity,
+      bool is_draining);
+
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
@@ -181,7 +185,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \return The inferred death info of the node.
   rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id);
 
-  void WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const;
+  void WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info) const;
 
   // Verify if export events should be written for EXPORT_NODE source types
   bool IsExportAPIEnabledNode() const {
@@ -233,25 +237,29 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     }
   }
 
+  /// Mutex to protect alive_nodes_
+  mutable absl::Mutex alive_nodes_mutex_;
   /// Alive nodes.
-  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_
+      ABSL_GUARDED_BY(alive_nodes_mutex_);
   /// Draining nodes.
   /// This map is used to store the nodes which have received the drain request.
   /// Invariant: its keys should alway be a subset of the keys of `alive_nodes_`,
   /// and entry in it should be removed whenever a node is removed from `alive_nodes_`.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::autoscaler::DrainNodeRequest>>
       draining_nodes_;
+  /// Mutex to protect dead_nodes_
+  mutable absl::Mutex dead_nodes_mutex_;
   /// Dead nodes.
-  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_
+      ABSL_GUARDED_BY(dead_nodes_mutex_);
   /// The nodes are sorted according to the timestamp, and the oldest is at the head of
   /// the deque.
   std::deque<std::pair<NodeID, int64_t>> sorted_dead_node_list_;
-  /// Listeners which monitors the addition of nodes.
-  std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
-      node_added_listeners_;
-  /// Listeners which monitors the removal of nodes.
-  std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
-      node_removed_listeners_;
+  /// Listener which monitors the addition of nodes.
+  std::optional<Postable<void(std::shared_ptr<rpc::GcsNodeInfo>)>> node_added_listener_;
+  /// Listener which monitors the removal of nodes.
+  std::optional<Postable<void(std::shared_ptr<rpc::GcsNodeInfo>)>> node_removed_listener_;
   /// A publisher for publishing gcs messages.
   GcsPublisher *gcs_publisher_;
   /// Storage for GCS tables.

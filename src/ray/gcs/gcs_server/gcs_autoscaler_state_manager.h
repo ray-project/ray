@@ -29,6 +29,9 @@ class GcsNodeManager;
 class GcsPlacementGroupManager;
 class GcsResourceManager;
 
+using SetNodeDrainingPostable =
+    Postable<void(const NodeID &, std::shared_ptr<rpc::autoscaler::DrainNodeRequest>)>;
+
 class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
  public:
   GcsAutoscalerStateManager(std::string session_name,
@@ -37,7 +40,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
                             const GcsPlacementGroupManager &gcs_placement_group_manager,
                             rpc::NodeManagerClientPool &raylet_client_pool,
                             InternalKVInterface &kv,
-                            instrumented_io_context &io_context);
+                            instrumented_io_context &io_context,
+                            SetNodeDrainingPostable set_node_draining_postable);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -197,6 +201,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
       node_resource_info_;
 
   ThreadChecker thread_checker_;
+
+  SetNodeDrainingPostable set_node_draining_postable_;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
 };

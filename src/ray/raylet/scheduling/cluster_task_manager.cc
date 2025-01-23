@@ -27,7 +27,7 @@ namespace raylet {
 ClusterTaskManager::ClusterTaskManager(
     const NodeID &self_node_id,
     ClusterResourceScheduler &cluster_resource_scheduler,
-    internal::NodeInfoGetter get_node_info,
+    std::function<std::shared_ptr<rpc::GcsNodeInfo>(NodeID)> get_node_info,
     std::function<void(const RayTask &)> announce_infeasible_task,
     ILocalTaskManager &local_task_manager,
     std::function<int64_t(void)> get_time_ms)
@@ -396,11 +396,14 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
   RAY_CHECK(node_info_ptr)
       << "Spilling back to a node manager, but no GCS info found for node "
       << spillback_to;
-  auto reply = work->reply;
-  reply->mutable_retry_at_raylet_address()->set_ip_address(
-      node_info_ptr->node_manager_address());
-  reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
-  reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+  if (node_info_ptr) {
+    auto reply = work->reply;
+    reply->mutable_retry_at_raylet_address()->set_ip_address(
+        node_info_ptr->node_manager_address());
+    reply->mutable_retry_at_raylet_address()->set_port(
+        node_info_ptr->node_manager_port());
+    reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+  }
 
   send_reply_callback();
 }

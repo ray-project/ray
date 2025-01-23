@@ -287,30 +287,30 @@ void GcsServer::Stop() {
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_node_manager_ =
-      std::make_unique<GcsNodeManager>(gcs_publisher_.get(),
-                                       gcs_table_storage_.get(),
-                                       io_context_provider_.GetDefaultIOContext(),
-                                       raylet_client_pool_.get(),
-                                       rpc_server_.GetClusterId());
+  gcs_node_manager_ = std::make_unique<GcsNodeManager>(
+      gcs_publisher_.get(),
+      gcs_table_storage_.get(),
+      io_context_provider_.GetIOContext<GcsNodeManager>(),
+      raylet_client_pool_.get(),
+      rpc_server_.GetClusterId());
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
   node_info_service_ = std::make_unique<rpc::NodeInfoGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *gcs_node_manager_);
+      io_context_provider_.GetIOContext<GcsNodeManager>(), *gcs_node_manager_);
   rpc_server_.RegisterService(*node_info_service_);
 }
 
 void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_node_manager_);
-  auto node_death_callback = [this](const NodeID &node_id) {
-    this->io_context_provider_.GetDefaultIOContext().post(
-        [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id, nullptr); },
-        "GcsServer.NodeDeathCallback");
-  };
+  auto node_death_postable =
+      Postable<void(const NodeID &)>{[this](const NodeID &node_id) {
+                                       gcs_node_manager_->OnNodeFailure(node_id, nullptr);
+                                     },
+                                     io_context_provider_.GetIOContext<GcsNodeManager>()};
 
   gcs_healthcheck_manager_ = GcsHealthCheckManager::Create(
-      io_context_provider_.GetDefaultIOContext(), node_death_callback);
+      io_context_provider_.GetDefaultIOContext(), std::move(node_death_postable));
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
       rpc::Address remote_address;
@@ -325,18 +325,27 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(cluster_resource_scheduler_ && cluster_task_manager_);
+  auto update_node_resource_usage_postable = UpdateNodeResourceUsagePostable{
+      [this](NodeID node_id,
+             int64_t idle_duration_ms,
+             google::protobuf::RepeatedPtrField<std::string> node_activity,
+             bool is_draining) {
+        gcs_node_manager_->UpdateNodeResourceUsage(
+            node_id, idle_duration_ms, std::move(node_activity), is_draining);
+      },
+      io_context_provider_.GetIOContext<GcsNodeManager>()};
   gcs_resource_manager_ = std::make_unique<GcsResourceManager>(
       io_context_provider_.GetDefaultIOContext(),
       cluster_resource_scheduler_->GetClusterResourceManager(),
-      *gcs_node_manager_,
+      update_node_resource_usage_postable,
       kGCSNodeID,
       cluster_task_manager_.get());
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
   // Register service.
-  node_resource_info_service_.reset(new rpc::NodeResourceInfoGrpcService(
-      io_context_provider_.GetDefaultIOContext(), *gcs_resource_manager_));
+  node_resource_info_service_ = std::make_unique<rpc::NodeResourceInfoGrpcService>(
+      io_context_provider_.GetDefaultIOContext(), *gcs_resource_manager_);
   rpc_server_.RegisterService(*node_resource_info_service_);
 
   periodical_runner_->RunFnPeriodically(
@@ -397,16 +406,21 @@ void GcsServer::InitClusterResourceScheduler() {
 
 void GcsServer::InitClusterTaskManager() {
   RAY_CHECK(cluster_resource_scheduler_);
-  cluster_task_manager_ = std::make_unique<ClusterTaskManager>(
-      kGCSNodeID,
-      *cluster_resource_scheduler_,
-      /*get_node_info=*/
-      [this](const NodeID &node_id) {
-        auto node = gcs_node_manager_->GetAliveNode(node_id);
-        return node.has_value() ? node.value().get() : nullptr;
-      },
-      /*announce_infeasible_task=*/nullptr,
-      /*local_task_manager=*/local_task_manager_);
+  std::function<std::shared_ptr<rpc::GcsNodeInfo>(NodeID)> get_node_info =
+      [this](NodeID node_id) -> std::shared_ptr<rpc::GcsNodeInfo> {
+    auto node = gcs_node_manager_->GetAliveNode(node_id);
+    std::shared_ptr<rpc::GcsNodeInfo> node_ptr;
+    if (node.has_value()) {
+      node_ptr = node.value();
+    }
+    return node_ptr;
+  };
+  cluster_task_manager_ =
+      std::make_unique<ClusterTaskManager>(kGCSNodeID,
+                                           *cluster_resource_scheduler_,
+                                           /*get_node_info=*/get_node_info,
+                                           /*announce_infeasible_task=*/nullptr,
+                                           /*local_task_manager=*/local_task_manager_);
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
@@ -698,6 +712,12 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
        },
        io_context_provider_.GetDefaultIOContext()});
 
+  auto set_node_draining_postable = SetNodeDrainingPostable{
+      [this](const NodeID &node_id,
+             std::shared_ptr<rpc::autoscaler::DrainNodeRequest> request) {
+        return gcs_node_manager_->SetNodeDraining(node_id, std::move(request));
+      },
+      io_context_provider_.GetIOContext<GcsNodeManager>()};
   gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
       config_.session_name,
       *gcs_node_manager_,
@@ -705,7 +725,8 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       *gcs_placement_group_manager_,
       *raylet_client_pool_,
       kv_manager_->GetInstance(),
-      io_context_provider_.GetDefaultIOContext());
+      io_context_provider_.GetDefaultIOContext(),
+      set_node_draining_postable);
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
 
   autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(
@@ -724,45 +745,47 @@ void GcsServer::InitGcsTaskManager() {
 
 void GcsServer::InstallEventListeners() {
   // Install node event listeners.
-  gcs_node_manager_->AddNodeAddedListener(
-      [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
-        // Because a new node has been added, we need to try to schedule the pending
-        // placement groups and the pending actors.
-        auto node_id = NodeID::FromBinary(node->node_id());
-        gcs_resource_manager_->OnNodeAdd(*node);
-        gcs_placement_group_manager_->OnNodeAdd(node_id);
-        gcs_actor_manager_->SchedulePendingActors();
-        gcs_autoscaler_state_manager_->OnNodeAdd(*node);
-        rpc::Address address;
-        address.set_raylet_id(node->node_id());
-        address.set_ip_address(node->node_manager_address());
-        address.set_port(node->node_manager_port());
+  gcs_node_manager_->SetNodeAddedListener(
+      {[this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+         // Because a new node has been added, we need to try to schedule the pending
+         // placement groups and the pending actors.
+         auto node_id = NodeID::FromBinary(node->node_id());
+         gcs_resource_manager_->OnNodeAdd(*node);
+         gcs_placement_group_manager_->OnNodeAdd(node_id);
+         gcs_actor_manager_->SchedulePendingActors();
+         gcs_autoscaler_state_manager_->OnNodeAdd(*node);
+         rpc::Address address;
+         address.set_raylet_id(node->node_id());
+         address.set_ip_address(node->node_manager_address());
+         address.set_port(node->node_manager_port());
 
-        auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
+         auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
 
-        if (gcs_healthcheck_manager_) {
-          RAY_CHECK(raylet_client != nullptr);
-          auto channel = raylet_client->GetChannel();
-          RAY_CHECK(channel != nullptr);
-          gcs_healthcheck_manager_->AddNode(node_id, channel);
-        }
-        cluster_task_manager_->ScheduleAndDispatchTasks();
-      });
-  gcs_node_manager_->AddNodeRemovedListener(
-      [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
-        auto node_id = NodeID::FromBinary(node->node_id());
-        const auto node_ip_address = node->node_manager_address();
-        // All of the related placement groups and actors should be reconstructed when a
-        // node is removed from the GCS.
-        gcs_resource_manager_->OnNodeDead(node_id);
-        gcs_placement_group_manager_->OnNodeDead(node_id);
-        gcs_actor_manager_->OnNodeDead(node, node_ip_address);
-        gcs_job_manager_->OnNodeDead(node_id);
-        raylet_client_pool_->Disconnect(node_id);
-        gcs_healthcheck_manager_->RemoveNode(node_id);
-        pubsub_handler_->RemoveSubscriberFrom(node_id.Binary());
-        gcs_autoscaler_state_manager_->OnNodeDead(node_id);
-      });
+         if (gcs_healthcheck_manager_) {
+           RAY_CHECK(raylet_client != nullptr);
+           auto channel = raylet_client->GetChannel();
+           RAY_CHECK(channel != nullptr);
+           gcs_healthcheck_manager_->AddNode(node_id, channel);
+         }
+         cluster_task_manager_->ScheduleAndDispatchTasks();
+       },
+       io_context_provider_.GetDefaultIOContext()});
+  gcs_node_manager_->SetNodeRemovedListener(
+      {[this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+         auto node_id = NodeID::FromBinary(node->node_id());
+         const auto node_ip_address = node->node_manager_address();
+         // All of the related placement groups and actors should be reconstructed when a
+         // node is removed from the GCS.
+         gcs_resource_manager_->OnNodeDead(node_id);
+         gcs_placement_group_manager_->OnNodeDead(node_id);
+         gcs_actor_manager_->OnNodeDead(node, node_ip_address);
+         gcs_job_manager_->OnNodeDead(node_id);
+         raylet_client_pool_->Disconnect(node_id);
+         gcs_healthcheck_manager_->RemoveNode(node_id);
+         pubsub_handler_->RemoveSubscriberFrom(node_id.Binary());
+         gcs_autoscaler_state_manager_->OnNodeDead(node_id);
+       },
+       io_context_provider_.GetDefaultIOContext()});
 
   // Install worker event listener.
   gcs_worker_manager_->AddWorkerDeadListener(
