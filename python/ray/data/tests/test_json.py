@@ -635,16 +635,16 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
         dsdf = ds.to_pandas()
 
 
-@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
-def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
     ray.data.range(100, override_num_blocks=20).write_json(
-        tmp_path, num_rows_per_file=num_rows_per_file
+        tmp_path, min_rows_per_file=min_rows_per_file
     )
 
     for filename in os.listdir(tmp_path):
         with open(os.path.join(tmp_path, filename), "r") as file:
             num_rows_written = len(file.read().splitlines())
-            assert num_rows_written == num_rows_per_file
+            assert num_rows_written == min_rows_per_file
 
 
 def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):

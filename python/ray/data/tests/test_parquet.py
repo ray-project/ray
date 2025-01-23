@@ -1210,17 +1210,17 @@ def test_parquet_bulk_columns(ray_start_regular_shared):
     assert ds.columns() == ["variety"]
 
 
-@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
-def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
     import pyarrow.parquet as pq
 
     ray.data.range(100, override_num_blocks=20).write_parquet(
-        tmp_path, num_rows_per_file=num_rows_per_file
+        tmp_path, min_rows_per_file=min_rows_per_file
     )
 
     for filename in os.listdir(tmp_path):
         table = pq.read_table(os.path.join(tmp_path, filename))
-        assert len(table) == num_rows_per_file
+        assert len(table) == min_rows_per_file
 
 
 @pytest.mark.parametrize("shuffle", [True, False, "file"])
@@ -1393,7 +1393,7 @@ def test_write_auto_infer_nullable_fields(
     ctx.target_max_block_size = 1
     ds = ray.data.range(len(row_data)).map(lambda row: row_data[row["id"]])
     # So we force writing to a single file.
-    ds.write_parquet(tmp_path, num_rows_per_file=2)
+    ds.write_parquet(tmp_path, min_rows_per_file=2)
 
 
 def test_seed_file_shuffle(ray_start_regular_shared, restore_data_context, tmp_path):
