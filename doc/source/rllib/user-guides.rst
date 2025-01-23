@@ -56,7 +56,7 @@ RLlib Feature Guides
 
         .. button-ref:: metrics-logger
 
-            Logging metrics and statistics from your custom code
+            Logging metrics and statistics from custom code
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg

@@ -7,14 +7,14 @@ MetricsLogger API
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-The RLlib team has designed the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` API
-to unify and make accessible the logging and processing of stats and metrics during your
+The RLlib team designed the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` API
+to unify and make accessible the logging and processing of stats and metrics during
 reinforcement learning (RL) experiments. RLlib's :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 class and all its sub-components each have one :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`
 instance managing metrics and statistics for this component. When a subcomponent reports back to its
 parent component, it "reduces" the logged results and sends them upstream.
 
-The RLlib team encourages you to use this API in all your custom code, like in
+The RLlib team recommends this API for all your custom code, like in
 :py:class:`~ray.rllib.env.env_runner.EnvRunner`-based :ref:`callbacks <rllib-callback-docs>`,
 in `custom loss functions <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_loss_function.py>`__, or in custom `training_step() <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__
 implementations.
@@ -80,7 +80,7 @@ existing code-base. The following is an overview of a typical information flow r
 The MetricsLogger APIs in detail
 --------------------------------
 
-Before you can use :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` in your custom code, you should familiarize
+Before you can use :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` in your custom code, familiarize
 yourself with how to actually use its APIs.
 
 Logging scalar values
@@ -129,11 +129,11 @@ check the current underlying reduced result for some key, without actually havin
 
 .. warning::
 
-    You **shouldn't call the reduce() method yourself** on any
+    **Don't call the reduce() method yourself** on any
     :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` from your custom code.
     The only time RLlib invokes this API is at the end of a task cycle.
     RLlib controls all of these "hand over" points entirely, so unless you write your own subcomponent that reports to a parent component, such as
-    :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, you should refrain from calling the
+    :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, refrain from calling the
     :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.reduce` method.
 
     To get the current reduced results, use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method instead,
@@ -157,7 +157,7 @@ To use reduce methods, other than "mean", specify the ``reduce`` argument in
     # Log a maximum value.
     logger.log_value(key="max_value", value=0.0, reduce="max")
 
-Because you didn't specify a ``window`` and are using ``reduce="max"``, the window used is the infinite window,
+Because you didn't specify a ``window`` and are using ``reduce="max"``, RLlib uses the infinite window,
 meaning :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` reports the lifetime maximum value,
 whenever reduction takes place or you peek at the current value:
 
@@ -166,14 +166,14 @@ whenever reduction takes place or you peek at the current value:
     for i in range(1000, 0, -1):
         logger.log_value(key="max_value", value=float(i))
 
-    logger.peek("max_value")  # expect: 1000.0, which is the lifetime max (infinite window)
+    logger.peek("max_value")  # Expect: 1000.0, which is the lifetime max (infinite window)
 
 
 You can also chose to not reduce at all, but to simply collect individual values, for example a set of images you receive
 from your environment over time and for which it doesn't make sense to reduce them in any way.
 
 Use the ``reduce=None`` argument for achieving this. However, it's strongly advised that you should also
-set the ``clear_on_reduce=True`` flag, because this may cause memory leaks otherwise.
+set the ``clear_on_reduce=True`` flag, because this setting may cause memory leaks otherwise.
 This flag assures that :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` clears out the underlying list of values after every
 ``reduce()`` handover operation, for example from :py:class:`~ray.rllib.env.env_runner.EnvRunner`
 to :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`:
@@ -194,7 +194,7 @@ to :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`:
 Logging a set of nested scalar values
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In case you are logging a nested structure of values, for example
+If you're logging a nested structure of values, for example
 ``{"time_s": 0.1, "lives": 5, "rounds_played": {"player1": 10, "player2": 4}}`` and all values have the exact same log settings
 in terms of the ``reduce``, ``clear_on_reduce``, ``window``, etc arguments, you can also call the shortcut
 :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.log_dict` method to do so:
@@ -340,7 +340,7 @@ to access the throughput value. For example:
         logger.reduce()
         time.sleep(1.0)
 
-        # Expect the first call to return NaN b/c we don't have a proper start time for the time delta.
+        # Expect the first call to return NaN because we don't have a proper start time for the time delta.
         # From the second call on, expect a value of roughly 5/sec.
         print(logger.peek("lifetime_count", throughput=True))
 
@@ -458,5 +458,5 @@ Use the Algorithm's own ``self.metrics`` attribute for this.
             ... # time some code
 
 
-Take a look at this running
-`end-to-end example for logging inside training_step() <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__ here.
+See this running
+`end-to-end example for logging inside training_step() <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__.
