@@ -34,7 +34,7 @@ class TorchIpcWorker:
     def __init__(self):
         self.device = torch_utils.get_devices()[0]
 
-    def send(self, shape, dtype, value):
+    def send(self, shape, dtype, value: int):
         t = torch.ones(shape, dtype=dtype, device=self.device) * value
         if self.device.type == "cuda":
             # NOTE(swang): This is needed because the IPC can get sent before
@@ -140,7 +140,7 @@ def exec_ray_dag(
     static_shape=False,
     direct_return=False,
     num_executions=1,
-    uneven_executions=True,
+    data_transfer=False,
 ):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
@@ -159,24 +159,14 @@ def exec_ray_dag(
 
     if use_cgraph:
         dag = dag.experimental_compile()
-        if uneven_executions:
 
-            def _run():
-                results = []
-                for i in range(num_executions):
-                    results.append(dag.execute(b"x"))
-                ray.get(results)
-
-        else:
-
-            def _run():
-                results = []
-                for i in range(num_executions):
-                    if i % 2 == 0:
-                        results.append(dag.execute(b"x"))
-                    else:
-                        results.append(dag.execute(b"xxxxxxxxxxxxx"))
-                ray.get(results)
+        def _run():
+            results = []
+            for i in range(num_executions):
+                results.append(
+                    dag.execute(np.random.randint(100) if data_transfer else b"x")
+                )
+            ray.get(results)
 
     else:
 
@@ -337,7 +327,7 @@ def exec_ray_dag_cpu_five_times(sender_hint, receiver_hint):
     )
 
 
-def exec_ray_dag_cpu_five_times_uneven_data_transfer(sender_hint, receiver_hint):
+def exec_ray_dag_cpu_five_times_data_transfer(sender_hint, receiver_hint):
     sender = TorchTensorWorkerWithDataTransfer.options(
         scheduling_strategy=sender_hint
     ).remote()
@@ -345,11 +335,11 @@ def exec_ray_dag_cpu_five_times_uneven_data_transfer(sender_hint, receiver_hint)
         scheduling_strategy=receiver_hint
     ).remote()
     return exec_ray_dag(
-        "exec_ray_dag_cpu_five_times_uneven_data_transfer",
+        "exec_ray_dag_cpu_five_times_data_transfer",
         sender,
         receiver,
         num_executions=5,
-        uneven_executions=True,
+        data_transfer=True,
     )
 
 
@@ -465,9 +455,7 @@ def main(distributed):
     results += exec_ray_core_cpu(sender_hint, receiver_hint)
     results += exec_ray_dag_cpu(sender_hint, receiver_hint)
     results += exec_ray_dag_cpu_five_times(sender_hint, receiver_hint)
-    results += exec_ray_dag_cpu_five_times_uneven_data_transfer(
-        sender_hint, receiver_hint
-    )
+    results += exec_ray_dag_cpu_five_times_data_transfer(sender_hint, receiver_hint)
     results += exec_ray_core_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_cpu_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_nccl(
