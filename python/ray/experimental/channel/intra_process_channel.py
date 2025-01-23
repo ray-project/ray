@@ -58,9 +58,8 @@ class IntraProcessChannel(ChannelInterface):
         ctx = ChannelContext.get_current().serialization_context
         ctx.set_data(self._channel_id, value, self._num_readers)
 
-    def read(self, timeout: Optional[float] = None, deserialize: bool = True) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
         self.ensure_registered_as_reader()
-        assert deserialize, "Data passed from the actor to itself is never serialized"
         # No need to check timeout as the operation is non-blocking.
         ctx = ChannelContext.get_current().serialization_context
         return ctx.get_data(self._channel_id)
