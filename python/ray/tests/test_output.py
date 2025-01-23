@@ -1,12 +1,11 @@
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
 
-from ray._private import ray_constants
 import pytest
-from pathlib import Path
 
 import ray
 from ray._private.test_utils import (
@@ -15,48 +14,6 @@ from ray._private.test_utils import (
     run_string_as_driver_stdout_stderr,
 )
 from ray.autoscaler.v2.utils import is_autoscaler_v2
-
-
-def _get_python_core_driver_err_log():
-    """Read all content for python core driver."""
-    session_path = Path("/tmp/ray/session_latest")
-    log_dir_path = session_path / "logs"
-    paths = list(log_dir_path.iterdir())
-    for path in paths:
-        if ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER not in str(path):
-            continue
-        return path.read_text()
-
-    return None
-
-
-def _check_content_in_err_log(content: str):
-    """Read all error logs under the log directory, and check whether the given content exists in log."""
-    session_path = Path("/tmp/ray/session_latest")
-    log_dir_path = session_path / "logs"
-    paths = list(log_dir_path.iterdir())
-
-    for path in paths:
-        if str(path).endswith(".err"):
-            full_err_log = path.read_text()
-            if content in full_err_log:
-                return
-
-    assert False, f"Content {content} doesn't exist in error logging"
-
-
-def _check_content_not_in_err_log(content: str):
-    """Read all error logs under the log directory, and check whether the given content exists in log."""
-    session_path = Path("/tmp/ray/session_latest")
-    log_dir_path = session_path / "logs"
-    paths = list(log_dir_path.iterdir())
-
-    for path in paths:
-        if str(path).endswith(".err"):
-            full_err_log = path.read_text()
-            assert (
-                content not in full_err_log
-            ), f"Content {content} exists in error logging"
 
 
 def test_dedup_logs():
@@ -598,9 +555,8 @@ ray._private.utils.push_error_to_driver(
     """
 
     proc = run_string_as_driver_nonblocking(script)
-    proc.wait()
+    err_str = proc.stderr.read().decode("ascii")
 
-    err_str = _get_python_core_driver_err_log()
     assert "Hello there" in err_str, err_str
 
 
@@ -829,19 +785,27 @@ run_experiments(
 
     proc = run_string_as_driver_nonblocking(script)
     # Make sure the script is running before sending a sigterm.
-    try:
-        proc.wait(timeout=10)
-    except pytest.raises(subprocess.TimeoutExpired):
-        pass
+    with pytest.raises(subprocess.TimeoutExpired):
+        print(proc.wait(timeout=10))
+        std_str = proc.stdout.read().decode("ascii")
+        err_str = proc.stderr.read().decode("ascii")
+        print(f"STDOUT:\n{std_str}")
+        print(f"STDERR:\n{err_str}")
     print(f"Script is running... pid: {proc.pid}")
     # Send multiple signals to terminate it like real world scenario.
     for _ in range(10):
         time.sleep(0.1)
+        os.kill(proc.pid, signal.SIGINT)
     try:
         proc.wait(timeout=10)
     except subprocess.TimeoutExpired:
         print("Script wasn't terminated by SIGINT. Try SIGTERM.")
-    _check_content_not_in_err_log("StackTrace Information")
+        os.kill(proc.pid, signal.SIGTERM)
+    print(proc.wait(timeout=10))
+    err_str = proc.stderr.read().decode("ascii")
+    assert len(err_str) > 0
+    assert "StackTrace Information" not in err_str
+    print(err_str)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -903,8 +867,8 @@ for a in actors:
     ray.get(a.ready.remote())
 time.sleep(5)
     """
-    err_str = _get_python_core_driver_err_log()
-    assert err_str is None or actor_repr not in err_str, err_str
+    out = run_string_as_driver(script)
+    assert actor_repr not in out
 
 
 def test_node_name_in_raylet_death():
