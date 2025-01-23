@@ -53,7 +53,7 @@ def split_actors_by_node_locality(
 
     Args:
         writer_node: The node of the writer
-        reader_and_node_list: List of (actor, node) tuples
+        actor_and_node_list: List of (actor, node) tuples
 
     Returns:
         Tuple containing:
@@ -63,11 +63,11 @@ def split_actors_by_node_locality(
     actors_on_same_node = []
     actors_on_different_node = []
 
-    for actor, actor_node in reader_and_node_list:
+    for actor, actor_node in actor_and_node_list:
         if node == actor_node:
             actors_on_same_node.append((actor, actor_node))
         else:
-            actor_on_different_node.append((actor, actor_node))
+            actors_on_different_node.append((actor, actor_node))
 
     return actors_on_same_node, actors_on_different_node
 
