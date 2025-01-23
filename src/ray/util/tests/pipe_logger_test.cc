@@ -23,6 +23,7 @@
 #include <string_view>
 
 #include "absl/cleanup/cleanup.h"
+#include "ray/common/test/testing.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
@@ -61,7 +62,7 @@ TEST_P(PipeLoggerTest, NoPipeWrite) {
   stream_redirection_handle.Close();
 
   // Check log content after completion.
-  const auto actual_content = CompleteReadFile(test_file_path);
+  RAY_ASSIGN_OR_EXPECT(const auto actual_content, CompleteReadFile(test_file_path));
   const std::string expected_content = absl::StrFormat("%s%s", kLogLine1, kLogLine2);
   EXPECT_EQ(actual_content, expected_content);
 }
@@ -114,8 +115,13 @@ TEST_P(PipeLoggerTest, PipeWrite) {
   stream_redirection_handle.Close();
 
   // Check log content after completion.
-  EXPECT_EQ(CompleteReadFile(log_file_path1), kLogLine2);
-  EXPECT_EQ(CompleteReadFile(log_file_path2), kLogLine1);
+  const auto actual_content1 = CompleteReadFile(test_file_path1);
+  RAY_ASSERT_OK(actual_content1);
+  EXPECT_EQ(*actual_content1, kLogLine2);
+
+  const auto actual_content2 = CompleteReadFile(test_file_path2);
+  RAY_ASSERT_OK(actual_content1);
+  EXPECT_EQ(*actual_content2, kLogLine1);
 }
 
 TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
@@ -145,8 +151,9 @@ TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   EXPECT_EQ(stdout_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Check log content after completion.
-  EXPECT_EQ(CompleteReadFile(test_file_path),
-            absl::StrFormat("%s%s", kLogLine1, kLogLine2));
+  const auto actual_content = CompleteReadFile(test_file_path);
+  RAY_ASSERT_OK(actual_content);
+  EXPECT_EQ(*actual_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 }
 
 TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
@@ -181,8 +188,13 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
   EXPECT_EQ(stderr_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Check log content after completion.
-  EXPECT_EQ(CompleteReadFile(test_file_path), kLogLine2);
-  EXPECT_EQ(CompleteReadFile(log_file_path2), kLogLine1);
+  const auto actual_content1 = CompleteReadFile(test_file_path1);
+  RAY_ASSERT_OK(actual_content1);
+  EXPECT_EQ(*actual_content1, kLogLine2);
+
+  const auto actual_content2 = CompleteReadFile(test_file_path2);
+  RAY_ASSERT_OK(actual_content2);
+  EXPECT_EQ(*actual_content2, kLogLine1);
 }
 
 }  // namespace
