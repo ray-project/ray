@@ -1192,8 +1192,6 @@ class Node:
         assert self._gcs_address is None, "GCS server is already running."
         assert self._gcs_client is None, "GCS client is already connected."
 
-        # TODO(hjiang): Update stderr to pass filename and get spdlog to handle
-        # logging as well.
         stdout_log_fname, stderr_log_fname = self.get_log_file_names(
             "gcs_server", unique=True, create_out=True, create_err=True
         )

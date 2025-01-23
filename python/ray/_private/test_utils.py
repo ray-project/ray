@@ -539,7 +539,9 @@ def run_string_as_driver_stdout_stderr(
         return out_str, err_str
 
 
-def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
+def run_string_as_driver_nonblocking(
+    driver_script, env: Dict = None
+) -> subprocess.Popen:
     """Start a driver as a separate process and return immediately.
 
     Args:
