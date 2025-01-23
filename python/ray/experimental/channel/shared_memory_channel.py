@@ -188,11 +188,13 @@ class Channel(ChannelInterface):
             assert isinstance(reader, ray.actor.ActorHandle)
 
         if typ is None:
-            typ = SharedMemoryType()
+            buffer_size_bytes = DEFAULT_MAX_BUFFER_SIZE
         elif isinstance(typ, int):
-            typ = SharedMemoryType(buffer_size_bytes=typ)
+            buffer_size_bytes = SharedMemoryType(buffer_size_bytes=typ)
+        else:
+            buffer_size_bytes = typ.buffer_size_bytes
 
-        if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
+        if buffer_size_bytes < MIN_BUFFER_SIZE:
             raise ValueError(
                 "typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE "
                 f"({MIN_BUFFER_SIZE} bytes)"
@@ -200,7 +202,7 @@ class Channel(ChannelInterface):
 
         self._writer = writer
         self._reader_and_node_list = reader_and_node_list
-        self._typ = typ
+        self._buffer_size_bytes = buffer_size_bytes
 
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
@@ -379,7 +381,7 @@ class Channel(ChannelInterface):
         return self._deserialize_reader_channel, (
             self._writer,
             self._reader_and_node_list,
-            self._typ,
+            self._buffer_size_bytes,
             self._writer_node_id,
             self._writer_ref,
             self._node_id_to_reader_ref_info,
@@ -398,15 +400,15 @@ class Channel(ChannelInterface):
         # include the size of the metadata, so we must account for the size of the
         # metadata explicitly.
         size = serialized_value.total_bytes + len(serialized_value.metadata)
-        if size > self._typ.buffer_size_bytes:
+        if size > self._buffer_size_bytes:
             # Now make the channel backing store larger.
-            self._typ.buffer_size_bytes = size
+            self._buffer_size_bytes = size
             # TODO(jhumphri): Free the current writer ref once the reference to it is
             # destroyed below.
             # TODO(sang): Support different policies such as 2X buffer size.
             prev_writer_ref = self._writer_ref
-            self._writer_ref = _create_channel_ref(self, self._typ.buffer_size_bytes)
-            self._create_reader_refs(self._typ.buffer_size_bytes)
+            self._writer_ref = _create_channel_ref(self, self._buffer_size_bytes)
+            self._create_reader_refs(self._buffer_size_bytes)
             self._local_reader_ref = self._get_local_reader_ref(
                 self._node_id_to_reader_ref_info
             )
