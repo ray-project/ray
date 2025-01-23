@@ -238,9 +238,8 @@ if setup_spec.type == SetupType.RAY:
         "client": [
             # The Ray client needs a specific range of gRPC to work:
             # Tracking issues: https://github.com/grpc/grpc/issues/33714
-            "grpcio != 1.56.0"
-            if sys.platform == "darwin"
-            else "grpcio",
+            "grpcio != 1.56.0; sys_platform == 'darwin'",
+            "grpcio",
         ],
         "data": [
             numpy_dep,
@@ -315,11 +314,9 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gymnasium==1.0.0",
         "lz4",
-        "scikit-image",
+        "ormsgpack==1.7.0",
         "pyyaml",
         "scipy",
-        "typer",
-        "rich",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"]
@@ -334,6 +331,12 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # NOTE: While we keep ray[all] for compatibility, you probably
+    # shouldn't use it because it contains too many dependencies
+    # and no deployment needs all of them. Instead you should list
+    # the extras you actually need, see
+    # https://docs.ray.io/en/latest/ray-overview/installation.html#from-wheels
+    #
     # "all" will not include "cpp" anymore. It is a big depedendency
     # that most people do not need.
     #
@@ -699,10 +702,10 @@ def api_main(program, *args):
     parser.add_argument(
         "-l",
         "--language",
-        default="python,cpp",
+        default="python",
         type=str,
         help="A list of languages to build native libraries. "
-        'Supported languages include "python" and "java". '
+        'Supported languages include "python", "cpp", and "java". '
         "If not specified, only the Python library will be built.",
     )
     parsed_args = parser.parse_args(args)
@@ -797,7 +800,6 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.cli.scripts:cli",
             "serve=ray.serve.scripts:cli",
         ]

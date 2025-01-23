@@ -335,8 +335,11 @@ def test_filter_e2e(ray_start_regular_shared):
     _check_usage_record(["ReadRange", "Filter"])
 
 
-def test_project_operator(ray_start_regular_shared):
-    """Checks that the physical plan is properly generated for the Project operator."""
+def test_project_operator_select(ray_start_regular_shared):
+    """
+    Checks that the physical plan is properly generated for the Project operator from
+    select columns.
+    """
     path = "example://iris.parquet"
     ds = ray.data.read_parquet(path)
     ds = ds.map_batches(lambda d: d)
@@ -347,6 +350,30 @@ def test_project_operator(ray_start_regular_shared):
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
     assert op.cols == cols
+
+    physical_plan = Planner().plan(logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+    assert isinstance(physical_op, TaskPoolMapOperator)
+    assert isinstance(physical_op.input_dependency, TaskPoolMapOperator)
+
+
+def test_project_operator_rename(ray_start_regular_shared):
+    """
+    Checks that the physical plan is properly generated for the Project operator from
+    rename columns.
+    """
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+    ds = ds.map_batches(lambda d: d)
+    cols_rename = {"sepal.length": "sepal_length", "petal.width": "pedal_width"}
+    ds = ds.rename_columns(cols_rename)
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+    assert not op.cols
+    assert op.cols_rename == cols_rename
 
     physical_plan = Planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -1070,6 +1097,77 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
     _check_usage_record(["ReadRange", "WriteCSV"])
 
 
+@pytest.mark.parametrize(
+    "up_use_actor, up_concurrency, down_use_actor, down_concurrency, should_fuse",
+    [
+        # === Task->Task cases ===
+        # Same concurrency set. Should fuse.
+        (False, 1, False, 1, True),
+        # Different concurrency set. Should not fuse.
+        (False, 1, False, 2, False),
+        # If one op has concurrency set, and the other doesn't, should not fuse.
+        (False, None, False, 1, False),
+        (False, 1, False, None, False),
+        # === Task->Actor cases ===
+        # When Task's concurrency is not set, should fuse.
+        (False, None, True, 2, True),
+        (False, None, True, (1, 2), True),
+        # When max size matches, should fuse.
+        (False, 2, True, 2, True),
+        (False, 2, True, (1, 2), True),
+        # When max size doesn't match, should not fuse.
+        (False, 1, True, 2, False),
+        (False, 1, True, (1, 2), False),
+        # === Actor->Task cases ===
+        # Should not fuse whatever concurrency is set.
+        (True, 2, False, 2, False),
+        # === Actor->Actor cases ===
+        # Should not fuse whatever concurrency is set.
+        (True, 2, True, 2, False),
+    ],
+)
+def test_map_fusion_with_concurrency_arg(
+    ray_start_regular_shared,
+    up_use_actor,
+    up_concurrency,
+    down_use_actor,
+    down_concurrency,
+    should_fuse,
+):
+    """Test map operator fusion with different concurrency settings."""
+
+    class Map:
+        def __call__(self, row):
+            return row
+
+    def map(row):
+        return row
+
+    ds = ray.data.range(10, override_num_blocks=2)
+    if not up_use_actor:
+        ds = ds.map(map, num_cpus=0, concurrency=up_concurrency)
+        up_name = "Map(map)"
+    else:
+        ds = ds.map(Map, num_cpus=0, concurrency=up_concurrency)
+        up_name = "Map(Map)"
+
+    if not down_use_actor:
+        ds = ds.map(map, num_cpus=0, concurrency=down_concurrency)
+        down_name = "Map(map)"
+    else:
+        ds = ds.map(Map, num_cpus=0, concurrency=down_concurrency)
+        down_name = "Map(Map)"
+
+    assert extract_values("id", ds.take_all()) == list(range(10))
+
+    name = f"{up_name}->{down_name}"
+    stats = ds.stats()
+    if should_fuse:
+        assert name in stats, stats
+    else:
+        assert name not in stats, stats
+
+
 def test_write_operator(ray_start_regular_shared, tmp_path):
     ctx = DataContext.get_current()
 
@@ -1567,7 +1665,7 @@ def test_from_tf_e2e(ray_start_regular_shared):
 def test_from_torch_e2e(ray_start_regular_shared, tmp_path):
     import torchvision
 
-    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
+    torch_dataset = torchvision.datasets.FashionMNIST(tmp_path, download=True)
 
     ray_dataset = ray.data.from_torch(torch_dataset)
 

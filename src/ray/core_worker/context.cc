@@ -22,21 +22,18 @@ namespace ray {
 namespace core {
 namespace {
 const rpc::JobConfig kDefaultJobConfig{};
-}
+}  // namespace
 
 /// per-thread context for core worker.
 struct WorkerThreadContext {
   explicit WorkerThreadContext(const JobID &job_id)
-      : current_task_id_(),
-        task_index_(0),
-        put_counter_(0),
-        max_num_generator_returns_(RayConfig::instance().max_num_generator_returns()) {
+      : max_num_generator_returns_(RayConfig::instance().max_num_generator_returns()) {
     SetCurrentTaskId(TaskID::FromRandom(job_id), /*attempt_number=*/0);
   }
 
   uint64_t GetNextTaskIndex() { return ++task_index_; }
 
-  uint64_t GetTaskIndex() { return task_index_; }
+  uint64_t GetTaskIndex() const { return task_index_; }
 
   /// Returns the next put object index. The index starts at the number of
   /// return values for the current task in order to keep the put indices from
@@ -123,14 +120,14 @@ struct WorkerThreadContext {
   std::shared_ptr<const TaskSpecification> current_task_;
 
   /// Number of tasks that have been submitted from current task.
-  uint64_t task_index_;
+  uint64_t task_index_{0};
 
   static_assert(sizeof(task_index_) == TaskID::Size() - ActorID::Size(),
                 "Size of task_index_ doesn't match the unique bytes of a TaskID.");
 
   /// A running counter for the number of object puts carried out in the current task.
   /// Used to calculate the object index for put object ObjectIDs.
-  ObjectIDIndexType put_counter_;
+  ObjectIDIndexType put_counter_{0};
 
   static_assert(sizeof(put_counter_) == ObjectID::Size() - TaskID::Size(),
                 "Size of put_counter_ doesn't match the unique bytes of an ObjectID.");
@@ -158,13 +155,11 @@ WorkerContext::WorkerContext(WorkerType worker_type,
     : worker_type_(worker_type),
       worker_id_(worker_id),
       current_job_id_(job_id),
-      job_config_(),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(false),
       main_thread_id_(boost::this_thread::get_id()),
-      root_detached_actor_id_(ActorID::Nil()),
-      mutex_() {
+      root_detached_actor_id_(ActorID::Nil()) {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
@@ -180,7 +175,7 @@ WorkerContext::WorkerContext(WorkerType worker_type,
   }
 }
 
-const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
+WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
 
 const WorkerID &WorkerContext::GetWorkerID() const { return worker_id_; }
 
@@ -188,7 +183,7 @@ uint64_t WorkerContext::GetNextTaskIndex() {
   return GetThreadContext().GetNextTaskIndex();
 }
 
-uint64_t WorkerContext::GetTaskIndex() { return GetThreadContext().GetTaskIndex(); }
+uint64_t WorkerContext::GetTaskIndex() const { return GetThreadContext().GetTaskIndex(); }
 
 ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
@@ -249,8 +244,7 @@ bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
   }
 }
 
-const std::shared_ptr<rpc::RuntimeEnvInfo> WorkerContext::GetCurrentRuntimeEnvInfo()
-    const {
+std::shared_ptr<rpc::RuntimeEnvInfo> WorkerContext::GetCurrentRuntimeEnvInfo() const {
   absl::ReaderMutexLock lock(&mutex_);
   return runtime_env_info_;
 }
@@ -283,6 +277,10 @@ void WorkerContext::SetTaskDepth(int64_t depth) { task_depth_ = depth; }
 
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
+
+  const auto &serialized_runtime_env =
+      task_spec.GetMessage().runtime_env_info().serialized_runtime_env();
+
   absl::WriterMutexLock lock(&mutex_);
   SetTaskDepth(task_spec.GetDepth());
   if (CurrentThreadIsMain()) {
@@ -309,15 +307,32 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   } else {
     RAY_CHECK(false);
   }
+
   if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
-    // TODO(architkulkarni): Once workers are cached by runtime env, we should
-    // only set runtime_env_ once and then RAY_CHECK that we
-    // never see a new one.
-    runtime_env_info_.reset(new rpc::RuntimeEnvInfo());
-    *runtime_env_info_ = task_spec.RuntimeEnvInfo();
-    if (!IsRuntimeEnvEmpty(runtime_env_info_->serialized_runtime_env())) {
-      runtime_env_.reset(new nlohmann::json());
-      *runtime_env_ = nlohmann::json::parse(runtime_env_info_->serialized_runtime_env());
+    const bool is_first_time_assignment = runtime_env_info_ == nullptr;
+
+    // Only perform heavy-loaded assigment and parsing on first access.
+    // All threads are requesting for the same parsed json result, so ok to place in
+    // critical section.
+    if (is_first_time_assignment) {
+      runtime_env_info_ = std::make_shared<rpc::RuntimeEnvInfo>();
+      *runtime_env_info_ = task_spec.RuntimeEnvInfo();
+
+      RAY_CHECK(serialized_runtime_env_.empty());
+      RAY_CHECK(runtime_env_ == nullptr);
+      if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
+        runtime_env_ = std::make_shared<nlohmann::json>();
+        *runtime_env_ = nlohmann::json::parse(serialized_runtime_env);
+      }
+      serialized_runtime_env_ = serialized_runtime_env;
+      return;
+    }
+
+    // Ray currently doesn't reuse worker to run tasks or actors with different runtime
+    // envs.
+    RAY_CHECK_EQ(serialized_runtime_env_, serialized_runtime_env);
+    if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
+      RAY_CHECK(runtime_env_ != nullptr);
     }
   }
 }
@@ -343,7 +358,7 @@ bool WorkerContext::CurrentThreadIsMain() const {
   return boost::this_thread::get_id() == main_thread_id_;
 }
 
-const TaskID WorkerContext::GetMainThreadOrActorCreationTaskID() const {
+TaskID WorkerContext::GetMainThreadOrActorCreationTaskID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return main_thread_or_actor_creation_task_id_;
 }
@@ -384,8 +399,8 @@ bool WorkerContext::CurrentActorDetached() const {
   return is_detached_actor_;
 }
 
-const ObjectID WorkerContext::GetGeneratorReturnId(
-    const TaskID &task_id, std::optional<ObjectIDIndexType> put_index) {
+ObjectID WorkerContext::GetGeneratorReturnId(const TaskID &task_id,
+                                             std::optional<ObjectIDIndexType> put_index) {
   TaskID current_task_id;
   // We only allow to specify both task id and put index or not specifying both.
   RAY_CHECK((task_id.IsNil() && !put_index.has_value()) ||
@@ -397,7 +412,7 @@ const ObjectID WorkerContext::GetGeneratorReturnId(
     current_task_id = task_id;
   }
 
-  ObjectIDIndexType current_put_index;
+  ObjectIDIndexType current_put_index = 0;
   if (!put_index.has_value()) {
     current_put_index = GetNextPutIndex();
   } else {

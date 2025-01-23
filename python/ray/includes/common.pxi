@@ -11,6 +11,9 @@ from ray.includes.common cimport (
     kResourceUnitScaling,
     kImplicitResourcePrefix,
     kStreamingGeneratorReturn,
+    kGcsAutoscalerStateNamespace,
+    kGcsAutoscalerV2EnabledKey,
+    kGcsAutoscalerClusterConfigKey,
 )
 
 from ray.exceptions import (
@@ -70,6 +73,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ObjectStoreFullError(message)
     elif status.IsInvalidArgument():
         raise ValueError(message)
+    elif status.IsAlreadyExists():
+        raise ValueError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsObjectRefEndOfStream():
@@ -119,3 +124,6 @@ WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS = str(kWorkerSetupHookKeyName)
 RESOURCE_UNIT_SCALING = kResourceUnitScaling
 IMPLICIT_RESOURCE_PREFIX = kImplicitResourcePrefix.decode()
 STREAMING_GENERATOR_RETURN = kStreamingGeneratorReturn
+GCS_AUTOSCALER_STATE_NAMESPACE = kGcsAutoscalerStateNamespace.decode()
+GCS_AUTOSCALER_V2_ENABLED_KEY = kGcsAutoscalerV2EnabledKey.decode()
+GCS_AUTOSCALER_CLUSTER_CONFIG_KEY = kGcsAutoscalerClusterConfigKey.decode()

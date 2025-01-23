@@ -349,8 +349,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   int64_t remaining_timeout = timeout_ms;
   int64_t iteration_timeout =
       timeout_ms == -1
-          ? RayConfig::instance().get_timeout_milliseconds()
-          : std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
+          ? RayConfig::instance().get_check_signal_interval_milliseconds()
+          : std::min(timeout_ms,
+                     RayConfig::instance().get_check_signal_interval_milliseconds());
 
   // Repeatedly call Wait() on a shorter timeout so we can check for signals between
   // calls. If timeout_ms == -1, this should run forever until all objects are
@@ -388,14 +389,12 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       auto object_request_iter = object_get_requests_.find(object_id);
       if (object_request_iter != object_get_requests_.end()) {
         auto &get_requests = object_request_iter->second;
-        // Erase get_request from the vector.
-        auto it = std::find(get_requests.begin(), get_requests.end(), get_request);
-        if (it != get_requests.end()) {
-          get_requests.erase(it);
-          // If the vector is empty, remove the object ID from the map.
-          if (get_requests.empty()) {
-            object_get_requests_.erase(object_request_iter);
-          }
+        get_requests.erase(
+            std::remove(get_requests.begin(), get_requests.end(), get_request),
+            get_requests.end());
+
+        if (get_requests.empty()) {
+          object_get_requests_.erase(object_request_iter);
         }
       }
     }

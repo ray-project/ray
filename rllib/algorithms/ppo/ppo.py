@@ -154,18 +154,12 @@ class PPOConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule,
+            from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+                DefaultPPOTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=PPOTorchRLModule, catalog_class=PPOCatalog)
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
-
-            return RLModuleSpec(module_class=PPOTfRLModule, catalog_class=PPOCatalog)
+            return RLModuleSpec(module_class=DefaultPPOTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -305,7 +299,7 @@ class PPOConfig(AlgorithmConfig):
             not self.enable_rl_module_and_learner
             and self.minibatch_size > self.train_batch_size
         ):
-            raise ValueError(
+            self._value_error(
                 f"`minibatch_size` ({self.minibatch_size}) must be <= "
                 f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
                 f" will be split into {self.minibatch_size} chunks, each of which "
@@ -316,7 +310,7 @@ class PPOConfig(AlgorithmConfig):
             mbs = self.minibatch_size
             tbs = self.train_batch_size_per_learner or self.train_batch_size
             if isinstance(mbs, int) and isinstance(tbs, int) and mbs > tbs:
-                raise ValueError(
+                self._value_error(
                     f"`minibatch_size` ({mbs}) must be <= "
                     f"`train_batch_size_per_learner` ({tbs}). In PPO, the train batch"
                     f" will be split into {mbs} chunks, each of which is iterated over "
@@ -332,7 +326,7 @@ class PPOConfig(AlgorithmConfig):
             and self.batch_mode == "truncate_episodes"
             and not self.use_gae
         ):
-            raise ValueError(
+            self._value_error(
                 "Episode truncation is not supported without a value "
                 "function (to estimate the return at the end of the truncated"
                 " trajectory). Consider setting "
@@ -343,12 +337,12 @@ class PPOConfig(AlgorithmConfig):
         if self.enable_rl_module_and_learner:
             # `lr_schedule` checking.
             if self.lr_schedule is not None:
-                raise ValueError(
+                self._value_error(
                     "`lr_schedule` is deprecated and must be None! Use the "
                     "`lr` setting to setup a schedule."
                 )
             if self.entropy_coeff_schedule is not None:
-                raise ValueError(
+                self._value_error(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
                     "`entropy_coeff` setting to setup a schedule."
                 )
@@ -358,7 +352,7 @@ class PPOConfig(AlgorithmConfig):
                 description="entropy coefficient",
             )
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
-            raise ValueError("`entropy_coeff` must be >= 0.0")
+            self._value_error("`entropy_coeff` must be >= 0.0")
 
     @property
     @override(AlgorithmConfig)

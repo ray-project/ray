@@ -1,12 +1,11 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _env-reference-docs:
 
 Environments
 ============
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 RLlib mainly supports the `Farama gymnasium API <https://gymnasium.farama.org/>`__ for
 single-agent environments, and RLlib's own :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`
@@ -50,6 +49,10 @@ Environment API Reference
 .. toctree::
    :maxdepth: 1
 
-   env/multi_agent_env.rst
+   env/env_runner.rst
+   env/single_agent_env_runner.rst
    env/single_agent_episode.rst
+   env/multi_agent_env.rst
+   env/multi_agent_env_runner.rst
+   env/multi_agent_episode.rst
    env/utils.rst

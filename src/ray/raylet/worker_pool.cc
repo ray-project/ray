@@ -752,6 +752,8 @@ boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
                                  : boost::optional<const rpc::JobConfig &>(iter->second);
 }
 
+// TODO(hjiang): In the next integration PR, worker should have port assigned and no
+// [send_reply_callback]. Should delete this overload.
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
                                   pid_t pid,
                                   StartupToken worker_startup_token,
@@ -793,6 +795,37 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
   // Send the reply immediately for worker registrations.
   send_reply_callback(Status::OK(), port);
+  return Status::OK();
+}
+
+Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
+                                  pid_t pid,
+                                  StartupToken worker_startup_token) {
+  RAY_CHECK(worker);
+  auto &state = GetStateForLanguage(worker->GetLanguage());
+  auto it = state.worker_processes.find(worker_startup_token);
+  if (it == state.worker_processes.end()) {
+    RAY_LOG(WARNING) << "Received a register request from an unknown token: "
+                     << worker_startup_token;
+    return Status::Invalid("Unknown worker");
+  }
+
+  auto process = Process::FromPid(pid);
+  worker->SetProcess(process);
+
+  auto &starting_process_info = it->second;
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      end - starting_process_info.start_time);
+
+  // TODO(hjiang): Add tag to indicate whether port has been assigned beforehand.
+  STATS_worker_register_time_ms.Record(duration.count());
+  RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
+                 << ", register cost: " << duration.count()
+                 << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType())
+                 << ", startup token: " << worker_startup_token;
+
+  state.registered_workers.insert(worker);
   return Status::OK();
 }
 

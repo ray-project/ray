@@ -42,7 +42,7 @@
 #include "nlohmann/json.hpp"
 #include "ray/util/event_label.h"
 #include "ray/util/filesystem.h"
-#include "ray/util/util.h"
+#include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
@@ -59,13 +59,10 @@ constexpr char kLogFormatJsonPattern[] =
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
 std::string RayLog::component_name_ = "";
-std::string RayLog::log_dir_ = "";
 bool RayLog::log_format_json_ = false;
 std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;
 
 std::string RayLog::logger_name_ = "ray_log_sink";
-long RayLog::log_rotation_max_size_ = 1 << 29;
-long RayLog::log_rotation_file_num_ = 10;
 bool RayLog::is_failure_signal_handler_installed_ = false;
 std::atomic<bool> RayLog::initialized_ = false;
 
@@ -312,14 +309,53 @@ void RayLog::InitLogFormat() {
   }
 }
 
-void RayLog::StartRayLog(const std::string &app_name,
-                         RayLogLevel severity_threshold,
-                         const std::string &log_dir) {
+/*static*/ size_t RayLog::GetRayLogRotationMaxBytesOrDefault() {
+  if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
+      ray_rotation_max_bytes != nullptr) {
+    size_t max_size = 0;
+    if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size) && max_size > 0) {
+      return max_size;
+    }
+  }
+  return std::numeric_limits<size_t>::max();
+}
+
+/*static*/ size_t RayLog::GetRayLogRotationBackupCountOrDefault() {
+  if (const char *ray_rotation_backup_count = std::getenv("RAY_ROTATION_BACKUP_COUNT");
+      ray_rotation_backup_count != nullptr) {
+    size_t file_num = 0;
+    if (absl::SimpleAtoi(ray_rotation_backup_count, &file_num) && file_num > 0) {
+      return file_num;
+    }
+  }
+  return 1;
+}
+
+/*static*/ std::string RayLog::GetLogFilepathFromDirectory(const std::string &log_dir,
+                                                           const std::string &app_name) {
+  if (log_dir.empty()) {
+    return "";
+  }
+
+#ifdef _WIN32
+  int pid = _getpid();
+#else
+  pid_t pid = getpid();
+#endif
+  return JoinPaths(log_dir, absl::StrFormat("%s_%d.log", app_name, pid));
+}
+
+/*static*/ void RayLog::StartRayLog(const std::string &app_name,
+                                    RayLogLevel severity_threshold,
+                                    const std::string &log_filepath,
+                                    size_t log_rotation_max_size,
+                                    size_t log_rotation_file_num) {
   InitSeverityThreshold(severity_threshold);
   InitLogFormat();
 
   app_name_ = app_name;
-  log_dir_ = log_dir;
+  log_rotation_max_size_ = log_rotation_max_size;
+  log_rotation_file_num_ = log_rotation_file_num;
 
   // All the logging sinks to add.
   // One for file/stdout, another for stderr.
@@ -337,32 +373,10 @@ void RayLog::StartRayLog(const std::string &app_name,
     }
   }
 
-  if (!log_dir_.empty()) {
-    // Enable log file if log_dir_ is not empty.
-#ifdef _WIN32
-    int pid = _getpid();
-#else
-    pid_t pid = getpid();
-#endif
-    // Reset log pattern and level and we assume a log file can be rotated with
-    // 10 files in max size 512M by default.
-    if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
-        ray_rotation_max_bytes != nullptr) {
-      long max_size = 0;
-      if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size) && max_size > 0) {
-        // 0 means no log rotation in python, but not in spdlog. We just use the default
-        // value here.
-        log_rotation_max_size_ = max_size;
-      }
-    }
+  const auto log_fname = log_filepath;
 
-    if (const char *ray_rotation_backup_count = std::getenv("RAY_ROTATION_BACKUP_COUNT");
-        ray_rotation_backup_count != nullptr) {
-      long file_num = 0;
-      if (absl::SimpleAtoi(ray_rotation_backup_count, &file_num) && file_num > 0) {
-        log_rotation_file_num_ = file_num;
-      }
-    }
+  // Set sink for stdout.
+  if (!log_fname.empty()) {
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
     auto file_logger = spdlog::get(RayLog::GetLoggerName());
@@ -371,10 +385,9 @@ void RayLog::StartRayLog(const std::string &app_name,
       // logger.
       spdlog::drop(RayLog::GetLoggerName());
     }
+
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        JoinPaths(log_dir_, app_name_without_path + "_" + std::to_string(pid) + ".log"),
-        log_rotation_max_size_,
-        log_rotation_file_num_);
+        log_fname, log_rotation_max_size_, log_rotation_file_num_);
     file_sink->set_level(level);
     sinks[0] = std::move(file_sink);
   } else {

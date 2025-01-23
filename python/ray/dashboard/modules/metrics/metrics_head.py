@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import shutil
@@ -45,6 +46,8 @@ METRICS_RECORD_INTERVAL_S = env_integer("METRICS_RECORD_INTERVAL_S", 5)
 
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
+DEFAULT_PROMETHEUS_HEADERS = "{}"
+PROMETHEUS_HEADERS_ENV_VAR = "RAY_PROMETHEUS_HEADERS"
 DEFAULT_PROMETHEUS_NAME = "Prometheus"
 PROMETHEUS_NAME_ENV_VAR = "RAY_PROMETHEUS_NAME"
 PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
@@ -57,6 +60,26 @@ GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR = "RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR
 GRAFANA_HEALTHCHECK_PATH = "api/health"
 
 
+# parse_prom_headers will make sure the input is in one of the following formats:
+# 1. {"H1": "V1", "H2": "V2"}
+# 2. [["H1", "V1"], ["H2", "V2"], ["H2", "V3"]]
+def parse_prom_headers(prometheus_headers):
+    parsed = json.loads(prometheus_headers)
+    if isinstance(parsed, dict):
+        if all(isinstance(k, str) and isinstance(v, str) for k, v in parsed.items()):
+            return parsed
+    if isinstance(parsed, list):
+        if all(len(e) == 2 and all(isinstance(v, str) for v in e) for e in parsed):
+            return parsed
+    raise ValueError(
+        f"{PROMETHEUS_HEADERS_ENV_VAR} should be a JSON string in one of the formats:\n"
+        + "1) An object with string keys and string values.\n"
+        + "2) an array of string arrays with 2 string elements each.\n"
+        + 'For example, {"H1": "V1", "H2": "V2"} and\n'
+        + '[["H1", "V1"], ["H2", "V2"], ["H2", "V3"]] are valid.'
+    )
+
+
 class PrometheusQueryError(Exception):
     def __init__(self, status, message):
         self.message = (
@@ -67,15 +90,21 @@ class PrometheusQueryError(Exception):
 
 
 class MetricsHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
         self.grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
-        default_metrics_root = os.path.join(self._dashboard_head.session_dir, "metrics")
+        default_metrics_root = os.path.join(self.session_dir, "metrics")
+        self.prometheus_headers = parse_prom_headers(
+            os.environ.get(
+                PROMETHEUS_HEADERS_ENV_VAR,
+                DEFAULT_PROMETHEUS_HEADERS,
+            )
+        )
         session_latest_metrics_root = os.path.join(
-            self._dashboard_head.temp_dir, SESSION_LATEST, "metrics"
+            self.temp_dir, SESSION_LATEST, "metrics"
         )
         self._metrics_root = os.environ.get(
             METRICS_OUTPUT_ROOT_ENV_VAR, default_metrics_root
@@ -99,10 +128,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # To be set later when dashboards gets generated
         self._dashboard_uids = {}
 
-        self._ip = dashboard_head.ip
         self._pid = os.getpid()
         self._component = "dashboard"
-        self._session_name = dashboard_head.session_name
         assert self._component in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
         self._dashboard_proc = psutil.Process()
 
@@ -147,7 +174,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                     success=True,
                     message="Grafana running",
                     grafana_host=grafana_iframe_host,
-                    session_name=self._session_name,
+                    session_name=self.session_name,
                     dashboard_uids=self._dashboard_uids,
                     dashboard_datasource=self._prometheus_name,
                 )
@@ -166,7 +193,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         try:
             path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
 
-            async with self.http_session.get(path) as resp:
+            async with self.http_session.get(
+                path, headers=self.prometheus_headers
+            ) as resp:
                 if resp.status != 200:
                     return dashboard_optional_utils.rest_response(
                         success=False,
@@ -244,6 +273,18 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
+        prometheus_headers = parse_prom_headers(
+            os.environ.get(PROMETHEUS_HEADERS_ENV_VAR, DEFAULT_PROMETHEUS_HEADERS)
+        )
+        # parse_prom_headers will make sure the prometheus_headers is either format of:
+        # 1. {"H1": "V1", "H2": "V2"} or
+        # 2. [["H1", "V1"], ["H2", "V2"], ["H2", "V3"]]
+        prometheus_header_pairs = []
+        if isinstance(prometheus_headers, list):
+            prometheus_header_pairs = prometheus_headers
+        elif isinstance(prometheus_headers, dict):
+            prometheus_header_pairs = [(k, v) for k, v in prometheus_headers.items()]
+
         data_sources_path = os.path.join(grafana_provisioning_folder, "datasources")
         os.makedirs(
             data_sources_path,
@@ -261,9 +302,17 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             "w",
         ) as f:
             f.write(
-                GRAFANA_DATASOURCE_TEMPLATE.format(
+                GRAFANA_DATASOURCE_TEMPLATE(
                     prometheus_host=prometheus_host,
                     prometheus_name=self._prometheus_name,
+                    jsonData={
+                        f"httpHeaderName{i+1}": header
+                        for i, (header, _) in enumerate(prometheus_header_pairs)
+                    },
+                    secureJsonData={
+                        f"httpHeaderValue{i+1}": value
+                        for i, (_, value) in enumerate(prometheus_header_pairs)
+                    },
                 )
             )
         with open(
@@ -332,7 +381,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # Other than the root path, the config file generated here is identical to that
         # hardcoded config file.
         prom_discovery_file_path = os.path.join(
-            self._dashboard_head.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
+            self.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
         )
         with open(prometheus_config_output_path, "w") as f:
             f.write(
@@ -344,31 +393,31 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     @dashboard_utils.async_loop_forever(METRICS_RECORD_INTERVAL_S)
     async def record_dashboard_metrics(self):
         labels = {
-            "ip": self._ip,
+            "ip": self.ip,
             "pid": self._pid,
             "Version": ray.__version__,
             "Component": self._component,
-            "SessionName": self._session_name,
+            "SessionName": self.session_name,
         }
-        self._dashboard_head.metrics.metrics_dashboard_cpu.labels(**labels).set(
+        self.metrics.metrics_dashboard_cpu.labels(**labels).set(
             float(self._dashboard_proc.cpu_percent())
         )
-        self._dashboard_head.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
+        self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
             float(self._dashboard_proc.memory_full_info().uss) / 1.0e6
         )
-        self._dashboard_head.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
+        self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
             float(self._dashboard_proc.memory_full_info().rss) / 1.0e6
         )
 
         loop = get_or_create_event_loop()
 
-        self._dashboard_head.metrics.metrics_event_loop_tasks.labels(**labels).set(
+        self.metrics.metrics_event_loop_tasks.labels(**labels).set(
             len(asyncio.all_tasks(loop))
         )
 
         # Report the max lag since the last export, if any.
         if self._event_loop_lag_s_max is not None:
-            self._dashboard_head.metrics.metrics_event_loop_lag.labels(**labels).set(
+            self.metrics.metrics_event_loop_lag.labels(**labels).set(
                 float(self._event_loop_lag_s_max)
             )
             self._event_loop_lag_s_max = None
@@ -391,7 +440,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
     async def _query_prometheus(self, query):
         async with self.http_session.get(
-            f"{self.prometheus_host}/api/v1/query?query={quote(query)}"
+            f"{self.prometheus_host}/api/v1/query?query={quote(query)}",
+            headers=self.prometheus_headers,
         ) as resp:
             if resp.status == 200:
                 prom_data = await resp.json()

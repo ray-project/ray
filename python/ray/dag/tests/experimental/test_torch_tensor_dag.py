@@ -13,19 +13,19 @@ import torch
 import time
 from ray.air._internal import torch_utils
 from ray.dag import InputNode
-from ray.exceptions import RayChannelError
+from ray.exceptions import RayChannelError, RayTaskError
 from ray.dag.output_node import MultiOutputNode
 from ray.experimental.channel.communicator import (
     Communicator,
     TorchTensorAllocator,
 )
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray._private.test_utils import (
     get_log_message,
     init_log_pubsub,
 )
 
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
 from ray.experimental.util.types import ReduceOp
 
@@ -63,6 +63,9 @@ class TorchTensorWorker:
         if raise_exception:
             raise RuntimeError()
         return torch.ones(shape, dtype=dtype, device=self.device) * value
+
+    def send_int(self, value: int):
+        return value
 
     def recv(self, tensor):
         # Check that tensor got loaded to the correct device.
@@ -156,7 +159,7 @@ def test_torch_tensor_p2p(ray_start_regular):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType())
+        dag = dag.with_tensor_transport()
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -188,7 +191,7 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
 
     # Test torch.Tensor as input.
     with InputNode() as inp:
-        torch_inp = inp.with_type_hint(TorchTensorType())
+        torch_inp = inp.with_tensor_transport()
         dag = receiver.recv.bind(torch_inp)
 
     compiled_dag = dag.experimental_compile()
@@ -233,7 +236,7 @@ def test_torch_tensor_nccl(
     # Test normal execution.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile(
@@ -249,10 +252,63 @@ def test_torch_tensor_nccl(
     # Test that actors can be reused for a new DAG.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
+
+    # Test that we can pass different shapes and data.
+    for i in range(3):
+        shape = (10 * (i + 1),)
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+@pytest.mark.parametrize("num_gpus", [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]])
+def test_torch_tensor_auto(ray_start_regular, num_gpus):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    sender = TorchTensorWorker.options(num_cpus=0, num_gpus=num_gpus[0]).remote()
+    receiver = TorchTensorWorker.options(num_cpus=0, num_gpus=num_gpus[1]).remote()
+    # Use NCCL only when sender and receiver are on different GPUs.
+    # When each actor has 0.5 GPU, sender and receiver are allocated
+    # on the same GPU, so we use auto.
+    expected_transport = "nccl" if num_gpus == [1, 1] else "auto"
+
+    shape = (10,)
+    dtype = torch.float16
+
+    # Test normal execution.
+    with InputNode() as inp:
+        data = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        data_annotated = data.with_tensor_transport(transport="auto")
+        dag = receiver.recv.bind(data_annotated)
+
+    compiled_dag = dag.experimental_compile()
+    assert isinstance(data_annotated.type_hint, TorchTensorType)
+    assert data_annotated.type_hint.transport == expected_transport
+
+    # Test that we can pass different shapes and data.
+    for i in range(3):
+        shape = (10 * (i + 1),)
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
+
+    # Test that actors can be reused for a new DAG.
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = dag.with_tensor_transport(transport="auto")
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+    assert isinstance(data_annotated.type_hint, TorchTensorType)
+    assert data_annotated.type_hint.transport == expected_transport
 
     # Test that we can pass different shapes and data.
     for i in range(3):
@@ -285,10 +341,8 @@ def test_torch_tensor_nccl_overlap_timed(ray_start_regular, overlap_gpu_communic
     with InputNode() as inp:
         branches = [sender.send.bind(shape, dtype, inp) for sender in senders]
         branches = [
-            branch.with_type_hint(
-                TorchTensorType(
-                    transport="nccl", _static_shape=True, _direct_return=True
-                )
+            branch.with_tensor_transport(
+                transport="nccl", _static_shape=True, _direct_return=True
             )
             for branch in branches
         ]
@@ -334,7 +388,7 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
 
     # Test that InputNode cannot cannot participate in the NCCL group.
     with InputNode() as inp:
-        torch_inp = inp.with_type_hint(TorchTensorType(transport="nccl"))
+        torch_inp = inp.with_tensor_transport(transport="nccl")
         dag = receiver.recv.bind(torch_inp)
     with pytest.raises(
         ValueError,
@@ -348,7 +402,7 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     # Test that OutputNode cannot cannot participate in the NCCL group.
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
 
     with pytest.raises(
         ValueError,
@@ -457,7 +511,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
     nccl_group = TestNcclGroup(2, comm_id, [sender, receiver])
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
+        dag = dag.with_tensor_transport(transport=nccl_group)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -566,28 +620,28 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
     # Case 1: custom NCCL group first, then default NCCL group
     with InputNode() as inp:
         dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
+        dag = dag.with_tensor_transport(transport=nccl_group)
         dag = actor2.recv.options(num_returns=3).bind(dag)
         dag = actor2.send.bind(*dag)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         dag = actor1.recv.bind(dag)
     with pytest.raises(
         ValueError,
-        match=r"Accelerated DAGs do not support mixed usage of type hints.*",
+        match=r"Compiled Graphs do not support mixed usage of type hints.*",
     ):
         dag.experimental_compile()
 
     # Case 2: default NCCL group first, then custom NCCL group
     with InputNode() as inp:
         dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         dag = actor2.recv.options(num_returns=3).bind(dag)
         dag = actor2.send.bind(*dag)
-        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
+        dag = dag.with_tensor_transport(transport=nccl_group)
         dag = actor1.recv.bind(dag)
     with pytest.raises(
         ValueError,
-        match=r"Accelerated DAGs do not support mixed usage of type hints.*",
+        match=r"Compiled Graphs do not support mixed usage of type hints.*",
     ):
         dag.experimental_compile()
 
@@ -596,15 +650,15 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
     # Using two different custom NCCL groups are currently not supported
     with InputNode() as inp:
         dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
+        dag = dag.with_tensor_transport(transport=nccl_group)
         dag = actor2.recv.options(num_returns=3).bind(dag)
         dag = actor2.send.bind(*dag)
-        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group2))
+        dag = dag.with_tensor_transport(transport=nccl_group2)
         dag = actor1.recv.bind(dag)
     with pytest.raises(
         ValueError,
         match=(
-            "Accelerated DAGs currently only support "
+            "Compiled Graphs currently only support "
             "a single custom NCCL group, but multiple "
             "have been specified."
         ),
@@ -722,7 +776,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
+        dag = dag.with_tensor_transport(transport=nccl_group)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -756,7 +810,7 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _static_shape=True))
+        dag = dag.with_tensor_transport(transport="nccl", _static_shape=True)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -770,7 +824,7 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
 
     # Error is thrown if we send the wrong shape. Currently the receiver cannot
     # catch the exception so the DAG cannot be used again.
-    with pytest.raises(RayChannelError):
+    with pytest.raises(RayTaskError):
         ref = compiled_dag.execute(i, shape=(20,), dtype=dtype)
         ray.get(ref)
 
@@ -794,7 +848,7 @@ def test_torch_tensor_nccl_direct_return(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_tensor)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _direct_return=True))
+        dag = dag.with_tensor_transport(transport="nccl", _direct_return=True)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -808,7 +862,7 @@ def test_torch_tensor_nccl_direct_return(ray_start_regular):
     # Error is thrown if we do not send a tensor. Currently the receiver cannot
     # catch the exception so the DAG cannot be used again.
     ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype, send_tensor=False)
-    with pytest.raises(RayChannelError):
+    with pytest.raises(RayTaskError):
         ray.get(ref)
 
     with pytest.raises(RayChannelError):
@@ -835,7 +889,7 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send_dict.bind(inp)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         dag = receiver.recv_dict.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -857,7 +911,7 @@ def test_torch_tensor_exceptions(
     ray_start_regular, static_shape, direct_return, overlap_gpu_communication
 ):
     """
-    Test exceptions being thrown by a NCCL sending task.
+    Test exceptions being thrown by a NCCL sending task's execution.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -875,12 +929,10 @@ def test_torch_tensor_exceptions(
         dag = sender.send_or_raise.bind(
             inp.shape, inp.dtype, inp.value, inp.raise_exception
         )
-        dag = dag.with_type_hint(
-            TorchTensorType(
-                _static_shape=static_shape,
-                _direct_return=direct_return,
-                transport="nccl",
-            )
+        dag = dag.with_tensor_transport(
+            transport="nccl",
+            _static_shape=static_shape,
+            _direct_return=direct_return,
         )
         dag = receiver.recv.bind(dag)
 
@@ -910,10 +962,9 @@ def test_torch_tensor_exceptions(
         value=i,
         raise_exception=True,
     )
+
     if static_shape or direct_return:
-        with pytest.raises(RayChannelError):
-            # TODO(swang): Ideally return the RuntimeError thrown by the
-            # application instead of a generic RayChannelError.
+        with pytest.raises(RuntimeError):
             ray.get(ref)
 
         with pytest.raises(RayChannelError):
@@ -938,6 +989,51 @@ def test_torch_tensor_exceptions(
         )
         result = ray.get(ref)
         assert result == (i, shape, dtype)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_exceptions2(
+    ray_start_regular,
+):
+    """
+    Test exceptions being thrown by a NCCL sending task's write operation.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_gpus=1)
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    with InputNode() as inp:
+        dag = sender.send_int.bind(inp)
+        dag = dag.with_tensor_transport(
+            transport="nccl",
+            _direct_return=True,
+            _static_shape=True,
+        )
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    ref = compiled_dag.execute(1)
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Task annotated with _direct_return=True must return a "
+            "CUDA torch.Tensor, instead found value `1`. "
+            "DAG will shut down."
+        ),
+    ):
+        ray.get(ref)
+
+    with pytest.raises(RayChannelError):
+        # The DAG is not usable after the exception.
+        ref = compiled_dag.execute(2)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -1243,9 +1339,9 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
         x = workers[0].send.bind(shape, dtype, inp)
         y = workers[1].send.bind(shape, dtype, inp)
 
-        # Tensor to be sent from workes[0] to workers[1].
+        # Tensor to be sent from workers[0] to workers[1].
         t = workers[0].send.bind(shape, dtype, inp)
-        t.with_type_hint(TorchTensorType(transport="nccl"))
+        t.with_tensor_transport(transport="nccl")
 
         collectives = collective.allreduce.bind([x, y])
         recv = workers[1].recv.bind(t)
@@ -1302,7 +1398,7 @@ def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
 def test_tensor_writable_warning_suppressed(ray_start_regular):
-    """When we move cpu tensor to gpu, aDAG does zero-copy with is_wriatble=False.
+    """When we move cpu tensor to gpu, Compiled Graph does zero-copy with is_writable=False.
     Torch doesn't like it, so it prints warning. We know that it is safe to do it,
     so Ray suppress the warning message. This test verifies the warning is not
     printed in this scenario.
@@ -1324,7 +1420,7 @@ def test_tensor_writable_warning_suppressed(ray_start_regular):
     with InputNode() as inp:
         # TODO(swang): Test that we are using the minimum number of
         # channels/messages when _direct_return=True.
-        torch_inp = inp.with_type_hint(TorchTensorType())
+        torch_inp = inp.with_tensor_transport()
         dag = receiver.recv.bind(torch_inp)
 
     compiled_dag = dag.experimental_compile()
@@ -1378,7 +1474,7 @@ class TestTorchTensorTypeHintCustomSerializer:
 
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
     @pytest.mark.parametrize("tensor_device", ["cpu", "cuda"])
-    def test_input_node_with_type_hint(self, ray_start_regular, tensor_device):
+    def test_input_node_with_tensor_transport(self, ray_start_regular, tensor_device):
         """
         Since `inp` has a TorchTensorType hint, both the driver and `worker` will
         use the custom serializer.
@@ -1399,7 +1495,7 @@ class TestTorchTensorTypeHintCustomSerializer:
         worker = Worker.options(num_gpus=1).remote()
 
         with InputNode() as inp:
-            dag = worker.echo.bind(inp.with_type_hint(TorchTensorType()))
+            dag = worker.echo.bind(inp.with_tensor_transport())
         compiled_dag = dag.experimental_compile()
         cpu_tensor = torch.tensor([1])
         input_tensor = cpu_tensor
@@ -1445,9 +1541,9 @@ class TestTorchTensorTypeHintCustomSerializer:
         worker1 = Worker.options(num_gpus=1).remote()
         worker2 = Worker.options(num_gpus=1).remote()
         with InputNode() as inp:
-            dag = inp[0].with_type_hint(TorchTensorType())
+            dag = inp[0].with_tensor_transport()
             branch1 = worker1.echo.bind(dag)
-            dag = inp[1].with_type_hint(TorchTensorType())
+            dag = inp[1].with_tensor_transport()
             branch2 = worker2.echo.bind(dag)
             dag = MultiOutputNode([branch1, branch2])
 
@@ -1507,7 +1603,7 @@ class TestTorchTensorTypeHintCustomSerializer:
         worker2 = Worker.options(num_gpus=1).remote()
 
         with InputNode() as inp:
-            dag = inp[0].with_type_hint(TorchTensorType())
+            dag = inp[0].with_tensor_transport()
             branch1 = worker1.echo.bind(dag)
             dag = inp[1]
             branch2 = worker2.echo.bind(dag)
@@ -1551,7 +1647,7 @@ def test_torch_nccl_channel_with_local_reader(ray_start_regular):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = w1.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         branch1 = w1.recv.bind(dag)
         branch2 = w2.recv.bind(dag)
         dag = MultiOutputNode([branch1, branch2])
@@ -1586,7 +1682,7 @@ def test_torch_nccl_channel_with_two_local_readers(ray_start_regular):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = w1.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         branch1 = w1.recv.bind(dag)
         branch2 = w1.recv.bind(dag)
         branch3 = w2.recv.bind(dag)
@@ -1617,7 +1713,7 @@ def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
 
     with InputNode() as inp:
         dag = worker.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         dag = MultiOutputNode([worker.recv.bind(dag)])
     with pytest.raises(
         AssertionError,

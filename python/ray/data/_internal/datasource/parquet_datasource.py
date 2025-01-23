@@ -582,7 +582,9 @@ def estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
 
 def estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> int:
     def compute_batch_size_rows(sample_info: _SampleInfo) -> int:
-        if sample_info.actual_bytes_per_row is None:
+        # 'actual_bytes_per_row' is None if the sampled file was empty and 0 if the data
+        # was all null.
+        if not sample_info.actual_bytes_per_row:
             return PARQUET_READER_ROW_BATCH_SIZE
         else:
             max_parquet_reader_row_batch_size_bytes = (
@@ -657,7 +659,7 @@ def sample_fragments(
 
     sample_fragment = cached_remote_fn(_sample_fragment)
     futures = []
-    scheduling = local_scheduling or "SPREAD"
+    scheduling = local_scheduling or DataContext.get_current().scheduling_strategy
     for sample in file_samples:
         # Sample the first rows batch in i-th file.
         # Use SPREAD scheduling strategy to avoid packing many sampling tasks on

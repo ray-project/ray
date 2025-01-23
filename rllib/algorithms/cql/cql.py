@@ -251,7 +251,7 @@ class CQLConfig(SACConfig):
             and not self.dataset_num_iters_per_learner
             and self.enable_rl_module_and_learner
         ):
-            raise ValueError(
+            self._value_error(
                 "When using a single local learner the number of iterations "
                 "per learner, `dataset_num_iters_per_learner` has to be defined. "
                 "Set this hyperparameter in the `AlgorithmConfig.offline_data`."
@@ -259,14 +259,12 @@ class CQLConfig(SACConfig):
 
     @override(SACConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
-        from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
-
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.cql.torch.cql_torch_rl_module import (
-                CQLTorchRLModule,
+            from ray.rllib.algorithms.cql.torch.default_cql_torch_rl_module import (
+                DefaultCQLTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=CQLTorchRLModule, catalog_class=SACCatalog)
+            return RLModuleSpec(module_class=DefaultCQLTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."

@@ -111,8 +111,8 @@ def process_dict_for_yaml_dump(data):
 def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     args_dict = dict()
     for arg in args:
-        split = arg.split("=")
-        if len(split) != 2:
+        split = arg.split("=", maxsplit=1)
+        if len(split) != 2 or len(split[1]) == 0:
             raise click.ClickException(
                 f"Invalid application argument '{arg}', "
                 "must be of the form '<key>=<val>'."
@@ -424,8 +424,8 @@ def deploy(
     "-r",
     is_flag=True,
     help=(
-        "Listens for changes to files in the working directory, --working-dir "
-        "or the working_dir in the --runtime-env, and automatically redeploys "
+        "This is an experimental feature - Listens for changes to files in the working directory, "
+        "--working-dir or the working_dir in the --runtime-env, and automatically redeploys "
         "the application. This will block until Ctrl-C'd, then clean up the "
         "app."
     ),
