@@ -96,7 +96,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Add an alive node.
   ///
   /// \param node The info of the node to be added.
-  void AddNode(std::shared_ptr<rpc::GcsNodeInfo> node);
+  void AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node);
 
   /// Set the node to be draining.
   ///
@@ -119,20 +119,21 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param node_id The id of the node.
   /// \return the node if it is alive. Optional empty value if it is not alive.
-  absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
+  absl::optional<std::shared_ptr<const rpc::GcsNodeInfo>> GetAliveNode(
       const NodeID &node_id) const;
 
   /// Get all alive nodes.
   ///
   /// \return all alive nodes.
-  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> GetAllAliveNodes()
+  absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>> GetAllAliveNodes()
       const {
     absl::ReaderMutexLock lock(&alive_nodes_mutex_);
     return alive_nodes_;
   }
 
   /// Get all dead nodes.
-  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> GetAllDeadNodes() const {
+  absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>> GetAllDeadNodes()
+      const {
     absl::ReaderMutexLock lock(&dead_nodes_mutex_);
     return dead_nodes_;
   }
@@ -141,14 +142,15 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param listener The handler which process the remove of nodes.
   void SetNodeRemovedListener(
-      Postable<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
+      Postable<void(std::shared_ptr<const rpc::GcsNodeInfo>)> listener) {
     node_removed_listener_.emplace(std::move(listener));
   }
 
   /// Add listener to monitor the add action of nodes.
   ///
   /// \param listener The handler which process the add of nodes.
-  void SetNodeAddedListener(Postable<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
+  void SetNodeAddedListener(
+      Postable<void(std::shared_ptr<const rpc::GcsNodeInfo>)> listener) {
     node_added_listener_.emplace(std::move(listener));
   }
 
@@ -176,7 +178,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// evicted.
   ///
   /// \param node The node which is dead.
-  void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
+  void AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node);
 
   /// Infer death cause of the node based on existing draining requests.
   ///
@@ -240,7 +242,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Mutex to protect alive_nodes_
   mutable absl::Mutex alive_nodes_mutex_;
   /// Alive nodes.
-  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_
+  absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>> alive_nodes_
       ABSL_GUARDED_BY(alive_nodes_mutex_);
   /// Draining nodes.
   /// This map is used to store the nodes which have received the drain request.
@@ -251,15 +253,17 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Mutex to protect dead_nodes_
   mutable absl::Mutex dead_nodes_mutex_;
   /// Dead nodes.
-  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_
+  absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>> dead_nodes_
       ABSL_GUARDED_BY(dead_nodes_mutex_);
   /// The nodes are sorted according to the timestamp, and the oldest is at the head of
   /// the deque.
   std::deque<std::pair<NodeID, int64_t>> sorted_dead_node_list_;
   /// Listener which monitors the addition of nodes.
-  std::optional<Postable<void(std::shared_ptr<rpc::GcsNodeInfo>)>> node_added_listener_;
+  std::optional<Postable<void(std::shared_ptr<const rpc::GcsNodeInfo>)>>
+      node_added_listener_;
   /// Listener which monitors the removal of nodes.
-  std::optional<Postable<void(std::shared_ptr<rpc::GcsNodeInfo>)>> node_removed_listener_;
+  std::optional<Postable<void(std::shared_ptr<const rpc::GcsNodeInfo>)>>
+      node_removed_listener_;
   /// A publisher for publishing gcs messages.
   GcsPublisher *gcs_publisher_;
   /// Storage for GCS tables.

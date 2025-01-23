@@ -134,7 +134,7 @@ void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
 
 NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) {
   // Select a node to lease worker for the actor.
-  std::shared_ptr<rpc::GcsNodeInfo> node;
+  std::shared_ptr<const rpc::GcsNodeInfo> node;
 
   // If an actor has resource requirements, we will try to schedule it on the same node as
   // the owner if possible.
@@ -149,7 +149,7 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
   return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
 }
 
-std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const {
+std::shared_ptr<const rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const {
   const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   if (alive_nodes.empty()) {
     return nullptr;
@@ -305,8 +305,8 @@ void GcsActorScheduler::ReleaseUnusedActorWorkers(
   }
 }
 
-void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
-                                            std::shared_ptr<rpc::GcsNodeInfo> node) {
+void GcsActorScheduler::LeaseWorkerFromNode(
+    std::shared_ptr<GcsActor> actor, std::shared_ptr<const rpc::GcsNodeInfo> node) {
   RAY_CHECK(actor && node);
 
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -338,7 +338,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
 }
 
 void GcsActorScheduler::RetryLeasingWorkerFromNode(
-    std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node) {
+    std::shared_ptr<GcsActor> actor, std::shared_ptr<const rpc::GcsNodeInfo> node) {
   RAY_UNUSED(execute_after(
       io_context_,
       [this, node, actor] { DoRetryLeasingWorkerFromNode(actor, node); },
@@ -347,7 +347,7 @@ void GcsActorScheduler::RetryLeasingWorkerFromNode(
 }
 
 void GcsActorScheduler::DoRetryLeasingWorkerFromNode(
-    std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node) {
+    std::shared_ptr<GcsActor> actor, std::shared_ptr<const rpc::GcsNodeInfo> node) {
   auto iter = node_to_actors_when_leasing_.find(actor->GetNodeID());
   if (iter != node_to_actors_when_leasing_.end()) {
     // If the node is still available, the actor must be still in the
@@ -567,7 +567,7 @@ std::string GcsActorScheduler::DebugString() const {
 
 void GcsActorScheduler::HandleWorkerLeaseReply(
     std::shared_ptr<GcsActor> actor,
-    std::shared_ptr<rpc::GcsNodeInfo> node,
+    std::shared_ptr<const rpc::GcsNodeInfo> node,
     const Status &status,
     const rpc::RequestWorkerLeaseReply &reply) {
   // If the actor is still in the leasing map and the status is ok, remove the actor

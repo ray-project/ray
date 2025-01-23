@@ -174,7 +174,7 @@ void GcsPlacementGroupScheduler::MarkScheduleCancelled(
 
 void GcsPlacementGroupScheduler::PrepareResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-    const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+    const absl::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
     const StatusCallback &callback) {
   if (!node.has_value()) {
     callback(Status::NotFound("Node is already dead."));
@@ -205,7 +205,7 @@ void GcsPlacementGroupScheduler::PrepareResources(
 
 void GcsPlacementGroupScheduler::CommitResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-    const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+    const absl::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
     const StatusCallback callback) {
   RAY_CHECK(node.has_value());
   const auto lease_client = GetLeaseClientFromNode(node.value());
@@ -231,7 +231,7 @@ void GcsPlacementGroupScheduler::CommitResources(
 
 void GcsPlacementGroupScheduler::CancelResourceReserve(
     const std::shared_ptr<const BundleSpecification> &bundle_spec,
-    const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+    const absl::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
     int max_retry,
     int current_retry_cnt) {
   if (!node.has_value()) {
@@ -284,7 +284,7 @@ GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_a
 
 std::shared_ptr<ResourceReserveInterface>
 GcsPlacementGroupScheduler::GetLeaseClientFromNode(
-    const std::shared_ptr<ray::rpc::GcsNodeInfo> &node) {
+    const std::shared_ptr<const ray::rpc::GcsNodeInfo> &node) {
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());

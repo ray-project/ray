@@ -27,7 +27,7 @@ namespace raylet {
 ClusterTaskManager::ClusterTaskManager(
     const NodeID &self_node_id,
     ClusterResourceScheduler &cluster_resource_scheduler,
-    std::function<std::shared_ptr<rpc::GcsNodeInfo>(NodeID)> get_node_info,
+    std::function<std::shared_ptr<const rpc::GcsNodeInfo>(NodeID)> get_node_info,
     std::function<void(const RayTask &)> announce_infeasible_task,
     ILocalTaskManager &local_task_manager,
     std::function<int64_t(void)> get_time_ms)

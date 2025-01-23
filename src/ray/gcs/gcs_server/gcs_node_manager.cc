@@ -97,7 +97,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
         << ", node name = " << request.node_info().node_name()
         << ", is_head_node = " << request.node_info().is_head_node();
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, request.node_info(), nullptr));
-    AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
+    AddNode(std::make_shared<const rpc::GcsNodeInfo>(request.node_info()));
     WriteNodeExportEvent(request.node_info());
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -257,7 +257,8 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   int64_t num_filtered = 0;
   auto add_to_response =
       [limit, reply, filter_fn, &num_added, &num_filtered](
-          const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
+          const absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>>
+              &nodes) {
         for (const auto &[node_id, node_info_ptr] : nodes) {
           if (num_added >= limit) {
             break;
@@ -317,7 +318,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
+absl::optional<std::shared_ptr<const rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
     const ray::NodeID &node_id) const {
   absl::ReaderMutexLock lock(&alive_nodes_mutex_);
   auto iter = alive_nodes_.find(node_id);
@@ -355,7 +356,7 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
   return death_info;
 }
 
-void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
+void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node) {
   auto node_id = NodeID::FromBinary(node->node_id());
   bool contains_node_id = false;
   {
@@ -402,17 +403,19 @@ void GcsNodeManager::SetNodeDraining(
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     const ray::NodeID &node_id, const rpc::NodeDeathInfo &node_death_info) {
-  std::shared_ptr<rpc::GcsNodeInfo> removed_node;
+  std::shared_ptr<const rpc::GcsNodeInfo> removed_node_const_ptr;
   bool contains_node_id = false;
   {
     absl::WriterMutexLock lock(&alive_nodes_mutex_);
     auto iter = alive_nodes_.find(node_id);
     contains_node_id = iter != alive_nodes_.end();
     if (contains_node_id) {
-      removed_node = iter->second;
+      removed_node_const_ptr = iter->second;
       alive_nodes_.erase(iter);
     }
   }
+  // Copy to non-const outside of writer lock.
+  auto removed_node = std::make_shared<rpc::GcsNodeInfo>(*removed_node_const_ptr);
   if (contains_node_id) {
     // Set node death info.
     auto death_info = removed_node->mutable_death_info();
@@ -520,7 +523,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       [](const auto &left, const auto &right) { return left.second < right.second; });
 }
 
-void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
+void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node) {
   absl::WriterMutexLock lock(&dead_nodes_mutex_);
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
     const auto &node_id = sorted_dead_node_list_.front().first;

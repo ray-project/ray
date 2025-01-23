@@ -406,10 +406,10 @@ void GcsServer::InitClusterResourceScheduler() {
 
 void GcsServer::InitClusterTaskManager() {
   RAY_CHECK(cluster_resource_scheduler_);
-  std::function<std::shared_ptr<rpc::GcsNodeInfo>(NodeID)> get_node_info =
-      [this](NodeID node_id) -> std::shared_ptr<rpc::GcsNodeInfo> {
+  std::function<std::shared_ptr<const rpc::GcsNodeInfo>(NodeID)> get_node_info =
+      [this](NodeID node_id) -> std::shared_ptr<const rpc::GcsNodeInfo> {
     auto node = gcs_node_manager_->GetAliveNode(node_id);
-    std::shared_ptr<rpc::GcsNodeInfo> node_ptr;
+    std::shared_ptr<const rpc::GcsNodeInfo> node_ptr;
     if (node.has_value()) {
       node_ptr = node.value();
     }
@@ -746,7 +746,7 @@ void GcsServer::InitGcsTaskManager() {
 void GcsServer::InstallEventListeners() {
   // Install node event listeners.
   gcs_node_manager_->SetNodeAddedListener(
-      {[this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+      {[this](const std::shared_ptr<const rpc::GcsNodeInfo> &node) {
          // Because a new node has been added, we need to try to schedule the pending
          // placement groups and the pending actors.
          auto node_id = NodeID::FromBinary(node->node_id());
@@ -771,7 +771,7 @@ void GcsServer::InstallEventListeners() {
        },
        io_context_provider_.GetDefaultIOContext()});
   gcs_node_manager_->SetNodeRemovedListener(
-      {[this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+      {[this](const std::shared_ptr<const rpc::GcsNodeInfo> &node) {
          auto node_id = NodeID::FromBinary(node->node_id());
          const auto node_ip_address = node->node_manager_address();
          // All of the related placement groups and actors should be reconstructed when a

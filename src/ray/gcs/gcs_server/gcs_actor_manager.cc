@@ -286,7 +286,7 @@ void GcsActor::SetGrantOrReject(bool grant_or_reject) {
 }
 
 const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
-    const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node) {
+    const ray::gcs::GcsActor *actor, std::shared_ptr<const rpc::GcsNodeInfo> node) {
   ray::rpc::ActorDeathCause death_cause;
 
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
@@ -1276,7 +1276,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   RestartActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause);
 }
 
-void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
+void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
                                  const std::string node_ip_address) {
   const auto node_id = NodeID::FromBinary(node->node_id());
   RAY_LOG(INFO).WithField(node_id) << "Node failed, reconstructing actors.";

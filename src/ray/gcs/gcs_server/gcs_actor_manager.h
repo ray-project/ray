@@ -436,7 +436,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param node_id The specified node id.
   /// \param node_ip_address The ip address of the dead node.
-  void OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
+  void OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
                   const std::string node_ip_address);
 
   /// Handle a worker failure. This will restart the associated actor, if any,
@@ -514,7 +514,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
  private:
   const ray::rpc::ActorDeathCause GenNodeDiedCause(
-      const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node);
+      const ray::gcs::GcsActor *actor, std::shared_ptr<const rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
   struct Owner {
     Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)

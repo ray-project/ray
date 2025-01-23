@@ -326,7 +326,7 @@ NodeManager::NodeManager(
     return gcs_client_->Nodes().Get(node_id);
   };
   auto get_shared_ptr_node_info = [this](const NodeID &node_id) {
-    return std::make_shared<rpc::GcsNodeInfo>(*gcs_client_->Nodes().Get(node_id));
+    return std::make_shared<const rpc::GcsNodeInfo>(*gcs_client_->Nodes().Get(node_id));
   };
   auto announce_infeasible_task = [this](const RayTask &task) {
     PublishInfeasibleTaskError(task);
