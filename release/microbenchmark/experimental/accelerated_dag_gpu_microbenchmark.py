@@ -75,7 +75,7 @@ class TorchTensorWorkerWithDataTransfer:
     def __init__(self):
         self.device = torch_utils.get_devices()[0]
 
-    def send(self, shape, dtype, value):
+    def send(self, shape, dtype, value: int):
         t = torch.ones(shape, dtype=dtype, device=self.device) * value
         return t
 
@@ -84,7 +84,7 @@ class TorchTensorWorkerWithDataTransfer:
         # actors. To minimize the overhead of shared memory transfer,
         # we return only a byte string.
         assert tensor.device == self.device
-        return tensor
+        return (tensor[0].item(), tensor.shape, tensor.dtype)
 
 
 @ray.remote(num_gpus=1)
