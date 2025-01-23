@@ -146,6 +146,14 @@ py_test(
 )
 
 py_test(
+    name = "test_audio",
+    size = "small",
+    srcs = ["tests/test_audio.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_avro",
     size = "small",
     srcs = ["tests/test_avro.py"],
@@ -561,6 +569,14 @@ py_test(
     name = "test_util",
     size = "small",
     srcs = ["tests/test_util.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_video",
+    size = "small",
+    srcs = ["tests/test_video.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
