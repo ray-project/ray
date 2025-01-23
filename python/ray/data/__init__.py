@@ -42,6 +42,7 @@ from ray.data.read_api import (  # noqa: F401
     from_torch,
     range,
     range_tensor,
+    read_audio,
     read_avro,
     read_bigquery,
     read_binary_files,
@@ -62,6 +63,7 @@ from ray.data.read_api import (  # noqa: F401
     read_sql,
     read_text,
     read_tfrecords,
+    read_videos,
     read_webdataset,
 )
 
@@ -137,6 +139,7 @@ __all__ = [
     "from_huggingface",
     "range",
     "range_tensor",
+    "read_audio",
     "read_avro",
     "read_text",
     "read_binary_files",
@@ -155,6 +158,7 @@ __all__ = [
     "read_parquet_bulk",
     "read_sql",
     "read_tfrecords",
+    "read_videos",
     "read_webdataset",
     "Preprocessor",
     "TFXReadOptions",

@@ -112,7 +112,13 @@ class ActorPoolMapOperator(MapOperator):
             self._ray_remote_args, data_context
         )
 
-        self._actor_pool = _ActorPool(compute_strategy, self._start_actor)
+        per_actor_resource_usage = ExecutionResources(
+            cpu=self._ray_remote_args.get("num_cpus", 0),
+            gpu=self._ray_remote_args.get("num_gpus", 0),
+        )
+        self._actor_pool = _ActorPool(
+            compute_strategy, self._start_actor, per_actor_resource_usage
+        )
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
         # Cached actor class.
@@ -437,6 +443,7 @@ class _ActorPool(AutoscalingActorPool):
         self,
         compute_strategy: ActorPoolStrategy,
         create_actor_fn: Callable[[], Tuple[ActorHandle, ObjectRef[Any]]],
+        per_actor_resource_usage: ExecutionResources,
     ):
         self._min_size: int = compute_strategy.min_size
         self._max_size: int = compute_strategy.max_size
@@ -445,6 +452,7 @@ class _ActorPool(AutoscalingActorPool):
             or DEFAULT_MAX_TASKS_IN_FLIGHT
         )
         self._create_actor_fn = create_actor_fn
+        self._per_actor_resource_usage = per_actor_resource_usage
         assert self._min_size >= 1
         assert self._max_size >= self._min_size
         assert self._max_tasks_in_flight >= 1
@@ -763,3 +771,7 @@ class _ActorPool(AutoscalingActorPool):
                 f"; Actors: {total} (alive {alive}, restarting {restarting}, "
                 f"pending {pending})"
             )
+
+    def per_actor_resource_usage(self) -> ExecutionResources:
+        """Per actor resource usage."""
+        return self._per_actor_resource_usage

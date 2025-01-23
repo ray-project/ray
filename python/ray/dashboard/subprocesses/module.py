@@ -119,7 +119,7 @@ class SubprocessModule(abc.ABC):
             message = self._child_bound_queue.get()
             try:
                 self.handle_child_bound_message(loop, message)
-            except Exception as e:
+            except Exception:
                 logger.exception(
                     f"Error handling child bound message {message}. This request will hang forever."
                 )
