@@ -73,9 +73,11 @@ class InfiniteLookbackBuffer:
             A dict containing all the data and metadata from the buffer.
         """
         return {
-            "data": to_jsonable_if_needed(self.data, self.space)
-            if self.space
-            else self.data,
+            "data": (
+                to_jsonable_if_needed(self.data, self.space)
+                if self.space
+                else self.data
+            ),
             "lookback": self.lookback,
             "finalized": self.finalized,
             "space": gym_space_to_dict(self.space) if self.space else self.space,
@@ -568,7 +570,7 @@ class InfiniteLookbackBuffer:
                 # For nested structures, use tree.map_structure
                 else:
                     # Cache the flattened structure if possible
-                    if not hasattr(self, '_flattened_data'):
+                    if not hasattr(self, "_flattened_data"):
                         self._flattened_data = tree.flatten(data_to_use)
                     # Index into each array directly
                     flat_indexed = [arr[idx] for arr in self._flattened_data]
@@ -733,32 +735,31 @@ class InfiniteLookbackBuffer:
         """Optimized version for getting multiple indices at once."""
         if not self.finalized:
             return [self._get_int_index(idx, **kwargs) for idx in indices]
-            
+
         # Convert all indices to actual positions
         actual_indices = []
         for idx in indices:
-            if idx >= 0 or kwargs.get('neg_index_as_lookback'):
+            if idx >= 0 or kwargs.get("neg_index_as_lookback"):
                 idx = self.lookback + idx
-            if kwargs.get('neg_index_as_lookback') and idx < 0:
-                idx = len(self) + self.lookback - (kwargs.get('_ignore_last_ts') is True)
+            if kwargs.get("neg_index_as_lookback") and idx < 0:
+                idx = (
+                    len(self) + self.lookback - (kwargs.get("_ignore_last_ts") is True)
+                )
             actual_indices.append(idx)
-            
+
         # Get all data at once using fancy indexing
         try:
             if isinstance(self.data, np.ndarray):
                 data = self.data[actual_indices]
             else:
-                data = tree.map_structure(
-                    lambda s: s[actual_indices],
-                    self.data
-                )
-            
-            if kwargs.get('one_hot_discrete'):
+                data = tree.map_structure(lambda s: s[actual_indices], self.data)
+
+            if kwargs.get("one_hot_discrete"):
                 data = self._one_hot(data, self.space_struct)
             return data
-            
+
         except IndexError as e:
-            if kwargs.get('fill') is not None:
+            if kwargs.get("fill") is not None:
                 # Handle fill values...
                 pass
             raise e
