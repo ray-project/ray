@@ -798,6 +798,7 @@ class CompiledDAG:
         enable_asyncio: bool = False,
         max_inflight_executions: Optional[int] = None,
         overlap_gpu_communication: Optional[bool] = None,
+        default_communicator: Optional[Union[Communicator, str]] = None,
     ):
         """
         Args:
@@ -822,6 +823,12 @@ class CompiledDAG:
                 communication and computation can be overlapped, which can improve
                 the performance of the DAG execution. If None, the default value
                 will be used.
+            default_communicator: The default communicator to use to transport tensors
+                for nodes annotated with `with_tensor_transport()` and when shared memory
+                is not the desired option (e.g., when transport="nccl", or when
+                transport="auto" for communication between two different GPUs).
+                If it is "create", a default communicator is created when needed.
+                If None, an error will be thrown. All other values are invalid.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -846,6 +853,17 @@ class CompiledDAG:
         self._overlap_gpu_communication: Optional[bool] = overlap_gpu_communication
         if self._overlap_gpu_communication is None:
             self._overlap_gpu_communication = ctx.overlap_gpu_communication
+        self._create_default_communicator = False
+        if isinstance(default_communicator, str):
+            if default_communicator == "create":
+                self._create_default_communicator = True
+                default_communicator = None
+            else:
+                raise ValueError(
+                    "The only allowed string for default_communicator is 'create', "
+                    f"got {default_communicator}"
+                )
+        self._default_communicator: Optional[Communicator] = default_communicator
 
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
             buffer_size_bytes=self._buffer_size_bytes,
@@ -1006,6 +1024,9 @@ class CompiledDAG:
         self.input_task_idx, self.output_task_idx = None, None
 
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
+        communicator_to_actors: Dict[
+            Optional[Communicator], Set["ray.actor.ActorHandle"]
+        ] = {}
         collective_ops: Set[_CollectiveOperation] = set()
 
         input_attributes: Set[str] = set()
@@ -1098,34 +1119,8 @@ class CompiledDAG:
 
                 # Collect actors for NCCL P2P methods.
                 if dag_node.type_hint.requires_nccl():
-                    nccl_actors_p2p.add(actor_handle)
-                    custom_communicator = dag_node.type_hint.get_custom_communicator()
-                    mixed_nccl_group_error_message = (
-                        "Compiled Graphs do not support mixed usage of "
-                        "type hints of default NCCL group "
-                        '(i.e., TorchTensor(transport="nccl"))'
-                        "and custom NCCL group "
-                        "(i.e., TorchTensor(transport=nccl_group)). "
-                        "Please check all the TorchTensor type hints and "
-                        "make sure only one type of NCCL transport is specified."
-                    )
-                    if custom_communicator is None:
-                        if self._custom_communicator_p2p is not None:
-                            raise ValueError(mixed_nccl_group_error_message)
-                        self._use_default_nccl_group = True
-                    else:
-                        if self._use_default_nccl_group:
-                            raise ValueError(mixed_nccl_group_error_message)
-                        if self._custom_communicator_p2p is not None:
-                            if self._custom_communicator_p2p != custom_communicator:
-                                raise ValueError(
-                                    "Compiled Graphs currently only support "
-                                    "a single custom NCCL group, but multiple "
-                                    "have been specified. Check all the "
-                                    "TorchTensor(transport=nccl_group) type hints "
-                                    "to make sure only one NCCL group is used."
-                                )
-                        self._custom_communicator_p2p = custom_communicator
+                    communicator = self._select_communicator(dag_node)
+                    communicator_to_actors[communicator].add(actor_handle)
 
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
@@ -1213,35 +1208,115 @@ class CompiledDAG:
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
 
                 if upstream_task.dag_node.type_hint.requires_nccl():
-                    # Add all readers to the NCCL actors of P2P.
-                    nccl_actors_p2p.add(downstream_actor_handle)
+                    communicator = self._select_communicator(upstream_task.dag_node)
+                    communicator_to_actors[communicator].add(downstream_actor_handle)
 
         # Check that all specified input attributes, e.g., InputNode()["x"],
         # are used in the DAG.
         _check_unused_dag_input_attributes(output_node, input_attributes)
 
-        # Collect all leaf nodes.
-        leaf_nodes: DAGNode = []
-        for idx, task in self.idx_to_task.items():
-            if not isinstance(task.dag_node, ClassMethodNode):
-                continue
-            if (
-                len(task.downstream_task_idxs) == 0
-                and not task.dag_node.is_cgraph_output_node
-            ):
-                leaf_nodes.append(task.dag_node)
-        # Leaf nodes are not allowed because the exception thrown by the leaf
-        # node will not be propagated to the driver.
-        if len(leaf_nodes) != 0:
-            raise ValueError(
-                "Compiled DAG doesn't support leaf nodes, i.e., nodes that don't have "
-                "downstream nodes and are not output nodes. There are "
-                f"{len(leaf_nodes)} leaf nodes in the DAG. Please add the outputs of "
-                f"{[leaf_node.get_method_name() for leaf_node in leaf_nodes]} to the "
-                f"the MultiOutputNode."
-            )
+        self._check_leaf_nodes()
 
+        self._resolve_auto_transport(auto_transport_tasks, communicator_to_actors)
+
+        self._init_communicators(communicator_to_actors, collective_ops)
+
+        if direct_input:
+            self._input_num_positional_args = 1
+        elif not input_positional_args:
+            self._input_num_positional_args = 0
+        else:
+            self._input_num_positional_args = max(input_positional_args) + 1
+        self._input_kwargs = tuple(input_kwargs)
+
+    def _init_communicators(
+        self,
+        communicator_to_actors: Dict[
+            Optional[Communicator], Set["ray.actor.ActorHandle"]
+        ],
+        collective_ops: Set[
+            "ray.experimental.channel.collective_node._CollectiveOperation"
+        ],
+    ) -> None:
+        """
+        Initialize communicators for the DAG.
+        """
+        # Initialize and cache a NCCL group for each custom NCCL group. All the
+        # custom NCCL groups are initialized before the default NCCL groups.
+        custom_communicator_to_id: Dict[Communicator, str] = {}
+        # Initialize and cache a NCCL group for each set of actors. A set of actors
+        # can perform P2P send/recv and collective operations. If there are multiple
+        # custom NCCL groups for a set of actors, only one is cached.
+        actors_to_communicator_id: Dict[FrozenSet["ray.actor.ActorHandle"], str] = {}
+        for custom_communicator, actors in communicator_to_actors.items():
+            if None in actors:
+                raise ValueError("Driver cannot participate in the NCCL group.")
+
+            communicator_id = _init_communicator(
+                actors,
+                custom_communicator,
+                self._overlap_gpu_communication,
+            )
+            custom_communicator_to_id[custom_communicator] = communicator_id
+            actors = frozenset(actors)
+            if actors not in actors_to_communicator_id:
+                actors_to_communicator_id[actors] = communicator_id
+
+        # If a custom communicator is specified for collective actors, initialize and
+        # cache the communicator ID.
+        for collective_op in collective_ops:
+            type_hint = collective_op.type_hint
+            custom_communicator = type_hint.get_custom_communicator()
+            if custom_communicator:
+                communicator_id = collective_op.init_communicator(
+                    custom_communicator_to_id.get(custom_communicator, None)
+                )
+                custom_communicator_to_id[custom_communicator] = communicator_id
+                actors = frozenset(collective_op.actor_handles)
+                if actors not in actors_to_communicator_id:
+                    actors_to_communicator_id[actors] = communicator_id
+
+    def _select_communicator(
+        self, dag_node: "ray.dag.DAGNode"
+    ) -> Optional[Communicator]:
+        """
+        If custom_communicator is provided (i.e., not None), use it.
+        Otherwise, use the default communicator.
+        """
+        custom_communicator = dag_node.type_hint.get_custom_communicator()
+        if custom_communicator is not None:
+            return custom_communicator
+        if not self._create_default_communicator:
+            if dag_node._original_type_hint is not None:
+                assert isinstance(dag_node._original_type_hint, AutoTransportType)
+                raise ValueError(
+                    f"AutoTransportType is used for DAGNode {dag_node}, "
+                    "This requires specifying a default communicator or 'create' for "
+                    "default_communicator when calling experimental_compile()."
+                )
+            raise ValueError(
+                f"DAGNode {dag_node} has no custom communicator specified. "
+                "Please specify a custom communicator for the DAGNode using"
+                "`with_tensor_transport()`, or specify a communicator or 'create' for "
+                "default_communicator when calling experimental_compile()."
+            )
+        return self._default_communicator
+
+    def _resolve_auto_transport(
+        self,
+        auto_transport_tasks: Set["CompiledTask"],
+        communicator_to_actors: Dict[
+            Optional[Communicator], Set["ray.actor.ActorHandle"]
+        ],
+    ) -> None:
+        """
+        Resolve the auto transport type hint for the DAG.
+        """
         type_hint_resolver = TypeHintResolver(self.actor_to_gpu_ids)
+        # For AutoTransportType, there is no custom communicator provided.
+        # So call _select_communicator with None to get the default communicator,
+        # and also perform validation.
+        default_communicator = self._select_communicator(None)
         # Resolve AutoChannelType type hints and track the actors that use NCCL.
         # This is needed so that the NCCL group can be initialized for these
         # actors that use NCCL.
@@ -1261,92 +1336,37 @@ class CompiledDAG:
                 reader_and_node_list,
             )
             if task.dag_node.type_hint.requires_nccl():
-                nccl_actors_p2p.add(writer)
-                nccl_actors_p2p.update(readers)
+                communicator_to_actors[default_communicator].add(writer)
+                communicator_to_actors[default_communicator].update(readers)
 
-        nccl_actors_p2p = list(nccl_actors_p2p)
-        if None in nccl_actors_p2p:
-            raise ValueError("Driver cannot participate in the NCCL group.")
-
-        # Initialize and cache a NCCL group for each custom NCCL group. All the
-        # custom NCCL groups are initialized before the default NCCL groups.
-        custom_communicator_to_id: Dict[Communicator, str] = {}
-        # Initialize and cache a NCCL group for each set of actors. A set of actors
-        # can perform P2P send/recv and collective operations. If there are multiple
-        # custom NCCL groups for a set of actors, only one is cached.
-        actors_to_communicator_id: Dict[FrozenSet["ray.actor.ActorHandle"], str] = {}
-
-        # If a custom NCCL group is specified for P2P actors, initialize and cache
-        # the NCCL group ID.
-        if nccl_actors_p2p and self._custom_communicator_p2p:
-            if not set(nccl_actors_p2p).issubset(
-                set(self._custom_communicator_p2p.get_actor_handles())
-            ):
-                raise ValueError(
-                    "Expected P2P actor handles to be a subset of the custom NCCL group"
-                )
-            self._communicator_id_p2p = _init_communicator(
-                nccl_actors_p2p,
-                self._custom_communicator_p2p,
-                self._overlap_gpu_communication,
-            )
-            custom_communicator_to_id[
-                self._custom_communicator_p2p
-            ] = self._communicator_id_p2p
-            actors = frozenset(nccl_actors_p2p)
-            actors_to_communicator_id[actors] = self._communicator_id_p2p
-
-        # If a custom communicator is specified for collective actors, initialize and
-        # cache the communicator ID.
-        for collective_op in collective_ops:
-            type_hint = collective_op.type_hint
-            custom_communicator = type_hint.get_custom_communicator()
-            if custom_communicator:
-                communicator_id = collective_op.init_communicator(
-                    custom_communicator_to_id.get(custom_communicator, None)
-                )
-                custom_communicator_to_id[custom_communicator] = communicator_id
-                actors = frozenset(collective_op.actor_handles)
-                if actors not in actors_to_communicator_id:
-                    actors_to_communicator_id[actors] = communicator_id
-
-        # If a NCCL group for P2P actors is not initialized, initialize and cache
-        # the NCCL group ID.
-        if nccl_actors_p2p and self._communicator_id_p2p is None:
-            actors = frozenset(nccl_actors_p2p)
-            if actors in actors_to_communicator_id:
-                self._communicator_id_p2p = actors_to_communicator_id[actors]
-            else:
-                self._communicator_id_p2p = _init_communicator(
-                    nccl_actors_p2p,
-                    self._custom_communicator_p2p,
-                    self._overlap_gpu_communication,
-                )
-                actors_to_communicator_id[actors] = self._communicator_id_p2p
-
-        # If a NCCL group for collective actors is not initialized, initialize and
-        # cache the NCCL group ID.
-        for collective_op in collective_ops:
-            if collective_op.type_hint.communicator_id is None:
-                actors = frozenset(collective_op.actor_handles)
-                communicator_id = collective_op.init_communicator(
-                    actors_to_communicator_id.get(actors, None)
-                )
-                if actors not in actors_to_communicator_id:
-                    actors_to_communicator_id[actors] = communicator_id
-
-        # Store all the NCCL group IDs for P2P send/recv and collective operations.
-        self._communicator_ids = set(actors_to_communicator_id.values()).union(
-            set(custom_communicator_to_id.values())
+    def _check_leaf_nodes(self) -> None:
+        """
+        Check if there are leaf nodes in the DAG and raise an error if there are.
+        """
+        from ray.dag import (
+            DAGNode,
+            ClassMethodNode,
         )
 
-        if direct_input:
-            self._input_num_positional_args = 1
-        elif not input_positional_args:
-            self._input_num_positional_args = 0
-        else:
-            self._input_num_positional_args = max(input_positional_args) + 1
-        self._input_kwargs = tuple(input_kwargs)
+        leaf_nodes: List[DAGNode] = []
+        for _, task in self.idx_to_task.items():
+            if not isinstance(task.dag_node, ClassMethodNode):
+                continue
+            if (
+                len(task.downstream_task_idxs) == 0
+                and not task.dag_node.is_cgraph_output_node
+            ):
+                leaf_nodes.append(task.dag_node)
+        # Leaf nodes are not allowed because the exception thrown by the leaf
+        # node will not be propagated to the driver.
+        if len(leaf_nodes) != 0:
+            raise ValueError(
+                "Compiled DAG doesn't support leaf nodes, i.e., nodes that don't have "
+                "downstream nodes and are not output nodes. There are "
+                f"{len(leaf_nodes)} leaf nodes in the DAG. Please add the outputs of "
+                f"{[leaf_node.get_method_name() for leaf_node in leaf_nodes]} to the "
+                f"the MultiOutputNode."
+            )
 
     @staticmethod
     def _get_gpu_ids(actor_handle: "ray.actor.ActorHandle") -> List[str]:
@@ -2965,6 +2985,7 @@ def build_compiled_dag_from_ray_dag(
     enable_asyncio: bool = False,
     max_inflight_executions: Optional[int] = None,
     overlap_gpu_communication: Optional[bool] = None,
+    default_communicator: Optional[Union[Communicator, str]] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         submit_timeout,
@@ -2972,6 +2993,7 @@ def build_compiled_dag_from_ray_dag(
         enable_asyncio,
         max_inflight_executions,
         overlap_gpu_communication,
+        default_communicator,
     )
 
     def _build_compiled_dag(node):

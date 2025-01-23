@@ -228,6 +228,7 @@ class DAGNode(DAGNodeBase):
         enable_asyncio: bool = False,
         _max_inflight_executions: Optional[int] = None,
         _overlap_gpu_communication: Optional[bool] = None,
+        _default_communicator: Optional[Union[Communicator, str]] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
@@ -250,6 +251,12 @@ class DAGNode(DAGNodeBase):
                 communication and computation can be overlapped, which can improve
                 the performance of the DAG execution. If None, the default value
                 will be used.
+            _default_communicator: The default communicator to use to transport tensors
+                for nodes annotated with `with_tensor_transport()` and when shared memory
+                is not the desired option (e.g., when transport="nccl", or when
+                transport="auto" for communication between two different GPUs).
+                If it is "create", a default communicator is created when needed.
+                If None, an error will be thrown. All other values are invalid.
 
         Returns:
             A compiled DAG.
@@ -278,6 +285,7 @@ class DAGNode(DAGNodeBase):
             enable_asyncio,
             _max_inflight_executions,
             _overlap_gpu_communication,
+            _default_communicator,
         )
 
     def execute(
