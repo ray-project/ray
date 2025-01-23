@@ -200,7 +200,7 @@ Contributing Fixes and Enhancements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you are unsure about how to structure your bug-fix or enhancement PRs, create a smaller PR first,
-then ask questions to the team within its conversation section.
+then ask the team questions within the PRs conversation section.
 
 See here for an `example of a good first community PR <https://github.com/ray-project/ray/pull/46317>`__.
 
@@ -214,39 +214,72 @@ Note that this may not include all development efforts.
 Contributing Algorithms
 +++++++++++++++++++++++
 
-The guidelines for merging new algorithms into RLlib depend on the level of contribution you would like to make with the new algorithm:
-
-or as a fully-integrated RLlib Algorithm in `rllib/algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__.
+The guidelines for merging new algorithms into RLlib depend on the level of contribution you would like to make:
 
 * `Example Algorithms <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__:
-    - must subclass :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` and implement the ``training_step()`` method
+    - must subclass :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` and implement the :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` method.
     - must include an actual `example script <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__, which configures and runs the algorithm.
       This script must be included in the `BUILD file <https://github.com/ray-project/ray/tree/master/rllib/BUILD>`__ to run as a CI test, proving that the algorithm can learn a certain task.
-    - must offer functionality not present in existing algorithms
+    - must offer functionality not present in existing algorithms.
 
 * `Fully integrated Algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__ also require the following:
-    - must offer substantial new functionality not possible to add to other algorithms
-    - must support custom RLModules
-    - must use RLlib abstractions and support distributed execution
-    - must include at least one `tuned hyperparameter example <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__, testing of which is part of the CI
+    - must offer substantial new functionality not possible to add to other algorithms.
+    - must use RLlib abstractions and support distributed execution on the :py:class:`~ray.rllib.env.env_runner.EnvRunner` axis and :py:class:`~ray.rllib.core.learner.learner.Learner` axis.
+      The respective config settings are ``config.env_runners(num_env_runners=...)`` and ``config.learners(num_learners=...)``
+    - must be added to the :ref:`algorithms overview page <rllib-algorithms-doc>` and described in detail.
+    - must support custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` classes.
+    - must include at least one `tuned hyperparameter example <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__,
+      added to the `BUILD file <https://github.com/ray-project/ray/tree/master/rllib/BUILD>`__ for automated CI-testing.
 
-Both integrated and contributed algorithms ship with the ``ray`` PyPI package, and are tested as part of Ray's automated tests.
+Both example- and fully integrated algorithms ship with the ``ray`` PyPI package, and are tested as part of Ray's automated CI-tests.
 
 Debugging RLlib
 ---------------
 
 The fastest way to find and fix bugs in RLlib and your custom code is to use a locally installed IDE,
 such as `PyCharm <https://www.jetbrains.com/pycharm/>`__ or `VS Code <https://code.visualstudio.com/>`__.
+The RLlib team recommends to install either one of these software first, before you start your journey into developing.
 
-We strongly recommend to install either one of these software first, before you start your journey into developing
-with RLlib. Even though, Ray and RLlib are distributed and best unfold all of their potential in production on large,
+Local debugging
+~~~~~~~~~~~~~~~
+
+Even though, Ray and RLlib are distributed and best unfold all of their potential in production on large,
 multi-node clusters, it's often helpful to start running your programs locally on your laptop or desktop machine and see,
-whether - roughly - it works as intended. Even if your local setup doesn't have some compute resources that are absolutely
-crucial for the actual training rund to succeed (and not take forever), most bugs already surface in the simplest of
-setups, for example in a single, local process running on the CPU.
+whether they roughly work as intended. Even if your local setup doesn't have some compute resources that are
+crucial for the actual training to succeed, most bugs already surface in the simplest of setups, for example in a single,
+local process running on the CPU.
 
-To change your config, such that your RLlib program runs in such local setup, you should - before anything else -try
-the following settings.
+To change your config, such that your RLlib program runs in such local setup, you should - before anything else - try
+the following settings:
+
+.. testcode::
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+
+    config = (
+        PPOConfig()
+        .environment("Acrobot-v1")
+
+        # Force one local EnvRunner for maximum simplicity on the EnvRunner axis.
+        # This EnvRunner instance is part of the main Algorithm process and doesn't run as a ray remote actor.
+        .env_runners(num_env_runners=0)
+
+        # Force a local CPU-bound Learner for maximum simplicity on the Learner axis.
+        # This Learner instance is part of the main Algorithm process and doesn't run as a ray remote actor.
+        .learners(num_learners=0, num_gpus_per_learner=0)
+    )
+
+
+With the preceding config setup, you can debug your Algorithm code through your IDE's visual debugger.
+For example, go to the `PPO training_step() <>`__ method implementation
+and set a breakpoint somewhere
+
+
+
+Logging with Weights and Biases (WandB)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
 
 Episode traces
 ~~~~~~~~~~~~~~
@@ -263,6 +296,7 @@ traces to ``/tmp/debug``.
     # episode traces will be saved in /tmp/debug, for example
     output-2019-02-23_12-02-03_worker-2_0.json
     output-2019-02-23_12-02-04_worker-1_0.json
+
 
 Log verbosity
 ~~~~~~~~~~~~~
