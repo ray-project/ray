@@ -29,7 +29,11 @@ from ray.autoscaler._private.util import (
     parse_usage,
 )
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
-from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.consts import (
+    GCS_RPC_TIMEOUT_SECONDS,
+    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    DASHBOARD_AGENT_ADDR_IP_PREFIX,
+)
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
@@ -194,6 +198,22 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         assert node["state"] in ["ALIVE", "DEAD"]
         is_alive = node["state"] == "ALIVE"
         if not is_alive:
+            # Remove the agent address from the internal KV.
+            keys = [
+                f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}",
+                f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node['nodeManagerAddress']}",
+            ]
+            tasks = [
+                self.gcs_aio_client.internal_kv_del(
+                    key,
+                    del_by_prefix=False,
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    timeout=GCS_RPC_TIMEOUT_SECONDS,
+                )
+                for key in keys
+            ]
+            await asyncio.gather(*tasks)
+
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
                 DataSource.nodes.pop(self._dead_node_queue.popleft(), None)
@@ -223,14 +243,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         f"{self.get_internal_states()}"
                     )
                     warning_shown = True
-
-    @routes.get("/internal/node_module")
-    async def get_node_module_internal_state(self, req) -> aiohttp.web.Response:
-        return dashboard_optional_utils.rest_response(
-            success=True,
-            message="",
-            **self.get_internal_states(),
-        )
 
     async def get_nodes_logical_resources(self) -> dict:
 
