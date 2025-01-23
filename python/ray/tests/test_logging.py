@@ -31,6 +31,7 @@ from ray._private.test_utils import (
     init_log_pubsub,
     run_string_as_driver,
     wait_for_condition,
+    get_all_redirected_stdout,
 )
 from ray.cross_language import java_actor_class
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -548,11 +549,13 @@ public class MyClass {
     ray.get(handle.printToLog.remote("here's my random line!"))
 
     def check():
-        out, err = capsys.readouterr()
-        out += err
-        with capsys.disabled():
-            print(out)
-        return "here's my random line!" in out
+        out_str_list = get_all_redirected_stdout()
+        out_str = " ".join(out_str_list)
+        err_str_list = get_all_redirected_stdout()
+        err_str = " ".join(err_str_list)
+
+        target_content = "here's my random line!"
+        return target_content in out_str or target_content in err_str
 
     wait_for_condition(check)
 

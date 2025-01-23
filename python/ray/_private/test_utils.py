@@ -133,7 +133,7 @@ def get_all_redirected_stdout() -> List[str]:
         if not str(path).endswith(".out") and not str(path).endswith(".log"):
             continue
         all_content.append(path.read_text())
-    return []
+    return all_content
 
 
 def get_all_redirected_stderr() -> List[str]:
@@ -146,7 +146,41 @@ def get_all_redirected_stderr() -> List[str]:
         if not str(path).endswith(".err"):
             continue
         all_content.append(path.read_text())
-    return []
+    return all_content
+
+
+def get_actor_or_worker_stdout_log(id: str) -> List[str]:
+    """Get output log content for the given [actorid]."""
+    session_path = Path("/tmp/ray/session_latest")
+    log_dir_path = session_path / "logs"
+    paths = list(log_dir_path.iterdir())
+
+    actor_out_content = list()
+    for path in paths:
+        if not str(path).endswith(".out") and not str(path).endswith(".log"):
+            continue
+        if id not in str(path):
+            continue
+        content = path.read_text()
+        actor_out_content.append(content)
+    return actor_out_content
+
+
+def get_actor_or_worker_stderr_log(id: str) -> List[str]:
+    """Get output log content for the given [actorid]."""
+    session_path = Path("/tmp/ray/session_latest")
+    log_dir_path = session_path / "logs"
+    paths = list(log_dir_path.iterdir())
+
+    actor_err_content = list()
+    for path in paths:
+        if not str(path).endswith(".err"):
+            continue
+        if id not in str(path):
+            continue
+        content = path.read_text()
+        actor_err_content.append(content)
+    return actor_err_content
 
 
 class RayTestTimeoutException(Exception):

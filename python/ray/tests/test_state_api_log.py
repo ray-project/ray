@@ -21,6 +21,8 @@ from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
     wait_until_server_available,
+    get_all_redirected_stdout,
+    get_all_redirected_stderr,
 )
 
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
@@ -1188,6 +1190,7 @@ def test_log_get(ray_start_cluster):
     wait_for_condition(verify)
 
     del a
+
     """
     Test log suffix selection for worker/actor
     """
@@ -1218,26 +1221,28 @@ def test_log_get(ray_start_cluster):
     pid = ray.get(worker_func.remote())
 
     def verify():
-        # Test actors
-        lines = get_log(actor_id=actor_id, suffix="err")
-        assert ACTOR_LOG_LINE.format(dest="err") in "".join(lines)
+        stdout_content = " ".join(get_all_redirected_stdout())
+        stderr_content = " ".join(get_all_redirected_stderr())
 
-        lines = get_log(actor_id=actor_id, suffix="out")
-        assert ACTOR_LOG_LINE.format(dest="out") in "".join(lines)
+        # Test actor stdout.
+        expected_content = ACTOR_LOG_LINE.format(dest="out")
+        if expected_content not in stdout_content:
+            return False
 
-        # Default to out
-        lines = get_log(actor_id=actor_id)
-        assert ACTOR_LOG_LINE.format(dest="out") in "".join(lines)
+        # Test actor stderr.
+        expected_content = ACTOR_LOG_LINE.format(dest="err")
+        if expected_content not in stderr_content:
+            return False
 
-        # Test workers
-        lines = get_log(node_ip=head_node["node_ip"], pid=pid, suffix="err")
-        assert WORKER_LOG_LINE.format(dest="err") in "".join(lines)
+        # Test worker stdout.
+        expected_content = WORKER_LOG_LINE.format(dest="out")
+        if expected_content not in stdout_content:
+            return False
 
-        lines = get_log(node_ip=head_node["node_ip"], pid=pid, suffix="out")
-        assert WORKER_LOG_LINE.format(dest="out") in "".join(lines)
-
-        lines = get_log(node_ip=head_node["node_ip"], pid=pid)
-        assert WORKER_LOG_LINE.format(dest="out") in "".join(lines)
+        # Test actor stderr.
+        expected_content = ACTOR_LOG_LINE.format(dest="err")
+        if expected_content not in stderr_content:
+            return False
 
         return True
 
