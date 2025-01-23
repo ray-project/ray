@@ -11,7 +11,6 @@ class DataloaderType(enum.Enum):
 class BenchmarkConfig(pydantic.BaseModel):
     # ScalingConfig
     num_workers: int = 1
-    use_gpu: bool = True
 
     # Training
     num_epochs: int = 1

@@ -6,11 +6,14 @@ from factory import BenchmarkFactory
 from config import DataloaderType
 
 
-def mock_dataloader(num_batches: int = 1000, batch_size: int = 32):
+def mock_dataloader(num_batches: int = 64, batch_size: int = 32):
+    device = ray.train.torch.get_device()
+
+    images = torch.randn(batch_size, 3, 224, 224).to(device)
+    labels = torch.randint(0, 1000, (batch_size,)).to(device)
+
     for _ in range(num_batches):
-        yield torch.randn(batch_size, 3, 224, 224), torch.randint(
-            0, 1000, (batch_size,)
-        )
+        yield images, labels
 
 
 class ImageClassificationFactory(BenchmarkFactory):
@@ -28,7 +31,7 @@ class ImageClassificationFactory(BenchmarkFactory):
             # TODO: configure this
             return ds_iterator.iter_torch_batches(batch_size=32)
         elif self.benchmark_config.dataloader_type == DataloaderType.MOCK:
-            return mock_dataloader(batch_size=32)
+            return mock_dataloader(num_batches=64, batch_size=32)
         else:
             raise ValueError(
                 f"Dataloader type {self.benchmark_config.dataloader_type} not supported"
@@ -39,7 +42,7 @@ class ImageClassificationFactory(BenchmarkFactory):
             ds_iterator = ray.train.get_dataset_shard("val")
             return ds_iterator.iter_torch_batches(batch_size=32)
         elif self.benchmark_config.dataloader_type == DataloaderType.MOCK:
-            return mock_dataloader(batch_size=32)
+            return mock_dataloader(num_batches=16, batch_size=32)
         else:
             raise ValueError(
                 f"Dataloader type {self.benchmark_config.dataloader_type} not supported"

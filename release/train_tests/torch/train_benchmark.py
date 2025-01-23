@@ -15,17 +15,16 @@
 # - fault tolerance recovery time if enabled
 # - checkpointing time
 import argparse
-import enum
 import os
 import tempfile
-from typing import Dict, Optional
+from typing import Dict
 
-import pydantic
 import torch
 
 import ray.data
 import ray.train
 from ray.train.torch import TorchTrainer
+from ray.train.v2._internal.util import date_str
 
 from config import BenchmarkConfig
 from factory import BenchmarkFactory
@@ -37,7 +36,9 @@ class TrainLoopRunner:
         self.factory = factory
         self.benchmark_config = factory.benchmark_config
 
-        self.model = factory.get_model()
+        model = factory.get_model()
+        self.model = ray.train.torch.prepare_model(model)
+
         self.train_dataloader = factory.get_train_dataloader()
         self.val_dataloader = factory.get_val_dataloader()
         self.loss_fn = factory.get_loss_fn()
@@ -94,7 +95,7 @@ class TrainLoopRunner:
         try:
             return next(dataloader)
         except StopIteration:
-            return None, None
+            return None
 
     def train_step(self, input_batch, labels):
         self.model.train()
@@ -126,9 +127,10 @@ class TrainLoopRunner:
         total_loss = 0
         num_rows = 0
         for batch, labels in self.val_dataloader:
-            print(batch, labels)
-            out = self.model(batch)
-            loss = self.loss_fn(out, labels)
+            with torch.no_grad():
+                out = self.model(batch)
+                loss = self.loss_fn(out, labels)
+
             total_loss += loss
             num_rows += len(batch)
 
@@ -146,6 +148,9 @@ class TrainLoopRunner:
         train_state = torch.load(os.path.join(local_dir, "train_state.pt"))
         self._train_epoch = train_state["epoch"]
         self._train_batch_idx = train_state["batch_idx"]
+        print(
+            f"[Fault Tolerance] Restored to epoch={self._train_epoch}, train_batch_idx={self._train_batch_idx}"
+        )
 
     def save_checkpoint(self, local_dir: str):
         train_state = {
@@ -158,12 +163,7 @@ class TrainLoopRunner:
 
 
 def train_fn_per_worker(config):
-    benchmark_config = BenchmarkConfig.model_validate(config)
-
-    factory = None
-    if benchmark_config.task == "image_classification":
-        factory = ImageClassificationFactory(benchmark_config)
-
+    factory = config["factory"]
     runner = TrainLoopRunner(factory)
     runner.run()
 
@@ -180,21 +180,23 @@ def parse_cli_args():
 
 def main():
     benchmark_config = parse_cli_args()
-    print(benchmark_config)
+    print(benchmark_config.model_dump_json(indent=2))
 
-    factory = BenchmarkFactory(benchmark_config)
+    if benchmark_config.task == "image_classification":
+        factory = ImageClassificationFactory(benchmark_config)
+    else:
+        raise ValueError
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
-        train_loop_config=dict(benchmark_config),
+        train_loop_config={"factory": factory},
         scaling_config=ray.train.ScalingConfig(
             num_workers=benchmark_config.num_workers,
-            # use_gpu=benchmark_config.use_gpu,
-            use_gpu=False,
+            use_gpu=True,
         ),
         run_config=ray.train.RunConfig(
-            # storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",
-            name="temp",
+            storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",
+            name=date_str(include_ms=True),
         ),
         datasets=factory.get_ray_datasets(),
     )
