@@ -190,7 +190,7 @@ class Channel(ChannelInterface):
         if typ is None:
             buffer_size_bytes = DEFAULT_MAX_BUFFER_SIZE
         elif isinstance(typ, int):
-            buffer_size_bytes = SharedMemoryType(buffer_size_bytes=typ)
+            buffer_size_bytes = typ
         else:
             buffer_size_bytes = typ.buffer_size_bytes
 
