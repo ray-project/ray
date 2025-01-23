@@ -81,6 +81,7 @@ if __name__ == "__main__":
     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 0
     RAY_CI_TOOLS_AFFECTED = 0
     RAY_CI_DATA_AFFECTED = 0
+    RAY_CI_LLM_AFFECTED = 0
     RAY_CI_WORKFLOW_AFFECTED = 0
     RAY_CI_RELEASE_TESTS_AFFECTED = 0
     RAY_CI_COMPILED_PYTHON_AFFECTED = 0
@@ -174,6 +175,13 @@ if __name__ == "__main__":
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
+            elif (
+                changed_file.startswith("python/ray/llm")
+                or changed_file == "ci/docker/llm.build.Dockerfile"
+                or changed_file == "ci/docker/llm.rayci.yml"
+                or changed_file == "ci/docker/llm.build.wanda.yaml"
+            ):
+                RAY_CI_LLM_AFFECTED = 1
             elif changed_file.startswith("python/ray/dashboard"):
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 # https://github.com/ray-project/ray/pull/15981
@@ -400,6 +408,7 @@ if __name__ == "__main__":
             "RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED),
             "RAY_CI_DASHBOARD_AFFECTED={}".format(RAY_CI_DASHBOARD_AFFECTED),
             "RAY_CI_DOC_AFFECTED={}".format(RAY_CI_DOC_AFFECTED),
+            "RAY_CI_LLM_AFFECTED={}".format(RAY_CI_LLM_AFFECTED),
             "RAY_CI_CORE_CPP_AFFECTED={}".format(RAY_CI_CORE_CPP_AFFECTED),
             "RAY_CI_CPP_AFFECTED={}".format(RAY_CI_CPP_AFFECTED),
             "RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED),

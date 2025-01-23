@@ -1,4 +1,4 @@
-group: serve tests
+group: llm tests
 depends_on:
   - oss-ci-base_build
 
