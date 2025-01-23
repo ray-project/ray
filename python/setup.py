@@ -284,6 +284,9 @@ if setup_spec.type == SetupType.RAY:
             *pyarrow_deps,
             "fsspec",
         ],
+        "llm": [
+            "vllm >= 0.6.6.post1",
+        ],
     }
 
     # Both "adag" and "cgraph" are for Compiled Graphs.

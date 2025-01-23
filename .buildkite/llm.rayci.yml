@@ -1,0 +1,34 @@
+group: serve tests
+depends_on:
+  - oss-ci-base_build
+
+steps:
+  # builds
+  - name: llmbuild-multipy
+    label: "wanda: llmbuild-py{{matrix}}"
+    wanda: ci/docker/llm.build.wanda.yaml
+    matrix: ["3.11"]
+    env:
+      PYTHON: "{{matrix}}"
+    depends_on: oss-ci-base_build-multipy
+
+  # tests
+  - label: ":ray-llm: batch: unit tests"
+    parallelism: 1
+    tags:
+      - llm
+      - batch
+      - python
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... llm
+        --except-tags post_wheel_build,gpu
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
+        --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --parallelism-per-worker 3
+        --build-name llmbuild
+        --test-env=EXPECTED_PYTHON_VERSION={{matrix.python}}
+    depends_on: "llmbuild-multipy"
+    matrix:
+      setup:
+        python: ["3.11"]
