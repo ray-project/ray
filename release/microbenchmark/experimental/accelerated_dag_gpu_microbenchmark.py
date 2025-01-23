@@ -70,6 +70,23 @@ class TorchTensorWorker:
         return b"x"
 
 
+@ray.remote
+class TorchTensorWorkerWithDataTransfer:
+    def __init__(self):
+        self.device = torch_utils.get_devices()[0]
+
+    def send(self, shape, dtype, value):
+        t = torch.ones(shape, dtype=dtype, device=self.device) * value
+        return t
+
+    def recv(self, tensor):
+        # This benchmark tests the overhead of sending a tensor between
+        # actors. To minimize the overhead of shared memory transfer,
+        # we return only a byte string.
+        assert tensor.device == self.device
+        return tensor
+
+
 @ray.remote(num_gpus=1)
 class NcclWorker:
     def __init__(self, rank):
@@ -123,6 +140,7 @@ def exec_ray_dag(
     static_shape=False,
     direct_return=False,
     num_executions=1,
+    uneven_executions=True,
 ):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
@@ -141,19 +159,23 @@ def exec_ray_dag(
 
     if use_cgraph:
         dag = dag.experimental_compile()
-        if num_executions == 1:
+        if uneven_executions:
 
             def _run():
-                ref = dag.execute(b"x")
-                result = ray.get(ref)
-                assert result == b"x"
+                results = []
+                for i in range(num_executions):
+                    results.append(dag.execute(b"x"))
+                ray.get(results)
 
         else:
 
             def _run():
                 results = []
                 for i in range(num_executions):
-                    results.append(dag.execute(b"x"))
+                    if i % 2 == 0:
+                        results.append(dag.execute(b"x"))
+                    else:
+                        results.append(dag.execute(b"xxxxxxxxxxxxx"))
                 ray.get(results)
 
     else:
@@ -307,11 +329,27 @@ def exec_ray_dag_cpu(sender_hint, receiver_hint):
     return exec_ray_dag("exec_ray_dag_cpu", sender, receiver)
 
 
-def exec_ray_dag_cpu_ten_times(sender_hint, receiver_hint):
+def exec_ray_dag_cpu_five_times(sender_hint, receiver_hint):
     sender = TorchTensorWorker.options(scheduling_strategy=sender_hint).remote()
     receiver = TorchTensorWorker.options(scheduling_strategy=receiver_hint).remote()
     return exec_ray_dag(
-        "exec_ray_dag_cpu_ten_times", sender, receiver, num_executions=5
+        "exec_ray_dag_cpu_five_times", sender, receiver, num_executions=5
+    )
+
+
+def exec_ray_dag_cpu_five_times_uneven_data_transfer(sender_hint, receiver_hint):
+    sender = TorchTensorWorkerWithDataTransfer.options(
+        scheduling_strategy=sender_hint
+    ).remote()
+    receiver = TorchTensorWorkerWithDataTransfer.options(
+        scheduling_strategy=receiver_hint
+    ).remote()
+    return exec_ray_dag(
+        "exec_ray_dag_cpu_five_times_uneven_data_transfer",
+        sender,
+        receiver,
+        num_executions=5,
+        uneven_executions=True,
     )
 
 
@@ -426,7 +464,10 @@ def main(distributed):
 
     results += exec_ray_core_cpu(sender_hint, receiver_hint)
     results += exec_ray_dag_cpu(sender_hint, receiver_hint)
-    results += exec_ray_dag_cpu_ten_times(sender_hint, receiver_hint)
+    results += exec_ray_dag_cpu_five_times(sender_hint, receiver_hint)
+    results += exec_ray_dag_cpu_five_times_uneven_data_transfer(
+        sender_hint, receiver_hint
+    )
     results += exec_ray_core_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_cpu_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_nccl(
