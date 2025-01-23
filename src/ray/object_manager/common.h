@@ -151,7 +151,8 @@ struct PlasmaObjectHeader {
   /// \param sem The semaphores for this channel.
   Status WriteRelease(Semaphores &sem);
 
-  bool WaitForNewVersionSealed(int64_t version_to_wait_for);
+  bool WaitForNewVersionSealed(int64_t version_to_wait_for,
+                               std::chrono::milliseconds time_to_wait_for);
 
   /// Blocks until the given version is ready to read. Returns false if the
   /// maximum number of readers have already read the requested version.

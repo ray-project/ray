@@ -14,8 +14,6 @@
 
 #include "ray/object_manager/common.h"
 
-#include <csignal>
-
 #include "absl/strings/str_cat.h"
 #include "ray/common/ray_config.h"
 
@@ -180,12 +178,12 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
   return Status::OK();
 }
 
-bool PlasmaObjectHeader::WaitForNewVersionSealed(int64_t version_to_wait_for) {
+bool PlasmaObjectHeader::WaitForNewVersionSealed(
+    int64_t version_to_wait_for, std::chrono::milliseconds time_to_wait_for) {
   std::unique_lock<std::mutex> lock(version_sealed_mutex);
-  return version_sealed_cv.wait_for(
-      lock, std::chrono::seconds(1), [this, version_to_wait_for] {
-        return version >= version_to_wait_for && is_sealed;
-      });
+  return version_sealed_cv.wait_for(lock, time_to_wait_for, [this, version_to_wait_for] {
+    return version >= version_to_wait_for && is_sealed;
+  });
 }
 
 Status PlasmaObjectHeader::ReadAcquire(
@@ -206,7 +204,8 @@ Status PlasmaObjectHeader::ReadAcquire(
   const auto check_signal_interval = std::chrono::milliseconds(
       RayConfig::instance().get_check_signal_interval_milliseconds());
   auto last_signal_check_time = std::chrono::steady_clock::now();
-  while (!WaitForNewVersionSealed(version_to_read)) {
+  while ((version < version_to_read || !is_sealed) &&
+         !WaitForNewVersionSealed(version_to_read, check_signal_interval)) {
     if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
                              check_signal_interval) {
       RAY_RETURN_NOT_OK(check_signals());
