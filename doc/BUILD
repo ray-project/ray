@@ -448,8 +448,22 @@ doctest(
             "source/rllib/**/*.rst",
             "source/rllib/**/*.md",
         ],
+        exclude = [
+            "source/rllib/getting-started.rst",
+        ]
     ),
     data = ["//rllib:cartpole-v1_large"],
+    tags = ["team:rllib"],
+)
+
+doctest(
+    name = "doctest[rllib-getting-started]",
+    size = "large",
+    files = glob(
+        include = [
+            "source/rllib/getting-started.rst",
+        ],
+    ),
     tags = ["team:rllib"],
 )
 
