@@ -175,7 +175,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             reply = await self.gcs_aio_client.get_all_job_info(
                 skip_submission_job_info_field=True,
                 skip_is_running_tasks_field=True,
-                timeout=timeout,
+                timeout=float(timeout),
             )
 
             num_active_drivers = 0
