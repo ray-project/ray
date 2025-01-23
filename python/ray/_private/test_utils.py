@@ -72,7 +72,7 @@ def check_content_in_stdout_log(content: str):
     session_path = Path("/tmp/ray/session_latest")
     log_dir_path = session_path / "logs"
     paths = list(log_dir_path.iterdir())
-    all_content = list() # Used for assertion
+    all_content = list()  # Used for assertion
     for path in paths:
         if not str(path).endswith(".out") and not str(path).endswith(".log"):
             continue
@@ -88,7 +88,7 @@ def check_content_in_stderr_log(content: str):
     session_path = Path("/tmp/ray/session_latest")
     log_dir_path = session_path / "logs"
     paths = list(log_dir_path.iterdir())
-    all_content = list() # Used for assertion
+    all_content = list()  # Used for assertion
     for path in paths:
         if not str(path).endswith(".err"):
             continue

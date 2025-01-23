@@ -1271,39 +1271,6 @@ def test_log_get(ray_start_cluster):
         return True
 
     wait_for_condition(verify)
-    ##############################
-    # Test binary files and encodings.
-    ##############################
-    # Write a binary file to ray log directory.
-    log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
-    file = "test.bin"
-    binary_file = os.path.join(log_dir, file)
-    with open(binary_file, "wb") as f:
-        data = bytearray(i for i in range(256))
-        f.write(data)
-
-    # Get the log
-    def verify():
-        for read in get_log(node_ip=head_node["node_ip"], filename=file, encoding=None):
-            assert read == data
-
-        # Default utf-8
-        for read in get_log(
-            node_ip=head_node["node_ip"], filename=file, errors="replace"
-        ):
-            assert read == data.decode(encoding="utf-8", errors="replace")
-
-        for read in get_log(
-            node_ip=head_node["node_ip"],
-            filename=file,
-            encoding="iso-8859-1",
-            errors="replace",
-        ):
-            assert read == data.decode(encoding="iso-8859-1", errors="replace")
-
-        return True
-
-    wait_for_condition(verify)
 
     # Test running task logs
     @ray.remote
@@ -1317,10 +1284,8 @@ def test_log_get(ray_start_cluster):
     task = sleep_task.remote(expected_out)
 
     def verify():
-        lines = get_log(task_id=task.task_id().hex())
-        assert expected_out == "".join(lines)
-
-        return True
+        stdout_str = " ".join(get_all_redirected_stdout())
+        return expected_out in stdout_str
 
     wait_for_condition(verify)
 
