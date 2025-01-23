@@ -1498,7 +1498,7 @@ void WorkerPool::PrestartWorkersInternal(const TaskSpecification &task_spec,
     GetOrCreateRuntimeEnv(
         task_spec.SerializedRuntimeEnv(),
         task_spec.RuntimeEnvConfig(),
-        JobID::Nil(),
+        task_spec.JobId(),
         [this, task_spec = task_spec](bool successful,
                                       const std::string &serialized_runtime_env_context,
                                       const std::string &setup_error_message) {
