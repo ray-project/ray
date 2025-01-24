@@ -18,7 +18,6 @@ from ray.air.constants import TIME_THIS_ITER_S, TIMESTAMP, TRAINING_ITERATION
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
 from ray.train.constants import DEFAULT_STORAGE_PATH
-from ray.tune import Checkpoint
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -44,6 +43,7 @@ from ray.tune.utils.util import Tee
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
+    from ray.tune import Checkpoint
     from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
@@ -432,7 +432,7 @@ class Trainable:
                     f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
                 )
 
-        local_checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        local_checkpoint = ray.tune.Checkpoint.from_directory(checkpoint_dir)
 
         metrics = self._last_result.copy() if self._last_result else {}
 
@@ -505,7 +505,7 @@ class Trainable:
         return checkpoint_result
 
     @DeveloperAPI
-    def restore(self, checkpoint_path: Union[str, Checkpoint, _TrainingResult]):
+    def restore(self, checkpoint_path: Union[str, "Checkpoint", _TrainingResult]):
         """Restores training state from a given model checkpoint.
 
         These checkpoints are returned from calls to save().
@@ -531,8 +531,8 @@ class Trainable:
         """
         # TODO(justinvyu): Clean up this interface
         if isinstance(checkpoint_path, str):
-            checkpoint_path = Checkpoint.from_directory(checkpoint_path)
-        if isinstance(checkpoint_path, Checkpoint):
+            checkpoint_path = ray.tune.Checkpoint.from_directory(checkpoint_path)
+        if isinstance(checkpoint_path, ray.tune.Checkpoint):
             checkpoint_result = _TrainingResult(checkpoint=checkpoint_path, metrics={})
         else:
             checkpoint_result: _TrainingResult = checkpoint_path
