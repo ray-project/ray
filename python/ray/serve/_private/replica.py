@@ -1641,7 +1641,7 @@ class UserCallableWrapper:
                 # because we cannot guarantee cancelling the batched
                 # call, so in the case that the call continues executing
                 # we should continue fetching data from the client.
-                if not getattr(user_method_info.callable, "set_max_batch_size"):
+                if not hasattr(user_method_info.callable, "set_max_batch_size"):
                     receive_task.cancel()
 
             raise
