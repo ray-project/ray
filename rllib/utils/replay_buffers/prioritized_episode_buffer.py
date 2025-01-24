@@ -620,54 +620,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         return sampled_episodes
 
     @override(EpisodeReplayBuffer)
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def _update_sample_metrics(
-        self,
-        num_env_steps_sampled: int,
-        num_episodes_per_sample: int,
-        num_env_steps_per_sample: int,
-        sampled_n_step: Optional[float],
-        num_resamples: int,
-        **kwargs: Dict[str, Any],
-    ) -> None:
-        """Updates the replay buffer's sample metrics.
-
-        Args:
-            num_env_steps_sampled: The number of environment steps sampled
-                this iteration in the `sample` method.
-            num_episodes_per_sample: The number of unique episodes in the
-                sample.
-            num_env_steps_per_sample: The number of unique environment steps
-                in the sample.
-            sampled_n_step: The mean n-step used in the sample. Note, this
-                is constant, if the n-step is not sampled.
-            num_resamples: The total number of times environment steps needed to
-                be resampled. Resampling happens, if the sampled time step is
-                to near to the episode's end to cover the complete n-step.
-        """
-        # Call the super's method to increase all regular sample metrics.
-        super()._update_sample_metrics(
-            num_env_steps_sampled,
-            num_episodes_per_sample,
-            num_env_steps_per_sample,
-            sampled_n_step,
-        )
-
-        # Add the metrics for resamples.
-        self.metrics.log_value(
-            (NUM_AGENT_RESAMPLES, DEFAULT_AGENT_ID),
-            num_resamples,
-            reduce="sum",
-            clear_on_reduce=True,
-        )
-        self.metrics.log_value(
-            NUM_RESAMPLES,
-            num_resamples,
-            reduce="sum",
-            clear_on_reduce=True,
-        )
-
-    @override(EpisodeReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
         """Gets the state of a `PrioritizedEpisodeReplayBuffer`.
 
