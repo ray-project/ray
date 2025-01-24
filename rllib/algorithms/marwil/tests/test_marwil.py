@@ -179,9 +179,7 @@ class TestMARWIL(unittest.TestCase):
         # Calculate our own expected values (to then compare against the
         # agent's loss output).
         module = algo.learner_group._learner.module[DEFAULT_MODULE_ID].unwrapped()
-        fwd_out = module.forward_train(
-            {k: v for k, v in batch[DEFAULT_MODULE_ID].items()}
-        )
+        fwd_out = module.forward_train(dict(batch[DEFAULT_MODULE_ID]))
         advantages = (
             batch[DEFAULT_MODULE_ID][Columns.VALUE_TARGETS].detach().cpu().numpy()
             - module.compute_values(batch[DEFAULT_MODULE_ID]).detach().cpu().numpy()
@@ -210,7 +208,7 @@ class TestMARWIL(unittest.TestCase):
         # calculation above).
         total_loss = algo.learner_group._learner.compute_loss_for_module(
             module_id=DEFAULT_MODULE_ID,
-            batch={k: v for k, v in batch[DEFAULT_MODULE_ID].items()},
+            batch=dict(batch[DEFAULT_MODULE_ID]),
             fwd_out=fwd_out,
             config=config,
         )

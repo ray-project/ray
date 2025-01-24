@@ -621,9 +621,7 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
         proxy_state._actor_proxy_wrapper.is_ready_response = False
 
     # Capture current proxy states (prior to updating)
-    prev_proxy_states = {
-        node_id: state for node_id, state in proxy_state_manager._proxy_states.items()
-    }
+    prev_proxy_states = dict(proxy_state_manager._proxy_states)
 
     # Trigger PSM to reconcile
     proxy_state_manager.update(proxy_nodes=node_ids)
@@ -644,9 +642,7 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
         proxy_state._actor_proxy_wrapper.is_ready_response = True
 
     # Capture current proxy states again (prior to updating)
-    prev_proxy_states = {
-        node_id: state for node_id, state in proxy_state_manager._proxy_states.items()
-    }
+    prev_proxy_states = dict(proxy_state_manager._proxy_states)
 
     # Trigger PSM to reconcile
     proxy_state_manager.update(proxy_nodes=node_ids)
