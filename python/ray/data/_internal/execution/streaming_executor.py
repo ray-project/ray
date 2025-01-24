@@ -165,7 +165,9 @@ class StreamingExecutor(Executor, threading.Thread):
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
                 except BaseException as e:
-                    self._outer.shutdown(isinstance(e, StopIteration))
+                    self._outer.shutdown(
+                        e if not isinstance(e, StopIteration) else None
+                    )
                     raise
 
             def __del__(self):
@@ -176,7 +178,7 @@ class StreamingExecutor(Executor, threading.Thread):
     def __del__(self):
         self.shutdown()
 
-    def shutdown(self, execution_completed: bool = True):
+    def shutdown(self, exception: Optional[Exception] = None):
         global _num_shutdown
 
         with self._shutdown_lock:
@@ -188,7 +190,7 @@ class StreamingExecutor(Executor, threading.Thread):
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
             self._update_stats_metrics(
-                state="FINISHED" if execution_completed else "FAILED",
+                state="FINISHED" if exception is None else "FAILED",
                 force_update=True,
             )
             # Once Dataset execution completes, mark it as complete
@@ -206,7 +208,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if self._global_info:
                 # Set the appropriate description that summarizes
                 # the result of dataset execution.
-                if execution_completed:
+                if exception is None:
                     prog_bar_msg = (
                         f"{OK_PREFIX} Dataset execution finished in "
                         f"{self._final_stats.time_total_s:.2f} seconds"
@@ -218,6 +220,12 @@ class StreamingExecutor(Executor, threading.Thread):
             for op, state in self._topology.items():
                 op.shutdown()
                 state.close_progress_bars()
+            if exception is None:
+                for callback in get_execution_callbacks(self._data_context):
+                    callback.after_execution_succeeds()
+            else:
+                for callback in get_execution_callbacks(self._data_context):
+                    callback.after_execution_fails(exception)
             self._autoscaler.on_executor_shutdown()
 
     def run(self):
@@ -237,13 +245,9 @@ class StreamingExecutor(Executor, threading.Thread):
                     )
                 if not continue_sched or self._shutdown:
                     break
-            for callback in get_execution_callbacks(self._data_context):
-                callback.after_execution_succeeds()
         except Exception as e:
             # Propagate it to the result iterator.
             self._output_node.mark_finished(e)
-            for callback in get_execution_callbacks(self._data_context):
-                callback.after_execution_fails(e)
         finally:
             # Signal end of results.
             self._output_node.mark_finished()
