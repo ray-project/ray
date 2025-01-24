@@ -43,7 +43,7 @@ from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
 from ray.train.v2._internal.logging.logging import configure_controller_logger
 from ray.train.v2._internal.util import time_monotonic
-from ray.train.v2.api.result import Result, _build_result
+from ray.train.v2.api.result import Result
 from ray.train.v2.api.callback import RayTrainCallback
 
 logger = logging.getLogger(__name__)

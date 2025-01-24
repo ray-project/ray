@@ -20,14 +20,17 @@ _GET_METADATA_DEPRECATION_MESSAGE = (
     "`get_metadata` was an experimental API that accessed the metadata passed "
     "to `<Framework>Trainer(metadata=...)`. This API can be replaced by passing "
     "the metadata directly to the training function (e.g., via `train_loop_config`)."
+    "See this issue for more context: "
+    "https://github.com/ray-project/ray/issues/49454"
 )
 
 _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE = (
     "`{}` is deprecated because the concept of a `Trial` will "
-    "soon be removed in Ray Train (see here: "
-    "https://github.com/ray-project/enhancements/pull/57). "
+    "soon be removed in Ray Train."
     "Ray Train will no longer assume that it's running within a Ray Tune `Trial` "
     "in the future."
+    "See this issue for more context: "
+    "https://github.com/ray-project/ray/issues/49454"
 )
 
 

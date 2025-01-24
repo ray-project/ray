@@ -1,7 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import pyarrow
 
@@ -9,10 +9,6 @@ from ray.air.result import Result as ResultV1
 from ray.train.v2._internal.exceptions import TrainingFailedError
 from ray.util.annotations import Deprecated
 
-if TYPE_CHECKING:
-    from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
-        CheckpointManager,
-    )
 
 logger = logging.getLogger(__name__)
 

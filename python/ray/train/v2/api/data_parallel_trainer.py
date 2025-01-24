@@ -38,110 +38,18 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
-_TRAINER_RESTORE_DEPRECATION_WARNING = """
-The `restore` and `can_restore` APIs are deprecated and
-will be removed in a future release.
-
-This API previously accepted a Train run directory path and
-loaded state (including user training code) partially from .pkl file and
-partially from new arguments passed to the constructor.
-This was confusing and error-prone.
-
-Now, trainers only have a single constructor codepath, which takes in
-all arguments needed to construct the trainer (with no more brittle
-serialization/deserialization logic).
-Ray Train will auto-detect if an existing run snapshot exists
-at the path configured by `RunConfig(storage_path, name)` and will populate
-`ray.train.get_checkpoint` with the latest checkpoint, accessible
-by all Train workers.
-
-If you want to start a brand new training run without any prior checkpoint history,
-please specify a new, unique `RunConfig(storage_path, name)`.
-
-Trainer-level restoration can still be achieved, as shown below:
-
-Before
--------
-
-def train_fn_per_worker(config):
-    checkpoint = ray.train.get_checkpoint()
-    # Perform your training-specific checkpoint recovery here...
-
-storage_path = "s3://bucket/"
-name = "<unique_job_identifier>"
-run_path = f"{storage_path}/{name}"
-
-if TorchTrainer.can_restore(run_path):
-    # Some parameters are optionally re-specified.
-    trainer = TorchTrainer.restore(run_path, datasets={...})
-    result = trainer.fit()
-else:
-    trainer = TorchTrainer(
-        train_fn_per_worker,
-        datasets={...},
-        scaling_config=train.ScalingConfig(num_workers=2),
-        run_config=train.RunConfig(storage_path=storage_path, name=name),
-    )
-    result = trainer.fit()
-
-After
------
-
-def train_fn_per_worker(config):
-    # `ray.train.get_checkpoint` will be populated as long as your run
-    # is pointing to the same directory.
-    checkpoint = ray.train.get_checkpoint()
-    # Perform your training-specific checkpoint recovery here...
-
-storage_path = "s3://bucket/"
-name = "<unique_job_identifier>"
-
-# The second run will automatically find the snapshot saved by the first run
-# at (storage_path, name).
-trainer = TorchTrainer(
-    train_fn_per_worker,
-    datasets={...},
-    scaling_config=train.ScalingConfig(num_workers=2),
-    run_config=train.RunConfig(storage_path=storage_path, name=name),
-)
-result = trainer.fit()
-"""
-
-_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = """
-`resume_from_checkpoint` is deprecated and will be removed in an upcoming
-release, since it is conceptually confusing and can be replaced very easily.
-For example:
-
-Before
-------
-
-def train_fn_per_worker(config: dict):
-    # This is the checkpoint passed to `resume_from_checkpoint`
-    # if no other checkpoints have been saved.
-    # Otherwise this is the latest reported checkpoint.
-    checkpoint = ray.train.get_checkpoint()
-
-trainer = TorchTrainer(
-    train_fn_per_worker,
-    ...,
-    resume_from_checkpoint=ray.train.Checkpoint(...)
+_TRAINER_RESTORE_DEPRECATION_WARNING = (
+    "The `restore` and `can_restore` APIs are deprecated and "
+    "will be removed in a future release. "
+    "See this issue for more context: "
+    "https://github.com/ray-project/ray/issues/49454"
 )
 
-After
------
-
-def train_fn_per_worker(config: dict):
-    # Equivalent behavior that is explicit and more flexible.
-    checkpoint = (
-        ray.train.get_checkpoint()
-        or config.get("resume_from_checkpoint")
-    )
-
-trainer = TorchTrainer(
-    train_fn_per_worker,
-    train_loop_config={"resume_from_checkpoint": ray.train.Checkpoint(...)},
+_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = (
+    "`resume_from_checkpoint` is deprecated and will be removed in an upcoming "
+    "release. See this issue for more context: "
+    "https://github.com/ray-project/ray/issues/49454"
 )
-"""
 
 
 @DeveloperAPI
