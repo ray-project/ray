@@ -210,6 +210,9 @@ void GcsAutoscalerStateManager::GetClusterResourceConstraints(
 void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   NodeID node_id = NodeID::FromBinary(node.node_id());
+  if (node_resource_info_.contains(node_id)) {
+    return;
+  }
   auto node_info =
       node_resource_info_
           .emplace(node_id, std::make_pair(absl::Now(), rpc::ResourcesData()))
@@ -225,15 +228,20 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData da
   NodeID node_id = NodeID::FromBinary(data.node_id());
   auto iter = node_resource_info_.find(node_id);
   if (iter == node_resource_info_.end()) {
+    auto node_opt = gcs_node_manager_.GetAliveNode(node_id);
+    if (node_opt.has_value()) {
+      iter = node_resource_info_
+                 .emplace(node_id, std::make_pair(absl::Now(), std::move(data)))
+                 .first;
+      *iter->second.second.mutable_resources_total() = (*node_opt)->resources_total();
+      *iter->second.second.mutable_resources_available() = (*node_opt)->resources_total();
+      return;
+    }
     RAY_LOG(WARNING).WithField(node_id)
         << "Ignoring resource usage for node that is not alive.";
     return;
   }
-
-  auto &new_data = iter->second.second;
-  new_data = std::move(data);
-  // Last update time
-  iter->second.first = absl::Now();
+  iter->second = std::make_pair(absl::Now(), std::move(data));
 }
 
 absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
@@ -331,6 +339,8 @@ void GcsAutoscalerStateManager::GetNodeStates(
       }
 
       // Copy resource available
+      // TODO(dayshah): We should check if consumers use available_resources because it
+      // seems like we're never updating resources_available right now.
       const auto &available = node_resource_data.resources_available();
       node_state_proto->mutable_available_resources()->insert(available.begin(),
                                                               available.end());
@@ -338,6 +348,14 @@ void GcsAutoscalerStateManager::GetNodeStates(
       // Copy total resources
       const auto &total = node_resource_data.resources_total();
       node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
+    } else {
+      auto node_opt = gcs_node_manager_.GetAliveNode(node_id);
+      if (node_opt.has_value()) {
+        auto total = (*node_opt)->resources_total();
+        node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
+        node_state_proto->mutable_available_resources()->insert(total.begin(),
+                                                                total.end());
+      }
     }
 
     // Add dynamic PG labels.
