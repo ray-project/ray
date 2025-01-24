@@ -124,7 +124,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         batch_length_T: int = 1,
         alpha: float = 1.0,
         metrics_num_episodes_for_smoothing: int = 100,
-        metrics_num_episodes_for_smoothing: int = 100,
         **kwargs,
     ):
         """Initializes a `PrioritizedEpisodeReplayBuffer` object
@@ -344,18 +343,18 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Increase metrics.
         self._update_add_metrics(
-            num_episodes_added,
-            num_env_steps_added,
-            num_episodes_evicted,
-            num_env_steps_evicted,
-            agent_to_num_episodes_added,
-            agent_to_num_steps_added,
-            agent_to_num_episodes_evicted,
-            agent_to_num_steps_evicted,
-            module_to_num_steps_added,
-            module_to_num_episodes_added,
-            module_to_num_episodes_evicted,
-            module_to_num_steps_evicted,
+            num_episodes_added=num_episodes_added,
+            num_env_steps_added=num_env_steps_added,
+            num_episodes_evicted=num_episodes_evicted,
+            num_env_steps_evicted=num_env_steps_evicted,
+            agent_to_num_episodes_added=agent_to_num_episodes_added,
+            agent_to_num_steps_added=agent_to_num_steps_added,
+            agent_to_num_episodes_evicted=agent_to_num_episodes_evicted,
+            agent_to_num_steps_evicted=agent_to_num_steps_evicted,
+            module_to_num_episodes_added=module_to_num_steps_added,
+            module_to_num_steps_added=module_to_num_episodes_added,
+            module_to_num_episodes_evicted=module_to_num_episodes_evicted,
+            module_to_num_steps_evicted=module_to_num_steps_evicted,
         )
 
     @override(EpisodeReplayBuffer)
@@ -498,7 +497,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # beyond the episode's end.
             if episode_ts + actual_n_step > len(episode):
                 num_resamples += 1
-                num_resamples += 1
                 continue
 
             # Note, this will be the reward after executing action
@@ -587,7 +585,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Keep track of sampled indices for updating priorities later.
             self._last_sampled_indices.append(idx)
 
-        # Add to the sampled timesteps counter of the buffer.
         # Add to the sampled timesteps counter of the buffer.
         self.sampled_timesteps += batch_size_B
 

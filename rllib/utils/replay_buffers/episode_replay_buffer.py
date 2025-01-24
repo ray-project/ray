@@ -311,24 +311,26 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 # Increase episode evicted counter.
                 self._num_episodes_evicted += 1
 
+        # Update the metrics.
         self._update_add_metrics(
-            num_episodes_added,
-            num_env_steps_added,
-            num_episodes_evicted,
-            num_env_steps_evicted,
-            agent_to_num_episodes_added,
-            agent_to_num_steps_added,
-            agent_to_num_episodes_evicted,
-            agent_to_num_steps_evicted,
-            module_to_num_steps_added,
-            module_to_num_episodes_added,
-            module_to_num_episodes_evicted,
-            module_to_num_steps_evicted,
+            num_episodes_added=num_episodes_added,
+            num_env_steps_added=num_env_steps_added,
+            num_episodes_evicted=num_episodes_evicted,
+            num_env_steps_evicted=num_env_steps_evicted,
+            agent_to_num_episodes_added=agent_to_num_episodes_added,
+            agent_to_num_steps_added=agent_to_num_steps_added,
+            agent_to_num_episodes_evicted=agent_to_num_episodes_evicted,
+            agent_to_num_steps_evicted=agent_to_num_steps_evicted,
+            module_to_num_episodes_added=module_to_num_steps_added,
+            module_to_num_steps_added=module_to_num_episodes_added,
+            module_to_num_episodes_evicted=module_to_num_episodes_evicted,
+            module_to_num_steps_evicted=module_to_num_steps_evicted,
         )
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def _update_add_metrics(
         self,
+        *,
         num_episodes_added: int,
         num_env_steps_added: int,
         num_episodes_evicted: int,
@@ -1180,6 +1182,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def _update_sample_metrics(
         self,
+        *,
         num_env_steps_sampled: int,
         num_episodes_per_sample: int,
         num_env_steps_per_sample: int,

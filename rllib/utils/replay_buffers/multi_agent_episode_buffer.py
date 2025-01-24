@@ -270,10 +270,10 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Remove corresponding indices, if episodes were evicted.
         if eps_evicted_idxs:
-            # If the episode is not exvicted, we keep the index.
-            # Note, ach index 2-tuple is of the form (ma_episode_idx, timestep) and
-            # refers to a certain environment timestep in a certain multi-agent
-            # episode.
+            # If the episode is not evicted, we keep the index.
+            # Note, each index 2-tuple is of the form (ma_episode_idx, timestep)
+            # and refers to a certain environment timestep in a certain
+            # multi-agent episode.
             self._indices = [
                 idx_tuple
                 for idx_tuple in self._indices
@@ -334,18 +334,18 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Update the adding metrics.
         self._update_add_metrics(
-            num_episodes_added,
-            num_env_steps_added,
-            num_episodes_evicted,
-            num_env_steps_evicted,
-            agent_to_num_episodes_added,
-            agent_to_num_steps_added,
-            agent_to_num_episodes_evicted,
-            agent_to_num_steps_evicted,
-            module_to_num_steps_added,
-            module_to_num_episodes_added,
-            module_to_num_episodes_evicted,
-            module_to_num_steps_evicted,
+            num_episodes_added=num_episodes_added,
+            num_env_steps_added=num_env_steps_added,
+            num_episodes_evicted=num_episodes_evicted,
+            num_env_steps_evicted=num_env_steps_evicted,
+            agent_to_num_episodes_added=agent_to_num_episodes_added,
+            agent_to_num_steps_added=agent_to_num_steps_added,
+            agent_to_num_episodes_evicted=agent_to_num_episodes_evicted,
+            agent_to_num_steps_evicted=agent_to_num_steps_evicted,
+            module_to_num_episodes_added=module_to_num_steps_added,
+            module_to_num_steps_added=module_to_num_episodes_added,
+            module_to_num_episodes_evicted=module_to_num_episodes_evicted,
+            module_to_num_steps_evicted=module_to_num_steps_evicted,
         )
 
     @override(EpisodeReplayBuffer)
@@ -771,6 +771,10 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 module_to_sampled_episode_idxs[module_id].add(sa_episode.id_)
                 # Add the unique step hashes.
                 # Get the corresponding index in the `env_to_agent_t` mapping.
+                # TODO (simon, sven): This has complexity O(n) and could become
+                # expensive when the episode is large. Note, however, that conversion
+                # from list to `numpy.ndarray` is also complexity O(n) and we do this
+                # at many places - also in the `MultiAgentEpisode`s.
                 ma_episode_ts = ma_episode.env_t_to_agent_t[agent_id].data.index(
                     sa_episode_ts
                 )

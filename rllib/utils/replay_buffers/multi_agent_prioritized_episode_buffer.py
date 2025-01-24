@@ -992,6 +992,10 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 agent_to_sampled_episode_idxs[sa_episode.agent_id].add(sa_episode.id_)
                 module_to_sampled_episode_idxs[module_id].add(sa_episode.id_)
                 # Get the corresponding index in the `env_to_agent_t` mapping.
+                # TODO (simon, sven): This has complexity O(n) and could become
+                # expensive when the episode is large. Note, however, that conversion
+                # from list to `numpy.ndarray` is also complexity O(n) and we do this
+                # at many places - also in the `MultiAgentEpisode`s.
                 ma_episode_ts = ma_episode.env_t_to_agent_t[agent_id].data.index(
                     sa_episode_ts
                 )
