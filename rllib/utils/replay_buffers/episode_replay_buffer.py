@@ -1429,10 +1429,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         """Returns the metrics of the buffer and reduces them."""
         return self.metrics.reduce()
 
-    def get_metrics(self) -> ResultDict:
-        """Returns the metrics of the buffer and reduces them."""
-        return self.metrics.reduce()
-
     @override(ReplayBufferInterface)
     def get_state(self) -> Dict[str, Any]:
         """Gets a pickable state of the buffer.
