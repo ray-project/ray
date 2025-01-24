@@ -36,7 +36,7 @@ class TestNodeFailures(unittest.TestCase):
             self.cluster.add_node(
                 redis_port=6379 if i == 0 else None,
                 num_redis_shards=num_redis_shards if i == 0 else None,
-                num_cpus=2,#3 if i == 0 else 2,
+                num_cpus=2,
                 num_gpus=0,
                 object_store_memory=object_store_memory,
                 redis_max_memory=redis_max_memory,
@@ -71,13 +71,9 @@ class TestNodeFailures(unittest.TestCase):
         # We recreate failed EnvRunners and continue training.
         config = (
             APPOConfig()
-            .api_stack(
-                enable_env_runner_and_connector_v2=False,
-                enable_rl_module_and_learner=False,
-            )
             .environment("CartPole-v1")
-            #.learners(num_learners=0)
-            #.experimental(_validate_config=False)
+            .learners(num_learners=0)
+            .experimental(_validate_config=False)
             .env_runners(
                 num_env_runners=6,
                 validate_env_runners_after_construction=True,
@@ -139,16 +135,14 @@ class TestNodeFailures(unittest.TestCase):
             best_return = max(
                 best_return, results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
             )
-            # New API stack: Check batch size.
-            if LEARNER_RESULTS in results:
-                avg_batch = results[LEARNER_RESULTS][DEFAULT_MODULE_ID][
-                    "module_train_batch_size_mean"
-                ]
-                self.assertGreaterEqual(avg_batch, config.total_train_batch_size)
-                self.assertLess(
-                    avg_batch,
-                    config.total_train_batch_size + config.get_rollout_fragment_length(),
-                )
+            avg_batch = results[LEARNER_RESULTS][DEFAULT_MODULE_ID][
+                "module_train_batch_size_mean"
+            ]
+            self.assertGreaterEqual(avg_batch, config.total_train_batch_size)
+            self.assertLess(
+                avg_batch,
+                config.total_train_batch_size + config.get_rollout_fragment_length(),
+            )
 
             self.assertEqual(algo.env_runner_group.num_remote_env_runners(), 6)
             healthy_env_runners = algo.env_runner_group.num_healthy_remote_workers()
