@@ -637,7 +637,7 @@ ray.data.range(1).map(map).take_all()
     ), out_str
 
 
-def test_time_scheduling(ray_start_regular_shared):
+def test_time_scheduling():
     ds = ray.data.range(1000).map_batches(lambda x: x)
     for _ in ds.iter_batches():
         continue
@@ -646,7 +646,7 @@ def test_time_scheduling(ray_start_regular_shared):
     assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
 
 
-def test_executor_callbacks(ray_start_regular_shared):
+def test_executor_callbacks():
     """Test ExecutionCallback."""
 
     class CustomExecutionCallback(ExecutionCallback):
