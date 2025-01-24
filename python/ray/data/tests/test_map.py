@@ -5,6 +5,7 @@ import os
 import threading
 import time
 from typing import Iterator
+import re
 
 import numpy as np
 import pandas as pd
@@ -744,8 +745,37 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
         parquet_ds.filter(expr="fake_news super fake")
 
     fake_column_ds = parquet_ds.filter(expr="sepal_length_123 > 1")
-    with pytest.raises((UserCodeException, pa.ArrowInvalid)):
+    with pytest.raises(RuntimeError) as exc_info:
         fake_column_ds.to_pandas()
+
+    # Strip and normalize the error message
+    error_message = str(exc_info.value)
+    error_message_core = re.sub(r"\s+", " ", error_message.strip())
+
+    # Expected error message
+    expected_message = (
+        "Filter expression: '(sepal_length_123 > 1)' failed on parquet file: "
+        "'sample_data.parquet' with columns: "
+        "{'sepal.length', 'sepal.width', 'petal.length', 'petal.width'}"
+    )
+    expected_message_core = re.sub(r"\s+", " ", expected_message.strip())
+
+    # Sort the set in the message
+    def normalize_set_order(message):
+        return re.sub(
+            r"{([^}]*)}",
+            lambda m: "{" + ", ".join(sorted(m.group(1).split(", "))) + "}",
+            message,
+        )
+
+    # Sort the schema columns set in the message before comparing
+    error_message_core = normalize_set_order(error_message_core)
+    expected_message_core = normalize_set_order(expected_message_core)
+
+    assert expected_message_core in error_message_core, (
+        f"Expected error message to contain: '{expected_message_core}', "
+        f"but got: '{error_message_core}'"
+    )
 
 
 def test_drop_columns(ray_start_regular_shared, tmp_path):

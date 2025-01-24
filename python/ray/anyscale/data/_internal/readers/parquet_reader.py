@@ -227,14 +227,28 @@ class ParquetReader(FileReader):
         columns: Optional[List[str]],
     ) -> Iterable[pyarrow.Table]:
         def get_batch_iterable():
-            return fragment.to_batches(
-                use_threads=self._use_threads,
-                columns=None if not columns else columns,
-                filter=filter_expr,
-                schema=schema,
-                batch_size=self._batch_size,
-                **self._to_batches_kwargs,
-            )
+            try:
+                return fragment.to_batches(
+                    use_threads=self._use_threads,
+                    columns=None if not columns else columns,
+                    filter=filter_expr,
+                    schema=schema,
+                    batch_size=self._batch_size,
+                    **self._to_batches_kwargs,
+                )
+            except pyarrow.lib.ArrowInvalid as e:
+                error_message = str(e)
+                if (
+                    "No match for FieldRef.Name" in error_message
+                    and filter_expr is not None
+                ):
+                    filename = os.path.basename(fragment.path)
+                    file_columns = set(fragment.physical_schema.names)
+                    raise RuntimeError(
+                        f"Filter expression: '{filter_expr}' failed on parquet "
+                        f"file: '{filename}' with columns: {file_columns}"
+                    )
+                raise
 
         # S3 can raise transient errors during iteration, and PyArrow doesn't expose a
         # way to retry specific batches.

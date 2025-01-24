@@ -1,5 +1,7 @@
 import functools
+import re
 
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -151,6 +153,103 @@ def test_read_parquet_produces_target_size_blocks(
         block_size == pytest.approx(2 * 1024 * 1024, rel=0.01)
         for block_size in actual_block_sizes
     ), actual_block_sizes
+
+
+@pytest.mark.parametrize(
+    "filter_expr, expected_row_count, expect_error, expected_error_message",
+    [
+        # Valid filter expression
+        ("column03 == 0 and column04 == 0", 1, False, None),
+        # Invalid filter expression (referencing partition columns which are in schema)
+        (
+            "column01 == 0 and column02 == 0",
+            None,
+            True,
+            "RuntimeError: Filter expression: '((column01 == 0) and (column02 == 0))' failed on parquet file: '<parquet_file>' with columns: {'column03', 'column04'}",  # noqa: E501
+        ),
+        # Invalid filter expression (referencing non-partition column)
+        (
+            "non_existing_column == 0",
+            None,
+            True,
+            "RuntimeError: Filter expression: '(non_existing_column == 0)' failed on parquet file: '<parquet_file>' with columns: {'column03', 'column04'}",  # noqa: E501
+        ),
+    ],
+)
+def test_read_parquet_filter_expr_partition_columns(
+    ray_start_regular_shared,
+    tmp_path,
+    filter_expr,
+    expected_row_count,
+    expect_error,
+    expected_error_message,
+):
+    """Verify handling of valid and invalid filter expressions on partitioned
+    columns.
+    """
+
+    num_partitions = 10
+    rows_per_partition = 10
+    num_rows = num_partitions * rows_per_partition
+
+    # DataFrame with partition columns
+    df = pd.DataFrame(
+        {
+            "column01": list(range(num_partitions)) * rows_per_partition,
+            "column02": list(range(num_partitions)) * rows_per_partition,
+            "column03": list(range(num_rows)),
+            "column04": list(range(num_rows)),
+        }
+    )
+
+    # Write data to a partitioned Parquet dataset
+    ds = ray.data.from_pandas(df)
+    ds.write_parquet(tmp_path, partition_cols=["column01", "column02"])
+
+    if expect_error:
+        # Verify the exception type and message
+        with pytest.raises(RuntimeError) as excinfo:
+            ray.data.read_parquet(tmp_path).filter(expr=filter_expr).materialize()
+        actual_message = str(excinfo.value)
+
+        # Replace the parquet file name in the expected error message with a placeholder
+        actual_message_core = re.sub(r"\s+", " ", actual_message.strip())
+        expected_message_core = re.sub(r"\s+", " ", expected_error_message.strip())
+
+        # Replace specific file names in the error messages with a placeholder
+        actual_message_core = re.sub(
+            r"parquet file: '[^']+'",
+            "parquet file: '<parquet_file>'",
+            actual_message_core,
+        )
+        expected_message_core = re.sub(
+            r"parquet file: '[^']+'",
+            "parquet file: '<parquet_file>'",
+            expected_message_core,
+        )
+
+        # Sort the set in the message
+        def normalize_set_order(message):
+            return re.sub(
+                r"{([^}]*)}",
+                lambda m: "{" + ", ".join(sorted(m.group(1).split(", "))) + "}",
+                message,
+            )
+
+        # Sort the schema columns set in the message before comparing
+        actual_message_core = normalize_set_order(actual_message_core)
+        expected_message_core = normalize_set_order(expected_message_core)
+
+        assert expected_message_core in actual_message_core, (
+            f"Expected error message to contain: '{expected_message_core}', "
+            f"but got: '{actual_message_core}'"
+        )
+    else:
+        # Verify the filtered dataset row count
+        filtered_ds = ray.data.read_parquet(tmp_path).filter(expr=filter_expr)
+        assert (
+            filtered_ds.count() == expected_row_count
+        ), f"Expected {expected_row_count} rows, but got {filtered_ds.count()} rows."
 
 
 if __name__ == "__main__":
