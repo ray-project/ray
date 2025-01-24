@@ -4,7 +4,11 @@ import logging
 import multiprocessing
 import threading
 from dataclasses import dataclass
+import signal
+import os
+import setproctitle
 
+import ray
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
@@ -206,6 +210,10 @@ def run_module(
     `module.init()`.
     """
     module_name = cls.__name__
+    current_proctitle = setproctitle.getproctitle()
+    setproctitle.setproctitle(
+        f"ray-dashboard-{module_name}-{incarnation} ({current_proctitle})"
+    )
     logging_filename = module_logging_filename(
         module_name, incarnation, config.logging_filename
     )
@@ -229,4 +237,14 @@ def run_module(
     # 2. dispatch_child_bound_messages_thread will stop listening.
     # 3. join the loop to wait for all pending tasks to finish, up until a timeout.
     # 4. close the loop and exit.
+
+    def sigterm_handler():
+        logger.warning("Exiting with SIGTERM immediately...")
+        import time
+
+        time.sleep(1)
+        os._exit(signal.SIGTERM)
+
+    ray._private.utils.set_sigterm_handler(sigterm_handler)
+
     loop.run_forever()

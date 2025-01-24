@@ -162,7 +162,8 @@ class SubprocessModuleHandle:
         """
         self.incarnation += 1
         self.next_request_id = 0
-        self.process.terminate()
+        self.process.kill()
+        self.process.join()
         self.process = None
 
         for active_request in self.active_requests.pop_all().values():
@@ -217,6 +218,8 @@ class SubprocessModuleHandle:
                 filename = module_logging_filename(
                     self.module_cls.__name__, incarnation, self.config.logging_filename
                 )
+                if filename is None:
+                    filename = "stderr"
                 logger.exception(
                     f"Module {self.module_cls.__name__} is unhealthy. Please refer to"
                     f"{self.config.log_dir}/{filename} "
