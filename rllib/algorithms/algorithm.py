@@ -869,23 +869,21 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 ),
             )
             # Get the devices of each learner.
-            learner_locations = [
-                (i, loc)
-                for i, loc in enumerate(
+            learner_locations = list(
+                enumerate(
                     self.learner_group.foreach_learner(
                         func=lambda _learner: (_learner.node, _learner.device),
                     )
                 )
-            ]
+            )
             # Get the devices of each AggregatorActor.
-            aggregator_locations = [
-                (i, loc)
-                for i, loc in enumerate(
+            aggregator_locations = list(
+                enumerate(
                     self._aggregator_actor_manager.foreach_actor(
                         func=lambda actor: (actor._node, actor._device)
                     )
                 )
-            ]
+            )
             self._aggregator_actor_to_learner = {}
             for agg_idx, aggregator_location in aggregator_locations:
                 for learner_idx, learner_location in learner_locations:
