@@ -31,7 +31,6 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
-    ALL_MODULES,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     LAST_TARGET_UPDATE_TS,
