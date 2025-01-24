@@ -24,6 +24,7 @@
 #include <thread>
 
 #include "absl/strings/str_split.h"
+#include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
@@ -31,12 +32,6 @@
 namespace ray {
 
 namespace {
-
-// TODO(hjiang): Investigate how we could notify reader thread to stop by close write pipe
-// directly, instead of relying on eof indicator.
-//
-// An indicator which represents EOF, so read thread could exit.
-const std::string kEofIndicator = GenerateUUIDV4();
 
 // Default pipe log read buffer size.
 constexpr size_t kDefaultPipeLogReadBufSize = 1024;
@@ -83,12 +78,6 @@ size_t Read(int read_fd, char *data, size_t len) {
   RAY_CHECK(bytes_read != -1) << "Fails to read from pipe because " << strerror(errno);
   return bytes_read;
 }
-void CompleteWriteEOFIndicator(int write_fd) {
-  ssize_t bytes_written = write(write_fd, kEofIndicator.data(), kEofIndicator.length());
-  RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(kEofIndicator.length()));
-  bytes_written = write(write_fd, "\n", /*count=*/1);
-  RAY_CHECK_EQ(bytes_written, 1);
-}
 #endif
 
 template <typename ReadFunc, typename WriteFunc, typename FlushFunc>
@@ -115,30 +104,34 @@ void StartStreamDump(ReadFunc read_func,
 
     while (true) {
       size_t bytes_read = read_func(content.data(), content.length());
+
+      // Bytes read of size 0 indicates write-side of pipe has been closed.
+      if (bytes_read == 0) {
+        {
+          absl::MutexLock lock(&stream_dumper->mu);
+          stream_dumper->stopped = true;
+          if (!last_line.empty()) {
+            stream_dumper->content.emplace_back(std::move(last_line));
+          }
+        }
+
+        // Place IO operation out of critical section.
+        close_read_handle();
+
+        return;
+      }
+
       std::string_view cur_content{content.data(), bytes_read};
       std::vector<std::string_view> newlines = absl::StrSplit(cur_content, '\n');
 
       for (size_t idx = 0; idx < newlines.size() - 1; ++idx) {
         std::string cur_new_line = std::move(last_line);
         cur_new_line += newlines[idx];
-
-        // Reached the end of stream.
-        if (cur_new_line == kEofIndicator) {
-          {
-            absl::MutexLock lock(&stream_dumper->mu);
-            stream_dumper->stopped = true;
-          }
-
-          // Place IO operation out of critical section.
-          close_read_handle();
-
-          return;
-        }
-
         last_line.clear();
 
-        // We only log non-empty lines.
-        if (!cur_new_line.empty()) {
+        // Backfill newliner for current segment.
+        cur_new_line += '\n';
+        {
           absl::MutexLock lock(&stream_dumper->mu);
           stream_dumper->content.emplace_back(std::move(cur_new_line));
         }
@@ -185,7 +178,7 @@ void StartStreamDump(ReadFunc read_func,
       }
 
       // Perform IO operation out of critical section.
-      write_func(curline);
+      write_func(std::move(curline));
     }
   }).detach();
 }
@@ -242,6 +235,33 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
 
   return RedirectionFileHandle{fd, std::move(flush_fn), std::move(close_fn)};
 }
+#elif defined(_WIN32)
+#include <windows.h>
+RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
+  HANDLE file_handle = CreateFile(file_path.c_str(),
+                                  GENERIC_WRITE,
+                                  0,                      // No sharing
+                                  NULL,                   // Default security attributes
+                                  CREATE_ALWAYS,          // Always create a new file
+                                  FILE_ATTRIBUTE_NORMAL,  // Normal file attributes
+                                  NULL                    // No template file
+  );
+  RAY_CHECK(file_handle != INVALID_HANDLE_VALUE)
+      << "Fails to open file " << file_path << " with error "
+      << std::to_string(GetLastError());
+
+  auto flush_fn = [file_handle]() {
+    RAY_CHECK(FlushFileBuffers(file_handle))
+        << "Failed to flush data to disk with error: " << std::to_string(GetLastError());
+  };
+  auto close_fn = [file_handle]() {
+    RAY_CHECK(FlushFileBuffers(file_handle))
+        << "Failed to flush data to disk with error: " << std::to_string(GetLastError());
+    RAY_CHECK(CloseHandle(file_handle))
+        << "Failed to close file with error: " << std::to_string(GetLastError());
+  };
+  return RedirectionFileHandle{file_handle, std::move(flush_fn), std::move(close_fn)};
+}
 #endif
 
 }  // namespace
@@ -287,7 +307,6 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   auto read_func = [read_fd](char *data, size_t len) { return Read(read_fd, data, len); };
   auto close_read_handle = [read_fd]() { RAY_CHECK_EQ(close(read_fd), 0); };
   auto close_fn = [write_fd, promise]() {
-    CompleteWriteEOFIndicator(write_fd);
     RAY_CHECK_EQ(close(write_fd), 0);
     // Block until destruction finishes.
     promise->get_future().get();
@@ -295,22 +314,26 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
   auto logger = CreateLogger(stream_redirect_opt);
 
-  // [content] doesn't have trailing newliner.
+  // [content] is exactly what application writes to pipe, including the trailing
+  // newliner, if any.
   auto write_fn = [logger,
                    stream_redirect_opt = stream_redirect_opt,
-                   std_stream_fd = std_stream_fd](const std::string &content) {
-    if (logger != nullptr) {
-      logger->log(spdlog::level::info, content);
-    }
+                   std_stream_fd = std_stream_fd](std::string content) {
     if (stream_redirect_opt.tee_to_stdout) {
       RAY_CHECK_EQ(write(std_stream_fd.stdout_fd, content.data(), content.length()),
                    static_cast<ssize_t>(content.length()));
-      RAY_CHECK_EQ(write(std_stream_fd.stdout_fd, "\n", 1), 1);
     }
     if (stream_redirect_opt.tee_to_stderr) {
       RAY_CHECK_EQ(write(std_stream_fd.stderr_fd, content.data(), content.length()),
                    static_cast<ssize_t>(content.length()));
-      RAY_CHECK_EQ(write(std_stream_fd.stderr_fd, "\n", 1), 1);
+    }
+    if (logger != nullptr) {
+      // spdlog adds newliner for every content, no need to maintan the application-passed
+      // one.
+      if (!content.empty() && content.back() == '\n') {
+        content.pop_back();
+      }
+      logger->log(spdlog::level::info, content);
     }
   };
   auto flush_fn = [logger,
@@ -340,7 +363,9 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 #elif defined(_WIN32)
 RedirectionFileHandle CreateRedirectionFileHandle(
     const StreamRedirectionOption &stream_redirect_opt) {
-  return RedirectionFileHandle{};
+  // TODO(hjiang): For windows, we currently doesn't support redirection with rotation and
+  // tee to stdout/stderr.
+  return OpenFileForRedirection(stream_redirect_opt.file_path);
 }
 #endif
 
