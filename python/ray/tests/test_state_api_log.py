@@ -1248,30 +1248,6 @@ def test_log_get(ray_start_cluster):
 
     wait_for_condition(verify)
 
-    def verify():
-        runner = CliRunner()
-        result = runner.invoke(
-            logs_state_cli_group,
-            ["actor", "--id", actor_id],
-        )
-        assert result.exit_code == 0, result.exception
-        assert ACTOR_LOG_LINE.format(dest="out") in result.output
-
-        result = runner.invoke(
-            logs_state_cli_group,
-            [
-                "actor",
-                "--id",
-                actor_id,
-                "--err",
-            ],
-        )
-        assert result.exit_code == 0, result.exception
-        assert ACTOR_LOG_LINE.format(dest="err") in result.output
-        return True
-
-    wait_for_condition(verify)
-
     # Test running task logs
     @ray.remote
     def sleep_task(out_msg):

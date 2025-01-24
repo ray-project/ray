@@ -353,6 +353,9 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         except FileNotFoundError as e:
             await context.send_initial_metadata([[log_consts.LOG_GRPC_ERROR, str(e)]])
         else:
+
+            logger.error(f"hjiang debug: filepath = {filepath}")
+
             with open(filepath, "rb") as f:
                 await context.send_initial_metadata([])
 
