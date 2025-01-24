@@ -15,7 +15,7 @@ export CLUSTER_VERSION=CLUSTER_VERSION
 Replace the following:
 - CLUSTER_NAME: the name of the GKE cluster to be created
 - ZONE: the zone with available TPU quota, for a list of TPU availability by zones, see the [GKE documentation](https://cloud.google.com/tpu/docs/regions-zones)
-- CLUSTER_VERSION: The GKE version to use.
+- CLUSTER_VERSION: The GKE version to use. TPU v6e is supported in GKE versions 1.31.2-gke.1115000 or later. See the [GKE documentation](https://cloud.google.com/tpu/docs/tpus-in-gke#tpu-machine-types) for TPU generations and their minimum supported version.
 
 Run the following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
 
