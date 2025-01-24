@@ -1267,6 +1267,12 @@ class CompiledDAG:
             custom_communicator = dag_node.type_hint.get_custom_communicator()
         if custom_communicator is not None:
             return custom_communicator
+        return self._get_default_communicator(dag_node)
+
+    def _get_default_communicator(
+        self,
+        dag_node: "ray.dag.DAGNode",
+    ) -> Optional[Communicator]:
         if not self._create_default_communicator:
             if dag_node._original_type_hint is not None:
                 assert isinstance(dag_node._original_type_hint, AutoTransportType)
@@ -1294,14 +1300,11 @@ class CompiledDAG:
         Resolve the auto transport type hint for the DAG.
         """
         type_hint_resolver = TypeHintResolver(self.actor_to_gpu_ids)
-        # For AutoTransportType, there is no custom communicator provided.
-        # So call _select_communicator with None to get the default communicator,
-        # and also perform validation.
-        default_communicator = self._select_communicator(None)
         # Resolve AutoChannelType type hints and track the actors that use NCCL.
         # This is needed so that the NCCL group can be initialized for these
         # actors that use NCCL.
         for task in auto_transport_tasks:
+            default_communicator = self._get_default_communicator(task.dag_node)
             writer = task.dag_node._get_actor_handle()
             readers = task.downstream_task_idxs.values()
             writer_and_node = (writer, self._get_node_id(writer))
