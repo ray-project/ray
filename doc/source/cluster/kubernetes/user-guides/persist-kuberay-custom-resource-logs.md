@@ -289,6 +289,71 @@ Finally, use a LogQL query to view logs for a specific RayCluster or RayJob, and
 [ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.4.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
 [KubernetesDownwardAPI]: https://kubernetes.io/docs/concepts/workloads/pods/downward-api/
 
+### Configure logging sidecar with Fluentbit on GKE
+If you want to deploy your ray cluster on GKE and use Cloud Logging, you can read the following steps:\
+When you create a cluster on GKE using these [instructions](https://github.com/GoogleCloudPlatform/ai-on-gke/blob/main/ray-on-gke/README.md),
+a Fluentbit sidecar container is deployed alongside the Ray head container in the same pod. This Fluentbit sidecar collects logs from the Ray container,
+and then the Daemonset Fluentbit forward logs to Cloud Logging, so you are ready to read logs in your GCP Logs Explorer.
+For example, if you submit a Ray job as it says in the instruction, you can follow this [doc](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/collect-view-logs-metrics#view_ray_logs) to read the job's logs.
+If you don't see the logs in GCP Logs Explorer, below is some debugging information.
+
+#### Verify Fluenbit sidecar and Daemonset
+When the Ray cluster is created on GEK using the above instructions, a Fluentbit sidecar container should be ready in the Pod and collecting logs from the Ray container.
+Also, Daemonset Fluentbit pods are ready to forward the logs to Cloud Logging as well, you can use these commands to verify it.
+* Get the name of the pod. You may need to modify the namespace if you've modified the terraform file in the instruction.
+```shell
+ kubectl get pods -n ai-on-gke
+```
+* Verify there is a Fluentbit sidecar in the Pod
+```shell
+kubectl get pod <pod-name> -n ai-on-gke -o go-template='{{range .spec.containers}}{{.name}}{{"\n"}}{{end}}'
+```
+
+* Verify the Fluentbit sidecar has collected the logs from the Ray container
+```shell
+kubectl logs pod <pod-name> -n ai-on-gke -c fluentbit
+```
+
+* Verify there is a Fluentbit Daemonset ready to forward the logs to Cloud Logging
+```shell
+kubectl get daemonsets -n kube-system | grep fluentbit
+```
+
+#### Enable Cloud Logging
+If the Fluentbit sidecar and the Daemonset are functional but still cannot read the logs in Logs Explorer,
+there might be some permission issue, please follow these steps to debug:
+
+* Confirm logging is enabled at GCP Project level, if not, run the second command
+```shell
+gcloud services list --enabled --filter="NAME=logging.googleapis.com"
+
+gcloud services enable logging.googleapis.com
+```
+
+* Confirm logging is enabled at GKE Cluster level, if not, run the second command
+```shell
+gcloud container clusters describe <cluster-name>  --zone <cluster-zone>   '--format=value(name,loggingConfig.componentConfig.enableComponents)'
+
+gcloud container clusters update <cluster-name> --region=<cluster-region> --logging=SYSTEM,WORKLOAD
+```
+
+* Confirm Cloud Logging Access Scope for GKE Node Pool, if not, run the second command
+```shell
+gcloud container clusters describe <cluster-name>  --zone <cluster-zone>  --format="value(nodePools[].config.oauthScopes)"
+
+gcloud container node-pools create <node-pool-name> --cluster <cluster-name>  --scopes https://www.googleapis.com/auth/logging.write --zone <node-pool-zone>
+```
+
+* List node pools and their service account, and confirm GKE Node Pool's Service Account has permission to write log, if not, run the forth command
+```shell
+gcloud container clusters describe <cluster-name> --format="value(nodePools.name)"
+
+gcloud container node-pools describe <node-pool-name> --cluster=<cluster-name> --format="value(config.serviceAccount)"
+    
+gcloud projects get-iam-policy <project-id> --flatten="bindings[].members" --format='table(bindings.role)' --filter="bindings.members:<node-pool-service-account-email>"
+
+gcloud projects add-iam-policy-binding <project-id> --member="serviceAccount:<node-pool-service-account-email>" --role="roles/logging.logWriter"
+```
 (redirect-to-stderr)=
 ## Redirecting Ray logs to stderr
 
