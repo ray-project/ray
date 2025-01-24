@@ -412,10 +412,10 @@ void RayLog::InitLogFormat() {
 
   // Set sink for stderr.
   if (!err_log_filepath.empty()) {
-    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+    auto err_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
         err_log_filepath, log_rotation_max_size_, log_rotation_file_num_);
-    file_sink->set_level(level);
-    sinks[1] = std::move(file_sink);
+    err_sink->set_level(spdlog::level::err);
+    sinks[1] = std::move(err_sink);
   } else {
     auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
     err_sink->set_level(spdlog::level::err);

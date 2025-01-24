@@ -826,7 +826,10 @@ def test_logs_list(ray_start_with_dashboard):
         errs = logs["worker_err"]
         core_worker_logs = logs["core_worker"]
 
-        assert len(outs) == len(errs) == len(core_worker_logs)
+        assert len(outs) == len(errs), f"out = {outs}, err = {errs}"
+        assert len(outs) == len(
+            core_worker_logs
+        ), f"out = {outs}, worker logs = {core_worker_logs}"
         assert len(outs) > 0
 
         # Test gcs / raylet / dashboard
@@ -1257,7 +1260,7 @@ def test_log_get(ray_start_cluster):
         time.sleep(10)
 
     expected_out = "This is a test log from stdout\n"
-    task = sleep_task.remote(expected_out)
+    _ = sleep_task.remote(expected_out)
 
     def verify():
         stdout_str = " ".join(get_all_redirected_stdout())
