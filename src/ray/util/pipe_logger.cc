@@ -48,6 +48,9 @@ struct StdOstream {
       stderr_ostream;
 };
 
+// Start two threads:
+// 1. A reader thread which continuously reads from [pipe_stream] until close;
+// 2. A dumper thread which writes content to sink via [write_func].
 template <typename WriteFunc, typename FlushFunc>
 void StartStreamDump(
     std::shared_ptr<boost::iostreams::stream<boost::iostreams::file_descriptor_source>>
