@@ -1643,9 +1643,6 @@ class UserCallableWrapper:
                 # we should continue fetching data from the client.
                 if not getattr(user_method_info.callable, "set_max_batch_size"):
                     receive_task.cancel()
-                else:
-                    # logger.info("NOT cancelling receive task")
-                    receive_task.cancel()
 
             raise
 
