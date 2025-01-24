@@ -134,8 +134,8 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
     NUM_TRAINING_STEP_CALLS_PER_ITERATION,
-    RESTORE_WORKERS_TIMER,
-    RESTORE_EVAL_WORKERS_TIMER,
+    RESTORE_ENV_RUNNERS_TIMER,
+    RESTORE_EVAL_ENV_RUNNERS_TIMER,
     SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -183,6 +183,7 @@ from ray.tune.registry import get_trainable_cls
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner_group import LearnerGroup
+    from ray.rllib.offline.offline_data import OfflineData
 
 try:
     from ray.rllib.extensions import AlgorithmBase
@@ -225,35 +226,46 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI
 class Algorithm(Checkpointable, Trainable, AlgorithmBase):
-    """An RLlib algorithm responsible for optimizing one or more Policies.
-
-    Algorithms contain a EnvRunnerGroup under `self.env_runner_group`. An EnvRunnerGroup
-    is composed of a single local EnvRunner (`self.env_runner_group.local_env_runner`),
-    serving as the reference copy of the NeuralNetwork(s) to be trained and optionally
-    one or more remote EnvRunners used to generate environment samples in parallel.
-    EnvRunnerGroup is fault-tolerant and elastic. It tracks health states for all
-    the managed remote EnvRunner actors. As a result, Algorithm should never
-    access the underlying actor handles directly. Instead, always access them
-    via all the foreach APIs with assigned IDs of the underlying EnvRunners.
-
-    Each EnvRunners (remotes or local) contains a PolicyMap, which itself
-    may contain either one policy for single-agent training or one or more
-    policies for multi-agent training. Policies are synchronized
-    automatically from time to time using ray.remote calls. The exact
-    synchronization logic depends on the specific algorithm used,
-    but this usually happens from local worker to all remote workers and
-    after each training update.
+    """An RLlib algorithm responsible for training one or more neural network models.
 
     You can write your own Algorithm classes by sub-classing from `Algorithm`
-    or any of its built-in sub-classes.
-    This allows you to override the `training_step` method to implement
-    your own algorithm logic. You can find the different built-in
-    algorithms' `training_step()` methods in their respective main .py files,
-    e.g. rllib.algorithms.dqn.dqn.py or rllib.algorithms.impala.impala.py.
+    or any of its built-in subclasses.
+    Override the `training_step` method to implement your own algorithm logic.
+    Find the various built-in `training_step()` methods for different algorithms in
+    their respective [algo name].py files, for example:
+    `ray.rllib.algorithms.dqn.dqn.py` or `ray.rllib.algorithms.impala.impala.py`.
 
-    The most important API methods a Algorithm exposes are `train()`,
-    `evaluate()`, `save_to_path()` and `restore_from_path()`.
+    The most important API methods an Algorithm exposes are `train()` for running a
+    single training iteration, `evaluate()` for running a single round of evaluation,
+    `save_to_path()` for creating a checkpoint, and `restore_from_path()` for loading a
+    state from an existing checkpoint.
     """
+
+    #: The AlgorithmConfig instance of the Algorithm.
+    config: Optional[AlgorithmConfig] = None
+    #: The MetricsLogger instance of the Algorithm. RLlib uses this to log
+    #: metrics from within the `training_step()` method. Users can use it to log
+    #: metrics from within their custom Algorithm-based callbacks.
+    metrics: Optional[MetricsLogger] = None
+    #: The `EnvRunnerGroup` of the Algorithm. An `EnvRunnerGroup` is
+    #: composed of a single local `EnvRunner` (see: `self.env_runner`), serving as
+    #: the reference copy of the models to be trained and optionally one or more
+    #: remote `EnvRunners` used to generate training samples from the RL
+    #: environment, in parallel. EnvRunnerGroup is fault-tolerant and elastic. It
+    #: tracks health states for all the managed remote EnvRunner actors. As a
+    #: result, Algorithm should never access the underlying actor handles directly.
+    #: Instead, always access them via all the foreach APIs with assigned IDs of
+    #: the underlying EnvRunners.
+    env_runner_group: Optional[EnvRunnerGroup] = None
+    #: A special EnvRunnerGroup only used for evaluation, not to
+    #: collect training samples.
+    eval_env_runner_group: Optional[EnvRunnerGroup] = None
+    #: The `LearnerGroup` instance of the Algorithm, managing either
+    #: one local `Learner` or one or more remote `Learner` actors. Responsible for
+    #: updating the models from RL environment (episode) data.
+    learner_group: Optional["LearnerGroup"] = None
+    #: An optional OfflineData instance, used for offline RL.
+    offline_data: Optional["OfflineData"] = None
 
     # Whether to allow unknown top-level config keys.
     _allow_unknown_configs = False
@@ -304,7 +316,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     @override(Checkpointable)
     def from_checkpoint(
         cls,
-        path: Optional[Union[str, Checkpoint]] = None,
+        path: Union[str, Checkpoint],
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         *,
         # @OldAPIStack
@@ -323,20 +335,19 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         """Creates a new algorithm instance from a given checkpoint.
 
         Args:
-            path: The path (str) to the checkpoint directory to use
-                or an AIR Checkpoint instance to restore from.
+            path: The path (str) to the checkpoint directory to use or a Ray Train
+                Checkpoint instance to restore from.
             filesystem: PyArrow FileSystem to use to access data at the `path`. If not
                 specified, this is inferred from the URI scheme of `path`.
             policy_ids: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
-            policy_mapping_fn: An optional (updated) policy mapping function
-                to use from here on.
-            policies_to_train: An optional list of policy IDs to be trained
-                or a callable taking PolicyID and SampleBatchType and
-                returning a bool (trainable or not?).
-                If None, will keep the existing setup in place. Policies,
-                whose IDs are not in the list (or for which the callable
+            policy_mapping_fn: An optional (updated) policy mapping function to use from
+                here on.
+            policies_to_train: An optional list of policy IDs to be trained or a
+                callable taking PolicyID and SampleBatchType and returning a bool
+                (trainable or not?). If None, will keep the existing setup in place.
+                Policies, whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
 
         Returns:
@@ -346,19 +357,20 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             deprecation_warning(
                 old="Algorithm.from_checkpoint(checkpoint=...)",
                 new="Algorithm.from_checkpoint(path=...)",
-                error=False,
+                error=True,
             )
-            path = checkpoint
-        if path is None:
-            raise ValueError(
-                "`path` not provided in call to Algorithm.from_checkpoint()!"
-            )
-
         checkpoint_info = get_checkpoint_info(path)
+
+        # New API stack -> Use Checkpointable's default implementation.
+        if checkpoint_info["checkpoint_version"] >= version.Version("2.0"):
+            # `path` is a Checkpoint instance: Translate to directory and continue.
+            if isinstance(path, Checkpoint):
+                path = path.to_directory()
+            return super().from_checkpoint(path, filesystem=filesystem, **kwargs)
 
         # Not possible for (v0.1) (algo class and config information missing
         # or very hard to retrieve).
-        if checkpoint_info["checkpoint_version"] == version.Version("0.1"):
+        elif checkpoint_info["checkpoint_version"] == version.Version("0.1"):
             raise ValueError(
                 "Cannot restore a v0 checkpoint using `Algorithm.from_checkpoint()`!"
                 "In this case, do the following:\n"
@@ -372,9 +384,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 "()` must be 1.0 or later! You are using a checkpoint with "
                 f"version v{checkpoint_info['checkpoint_version']}."
             )
-        # New API stack -> Use Checkpointable's default implementation.
-        elif checkpoint_info["checkpoint_version"] >= version.Version("2.0"):
-            return super().from_checkpoint(path, filesystem=filesystem, **kwargs)
 
         # This is a msgpack checkpoint.
         if checkpoint_info["format"] == "msgpack":
@@ -407,40 +416,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         )
 
         return Algorithm.from_state(state)
-
-    @OldAPIStack
-    @staticmethod
-    def from_state(state: Dict) -> "Algorithm":
-        """Recovers an Algorithm from a state object.
-
-        The `state` of an instantiated Algorithm can be retrieved by calling its
-        `get_state` method. It contains all information necessary
-        to create the Algorithm from scratch. No access to the original code (e.g.
-        configs, knowledge of the Algorithm's class, etc..) is needed.
-
-        Args:
-            state: The state to recover a new Algorithm instance from.
-
-        Returns:
-            A new Algorithm instance.
-        """
-        algorithm_class: Type[Algorithm] = state.get("algorithm_class")
-        if algorithm_class is None:
-            raise ValueError(
-                "No `algorithm_class` key was found in given `state`! "
-                "Cannot create new Algorithm."
-            )
-        # algo_class = get_trainable_cls(algo_class_name)
-        # Create the new algo.
-        config = state.get("config")
-        if not config:
-            raise ValueError("No `config` found in given Algorithm state!")
-        new_algo = algorithm_class(config=config)
-        # Set the new algo's state.
-        new_algo.__setstate__(state)
-
-        # Return the new algo.
-        return new_algo
 
     @PublicAPI
     def __init__(
@@ -894,23 +869,21 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 ),
             )
             # Get the devices of each learner.
-            learner_locations = [
-                (i, loc)
-                for i, loc in enumerate(
+            learner_locations = list(
+                enumerate(
                     self.learner_group.foreach_learner(
                         func=lambda _learner: (_learner.node, _learner.device),
                     )
                 )
-            ]
+            )
             # Get the devices of each AggregatorActor.
-            aggregator_locations = [
-                (i, loc)
-                for i, loc in enumerate(
+            aggregator_locations = list(
+                enumerate(
                     self._aggregator_actor_manager.foreach_actor(
                         func=lambda actor: (actor._node, actor._device)
                     )
                 )
-            ]
+            )
             self._aggregator_actor_to_learner = {}
             for agg_idx, aggregator_location in aggregator_locations:
                 for learner_idx, learner_location in learner_locations:
@@ -1676,8 +1649,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         return env_runner_results, env_steps, agent_steps, all_batches
 
     @OverrideToImplementCustomLogic
-    @DeveloperAPI
-    def restore_workers(self, workers: EnvRunnerGroup) -> None:
+    def restore_env_runners(self, env_runner_group: EnvRunnerGroup) -> None:
         """Try bringing back unhealthy EnvRunners and - if successful - sync with local.
 
         Algorithms that use custom EnvRunners may override this method to
@@ -1686,33 +1658,31 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         after such a restart of a (previously failed) worker.
 
         Args:
-            workers: The EnvRunnerGroup to restore. This may be the training or the
-                evaluation EnvRunnerGroup.
+            env_runner_group: The EnvRunnerGroup to restore. This may be the training or
+                the evaluation EnvRunnerGroup.
         """
-        # If `workers` is None, or
-        # 1. `workers` (EnvRunnerGroup) does not have a local worker, and
+        # If `env_runner_group` is None, or
+        # 1. `env_runner_group` (EnvRunnerGroup) does not have a local worker, and
         # 2. `self.env_runner_group` (EnvRunnerGroup used for training) does not have a
-        # local EnvRunner -> we don't have a local worker to get state from, so we can't
-        # recover remote EnvRunners in this case.
-        if not workers or (
-            not workers.local_env_runner and not self.env_runner_group.local_env_runner
+        # local EnvRunner -> we don't have an EnvRunner to get state from, so we can't
+        # recover remote EnvRunner actors in this case.
+        if not env_runner_group or (
+            not env_runner_group.local_env_runner and not self.env_runner
         ):
             return
 
-        # This is really cheap, since probe_unhealthy_workers() is a no-op
+        # This is really cheap, since probe_unhealthy_env_runners() is a no-op
         # if there are no unhealthy workers.
-        restored = workers.probe_unhealthy_workers()
+        restored = env_runner_group.probe_unhealthy_env_runners()
 
         if restored:
             # Count the restored workers.
             self._counters["total_num_restored_workers"] += len(restored)
 
-            from_worker = (
-                workers.local_env_runner or self.env_runner_group.local_env_runner
-            )
+            from_env_runner = env_runner_group.local_env_runner or self.env_runner
             # Get the state of the correct (reference) worker. For example the local
             # worker of an EnvRunnerGroup.
-            state = from_worker.get_state()
+            state = from_env_runner.get_state()
             state_ref = ray.put(state)
 
             def _sync_env_runner(er):
@@ -1725,7 +1695,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
             elif self.config.is_multi_agent:
 
-                multi_rl_module_spec = MultiRLModuleSpec.from_module(from_worker.module)
+                multi_rl_module_spec = MultiRLModuleSpec.from_module(
+                    from_env_runner.module
+                )
 
                 def _sync_env_runner(er):  # noqa
                     # Remove modules, if necessary.
@@ -1743,7 +1715,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
             # By default, entire local EnvRunner state is synced after restoration
             # to bring the previously failed EnvRunner up to date.
-            workers.foreach_env_runner(
+            env_runner_group.foreach_env_runner(
                 func=_sync_env_runner,
                 remote_worker_ids=restored,
                 # Don't update the local EnvRunner, b/c it's the one we are synching
@@ -1759,9 +1731,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 callbacks_functions=self.config.callbacks_on_env_runners_recreated,
                 kwargs=dict(
                     algorithm=self,
-                    env_runner_group=workers,
+                    env_runner_group=env_runner_group,
                     env_runner_indices=restored,
-                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                    is_evaluation=(
+                        env_runner_group.local_env_runner.config.in_evaluation
+                    ),
                 ),
             )
             # TODO (sven): Deprecate this call.
@@ -1770,9 +1744,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 callbacks_objects=self.callbacks,
                 kwargs=dict(
                     algorithm=self,
-                    worker_set=workers,
+                    worker_set=env_runner_group,
                     worker_ids=restored,
-                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                    is_evaluation=(
+                        env_runner_group.local_env_runner.config.in_evaluation
+                    ),
                 ),
             )
 
@@ -2157,321 +2133,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         self.env_runner_group.local_env_runner.set_weights(weights)
 
     @OldAPIStack
-    def compute_single_action(
-        self,
-        observation: Optional[TensorStructType] = None,
-        state: Optional[List[TensorStructType]] = None,
-        *,
-        prev_action: Optional[TensorStructType] = None,
-        prev_reward: Optional[float] = None,
-        info: Optional[EnvInfoDict] = None,
-        input_dict: Optional[SampleBatch] = None,
-        policy_id: PolicyID = DEFAULT_POLICY_ID,
-        full_fetch: bool = False,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
-        episode=None,
-        unsquash_action: Optional[bool] = None,
-        clip_action: Optional[bool] = None,
-        # Kwargs placeholder for future compatibility.
-        **kwargs,
-    ) -> Union[
-        TensorStructType,
-        Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]],
-    ]:
-        """Computes an action for the specified policy on the local worker.
-
-        Note that you can also access the policy object through
-        self.get_policy(policy_id) and call compute_single_action() on it
-        directly.
-
-        Args:
-            observation: Single (unbatched) observation from the
-                environment.
-            state: List of all RNN hidden (single, unbatched) state tensors.
-            prev_action: Single (unbatched) previous action value.
-            prev_reward: Single (unbatched) previous reward value.
-            info: Env info dict, if any.
-            input_dict: An optional SampleBatch that holds all the values
-                for: obs, state, prev_action, and prev_reward, plus maybe
-                custom defined views of the current env trajectory. Note
-                that only one of `obs` or `input_dict` must be non-None.
-            policy_id: Policy to query (only applies to multi-agent).
-                Default: "default_policy".
-            full_fetch: Whether to return extra action fetch results.
-                This is always set to True if `state` is specified.
-            explore: Whether to apply exploration to the action.
-                Default: None -> use self.config.explore.
-            timestep: The current (sampling) time step.
-            episode: This provides access to all of the internal episodes'
-                state, which may be useful for model-based or multi-agent
-                algorithms.
-            unsquash_action: Should actions be unsquashed according to the
-                env's/Policy's action space? If None, use the value of
-                self.config.normalize_actions.
-            clip_action: Should actions be clipped according to the
-                env's/Policy's action space? If None, use the value of
-                self.config.clip_actions.
-
-        Keyword Args:
-            kwargs: forward compatibility placeholder
-
-        Returns:
-            The computed action if full_fetch=False, or a tuple of a) the
-            full output of policy.compute_actions() if full_fetch=True
-            or we have an RNN-based Policy.
-
-        Raises:
-            KeyError: If the `policy_id` cannot be found in this Algorithm's local
-                worker.
-        """
-        # `unsquash_action` is None: Use value of config['normalize_actions'].
-        if unsquash_action is None:
-            unsquash_action = self.config.normalize_actions
-        # `clip_action` is None: Use value of config['clip_actions'].
-        elif clip_action is None:
-            clip_action = self.config.clip_actions
-
-        # User provided an input-dict: Assert that `obs`, `prev_a|r`, `state`
-        # are all None.
-        err_msg = (
-            "Provide either `input_dict` OR [`observation`, ...] as "
-            "args to `Algorithm.compute_single_action()`!"
-        )
-        if input_dict is not None:
-            assert (
-                observation is None
-                and prev_action is None
-                and prev_reward is None
-                and state is None
-            ), err_msg
-            observation = input_dict[Columns.OBS]
-        else:
-            assert observation is not None, err_msg
-
-        # Get the policy to compute the action for (in the multi-agent case,
-        # Algorithm may hold >1 policies).
-        policy = self.get_policy(policy_id)
-        if policy is None:
-            raise KeyError(
-                f"PolicyID '{policy_id}' not found in PolicyMap of the "
-                f"Algorithm's local worker!"
-            )
-        # Just preprocess observations, similar to how it used to be done before.
-        pp = policy.agent_connectors[ObsPreprocessorConnector]
-
-        # convert the observation to array if possible
-        if not isinstance(observation, (np.ndarray, dict, tuple)):
-            try:
-                observation = np.asarray(observation)
-            except Exception:
-                raise ValueError(
-                    f"Observation type {type(observation)} cannot be converted to "
-                    f"np.ndarray."
-                )
-        if pp:
-            assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
-            pp = pp[0]
-
-            if not pp.is_identity():
-                # Note(Kourosh): This call will leave the policy's connector
-                # in eval mode. would that be a problem?
-                pp.in_eval()
-                if observation is not None:
-                    _input_dict = {Columns.OBS: observation}
-                elif input_dict is not None:
-                    _input_dict = {Columns.OBS: input_dict[Columns.OBS]}
-                else:
-                    raise ValueError(
-                        "Either observation or input_dict must be provided."
-                    )
-
-                # TODO (Kourosh): Create a new util method for algorithm that
-                # computes actions based on raw inputs from env and can keep track
-                # of its own internal state.
-                acd = AgentConnectorDataType("0", "0", _input_dict)
-                # make sure the state is reset since we are only applying the
-                # preprocessor
-                pp.reset(env_id="0")
-                ac_o = pp([acd])[0]
-                observation = ac_o.data[Columns.OBS]
-
-        # Input-dict.
-        if input_dict is not None:
-            input_dict[Columns.OBS] = observation
-            action, state, extra = policy.compute_single_action(
-                input_dict=input_dict,
-                explore=explore,
-                timestep=timestep,
-                episode=episode,
-            )
-        # Individual args.
-        else:
-            action, state, extra = policy.compute_single_action(
-                obs=observation,
-                state=state,
-                prev_action=prev_action,
-                prev_reward=prev_reward,
-                info=info,
-                explore=explore,
-                timestep=timestep,
-                episode=episode,
-            )
-
-        # If we work in normalized action space (normalize_actions=True),
-        # we re-translate here into the env's action space.
-        if unsquash_action:
-            action = space_utils.unsquash_action(action, policy.action_space_struct)
-        # Clip, according to env's action space.
-        elif clip_action:
-            action = space_utils.clip_action(action, policy.action_space_struct)
-
-        # Return 3-Tuple: Action, states, and extra-action fetches.
-        if state or full_fetch:
-            return action, state, extra
-        # Ensure backward compatibility.
-        else:
-            return action
-
-    @OldAPIStack
-    def compute_actions(
-        self,
-        observations: TensorStructType,
-        state: Optional[List[TensorStructType]] = None,
-        *,
-        prev_action: Optional[TensorStructType] = None,
-        prev_reward: Optional[TensorStructType] = None,
-        info: Optional[EnvInfoDict] = None,
-        policy_id: PolicyID = DEFAULT_POLICY_ID,
-        full_fetch: bool = False,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
-        episodes=None,
-        unsquash_actions: Optional[bool] = None,
-        clip_actions: Optional[bool] = None,
-        **kwargs,
-    ):
-        """Computes an action for the specified policy on the local Worker.
-
-        Note that you can also access the policy object through
-        self.get_policy(policy_id) and call compute_actions() on it directly.
-
-        Args:
-            observation: Observation from the environment.
-            state: RNN hidden state, if any. If state is not None,
-                then all of compute_single_action(...) is returned
-                (computed action, rnn state(s), logits dictionary).
-                Otherwise compute_single_action(...)[0] is returned
-                (computed action).
-            prev_action: Previous action value, if any.
-            prev_reward: Previous reward, if any.
-            info: Env info dict, if any.
-            policy_id: Policy to query (only applies to multi-agent).
-            full_fetch: Whether to return extra action fetch results.
-                This is always set to True if RNN state is specified.
-            explore: Whether to pick an exploitation or exploration
-                action (default: None -> use self.config.explore).
-            timestep: The current (sampling) time step.
-            episodes: This provides access to all of the internal episodes'
-                state, which may be useful for model-based or multi-agent
-                algorithms.
-            unsquash_actions: Should actions be unsquashed according
-                to the env's/Policy's action space? If None, use
-                self.config.normalize_actions.
-            clip_actions: Should actions be clipped according to the
-                env's/Policy's action space? If None, use
-                self.config.clip_actions.
-
-        Keyword Args:
-            kwargs: forward compatibility placeholder
-
-        Returns:
-            The computed action if full_fetch=False, or a tuple consisting of
-            the full output of policy.compute_actions_from_input_dict() if
-            full_fetch=True or we have an RNN-based Policy.
-        """
-        # `unsquash_actions` is None: Use value of config['normalize_actions'].
-        if unsquash_actions is None:
-            unsquash_actions = self.config.normalize_actions
-        # `clip_actions` is None: Use value of config['clip_actions'].
-        elif clip_actions is None:
-            clip_actions = self.config.clip_actions
-
-        # Preprocess obs and states.
-        state_defined = state is not None
-        policy = self.get_policy(policy_id)
-        filtered_obs, filtered_state = [], []
-        for agent_id, ob in observations.items():
-            worker = self.env_runner_group.local_env_runner
-            if worker.preprocessors.get(policy_id) is not None:
-                preprocessed = worker.preprocessors[policy_id].transform(ob)
-            else:
-                preprocessed = ob
-            filtered = worker.filters[policy_id](preprocessed, update=False)
-            filtered_obs.append(filtered)
-            if state is None:
-                continue
-            elif agent_id in state:
-                filtered_state.append(state[agent_id])
-            else:
-                filtered_state.append(policy.get_initial_state())
-
-        # Batch obs and states
-        obs_batch = np.stack(filtered_obs)
-        if state is None:
-            state = []
-        else:
-            state = list(zip(*filtered_state))
-            state = [np.stack(s) for s in state]
-
-        input_dict = {Columns.OBS: obs_batch}
-
-        # prev_action and prev_reward can be None, np.ndarray, or tensor-like structure.
-        # Explicitly check for None here to avoid the error message "The truth value of
-        # an array with more than one element is ambiguous.", when np arrays are passed
-        # as arguments.
-        if prev_action is not None:
-            input_dict[SampleBatch.PREV_ACTIONS] = prev_action
-        if prev_reward is not None:
-            input_dict[SampleBatch.PREV_REWARDS] = prev_reward
-        if info:
-            input_dict[Columns.INFOS] = info
-        for i, s in enumerate(state):
-            input_dict[f"state_in_{i}"] = s
-
-        # Batch compute actions
-        actions, states, infos = policy.compute_actions_from_input_dict(
-            input_dict=input_dict,
-            explore=explore,
-            timestep=timestep,
-            episodes=episodes,
-        )
-
-        # Unbatch actions for the environment into a multi-agent dict.
-        single_actions = space_utils.unbatch(actions)
-        actions = {}
-        for key, a in zip(observations, single_actions):
-            # If we work in normalized action space (normalize_actions=True),
-            # we re-translate here into the env's action space.
-            if unsquash_actions:
-                a = space_utils.unsquash_action(a, policy.action_space_struct)
-            # Clip, according to env's action space.
-            elif clip_actions:
-                a = space_utils.clip_action(a, policy.action_space_struct)
-            actions[key] = a
-
-        # Unbatch states into a multi-agent dict.
-        unbatched_states = {}
-        for idx, agent_id in enumerate(observations):
-            unbatched_states[agent_id] = [s[idx] for s in states]
-
-        # Return only actions or full tuple
-        if state_defined or full_fetch:
-            return actions, unbatched_states, infos
-        else:
-            return actions
-
-    @OldAPIStack
     def add_policy(
         self,
         policy_id: PolicyID,
@@ -2662,6 +2323,40 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Update the evaluation worker set's workers, if required.
         if remove_from_eval_env_runners and self.eval_env_runner_group is not None:
             self.eval_env_runner_group.foreach_env_runner(fn, local_env_runner=True)
+
+    @OldAPIStack
+    @staticmethod
+    def from_state(state: Dict) -> "Algorithm":
+        """Recovers an Algorithm from a state object.
+
+        The `state` of an instantiated Algorithm can be retrieved by calling its
+        `get_state` method. It contains all information necessary
+        to create the Algorithm from scratch. No access to the original code (e.g.
+        configs, knowledge of the Algorithm's class, etc..) is needed.
+
+        Args:
+            state: The state to recover a new Algorithm instance from.
+
+        Returns:
+            A new Algorithm instance.
+        """
+        algorithm_class: Type[Algorithm] = state.get("algorithm_class")
+        if algorithm_class is None:
+            raise ValueError(
+                "No `algorithm_class` key was found in given `state`! "
+                "Cannot create new Algorithm."
+            )
+        # algo_class = get_trainable_cls(algo_class_name)
+        # Create the new algo.
+        config = state.get("config")
+        if not config:
+            raise ValueError("No `config` found in given Algorithm state!")
+        new_algo = algorithm_class(config=config)
+        # Set the new algo's state.
+        new_algo.__setstate__(state)
+
+        # Return the new algo.
+        return new_algo
 
     @OldAPIStack
     def export_policy_model(
@@ -2991,6 +2686,16 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @override(Trainable)
     def cleanup(self) -> None:
+        # Stop all Learners.
+        if hasattr(self, "learner_group") and self.learner_group is not None:
+            self.learner_group.shutdown()
+
+        # Stop all aggregation actors.
+        if hasattr(self, "_aggregator_actor_manager") and (
+            self._aggregator_actor_manager is not None
+        ):
+            self._aggregator_actor_manager.clear()
+
         # Stop all EnvRunners.
         if hasattr(self, "env_runner_group") and self.env_runner_group is not None:
             self.env_runner_group.stop()
@@ -2999,10 +2704,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             and self.eval_env_runner_group is not None
         ):
             self.eval_env_runner_group.stop()
-
-        # Stop all Learners.
-        if hasattr(self, "learner_group") and self.learner_group is not None:
-            self.learner_group.shutdown()
 
     @OverrideToImplementCustomLogic
     @classmethod
@@ -3356,8 +3057,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 # when we have reached `min_time_s_per_iteration`).
                 while not train_iter_ctx.should_stop(has_run_once):
                     # Before training step, try to bring failed workers back.
-                    with self.metrics.log_time((TIMERS, RESTORE_WORKERS_TIMER)):
-                        self.restore_workers(self.env_runner_group)
+                    with self.metrics.log_time((TIMERS, RESTORE_ENV_RUNNERS_TIMER)):
+                        self.restore_env_runners(self.env_runner_group)
 
                     # Try to train one step.
                     with self.metrics.log_time((TIMERS, TRAINING_STEP_TIMER)):
@@ -3432,11 +3133,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         """
         if self.eval_env_runner_group is not None:
             if self.config.enable_env_runner_and_connector_v2:
-                with self.metrics.log_time((TIMERS, RESTORE_EVAL_WORKERS_TIMER)):
-                    self.restore_workers(self.eval_env_runner_group)
+                with self.metrics.log_time((TIMERS, RESTORE_EVAL_ENV_RUNNERS_TIMER)):
+                    self.restore_env_runners(self.eval_env_runner_group)
             else:
-                with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
-                    self.restore_workers(self.eval_env_runner_group)
+                with self._timers["restore_eval_workers"]:
+                    self.restore_env_runners(self.eval_env_runner_group)
 
         # Run `self.evaluate()` only once per training iteration.
         if self.config.enable_env_runner_and_connector_v2:
@@ -3641,10 +3342,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @property
     def env_runner(self):
+        """The local EnvRunner instance within the algo's EnvRunnerGroup."""
         return self.env_runner_group.local_env_runner
 
     @property
     def eval_env_runner(self):
+        """The local EnvRunner instance within the algo's evaluation EnvRunnerGroup."""
         return self.eval_env_runner_group.local_env_runner
 
     def _record_usage(self, config):
@@ -3984,8 +3687,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             training_step_results = None
             with TrainIterCtx(algo=self) as train_iter_ctx:
                 while not train_iter_ctx.should_stop(training_step_results):
-                    with self._timers[RESTORE_WORKERS_TIMER]:
-                        self.restore_workers(self.env_runner_group)
+                    with self._timers["restore_workers"]:
+                        self.restore_env_runners(self.env_runner_group)
 
                     with self._timers[TRAINING_STEP_TIMER]:
                         training_step_results = self.training_step()
@@ -4113,6 +3816,212 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         results["info"].update(counters)
 
         return results
+
+    @OldAPIStack
+    @Deprecated(
+        help="`Algorithm.compute_single_action` should no longer be used. Get the "
+        "RLModule instance through `Algorithm.get_module([module ID])`, then compute "
+        "actions through `RLModule.forward_inference({'obs': [obs batch]})`.",
+        error=False,
+    )
+    def compute_single_action(
+        self,
+        observation: Optional[TensorStructType] = None,
+        state: Optional[List[TensorStructType]] = None,
+        *,
+        prev_action: Optional[TensorStructType] = None,
+        prev_reward: Optional[float] = None,
+        info: Optional[EnvInfoDict] = None,
+        input_dict: Optional[SampleBatch] = None,
+        policy_id: PolicyID = DEFAULT_POLICY_ID,
+        full_fetch: bool = False,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
+        episode=None,
+        unsquash_action: Optional[bool] = None,
+        clip_action: Optional[bool] = None,
+    ) -> Union[
+        TensorStructType,
+        Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]],
+    ]:
+        if unsquash_action is None:
+            unsquash_action = self.config.normalize_actions
+        elif clip_action is None:
+            clip_action = self.config.clip_actions
+
+        err_msg = (
+            "Provide either `input_dict` OR [`observation`, ...] as "
+            "args to `Algorithm.compute_single_action()`!"
+        )
+        if input_dict is not None:
+            assert (
+                observation is None
+                and prev_action is None
+                and prev_reward is None
+                and state is None
+            ), err_msg
+            observation = input_dict[Columns.OBS]
+        else:
+            assert observation is not None, err_msg
+
+        policy = self.get_policy(policy_id)
+        if policy is None:
+            raise KeyError(
+                f"PolicyID '{policy_id}' not found in PolicyMap of the "
+                f"Algorithm's local worker!"
+            )
+        pp = policy.agent_connectors[ObsPreprocessorConnector]
+
+        if not isinstance(observation, (np.ndarray, dict, tuple)):
+            try:
+                observation = np.asarray(observation)
+            except Exception:
+                raise ValueError(
+                    f"Observation type {type(observation)} cannot be converted to "
+                    f"np.ndarray."
+                )
+        if pp:
+            assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
+            pp = pp[0]
+
+            if not pp.is_identity():
+                pp.in_eval()
+                if observation is not None:
+                    _input_dict = {Columns.OBS: observation}
+                elif input_dict is not None:
+                    _input_dict = {Columns.OBS: input_dict[Columns.OBS]}
+                else:
+                    raise ValueError(
+                        "Either observation or input_dict must be provided."
+                    )
+
+                acd = AgentConnectorDataType("0", "0", _input_dict)
+                pp.reset(env_id="0")
+                ac_o = pp([acd])[0]
+                observation = ac_o.data[Columns.OBS]
+
+        if input_dict is not None:
+            input_dict[Columns.OBS] = observation
+            action, state, extra = policy.compute_single_action(
+                input_dict=input_dict,
+                explore=explore,
+                timestep=timestep,
+                episode=episode,
+            )
+        else:
+            action, state, extra = policy.compute_single_action(
+                obs=observation,
+                state=state,
+                prev_action=prev_action,
+                prev_reward=prev_reward,
+                info=info,
+                explore=explore,
+                timestep=timestep,
+                episode=episode,
+            )
+
+        if unsquash_action:
+            action = space_utils.unsquash_action(action, policy.action_space_struct)
+        elif clip_action:
+            action = space_utils.clip_action(action, policy.action_space_struct)
+
+        if state or full_fetch:
+            return action, state, extra
+        else:
+            return action
+
+    @OldAPIStack
+    @Deprecated(
+        help="`Algorithm.compute_actions` should no longer be used. Get the RLModule "
+        "instance through `Algorithm.get_module([module ID])`, then compute actions "
+        "through `RLModule.forward_inference({'obs': [obs batch]})`.",
+        error=False,
+    )
+    def compute_actions(
+        self,
+        observations: TensorStructType,
+        state: Optional[List[TensorStructType]] = None,
+        *,
+        prev_action: Optional[TensorStructType] = None,
+        prev_reward: Optional[TensorStructType] = None,
+        info: Optional[EnvInfoDict] = None,
+        policy_id: PolicyID = DEFAULT_POLICY_ID,
+        full_fetch: bool = False,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
+        episodes=None,
+        unsquash_actions: Optional[bool] = None,
+        clip_actions: Optional[bool] = None,
+    ):
+        if unsquash_actions is None:
+            unsquash_actions = self.config.normalize_actions
+        elif clip_actions is None:
+            clip_actions = self.config.clip_actions
+
+        state_defined = state is not None
+        policy = self.get_policy(policy_id)
+        filtered_obs, filtered_state = [], []
+        for agent_id, ob in observations.items():
+            worker = self.env_runner_group.local_env_runner
+            if worker.preprocessors.get(policy_id) is not None:
+                preprocessed = worker.preprocessors[policy_id].transform(ob)
+            else:
+                preprocessed = ob
+            filtered = worker.filters[policy_id](preprocessed, update=False)
+            filtered_obs.append(filtered)
+            if state is None:
+                continue
+            elif agent_id in state:
+                filtered_state.append(state[agent_id])
+            else:
+                filtered_state.append(policy.get_initial_state())
+
+        obs_batch = np.stack(filtered_obs)
+        if state is None:
+            state = []
+        else:
+            state = list(zip(*filtered_state))
+            state = [np.stack(s) for s in state]
+
+        input_dict = {Columns.OBS: obs_batch}
+
+        if prev_action is not None:
+            input_dict[SampleBatch.PREV_ACTIONS] = prev_action
+        if prev_reward is not None:
+            input_dict[SampleBatch.PREV_REWARDS] = prev_reward
+        if info:
+            input_dict[Columns.INFOS] = info
+        for i, s in enumerate(state):
+            input_dict[f"state_in_{i}"] = s
+
+        actions, states, infos = policy.compute_actions_from_input_dict(
+            input_dict=input_dict,
+            explore=explore,
+            timestep=timestep,
+            episodes=episodes,
+        )
+
+        single_actions = space_utils.unbatch(actions)
+        actions = {}
+        for key, a in zip(observations, single_actions):
+            if unsquash_actions:
+                a = space_utils.unsquash_action(a, policy.action_space_struct)
+            elif clip_actions:
+                a = space_utils.clip_action(a, policy.action_space_struct)
+            actions[key] = a
+
+        unbatched_states = {}
+        for idx, agent_id in enumerate(observations):
+            unbatched_states[agent_id] = [s[idx] for s in states]
+
+        if state_defined or full_fetch:
+            return actions, unbatched_states, infos
+        else:
+            return actions
+
+    @Deprecated(new="Algorithm.restore_env_runners", error=False)
+    def restore_workers(self, *args, **kwargs):
+        return self.restore_env_runners(*args, **kwargs)
 
     @Deprecated(
         new="Algorithm.env_runner_group",
