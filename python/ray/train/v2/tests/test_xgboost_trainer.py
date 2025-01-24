@@ -92,7 +92,7 @@ def test_fit(ray_start_4_cpus):
     )
     result = trainer.fit()
     with pytest.raises(DeprecationWarning):
-        trainer.get_model(result.checkpoint)
+        XGBoostTrainer.get_model(result.checkpoint)
 
 
 if __name__ == "__main__":
