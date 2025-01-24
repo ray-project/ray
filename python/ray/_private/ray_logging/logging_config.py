@@ -141,7 +141,7 @@ LoggingConfig.__doc__ = f"""
         log_level: Log level for the logs. Defaults to 'INFO'. You can set
             it to 'DEBUG' to receive more detailed debug logs.
         additional_log_standard_attrs: List of additional standard python logger attributes to 
-            include in the log records. Defaults to an empty list. The list of already 
+            include in the log. Defaults to an empty list. The list of already 
             included standard attributes are: "asctime", "levelname", "message", 
             "filename", "lineno", "exc_text". The list of valid attributes are specified
             here: http://docs.python.org/library/logging.html#logrecord-attributes
