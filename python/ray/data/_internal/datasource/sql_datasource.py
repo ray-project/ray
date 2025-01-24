@@ -81,6 +81,7 @@ class SQLDatasource(Datasource):
         self,
         sql: str,
         connection_factory: Callable[[], Connection],
+        shard_hash_fn: str = "MD5",
         shard_keys: Optional[List[str]] = None,
     ):
         self.sql = sql
@@ -90,13 +91,14 @@ class SQLDatasource(Datasource):
             self.shard_keys = f"{shard_keys[0]}"
         else:
             self.shard_keys = None
+        self.shard_hash_fn = shard_hash_fn
         self.connection_factory = connection_factory
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
     def supports_sharding(self, parallelism: int) -> bool:
-        """Check if database supports sharding with MOD/ABS/MD5/CONCAT operations.
+        """Check if database supports sharding with MOD/ABS/CONCAT operations.
 
         Returns:
             bool: True if sharding is supported, False otherwise.
@@ -106,12 +108,14 @@ class SQLDatasource(Datasource):
 
         # Test if database supports required operations (MOD, ABS, MD5, CONCAT)
         # by executing a sample query
+        hash_fn = self.shard_hash_fn
+        query = (
+            f"SELECT COUNT(1) FROM ({self.sql}) as T"
+            f" WHERE MOD(ABS({hash_fn}({self.shard_keys})), {parallelism}) = 0"
+        )
         try:
             with _connect(self.connection_factory) as cursor:
-                cursor.execute(
-                    f"SELECT COUNT(1) FROM ({self.sql}) as T"
-                    f" WHERE MOD(ABS(MD5({self.shard_keys})), {parallelism}) = 0"
-                )
+                cursor.execute(query)
             return True
         except Exception as e:
             logger.debug(f"Database does not support sharding: {str(e)}.")
@@ -150,7 +154,7 @@ class SQLDatasource(Datasource):
             num_rows = num_rows_per_block
             if i < num_blocks_with_extra_row:
                 num_rows += 1
-            read_fn = self._create_read_fn(i, parallelism)
+            read_fn = self._create_parallel_read_fn(i, parallelism)
             metadata = BlockMetadata(
                 num_rows=num_rows,
                 size_bytes=None,
@@ -167,13 +171,16 @@ class SQLDatasource(Datasource):
             cursor.execute(f"SELECT COUNT(*) FROM ({self.sql}) as T")
             return cursor.fetchone()[0]
 
-    def _create_read_fn(self, task_id: int, parallelism: int):
+    def _create_parallel_read_fn(self, task_id: int, parallelism: int):
+        hash_fn = self.shard_hash_fn
+        query = (
+            f"SELECT * FROM ({self.sql}) as T "
+            f"WHERE MOD(ABS({hash_fn}({self.shard_keys})), {parallelism}) = {task_id}"
+        )
+
         def read_fn() -> Iterable[Block]:
             with _connect(self.connection_factory) as cursor:
-                cursor.execute(
-                    f"SELECT * FROM ({self.sql}) as T "
-                    f"WHERE MOD(ABS(MD5({self.shard_keys})), {parallelism}) = {task_id}"
-                )
+                cursor.execute(query)
                 block = _cursor_to_block(cursor)
                 return [block]
 
