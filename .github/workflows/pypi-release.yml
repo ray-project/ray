@@ -2,19 +2,25 @@ name: Ant Ray PyPi Release
 
 on:
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Enter branch name to build wheels from (default: main)'
+        required: false
+        type: string
+        default: 'main'
   release:
     types:
       - published
 
 jobs:
-  build_wheels:
+  build_linux_wheels_aarch64:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # macos-13 is an intel runner, macos-14 is apple silicon
-        # os: [ubuntu-latest, windows-latest, macos-13, macos-14]
-        os: [ubuntu-latest]
+        os: [ubuntu-24.04-arm]
+        python-version: [39, 310, 311]
+        arch: [aarch64]
 
     steps:
       - uses: actions/checkout@v4
@@ -22,14 +28,64 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
         env:
-          CIBW_BEFORE_BUILD_LINUX: yum -y update && yum -y install npm && pip install "cython>=0.29.32" wheel && ./ci/env/install-bazel.sh && pushd python/ray/dashboard/client && npm ci && npm run build && popd
-          CIBW_BUILD: |
-            cp39-manylinux_x86_64
-            cp39-manylinux_aarch64
-            cp310-manylinux_x86_64
-            cp310-manylinux_aarch64
-            cp311-manylinux_x86_64
-            cp311-manylinux_aarch64
+          CIBW_BEFORE_BUILD_LINUX: yum install -y epel-release && yum -y update && yum -y install curl && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash && export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && nvm install 16.20.2 && nvm use 16.20.2 && pip install "cython>=0.29.32" wheel && ./ci/env/install-bazel.sh && pushd python/ray/dashboard/client && npm ci && npm run build && popd
+          CIBW_BUILD: cp${{ matrix.python-version }}-manylinux_${{ matrix.arch }}*
+        with:
+          package-dir: ./python
+          output-dir: ./python/dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./python/dist/*.whl
+
+
+
+  build_linux_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [39, 310, 311]
+        arch: [x86_64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.22.0
+        env:
+          CIBW_BEFORE_BUILD_LINUX: yum install -y epel-release && yum -y update && yum -y install npm && pip install "cython>=0.29.32" wheel && ./ci/env/install-bazel.sh && pushd python/ray/dashboard/client && npm -g install npm@8.19.2 && npm ci && npm run build && popd
+          CIBW_BUILD: cp${{ matrix.python-version }}-manylinux_${{ matrix.arch }}*
+        with:
+          package-dir: ./python
+          output-dir: ./python/dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./python/dist/*.whl
+
+
+  build_macos_wheels:
+    name: Build macOS wheels (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-14]
+        python-version: [39, 310, 311]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || 'main' }}
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.22.0
+        env:
+          CIBW_BEFORE_BUILD: brew install node && pip install "cython>=0.29.32" wheel && sudo ./ci/env/install-bazel.sh && python -m ensurepip --upgrade && sudo chmod a+x /Users/runner/bin/bazel && sudo chown -R runner /Users/runner/Library/Caches/bazelisk && pushd python/ray/dashboard/client && npm ci && npm run build && popd
+          CIBW_BUILD: cp${{ matrix.python-version }}-macosx_*
         with:
           package-dir: ./python
           output-dir: ./python/dist
@@ -40,18 +96,14 @@ jobs:
           path: ./python/dist/*.whl
 
   upload_pypi:
-    needs: [build_wheels]
+    needs: [build_macos_wheels, build_linux_wheels, build_linux_wheels_aarch64]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
       id-token: write
-    # if: github.event_name == 'release' && github.event.action == 'published'
-    # # or, alternatively, upload to PyPI on every tag starting with 'v' (remove on: release above to use this)
-    # # if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/download-artifact@v4
         with:
-          # unpacks all CIBW artifacts into dist/
           pattern: cibw-*
           path: python/dist
           merge-multiple: true
@@ -61,7 +113,7 @@ jobs:
           packages-dir: python/dist
 
   upload_test_pypi:
-    needs: [build_wheels]
+    needs: [build_macos_wheels, build_linux_wheels, build_linux_wheels_aarch64]
     runs-on: ubuntu-latest
     environment: testpypi-publish
     permissions:
@@ -69,7 +121,6 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          # unpacks all CIBW artifacts into dist/
           pattern: cibw-*
           path: python/dist
           merge-multiple: true
