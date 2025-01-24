@@ -47,6 +47,13 @@ Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://antgroup.github.io/ant-ray/ray-overview/installation.html>`__.
 
+**Note**: ``This documentation refers to Ant Ray - a fork of Ray maintained by Ant Group. To install this specific version, use``:
+
+.. code-block:: bash
+
+    pip install ant-ray
+
+
 .. _`Serve`: https://antgroup.github.io/ant-ray/serve/index.html
 .. _`Data`: https://antgroup.github.io/ant-ray/data/dataset.html
 .. _`Workflow`: https://antgroup.github.io/ant-ray/workflows/concepts.html
