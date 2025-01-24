@@ -2124,12 +2124,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
 
 TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForPrestartedWorker) {
   const auto task_spec = ExampleTaskSpec();
-
-  rpc::TaskSpec rpc_task_spec;
-  rpc_task_spec.set_language(Language::PYTHON);
-  rpc_task_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
-  TaskSpecification task_spec{std::move(rpc_task_spec)};
-  worker_pool_->PrestartWorkersInternal(std::move(task_spec), /*num_needed=*/1);
+  worker_pool_->PrestartWorkersInternal(task_spec, /*num_needed=*/1);
   worker_pool_->PushWorkers(0, task_spec.JobId());
   // One worker process has been prestarted.
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
