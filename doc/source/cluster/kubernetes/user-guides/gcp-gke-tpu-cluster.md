@@ -52,7 +52,7 @@ The `--tpu-topology` flag specifies the physical topology of the TPU Pod slice. 
 GKE uses Kubernetes node selectors to ensure TPU workloads run on the desired machine type and topology.
 For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#workload_preparation).
 
-## Step 2: Configure `kubectl` to connect to the cluster
+## Step 2: Configure gcloud to connect to the GKE cluster
 
 Run the following command to download Google Cloud credentials and configure the Kubernetes CLI to use them.
 
@@ -60,13 +60,15 @@ Run the following command to download Google Cloud credentials and configure the
 gcloud container clusters get-credentials kuberay-tpu-cluster --zone us-central2-b
 ```
 
-For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
+The remote GKE cluster is now reachable through `kubectl`. For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
 
-## Step 3: Install the TPU initialization webhook
 
-GKE provides a [validating and mutating webhook](https://github.com/GoogleCloudPlatform/ai-on-gke/tree/main/ray-on-gke/tpu/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap certain environment variables used for [JAX](https://github.com/google/jax) initialization. The Ray TPU webhook requires a KubeRay operator version of at least v1.1.0. GKE automatically installs the Ray TPU webhook through the [Ray Operator Addon](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) with GKE versions 1.30.0-gke.1747000 or later. When manually installing the Ray TPU webhook, you need [cert-manager](https://github.com/cert-manager/cert-manager) to handle TLS certificate injection. You can install cert-manager in both GKE Standard and Autopilot clusters using the following helm commands:
+### [Optional] Manually install the TPU initialization webhook in a GKE cluster without the Ray Addon:
 
-### [Optional] Manually install in a GKE cluster without the Ray Addon:
+GKE provides a [validating and mutating webhook](https://github.com/GoogleCloudPlatform/ai-on-gke/tree/main/ray-on-gke/tpu/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap certain environment variables used for [JAX](https://github.com/google/jax) initialization. The Ray TPU webhook requires a KubeRay operator version of at least v1.1.0. GKE automatically installs the Ray TPU webhook through the [Ray Operator Addon](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) with GKE versions 1.30.0-gke.1747000 or later.
+
+When manually installing the webhook, [cert-manager](https://github.com/cert-manager/cert-manager) is required to handle TLS certificate injection. You can install cert-manager in both GKE Standard and Autopilot clusters using the following helm commands:
+
 Install cert-manager:
 ```
 helm repo add jetstack https://charts.jetstack.io
@@ -74,7 +76,7 @@ helm repo update
 helm install --create-namespace --namespace cert-manager --set installCRDs=true --set global.leaderElection.namespace=cert-manager cert-manager jetstack/cert-manager
 ```
 
-Deploy the Ray TPU initialization webhook:
+Next, deploy the Ray TPU initialization webhook:
 1. `git clone https://github.com/GoogleCloudPlatform/ai-on-gke`
 2. `cd ray-on-gke/tpu/kuberay-tpu-webhook`
 3. `make deploy deploy-cert`
