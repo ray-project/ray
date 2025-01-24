@@ -82,9 +82,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._num_errored_blocks = 0
 
         self._last_debug_log_time = 0
-        # Exception that caused the executor to fail.
-        # None if the executor succeeded or is still running.
-        self._exception: Optional[Exception] = None
 
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -190,11 +187,10 @@ class StreamingExecutor(Executor, threading.Thread):
             logger.debug(f"Shutting down {self}.")
             _num_shutdown += 1
             self._shutdown = True
-            self._exception = exception
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
             self._update_stats_metrics(
-                state="FINISHED" if exception is not None else "FAILED",
+                state="FINISHED" if exception is None else "FAILED",
                 force_update=True,
             )
             # Once Dataset execution completes, mark it as complete
@@ -212,7 +208,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if self._global_info:
                 # Set the appropriate description that summarizes
                 # the result of dataset execution.
-                if exception is not None:
+                if exception is None:
                     prog_bar_msg = (
                         f"{OK_PREFIX} Dataset execution finished in "
                         f"{self._final_stats.time_total_s:.2f} seconds"
