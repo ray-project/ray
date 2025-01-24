@@ -61,18 +61,20 @@ class ScalingConfig(ScalingConfigV1):
 
     """
 
-    trainer_resources: Union[Optional[dict], str] = _DEPRECATED
+    trainer_resources: Optional[dict] = None
 
     def __post_init__(self):
-        if self.trainer_resources != _DEPRECATED:
-            raise NotImplementedError(
+        if self.trainer_resources is not None:
+            raise DeprecationWarning(
                 "`ScalingConfig(trainer_resources)` is deprecated. "
                 "This parameter was an advanced configuration that specified "
                 "resources for the Ray Train driver actor, which doesn't "
                 "need to reserve logical resources because it doesn't perform "
                 "any heavy computation. "
                 "Only the `resources_per_worker` parameter is useful "
-                "to specify resources for the training workers."
+                "to specify resources for the training workers. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
             )
 
         super().__post_init__()
@@ -98,16 +100,17 @@ class FailureConfig(FailureConfigV1):
     def __post_init__(self):
         # TODO(justinvyu): Add link to migration guide.
         if self.fail_fast != _DEPRECATED:
-            raise NotImplementedError("`FailureConfig(fail_fast)` is deprecated.")
+            raise DeprecationWarning(
+                "`ray.train.FailureConfig(fail_fast)` is deprecated since it is "
+                "only relevant in the context of Ray Tune. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )
 
 
 @dataclass
 class RunConfig(RunConfigV1):
     """Runtime configuration for training runs.
-
-    Upon resuming from a training run checkpoint,
-    Ray Train will automatically apply the RunConfig from
-    the previously checkpointed run.
 
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
@@ -144,7 +147,9 @@ class RunConfig(RunConfigV1):
             "Ray Tune API that did not support Ray Train usage well, "
             "so we are dropping support going forward. "
             "If you heavily rely on these configurations, "
-            "you can run Ray Train as a single Ray Tune trial."
+            "you can run Ray Train as a single Ray Tune trial. "
+            "See this issue for more context: "
+            "https://github.com/ray-project/ray/issues/49454"
         )
 
         unsupported_params = [
@@ -156,16 +161,19 @@ class RunConfig(RunConfigV1):
         ]
         for param in unsupported_params:
             if getattr(self, param) != _DEPRECATED:
-                raise NotImplementedError(run_config_deprecation_message.format(param))
+                raise DeprecationWarning(run_config_deprecation_message.format(param))
 
         if not self.name:
             self.name = f"ray_train_run-{date_str()}"
 
         self.callbacks = self.callbacks or []
 
-        # TODO(justinvyu): Improve this error message and add a migration guide if
-        # the user is passing in a Tune callback.
         from ray.train.v2.api.callback import RayTrainCallback
 
         if not all(isinstance(cb, RayTrainCallback) for cb in self.callbacks):
-            raise ValueError("All callbacks must be instances of `RayTrainCallback`.")
+            raise ValueError(
+                "All callbacks must be instances of `ray.train.UserCallback`. "
+                "Passing in a Ray Tune callback is no longer supported. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
+            )

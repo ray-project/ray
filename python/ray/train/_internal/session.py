@@ -760,7 +760,9 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
             _log_deprecation_warning(
                 "`ray.train.report` should be switched to "
                 "`ray.tune.report` when running in a function "
-                "passed to Ray Tune. This will be an error in the future."
+                "passed to Ray Tune. This will be an error in the future. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
             )
         return ray.tune.report(metrics, checkpoint=checkpoint)
 
@@ -820,7 +822,9 @@ def get_checkpoint() -> Optional[Checkpoint]:
             _log_deprecation_warning(
                 "`ray.train.get_checkpoint` should be switched to "
                 "`ray.tune.get_checkpoint` when running in a function "
-                "passed to Ray Tune. This will be an error in the future."
+                "passed to Ray Tune. This will be an error in the future. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
             )
         return ray.tune.get_checkpoint()
 

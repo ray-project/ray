@@ -38,7 +38,9 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
             _log_deprecation_warning(
                 "The `Checkpoint` class should be imported from `ray.tune` "
                 "when passing it to `ray.tune.report` in a Tune function."
-                "Please update your imports."
+                "Please update your imports. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
             )
 
     get_session().report(metrics, checkpoint=checkpoint)
