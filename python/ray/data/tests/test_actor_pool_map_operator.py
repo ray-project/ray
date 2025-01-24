@@ -24,6 +24,9 @@ class PoolWorker:
     def get_location(self) -> str:
         return self.node_id
 
+    def on_exit(self):
+        pass
+
 
 class TestActorPool(unittest.TestCase):
     def setup_class(self):
