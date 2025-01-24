@@ -662,7 +662,7 @@ passing it the outputs of the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLMo
 
 See here for an `example script utilizing a self-supervised loss RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__.
 Losses can be defined over either policy evaluation inputs, or data read from `offline storage <rllib-offline.html>`__.
-Note that you may want to set the :py:attr:`~ray.rllib.rl_module.rl_module.RLModuleSpec.learner_only` attribute to ``True`` in your custom
+Note that you may want to set the :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec.learner_only` attribute to ``True`` in your custom
 :py:class:`~ray.rllib.rl_module.rl_module.RLModuleSpec` if you don't need the self-supervised model for collecting samples in your
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors. You may also need an extra Learner connector piece in this case make sure your
 :py:class:`~ray.rllib.rl_module.rl_module.RLModule` receives data to learn.

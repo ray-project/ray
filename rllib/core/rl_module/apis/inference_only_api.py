@@ -30,8 +30,7 @@ class InferenceOnlyAPI(abc.ABC):
 
         For example:
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: python
 
             from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
@@ -39,8 +38,7 @@ class InferenceOnlyAPI(abc.ABC):
 
         If an RLModule has the following `setup()` implementation:
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: python
 
             class MyRLModule(RLModule):
 

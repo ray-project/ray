@@ -176,47 +176,37 @@ Additional RLModule APIs
 InferenceOnlyAPI
 ++++++++++++++++
 
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
+.. autoclass:: ray.rllib.core.rl_module.apis.inference_only_api.InferenceOnlyAPI
 
-    InferenceOnlyAPI.get_non_inference_attributes
+    .. automethod:: get_non_inference_attributes
 
 QNetAPI
 +++++++
 
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
+.. autoclass:: ray.rllib.core.rl_module.apis.q_net_api.QNetAPI
 
-    QNetAPI.compute_q_values
-    QNetAPI.compute_advantage_distribution
+    .. automethod:: compute_q_values
+    .. automethod:: compute_advantage_distribution
 
 SelfSupervisedLossAPI
 +++++++++++++++++++++
 
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
+.. autoclass:: ray.rllib.core.rl_module.apis.self_supervised_loss_api.SelfSupervisedLossAPI
 
-    SelfSupervisedLossAPI.compute_self_supervised_loss
+    .. automethod:: compute_self_supervised_loss
 
 TargetNetworkAPI
 ++++++++++++++++
 
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
+.. autoclass:: ray.rllib.core.rl_module.apis.target_network_api.TargetNetworkAPI
 
-    TargetNetworkAPI.make_target_networks
-    TargetNetworkAPI.get_target_network_pairs
-    TargetNetworkAPI.forward_target
+    .. automethod:: make_target_networks
+    .. automethod:: get_target_network_pairs
+    .. automethod:: forward_target
 
 ValueFunctionAPI
 ++++++++++++++++
 
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
+.. autoclass:: ray.rllib.core.rl_module.apis.value_function_api.ValueFunctionAPI
 
-    ValueFunctionAPI.compute_values
+    .. automethod:: compute_values
