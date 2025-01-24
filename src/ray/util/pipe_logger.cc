@@ -147,7 +147,6 @@ bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
          stream_redirect_opt.tee_to_stderr;
 }
 
-#if defined(__APPLE__) || defined(__linux__)
 RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
   boost::iostreams::file_descriptor_sink sink{file_path, std::ios_base::out};
   auto handle = sink.handle();
@@ -162,35 +161,6 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
   return RedirectionFileHandle{
       handle, std::move(ostream), std::move(flush_fn), std::move(close_fn)};
 }
-#elif defined(_WIN32)
-#include <windows.h>
-RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
-  HANDLE file_handle = CreateFile(file_path.c_str(),
-                                  GENERIC_WRITE,
-                                  0,                      // No sharing
-                                  NULL,                   // Default security attributes
-                                  CREATE_ALWAYS,          // Always create a new file
-                                  FILE_ATTRIBUTE_NORMAL,  // Normal file attributes
-                                  NULL                    // No template file
-  );
-  RAY_CHECK(file_handle != INVALID_HANDLE_VALUE)
-      << "Fails to open file " << file_path << " with error "
-      << std::to_string(GetLastError());
-
-  auto flush_fn = [file_handle]() {
-    RAY_CHECK(FlushFileBuffers(file_handle))
-        << "Failed to flush data to disk with error: " << std::to_string(GetLastError());
-  };
-  auto close_fn = [file_handle]() {
-    RAY_CHECK(FlushFileBuffers(file_handle))
-        << "Failed to flush data to disk with error: " << std::to_string(GetLastError());
-    RAY_CHECK(CloseHandle(file_handle))
-        << "Failed to close file with error: " << std::to_string(GetLastError());
-  };
-  return RedirectionFileHandle{file_handle, std::move(flush_fn), std::move(close_fn)};
-}
-#endif
-
 }  // namespace
 
 RedirectionFileHandle CreateRedirectionFileHandle(
@@ -210,7 +180,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   // Invoked after flush and close finished.
   auto on_close_completion = [promise = promise]() { promise->set_value(); };
 
-  StreamSink std_stream_fd{};
+  StreamSink std_stream_sink{};
 
 #if defined(__APPLE__) || defined(__linux__)
   if (stream_redirect_opt.tee_to_stdout) {
@@ -219,7 +189,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
     boost::iostreams::file_descriptor_sink sink{
         duped_stdout_fd, /*file_descriptor_flags=*/boost::iostreams::close_handle};
-    std_stream_fd.stdout_sink = std::make_shared<
+    std_stream_sink.stdout_sink = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
   }
@@ -229,13 +199,12 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
     boost::iostreams::file_descriptor_sink sink{
         duped_stderr_fd, /*file_descriptor_flags=*/boost::iostreams::close_handle};
-    std_stream_fd.stderr_sink = std::make_shared<
+    std_stream_sink.stderr_sink = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
   }
 
   int pipefd[2] = {0};
-  // TODO(hjiang): We shoud have our own syscall macro.
   RAY_CHECK_EQ(pipe(pipefd), 0);
   int read_fd = pipefd[0];
   int write_fd = pipefd[1];
@@ -246,34 +215,34 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
 #elif defined(_WIN32)
   if (tream_redirect_opt.tee_to_stdout) {
-    int duped_stderr_fd = -1;
+    HANDLE duped_stderr_handle;
     BOOL result = DuplicateHandle(GetCurrentProcess(),
                                   GetStdHandle(STD_OUTPUT_HANDLE),
                                   GetCurrentProcess(),
-                                  &duped_stderr_fd,
+                                  &duped_stderr_handle,
                                   0,
                                   FALSE,
                                   DUPLICATE_SAME_ACCESS);
     RAY_CHECK(result) << "Fails to duplicate stdout handle";
 
-    boost::iostreams::file_descriptor_sink sink{duped_stderr_fd, std::ios_base::out};
-    std_stream_fd.stdout = std::make_shared<
+    boost::iostreams::file_descriptor_sink sink{duped_stderr_handle, std::ios_base::out};
+    std_stream_sink.stdout_sink = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
   }
   if (tream_redirect_opt.tee_to_stderr) {
-    int duped_stderr_fd = -1;
+    HANDLE duped_stderr_handle;
     BOOL result = DuplicateHandle(GetCurrentProcess(),
                                   GetStdHandle(STD_ERROR_HANDLE),
                                   GetCurrentProcess(),
-                                  &duped_stderr_fd,
+                                  &duped_stderr_handle,
                                   0,
                                   FALSE,
                                   DUPLICATE_SAME_ACCESS);
     RAY_CHECK(result) << "Fails to duplicate stderr handle";
 
-    boost::iostreams::file_descriptor_sink sink{duped_stderr_fd, std::ios_base::out};
-    std_stream_fd.stderr_sink = std::make_shared<
+    boost::iostreams::file_descriptor_sink sink{duped_stderr_handle, std::ios_base::out};
+    std_stream_sink.stderr_sink = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
   }
@@ -307,12 +276,12 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   // newliner, if any.
   auto write_fn = [logger,
                    stream_redirect_opt = stream_redirect_opt,
-                   std_stream_fd = std_stream_fd](std::string content) {
+                   std_stream_sink = std_stream_sink](std::string content) {
     if (stream_redirect_opt.tee_to_stdout) {
-      std_stream_fd.stdout_sink->write(content.data(), content.length());
+      std_stream_sink.stdout_sink->write(content.data(), content.length());
     }
     if (stream_redirect_opt.tee_to_stderr) {
-      std_stream_fd.stderr_sink->write(content.data(), content.length());
+      std_stream_sink.stderr_sink->write(content.data(), content.length());
     }
     if (logger != nullptr) {
       // spdlog adds newliner for every content, no need to maintan the application-passed
@@ -325,15 +294,15 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   };
   auto flush_fn = [logger,
                    stream_redirect_opt = stream_redirect_opt,
-                   std_stream_fd = std_stream_fd]() {
+                   std_stream_sink = std_stream_sink]() {
     if (logger != nullptr) {
       logger->flush();
     }
     if (stream_redirect_opt.tee_to_stdout) {
-      std_stream_fd.stdout_sink->flush();
+      std_stream_sink.stdout_sink->flush();
     }
     if (stream_redirect_opt.tee_to_stderr) {
-      std_stream_fd.stderr_sink->flush();
+      std_stream_sink.stderr_sink->flush();
     }
   };
 
