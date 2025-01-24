@@ -64,6 +64,15 @@ Text
 
    read_text
 
+Audio
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_audio
+
 Avro
 ----
 
@@ -288,6 +297,15 @@ TensorFlow
    :toctree: doc/
 
    from_tf
+
+Video
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_videos
 
 WebDataset
 ----------

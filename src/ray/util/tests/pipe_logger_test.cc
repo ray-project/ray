@@ -108,8 +108,6 @@ TEST_P(PipeLoggerTest, PipeWrite) {
   auto stream_redirection_handle = CreateRedirectionFileHandle(stream_redirection_opt);
   stream_redirection_handle.CompleteWrite(kLogLine1.data(), kLogLine1.length());
   stream_redirection_handle.CompleteWrite(kLogLine2.data(), kLogLine2.length());
-  // Write empty line, which is not expected to appear.
-  stream_redirection_handle.CompleteWrite("\n", /*count=*/1);
   // Synchronize on log flush completion.
   stream_redirection_handle.Close();
 
@@ -183,6 +181,160 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
   // Check log content after completion.
   EXPECT_EQ(CompleteReadFile(test_file_path), kLogLine2);
   EXPECT_EQ(CompleteReadFile(log_file_path2), kLogLine1);
+}
+
+// Testing senario: log to stdout and file; check whether these two sinks generate
+// expected output.
+TEST(PipeLoggerCompatTest, CompatibilityTest) {
+  // Testing-1: No newliner in the middle nor at the end.
+  {
+    constexpr std::string_view kContent = "hello";
+    const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+    StreamRedirectionOption logging_option{};
+    logging_option.file_path = test_file_path;
+    logging_option.tee_to_stdout = true;
+
+    testing::internal::CaptureStdout();
+    auto stream_redirection_handle = CreateRedirectionFileHandle(logging_option);
+    stream_redirection_handle.CompleteWrite(kContent.data(), kContent.length());
+    stream_redirection_handle.Close();
+
+    const std::string stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(stdout_content, kContent);
+    // Pipe logger automatically adds a newliner at the end.
+    EXPECT_EQ(CompleteReadFile(test_file_path), "hello\n");
+
+    EXPECT_TRUE(std::filesystem::remove(test_file_path));
+  }
+
+  // Testing-2: Newliner at the end.
+  {
+    constexpr std::string_view kContent = "hello\n";
+    const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+    StreamRedirectionOption logging_option{};
+    logging_option.file_path = test_file_path;
+    logging_option.tee_to_stdout = true;
+
+    testing::internal::CaptureStdout();
+    auto stream_redirection_handle = CreateRedirectionFileHandle(logging_option);
+    stream_redirection_handle.CompleteWrite(kContent.data(), kContent.length());
+    stream_redirection_handle.Close();
+
+    const std::string stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(stdout_content, kContent);
+    EXPECT_EQ(CompleteReadFile(test_file_path), "hello\n");
+
+    EXPECT_TRUE(std::filesystem::remove(test_file_path));
+  }
+
+  // Testing-3: Newliner in the middle.
+  {
+    constexpr std::string_view kContent = "hello\nworld";
+    const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+    StreamRedirectionOption logging_option{};
+    logging_option.file_path = test_file_path;
+    logging_option.tee_to_stdout = true;
+
+    testing::internal::CaptureStdout();
+    auto stream_redirection_handle = CreateRedirectionFileHandle(logging_option);
+    stream_redirection_handle.CompleteWrite(kContent.data(), kContent.length());
+    stream_redirection_handle.Close();
+
+    const std::string stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(stdout_content, kContent);
+    // Pipe logger automatically adds a newliner at the end.
+    EXPECT_EQ(CompleteReadFile(test_file_path), "hello\nworld\n");
+
+    EXPECT_TRUE(std::filesystem::remove(test_file_path));
+  }
+
+  // Testing-4: Newliner in the middle and the end.
+  {
+    constexpr std::string_view kContent = "hello\nworld\n";
+    const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+    StreamRedirectionOption logging_option{};
+    logging_option.file_path = test_file_path;
+    logging_option.tee_to_stdout = true;
+
+    testing::internal::CaptureStdout();
+    auto stream_redirection_handle = CreateRedirectionFileHandle(logging_option);
+    stream_redirection_handle.CompleteWrite(kContent.data(), kContent.length());
+    stream_redirection_handle.Close();
+
+    const std::string stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(stdout_content, kContent);
+    EXPECT_EQ(CompleteReadFile(test_file_path), "hello\nworld\n");
+
+    EXPECT_TRUE(std::filesystem::remove(test_file_path));
+  }
+
+  // Testing-5: Continuous newliner at the end.
+  {
+    constexpr std::string_view kContent = "helloworld\n\n\n";
+    const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+    StreamRedirectionOption logging_option{};
+    logging_option.file_path = test_file_path;
+    logging_option.tee_to_stdout = true;
+
+    testing::internal::CaptureStdout();
+    auto stream_redirection_handle = CreateRedirectionFileHandle(logging_option);
+    stream_redirection_handle.CompleteWrite(kContent.data(), kContent.length());
+    stream_redirection_handle.Close();
+
+    const std::string stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(stdout_content, kContent);
+    EXPECT_EQ(CompleteReadFile(test_file_path), "helloworld\n\n\n");
+
+    EXPECT_TRUE(std::filesystem::remove(test_file_path));
+  }
+
+  // Testing-6: Continous newliner in the middle.
+  {
+    constexpr std::string_view kContent = "hello\n\n\nworld";
+    const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+    StreamRedirectionOption logging_option{};
+    logging_option.file_path = test_file_path;
+    logging_option.tee_to_stdout = true;
+
+    testing::internal::CaptureStdout();
+    auto stream_redirection_handle = CreateRedirectionFileHandle(logging_option);
+    stream_redirection_handle.CompleteWrite(kContent.data(), kContent.length());
+    stream_redirection_handle.Close();
+
+    const std::string stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(stdout_content, kContent);
+    // Pipe logger automatically adds a newliner at the end.
+    EXPECT_EQ(CompleteReadFile(test_file_path), "hello\n\n\nworld\n");
+
+    EXPECT_TRUE(std::filesystem::remove(test_file_path));
+  }
+
+  // Testing-7: Continuous newliner in the middle and at the end.
+  {
+    constexpr std::string_view kContent = "hello\n\nworld\n\n";
+    const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+    StreamRedirectionOption logging_option{};
+    logging_option.file_path = test_file_path;
+    logging_option.tee_to_stdout = true;
+
+    testing::internal::CaptureStdout();
+    auto stream_redirection_handle = CreateRedirectionFileHandle(logging_option);
+    stream_redirection_handle.CompleteWrite(kContent.data(), kContent.length());
+    stream_redirection_handle.Close();
+
+    const std::string stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(stdout_content, kContent);
+    EXPECT_EQ(CompleteReadFile(test_file_path), "hello\n\nworld\n\n");
+
+    EXPECT_TRUE(std::filesystem::remove(test_file_path));
+  }
 }
 
 }  // namespace
