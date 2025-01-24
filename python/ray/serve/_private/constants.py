@@ -382,3 +382,9 @@ RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = (
 RAY_SERVE_PROXY_GC_THRESHOLD = int(
     os.environ.get("RAY_SERVE_PROXY_GC_THRESHOLD", "10000")
 )
+
+# Interval at which cached metrics will be exported using the Ray metric API.
+# Set to `0` to disable caching entirely.
+RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
+    os.environ.get("RAY_SERVE_METRICS_EXPORT_INTERVAL_MS", "100")
+)

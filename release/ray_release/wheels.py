@@ -1,7 +1,5 @@
-import importlib
 import os
 import re
-import shlex
 import subprocess
 import sys
 from datetime import datetime
@@ -12,9 +10,7 @@ from typing import Optional, List, Tuple
 
 from ray_release.config import parse_python_version
 from ray_release.test import DEFAULT_PYTHON_VERSION
-from ray_release.template import set_test_env_var
 from ray_release.exception import (
-    RayWheelsUnspecifiedError,
     RayWheelsNotFoundError,
     RayWheelsTimeoutError,
     ReleaseTestSetupError,
@@ -228,16 +224,6 @@ def wait_for_url(
     return url
 
 
-def find_and_wait_for_ray_wheels_url(
-    ray_wheels: Optional[str] = None,
-    python_version: Tuple[int, int] = DEFAULT_PYTHON_VERSION,
-    timeout: float = 3600.0,
-) -> str:
-    ray_wheels_url = find_ray_wheels_url(ray_wheels, python_version=python_version)
-    logger.info(f"Using Ray wheels URL: {ray_wheels_url}")
-    return wait_for_url(ray_wheels_url, timeout=timeout)
-
-
 def get_buildkite_repo_branch() -> Tuple[str, str]:
     if "BUILDKITE_BRANCH" not in os.environ:
         return DEFAULT_REPO, DEFAULT_BRANCH
@@ -262,121 +248,6 @@ def get_buildkite_repo_branch() -> Tuple[str, str]:
 
     repo_url = repo_url.replace("git://", "https://")
     return repo_url, branch
-
-
-def find_ray_wheels_url(
-    ray_wheels: Optional[str] = None,
-    python_version: Tuple[int, int] = DEFAULT_PYTHON_VERSION,
-) -> str:
-    if not ray_wheels:
-        # If no wheels are specified, default to BUILDKITE_COMMIT
-        commit = os.environ.get("BUILDKITE_COMMIT", None)
-        if not commit:
-            raise RayWheelsUnspecifiedError(
-                "No Ray wheels specified. Pass `--ray-wheels` or set "
-                "`BUILDKITE_COMMIT` environment variable. "
-                "Hint: You can use `-ray-wheels master` to fetch "
-                "the latest available master wheels."
-            )
-
-        repo_url, branch = get_buildkite_repo_branch()
-
-        if not re.match(r"\b([a-f0-9]{40})\b", commit):
-            # commit is symbolic, like HEAD
-            latest_commits = get_latest_commits(repo_url, branch, ref=commit)
-            commit = latest_commits[0]
-
-        ray_version = get_ray_version(repo_url, commit)
-
-        set_test_env_var("RAY_COMMIT", commit)
-        set_test_env_var("RAY_BRANCH", branch)
-        set_test_env_var("RAY_VERSION", ray_version)
-
-        return get_ray_wheels_url(repo_url, branch, commit, ray_version, python_version)
-
-    # If this is a local wheel file.
-    if ray_wheels.startswith("file://"):
-        logger.info(f"Getting wheel url from local wheel file: {ray_wheels}")
-        ray_wheels_url = get_ray_wheels_url_from_local_wheel(ray_wheels)
-        if ray_wheels_url is None:
-            raise RayWheelsNotFoundError(
-                f"Couldn't get wheel urls from local wheel file({ray_wheels}) by "
-                "uploading it to S3."
-            )
-        return ray_wheels_url
-
-    # If this is a URL, return
-    if ray_wheels.startswith("https://") or ray_wheels.startswith("http://"):
-        ray_wheels_url = maybe_rewrite_wheels_url(
-            ray_wheels, python_version=python_version
-        )
-        return ray_wheels_url
-
-    # Else, this is either a commit hash, a branch name, or a combination
-    # with a repo, e.g. ray-project:master or ray-project:<commit>
-    if ":" in ray_wheels:
-        # Repo is specified
-        owner_or_url, commit_or_branch = ray_wheels.split(":")
-    else:
-        # Repo is not specified, use ray-project instead
-        owner_or_url = DEFAULT_GIT_OWNER
-        commit_or_branch = ray_wheels
-
-    # Construct repo URL for cloning
-    if "https://" in owner_or_url:
-        # Already is a repo URL
-        repo_url = owner_or_url
-    else:
-        repo_url = REPO_URL_TPL.format(owner=owner_or_url, package=DEFAULT_GIT_PACKAGE)
-
-    # Todo: This is not ideal as branches that mimic a SHA1 hash
-    # will also match this.
-    if not re.match(r"\b([a-f0-9]{40})\b", commit_or_branch):
-        # This is a branch
-        branch = commit_or_branch
-        latest_commits = get_latest_commits(repo_url, branch)
-
-        # Let's assume the ray version is constant over these commits
-        # (otherwise just move it into the for loop)
-        ray_version = get_ray_version(repo_url, latest_commits[0])
-
-        for commit in latest_commits:
-            try:
-                wheels_url = get_ray_wheels_url(
-                    repo_url, branch, commit, ray_version, python_version
-                )
-            except Exception as e:
-                logger.info(f"Commit not found for PR: {e}")
-                continue
-            if url_exists(wheels_url):
-                set_test_env_var("RAY_COMMIT", commit)
-
-                return wheels_url
-            else:
-                logger.info(
-                    f"Wheels URL for commit {commit} does not exist: " f"{wheels_url}"
-                )
-
-        raise RayWheelsNotFoundError(
-            f"Couldn't find latest available wheels for repo "
-            f"{repo_url}, branch {branch} (version {ray_version}). "
-            f"Try again later or check Buildkite logs if wheel builds "
-            f"failed."
-        )
-
-    # Else, this is a commit
-    commit = commit_or_branch
-    ray_version = get_ray_version(repo_url, commit)
-    branch = os.environ.get("BUILDKITE_BRANCH", DEFAULT_BRANCH)
-    wheels_url = get_ray_wheels_url(
-        repo_url, branch, commit, ray_version, python_version
-    )
-
-    set_test_env_var("RAY_COMMIT", commit)
-    set_test_env_var("RAY_BRANCH", branch)
-    set_test_env_var("RAY_VERSION", ray_version)
-
-    return wheels_url
 
 
 def maybe_rewrite_wheels_url(
@@ -428,35 +299,6 @@ def is_wheels_url_matching_ray_verison(
     expected_filename = expected_filename[7:]  # Cut ray-xxx
 
     return ray_wheels_url.endswith(expected_filename)
-
-
-def install_matching_ray_locally(ray_wheels: Optional[str]):
-    if not ray_wheels:
-        logger.warning(
-            "No Ray wheels found - can't install matching Ray wheels locally!"
-        )
-        return
-    assert "manylinux2014_x86_64" in ray_wheels, ray_wheels
-    if sys.platform == "darwin":
-        platform = "macosx_10_15_intel"
-    elif sys.platform == "win32":
-        platform = "win_amd64"
-    else:
-        platform = "manylinux2014_x86_64"
-    ray_wheels = ray_wheels.replace("manylinux2014_x86_64", platform)
-    logger.info(f"Installing matching Ray wheels locally: {ray_wheels}")
-    subprocess.check_output(
-        "pip uninstall -y ray", shell=True, env=os.environ, text=True
-    )
-    subprocess.check_output(
-        f"pip install -U {shlex.quote(ray_wheels)}",
-        shell=True,
-        env=os.environ,
-        text=True,
-    )
-    for module_name in RELOAD_MODULES:
-        if module_name in sys.modules:
-            importlib.reload(sys.modules[module_name])
 
 
 def parse_commit_from_wheel_url(url: str) -> str:
