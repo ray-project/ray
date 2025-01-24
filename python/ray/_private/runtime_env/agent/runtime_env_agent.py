@@ -145,7 +145,7 @@ class ReferenceTable:
 
     def decrease_reference(
         self, runtime_env: RuntimeEnv, serialized_env: str, source_process: str
-    ):
+    ) -> None:
         """Decrease reference count for runtime env and uri. Throw exception if decrement reference count fails."""
         if source_process in self._reference_exclude_sources:
             return
