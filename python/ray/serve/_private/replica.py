@@ -50,10 +50,10 @@ from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
-    RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RECONFIGURE_METHOD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
@@ -1601,7 +1601,7 @@ class UserCallableWrapper:
                 if request_metadata.is_streaming
                 else None,
             )
-            return await self._handle_user_method_result(
+            final_result = await self._handle_user_method_result(
                 result,
                 request_metadata,
                 user_method_info,
@@ -1610,6 +1610,10 @@ class UserCallableWrapper:
                 asgi_args=asgi_args,
             )
 
+            if receive_task is not None and not receive_task.done():
+                receive_task.cancel()
+
+            return final_result
         except Exception:
             if (
                 request_metadata.is_http_request
@@ -1625,10 +1629,22 @@ class UserCallableWrapper:
                     asgi_args,
                 )
 
-            raise
-        finally:
             if receive_task is not None and not receive_task.done():
                 receive_task.cancel()
+
+            raise
+        except asyncio.CancelledError:
+            user_method_info = self._get_user_method_info(request_metadata.call_method)
+            if receive_task is not None and not receive_task.done():
+                # Do NOT cancel the receive task if the request has been
+                # cancelled, but the call is a batched call. This is
+                # because we cannot guarantee cancelling the batched
+                # call, so in the case that the call continues executing
+                # we should continue fetching data from the client.
+                if not hasattr(user_method_info.callable, "set_max_batch_size"):
+                    receive_task.cancel()
+
+            raise
 
     @_run_on_user_code_event_loop
     async def call_destructor(self):
