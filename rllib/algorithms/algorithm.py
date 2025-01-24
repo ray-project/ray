@@ -134,8 +134,8 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
     NUM_TRAINING_STEP_CALLS_PER_ITERATION,
-    RESTORE_WORKERS_TIMER,
-    RESTORE_EVAL_WORKERS_TIMER,
+    RESTORE_ENV_RUNNERS_TIMER,
+    RESTORE_EVAL_ENV_RUNNERS_TIMER,
     SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -183,6 +183,7 @@ from ray.tune.registry import get_trainable_cls
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner_group import LearnerGroup
+    from ray.rllib.offline.offline_data import OfflineData
 
 try:
     from ray.rllib.extensions import AlgorithmBase
@@ -225,35 +226,44 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI
 class Algorithm(Checkpointable, Trainable, AlgorithmBase):
-    """An RLlib algorithm responsible for optimizing one or more Policies.
-
-    Algorithms contain a EnvRunnerGroup under `self.env_runner_group`. An EnvRunnerGroup
-    is composed of a single local EnvRunner (`self.env_runner_group.local_env_runner`),
-    serving as the reference copy of the NeuralNetwork(s) to be trained and optionally
-    one or more remote EnvRunners used to generate environment samples in parallel.
-    EnvRunnerGroup is fault-tolerant and elastic. It tracks health states for all
-    the managed remote EnvRunner actors. As a result, Algorithm should never
-    access the underlying actor handles directly. Instead, always access them
-    via all the foreach APIs with assigned IDs of the underlying EnvRunners.
-
-    Each EnvRunners (remotes or local) contains a PolicyMap, which itself
-    may contain either one policy for single-agent training or one or more
-    policies for multi-agent training. Policies are synchronized
-    automatically from time to time using ray.remote calls. The exact
-    synchronization logic depends on the specific algorithm used,
-    but this usually happens from local worker to all remote workers and
-    after each training update.
+    """An RLlib algorithm responsible for training one or more neural network models.
 
     You can write your own Algorithm classes by sub-classing from `Algorithm`
-    or any of its built-in sub-classes.
-    This allows you to override the `training_step` method to implement
-    your own algorithm logic. You can find the different built-in
-    algorithms' `training_step()` methods in their respective main .py files,
-    e.g. rllib.algorithms.dqn.dqn.py or rllib.algorithms.impala.impala.py.
+    or any of its built-in subclasses.
+    Override the `training_step` method to implement your own algorithm logic.
+    Find the various built-in `training_step()` methods for different algorithms in
+    their respective [algo name].py files, for example:
+    `ray.rllib.algorithms.dqn.dqn.py` or `ray.rllib.algorithms.impala.impala.py`.
 
     The most important API methods a Algorithm exposes are `train()`,
     `evaluate()`, `save_to_path()` and `restore_from_path()`.
     """
+
+    #: The AlgorithmConfig instance of the Algorithm.
+    config: Optional[AlgorithmConfig] = None
+    #: The MetricsLogger instance of the Algorithm. RLlib uses this to log
+    #: metrics from within the `training_step()` method. Users can use it to log
+    #: metrics from within their custom Algorithm-based callbacks.
+    metrics: Optional[MetricsLogger] = None
+    #: The `EnvRunnerGroup` of the Algorithm. An `EnvRunnerGroup` is
+    #: composed of a single local `EnvRunner` (see: `self.env_runner`), serving as
+    #: the reference copy of the models to be trained and optionally one or more
+    #: remote `EnvRunners` used to generate training samples from the RL
+    #: environment, in parallel. EnvRunnerGroup is fault-tolerant and elastic. It
+    #: tracks health states for all the managed remote EnvRunner actors. As a
+    #: result, Algorithm should never access the underlying actor handles directly.
+    #: Instead, always access them via all the foreach APIs with assigned IDs of
+    #: the underlying EnvRunners.
+    env_runner_group: Optional[EnvRunnerGroup] = None
+    #: A special EnvRunnerGroup only used for evaluation, not to
+    #: collect training samples.
+    eval_env_runner_group: Optional[EnvRunnerGroup] = None
+    #: The `LearnerGroup` instance of the Algorithm, managing either
+    #: one local `Learner` or one or more remote `Learner` actors. Responsible for
+    #: updating the models from RL environment (episode) data.
+    learner_group: Optional["LearnerGroup"] = None
+    #: An optional OfflineData instance, used for offline RL.
+    offline_data: Optional["OfflineData"] = None
 
     # Whether to allow unknown top-level config keys.
     _allow_unknown_configs = False
@@ -442,7 +452,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Return the new algo.
         return new_algo
 
-    @PublicAPI
     def __init__(
         self,
         config: Optional[AlgorithmConfig] = None,
@@ -1676,8 +1685,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         return env_runner_results, env_steps, agent_steps, all_batches
 
     @OverrideToImplementCustomLogic
-    @DeveloperAPI
-    def restore_workers(self, workers: EnvRunnerGroup) -> None:
+    def restore_env_runners(self, env_runner_group: EnvRunnerGroup) -> None:
         """Try bringing back unhealthy EnvRunners and - if successful - sync with local.
 
         Algorithms that use custom EnvRunners may override this method to
@@ -1686,33 +1694,31 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         after such a restart of a (previously failed) worker.
 
         Args:
-            workers: The EnvRunnerGroup to restore. This may be the training or the
-                evaluation EnvRunnerGroup.
+            env_runner_group: The EnvRunnerGroup to restore. This may be the training or
+                the evaluation EnvRunnerGroup.
         """
-        # If `workers` is None, or
-        # 1. `workers` (EnvRunnerGroup) does not have a local worker, and
+        # If `env_runner_group` is None, or
+        # 1. `env_runner_group` (EnvRunnerGroup) does not have a local worker, and
         # 2. `self.env_runner_group` (EnvRunnerGroup used for training) does not have a
-        # local EnvRunner -> we don't have a local worker to get state from, so we can't
-        # recover remote EnvRunners in this case.
-        if not workers or (
-            not workers.local_env_runner and not self.env_runner_group.local_env_runner
+        # local EnvRunner -> we don't have an EnvRunner to get state from, so we can't
+        # recover remote EnvRunner actors in this case.
+        if not env_runner_group or (
+            not env_runner_group.local_env_runner and not self.env_runner
         ):
             return
 
-        # This is really cheap, since probe_unhealthy_workers() is a no-op
+        # This is really cheap, since probe_unhealthy_env_runners() is a no-op
         # if there are no unhealthy workers.
-        restored = workers.probe_unhealthy_workers()
+        restored = env_runner_group.probe_unhealthy_env_runners()
 
         if restored:
             # Count the restored workers.
             self._counters["total_num_restored_workers"] += len(restored)
 
-            from_worker = (
-                workers.local_env_runner or self.env_runner_group.local_env_runner
-            )
+            from_env_runner = env_runner_group.local_env_runner or self.env_runner
             # Get the state of the correct (reference) worker. For example the local
             # worker of an EnvRunnerGroup.
-            state = from_worker.get_state()
+            state = from_env_runner.get_state()
             state_ref = ray.put(state)
 
             def _sync_env_runner(er):
@@ -1725,7 +1731,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
             elif self.config.is_multi_agent:
 
-                multi_rl_module_spec = MultiRLModuleSpec.from_module(from_worker.module)
+                multi_rl_module_spec = MultiRLModuleSpec.from_module(
+                    from_env_runner.module
+                )
 
                 def _sync_env_runner(er):  # noqa
                     # Remove modules, if necessary.
@@ -1743,7 +1751,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
             # By default, entire local EnvRunner state is synced after restoration
             # to bring the previously failed EnvRunner up to date.
-            workers.foreach_env_runner(
+            env_runner_group.foreach_env_runner(
                 func=_sync_env_runner,
                 remote_worker_ids=restored,
                 # Don't update the local EnvRunner, b/c it's the one we are synching
@@ -1759,9 +1767,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 callbacks_functions=self.config.callbacks_on_env_runners_recreated,
                 kwargs=dict(
                     algorithm=self,
-                    env_runner_group=workers,
+                    env_runner_group=env_runner_group,
                     env_runner_indices=restored,
-                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                    is_evaluation=(
+                        env_runner_group.local_env_runner.config.in_evaluation
+                    ),
                 ),
             )
             # TODO (sven): Deprecate this call.
@@ -1770,9 +1780,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 callbacks_objects=self.callbacks,
                 kwargs=dict(
                     algorithm=self,
-                    worker_set=workers,
+                    worker_set=env_runner_group,
                     worker_ids=restored,
-                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                    is_evaluation=(
+                        env_runner_group.local_env_runner.config.in_evaluation
+                    ),
                 ),
             )
 
@@ -3362,8 +3374,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 # when we have reached `min_time_s_per_iteration`).
                 while not train_iter_ctx.should_stop(has_run_once):
                     # Before training step, try to bring failed workers back.
-                    with self.metrics.log_time((TIMERS, RESTORE_WORKERS_TIMER)):
-                        self.restore_workers(self.env_runner_group)
+                    with self.metrics.log_time((TIMERS, RESTORE_ENV_RUNNERS_TIMER)):
+                        self.restore_env_runners(self.env_runner_group)
 
                     # Try to train one step.
                     with self.metrics.log_time((TIMERS, TRAINING_STEP_TIMER)):
@@ -3438,11 +3450,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         """
         if self.eval_env_runner_group is not None:
             if self.config.enable_env_runner_and_connector_v2:
-                with self.metrics.log_time((TIMERS, RESTORE_EVAL_WORKERS_TIMER)):
-                    self.restore_workers(self.eval_env_runner_group)
+                with self.metrics.log_time((TIMERS, RESTORE_EVAL_ENV_RUNNERS_TIMER)):
+                    self.restore_env_runners(self.eval_env_runner_group)
             else:
-                with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
-                    self.restore_workers(self.eval_env_runner_group)
+                with self._timers["restore_eval_workers"]:
+                    self.restore_env_runners(self.eval_env_runner_group)
 
         # Run `self.evaluate()` only once per training iteration.
         if self.config.enable_env_runner_and_connector_v2:
@@ -3647,10 +3659,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @property
     def env_runner(self):
+        """The local EnvRunner instance within the algo's EnvRunnerGroup."""
         return self.env_runner_group.local_env_runner
 
     @property
     def eval_env_runner(self):
+        """The local EnvRunner instance within the algo's evaluation EnvRunnerGroup."""
         return self.eval_env_runner_group.local_env_runner
 
     def _record_usage(self, config):
@@ -3990,8 +4004,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             training_step_results = None
             with TrainIterCtx(algo=self) as train_iter_ctx:
                 while not train_iter_ctx.should_stop(training_step_results):
-                    with self._timers[RESTORE_WORKERS_TIMER]:
-                        self.restore_workers(self.env_runner_group)
+                    with self._timers["restore_workers"]:
+                        self.restore_env_runners(self.env_runner_group)
 
                     with self._timers[TRAINING_STEP_TIMER]:
                         training_step_results = self.training_step()
@@ -4119,6 +4133,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         results["info"].update(counters)
 
         return results
+
+    @Deprecated(new="Algorithm.restore_env_runners", error=False)
+    def restore_workers(self, *args, **kwargs):
+        return self.restore_env_runners(*args, **kwargs)
 
     @Deprecated(
         new="Algorithm.env_runner_group",

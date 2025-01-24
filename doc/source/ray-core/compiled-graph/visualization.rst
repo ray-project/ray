@@ -50,6 +50,8 @@ The visualization for the preceding code is shown below:
 
 Note that tasks of the same actor are shown in the same color.
 
+.. _execution-schedule:
+
 Execution schedule
 ------------------
 

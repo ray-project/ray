@@ -923,15 +923,6 @@ py_test(
     data = ["tests/data/cartpole/cartpole-v1_large"],
     srcs = ["algorithms/bc/tests/test_bc.py"]
 )
-# @OldAPIStack
-py_test(
-    name = "test_bc_old_api_stack",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
-    # Include the json data file.
-    data = ["tests/data/cartpole/large.json"],
-    srcs = ["algorithms/bc/tests/test_bc_old_api_stack.py"]
-)
 
 # CQL
 # @OldAPIStack
@@ -1002,19 +993,6 @@ py_test(
     ],
     srcs = ["algorithms/marwil/tests/test_marwil_rl_module.py"]
 )
-# @OldAPIStack
-py_test(
-    name = "test_marwil_old_api_stack",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
-    # Include the json data file.
-    data = [
-        "tests/data/cartpole/large.json",
-        "tests/data/pendulum/large.json",
-        "tests/data/cartpole/small.json",
-    ],
-    srcs = ["algorithms/marwil/tests/test_marwil_old_api_stack.py"]
-)
 
 # PPO
 py_test(
@@ -1035,13 +1013,6 @@ py_test(
     size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo_learner.py"]
 )
-# @OldAPIStack
-py_test(
-    name = "test_ppo_old_api_stack",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
-    srcs = ["algorithms/ppo/tests/test_ppo_old_api_stack.py"]
-)
 
 # SAC
 py_test(
@@ -1049,34 +1020,6 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     srcs = ["algorithms/sac/tests/test_sac.py"]
-)
-
-# --------------------------------------------------------------------
-# Connector(V1) tests
-# rllib/connector/
-#
-# Tag: connector
-# --------------------------------------------------------------------
-
-py_test(
-    name = "connectors/tests/test_connector",
-    tags = ["team:rllib", "connector"],
-    size = "small",
-    srcs = ["connectors/tests/test_connector.py"]
-)
-
-py_test(
-    name = "connectors/tests/test_action",
-    tags = ["team:rllib", "connector"],
-    size = "small",
-    srcs = ["connectors/tests/test_action.py"]
-)
-
-py_test(
-    name = "connectors/tests/test_agent",
-    tags = ["team:rllib", "connector"],
-    size = "medium",
-    srcs = ["connectors/tests/test_agent.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1141,13 +1084,6 @@ py_test(
     tags = ["team:rllib", "env"],
     size = "small",
     srcs = ["env/tests/test_single_agent_episode.py"]
-)
-
-py_test(
-    name = "env/wrappers/tests/test_exception_wrapper",
-    tags = ["team:rllib", "env"],
-    size = "small",
-    srcs = ["env/wrappers/tests/test_exception_wrapper.py"]
 )
 
 py_test(
@@ -1375,48 +1311,17 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_conv2d_default_stacks",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/tests/test_conv2d_default_stacks.py"]
-)
-
-py_test(
-    name = "test_convtranspose2d_stack",
-    tags = ["team:rllib", "models"],
-    size = "medium",
-    data = glob(["tests/data/images/obstacle_tower.png"]),
-    srcs = ["models/tests/test_convtranspose2d_stack.py"]
-)
-
-py_test(
     name = "test_action_distributions",
     tags = ["team:rllib", "models"],
     size = "medium",
     srcs = ["models/tests/test_action_distributions.py"]
 )
-
 py_test(
     name = "test_distributions",
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/tests/test_distributions.py"]
 )
-
-py_test(
-    name = "test_lstms",
-    tags = ["team:rllib", "models"],
-    size = "large",
-    srcs = ["models/tests/test_lstms.py"]
-)
-
-py_test(
-    name = "test_preprocessors",
-    tags = ["team:rllib", "models"],
-    size = "medium",
-    srcs = ["models/tests/test_preprocessors.py"]
-)
-
 
 # --------------------------------------------------------------------
 # Offline
@@ -1825,45 +1730,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_eager_support_policy_gradient",
-    main = "tests/test_eager_support.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "small",
-    srcs = ["tests/test_eager_support.py"],
-    args = ["TestEagerSupportPolicyGradient"]
-)
-
-py_test(
-    name = "tests/test_eager_support_off_policy",
-    main = "tests/test_eager_support.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "small",
-    srcs = ["tests/test_eager_support.py"],
-    args = ["TestEagerSupportOffPolicy"]
-)
-
-py_test(
-    name = "tests/test_filters",
-    tags = ["team:rllib", "tests_dir"],
-    size = "small",
-    srcs = ["tests/test_filters.py"]
-)
-
-py_test(
-    name = "tests/test_gpus",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_gpus.py"]
-)
-
-py_test(
-    name = "tests/test_io",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_io.py"]
-)
-
-py_test(
     name = "tests/test_local",
     tags = ["team:rllib", "tests_dir"],
     size = "small",
@@ -1896,13 +1762,6 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/test_placement_groups.py"]
-)
-
-py_test(
-    name = "tests/test_reproducibility",
-    tags = ["team:rllib", "tests_dir"],
-    size = "medium",
-    srcs = ["tests/test_reproducibility.py"]
 )
 
 py_test(
@@ -2633,6 +2492,14 @@ py_test(
 # ....................................
 
 py_test(
+    name = "examples/metrics/custom_metrics_in_algorithm_training_step",
+    main = "examples/metrics/custom_metrics_in_algorithm_training_step.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    srcs = ["examples/metrics/custom_metrics_in_algorithm_training_step.py"],
+    args = ["--enable-new-api-stack"]
+)
+py_test(
     name = "examples/metrics/custom_metrics_in_env_runners",
     main = "examples/metrics/custom_metrics_in_env_runners.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -2929,26 +2796,6 @@ py_test(
     size = "medium",
     srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--stop-reward-pretraining=250.0", "--stop-reward=250.0", "--stop-iters=3"],
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/centralized_critic_tf",
-    main = "examples/centralized_critic.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/centralized_critic.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=7.2"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/centralized_critic_torch",
-    main = "examples/centralized_critic.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/centralized_critic.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=7.2"]
 )
 
 py_test(

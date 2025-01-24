@@ -38,12 +38,14 @@ GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       raylet_client_pool_(raylet_client_pool),
-      cluster_id_(cluster_id) {}
+      cluster_id_(cluster_id) {
+  export_event_write_enabled_ = IsExportAPIEnabledNode();
+}
 
 void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
   /// Write node_info as a export node event if
   /// enable_export_api_write() is enabled.
-  if (!RayConfig::instance().enable_export_api_write()) {
+  if (!export_event_write_enabled_) {
     return;
   }
   std::shared_ptr<rpc::ExportNodeData> export_node_data_ptr =
