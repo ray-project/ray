@@ -1,5 +1,5 @@
 import copy
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Union, Mapping
 
 import ray.train
 from ray.data import Dataset
@@ -17,7 +17,7 @@ class DatasetsSetupCallback(WorkerGroupCallback):
 
     def __init__(
         self,
-        datasets: Dict[str, GenDataset],
+        datasets: Mapping[str, GenDataset],
         data_config: ray.train.DataConfig,
         scaling_config: ray.train.ScalingConfig,
     ):

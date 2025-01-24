@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union, Mapping
 
 import ray
 from ray._private.ray_constants import env_bool
@@ -145,7 +145,7 @@ class DataParallelTrainer:
         run_config: Optional[RunConfig] = None,
         # TODO: [Deprecated] Remove in future release
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
+        datasets: Optional[Mapping[str, GenDataset]] = None,
         dataset_config: Optional[DataConfig] = None,
         metadata: Optional[Dict[str, Any]] = _UNSUPPORTED,
     ):
