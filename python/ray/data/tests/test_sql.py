@@ -58,7 +58,7 @@ def test_read_sql_with_parallelism_fallback(temp_database: str):
         dataset = ray.data.read_sql(
             "SELECT * FROM grade",
             lambda: sqlite3.connect(temp_database),
-            parallelism=4,
+            override_num_blocks=4,
             shard_keys=["id"],
         )
 

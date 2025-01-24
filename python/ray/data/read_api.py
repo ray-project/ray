@@ -2100,6 +2100,7 @@ def read_sql(
     connection_factory: Callable[[], Connection],
     *,
     shard_keys: Optional[list[str]] = None,
+    shard_hash_fn: str = "MD5",
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
@@ -2168,6 +2169,10 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+        shard_keys: The keys to shard the data by.
+        shard_hash_fn: The hash function string to use for sharding. Defaults to "MD5".
+            For other databases, common alternatives include "hash" and "SHA".
+            This is applied to the shard keys.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
@@ -2175,6 +2180,7 @@ def read_sql(
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
         override_num_blocks: Override the number of output blocks from all read tasks.
+            This is used for sharding when shard_keys is provided.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
@@ -2185,13 +2191,13 @@ def read_sql(
     datasource = SQLDatasource(
         sql=sql, shard_keys=shard_keys, connection_factory=connection_factory
     )
-    if parallelism > 1:
+    if override_num_blocks and override_num_blocks > 1:
         if shard_keys is None:
-            raise ValueError("shard_keys must be provided when parallelism > 1")
+            raise ValueError("shard_keys must be provided when override_num_blocks > 1")
 
-        if not datasource.supports_sharding(parallelism):
+        if not datasource.supports_sharding(override_num_blocks):
             raise ValueError(
-                "Database does not support sharding. Please set parallelism to 1."
+                "Database does not support sharding. Please set override_num_blocks to 1."
             )
 
     return read_datasource(
