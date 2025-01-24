@@ -43,7 +43,7 @@ struct StreamDumper {
 // constructible.
 struct StreamSink {
   std::shared_ptr<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>
-      stdout_sink;
+      stdout_ostream;
   std::shared_ptr<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>
       stderr_sink;
 };
@@ -189,7 +189,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
     boost::iostreams::file_descriptor_sink sink{
         duped_stdout_fd, /*file_descriptor_flags=*/boost::iostreams::close_handle};
-    std_stream_sink.stdout_sink = std::make_shared<
+    std_stream_sink.stdout_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
   }
@@ -226,7 +226,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     RAY_CHECK(result) << "Fails to duplicate stdout handle";
 
     boost::iostreams::file_descriptor_sink sink{duped_stderr_handle, std::ios_base::out};
-    std_stream_sink.stdout_sink = std::make_shared<
+    std_stream_sink.stdout_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
   }
@@ -278,7 +278,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
                    stream_redirect_opt = stream_redirect_opt,
                    std_stream_sink = std_stream_sink](std::string content) {
     if (stream_redirect_opt.tee_to_stdout) {
-      std_stream_sink.stdout_sink->write(content.data(), content.length());
+      std_stream_sink.stdout_ostream->write(content.data(), content.length());
     }
     if (stream_redirect_opt.tee_to_stderr) {
       std_stream_sink.stderr_sink->write(content.data(), content.length());
@@ -299,7 +299,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
       logger->flush();
     }
     if (stream_redirect_opt.tee_to_stdout) {
-      std_stream_sink.stdout_sink->flush();
+      std_stream_sink.stdout_ostream->flush();
     }
     if (stream_redirect_opt.tee_to_stderr) {
       std_stream_sink.stderr_sink->flush();

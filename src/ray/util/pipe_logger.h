@@ -105,6 +105,7 @@ class RedirectionFileHandle {
 
   MEMFD_TYPE_NON_UNIQUE GetWriteHandle() const { return write_handle_; }
 
+  // Write the given data into redirection handle; currently only for testing usage.
   void CompleteWrite(const char *data, size_t len) { pipe_ostream_->write(data, len); }
 
  private:
