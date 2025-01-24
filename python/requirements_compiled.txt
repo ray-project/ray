@@ -656,8 +656,6 @@ grpcio==1.66.2 ; sys_platform != "darwin"
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
-grpcio-status==1.48.2
-    # via google-api-core
 grpcio-tools==1.48.2
     # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
 gsutil==5.27
