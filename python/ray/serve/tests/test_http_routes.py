@@ -215,7 +215,7 @@ def test_redirect(serve_instance, base_path):
 def test_default_error_handling(serve_instance):
     @serve.deployment
     def f():
-        raise ZeroDivisionError
+        _ = 1 / 0
 
     serve.run(f.bind())
     r = requests.get("http://localhost:8000/f")

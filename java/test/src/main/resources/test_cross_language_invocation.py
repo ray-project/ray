@@ -90,7 +90,7 @@ def py_func_pass_python_actor_handle():
 
 @ray.remote
 def py_func_python_raise_exception():
-    raise ZeroDivisionError
+    _ = 1 / 0
 
 
 @ray.remote

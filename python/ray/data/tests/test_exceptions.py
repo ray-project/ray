@@ -21,7 +21,7 @@ def test_user_exception(
     ctx.log_internal_stack_trace_to_stdout = log_internal_stack_trace_to_stdout
 
     def f(row):
-        raise ZeroDivisionError
+        _ = 1 / 0
 
     with pytest.raises(UserCodeException) as exc_info:
         ray.data.range(1).map(f).take_all()
@@ -79,7 +79,8 @@ def test_full_traceback_logged_with_ray_debugger(
     monkeypatch.setenv("RAY_DEBUG_POST_MORTEM", 1)
 
     def f(row):
-        raise ZeroDivisionError
+        _ = 1 / 0
+        return row
 
     with pytest.raises(Exception) as exc_info:
         ray.data.range(1).map(f).take_all()

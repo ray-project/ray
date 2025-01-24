@@ -518,7 +518,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
 
     @ray.remote
     def f():
-        large_object  # noqa : B018
+        _ = large_object
 
     # Invoke the function so that the definition is exported.
     f.remote()
@@ -531,7 +531,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     @ray.remote
     class Foo:
         def __init__(self):
-            large_object  # noqa: B018
+            _ = large_object
 
     Foo.remote()
 

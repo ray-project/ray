@@ -888,7 +888,7 @@ def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes
             self.val = ray.put(0)
 
         def method(self):
-            f  # noqa : B018
+            _ = f
 
     f = Foo()
     ray.put(f)

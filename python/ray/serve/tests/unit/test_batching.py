@@ -126,14 +126,14 @@ async def test_batch_size_one_long_timeout(use_class):
     @serve.batch(max_batch_size=1, batch_wait_timeout_s=1000)
     async def long_timeout(requests):
         if "raise" in requests:
-            raise ZeroDivisionError
+            _ = 1 / 0
         return requests
 
     class LongTimeout:
         @serve.batch(max_batch_size=1, batch_wait_timeout_s=1000)
         async def long_timeout(self, requests):
             if "raise" in requests:
-                raise ZeroDivisionError
+                _ = 1 / 0
             return requests
 
     cls = LongTimeout()
@@ -158,7 +158,7 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     async def zero_timeout(requests):
         await block_execution_event.wait()
         if "raise" in requests:
-            raise ZeroDivisionError
+            _ = 1 / 0
         return requests
 
     class ZeroTimeout:
@@ -166,7 +166,7 @@ async def test_batch_size_multiple_zero_timeout(use_class):
         async def zero_timeout(self, requests):
             await block_execution_event.wait()
             if "raise" in requests:
-                raise ZeroDivisionError
+                _ = 1 / 0
             return requests
 
     cls = ZeroTimeout()
@@ -262,14 +262,14 @@ async def test_batch_size_multiple_long_timeout(use_class):
     @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
     async def long_timeout(requests):
         if "raise" in requests:
-            raise ZeroDivisionError
+            _ = 1 / 0
         return requests
 
     class LongTimeout:
         @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
         async def long_timeout(self, requests):
             if "raise" in requests:
-                raise ZeroDivisionError
+                _ = 1 / 0
             return requests
 
     cls = LongTimeout()

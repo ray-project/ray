@@ -130,7 +130,7 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
 
     @ray.remote
     def task_throws():
-        raise ZeroDivisionError
+        _ = 1 / 0
 
     with pytest.raises(ray.exceptions.RayTaskError):
         await task_throws.remote().as_future()
@@ -148,7 +148,7 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
             return "a" * (str_len)
 
         def throw_error(self):
-            raise ZeroDivisionError
+            _ = 1 / 0
 
     actor = Actor.remote()
 

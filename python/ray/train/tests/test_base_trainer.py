@@ -175,7 +175,7 @@ def test_large_params(ray_start_4_cpus):
     huge_array = np.zeros(shape=int(1e8))
 
     def training_loop(self):
-        huge_array  # noqa: B018
+        _ = huge_array
 
     trainer = DummyTrainer(training_loop)
     trainer.fit()

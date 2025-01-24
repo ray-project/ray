@@ -354,7 +354,7 @@ def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
 
     @app.on_event("shutdown")
     async def shutdown():
-        raise ZeroDivisionError
+        _ = 1 / 0
 
     @serve.deployment
     @serve.ingress(app)
