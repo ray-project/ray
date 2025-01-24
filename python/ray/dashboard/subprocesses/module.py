@@ -4,7 +4,6 @@ import logging
 import multiprocessing
 import threading
 from dataclasses import dataclass
-import signal
 import os
 import setproctitle
 
@@ -238,12 +237,9 @@ def run_module(
     # 3. join the loop to wait for all pending tasks to finish, up until a timeout.
     # 4. close the loop and exit.
 
-    def sigterm_handler():
-        logger.warning("Exiting with SIGTERM immediately...")
-        import time
-
-        time.sleep(1)
-        os._exit(signal.SIGTERM)
+    def sigterm_handler(signum, frame):
+        logger.warning(f"Exiting with signal {signum} immediately...")
+        os._exit(signum)
 
     ray._private.utils.set_sigterm_handler(sigterm_handler)
 
