@@ -140,8 +140,8 @@ class XGBoostTrainer(DataParallelTrainer):
             metadata=metadata,
         )
 
-    @Deprecated
     @classmethod
+    @Deprecated
     def get_model(cls, checkpoint: Checkpoint):
         """Retrieve the XGBoost model stored in this checkpoint."""
         raise DeprecationWarning(
