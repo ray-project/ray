@@ -39,12 +39,13 @@ MultiRLModuleSpec
 
     MultiRLModuleSpec
     MultiRLModuleSpec.build
-    MultiRLModuleSpec.multi_rl_module_class
-    MultiRLModuleSpec.observation_space
-    MultiRLModuleSpec.action_space
-    MultiRLModuleSpec.inference_only
-    MultiRLModuleSpec.model_config
-    MultiRLModuleSpec.rl_module_specs
+
+.. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.multi_rl_module_class
+.. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.observation_space
+.. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.action_space
+.. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.inference_only
+.. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.model_config
+.. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.rl_module_specs
 
 
 DefaultModelConfig
