@@ -117,6 +117,7 @@ class ReferenceTable:
         self._runtime_env_reference[serialized_env] += 1
 
     def _decrease_reference_for_runtime_env(self, serialized_env: str):
+        """Decrease reference count for the given [serialized_env]. Throw exception if we cannot decrement reference."""
         default_logger.debug(f"Decrease reference for runtime env {serialized_env}.")
         unused = False
         if self._runtime_env_reference[serialized_env] > 0:
@@ -126,10 +127,12 @@ class ReferenceTable:
                 del self._runtime_env_reference[serialized_env]
         else:
             default_logger.warning(f"Runtime env {serialized_env} does not exist.")
+            raise ValueError(
+                f"{serialized_env} cannot decrement reference since the reference count is 0"
+            )
         if unused:
             default_logger.info(f"Unused runtime env {serialized_env}.")
             self._unused_runtime_env_callback(serialized_env)
-        return unused
 
     def increase_reference(
         self, runtime_env: RuntimeEnv, serialized_env: str, source_process: str
@@ -143,8 +146,9 @@ class ReferenceTable:
     def decrease_reference(
         self, runtime_env: RuntimeEnv, serialized_env: str, source_process: str
     ) -> None:
+        """Decrease reference count for runtime env and uri. Throw exception if decrement reference count fails."""
         if source_process in self._reference_exclude_sources:
-            return list()
+            return
         self._decrease_reference_for_runtime_env(serialized_env)
         uris = self._uris_parser(runtime_env)
         self._decrease_reference_for_uris(uris)
@@ -543,9 +547,15 @@ class RuntimeEnvAgent:
                 ),
             )
 
-        self._reference_table.decrease_reference(
-            runtime_env, request.serialized_runtime_env, request.source_process
-        )
+        try:
+            self._reference_table.decrease_reference(
+                runtime_env, request.serialized_runtime_env, request.source_process
+            )
+        except Exception as e:
+            return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message=f"Fails to decrement reference for runtime env for {str(e)}",
+            )
 
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK
