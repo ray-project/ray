@@ -898,9 +898,9 @@ ray._private.worker._global_node.kill_raylet()
 time.sleep(sleep_time)
 ray.shutdown()
     """
-    out = run_string_as_driver(script)
-    print(out)
-    assert out.count(f"node name: {NODE_NAME} has been marked dead") == 1
+    stdout_str, _ = run_string_as_driver_and_get_redirected_stdout_stderr(script)
+    expected = f"node name: {NODE_NAME} has been marked dead"
+    assert expected in stdout_str
 
 
 if __name__ == "__main__":
