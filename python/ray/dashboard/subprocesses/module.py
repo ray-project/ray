@@ -3,6 +3,7 @@ import asyncio
 import logging
 import multiprocessing
 import threading
+import sys
 from dataclasses import dataclass
 import os
 import setproctitle
@@ -57,6 +58,7 @@ class SubprocessModule(abc.ABC):
         config: SubprocessModuleConfig,
         child_bound_queue: multiprocessing.Queue,
         parent_bound_queue: multiprocessing.Queue,
+        parent_process_pid: int,
     ):
         """
         Initialize current module when DashboardHead loading modules.
@@ -65,8 +67,10 @@ class SubprocessModule(abc.ABC):
         self._config = config
         self._child_bound_queue = child_bound_queue
         self._parent_bound_queue = parent_bound_queue
+        self._parent_process_pid = parent_process_pid
         # Lazy init
         self._gcs_aio_client = None
+        self._parent_process_death_detection_task = None
 
     @staticmethod
     def is_minimal_module():
@@ -134,7 +138,16 @@ class SubprocessModule(abc.ABC):
         """
         assert_not_in_asyncio_loop()
         while True:
-            message = self._child_bound_queue.get()
+            try:
+                message = self._child_bound_queue.get()
+            except Exception as e:
+                # This can happen if the parent process died, and getting from the queue
+                # can have EOFError.
+                logger.exception(
+                    "Error getting message from child bound queue. This module will exit."
+                )
+                loop.call_soon_threadsafe(sys.exit)
+                break
             try:
                 self.handle_child_bound_message(loop, message)
             except Exception as e:
@@ -162,6 +175,19 @@ class SubprocessModule(abc.ABC):
                 f"Error sending response: {e}. This means we will never reply the parent's health check request. The parent will think the module is dead."
             )
 
+    async def _detect_parent_process_death(self):
+        """
+        Detect parent process death by checking if ppid is still the same.
+        """
+        while True:
+            ppid = os.getppid()
+            if ppid != self._parent_process_pid:
+                logger.warning(
+                    f"Parent process {self._parent_process_pid} died because ppid changed to {ppid}. Exiting..."
+                )
+                sys.exit()
+            await asyncio.sleep(1)
+
 
 async def run_module_inner(
     child_bound_queue: multiprocessing.Queue,
@@ -169,6 +195,7 @@ async def run_module_inner(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
+    parent_process_pid: int,
 ):
 
     module_name = cls.__name__
@@ -178,10 +205,13 @@ async def run_module_inner(
     )
 
     try:
-        module = cls(config, child_bound_queue, parent_bound_queue)
-        logger.info(f"Module {module_name} created")
+        module = cls(config, child_bound_queue, parent_bound_queue, parent_process_pid)
+        module._parent_process_death_detection_task = asyncio.create_task(
+            module._detect_parent_process_death()
+        )
         # First init the module, then start dispatching messages.
         await module.init()
+        logger.info(f"Module {module_name} initialized, receiving messages...")
     except Exception as e:
         logger.exception(f"Error creating module {module_name}")
         raise e
@@ -201,12 +231,16 @@ def run_module(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
+    parent_process_pid: int,
 ):
     """
     Entrypoint for a subprocess module.
     Creates a dedicated thread to listen from the the parent queue and dispatch messages
     to the module. Only listen to the parent queue AFTER the module is prepared by
     `module.init()`.
+
+    parent_process_pid: Used to detect if the parent process died every 1s. If it does,
+    the module will exit.
     """
     module_name = cls.__name__
     current_proctitle = setproctitle.getproctitle()
@@ -228,7 +262,12 @@ def run_module(
     loop = asyncio.new_event_loop()
     loop.create_task(
         run_module_inner(
-            child_bound_queue, parent_bound_queue, cls, config, incarnation
+            child_bound_queue,
+            parent_bound_queue,
+            cls,
+            config,
+            incarnation,
+            parent_process_pid,
         )
     )
     # TODO: do graceful shutdown.
@@ -239,7 +278,7 @@ def run_module(
 
     def sigterm_handler(signum, frame):
         logger.warning(f"Exiting with signal {signum} immediately...")
-        os._exit(signum)
+        sys.exit(signum)
 
     ray._private.utils.set_sigterm_handler(sigterm_handler)
 

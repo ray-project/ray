@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import logging
 import multiprocessing
+import os
 import threading
 from dataclasses import dataclass
 from typing import Awaitable, Optional
@@ -134,6 +135,7 @@ class SubprocessModuleHandle:
                 self.module_cls,
                 self.config,
                 self.incarnation,
+                os.getpid(),
             ),
             daemon=True,
             name=f"{self.module_cls.__name__}-{self.incarnation}",
@@ -221,9 +223,9 @@ class SubprocessModuleHandle:
                 if filename is None:
                     filename = "stderr"
                 logger.exception(
-                    f"Module {self.module_cls.__name__} is unhealthy. Please refer to"
-                    f"{self.config.log_dir}/{filename} "
-                    "for more details. Failing all active requests."
+                    f"Module {self.module_cls.__name__} is unhealthy. Please refer to "
+                    f"{self.config.log_dir}/{filename} for more details. Failing all "
+                    "active requests."
                 )
                 await self.destroy_module(e)
                 self.start_module()
