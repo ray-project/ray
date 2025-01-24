@@ -741,7 +741,12 @@ def _init_communicator(
     )
 
     has_gpus = ray.get(
-        [actor.__ray_call__.options(concurrency_group="_ray_system").remote(_do_check_has_gpu) for actor in actors]
+        [
+            actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                _do_check_has_gpu
+            )
+            for actor in actors
+        ]
     )
     for has_gpu, actor in zip(has_gpus, actors):
         if not has_gpu and not is_cpu_communicator:
@@ -759,7 +764,11 @@ def _init_communicator(
     # the group. This is in case the driver is not on the same node as one of
     # the NCCL actors.
     nccl_comm_id = (
-        ray.get(actors[0].__ray_call__.options(concurrency_group="_ray_system").remote(_do_get_unique_nccl_id))
+        ray.get(
+            actors[0]
+            .__ray_call__.options(concurrency_group="_ray_system")
+            .remote(_do_get_unique_nccl_id)
+        )
         if not is_cpu_communicator
         else str(uuid.uuid4())
     )

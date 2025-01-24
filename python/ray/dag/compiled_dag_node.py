@@ -1931,9 +1931,9 @@ class CompiledDAG:
                         logger.info(f"Cancelling compiled worker on actor: {actor}")
                     # Cancel all actor loops in parallel.
                     cancel_refs = [
-                        actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                            do_cancel_executable_tasks, tasks
-                        )
+                        actor.__ray_call__.options(
+                            concurrency_group="_ray_system"
+                        ).remote(do_cancel_executable_tasks, tasks)
                         for actor, tasks in outer.actor_to_executable_tasks.items()
                     ]
                     for cancel_ref in cancel_refs:

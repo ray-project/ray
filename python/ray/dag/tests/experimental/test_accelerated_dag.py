@@ -2622,6 +2622,43 @@ def test_event_profiling(ray_start_regular, monkeypatch):
         assert event.operation in ["READ", "COMPUTE", "WRITE"]
 
 
+def test_execute_on_actor_thread(shutdown_only):
+    import threading
+
+    @ray.remote
+    class ThreadLocalActor:
+        def __init__(self):
+            # data local to actor default executor thread
+            print("init")
+            current_thread = threading.current_thread()
+            print(current_thread)
+            self.local_data = threading.local()
+            print("local data",self.local_data)
+            self.local_data.value = 42
+            print("local data value",self.local_data.value)
+            print("value", id(self.local_data.value))
+
+        def compute(self, value):
+            print("compute")
+            current_thread = threading.current_thread()
+            print(current_thread)
+            print("local data",self.local_data)
+            if hasattr(self.local_data, "value"):
+                print("self.local_data.value", self.local_data.value)
+            else:
+                print("self.local_data.value is not set")
+            return value + self.local_data.value
+
+    actor = ThreadLocalActor.remote()
+    assert ray.get(actor.compute.remote(1)) == 43
+
+    # with InputNode() as inp:
+    #     dag = actor.compute.bind(inp)
+
+    # compiled_dag = dag.experimental_compile()
+    # assert ray.get(compiled_dag.execute(1)) == 43
+
+
 @ray.remote
 class TestWorker:
     def add_one(self, value):
