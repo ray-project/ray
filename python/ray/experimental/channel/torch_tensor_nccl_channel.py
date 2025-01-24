@@ -396,7 +396,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
         ctx = ChannelContext.get_current()
         assert isinstance(
             typ.communicator_id, str
-        ), "NCCL group ID ({nccl_group_id}) must be a str."
+        ), f"NCCL group ID ({typ.communicator_id}) must be a str."
         self._typ = typ
 
         assert self._typ.communicator_id is not None, "No NCCL group specified."

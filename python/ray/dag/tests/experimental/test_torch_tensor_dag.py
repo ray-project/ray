@@ -162,7 +162,7 @@ def test_torch_tensor_p2p(ray_start_regular):
         dag = dag.with_tensor_transport()
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
     for i in range(3):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
@@ -240,7 +240,8 @@ def test_torch_tensor_nccl(
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile(
-        _overlap_gpu_communication=overlap_gpu_communication
+        _overlap_gpu_communication=overlap_gpu_communication,
+        _default_communicator="create",
     )
 
     # Test that we can pass different shapes and data.
@@ -255,7 +256,7 @@ def test_torch_tensor_nccl(
         dag = dag.with_tensor_transport(transport="nccl")
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     # Test that we can pass different shapes and data.
     for i in range(3):
@@ -290,7 +291,7 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
         data_annotated = data.with_tensor_transport(transport="auto")
         dag = receiver.recv.bind(data_annotated)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
     assert isinstance(data_annotated.type_hint, TorchTensorType)
     assert data_annotated.type_hint.transport == expected_transport
 
@@ -306,7 +307,7 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
         dag = dag.with_tensor_transport(transport="auto")
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
     assert isinstance(data_annotated.type_hint, TorchTensorType)
     assert data_annotated.type_hint.transport == expected_transport
 
@@ -351,7 +352,8 @@ def test_torch_tensor_nccl_overlap_timed(ray_start_regular, overlap_gpu_communic
 
     # Test normal execution.
     compiled_dag = dag.experimental_compile(
-        _overlap_gpu_communication=overlap_gpu_communication
+        _overlap_gpu_communication=overlap_gpu_communication,
+        _default_communicator="create",
     )
 
     start = time.monotonic()
@@ -397,7 +399,7 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
             "via NCCL because the driver cannot participate in the NCCL group"
         ),
     ):
-        dag.experimental_compile()
+        dag.experimental_compile(_default_communicator="create")
 
     # Test that OutputNode cannot cannot participate in the NCCL group.
     with InputNode() as inp:
@@ -408,7 +410,7 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
         ValueError,
         match=(r"Driver cannot participate in the NCCL group\."),
     ):
-        dag.experimental_compile()
+        dag.experimental_compile(_default_communicator="create")
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -629,7 +631,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
         ValueError,
         match=r"Compiled Graphs do not support mixed usage of type hints.*",
     ):
-        dag.experimental_compile()
+        dag.experimental_compile(_default_communicator="create")
 
     # Case 2: default NCCL group first, then custom NCCL group
     with InputNode() as inp:
@@ -643,27 +645,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
         ValueError,
         match=r"Compiled Graphs do not support mixed usage of type hints.*",
     ):
-        dag.experimental_compile()
-
-    nccl_group2 = MockNcclGroup(2, [actor1, actor2])
-
-    # Using two different custom NCCL groups are currently not supported
-    with InputNode() as inp:
-        dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_tensor_transport(transport=nccl_group)
-        dag = actor2.recv.options(num_returns=3).bind(dag)
-        dag = actor2.send.bind(*dag)
-        dag = dag.with_tensor_transport(transport=nccl_group2)
-        dag = actor1.recv.bind(dag)
-    with pytest.raises(
-        ValueError,
-        match=(
-            "Compiled Graphs currently only support "
-            "a single custom NCCL group, but multiple "
-            "have been specified."
-        ),
-    ):
-        dag.experimental_compile()
+        dag.experimental_compile(_default_communicator="create")
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -813,7 +795,7 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
         dag = dag.with_tensor_transport(transport="nccl", _static_shape=True)
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     # Test that the DAG works as long as we send the same shape.
     shape = (10,)
@@ -851,7 +833,7 @@ def test_torch_tensor_nccl_direct_return(ray_start_regular):
         dag = dag.with_tensor_transport(transport="nccl", _direct_return=True)
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     for i in range(3):
         shape = (10 * (i + 1),)
@@ -892,7 +874,7 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
         dag = dag.with_tensor_transport(transport="nccl")
         dag = receiver.recv_dict.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     for i in range(3):
         dtype = torch.float16
@@ -937,7 +919,8 @@ def test_torch_tensor_exceptions(
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile(
-        _overlap_gpu_communication=overlap_gpu_communication
+        _overlap_gpu_communication=overlap_gpu_communication,
+        _default_communicator="create",
     )
 
     shape = (10,)
@@ -1018,7 +1001,7 @@ def test_torch_tensor_exceptions2(
         )
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     ref = compiled_dag.execute(1)
     with pytest.raises(
@@ -1065,7 +1048,7 @@ def test_torch_tensor_nccl_all_reduce(ray_start_regular):
         ]
         dag = MultiOutputNode(recvs)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     for i in range(3):
         i += 1
@@ -1109,7 +1092,7 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
         tensor = workers[1].recv_tensor.bind(collectives[0])
         dag = MultiOutputNode([recv, tensor, collectives[1]])
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     for i in range(3):
         ref = compiled_dag.execute(
@@ -1155,7 +1138,7 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
         ]
         dag = MultiOutputNode(recvs)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     ref = compiled_dag.execute([((20,), dtype, idx + 1) for idx in range(num_workers)])
     reduced_val = (1 + num_workers) * num_workers / 2
@@ -1347,7 +1330,7 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
         recv = workers[1].recv.bind(t)
         dag = MultiOutputNode([collectives[0], collectives[1], recv])
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     value = 10
     ref = compiled_dag.execute(value)
@@ -1382,7 +1365,7 @@ def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
         tensors = collective.allreduce.bind([t1, t4], ReduceOp.SUM)
         dag = MultiOutputNode(tensors + [t2, t3])
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     t1 = torch.tensor([1], device="cuda")
     t2 = torch.tensor([2], device="cuda")
@@ -1423,7 +1406,7 @@ def test_tensor_writable_warning_suppressed(ray_start_regular):
         torch_inp = inp.with_tensor_transport()
         dag = receiver.recv.bind(torch_inp)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
     ref = compiled_dag.execute(torch.tensor([1]))
     assert ray.get(ref) == 1
     # This should timeout because actor shouldn't print anything.
@@ -1461,7 +1444,7 @@ class TestTorchTensorTypeHintCustomSerializer:
         with InputNode() as inp:
             dag = worker.echo.bind(inp)
 
-        compiled_dag = dag.experimental_compile()
+        compiled_dag = dag.experimental_compile(_default_communicator="create")
         tensor = torch.tensor([5])
         if tensor_device == "cuda":
             tensor = tensor.cuda()
@@ -1496,7 +1479,7 @@ class TestTorchTensorTypeHintCustomSerializer:
 
         with InputNode() as inp:
             dag = worker.echo.bind(inp.with_tensor_transport())
-        compiled_dag = dag.experimental_compile()
+        compiled_dag = dag.experimental_compile(_default_communicator="create")
         cpu_tensor = torch.tensor([1])
         input_tensor = cpu_tensor
         if tensor_device == "cuda":
@@ -1547,7 +1530,7 @@ class TestTorchTensorTypeHintCustomSerializer:
             branch2 = worker2.echo.bind(dag)
             dag = MultiOutputNode([branch1, branch2])
 
-        compiled_dag = dag.experimental_compile()
+        compiled_dag = dag.experimental_compile(_default_communicator="create")
         cpu_tensor_1 = torch.tensor([1])
         cpu_tensor_2 = torch.tensor([2])
         ref = compiled_dag.execute(cpu_tensor_1, cpu_tensor_2)
@@ -1651,7 +1634,7 @@ def test_torch_nccl_channel_with_local_reader(ray_start_regular):
         branch1 = w1.recv.bind(dag)
         branch2 = w2.recv.bind(dag)
         dag = MultiOutputNode([branch1, branch2])
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
     for i in range(3):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == [(i, shape, dtype), (i, shape, dtype)]
@@ -1687,7 +1670,7 @@ def test_torch_nccl_channel_with_two_local_readers(ray_start_regular):
         branch2 = w1.recv.bind(dag)
         branch3 = w2.recv.bind(dag)
         dag = MultiOutputNode([branch1, branch2, branch3])
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
     for i in range(3):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == [(i, shape, dtype), (i, shape, dtype), (i, shape, dtype)]
@@ -1722,7 +1705,7 @@ def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
             "is not needed. No NCCL channel will be created."
         ),
     ):
-        dag.experimental_compile()
+        dag.experimental_compile(_default_communicator="create")
 
 
 if __name__ == "__main__":
