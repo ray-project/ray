@@ -206,15 +206,15 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
   int pipefd[2] = {0};
   RAY_CHECK_EQ(pipe(pipefd), 0);
-  int read_fd = pipefd[0];
-  int write_fd = pipefd[1];
+  int read_handle = pipefd[0];
+  int write_handle = pipefd[1];
   boost::iostreams::file_descriptor_source pipe_read_source{
-      read_fd, /*file_descriptor_flags=*/boost::iostreams::close_handle};
+      read_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
   boost::iostreams::file_descriptor_sink pipe_write_sink{
-      write_fd, /*file_descriptor_flags=*/boost::iostreams::close_handle};
+      write_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
 
 #elif defined(_WIN32)
-  if (tream_redirect_opt.tee_to_stdout) {
+  if (stream_redirect_opt.tee_to_stdout) {
     HANDLE duped_stderr_handle;
     BOOL result = DuplicateHandle(GetCurrentProcess(),
                                   GetStdHandle(STD_OUTPUT_HANDLE),
@@ -230,7 +230,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
   }
-  if (tream_redirect_opt.tee_to_stderr) {
+  if (stream_redirect_opt.tee_to_stderr) {
     HANDLE duped_stderr_handle;
     BOOL result = DuplicateHandle(GetCurrentProcess(),
                                   GetStdHandle(STD_ERROR_HANDLE),
@@ -312,7 +312,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
                   std::move(on_close_completion));
 
   RedirectionFileHandle redirection_file_handle{
-      write_fd, std::move(pipe_ostream), std::move(flush_fn), std::move(close_fn)};
+      write_handle, std::move(pipe_ostream), std::move(flush_fn), std::move(close_fn)};
 
   return redirection_file_handle;
 }
