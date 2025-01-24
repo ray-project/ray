@@ -54,16 +54,13 @@ def test_read_sql_with_parallelism_fallback(temp_database: str):
     connection.commit()
     connection.close()
 
-    dataset = ray.data.read_sql(
-        "SELECT * FROM grade",
-        lambda: sqlite3.connect(temp_database),
-        parallelism=4,
-        shard_keys=["id"],
-    )
-    actual_values = [tuple(record.values()) for record in dataset.take_all()]
-
-    assert sorted(actual_values) == sorted(expected_values)
-    assert dataset.materialize().num_blocks() == 1
+    with pytest.raises(ValueError):
+        dataset = ray.data.read_sql(
+            "SELECT * FROM grade",
+            lambda: sqlite3.connect(temp_database),
+            parallelism=4,
+            shard_keys=["id"],
+        )
 
 
 # for mysql test

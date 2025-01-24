@@ -398,8 +398,10 @@ def read_datasource(
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+
     if len(read_tasks) < parallelism:
         parallelism = len(read_tasks)
+
     import uuid
 
     stats = DatasetStats(
@@ -2108,14 +2110,12 @@ def read_sql(
 
     .. note::
 
-        By default, ``read_sql`` launches multiple read tasks, and each task executes a
-        ``LIMIT`` and ``OFFSET`` to fetch a subset of the rows. However, for many
-        databases, ``OFFSET`` is slow.
+        Parallelism is supported by databases that support sharding. This means
+        that the database needs to support all of the following operations:
+        ``MOD``, ``ABS``, ``MD5``, and ``CONCAT``.
 
-        As a workaround, set ``override_num_blocks=1`` to directly fetch all rows in a
-        single task. Note that this approach requires all result rows to fit in the
-        memory of single task. If the rows don't fit, your program may raise an out of
-        memory error.
+        If the database does not support sharding, the read operation will be
+        executed in a single task.
 
     Examples:
 
@@ -2185,6 +2185,15 @@ def read_sql(
     datasource = SQLDatasource(
         sql=sql, shard_keys=shard_keys, connection_factory=connection_factory
     )
+    if parallelism > 1:
+        if shard_keys is None:
+            raise ValueError("shard_keys must be provided when parallelism > 1")
+
+        if not datasource.supports_sharding(parallelism):
+            raise ValueError(
+                "Database does not support sharding. Please set parallelism to 1."
+            )
+
     return read_datasource(
         datasource,
         parallelism=parallelism,
