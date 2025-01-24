@@ -142,10 +142,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             batch_size_B=batch_size_B,
             batch_length_T=batch_length_T,
             metrics_num_episodes_for_smoothing=metrics_num_episodes_for_smoothing,
-            capacity=capacity,
-            batch_size_B=batch_size_B,
-            batch_length_T=batch_length_T,
-            metrics_num_episodes_for_smoothing=metrics_num_episodes_for_smoothing,
         )
 
         # `alpha` should be non-negative.
