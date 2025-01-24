@@ -139,7 +139,7 @@ class OfflineData:
                 # receive any calls from another actor.
                 module_state = ray.get(
                     self.learner_handles[0].get_state.remote(
-                        component=COMPONENT_RL_MODULE
+                        component=COMPONENT_RL_MODULE,
                     )
                 )[COMPONENT_RL_MODULE]
                 # Provide the `Learner`(s) GPU devices, if needed.
@@ -159,7 +159,7 @@ class OfflineData:
             else:
                 # Get the module state from the `Learner`(S).
                 module_state = self.learner_handles[0].get_state(
-                    component=COMPONENT_RL_MODULE
+                    component=COMPONENT_RL_MODULE,
                 )[COMPONENT_RL_MODULE]
                 # Provide the `Learner`(s) GPU devices, if needed.
                 # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:

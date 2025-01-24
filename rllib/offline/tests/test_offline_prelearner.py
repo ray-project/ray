@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
@@ -72,10 +73,15 @@ class TestOfflinePreLearner(unittest.TestCase):
 
         # Build the algorithm to get the learner.
         algo = self.config.build()
-        # Build the `OfflinePreLearner` and add the learner.
+        # Get the module state from the `Learner`(s).
+        module_state = algo.offline_data.learner_handles[0].get_state(
+            component=COMPONENT_RL_MODULE,
+        )[COMPONENT_RL_MODULE]
+        # Set up an `OfflinePreLearner` instance.
         oplr = OfflinePreLearner(
             config=self.config,
-            learner=algo.offline_data.learner_handles[0],
+            module_spec=algo.offline_data.module_spec,
+            module_state=module_state,
         )
 
         # Ensure we have indeed a `PrioritizedEpisodeReplayBuffer` in the `PreLearner`
@@ -190,10 +196,15 @@ class TestOfflinePreLearner(unittest.TestCase):
 
         # Build the algorithm to get the learner.
         algo = self.config.build()
-        # Build the `OfflinePreLearner` and add the learner.
+        # Get the module state from the `Learner`.
+        module_state = algo.offline_data.learner_handles[0].get_state(
+            component=COMPONENT_RL_MODULE,
+        )[COMPONENT_RL_MODULE]
+        # Set up an `OfflinePreLearner` instance.
         oplr = OfflinePreLearner(
             config=self.config,
-            learner=algo.offline_data.learner_handles[0],
+            module_spec=algo.offline_data.module_spec,
+            module_state=module_state,
         )
         # Now, pull a batch of defined size formt he dataset.
         batch = algo.offline_data.data.take_batch(
@@ -270,10 +281,15 @@ class TestOfflinePreLearner(unittest.TestCase):
         episode_ds = ray.data.read_parquet(data_path)
         # Sample a batch of episodes from the episode dataset.
         episode_batch = episode_ds.take_batch(256)
+        # Get the module state from the `Learner`.
+        module_state = algo.offline_data.learner_handles[0].get_state(
+            component=COMPONENT_RL_MODULE,
+        )[COMPONENT_RL_MODULE]
         # Set up an `OfflinePreLearner` instance.
         oplr = OfflinePreLearner(
             config=self.config,
-            learner=algo.offline_data.learner_handles[0],
+            module_spec=algo.offline_data.module_spec,
+            module_state=module_state,
             spaces=algo.offline_data.spaces[INPUT_ENV_SPACES],
         )
         # Sample a `MultiAgentBatch`.
