@@ -16,6 +16,16 @@ def mock_dataloader(num_batches: int = 64, batch_size: int = 32):
         yield images, labels
 
 
+def collate_fn(batch):
+    from ray.air._internal.torch_utils import (
+        convert_ndarray_batch_to_torch_tensor_batch,
+    )
+
+    device = ray.train.torch.get_device()
+    batch = convert_ndarray_batch_to_torch_tensor_batch(batch, device=device)
+
+    return batch["image"], batch["label"]
+
 class ImageClassificationFactory(BenchmarkFactory):
     def get_model(self):
         if self.benchmark_config.model_name == "resnet50":
@@ -29,9 +39,9 @@ class ImageClassificationFactory(BenchmarkFactory):
         if self.benchmark_config.dataloader_type == DataloaderType.RAY_DATA:
             ds_iterator = ray.train.get_dataset_shard("train")
             # TODO: configure this
-            return ds_iterator.iter_torch_batches(
-                batch_size=32, local_shuffle_buffer_size=32 * 8
-            )
+            return iter(ds_iterator.iter_torch_batches(
+                batch_size=32, local_shuffle_buffer_size=32 * 8, collate_fn=collate_fn
+            ))
         elif self.benchmark_config.dataloader_type == DataloaderType.MOCK:
             return mock_dataloader(num_batches=64, batch_size=32)
         else:
@@ -42,7 +52,7 @@ class ImageClassificationFactory(BenchmarkFactory):
     def get_val_dataloader(self):
         if self.benchmark_config.dataloader_type == DataloaderType.RAY_DATA:
             ds_iterator = ray.train.get_dataset_shard("val")
-            return ds_iterator.iter_torch_batches(batch_size=32)
+            return iter(ds_iterator.iter_torch_batches(batch_size=32, collate_fn=collate_fn))
         elif self.benchmark_config.dataloader_type == DataloaderType.MOCK:
             return mock_dataloader(num_batches=16, batch_size=32)
         else:
