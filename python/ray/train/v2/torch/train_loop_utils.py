@@ -28,12 +28,15 @@ else:
 logger = logging.getLogger(__name__)
 
 
-_TORCH_AMP_DEPRECATION_MESSAGE = """The `accelerate`, `backward`, and
-`prepare_optimizer` utility methods in the `ray.train.torch` module are
-are deprecated and will be removed in a future release.
-Please use the native PyTorch mixed precision API directly, or
-a library such as Lightning or HuggingFace Transformers/Accelerate.
-"""
+_TORCH_AMP_DEPRECATION_MESSAGE = (
+    "The `accelerate`, `backward`, and `prepare_optimizer` utility methods "
+    "in the `ray.train.torch` module are deprecated and will be removed in a "
+    "future release. "
+    "Please use the native PyTorch mixed precision API directly, or "
+    "a library such as Lightning or HuggingFace Transformers/Accelerate. "
+    "See this issue for more context: "
+    "https://github.com/ray-project/ray/issues/49454"
+)
 
 
 def prepare_model(
