@@ -58,5 +58,3 @@ Useful commands:
 
   To monitor autoscaling:
     ray exec .+ 'tail -n 100 -f /tmp/ray/session_latest/logs/monitor\*'
-
-
