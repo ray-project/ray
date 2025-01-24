@@ -24,7 +24,7 @@ class LoggingConfigurator(ABC):
     # Should be marked as @abstractmethod, but we can't do that because of backwards
     # compatibility.
     # Also, assuming the function will only be called inside LoggingConfig._apply()
-    def configure_logging_settings(self, logging_config: "LoggingConfig"):
+    def configure(self, logging_config: "LoggingConfig"):
         self.configure_logging(logging_config.encoding, logging_config.log_level)
 
 
@@ -39,9 +39,9 @@ class DefaultLoggingConfigurator(LoggingConfigurator):
 
     @Deprecated
     def configure_logging(self, encoding: str, log_level: str):
-        self.configure_logging_settings(self)
+        self.configure(self)
 
-    def configure_logging_settings(self, logging_config: "LoggingConfig"):
+    def configure(self, logging_config: "LoggingConfig"):
         formatter = self._encoding_to_formatter[logging_config.encoding]
         formatter.set_additional_log_standard_attrs(
             logging_config.additional_log_standard_attrs
@@ -72,7 +72,7 @@ _logging_configurator: LoggingConfigurator = default_impl.get_logging_configurat
 # Class defines the logging configurations for a Ray job.
 # To add a new logging configuration: (1) add a new field to this class; (2) Update the
 # logic in the __post_init__ method in this class to add the validation logic;
-# (3) Update the configure_logging_settings method in the DefaultLoggingConfigurator
+# (3) Update the configure method in the DefaultLoggingConfigurator
 # class to use the new field.
 @PublicAPI(stability="alpha")
 @dataclass
@@ -101,7 +101,7 @@ class LoggingConfig:
 
     def _configure_logging(self):
         """Set up the logging configuration for the current process."""
-        _logging_configurator.configure_logging_settings(self)
+        _logging_configurator.configure(self)
 
     def _apply(self):
         """Set up the logging configuration."""

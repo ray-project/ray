@@ -56,13 +56,3 @@ class LogKey(str, Enum):
 
     # Ray logging context
     TIMESTAMP_NS = "timestamp_ns"
-
-
-DEFAULT_LOGGER_STANDARD_ATTRS = [
-    LogKey.ASCTIME,
-    LogKey.LEVELNAME,
-    LogKey.MESSAGE,
-    LogKey.FILENAME,
-    LogKey.LINENO,
-    LogKey.EXC_TEXT,
-]
