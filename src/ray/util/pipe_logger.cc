@@ -41,11 +41,11 @@ struct StreamDumper {
 
 // Used to write to dup-ed stdout and stderr; use shared pointer to make it copy
 // constructible.
-struct StreamSink {
+struct StdOstream {
   std::shared_ptr<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>
       stdout_ostream;
   std::shared_ptr<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>
-      stderr_sink;
+      stderr_ostream;
 };
 
 template <typename WriteFunc, typename FlushFunc>
@@ -180,7 +180,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   // Invoked after flush and close finished.
   auto on_close_completion = [promise = promise]() { promise->set_value(); };
 
-  StreamSink std_stream_sink{};
+  StdOstream std_ostream{};
 
 #if defined(__APPLE__) || defined(__linux__)
   if (stream_redirect_opt.tee_to_stdout) {
@@ -189,7 +189,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
     boost::iostreams::file_descriptor_sink sink{
         duped_stdout_fd, /*file_descriptor_flags=*/boost::iostreams::close_handle};
-    std_stream_sink.stdout_ostream = std::make_shared<
+    std_ostream.stdout_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
   }
@@ -199,7 +199,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
     boost::iostreams::file_descriptor_sink sink{
         duped_stderr_fd, /*file_descriptor_flags=*/boost::iostreams::close_handle};
-    std_stream_sink.stderr_sink = std::make_shared<
+    std_ostream.stderr_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
   }
@@ -226,7 +226,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     RAY_CHECK(result) << "Fails to duplicate stdout handle";
 
     boost::iostreams::file_descriptor_sink sink{duped_stderr_handle, std::ios_base::out};
-    std_stream_sink.stdout_ostream = std::make_shared<
+    std_ostream.stdout_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
   }
@@ -242,7 +242,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     RAY_CHECK(result) << "Fails to duplicate stderr handle";
 
     boost::iostreams::file_descriptor_sink sink{duped_stderr_handle, std::ios_base::out};
-    std_stream_sink.stderr_sink = std::make_shared<
+    std_ostream.stderr_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
   }
@@ -276,12 +276,12 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   // newliner, if any.
   auto write_fn = [logger,
                    stream_redirect_opt = stream_redirect_opt,
-                   std_stream_sink = std_stream_sink](std::string content) {
+                   std_ostream = std_ostream](std::string content) {
     if (stream_redirect_opt.tee_to_stdout) {
-      std_stream_sink.stdout_ostream->write(content.data(), content.length());
+      std_ostream.stdout_ostream->write(content.data(), content.length());
     }
     if (stream_redirect_opt.tee_to_stderr) {
-      std_stream_sink.stderr_sink->write(content.data(), content.length());
+      std_ostream.stderr_ostream->write(content.data(), content.length());
     }
     if (logger != nullptr) {
       // spdlog adds newliner for every content, no need to maintan the application-passed
@@ -292,19 +292,18 @@ RedirectionFileHandle CreateRedirectionFileHandle(
       logger->log(spdlog::level::info, content);
     }
   };
-  auto flush_fn = [logger,
-                   stream_redirect_opt = stream_redirect_opt,
-                   std_stream_sink = std_stream_sink]() {
-    if (logger != nullptr) {
-      logger->flush();
-    }
-    if (stream_redirect_opt.tee_to_stdout) {
-      std_stream_sink.stdout_ostream->flush();
-    }
-    if (stream_redirect_opt.tee_to_stderr) {
-      std_stream_sink.stderr_sink->flush();
-    }
-  };
+  auto flush_fn =
+      [logger, stream_redirect_opt = stream_redirect_opt, std_ostream = std_ostream]() {
+        if (logger != nullptr) {
+          logger->flush();
+        }
+        if (stream_redirect_opt.tee_to_stdout) {
+          std_ostream.stdout_ostream->flush();
+        }
+        if (stream_redirect_opt.tee_to_stderr) {
+          std_ostream.stderr_ostream->flush();
+        }
+      };
 
   StartStreamDump(std::move(pipe_instream),
                   std::move(write_fn),
