@@ -81,7 +81,7 @@ class SQLDatasource(Datasource):
         self,
         sql: str,
         connection_factory: Callable[[], Connection],
-        shard_hash_fn: str = "MD5",
+        shard_hash_fn: str,
         shard_keys: Optional[List[str]] = None,
     ):
         self.sql = sql
