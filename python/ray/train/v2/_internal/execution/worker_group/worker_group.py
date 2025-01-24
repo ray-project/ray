@@ -598,10 +598,7 @@ class WorkerGroup:
         worker_group_status = WorkerGroupStatus(
             num_workers=len(self._workers),
             latest_start_time=self._latest_start_time,
-            worker_statuses={
-                world_rank: worker_status
-                for world_rank, worker_status in enumerate(poll_results)
-            },
+            worker_statuses=dict(enumerate(poll_results)),
         )
 
         for callback in self._callbacks:

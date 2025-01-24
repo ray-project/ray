@@ -420,7 +420,7 @@ class TFPolicy(Policy):
                     self._state_inputs, state_batches
                 )
             )
-        builder.add_feed_dict({k: v for k, v in zip(self._state_inputs, state_batches)})
+        builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
         if state_batches:
             builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
         # Prev-a and r.

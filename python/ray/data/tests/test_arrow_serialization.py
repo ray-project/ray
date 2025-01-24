@@ -234,10 +234,7 @@ def fixed_size_list_array():
 @pytest.fixture
 def map_array():
     return pa.array(
-        [
-            [(key, item) for key, item in zip("abcdefghij", range(10))]
-            for _ in range(1000)
-        ],
+        [list(zip("abcdefghij", range(10))) for _ in range(1000)],
         type=pa.map_(pa.string(), pa.int64()),
     )
 
@@ -349,10 +346,7 @@ def complex_nested_array():
                 ]
             ),
             pa.array(
-                [
-                    [(key, item) for key, item in zip("abcdefghij", range(10))]
-                    for _ in range(1000)
-                ],
+                [list(zip("abcdefghij", range(10))) for _ in range(1000)],
                 type=pa.map_(pa.string(), pa.int64()),
             ),
         ],

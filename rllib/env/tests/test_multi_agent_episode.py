@@ -3498,10 +3498,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # In the other case we need at least the last observations for the next
         # actions.
         else:
-            obs = {
-                agent_id: agent_obs
-                for agent_id, agent_obs in episode.get_observations(-1).items()
-            }
+            obs = dict(episode.get_observations(-1))
 
         # Sample `size` many records.
         done_agents = {aid for aid, t in episode.get_terminateds().items() if t}
