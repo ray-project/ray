@@ -58,7 +58,7 @@ std::string GetUserTempDir() {
   return result;
 }
 
-StatusOr<std::string> CompleteReadFile(const std::string &fname) {
+StatusOr<std::string> ReadEntireFile(const std::string &fname) {
   std::ifstream file(fname);
   if (!file.good()) {
     return Status::IOError("") << "Fails to open file " << fname;

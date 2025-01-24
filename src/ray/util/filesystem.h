@@ -46,6 +46,6 @@ static inline bool IsDirSep(char ch) {
 
 // Read the whole content for the given [fname], and return as string.
 // Return IO error status if open and read operation fail.
-StatusOr<std::string> CompleteReadFile(const std::string &fname);
+StatusOr<std::string> ReadEntireFile(const std::string &fname);
 
 }  // namespace ray
