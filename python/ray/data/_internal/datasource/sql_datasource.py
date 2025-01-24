@@ -118,7 +118,7 @@ class SQLDatasource(Datasource):
                 cursor.execute(query)
             return True
         except Exception as e:
-            logger.debug(f"Database does not support sharding: {str(e)}.")
+            logger.info(f"Database does not support sharding: {str(e)}.")
             return False
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:

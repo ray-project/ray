@@ -46,21 +46,27 @@ def test_read_sql_with_parallelism_fallback(temp_database: str):
     connection = sqlite3.connect(temp_database)
     connection.execute("CREATE TABLE grade(name, id, score)")
     base_tuple = ("xiaoming", 1, 8.2)
-    # gen 200 elements
+    # Generate 200 elements
     expected_values = [
-        (f"{base_tuple[0]}{i}", i, base_tuple[2] + i + 1) for i in range(200)
+        (f"{base_tuple[0]}{i}", i, base_tuple[2] + i + 1) for i in range(500)
     ]
     connection.executemany("INSERT INTO grade VALUES (?, ?, ?)", expected_values)
     connection.commit()
     connection.close()
 
-    with pytest.raises(ValueError):
-        dataset = ray.data.read_sql(
-            "SELECT * FROM grade",
-            lambda: sqlite3.connect(temp_database),
-            override_num_blocks=4,
-            shard_keys=["id"],
-        )
+    num_blocks = 2
+    dataset = ray.data.read_sql(
+        "SELECT * FROM grade",
+        lambda: sqlite3.connect(temp_database),
+        override_num_blocks=num_blocks,
+        shard_hash_fn="unicode",
+        shard_keys=["id"],
+    )
+    dataset = dataset.materialize()
+    assert dataset.num_blocks() == num_blocks
+
+    actual_values = [tuple(record.values()) for record in dataset.take_all()]
+    assert sorted(actual_values) == sorted(expected_values)
 
 
 # for mysql test

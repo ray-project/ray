@@ -2362,7 +2362,10 @@ def read_sql(
         A :class:`Dataset` containing the queried data.
     """
     datasource = SQLDatasource(
-        sql=sql, shard_keys=shard_keys, connection_factory=connection_factory
+        sql=sql,
+        shard_keys=shard_keys,
+        shard_hash_fn=shard_hash_fn,
+        connection_factory=connection_factory,
     )
     if override_num_blocks and override_num_blocks > 1:
         if shard_keys is None:
