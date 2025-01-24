@@ -392,7 +392,7 @@ class SubprocessModuleHandle:
             except ValueError:
                 # queue is closed.
                 break
-            except Exception as e:
+            except Exception:
                 logger.exception(
                     f"Error unpickling parent bound message from {self_str}."
                     " This may result in a http request never being responded to."
@@ -400,7 +400,7 @@ class SubprocessModuleHandle:
                 continue
             try:
                 self.handle_parent_bound_message(message)
-            except Exception as e:
+            except Exception:
                 logger.exception(
                     f"Error handling parent bound message from {self_str}."
                     " This may result in a http request never being responded to."

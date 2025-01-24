@@ -71,6 +71,7 @@ ray_cc_test(
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/common:ray_config",
     ],
 )
 
@@ -231,6 +232,17 @@ ray_cc_test(
     deps = [
         "//src/ray/util",
         "//src/ray/util:stream_redirection_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
+    name = "cmd_line_utils_test",
+    srcs = ["cmd_line_utils_test.cc"],
+    deps = [
+        "//src/ray/util:cmd_line_utils",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
