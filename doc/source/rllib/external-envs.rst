@@ -17,6 +17,7 @@ of training the policies, but wouldn't pose any restrictions on when and how oft
 should step.
 
 .. figure:: images/envs/external_env_setup_client_inference.svg
+    :align: left
     :width: 600
 
     **External application with client-side inference**: An external simulator (for example a game engine)
