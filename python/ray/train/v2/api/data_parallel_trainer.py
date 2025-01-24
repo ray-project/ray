@@ -173,7 +173,9 @@ class DataParallelTrainer:
             raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
 
         if metadata is not None:
-            raise DeprecationWarning()
+            from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
+
+            raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
     def fit(self) -> Result:
         train_fn = construct_train_func(
