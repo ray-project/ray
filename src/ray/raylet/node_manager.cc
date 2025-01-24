@@ -1871,14 +1871,6 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   RayTask task(std::move(task_message));
 
-  auto &internal_task_spec = task.GetMutableTaskSpec();
-  rpc::TaskSpec &rpc_task_spec = internal_task_spec.GetMutableMessage();
-  auto &runtime_env_info = *rpc_task_spec.mutable_runtime_env_info();
-  if (runtime_env_info.serialized_runtime_env().find("FOO") != std::string::npos) {
-    runtime_env_info.set_serialized_runtime_env("{}");
-    internal_task_spec.runtime_env_hash_ = 0;
-  }
-
   const auto caller_worker =
       WorkerID::FromBinary(task.GetTaskSpecification().CallerAddress().worker_id());
   const auto caller_node =
