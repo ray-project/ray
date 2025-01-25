@@ -23,8 +23,11 @@ from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.train import ScalingConfig
 from ray.train._internal.storage import StorageContext, get_fs_and_path
-from ray.train.constants import _v2_migration_warnings_enabled
 from ray.train.utils import _log_deprecation_warning
+from ray.train.v2._internal.migration_utils import (
+    _v2_migration_warnings_enabled,
+    V2_MIGRATION_GUIDE_MESSAGE,
+)
 from ray.tune import (
     Experiment,
     ExperimentAnalysis,
@@ -103,10 +106,10 @@ class TunerInternal:
         if isinstance(trainable, BaseTrainer):
             if _v2_migration_warnings_enabled():
                 _log_deprecation_warning(
-                    "Passing a Trainer to the Tuner is deprecated. "
-                    "See the section on hyperparameter optimization in this "
-                    "REP for more information: "
-                    "https://github.com/ray-project/enhancements/pull/57"
+                    "The Ray Train + Ray Tune integration has been reworked. "
+                    "Passing a Trainer to the Tuner is deprecated and will be removed "
+                    "in a future release. "
+                    f"{V2_MIGRATION_GUIDE_MESSAGE}"
                 )
 
             run_config = self._choose_run_config(
@@ -122,7 +125,8 @@ class TunerInternal:
             if _v2_migration_warnings_enabled():
                 _log_deprecation_warning(
                     "The `RunConfig` class should be imported from `ray.tune` "
-                    "when passing it to the Tuner. Please update your imports."
+                    "when passing it to the Tuner. Please update your imports. "
+                    f"{V2_MIGRATION_GUIDE_MESSAGE}"
                 )
 
         self._entrypoint = _entrypoint

@@ -2,9 +2,12 @@ import threading
 from typing import Any, Dict, Optional
 
 from ray.train._internal import session
-from ray.train.constants import _v2_migration_warnings_enabled
 from ray.train.context import TrainContext as TrainV1Context
 from ray.train.utils import _copy_doc
+from ray.train.v2._internal.migration_utils import (
+    _v2_migration_warnings_enabled,
+    V2_MIGRATION_GUIDE_MESSAGE,
+)
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -16,7 +19,7 @@ _tune_context_lock = threading.Lock()
 _TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE = (
     "`{}` is deprecated for Ray Tune because there is no concept of worker ranks "
     "for Ray Tune, so these methods only make sense to use in the context of "
-    "a Ray Train worker."
+    f"a Ray Train worker. {V2_MIGRATION_GUIDE_MESSAGE}"
 )
 
 
