@@ -22,6 +22,7 @@
 #include <iostream>
 #include <thread>
 
+#include "ray/common/test/testing.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
@@ -56,10 +57,14 @@ TEST(LoggingUtilTest, RedirectStderr) {
 
   // Check log content after completion.
   const std::string log_file_path1 = test_file_path;
-  EXPECT_EQ(CompleteReadFile(test_file_path), kLogLine2);
+  const auto actual_content1 = ReadEntireFile(log_file_path1);
+  RAY_ASSERT_OK(actual_content1);
+  EXPECT_EQ(*actual_content1, kLogLine2);
 
   const std::string log_file_path2 = absl::StrFormat("%s.1", test_file_path);
-  EXPECT_EQ(CompleteReadFile(log_file_path2), kLogLine1);
+  const auto actual_content2 = ReadEntireFile(log_file_path2);
+  RAY_ASSERT_OK(actual_content2);
+  EXPECT_EQ(*actual_content2, kLogLine1);
 
   // Check tee-ed to stderr content.
   std::string stderr_content = testing::internal::GetCapturedStderr();

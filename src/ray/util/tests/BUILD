@@ -217,6 +217,7 @@ ray_cc_test(
     name = "pipe_logger_test",
     srcs = ["pipe_logger_test.cc"],
     deps = [
+        "//src/ray/common/test:testing",
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
         "@com_google_googletest//:gtest_main",
@@ -230,6 +231,7 @@ ray_cc_test(
     name = "stream_redirection_utils_test",
     srcs = ["stream_redirection_utils_test.cc"],
     deps = [
+        "//src/ray/common/test:testing",
         "//src/ray/util",
         "//src/ray/util:stream_redirection_utils",
         "@com_google_googletest//:gtest_main",

@@ -41,7 +41,7 @@
 #include "absl/strings/str_format.h"
 #include "nlohmann/json.hpp"
 #include "ray/util/event_label.h"
-#include "ray/util/filesystem.h"
+#include "ray/util/string_utils.h"
 #include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
@@ -367,7 +367,7 @@ void RayLog::InitLogFormat() {
     app_name_without_path = "DefaultApp";
   } else {
     // Find the app name without the path.
-    std::string app_file_name = ray::GetFileName(app_name);
+    std::string app_file_name = std::filesystem::path(app_name).filename().string();
     if (!app_file_name.empty()) {
       app_name_without_path = app_file_name;
     }
