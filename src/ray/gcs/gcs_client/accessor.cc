@@ -19,6 +19,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/common_protocol.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/util/container_util.h"
 
 namespace ray {
 namespace gcs {
@@ -594,23 +595,6 @@ Status NodeInfoAccessor::AsyncCheckAlive(const std::vector<std::string> &raylet_
   return Status::OK();
 }
 
-Status NodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
-                                        const StatusCallback &callback) {
-  RAY_LOG(DEBUG).WithField(node_id) << "Draining node";
-  rpc::DrainNodeRequest request;
-  auto draining_request = request.add_drain_node_data();
-  draining_request->set_node_id(node_id.Binary());
-  client_impl_->GetGcsRpcClient().DrainNode(
-      request, [node_id, callback](const Status &status, rpc::DrainNodeReply &&reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG).WithField(node_id)
-            << "Finished draining node, status = " << status;
-      });
-  return Status::OK();
-}
-
 Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
                                     int64_t timeout_ms,
                                     std::vector<std::string> &drained_node_ids) {
@@ -631,9 +615,13 @@ Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
 }
 
 Status NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback,
-                                     int64_t timeout_ms) {
+                                     int64_t timeout_ms,
+                                     std::optional<NodeID> node_id) {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
+  if (node_id) {
+    request.mutable_filters()->set_node_id(node_id->Binary());
+  }
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
       request,
       [callback](const Status &status, rpc::GetAllNodeInfoReply &&reply) {
@@ -1487,6 +1475,26 @@ Status AutoscalerStateAccessor::GetClusterStatus(int64_t timeout_ms,
   if (!reply.SerializeToString(&serialized_reply)) {
     return Status::IOError("Failed to serialize GetClusterStatusReply");
   }
+  return Status::OK();
+}
+
+Status AutoscalerStateAccessor::AsyncGetClusterStatus(
+    int64_t timeout_ms,
+    const OptionalItemCallback<rpc::autoscaler::GetClusterStatusReply> &callback) {
+  rpc::autoscaler::GetClusterStatusRequest request;
+  rpc::autoscaler::GetClusterStatusRequest reply;
+
+  client_impl_->GetGcsRpcClient().GetClusterStatus(
+      request,
+      [callback](const Status &status, rpc::autoscaler::GetClusterStatusReply &&reply) {
+        if (!status.ok()) {
+          callback(status, std::nullopt);
+          return;
+        }
+        callback(Status::OK(), std::move(reply));
+      },
+      timeout_ms);
+
   return Status::OK();
 }
 

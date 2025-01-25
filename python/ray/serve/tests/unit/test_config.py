@@ -2,7 +2,7 @@ import pytest
 
 from ray import cloudpickle
 from ray._private.pydantic_compat import ValidationError
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
 from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
 from ray.serve._private.utils import DEFAULT
@@ -216,7 +216,7 @@ class TestReplicaConfig:
         # Invalid: not in the range of [1, 100]
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -227,7 +227,7 @@ class TestReplicaConfig:
 
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -238,7 +238,7 @@ class TestReplicaConfig:
 
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -609,14 +609,14 @@ def test_grpc_options():
     grpc_servicer_functions = ["fake.service.that.does.not.exist"]
     with pytest.raises(ModuleNotFoundError) as exception:
         grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
-        grpc_options.grpc_servicer_func_callable
+        _ = grpc_options.grpc_servicer_func_callable
     assert "can't be imported!" in str(exception)
 
     # Not callable should raise ValueError.
     grpc_servicer_functions = ["ray.serve._private.constants.DEFAULT_HTTP_PORT"]
     with pytest.raises(ValueError) as exception:
         grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
-        grpc_options.grpc_servicer_func_callable
+        _ = grpc_options.grpc_servicer_func_callable
     assert "is not a callable function!" in str(exception)
 
 

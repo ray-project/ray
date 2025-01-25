@@ -1,5 +1,6 @@
 import pickle
 from typing import Callable
+from unittest.mock import Mock
 
 import grpc
 import pytest
@@ -8,7 +9,6 @@ from google.protobuf.any_pb2 import Any as AnyProto
 from ray import cloudpickle
 from ray.serve._private.default_impl import add_grpc_address
 from ray.serve._private.grpc_util import (
-    DummyServicer,
     gRPCGenericServer,
 )
 from ray.serve._private.test_utils import FakeGrpcContext
@@ -28,20 +28,6 @@ def fake_service_handler_factory(service_method: str, stream: bool) -> Callable:
         return f"{'stream' if stream else 'unary'} call from {service_method}".encode()
 
     return foo
-
-
-def test_dummy_servicer_can_take_any_methods():
-    """Test an instance of DummyServicer can be called with any method name without
-    error.
-
-    When dummy_servicer is called with any custom defined methods, it won't raise error.
-    """
-    dummy_servicer = DummyServicer()
-    dummy_servicer.foo
-    dummy_servicer.bar
-    dummy_servicer.baz
-    dummy_servicer.my_method
-    dummy_servicer.Predict
 
 
 def test_grpc_server():
@@ -68,7 +54,7 @@ def test_grpc_server():
         server.add_generic_rpc_handlers((generic_handler,))
 
     grpc_server = gRPCGenericServer(fake_service_handler_factory)
-    dummy_servicer = DummyServicer()
+    dummy_servicer = Mock()
 
     # Ensure `generic_rpc_handlers` is not populated before calling
     # the add_servicer_to_server function.

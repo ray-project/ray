@@ -121,18 +121,17 @@ class TaskCounter {
  private:
   mutable absl::Mutex mu_;
   // Tracks all tasks submitted to this worker by state, is_retry.
-  CounterMap<std::tuple<std::string, TaskStatusType, bool>> counter_
-      ABSL_GUARDED_BY(&mu_);
+  CounterMap<std::tuple<std::string, TaskStatusType, bool>> counter_ ABSL_GUARDED_BY(mu_);
 
   // Additionally tracks the sub-states of RUNNING_IN_RAY_GET/WAIT. The counters here
   // overlap with those of counter_.
-  CounterMap<std::pair<std::string, bool>> running_in_get_counter_ ABSL_GUARDED_BY(&mu_);
-  CounterMap<std::pair<std::string, bool>> running_in_wait_counter_ ABSL_GUARDED_BY(&mu_);
+  CounterMap<std::pair<std::string, bool>> running_in_get_counter_ ABSL_GUARDED_BY(mu_);
+  CounterMap<std::pair<std::string, bool>> running_in_wait_counter_ ABSL_GUARDED_BY(mu_);
 
-  std::string job_id_ ABSL_GUARDED_BY(&mu_);
+  std::string job_id_ ABSL_GUARDED_BY(mu_);
   // Used for actor state tracking.
-  std::string actor_name_ ABSL_GUARDED_BY(&mu_);
-  int64_t num_tasks_running_ ABSL_GUARDED_BY(&mu_) = 0;
+  std::string actor_name_ ABSL_GUARDED_BY(mu_);
+  int64_t num_tasks_running_ ABSL_GUARDED_BY(mu_) = 0;
 };
 
 struct TaskToRetry {
@@ -179,7 +178,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Otherwise, it can have various destruction order related memory corruption.
   ///
   /// If the core worker is initiated at a driver, the driver is responsible for calling
-  /// the shutdown API before terminating. If the core worker is initated at a worker,
+  /// the shutdown API before terminating. If the core worker is initiated at a worker,
   /// shutdown must be called before terminating the task execution loop.
   ~CoreWorker() override;
 
@@ -294,7 +293,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// generator task.
   void AsyncDelObjectRefStream(const ObjectID &generator_id);
 
-  void TryDeleteObjectRefStreams();
+  // Attempt to delete ObjectRefStreams that were unable to be deleted when
+  // AsyncDelObjectRefStream was called (stored in generator_ids_pending_deletion_).
+  // This function is called periodically on the io_service_.
+  void TryDelPendingObjectRefStreams();
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
@@ -343,7 +345,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    // TOOD(ilr): better way of keeping an object from being deleted
+    // TODO(ilr): better way of keeping an object from being deleted
     // TODO(sang): This seems bad... We should delete the memory store
     // properly from reference counter.
     if (!options_.is_local_mode) {
@@ -838,14 +840,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] scheduling_strategy Strategy about how to schedule the task.
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
-  /// should capture parent's placement group implicilty.
+  /// should capture parent's placement group implicitly.
   /// \param[in] serialized_retry_exception_allowlist A serialized exception list
   /// that serves as an allowlist of frontend-language exceptions/errors that should be
   /// retried. Default is an empty string, which will be treated as an allow-all in the
   /// language worker.
   /// \param[in] current_task_id The current task_id that submits the task.
   /// If Nil() is given, it will be automatically propagated from worker_context.
-  /// This is used when worker_context cannot reliably obtain the curernt task_id
+  /// This is used when worker_context cannot reliably obtain the current task_id
   /// i.e., Python async actors.
   /// \param[in] call_site The stacktrace of the task invocation, or actor
   /// creation. This is only used for observability.
@@ -888,7 +890,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] placement_group_creation_options Options for this placement group
   /// creation task.
   /// \param[out] placement_group_id ID of the created placement group.
-  /// This can be used to shedule actor in node
+  /// This can be used to schedule actor in node
   /// \return Status error if placement group
   /// creation fails, likely due to raylet failure.
   Status CreatePlacementGroup(
@@ -1382,6 +1384,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                         int port);
 
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
+      const std::string &serialized_runtime_env_info) const;
+
+  // Used as the factory function for [OverrideTaskOrActorRuntimeEnvInfo] to create in LRU
+  // cache.
+  std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfoImpl(
       const std::string &serialized_runtime_env_info) const;
 
   void BuildCommonTaskSpec(
@@ -1898,7 +1905,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Worker's PID
   uint32_t pid_;
 
-  absl::flat_hash_set<ObjectID> deleted_generator_ids_;
+  // Guards generator_ids_pending_deletion_.
+  absl::Mutex generator_ids_pending_deletion_mutex_;
+
+  // A set of generator IDs that have gone out of scope but couldn't be deleted from
+  // the task manager yet (e.g., due to lineage references). We will periodically
+  // attempt to delete them in the background until it succeeds.
+  // This field is accessed on the destruction path of an ObjectRefGenerator as well as
+  // by a background thread attempting later deletion, so it must be guarded by a lock.
+  absl::flat_hash_set<ObjectID> generator_ids_pending_deletion_
+      ABSL_GUARDED_BY(generator_ids_pending_deletion_mutex_);
 
   /// TODO(hjiang):
   /// 1. Cached job runtime env info, it's not implemented at first place since

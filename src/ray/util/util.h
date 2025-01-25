@@ -47,17 +47,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
-#include "ray/util/process.h"
 
 #ifdef _WIN32
 #include <process.h>  // to ensure getpid() on Windows
-#endif
-
-// Portable code for unreachable
-#if defined(_MSC_VER)
-#define UNREACHABLE __assume(0)
-#else
-#define UNREACHABLE __builtin_unreachable()
 #endif
 
 // Boost forward-declarations (to avoid forcing slow header inclusions)
@@ -69,9 +61,7 @@ class stream_protocol;
 
 }  // namespace boost::asio::generic
 
-enum class CommandLineSyntax { System, POSIX, Windows };
-
-// Append append_str to the begining of each line of str.
+// Append append_str to the beginning of each line of str.
 inline std::string AppendToEachLine(const std::string &str,
                                     const std::string &append_str) {
   std::stringstream ss;
@@ -122,23 +112,6 @@ inline int64_t current_sys_time_us() {
 }
 
 std::string GenerateUUIDV4();
-
-/// A helper function to parse command-line arguments in a platform-compatible manner.
-///
-/// \param cmdline The command-line to split.
-///
-/// \return The command-line arguments, after processing any escape sequences.
-std::vector<std::string> ParseCommandLine(
-    const std::string &cmdline, CommandLineSyntax syntax = CommandLineSyntax::System);
-
-/// A helper function to combine command-line arguments in a platform-compatible manner.
-/// The result of this function is intended to be suitable for the shell used by popen().
-///
-/// \param cmdline The command-line arguments to combine.
-///
-/// \return The command-line string, including any necessary escape sequences.
-std::string CreateCommandLine(const std::vector<std::string> &args,
-                              CommandLineSyntax syntax = CommandLineSyntax::System);
 
 /// Converts the given endpoint (such as TCP or UNIX domain socket address) to a string.
 /// \param include_scheme Whether to include the scheme prefix (such as tcp://).
@@ -199,31 +172,6 @@ struct EnumClassHash {
   }
 };
 
-/// unordered_map for enum class type.
-template <typename Key, typename T>
-using EnumUnorderedMap = absl::flat_hash_map<Key, T, EnumClassHash>;
-
-inline void setEnv(const std::string &name, const std::string &value) {
-#ifdef _WIN32
-  std::string env = name + "=" + value;
-  int ret = _putenv(env.c_str());
-#else
-  int ret = setenv(name.c_str(), value.c_str(), 1);
-#endif
-  RAY_CHECK_EQ(ret, 0) << "Failed to set env var " << name << " " << value;
-}
-
-inline void unsetEnv(const std::string &name) {
-#ifdef _WIN32
-  // Use _putenv on Windows with an empty value to unset
-  std::string env = name + "=";
-  int ret = _putenv(env.c_str());
-#else
-  int ret = unsetenv(name.c_str());
-#endif
-  RAY_CHECK_EQ(ret, 0) << "Failed to unset env var " << name;
-}
-
 namespace ray {
 
 /// Return true if the raylet is failed. This util function is only meant to be used by
@@ -232,11 +180,6 @@ bool IsRayletFailed(const std::string &raylet_pid);
 
 /// Teriminate the process without cleaning up the resources.
 void QuickExit();
-
-/// \param value the value to be formatted to string
-/// \param precision the precision to format the value to
-/// \return the foramtted value
-std::string FormatFloat(float value, int32_t precision);
 
 /// Converts a timeout in milliseconds to a timeout point.
 /// \param[in] timeout_ms The timeout in milliseconds.

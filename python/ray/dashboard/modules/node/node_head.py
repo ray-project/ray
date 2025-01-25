@@ -11,7 +11,6 @@ import aiohttp.web
 import grpc
 
 import ray._private.utils
-import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
@@ -22,6 +21,7 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     env_integer,
 )
+from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
@@ -29,7 +29,11 @@ from ray.autoscaler._private.util import (
     parse_usage,
 )
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
-from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.consts import (
+    GCS_RPC_TIMEOUT_SECONDS,
+    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    DASHBOARD_AGENT_ADDR_IP_PREFIX,
+)
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
@@ -53,33 +57,6 @@ def _gcs_node_info_to_dict(message: gcs_pb2.GcsNodeInfo) -> dict:
     return dashboard_utils.message_to_dict(
         message, {"nodeId"}, always_print_fields_with_no_presence=True
     )
-
-
-def node_stats_to_dict(message):
-    decode_keys = {
-        "actorId",
-        "jobId",
-        "taskId",
-        "parentTaskId",
-        "sourceActorId",
-        "callerId",
-        "rayletId",
-        "workerId",
-        "placementGroupId",
-    }
-    core_workers_stats = message.core_workers_stats
-    message.ClearField("core_workers_stats")
-    try:
-        result = dashboard_utils.message_to_dict(message, decode_keys)
-        result["coreWorkersStats"] = [
-            dashboard_utils.message_to_dict(
-                m, decode_keys, always_print_fields_with_no_presence=True
-            )
-            for m in core_workers_stats
-        ]
-        return result
-    finally:
-        message.core_workers_stats.extend(core_workers_stats)
 
 
 class NodeHead(dashboard_utils.DashboardHeadModule):
@@ -124,7 +101,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         return {
             "head_node_registration_time_s": self._head_node_registration_time_s,
             "registered_nodes": len(DataSource.nodes),
-            "registered_agents": len(DataSource.agents),
             "module_lifetime_s": time.time() - self._module_start_time,
         }
 
@@ -194,46 +170,27 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             )
         assert node["state"] in ["ALIVE", "DEAD"]
         is_alive = node["state"] == "ALIVE"
-        # Prepare agents for alive node, and pop agents for dead node.
-        if is_alive:
-            if node_id not in DataSource.agents:
-                # Agent port is read from internal KV, which is only populated
-                # upon Agent startup. In case this update received before agent
-                # fully started up, we schedule a task to asynchronously update
-                # DataSource with appropriate agent port.
-                asyncio.create_task(self._update_agent(node_id))
-        else:
-            DataSource.agents.pop(node_id, None)
+        if not is_alive:
+            # Remove the agent address from the internal KV.
+            keys = [
+                f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}",
+                f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node['nodeManagerAddress']}",
+            ]
+            tasks = [
+                self.gcs_aio_client.internal_kv_del(
+                    key,
+                    del_by_prefix=False,
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    timeout=GCS_RPC_TIMEOUT_SECONDS,
+                )
+                for key in keys
+            ]
+            await asyncio.gather(*tasks)
+
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
                 DataSource.nodes.pop(self._dead_node_queue.popleft(), None)
         DataSource.nodes[node_id] = node
-
-    async def _update_agent(self, node_id):
-        """
-        Given a node, update the agent_port in DataSource.agents. Problem is it's not
-        present until agent.py starts, so we need to loop waiting for agent.py writes
-        its port to internal kv.
-        """
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}".encode()
-        while True:
-            try:
-                agent_port = await self.gcs_aio_client.internal_kv_get(
-                    key,
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=None,
-                )
-                # The node may be dead already. Only update DataSource.agents if the
-                # node is still alive.
-                if DataSource.nodes.get(node_id, {}).get("state") != "ALIVE":
-                    return
-                if agent_port:
-                    DataSource.agents[node_id] = json.loads(agent_port)
-                    return
-            except Exception:
-                logger.exception(f"Error getting agent port for node {node_id}.")
-
-            await asyncio.sleep(node_consts.RAY_DASHBOARD_AGENT_POLL_INTERVAL_S)
 
     async def _update_nodes(self):
         """
@@ -260,23 +217,25 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     )
                     warning_shown = True
 
-    @routes.get("/internal/node_module")
-    async def get_node_module_internal_state(self, req) -> aiohttp.web.Response:
-        return dashboard_optional_utils.rest_response(
-            success=True,
-            message="",
-            **self.get_internal_states(),
-        )
-
     async def get_nodes_logical_resources(self) -> dict:
 
         from ray.autoscaler.v2.utils import is_autoscaler_v2
 
         if is_autoscaler_v2():
-            from ray.autoscaler.v2.sdk import get_cluster_status
+            from ray.autoscaler.v2.sdk import ClusterStatusParser
+            from ray.autoscaler.v2.schema import Stats
 
             try:
-                cluster_status = get_cluster_status(self.gcs_address)
+                # here we have a sync request
+                req_time = time.time()
+                cluster_status = await self.gcs_aio_client.get_cluster_status()
+                reply_time = time.time()
+                cluster_status = ClusterStatusParser.from_get_cluster_status_reply(
+                    cluster_status,
+                    stats=Stats(
+                        gcs_request_time_s=reply_time - req_time, request_ts_s=req_time
+                    ),
+                )
             except Exception:
                 logger.exception("Error getting cluster status")
                 return {}
@@ -436,7 +395,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         f"Error updating node stats of {node_id}.", exc_info=response
                     )
                 else:
-                    new_node_stats[node_id] = node_stats_to_dict(response)
+                    new_node_stats[node_id] = dashboard_utils.node_stats_to_dict(
+                        response
+                    )
 
             return new_node_stats
 
@@ -451,10 +412,41 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         for node_id, new_stat in new_node_stats.items():
             DataSource.node_stats[node_id] = new_stat
 
+    async def _update_node_physical_stats(self):
+        """
+        Update DataSource.node_physical_stats by subscribing to the GCS resource usage.
+        """
+        subscriber = GcsAioResourceUsageSubscriber(address=self.gcs_address)
+        await subscriber.subscribe()
+
+        loop = get_or_create_event_loop()
+
+        while True:
+            try:
+                # The key is b'RAY_REPORTER:{node id hex}',
+                # e.g. b'RAY_REPORTER:2b4fbd...'
+                key, data = await subscriber.poll()
+                if key is None:
+                    continue
+
+                # NOTE: Every iteration is executed inside the thread-pool executor
+                #       (TPE) to avoid blocking the Dashboard's event-loop
+                parsed_data = await loop.run_in_executor(
+                    self._executor, json.loads, data
+                )
+
+                node_id = key.split(":")[-1]
+                DataSource.node_physical_stats[node_id] = parsed_data
+            except Exception:
+                logger.exception(
+                    "Error receiving node physical stats from _update_node_physical_stats."
+                )
+
     async def run(self, server):
         await asyncio.gather(
             self._update_nodes(),
             self._update_node_stats(),
+            self._update_node_physical_stats(),
         )
 
     @staticmethod

@@ -952,6 +952,9 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "number for other deployments."
         )
     )
+    required_resources: Dict = Field(
+        description="The resources required per replica of this deployment."
+    )
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
     )

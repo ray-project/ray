@@ -1,5 +1,7 @@
 import asyncio
 import binascii
+import random
+import string
 from collections import defaultdict
 import contextlib
 import errno
@@ -49,6 +51,10 @@ from ray.core.generated.runtime_env_common_pb2 import (
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
 
+
+INT32_MAX = (2**31) - 1
+
+
 pwd = None
 if sys.platform != "win32":
     import pwd
@@ -75,6 +81,18 @@ PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
     r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
 )
 PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
+
+
+# Match the standard alphabet used for UUIDs.
+RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
+
+
+def get_random_alphanumeric_string(length: int):
+    """Generates random string of length consisting exclusively of
+    - Lower-case ASCII chars
+    - Digits
+    """
+    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
 
 
 def get_user_temp_dir():
@@ -1160,40 +1178,6 @@ def deprecated(
     return deprecated_wrapper
 
 
-def import_attr(full_path: str, *, reload_module: bool = False):
-    """Given a full import path to a module attr, return the imported attr.
-
-    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
-
-    For example, the following are equivalent:
-        MyClass = import_attr("module.submodule:MyClass")
-        MyClass = import_attr("module.submodule.MyClass")
-        from module.submodule import MyClass
-
-    Returns:
-        Imported attr
-    """
-    if full_path is None:
-        raise TypeError("import path cannot be None")
-
-    if ":" in full_path:
-        if full_path.count(":") > 1:
-            raise ValueError(
-                f'Got invalid import path "{full_path}". An '
-                "import path may have at most one colon."
-            )
-        module_name, attr_name = full_path.split(":")
-    else:
-        last_period_idx = full_path.rfind(".")
-        module_name = full_path[:last_period_idx]
-        attr_name = full_path[last_period_idx + 1 :]
-
-    module = importlib.import_module(module_name)
-    if reload_module:
-        importlib.reload(module)
-    return getattr(module, attr_name)
-
-
 def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
@@ -1299,11 +1283,7 @@ def init_grpc_channel(
     asynchronous: bool = False,
 ):
     import grpc
-
-    try:
-        from grpc import aio as aiogrpc
-    except ImportError:
-        from grpc.experimental import aio as aiogrpc
+    from grpc import aio as aiogrpc
 
     from ray._private.tls_utils import load_certs_from_env
 

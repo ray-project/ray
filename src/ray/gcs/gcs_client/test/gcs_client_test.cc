@@ -303,7 +303,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           if (!result.empty()) {
             if (filter_non_dead_actor) {
               for (auto &iter : result) {
-                if (iter.state() == gcs::ActorTableData::DEAD) {
+                if (iter.state() == rpc::ActorTableData::DEAD) {
                   actors.emplace_back(iter);
                 }
               }
@@ -356,13 +356,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return nodes;
   }
 
-  bool DrainNode(const NodeID &node_id) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncDrainNode(
-        node_id, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   std::vector<rpc::AvailableResources> GetAllAvailableResources() {
     std::promise<bool> promise;
     std::vector<rpc::AvailableResources> resources;
@@ -408,21 +401,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void CheckActorData(const gcs::ActorTableData &actor,
+  void CheckActorData(const rpc::ActorTableData &actor,
                       rpc::ActorTableData_ActorState expected_state) {
     ASSERT_TRUE(actor.state() == expected_state);
-  }
-
-  absl::flat_hash_set<NodeID> RegisterNodeAndMarkDead(int node_count) {
-    absl::flat_hash_set<NodeID> node_ids;
-    for (int index = 0; index < node_count; ++index) {
-      auto node_info = Mocker::GenNodeInfo();
-      auto node_id = NodeID::FromBinary(node_info->node_id());
-      EXPECT_TRUE(RegisterNode(*node_info));
-      EXPECT_TRUE(DrainNode(node_id));
-      node_ids.insert(node_id);
-    }
-    return node_ids;
   }
 
   // Test parameter, whether to use GCS without redis.
@@ -519,7 +500,7 @@ TEST_P(GcsClientTest, TestJobInfo) {
 
   // Subscribe to all jobs.
   std::atomic<int> job_updates(0);
-  auto on_subscribe = [&job_updates](const JobID &job_id, const gcs::JobTableData &data) {
+  auto on_subscribe = [&job_updates](const JobID &job_id, const rpc::JobTableData &data) {
     job_updates++;
   };
   ASSERT_TRUE(SubscribeToAllJobs(on_subscribe));
@@ -543,7 +524,7 @@ TEST_P(GcsClientTest, TestActorInfo) {
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
   // Subscribe to any update operations of an actor.
-  auto on_subscribe = [](const ActorID &actor_id, const gcs::ActorTableData &data) {};
+  auto on_subscribe = [](const ActorID &actor_id, const rpc::ActorTableData &data) {};
   ASSERT_TRUE(SubscribeActor(actor_id, on_subscribe));
 
   // Register an actor to GCS.
@@ -590,20 +571,8 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
   EXPECT_EQ(node_list.size(), 2);
   ASSERT_TRUE(gcs_client_->Nodes().Get(node1_id));
+  ASSERT_TRUE(gcs_client_->Nodes().Get(node2_id));
   EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
-
-  // Cancel registration of both nodes to GCS.
-  ASSERT_TRUE(DrainNode(node1_id));
-  ASSERT_TRUE(DrainNode(node2_id));
-  WaitForExpectedCount(unregister_count, 2);
-
-  // Get information of all nodes from GCS.
-  node_list = GetNodeInfoList();
-  EXPECT_EQ(node_list.size(), 2);
-  EXPECT_EQ(node_list[0].state(), rpc::GcsNodeInfo::DEAD);
-  EXPECT_EQ(node_list[1].state(), rpc::GcsNodeInfo::DEAD);
-  ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node1_id));
-  ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
 }
 
 TEST_P(GcsClientTest, TestUnregisterNode) {
@@ -730,9 +699,9 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
   // Number of notifications for the following `SubscribeActor` operation.
   std::atomic<int> num_subscribe_one_notifications(0);
   // All the notifications for the following `SubscribeActor` operation.
-  std::vector<gcs::ActorTableData> subscribe_one_notifications;
+  std::vector<rpc::ActorTableData> subscribe_one_notifications;
   auto actor_subscribe = [&num_subscribe_one_notifications, &subscribe_one_notifications](
-                             const ActorID &actor_id, const gcs::ActorTableData &data) {
+                             const ActorID &actor_id, const rpc::ActorTableData &data) {
     subscribe_one_notifications.emplace_back(data);
     ++num_subscribe_one_notifications;
     RAY_LOG(INFO) << "The number of actor subscription messages received is "
@@ -994,32 +963,6 @@ TEST_P(GcsClientTest, TestGcsAuth) {
   EXPECT_TRUE(RegisterNode(*node_info));
 }
 
-TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
-  RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
-  // Restart GCS.
-  RestartGcsServer();
-  if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {
-    ReconnectClient();
-  }
-
-  // Simulate the scenario of node dead.
-  int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();
-
-  const auto &node_ids = RegisterNodeAndMarkDead(node_count);
-
-  // Get all nodes.
-  auto condition = [this]() {
-    return GetNodeInfoList().size() ==
-           RayConfig::instance().maximum_gcs_dead_node_cached_count();
-  };
-  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
-
-  auto nodes = GetNodeInfoList();
-  for (const auto &node : nodes) {
-    EXPECT_TRUE(node_ids.contains(NodeID::FromBinary(node.node_id())));
-  }
-}
-
 TEST_P(GcsClientTest, TestRegisterHeadNode) {
   // Test at most only one head node is alive in GCS server
   auto head_node_info = Mocker::GenNodeInfo(1);
@@ -1081,8 +1024,6 @@ TEST_P(GcsClientTest, TestInternalKVDelByPrefix) {
   ASSERT_EQ(value, "test_value3");
 }
 
-// TODO(sang): Add tests after adding asyncAdd
-
 }  // namespace ray
 
 int main(int argc, char **argv) {
@@ -1092,6 +1033,7 @@ int main(int argc, char **argv) {
       /*app_name=*/argv[0],
       ray::RayLogLevel::INFO,
       ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);

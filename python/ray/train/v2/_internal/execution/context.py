@@ -1,6 +1,7 @@
 import logging
 import threading
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -27,6 +28,9 @@ class TrainRunContext:
     """Holds the metadata and context for the current training run."""
 
     # TODO: Make this dataclass immutable after refactoring the train context.
+
+    # The unique ID of the training run.
+    run_id: str = field(init=False, default_factory=lambda: uuid.uuid4().hex)
 
     # The run configuration for the current training run.
     run_config: RunConfig
@@ -79,30 +83,9 @@ class TrainContext(TrainRunContext):
     dataset_shards: Dict[str, DataIterator]
     checkpoint: Optional[Checkpoint] = None
 
-    @_copy_doc(session.get_metadata)
-    def get_metadata(self) -> Dict[str, Any]:
-        raise NotImplementedError
-
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
-        # TODO: Resolve run_config.name if it is None
         return self.run_config.name
-
-    @_copy_doc(session.get_trial_name)
-    def get_trial_name(self) -> str:
-        raise NotImplementedError
-
-    @_copy_doc(session.get_trial_id)
-    def get_trial_id(self) -> str:
-        raise NotImplementedError
-
-    @_copy_doc(session.get_trial_resources)
-    def get_trial_resources(self):
-        raise NotImplementedError
-
-    @_copy_doc(session.get_trial_dir)
-    def get_trial_dir(self) -> str:
-        raise NotImplementedError
 
     @_copy_doc(session.get_world_size)
     def get_world_size(self) -> int:
@@ -128,6 +111,7 @@ class TrainContext(TrainRunContext):
     def get_storage(self):
         return self.storage_context
 
+    # TODO: Don't allow these private methods to be called from user code.
     def get_result_queue(self):
         return self.execution_context.result_queue
 

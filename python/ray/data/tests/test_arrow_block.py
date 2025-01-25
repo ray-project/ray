@@ -13,7 +13,9 @@ from pyarrow import parquet as pq
 
 import ray
 from ray._private.test_utils import run_string_as_driver
-from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorArray,
+)
 from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
@@ -273,6 +275,31 @@ def test_append_column(ray_start_regular_shared):
 
     expected_block = pa.Table.from_pydict({"animals": animals, "num_legs": num_legs})
     assert actual_block.equals(expected_block)
+
+
+def test_random_shuffle(ray_start_regular_shared):
+    TOTAL_ROWS = 10000
+    table = pa.table({"id": pa.array(range(TOTAL_ROWS))})
+    block_accessor = ArrowBlockAccessor(table)
+
+    # Perform the random shuffle
+    shuffled_table = block_accessor.random_shuffle(random_seed=None)
+    assert shuffled_table.num_rows == TOTAL_ROWS
+
+    # Access the shuffled data
+    block_accessor = ArrowBlockAccessor(shuffled_table)
+    shuffled_data = block_accessor.to_pandas()["id"].tolist()
+    original_data = list(range(TOTAL_ROWS))
+
+    # Ensure the shuffled data is not identical to the original
+    assert (
+        shuffled_data != original_data
+    ), "Shuffling should result in a different order"
+
+    # Ensure the entire set of original values is still in the shuffled dataset
+    assert (
+        sorted(shuffled_data) == original_data
+    ), "The shuffled data should contain all the original values"
 
 
 def test_register_arrow_types(tmp_path):

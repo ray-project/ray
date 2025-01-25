@@ -58,9 +58,7 @@ async def test_get_scheduling_strategy(
 ):
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
     address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
+    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
 
     job_manager = JobManager(gcs_aio_client, tmp_path)
 
@@ -104,9 +102,7 @@ async def test_submit_no_ray_address(call_ray_start, tmp_path):  # noqa: F811
     """Test that a job script with an unspecified Ray address works."""
 
     address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
+    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
     job_manager = JobManager(gcs_aio_client, tmp_path)
 
     init_ray_no_address_script = """
@@ -141,9 +137,7 @@ assert ray.cluster_resources().get('TestResourceKey') == 123
 async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
     """Test that JobInfo is correctly populated in the GCS get_all_job_info API."""
     address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
+    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
     job_manager = JobManager(gcs_aio_client, tmp_path)
 
     # Submit a job.
@@ -190,9 +184,7 @@ async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: 
     """Test the is_running_tasks bit in the GCS get_all_job_info API."""
 
     address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
+    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
 
     @ray.remote
     def sleep_forever():
@@ -271,9 +263,7 @@ async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: 
 async def test_job_supervisor_log_json(call_ray_start, tmp_path):  # noqa: F811
     """Test JobSupervisor logs are structured JSON logs"""
     address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
+    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
     job_manager = JobManager(gcs_aio_client, tmp_path)
     job_id = await job_manager.submit_job(
         entrypoint="echo hello 1", submission_id="job_1"
@@ -304,9 +294,7 @@ async def test_job_supervisor_logs_saved(
 ):
     """Test JobSupervisor logs are saved to jobs/supervisor-{submission_id}.log"""
     address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
+    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
     job_manager = JobManager(gcs_aio_client, tmp_path)
     job_id = await job_manager.submit_job(
         entrypoint="echo hello 1", submission_id="job_1"
@@ -342,9 +330,7 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
 ):
     """Test runtime env setup messages are logged to jobs driver log"""
     address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
+    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
     job_manager = JobManager(gcs_aio_client, tmp_path)
 
     job_id = await job_manager.submit_job(

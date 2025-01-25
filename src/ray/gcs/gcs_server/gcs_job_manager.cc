@@ -37,7 +37,7 @@ void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const 
   /// Write job_data as a export driver job event if
   /// enable_export_api_write() is enabled and if this job is
   /// not in the _ray_internal_ namespace.
-  if (!RayConfig::instance().enable_export_api_write()) {
+  if (!export_event_write_enabled_) {
     return;
   }
   if (job_data.config().ray_namespace().find(kRayInternalNamespacePrefix) == 0) {
@@ -273,7 +273,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     return false;
   };
   auto on_done = [this, filter_ok, request, reply, send_reply_callback, limit](
-                     const absl::flat_hash_map<JobID, JobTableData> &&result) {
+                     const absl::flat_hash_map<JobID, rpc::JobTableData> &&result) {
     RAY_CHECK(thread_checker_.IsOnSameThread());
 
     // Internal KV keys for jobs that were submitted via the Ray Job API.
@@ -434,7 +434,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
   };
   Status status = gcs_table_storage_.JobTable().GetAll({on_done, io_context_});
   if (!status.ok()) {
-    on_done(absl::flat_hash_map<JobID, JobTableData>());
+    on_done(absl::flat_hash_map<JobID, rpc::JobTableData>());
   }
 }
 
@@ -467,7 +467,8 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
   RAY_LOG(INFO).WithField(node_id)
       << "Node failed, mark all jobs from this node as finished";
 
-  auto on_done = [this, node_id](const absl::flat_hash_map<JobID, JobTableData> &result) {
+  auto on_done = [this,
+                  node_id](const absl::flat_hash_map<JobID, rpc::JobTableData> &result) {
     RAY_CHECK(thread_checker_.IsOnSameThread());
 
     // If job is not dead and from driver in current node, then mark it as finished

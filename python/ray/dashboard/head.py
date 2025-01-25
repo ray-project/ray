@@ -50,10 +50,7 @@ RAY_DASHBOARD_DASHBOARD_HEAD_TPE_MAX_WORKERS = env_integer(
 
 
 def initialize_grpc_port_and_server(grpc_ip, grpc_port):
-    try:
-        from grpc import aio as aiogrpc
-    except ImportError:
-        from grpc.experimental import aio as aiogrpc
+    from grpc import aio as aiogrpc
 
     import ray._private.tls_utils
 
@@ -362,11 +359,9 @@ class DashboardHead:
         gcs_address = self.gcs_address
 
         # Dashboard will handle connection failure automatically
-        self.gcs_client = GcsClient(
-            address=gcs_address, nums_reconnect_retry=0, cluster_id=self.cluster_id_hex
-        )
+        self.gcs_client = GcsClient(address=gcs_address, cluster_id=self.cluster_id_hex)
         self.gcs_aio_client = GcsAioClient(
-            address=gcs_address, nums_reconnect_retry=0, cluster_id=self.cluster_id_hex
+            address=gcs_address, cluster_id=self.cluster_id_hex
         )
         internal_kv._initialize_internal_kv(self.gcs_client)
 

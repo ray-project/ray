@@ -67,11 +67,13 @@ class TaskReceiver {
                instrumented_io_context &main_io_service,
                worker::TaskEventBuffer &task_event_buffer,
                TaskHandler task_handler,
+               std::function<std::function<void()>()> initialize_thread_callback,
                const OnActorCreationTaskDone &actor_creation_task_done_)
       : worker_context_(worker_context),
         task_handler_(std::move(task_handler)),
         task_main_io_service_(main_io_service),
         task_event_buffer_(task_event_buffer),
+        initialize_thread_callback_(std::move(initialize_thread_callback)),
         actor_creation_task_done_(actor_creation_task_done_),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
@@ -129,6 +131,8 @@ class TaskReceiver {
   /// The IO event loop for running tasks on.
   instrumented_io_context &task_main_io_service_;
   worker::TaskEventBuffer &task_event_buffer_;
+  /// The language-specific callback function that initializes threads.
+  std::function<std::function<void()>()> initialize_thread_callback_;
   /// The callback function to be invoked when finishing a task.
   OnActorCreationTaskDone actor_creation_task_done_;
   /// Shared pool for producing new core worker clients.

@@ -8,9 +8,7 @@ advanced_configurations_json:
 
 head_node_type:
     name: head-node
-    # Use a GPU head node so we can test `iter_torch_batches` with `device='cuda'`.
-    # We use the same number of vCPUs and memory as the default m5.2xlarge head node.
-    instance_type: g4dn.2xlarge
+    instance_type: m5.2xlarge
     resources:
       cpu: 0
 

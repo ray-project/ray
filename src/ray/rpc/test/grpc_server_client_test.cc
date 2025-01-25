@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <chrono>
+#include <memory>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/rpc/grpc_client.h"

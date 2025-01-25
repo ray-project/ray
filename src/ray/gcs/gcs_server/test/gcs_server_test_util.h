@@ -341,6 +341,11 @@ struct GcsServerMocker {
       drain_raylet_callbacks.push_back(callback);
     };
 
+    void CancelTasksWithResourceShapes(
+        const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+        const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+        override{};
+
     void IsLocalWorkerDead(
         const WorkerID &worker_id,
         const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) override{};
@@ -462,16 +467,9 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncDrainNode(const NodeID &node_id,
-                          const gcs::StatusCallback &callback) override {
-      if (callback) {
-        callback(Status::OK());
-      }
-      return Status::OK();
-    }
-
     Status AsyncGetAll(const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                       int64_t timeout_ms) override {
+                       int64_t timeout_ms,
+                       std::optional<NodeID> node_id = std::nullopt) override {
       if (callback) {
         callback(Status::OK(), {});
       }

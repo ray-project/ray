@@ -17,6 +17,7 @@
 #include <cstring>
 #include <functional>
 #include <mutex>
+#include <utility>
 #include <vector>
 
 #include "ray/util/compat.h"
@@ -32,26 +33,34 @@ namespace ray {
 
 namespace {
 
-#if defined(__APPLE__) || defined(__linux__)
-int GetStdoutHandle() { return STDOUT_FILENO; }
-int GetStderrHandle() { return STDERR_FILENO; }
-#elif defined(_WIN32)
-int GetStdoutHandle() { return _fileno(stdout); }
-int GetStderrHandle() { return _fileno(stderr); }
-#endif
+struct RedirectionHandleWrapper {
+  RedirectionFileHandle redirection_file_handle;
+  // Used for restoration.
+  MEMFD_TYPE_NON_UNIQUE saved_stream_handle;
+};
 
 // TODO(hjiang): Revisit later, should be able to save some heap allocation with
 // absl::InlinedVector.
 //
 // Maps from original stream file handle (i.e. stdout/stderr) to its stream redirector.
-absl::flat_hash_map<int, RedirectionFileHandle> redirection_file_handles;
+absl::flat_hash_map<int, RedirectionHandleWrapper> redirection_file_handles;
 
 // Block synchronize on stream redirection related completion, should be call **EXACTLY
 // ONCE** at program termination.
 std::once_flag stream_exit_once_flag;
 void SyncOnStreamRedirection() {
-  for (auto &[_, handle] : redirection_file_handles) {
-    handle.Close();
+  for (auto &[stream_fd, handle] : redirection_file_handles) {
+// Restore old stream fd.
+#if defined(__APPLE__) || defined(__linux__)
+    RAY_CHECK_NE(dup2(handle.saved_stream_handle, stream_fd), -1)
+        << "Fails to restore file descriptor " << strerror(errno);
+#elif defined(_WIN32)
+    int duped_fd = _open_osfhandle(reinterpret_cast<intptr_t>(handle.saved_stream_handle),
+                                   _O_WRONLY);
+    RAY_CHECK_NE(_dup2(duped_fd, stream_fd), -1) << "Fails to duplicate file descriptor.";
+#endif
+
+    handle.redirection_file_handle.Close();
   }
 }
 
@@ -65,17 +74,37 @@ void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
   RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
 
 #if defined(__APPLE__) || defined(__linux__)
+  // Duplicate stream fd for later restoration.
+  MEMFD_TYPE_NON_UNIQUE duped_stream_fd = dup(stream_fd);
+  RAY_CHECK_NE(duped_stream_fd, -1)
+      << "Fails to duplicate stream fd " << stream_fd << " because " << strerror(errno);
+
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
-      << "Fails to duplicate file descritor " << strerror(errno);
+      << "Fails to duplicate file descriptor " << strerror(errno);
 #elif defined(_WIN32)
+  // Duplicate stream fd for later restoration.
+  MEMFD_TYPE_NON_UNIQUE duped_stream_fd;
+  BOOL result = DuplicateHandle(GetCurrentProcess(),
+                                (HANDLE)_get_osfhandle(stream_fd),
+                                GetCurrentProcess(),
+                                &duped_stream_fd,
+                                0,
+                                FALSE,
+                                DUPLICATE_SAME_ACCESS);
+  RAY_CHECK(result);
+
   int pipe_write_fd =
       _open_osfhandle(reinterpret_cast<intptr_t>(handle.GetWriteHandle()), _O_WRONLY);
   RAY_CHECK_NE(_dup2(pipe_write_fd, stream_fd), -1)
-      << "Fails to duplicate file descritor.";
+      << "Fails to duplicate file descriptor.";
 #endif
 
+  RedirectionHandleWrapper handle_wrapper;
+  handle_wrapper.redirection_file_handle = std::move(handle);
+  handle_wrapper.saved_stream_handle = duped_stream_fd;
+
   const bool is_new =
-      redirection_file_handles.emplace(stream_fd, std::move(handle)).second;
+      redirection_file_handles.emplace(stream_fd, std::move(handle_wrapper)).second;
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
 }
 
@@ -83,18 +112,18 @@ void FlushOnRedirectedStream(int stream_fd) {
   auto iter = redirection_file_handles.find(stream_fd);
   RAY_CHECK(iter != redirection_file_handles.end())
       << "Stream with file descriptor " << stream_fd << " is not registered.";
-  iter->second.Flush();
+  iter->second.redirection_file_handle.Flush();
 }
 
 }  // namespace
 
 void RedirectStdout(const StreamRedirectionOption &opt) {
-  RedirectStream(GetStdoutHandle(), opt);
+  RedirectStream(GetStdoutFd(), opt);
 }
 void RedirectStderr(const StreamRedirectionOption &opt) {
-  RedirectStream(GetStderrHandle(), opt);
+  RedirectStream(GetStderrFd(), opt);
 }
-void FlushOnRedirectedStdout() { FlushOnRedirectedStream(GetStdoutHandle()); }
-void FlushOnRedirectedStderr() { FlushOnRedirectedStream(GetStderrHandle()); }
+void FlushOnRedirectedStdout() { FlushOnRedirectedStream(GetStdoutFd()); }
+void FlushOnRedirectedStderr() { FlushOnRedirectedStream(GetStderrFd()); }
 
 }  // namespace ray

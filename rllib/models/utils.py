@@ -186,12 +186,12 @@ def get_filter_config(shape):
         [32, [4, 4], 2],
         [256, [11, 11], 1],
     ]
-    # Dreamer-style (S-sized model) Atari or DM Control Suite.
+    # Dreamer-style (XS-sized model) Atari or DM Control Suite.
     filters_64x64 = [
+        [16, [4, 4], 2],
         [32, [4, 4], 2],
         [64, [4, 4], 2],
         [128, [4, 4], 2],
-        [256, [4, 4], 2],
     ]
     # Small (1/2) Atari.
     filters_42x42 = [

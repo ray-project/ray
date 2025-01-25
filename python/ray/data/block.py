@@ -2,7 +2,7 @@ import collections
 import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -11,7 +11,6 @@ from typing import (
     Dict,
     Iterator,
     List,
-    Literal,
     Optional,
     Protocol,
     Tuple,
@@ -30,11 +29,6 @@ from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
 import psutil
-
-try:
-    import resource
-except ImportError:
-    resource = None
 
 if TYPE_CHECKING:
     import pandas
@@ -123,13 +117,9 @@ def _apply_batch_format(given_batch_format: Optional[str]) -> str:
     return given_batch_format
 
 
-def _apply_batch_size(
-    given_batch_size: Optional[Union[int, Literal["default"]]]
-) -> Optional[int]:
-    if given_batch_size == "default":
-        return ray.data.context.DEFAULT_BATCH_SIZE
-    else:
-        return given_batch_size
+@DeveloperAPI
+def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
+    return [m.to_stats() for m in metas]
 
 
 @DeveloperAPI
@@ -149,9 +139,7 @@ class BlockExecStats:
         self.udf_time_s: Optional[float] = 0
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
-        # Max memory usage. May be an overestimate since we do not
-        # differentiate from previous tasks on the same worker.
-        self.max_rss_bytes: int = 0
+        self.rss_bytes: int = 0
         self.task_idx: Optional[int] = None
 
     @staticmethod
@@ -189,43 +177,55 @@ class _BlockExecStatsBuilder:
         stats.end_time_s = self.end_time
         stats.wall_time_s = self.end_time - self.start_time
         stats.cpu_time_s = self.end_cpu - self.start_cpu
-        if resource is None:
-            # NOTE(swang): resource package is not supported on Windows. This
-            # is only the memory usage at the end of the task, not the peak
-            # memory.
-            process = psutil.Process(os.getpid())
-            stats.max_rss_bytes = int(process.memory_info().rss)
-        else:
-            stats.max_rss_bytes = int(
-                resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3
-            )
+        process = psutil.Process(os.getpid())
+        stats.rss_bytes = int(process.memory_info().rss)
+
         return stats
 
 
 @DeveloperAPI
 @dataclass
-class BlockMetadata:
-    """Metadata about the block."""
+class BlockStats:
+    """Statistics about the block produced"""
 
     #: The number of rows contained in this block, or None.
     num_rows: Optional[int]
     #: The approximate size in bytes of this block, or None.
     size_bytes: Optional[int]
+    #: Execution stats for this block.
+    exec_stats: Optional[BlockExecStats]
+
+    def __post_init__(self):
+        if self.size_bytes is not None:
+            # Require size_bytes to be int, ray.util.metrics objects
+            # will not take other types like numpy.int64
+            assert isinstance(self.size_bytes, int)
+
+
+_BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
+
+
+@DeveloperAPI
+@dataclass
+class BlockMetadata(BlockStats):
+    """Metadata about the block."""
+
     #: The pyarrow schema or types of the block elements, or None.
     schema: Optional[Union[type, "pyarrow.lib.Schema"]]
     #: The list of file paths used to generate this block, or
     #: the empty list if indeterminate.
     input_files: Optional[List[str]]
-    #: Execution stats for this block.
-    exec_stats: Optional[BlockExecStats]
+
+    def to_stats(self):
+        return BlockStats(
+            **{k: v for k, v in asdict(self).items() if k in _BLOCK_STATS_FIELD_NAMES}
+        )
 
     def __post_init__(self):
+        super().__post_init__()
+
         if self.input_files is None:
             self.input_files = []
-        if self.size_bytes is not None:
-            # Require size_bytes to be int, ray.util.metrics objects
-            # will not take other types like numpy.int64
-            assert isinstance(self.size_bytes, int)
 
 
 @DeveloperAPI
@@ -414,9 +414,9 @@ class BlockAccessor:
     @classmethod
     def batch_to_pandas_block(cls, batch: Dict[str, Any]) -> Block:
         """Create a Pandas block from user-facing data formats."""
-        from ray.data._internal.pandas_block import PandasBlockAccessor
+        from ray.data._internal.pandas_block import PandasBlockBuilder
 
-        return PandasBlockAccessor.numpy_to_block(batch)
+        return PandasBlockBuilder._table_from_pydict(batch)
 
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
@@ -452,13 +452,46 @@ class BlockAccessor:
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
+    def count(self, on: str, ignore_nulls: bool = False) -> Optional[U]:
+        """Returns a count of the distinct values in the provided column"""
+        raise NotImplementedError
+
+    def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
+        """Returns a sum of the values in the provided column"""
+        raise NotImplementedError
+
+    def min(self, on: str, ignore_nulls: bool) -> Optional[U]:
+        """Returns a min of the values in the provided column"""
+        raise NotImplementedError
+
+    def max(self, on: str, ignore_nulls: bool) -> Optional[U]:
+        """Returns a max of the values in the provided column"""
+        raise NotImplementedError
+
+    def mean(self, on: str, ignore_nulls: bool) -> Optional[U]:
+        """Returns a mean of the values in the provided column"""
+        raise NotImplementedError
+
+    def sum_of_squared_diffs_from_mean(
+        self,
+        on: str,
+        ignore_nulls: bool,
+        mean: Optional[U] = None,
+    ) -> Optional[U]:
+        """Returns a sum of diffs (from mean) squared for the provided column"""
+        raise NotImplementedError
+
+    def sort(self, sort_key: "SortKey") -> "Block":
+        """Returns new block sorted according to provided `sort_key`"""
+        raise NotImplementedError
+
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
+    def _aggregate(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -470,8 +503,11 @@ class BlockAccessor:
         raise NotImplementedError
 
     @staticmethod
-    def aggregate_combined_blocks(
-        blocks: List[Block], sort_key: "SortKey", aggs: Tuple["AggregateFn"]
+    def _combine_aggregated_blocks(
+        blocks: List[Block],
+        sort_key: "SortKey",
+        aggs: Tuple["AggregateFn"],
+        finalize: bool = True,
     ) -> Tuple[Block, BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
@@ -480,22 +516,39 @@ class BlockAccessor:
         """Return the block type of this block."""
         raise NotImplementedError
 
+    def _get_group_boundaries_sorted(self, keys: List[str]) -> np.ndarray:
+        """
+        NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
 
-def _get_block_boundaries(columns: list[np.ndarray]) -> np.ndarray:
-    """Compute boundaries of the groups within a block, which is represented
-    by a list of 1D numpy arrays for each column. In each column,
-    NaNs/None are considered to be the same group.
+        Compute boundaries of the groups within a block based on provided
+        key (a column or a list of columns)
 
-    Args:
-        columns: a list of 1D numpy arrays. This is generally given by the
-        dictionary values of ``BlockAccessor.to_numpy()``.
+        NOTE: In each column, NaNs/None are considered to be the same group.
 
-    Returns:
-        A list of starting indices of each group and an end index of the last
-        group, i.e., there are ``num_groups + 1`` entries and the first and last
-        entries are 0 and ``len(array)`` respectively.
-    """
+        Args:
+            block: sorted block for which grouping of rows will be determined
+                    based on provided key
+            keys: list of columns determining the key for every row based on
+                    which the block will be grouped
 
+        Returns:
+            A list of starting indices of each group and an end index of the last
+            group, i.e., there are ``num_groups + 1`` entries and the first and last
+            entries are 0 and ``len(array)`` respectively.
+        """
+
+        if keys:
+            # Convert key columns to Numpy (to perform vectorized
+            # ops on them)
+            projected_block = self.to_numpy(keys)
+
+            return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
+
+        # If no keys are specified, whole block is considered a single group
+        return np.array([0, self.num_rows()])
+
+
+def _get_group_boundaries_sorted_numpy(columns: list[np.ndarray]) -> np.ndarray:
     # There are 3 categories: general, numerics with NaN, and categorical with None.
     # We only needed to check the last element for NaNs/None, as they are assumed to
     # be sorted.

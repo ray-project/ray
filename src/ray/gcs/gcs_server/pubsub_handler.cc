@@ -25,8 +25,8 @@ void InternalPubSubHandler::HandleGcsPublish(rpc::GcsPublishRequest request,
                                              rpc::GcsPublishReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "received publish request: " << request.DebugString();
-  for (const auto &msg : request.pub_messages()) {
-    gcs_publisher_.GetPublisher().Publish(msg);
+  for (auto &&msg : std::move(*request.mutable_pub_messages())) {
+    gcs_publisher_.GetPublisher().Publish(std::move(msg));
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
