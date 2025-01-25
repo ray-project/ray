@@ -10,10 +10,7 @@ from ray.util.annotations import Deprecated
 
 @Deprecated
 class HorovodTrainer(DataParallelTrainer):
-    """A Trainer for data parallel Horovod training.
-
-    Horovod Trainer is Deprecated.
-    """
+    """A Trainer for data parallel Horovod training. HorovodTrainer is deprecated."""
 
     def __init__(
         self,

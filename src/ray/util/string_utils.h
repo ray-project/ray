@@ -14,20 +14,36 @@
 
 #pragma once
 
+#include <filesystem>
 #include <string>
 
 namespace ray {
 
 // Transfer the string to the Hex format. It can be more readable than the ANSI mode
-inline std::string StringToHex(const std::string &str) {
-  constexpr char hex[] = "0123456789abcdef";
-  std::string result;
-  for (size_t i = 0; i < str.size(); i++) {
-    unsigned char val = str[i];
-    result.push_back(hex[val >> 4]);
-    result.push_back(hex[val & 0xf]);
-  }
-  return result;
+std::string StringToHex(const std::string &str);
+
+/// Uses sscanf() to read a token matching from the string, advancing the iterator.
+/// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())
+/// \param format The pattern. It must not produce any output. (e.g., use %*d, not %d.)
+/// \return The scanned prefix of the string, if any.
+std::string ScanToken(std::string::const_iterator &c_str, std::string format);
+
+/// \return The result of joining multiple path components.
+template <class... Paths>
+std::string JoinPaths(std::string base, const Paths &...components) {
+  auto join = [](auto &joined_path, const auto &component) {
+    // if the components begin with "/" or "////", just get the path name.
+    if (!component.empty() &&
+        component.front() == std::filesystem::path::preferred_separator) {
+      joined_path = std::filesystem::path(joined_path)
+                        .append(std::filesystem::path(component).filename().string())
+                        .string();
+    } else {
+      joined_path = std::filesystem::path(joined_path).append(component).string();
+    }
+  };
+  (join(base, std::string_view(components)), ...);
+  return base;
 }
 
 }  // namespace ray

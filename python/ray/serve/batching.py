@@ -290,7 +290,13 @@ class _BatchQueue:
         """Processes queued request batch."""
 
         batch: List[_SingleRequest] = await self.wait_for_batch()
-        assert len(batch) > 0
+        # Remove requests that have been cancelled from the batch. If
+        # all requests have been cancelled, simply return and wait for
+        # the next batch.
+        batch = [req for req in batch if not req.future.cancelled()]
+        if len(batch) == 0:
+            return
+
         futures = [item.future for item in batch]
 
         # Most of the logic in the function should be wrapped in this try-

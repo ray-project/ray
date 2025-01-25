@@ -80,8 +80,6 @@ struct CoreWorkerOptions {
         node_manager_port(0),
         raylet_ip_address(""),
         driver_name(""),
-        stdout_file(""),
-        stderr_file(""),
         task_execution_callback(nullptr),
         check_signals(nullptr),
         gc_collect(nullptr),
@@ -103,7 +101,8 @@ struct CoreWorkerOptions {
         worker_launch_time_ms(-1),
         worker_launched_time_ms(-1),
         assigned_worker_port(std::nullopt),
-        assigned_raylet_id(std::nullopt) {
+        assigned_raylet_id(std::nullopt),
+        debug_source("") {
     // TODO(hjiang): Add invariant check: for worker, both should be assigned; for driver,
     // neither should be assigned.
   }
@@ -137,10 +136,6 @@ struct CoreWorkerOptions {
   std::string raylet_ip_address;
   /// The name of the driver.
   std::string driver_name;
-  /// The stdout file of this process.
-  std::string stdout_file;
-  /// The stderr file of this process.
-  std::string stderr_file;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
   /// The callback to be called when shutting down a `CoreWorker` instance.
@@ -219,6 +214,10 @@ struct CoreWorkerOptions {
   /// Same as [assigned_worker_port], will be assigned for worker, and left empty for
   /// driver.
   std::optional<NodeID> assigned_raylet_id;
+
+  // Source information for `CoreWorker`, used for debugging and informational purpose,
+  // rather than functional purpose.
+  std::string debug_source;
 };
 }  // namespace core
 }  // namespace ray

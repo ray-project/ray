@@ -570,6 +570,14 @@ TEST_F(WorkerPoolDriverRegisteredTest, CompareWorkerProcessObjects) {
   ASSERT_TRUE(!std::equal_to<T>()(a, empty));
 }
 
+TEST_F(WorkerPoolDriverRegisteredTest, TestGetRegisteredDriver) {
+  rpc::JobConfig job_config;
+  auto job_id = JobID::FromInt(11111);
+  auto driver = RegisterDriver(Language::PYTHON, job_id, job_config);
+  ASSERT_EQ(worker_pool_->GetRegisteredDriver(driver->WorkerId()), driver);
+  ASSERT_EQ(worker_pool_->GetRegisteredDriver(WorkerID::FromRandom()), nullptr);
+}
+
 TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
   PopWorkerStatus status;
   auto [proc, token] = worker_pool_->StartWorkerProcess(
@@ -637,6 +645,24 @@ TEST_F(WorkerPoolDriverRegisteredTest, InitialWorkerProcessCount) {
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkers) {
   const auto task_spec = ExampleTaskSpec();
+  // Prestarts 2 workers.
+  worker_pool_->PrestartWorkers(task_spec, 2);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
+  // Prestarts 1 more worker.
+  worker_pool_->PrestartWorkers(task_spec, 3);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
+  // No more needed.
+  worker_pool_->PrestartWorkers(task_spec, 1);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
+  // Capped by soft limit.
+  worker_pool_->PrestartWorkers(task_spec, 20);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), POOL_SIZE_SOFT_LIMIT);
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkersWithRuntimeEnv) {
+  auto task_spec = ExampleTaskSpec();
+  task_spec.GetMutableMessage().mutable_runtime_env_info()->set_serialized_runtime_env(
+      "{\"env_vars\": {\"FOO\": \"bar\"}}");
   // Prestarts 2 workers.
   worker_pool_->PrestartWorkers(task_spec, 2);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
@@ -2124,8 +2150,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
 
 TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForPrestartedWorker) {
   const auto task_spec = ExampleTaskSpec();
-
-  worker_pool_->PrestartDefaultCpuWorkers(ray::Language::PYTHON, 1);
+  worker_pool_->PrestartWorkersInternal(task_spec, /*num_needed=*/1);
   worker_pool_->PushWorkers(0, task_spec.JobId());
   // One worker process has been prestarted.
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
@@ -2230,6 +2255,7 @@ int main(int argc, char **argv) {
       argv[0],
       ray::RayLogLevel::INFO,
       ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);

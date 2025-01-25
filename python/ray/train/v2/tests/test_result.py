@@ -1,22 +1,7 @@
-import pandas as pd
 import pytest
 
 from ray.train import Checkpoint
 from ray.train.v2.api.result import Result
-
-
-def test_result_raises_with_dataframe():
-    """Test that the Result init function raises an error when
-    metrics_dataframe is passed in as a parameter.
-    """
-    with pytest.raises(TypeError):
-        Result(
-            metrics={},
-            checkpoint=None,
-            error=None,
-            path=None,
-            metrics_dataframe=pd.DataFrame(),
-        )
 
 
 def test_result_repr():
@@ -33,8 +18,6 @@ def test_result_repr():
 
 
 def test_get_best_checkpoint():
-    """Test that the Result get_best_checkpoint function returns the correct"""
-
     res = Result(
         metrics={},
         checkpoint=None,
