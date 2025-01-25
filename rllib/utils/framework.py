@@ -81,7 +81,7 @@ def get_device(config: "AlgorithmConfig", num_gpus_requested: int = 1):
             # learner is not an Ray actor and Ray does not manage devices for it.
             if (
                 len(devices) == 1
-                and ray._private.worker.mode() == ray._private.worker.WORKER_MODE
+                and ray._private.worker.mode == ray._private.worker.WORKER_MODE
             ):
                 return devices[0]
             else:
