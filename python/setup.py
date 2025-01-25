@@ -355,10 +355,7 @@ if setup_spec.type == SetupType.RAY:
     # large and specific, will likely run into dependency conflicts with other
     # ML libraries. as a result, it is an "extra-extra".
     setup_spec.extras["llm"] = list(
-        set(
-            ["vllm>=0.6.6.post1"]
-            + setup_spec.extras["data"]
-        )
+        set(["vllm>=0.6.6.post1"] + setup_spec.extras["data"])
     )
 
 # These are the main dependencies for users of ray. This list
