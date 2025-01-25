@@ -67,6 +67,10 @@ class SubprocessModuleHandle:
     - "max number of restarts"? (Now: infinite)
     """
 
+    # Class variable. Force using spawn because Ray C bindings have static variables
+    # that need to be re-initialized for a new process.
+    mp_context = multiprocessing.get_context("spawn")
+
     @dataclass
     class ActiveRequest:
         request: aiohttp.web.Request
@@ -127,10 +131,10 @@ class SubprocessModuleHandle:
         - start_dispatch_parent_bound_messages_thread: used for testing.
         """
         self.next_request_id = 0
-        self.child_bound_queue = multiprocessing.Queue()
-        self.parent_bound_queue = multiprocessing.Queue()
+        self.child_bound_queue = self.mp_context.Queue()
+        self.parent_bound_queue = self.mp_context.Queue()
         self.active_requests.pop_all()
-        self.process = multiprocessing.Process(
+        self.process = self.mp_context.Process(
             target=run_module,
             args=(
                 self.child_bound_queue,
