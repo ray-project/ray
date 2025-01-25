@@ -218,17 +218,17 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
 #elif defined(_WIN32)
   if (stream_redirect_opt.tee_to_stdout) {
-    HANDLE duped_stderr_handle;
+    HANDLE duped_stdout_handle;
     BOOL result = DuplicateHandle(GetCurrentProcess(),
                                   GetStdHandle(STD_OUTPUT_HANDLE),
                                   GetCurrentProcess(),
-                                  &duped_stderr_handle,
+                                  &duped_stdout_handle,
                                   0,
                                   FALSE,
                                   DUPLICATE_SAME_ACCESS);
     RAY_CHECK(result) << "Fails to duplicate stdout handle";
 
-    boost::iostreams::file_descriptor_sink sink{duped_stderr_handle, std::ios_base::out};
+    boost::iostreams::file_descriptor_sink sink{duped_stdout_handle, std::ios_base::out};
     std_ostream.stdout_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
