@@ -80,7 +80,7 @@ def vtrace_torch(
     clip_rho_threshold: Union[float, "torch.Tensor"] = 1.0,
     clip_pg_rho_threshold: Union[float, "torch.Tensor"] = 1.0,
 ):
-    """V-trace for softmax policies implemented with torch.
+    r"""V-trace for softmax policies implemented with torch.
 
     Calculates V-trace actor critic targets for softmax polices as described in
     "IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner
@@ -138,17 +138,17 @@ def vtrace_torch(
 
     deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
 
-    # Only move the for-loop to CPU.
-    discounts_cpu = discounts.to("cpu")
-    cs_cpu = cs.to("cpu")
-    deltas_cpu = deltas.to("cpu")
-    vs_minus_v_xs_cpu = [torch.zeros_like(bootstrap_values, device="cpu")]
-    for i in reversed(range(len(discounts_cpu))):
-        discount_t, c_t, delta_t = discounts_cpu[i], cs_cpu[i], deltas_cpu[i]
-        vs_minus_v_xs_cpu.append(delta_t + discount_t * c_t * vs_minus_v_xs_cpu[-1])
-    vs_minus_v_xs_cpu = torch.stack(vs_minus_v_xs_cpu[1:])
-    # Move results back to GPU - if applicable.
-    vs_minus_v_xs = vs_minus_v_xs_cpu.to(deltas.device)
+    # Note: The original IMPALA code (and paper) suggested to perform the following
+    # v-trace for-loop on the CPU, due to its sequential nature. However, modern GPUs
+    # are quite optimized for these shorted for-loops, which is why it should be faster
+    # nowadays to leave these operations on the GPU to avoid the GPU<>CPU transfer
+    # penalty. This penalty can actually be quite massive on the LEarner actors, given
+    # all other code is already well optimized.
+    vs_minus_v_xs = [torch.zeros_like(bootstrap_values, device=deltas.device)]
+    for i in reversed(range(len(discounts))):
+        discount_t, c_t, delta_t = discounts[i], cs[i], deltas[i]
+        vs_minus_v_xs.append(delta_t + discount_t * c_t * vs_minus_v_xs[-1])
+    vs_minus_v_xs = torch.stack(vs_minus_v_xs[1:])
 
     # Reverse the results back to original order.
     vs_minus_v_xs = torch.flip(vs_minus_v_xs, dims=[0])

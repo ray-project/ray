@@ -19,6 +19,9 @@ from ray.data._internal.block_batching.util import (
 from ray.data._internal.util import make_async_gen
 
 
+logger = logging.getLogger(__file__)
+
+
 def block_generator(num_rows: int, num_blocks: int):
     for _ in range(num_blocks):
         yield pa.table({"foo": [1] * num_rows})
@@ -131,7 +134,39 @@ def test_make_async_gen_fail(buffer_size: int):
     assert e.match("Fail")
 
 
-logger = logging.getLogger(__file__)
+@pytest.mark.parametrize("buffer_size", [0, 1, 2])
+def test_make_async_gen_varying_seq_lengths(buffer_size: int):
+    """Tests that iterators of varying lengths are handled appropriately"""
+
+    def _gen(base_iterator):
+        worker_id = next(base_iterator)
+
+        # Make workers produce sequences increasing the same order
+        # as worker-ids (so that for left workers sequences run out first)
+        target_length = worker_id + 1
+
+        return iter([f"worker_{worker_id}:{i}" for i in range(target_length)])
+
+    num_seqs = 3
+
+    iterator = make_async_gen(
+        base_iterator=iter(list(range(num_seqs))),
+        fn=_gen,
+        # Make sure individual elements are handle by diff workers
+        num_workers=num_seqs,
+        queue_buffer_size=buffer_size,
+    )
+
+    seq = list(iterator)
+
+    assert [
+        "worker_0:0",
+        "worker_1:0",
+        "worker_2:0",
+        "worker_1:1",
+        "worker_2:1",
+        "worker_2:2",
+    ] == seq
 
 
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])

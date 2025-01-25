@@ -15,6 +15,7 @@
 #include "ray/object_manager/memory_object_reader.h"
 
 #include <cstring>
+#include <utility>
 
 namespace ray {
 

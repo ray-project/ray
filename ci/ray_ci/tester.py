@@ -75,6 +75,13 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Only include tests with the given tags."),
 )
 @click.option(
+    "--cache-test-results",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("If cache and use test results in bazel cache."),
+)
+@click.option(
     "--run-flaky-tests",
     is_flag=True,
     show_default=True,
@@ -161,6 +168,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     default="optimized",
 )
 @click.option(
+    "--install-mask",
+    type=str,
+    help="A install mask string to install ray with",
+)
+@click.option(
     "--bisect-run-test-target",
     type=str,
     help="Test target to run in bisection mode",
@@ -185,6 +197,7 @@ def main(
     operating_system: str,
     except_tags: str,
     only_tags: str,
+    cache_test_results: bool,
     run_flaky_tests: bool,
     run_high_impact_tests: bool,
     skip_ray_installation: bool,
@@ -196,6 +209,7 @@ def main(
     python_version: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
+    install_mask: Optional[str],
     bisect_run_test_target: Optional[str],
     tmp_filesystem: Optional[str],
 ) -> None:
@@ -226,6 +240,7 @@ def main(
         build_name=build_name,
         build_type=build_type,
         skip_ray_installation=skip_ray_installation,
+        install_mask=install_mask,
     )
     if build_only:
         sys.exit(0)
@@ -249,6 +264,7 @@ def main(
         test_arg,
         is_bisect_run=bisect_run_test_target is not None,
         run_flaky_tests=run_flaky_tests,
+        cache_test_results=cache_test_results,
     )
     sys.exit(0 if success else 42)
 
@@ -273,6 +289,7 @@ def _get_container(
     python_version: Optional[str] = None,
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
+    install_mask: Optional[str] = None,
     skip_ray_installation: bool = False,
 ) -> TesterContainer:
     shard_count = workers * parallelism_per_worker
@@ -294,6 +311,7 @@ def _get_container(
             skip_ray_installation=skip_ray_installation,
             build_type=build_type,
             tmp_filesystem=tmp_filesystem,
+            install_mask=install_mask,
         )
 
     if operating_system == "windows":

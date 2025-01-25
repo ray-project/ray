@@ -6,8 +6,10 @@ orphan: true
 
 # Serve a Stable Diffusion Model
 
-[![try-anyscale-quickstart-ray-serve-stable-diffusion-quickstart](../../_static/img/run-quickstart-anyscale.svg)](https://console.anyscale.com/register/ha?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-serve-stable-diffusion-quickstart&redirectTo=/v2/template-preview/serve-stable-diffusion-v2)
-
+<a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-serve-stable-diffusion-quickstart&redirectTo=/v2/template-preview/serve-stable-diffusion-v2">
+    <img src="../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale">
+</a>
+<br></br>
 This example runs a Stable Diffusion application with Ray Serve.
 
 To run this example, install the following:

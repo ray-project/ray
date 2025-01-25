@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from itertools import islice
 from typing import List, Optional
 
+from ray import NodeID
 import ray.dashboard.memory_utils as memory_utils
 from ray._private.profiling import chrome_tracing_dump
 from ray._private.ray_constants import env_integer
@@ -361,12 +362,22 @@ class StateAPIManager:
             {object_id -> object_data_in_dict}
             object_data_in_dict's schema is in ObjectState
         """
-        raylet_ids = self._client.get_all_registered_raylet_ids()
+        all_node_info_reply = await self._client.get_all_node_info(
+            timeout=option.timeout,
+            limit=None,
+            filters=[("state", "=", "ALIVE")],
+        )
+        tasks = [
+            self._client.get_object_info(
+                node_info.node_manager_address,
+                node_info.node_manager_port,
+                timeout=option.timeout,
+            )
+            for node_info in all_node_info_reply.node_info_list
+        ]
+
         replies = await asyncio.gather(
-            *[
-                self._client.get_object_info(node_id, timeout=option.timeout)
-                for node_id in raylet_ids
-            ],
+            *tasks,
             return_exceptions=True,
         )
 
@@ -374,7 +385,7 @@ class StateAPIManager:
             unresponsive_nodes = 0
             worker_stats = []
             total_objects = 0
-            for reply, _ in zip(replies, raylet_ids):
+            for reply in replies:
                 if isinstance(reply, DataSourceUnavailable):
                     unresponsive_nodes += 1
                     continue
@@ -396,14 +407,14 @@ class StateAPIManager:
                     )
 
             partial_failure_warning = None
-            if len(raylet_ids) > 0 and unresponsive_nodes > 0:
+            if len(tasks) > 0 and unresponsive_nodes > 0:
                 warning_msg = NODE_QUERY_FAILURE_WARNING.format(
                     type="raylet",
-                    total=len(raylet_ids),
+                    total=len(tasks),
                     network_failures=unresponsive_nodes,
                     log_command="raylet.out",
                 )
-                if unresponsive_nodes == len(raylet_ids):
+                if unresponsive_nodes == len(tasks):
                     raise DataSourceUnavailable(warning_msg)
                 partial_failure_warning = (
                     f"The returned data may contain incomplete result. {warning_msg}"
@@ -466,12 +477,27 @@ class StateAPIManager:
             We don't have id -> data mapping like other API because runtime env
             doesn't have unique ids.
         """
-        agent_ids = self._client.get_all_registered_runtime_env_agent_ids()
+        live_node_info_reply = await self._client.get_all_node_info(
+            timeout=option.timeout,
+            limit=None,
+            filters=[("state", "=", "ALIVE")],
+        )
+        node_infos = [
+            node_info
+            for node_info in live_node_info_reply.node_info_list
+            if node_info.runtime_env_agent_port is not None
+        ]
+        tasks = [
+            self._client.get_runtime_envs_info(
+                node_info.node_manager_address,
+                node_info.runtime_env_agent_port,
+                timeout=option.timeout,
+            )
+            for node_info in node_infos
+        ]
+
         replies = await asyncio.gather(
-            *[
-                self._client.get_runtime_envs_info(node_id, timeout=option.timeout)
-                for node_id in agent_ids
-            ],
+            *tasks,
             return_exceptions=True,
         )
 
@@ -479,9 +505,7 @@ class StateAPIManager:
             result = []
             unresponsive_nodes = 0
             total_runtime_envs = 0
-            for node_id, reply in zip(
-                self._client.get_all_registered_runtime_env_agent_ids(), replies
-            ):
+            for node_info, reply in zip(node_infos, replies):
                 if isinstance(reply, DataSourceUnavailable):
                     unresponsive_nodes += 1
                     continue
@@ -496,18 +520,18 @@ class StateAPIManager:
                     data["runtime_env"] = RuntimeEnv.deserialize(
                         data["runtime_env"]
                     ).to_dict()
-                    data["node_id"] = node_id
+                    data["node_id"] = NodeID(node_info.node_id).hex()
                     result.append(data)
 
             partial_failure_warning = None
-            if len(agent_ids) > 0 and unresponsive_nodes > 0:
+            if len(tasks) > 0 and unresponsive_nodes > 0:
                 warning_msg = NODE_QUERY_FAILURE_WARNING.format(
                     type="agent",
-                    total=len(agent_ids),
+                    total=len(tasks),
                     network_failures=unresponsive_nodes,
                     log_command="dashboard_agent.log",
                 )
-                if unresponsive_nodes == len(agent_ids):
+                if unresponsive_nodes == len(tasks):
                     raise DataSourceUnavailable(warning_msg)
                 partial_failure_warning = (
                     f"The returned data may contain incomplete result. {warning_msg}"

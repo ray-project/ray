@@ -30,6 +30,9 @@ config = (
             vf_share_layers=True,
         ),
     )
+    .env_runners(
+        num_envs_per_env_runner=2,
+    )
     .training(
         lr=0.0003,
         num_epochs=6,
@@ -44,7 +47,7 @@ config = (
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 300000,
     # Divide by num_agents to get actual return per agent.
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 400.0 * (args.num_agents or 1),
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0 * (args.num_agents or 1),
 }
 
 

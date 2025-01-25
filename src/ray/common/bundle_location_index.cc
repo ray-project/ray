@@ -170,7 +170,7 @@ std::string BundleLocationIndex::GetBundleLocationDebugString(
 
 std::string BundleLocationIndex::DebugString() const {
   std::ostringstream ostr;
-  ostr << "{ \"placment group locations\": [";
+  ostr << "{ \"placement group locations\": [";
   for (const auto &iter : placement_group_to_bundle_locations_) {
     ostr << "{placement group id: " << iter.first << ", ";
     ostr << "bundle locations:" << GetBundleLocationDebugString(*iter.second);

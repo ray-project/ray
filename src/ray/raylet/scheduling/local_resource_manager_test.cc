@@ -16,6 +16,9 @@
 // build.
 #include "ray/raylet/scheduling/local_resource_manager.h"
 
+#include <memory>
+#include <string>
+
 #include "gtest/gtest.h"
 
 namespace ray {

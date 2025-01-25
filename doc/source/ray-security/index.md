@@ -33,7 +33,7 @@ When considering the security responsibilities of running Ray, think about the d
 
 ### Deploy Ray Clusters in a controlled network environment
 * Network traffic between core Ray components and additional Ray components should always be in a controlled, isolated network. Access to additional services should be gated with strict network controls and/or external authentication/authorization proxies.
-* gRPC communication can be encrypted with TLS, but it is not a replacement for network isolation.
+* gRPC communication can be encrypted with TLS, but it's not a replacement for network isolation.
 * Platform providers are responsible for ensuring that Ray runs in sufficiently controlled network environments and that developers can access features like Ray Dashboard in a secure manner.
 ### Only execute trusted code within Ray
 * Ray faithfully executes code that is passed to it – Ray doesn’t differentiate between a tuning experiment, a rootkit install, or an S3 bucket inspection.

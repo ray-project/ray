@@ -17,6 +17,8 @@ srcs:
   - python/requirements/ml/tune-test-requirements.txt
   - python/requirements/ml/data-requirements.txt
   - python/requirements/ml/data-test-requirements.txt
+  - python/requirements/ml/rllib-requirements.txt
+  - python/requirements/ml/rllib-test-requirements.txt
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_gpu
   - RAYCI_IS_GPU_BUILD=true

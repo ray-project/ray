@@ -1,7 +1,7 @@
 import json
 import logging
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Optional
 
 from ray._private.protobuf_compat import message_to_dict
 
@@ -82,7 +82,10 @@ class GlobalState:
         self.global_state_accessor.connect()
 
     def actor_table(
-        self, actor_id: str, job_id: ray.JobID = None, actor_state_name: str = None
+        self,
+        actor_id: Optional[str],
+        job_id: Optional[ray.JobID] = None,
+        actor_state_name: Optional[str] = None,
     ):
         """Fetch and parse the actor table information for a single actor ID.
 
@@ -932,7 +935,9 @@ def node_ids():
 
 
 def actors(
-    actor_id: str = None, job_id: ray.JobID = None, actor_state_name: str = None
+    actor_id: Optional[str] = None,
+    job_id: Optional[ray.JobID] = None,
+    actor_state_name: Optional[str] = None,
 ):
     """Fetch actor info for one or more actor IDs (for debugging only).
 

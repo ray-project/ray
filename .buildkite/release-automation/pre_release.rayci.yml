@@ -17,7 +17,7 @@ steps:
     key: check-commit-hash
     commands:
       - bash .buildkite/release-automation/check-commit-hash.sh
-  
+
   - label: "Build update version binary"
     key: build-update-version-zip
     instance_type: default
@@ -37,7 +37,7 @@ steps:
       env:
         RAYCI_RELEASE: 1
         RAYCI_FULL_PLATFORM_RELEASE: "${RAYCI_FULL_PLATFORM_RELEASE}"
-  
+
   - label: "Trigger Postmerge nightly build & test"
     if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
     trigger: "postmerge"

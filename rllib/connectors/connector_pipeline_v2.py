@@ -137,11 +137,14 @@ class ConnectorPipelineV2(ConnectorV2):
         """Remove a single connector piece in this pipeline by its name or class.
 
         Args:
-            name: The name of the connector piece to be removed from the pipeline.
+            name_or_class: The name of the connector piece to be removed from the
+                pipeline.
         """
         idx = -1
         for i, c in enumerate(self.connectors):
-            if c.__class__.__name__ == name_or_class:
+            if (isinstance(name_or_class, type) and c.__class__ is name_or_class) or (
+                isinstance(name_or_class, str) and c.__class__.__name__ == name_or_class
+            ):
                 idx = i
                 break
         if idx >= 0:
@@ -268,11 +271,14 @@ class ConnectorPipelineV2(ConnectorV2):
         for conn in self.connectors:
             conn_name = type(conn).__name__
             if self._check_component(conn_name, components, not_components):
-                state[conn_name] = conn.get_state(
+                sts = conn.get_state(
                     components=self._get_subcomponents(conn_name, components),
                     not_components=self._get_subcomponents(conn_name, not_components),
                     **kwargs,
                 )
+                # Ignore empty dicts.
+                if sts:
+                    state[conn_name] = sts
         return state
 
     @override(ConnectorV2)

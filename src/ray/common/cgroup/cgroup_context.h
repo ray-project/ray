@@ -14,15 +14,15 @@
 
 #pragma once
 
-#include <unistd.h>
-
 #include <cstdint>
 #include <string>
+
+#include "ray/util/compat.h"
 
 namespace ray {
 
 // Context used to setup cgroupv2 for a task / actor.
-struct PhysicalModeExecutionContext {
+struct AppProcCgroupMetadata {
   // Directory for cgroup, which is applied to application process.
   //
   // TODO(hjiang): Revisit if we could save some CPU/mem with string view.

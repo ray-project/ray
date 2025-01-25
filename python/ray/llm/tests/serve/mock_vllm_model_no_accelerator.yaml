@@ -1,0 +1,23 @@
+model_loading_config:
+  model_id: VLLMFakeModel
+
+llm_engine: vLLM
+
+engine_kwargs:
+  max_model_len: 4096
+
+deployment_config:
+  autoscaling_config:
+    min_replicas: 4
+    initial_replicas: 4
+    max_replicas: 10
+    target_ongoing_requests: 20
+    metrics_interval_s: 10.0
+    look_back_period_s: 30.0
+    smoothing_factor: 0.6
+    downscale_delay_s: 300.0
+    upscale_delay_s: 15.0
+  max_ongoing_requests: 48
+  ray_actor_options:
+    resources:
+      mock_resource: 0

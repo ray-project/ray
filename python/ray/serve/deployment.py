@@ -2,6 +2,7 @@ import inspect
 import logging
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+import warnings
 
 from ray.serve._private.config import (
     DeploymentConfig,
@@ -101,8 +102,7 @@ class Deployment:
                 "The Deployment constructor should not be called "
                 "directly. Use `@serve.deployment` instead."
             )
-        if not isinstance(name, str):
-            raise TypeError("name must be a string.")
+        self._validate_name(name)
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
         docs_path = None
@@ -119,6 +119,17 @@ class Deployment:
         self._deployment_config = deployment_config
         self._replica_config = replica_config
         self._docs_path = docs_path
+
+    def _validate_name(self, name: str):
+        if not isinstance(name, str):
+            raise TypeError("name must be a string.")
+
+        # name does not contain #
+        if "#" in name:
+            warnings.warn(
+                f"Deployment names should not contain the '#' character, this will raise an error starting in Ray 2.46.0. "
+                f"Current name: {name}."
+            )
 
     @property
     def name(self) -> str:

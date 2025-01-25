@@ -154,7 +154,6 @@ def convert_to_numpy(x: TensorStructType, reduce_type: bool = True) -> TensorStr
                 ret = ret.astype(np.float32)
             elif np.issubdtype(ret.dtype, int):
                 ret = ret.astype(np.int32)
-            return ret
         return ret
 
     return tree.map_structure(mapping, x)

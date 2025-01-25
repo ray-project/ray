@@ -22,6 +22,7 @@
 #include "ray/gcs/callback.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/sequencer.h"
+#include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -365,22 +366,15 @@ class NodeInfoAccessor {
                                  int64_t timeout_ms,
                                  const MultiItemCallback<bool> &callback);
 
-  /// Drain (remove the information of the node from the cluster) the local node from GCS
-  /// asynchronously.
-  ///
-  /// Check gcs_service.proto NodeInfoGcsService.DrainNode for the API spec.
-  ///
-  /// \param node_id The ID of node that to be unregistered.
-  /// \param callback Callback that will be called when unregistration is complete.
-  /// \return Status
-  virtual Status AsyncDrainNode(const NodeID &node_id, const StatusCallback &callback);
-
   /// Get information of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
+  /// \param timeout_ms The timeout for this request.
+  /// \param node_id If not nullopt, only return the node info of the specified node.
   /// \return Status
   virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                             int64_t timeout_ms);
+                             int64_t timeout_ms,
+                             std::optional<NodeID> node_id = std::nullopt);
 
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
@@ -987,6 +981,10 @@ class AutoscalerStateAccessor {
                                          std::string &serialized_reply);
 
   virtual Status GetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
+
+  virtual Status AsyncGetClusterStatus(
+      int64_t timeout_ms,
+      const OptionalItemCallback<rpc::autoscaler::GetClusterStatusReply> &callback);
 
   virtual Status ReportAutoscalingState(int64_t timeout_ms,
                                         const std::string &serialized_state);

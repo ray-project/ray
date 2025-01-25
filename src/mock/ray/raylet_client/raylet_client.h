@@ -133,6 +133,12 @@ class MockRayletClientInterface : public RayletClientInterface {
                int64_t draining_deadline_timestamp_ms,
                const rpc::ClientCallback<rpc::DrainRayletReply> &callback),
               (override));
+  MOCK_METHOD(
+      void,
+      CancelTasksWithResourceShapes,
+      ((const std::vector<google::protobuf::Map<std::string, double>>)&resource_shapes,
+       const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback),
+      (override));
   MOCK_METHOD(void,
               IsLocalWorkerDead,
               (const WorkerID &worker_id,

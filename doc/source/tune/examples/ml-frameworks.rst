@@ -1,17 +1,24 @@
 Examples using Ray Tune with ML Frameworks
 ------------------------------------------
 
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-ray-tune-ml-frameworks" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-tune-ml-frameworks">
+      <img src="../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale" />
+      <br/><br/>
+    </a>
+
 .. toctree::
     :hidden:
 
-    Keras Example <tune_mnist_keras>
     PyTorch Example <tune-pytorch-cifar>
     PyTorch Lightning Example <tune-pytorch-lightning>
-    Ray RLlib Example <pbt_ppo_example>
     XGBoost Example <tune-xgboost>
     LightGBM Example <lightgbm_example>
-    Horovod Example <horovod_simple>
     Hugging Face Transformers Example <pbt_transformers>
+    Ray RLlib Example <pbt_ppo_example>
+    Keras Example <tune_mnist_keras>
+    Horovod Example <horovod_simple>
 
 
 Ray Tune integrates with many popular machine learning frameworks.

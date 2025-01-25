@@ -479,15 +479,23 @@ class Change:
 class NotifyQueue:
     """Asyncio notify queue for Dict signal."""
 
-    _queue = asyncio.Queue()
+    _queue = None
+
+    @classmethod
+    def queue(cls):
+        # Lazy initialization to avoid creating a asyncio.Queue
+        # whenever this Python file is imported.
+        if cls._queue is None:
+            cls._queue = asyncio.Queue()
+        return cls._queue
 
     @classmethod
     def put(cls, co):
-        cls._queue.put_nowait(co)
+        cls.queue().put_nowait(co)
 
     @classmethod
     async def get(cls):
-        return await cls._queue.get()
+        return await cls.queue().get()
 
 
 """

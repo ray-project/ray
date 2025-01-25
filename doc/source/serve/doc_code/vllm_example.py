@@ -16,7 +16,7 @@ from ray import serve
 class VLLMPredictDeployment:
     def __init__(self, **kwargs):
         """
-        Construct a VLLM deployment.
+        Construct a vLLM deployment.
 
         Refer to https://github.com/vllm-project/vllm/blob/main/vllm/engine/arg_utils.py
         for the full list of arguments.

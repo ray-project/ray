@@ -366,6 +366,12 @@ def mock_deployment_state_manager(
         dead_replicas_context.clear()
 
 
+@pytest.fixture
+def mock_max_per_replica_retry_count():
+    with patch("ray.serve._private.deployment_state.MAX_PER_REPLICA_RETRY_COUNT", 2):
+        yield 2
+
+
 class FakeDeploymentReplica:
     """Fakes the DeploymentReplica class."""
 
@@ -2235,7 +2241,9 @@ def test_update_while_unhealthy(mock_deployment_state_manager):
     )
 
 
-def _constructor_failure_loop_two_replica(dsm, ds, num_loops):
+def _constructor_failure_loop_two_replica(
+    dsm, ds, num_loops, replica_retry_multiplier=3
+):
     """Helper function to exact constructor failure loops."""
 
     for i in range(num_loops):
@@ -2253,7 +2261,7 @@ def _constructor_failure_loop_two_replica(dsm, ds, num_loops):
         # Now the replica should be marked STOPPING after failure.
         dsm.update()
         if (
-            ds._replica_constructor_retry_counter >= 6
+            ds._replica_constructor_retry_counter >= replica_retry_multiplier * 2
             or not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS
         ):
             check_counts(
@@ -2276,7 +2284,9 @@ def _constructor_failure_loop_two_replica(dsm, ds, num_loops):
         replica_2._actor.set_done_stopping()
 
 
-def test_deploy_with_consistent_constructor_failure(mock_deployment_state_manager):
+def test_deploy_with_consistent_constructor_failure(
+    mock_deployment_state_manager, mock_max_per_replica_retry_count
+):
     """
     Test deploy() multiple replicas with consistent constructor failure.
 
@@ -2294,9 +2304,12 @@ def test_deploy_with_consistent_constructor_failure(mock_deployment_state_manage
         ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
     )
-    _constructor_failure_loop_two_replica(dsm, ds, 3)
+    loop_count = mock_max_per_replica_retry_count
+    _constructor_failure_loop_two_replica(
+        dsm, ds, loop_count, mock_max_per_replica_retry_count
+    )
 
-    assert ds._replica_constructor_retry_counter == 6
+    assert ds._replica_constructor_retry_counter == 2 * mock_max_per_replica_retry_count
     assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     assert (
         ds.curr_status_info.status_trigger
@@ -2306,7 +2319,9 @@ def test_deploy_with_consistent_constructor_failure(mock_deployment_state_manage
     assert ds.curr_status_info.message != ""
 
 
-def test_deploy_with_partial_constructor_failure(mock_deployment_state_manager):
+def test_deploy_with_partial_constructor_failure(
+    mock_deployment_state_manager, mock_max_per_replica_retry_count
+):
     """
     Test deploy() multiple replicas with constructor failure exceedining
     pre-set limit but achieved partial success with at least 1 running replica.
@@ -2333,7 +2348,7 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state_manager):
         == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
     )
 
-    _constructor_failure_loop_two_replica(dsm, ds, 2)
+    _constructor_failure_loop_two_replica(dsm, ds, 1, mock_max_per_replica_retry_count)
     assert ds.curr_status_info.status == DeploymentStatus.UPDATING
     assert (
         ds.curr_status_info.status_trigger
@@ -2342,7 +2357,7 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state_manager):
 
     dsm.update()
     check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
-    assert ds._replica_constructor_retry_counter == 4
+    assert ds._replica_constructor_retry_counter == 2
     assert ds.curr_status_info.status == DeploymentStatus.UPDATING
     assert (
         ds.curr_status_info.status_trigger
@@ -2626,7 +2641,7 @@ def test_deploy_failed(mock_deployment_state_manager):
         dsm.update()
         assert ds._replica_constructor_retry_counter == 6
         check_counts(ds, total=0)
-        timer.advance(10)  # simulate time passing between each call to udpate
+        timer.advance(10)  # simulate time passing between each call to update
 
 
 def test_recover_state_from_replica_names(mock_deployment_state_manager):
@@ -2701,6 +2716,9 @@ def test_recover_during_rolling_update(mock_deployment_state_manager):
     # Now execute a rollout: upgrade the version to "2".
     info2, v2 = deployment_info(version="2")
     assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+
+    # In real code this checkpoint would be done by the caller of .deploy()
+    dsm.save_checkpoint()
 
     # Before the replica could be stopped and restarted, simulate
     # controller crashed! A new deployment state manager should be

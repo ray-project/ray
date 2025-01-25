@@ -25,7 +25,6 @@ class ResourceSpec(
             "memory",
             "object_store_memory",
             "resources",
-            "redis_max_memory",
         ],
     )
 ):
@@ -43,11 +42,6 @@ class ResourceSpec(
             Note that when calling to_resource_dict(), this will be scaled down
             by 30% to account for the global plasma LRU reserve.
         resources: The custom resources allocated for this raylet.
-        redis_max_memory: The max amount of memory (in bytes) to allow each
-            redis shard to use. Once the limit is exceeded, redis will start
-            LRU eviction of entries. This only applies to the sharded redis
-            tables (task, object, and profile tables). By default, this is
-            capped at 10GB but can be set higher.
     """
 
     def __new__(
@@ -57,7 +51,6 @@ class ResourceSpec(
         memory=None,
         object_store_memory=None,
         resources=None,
-        redis_max_memory=None,
     ):
         return super(ResourceSpec, cls).__new__(
             cls,
@@ -66,7 +59,6 @@ class ResourceSpec(
             memory,
             object_store_memory,
             resources,
-            redis_max_memory,
         )
 
     def resolved(self):
@@ -272,27 +264,9 @@ class ResourceSpec(
                 )
                 object_store_memory = object_store_memory_cap
 
-        redis_max_memory = self.redis_max_memory
-        if redis_max_memory is None:
-            redis_max_memory = min(
-                ray_constants.DEFAULT_REDIS_MAX_MEMORY_BYTES,
-                max(int(avail_memory * 0.1), ray_constants.REDIS_MINIMUM_MEMORY_BYTES),
-            )
-        if redis_max_memory < ray_constants.REDIS_MINIMUM_MEMORY_BYTES:
-            raise ValueError(
-                "Attempting to cap Redis memory usage at {} bytes, "
-                "but the minimum allowed is {} bytes.".format(
-                    redis_max_memory, ray_constants.REDIS_MINIMUM_MEMORY_BYTES
-                )
-            )
-
         memory = self.memory
         if memory is None:
-            memory = (
-                avail_memory
-                - object_store_memory
-                - (redis_max_memory if is_head else 0)
-            )
+            memory = avail_memory - object_store_memory
             if memory < 100e6 and memory < 0.05 * system_memory:
                 raise ValueError(
                     "After taking into account object store and redis memory "
@@ -311,7 +285,6 @@ class ResourceSpec(
             memory,
             object_store_memory,
             resources,
-            redis_max_memory,
         )
         assert spec.resolved()
         return spec

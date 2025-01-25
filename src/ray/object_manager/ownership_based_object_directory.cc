@@ -14,6 +14,12 @@
 
 #include "ray/object_manager/ownership_based_object_directory.h"
 
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
@@ -509,25 +515,29 @@ void OwnershipBasedObjectDirectory::RecordMetrics(uint64_t duration_ms) {
 
   // Record number of object location updates per second.
   metrics_num_object_location_updates_per_second_ =
-      (double)metrics_num_object_location_updates_ * (1000.0 / (double)duration_ms);
+      static_cast<double>(metrics_num_object_location_updates_) *
+      (1000.0 / static_cast<double>(duration_ms));
   stats::ObjectDirectoryLocationUpdates.Record(
       metrics_num_object_location_updates_per_second_);
   metrics_num_object_location_updates_ = 0;
   // Record number of object location lookups per second.
   metrics_num_object_location_lookups_per_second_ =
-      (double)metrics_num_object_location_lookups_ * (1000.0 / (double)duration_ms);
+      static_cast<double>(metrics_num_object_location_lookups_) *
+      (1000.0 / static_cast<double>(duration_ms));
   stats::ObjectDirectoryLocationLookups.Record(
       metrics_num_object_location_lookups_per_second_);
   metrics_num_object_location_lookups_ = 0;
   // Record number of object locations added per second.
   metrics_num_object_locations_added_per_second_ =
-      (double)metrics_num_object_locations_added_ * (1000.0 / (double)duration_ms);
+      static_cast<double>(metrics_num_object_locations_added_) *
+      (1000.0 / static_cast<double>(duration_ms));
   stats::ObjectDirectoryAddedLocations.Record(
       metrics_num_object_locations_added_per_second_);
   metrics_num_object_locations_added_ = 0;
   // Record number of object locations removed per second.
   metrics_num_object_locations_removed_per_second_ =
-      (double)metrics_num_object_locations_removed_ * (1000.0 / (double)duration_ms);
+      static_cast<double>(metrics_num_object_locations_removed_) *
+      (1000.0 / static_cast<double>(duration_ms));
   stats::ObjectDirectoryRemovedLocations.Record(
       metrics_num_object_locations_removed_per_second_);
   metrics_num_object_locations_removed_ = 0;

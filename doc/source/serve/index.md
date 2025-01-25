@@ -13,6 +13,7 @@ multi-app
 model-multiplexing
 configure-serve-deployment
 http-guide
+Serving LLMs <llm/serving-llms>
 Production Guide <production-guide/index>
 monitoring
 resource-allocation
@@ -22,10 +23,6 @@ architecture
 examples
 api/index
 ```
-
-:::{tip}
-[Get in touch with us](https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU) if you're using or considering using Ray Serve.
-:::
 
 ```{image} logo.svg
 :align: center

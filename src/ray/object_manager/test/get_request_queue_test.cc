@@ -14,18 +14,28 @@
 
 #include "ray/object_manager/plasma/get_request_queue.h"
 
+#include <memory>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-using namespace ray;
-using namespace testing;
+using ray::ObjectID;
+using ray::ObjectInfo;
+using ray::Status;
+using testing::_;
+using testing::Eq;
+using testing::Return;
+using testing::Test;
 
 namespace plasma {
 
 class MockClient : public ClientInterface {
  public:
   MOCK_METHOD1(SendFd, Status(MEMFD_TYPE));
-  MOCK_METHOD0(GetObjectIDs, const std::unordered_set<ray::ObjectID> &());
+  MOCK_METHOD0(GetObjectIDs, const std::unordered_set<ObjectID> &());
   MOCK_METHOD2(MarkObjectAsUsed,
                void(const ObjectID &object_id,
                     std::optional<MEMFD_TYPE> fallback_allocated_fd));
@@ -36,7 +46,7 @@ class MockObjectLifecycleManager : public IObjectLifecycleManager {
  public:
   MOCK_METHOD3(CreateObject,
                std::pair<const LocalObject *, flatbuf::PlasmaError>(
-                   const ray::ObjectInfo &object_info,
+                   const ObjectInfo &object_info,
                    plasma::flatbuf::ObjectSource source,
                    bool fallback_allocator));
   MOCK_CONST_METHOD1(GetObject, const LocalObject *(const ObjectID &object_id));
@@ -201,7 +211,7 @@ TEST_F(GetRequestQueueTest, TestMultipleObjects) {
       [&](const std::shared_ptr<GetRequest> &get_req) { promise3.set_value(true); });
   auto client = std::make_shared<MockClient>();
 
-  /// Test get request of mulitiple objects, one sealed, one timed out.
+  /// Test get request of multiple objects, one sealed, one timed out.
   std::vector<ObjectID> object_ids{object_id1, object_id2};
   MarkObject(object1, ObjectState::PLASMA_SEALED);
   MarkObject(object2, ObjectState::PLASMA_CREATED);
@@ -243,7 +253,7 @@ TEST_F(GetRequestQueueTest, TestFallbackAllocatedFdArePassed) {
       [&](const std::shared_ptr<GetRequest> &get_req) { promise3.set_value(true); });
   auto client = std::make_shared<MockClient>();
 
-  /// Test get request of mulitiple objects, one sealed, one timed out.
+  /// Test get request of multiple objects, one sealed, one timed out.
   /// object1 is in main memory, object2 is fallback-allocated.
 
   std::vector<ObjectID> object_ids{object_id1, object_id2};

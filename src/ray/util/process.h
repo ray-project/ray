@@ -20,6 +20,7 @@
 #include <unistd.h>
 #endif
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -28,6 +29,8 @@
 #include <system_error>
 #include <utility>
 #include <vector>
+
+#include "ray/util/compat.h"
 
 #ifndef PID_MAX_LIMIT
 // This is defined by Linux to be the maximum allowable number of processes
@@ -45,10 +48,6 @@ class EnvironmentVariableLess {
 };
 
 typedef std::map<std::string, std::string, EnvironmentVariableLess> ProcessEnvironment;
-
-#ifdef _WIN32
-typedef int pid_t;
-#endif
 
 using StartupToken = int64_t;
 
