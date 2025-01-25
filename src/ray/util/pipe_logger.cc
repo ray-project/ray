@@ -156,9 +156,18 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
   auto ostream =
       std::make_shared<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
           std::move(sink));
-  auto flush_fn = [ostream]() { ostream->flush(); };
-  auto close_fn = [ostream]() {
+  auto flush_fn = [ostream, handle]() {
+    // Flush stream internal buffer to fd.
     ostream->flush();
+// Flush file handle.
+#if defined(__APPLE__) || defined(__linux__)
+    RAY_CHECK_EQ(fdatasync(handle), 0);
+#elif defined(_WIN32)
+    RAY_CHECK_EQ(FlushFileBuffers(handle));
+#endif
+  };
+  auto close_fn = [flush_fn, ostream]() {
+    flush_fn();
     ostream->close();
   };
   return RedirectionFileHandle{
@@ -250,12 +259,14 @@ RedirectionFileHandle CreateRedirectionFileHandle(
         std::move(sink));
   }
 
-  HANDLE read_pipe = nullptr;
-  HANDLE write_pipe = nullptr;
+  HANDLE read_handle = nullptr;
+  HANDLE write_handle = nullptr;
   SECURITY_ATTRIBUTES sa = {sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
-  RAY_CHECK(CreatePipe(&read_pipe, &write_pipe, &sa, 0)) << "Fails to create pipe";
-  boost::iostreams::file_descriptor_source pipe_read_source{read_pipe, std::ios_base::in};
-  boost::iostreams::file_descriptor_sink pipe_write_sink{write_pipe, std::ios_base::out};
+  RAY_CHECK(CreatePipe(&read_handle, &write_handle, &sa, 0)) << "Fails to create pipe";
+  boost::iostreams::file_descriptor_source pipe_read_source{read_handle,
+                                                            std::ios_base::in};
+  boost::iostreams::file_descriptor_sink pipe_write_sink{write_handle,
+                                                         std::ios_base::out};
 
 #endif
 
