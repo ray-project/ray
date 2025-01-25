@@ -333,6 +333,7 @@ class SubmissionClient:
         package_path: str,
         include_parent_dir: Optional[bool] = False,
         excludes: Optional[List[str]] = None,
+        includes: Optional[List[str]] = None,
         is_file: bool = False,
     ) -> bool:
         logger.info(f"Uploading package {package_uri}.")
@@ -347,6 +348,7 @@ class SubmissionClient:
                     package_file,
                     include_parent_dir=include_parent_dir,
                     excludes=excludes,
+                    includes=includes,
                 )
             try:
                 r = self._do_request(
@@ -366,12 +368,15 @@ class SubmissionClient:
         package_path: str,
         include_parent_dir: bool = False,
         excludes: Optional[List[str]] = None,
+        includes: Optional[List[str]] = None,
         is_file: bool = False,
     ) -> str:
         if is_file:
             package_uri = get_uri_for_package(Path(package_path))
         else:
-            package_uri = get_uri_for_directory(package_path, excludes=excludes)
+            package_uri = get_uri_for_directory(
+                package_path, excludes=excludes, includes=includes
+            )
 
         if not self._package_exists(package_uri):
             self._upload_package(
@@ -387,20 +392,25 @@ class SubmissionClient:
         return package_uri
 
     def _upload_working_dir_if_needed(self, runtime_env: Dict[str, Any]):
-        def _upload_fn(working_dir, excludes, is_file=False):
+        def _upload_fn(working_dir, excludes, includes, is_file=False):
             self._upload_package_if_needed(
                 working_dir,
                 include_parent_dir=False,
                 excludes=excludes,
+                includes=includes,
                 is_file=is_file,
             )
 
         upload_working_dir_if_needed(runtime_env, upload_fn=_upload_fn)
 
     def _upload_py_modules_if_needed(self, runtime_env: Dict[str, Any]):
-        def _upload_fn(module_path, excludes, is_file=False):
+        def _upload_fn(module_path, excludes, includes, is_file=False):
             self._upload_package_if_needed(
-                module_path, include_parent_dir=True, excludes=excludes, is_file=is_file
+                module_path,
+                include_parent_dir=True,
+                excludes=excludes,
+                includes=includes,
+                is_file=is_file,
             )
 
         upload_py_modules_if_needed(runtime_env, upload_fn=_upload_fn)

@@ -1,3 +1,4 @@
+from typing import Callable, List, Optional, Tuple
 import time
 import asyncio
 import hashlib
@@ -6,7 +7,6 @@ import os
 import shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
 
@@ -82,32 +82,106 @@ def _xor_bytes(left: bytes, right: bytes) -> bytes:
 
 def _dir_travel(
     path: Path,
+    root: Path,
     excludes: List[Callable],
-    handler: Callable,
+    includes: Optional[List[Callable]] = None,
+    handler: Callable = None,
     logger: Optional[logging.Logger] = default_logger,
 ):
-    """Travels the path recursively, calling the handler on each subpath.
-
-    Respects excludes, which will be called to check if this path is skipped.
     """
-    e = _get_gitignore(path)
+    Recursively traverses the directory at path, calling the handler on each subpath.
+    Supports both `includes` and `excludes`:
+    - `excludes`: A list of callables to check if a path should be skipped.
+    - `includes`: A list of callables to check if a path should be processed.
+                  If `includes` is None, all paths not in `excludes` will be processed.
+    Note:
+    The priority of excludes is higher than that of includes. Therefore,
+    when both are assigned values simultaneously,
+    the system will first check excludes, and
+    then filter the remaining files using includes.
+    If the values of includes and excludes are the same,
+    includes will not take effect.
 
-    if e is not None:
-        excludes.append(e)
+    Args:
+        path: The path to start traversal.
+        root: The root path to start traversal.
+        excludes: A list of functions to exclude paths.
+        includes: A list of functions to include paths.
+        handler: A function to handle each path.
+        logger: Logger for error reporting.
+    """
 
-    skip = any(e(path) for e in excludes)
-    if not skip:
-        try:
-            handler(path)
-        except Exception as e:
-            logger.error(f"Issue with path: {path}")
-            raise e
+    def _collect_paths(path: Path, excludes: List[Callable]) -> List[Path]:
+        """
+        Collect all paths in the directory tree, respecting the excludes rules.
+        """
+        paths = []
+        e = _get_gitignore(path)  # Example: Get gitignore rules
+        if e is not None:
+            excludes.append(e)
+
+        # Check if the path is excluded
+        skip = any(e(path) for e in excludes)
+        if not skip:
+            # Add the current path to the list
+            paths.append(path)
+
+        # Recursively collect paths for subdirectories
         if path.is_dir():
             for sub_path in path.iterdir():
-                _dir_travel(sub_path, excludes, handler, logger=logger)
+                paths.extend(_collect_paths(sub_path, excludes))
 
-    if e is not None:
-        excludes.pop()
+        if e is not None:
+            excludes.pop()
+
+        return paths
+
+    def _apply_includes_and_handle(
+        paths: List[Path],
+        includes: Optional[List[Callable]],
+        handler: Callable,
+        root: Path,
+    ):
+        """
+        Apply includes rules and call the handler on each included path.
+        Ensure that paths are processed in order from parent to child.
+        """
+        # Sort paths by depth (parent directories first)
+        paths.sort(key=lambda p: len(p.parts))
+
+        # Set to track paths that need to be processed (to avoid duplicates)
+        processed_paths = set()
+
+        for path in paths:
+            # Check if the path is included (if includes is specified)
+            include = True
+            if includes is not None:
+                include = any(i(path) for i in includes)
+
+            if include:
+                # Add the path and all its parent directories to the processed set
+                current = path
+                while current != root and current not in processed_paths:
+                    processed_paths.add(current)
+                    current = current.parent
+
+                # Add the root directory itself
+                processed_paths.add(root)
+
+        # Process all collected paths in order
+        for path in sorted(processed_paths, key=lambda p: len(p.parts)):
+            try:
+                # pass path and root as hash_value
+                handler(path, root)
+            except Exception as e:
+                logger.error(f"Issue with path: {path}")
+                raise e
+
+    # Phase 1: Collect all paths
+    all_paths = _collect_paths(path, excludes)
+
+    # Phase 2: Apply includes and handle paths
+    _apply_includes_and_handle(all_paths, includes, handler, root)
 
 
 def _hash_file_content_or_directory_name(
@@ -163,7 +237,8 @@ def _hash_file(
 def _hash_directory(
     root: Path,
     relative_path: Path,
-    excludes: Optional[Callable],
+    excludes: Optional[Callable] = None,
+    includes: Optional[Callable] = None,
     logger: Optional[logging.Logger] = default_logger,
 ) -> bytes:
     """Helper function to create hash of a directory.
@@ -173,15 +248,14 @@ def _hash_directory(
     """
     hash_val = b"0" * 8
 
-    def handler(path: Path):
-        file_hash = _hash_file_content_or_directory_name(
-            path, relative_path, logger=logger
-        )
+    def handler(path: Path, root: Path):
+        file_hash = _hash_file_content_or_directory_name(path, root, logger=logger)
         nonlocal hash_val
         hash_val = _xor_bytes(hash_val, file_hash)
 
     excludes = [] if excludes is None else [excludes]
-    _dir_travel(root, excludes, handler, logger=logger)
+    includes = None if includes is None else [includes]
+    _dir_travel(root, relative_path, excludes, includes, handler, logger=logger)
     return hash_val
 
 
@@ -256,9 +330,9 @@ def is_jar_uri(uri: str) -> bool:
     return Path(path).suffix == ".jar"
 
 
-def _get_excludes(path: Path, excludes: List[str]) -> Callable:
+def _get_matching_paths(path: Path, pattern_paths: List[str]) -> Callable:
     path = path.absolute()
-    pathspec = PathSpec.from_lines("gitwildmatch", excludes)
+    pathspec = PathSpec.from_lines("gitwildmatch", pattern_paths)
 
     def match(p: Path):
         path_str = str(p.absolute().relative_to(path))
@@ -389,6 +463,7 @@ def _get_local_path(base_directory: str, pkg_uri: str) -> str:
 def _zip_files(
     path_str: str,
     excludes: List[str],
+    includes: List[str],
     output_path: str,
     include_parent_dir: bool = False,
     logger: Optional[logging.Logger] = default_logger,
@@ -409,7 +484,7 @@ def _zip_files(
         if file_path.is_file():
             dir_path = file_path.parent
 
-        def handler(path: Path):
+        def handler(path: Path, root: Path):
             # Pack this path if it's an empty directory or it's a file.
             if path.is_dir() and next(path.iterdir(), None) is None or path.is_file():
                 file_size = path.stat().st_size
@@ -426,8 +501,17 @@ def _zip_files(
                     to_path = dir_path.name / to_path
                 zip_handler.write(path, to_path)
 
-        excludes = [_get_excludes(file_path, excludes)]
-        _dir_travel(file_path, excludes, handler, logger=logger)
+        excludes = (
+            []
+            if excludes is None or len(excludes) == 0
+            else [_get_matching_paths(file_path, excludes)]
+        )
+        includes = (
+            []
+            if includes is None or len(includes) == 0
+            else [_get_matching_paths(file_path, includes)]
+        )
+        _dir_travel(file_path, file_path, excludes, includes, handler, logger=logger)
 
 
 def package_exists(pkg_uri: str) -> bool:
@@ -495,7 +579,11 @@ def get_uri_for_file(file: str) -> str:
     )
 
 
-def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) -> str:
+def get_uri_for_directory(
+    directory: str,
+    excludes: Optional[List[str]] = None,
+    includes: Optional[List[str]] = None,
+) -> str:
     """Get a content-addressable URI from a directory's contents.
 
     This function generates the name of the package by the directory.
@@ -512,6 +600,7 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
     Args:
         directory: The directory.
         excludes (list[str]): The dir or files that should be excluded.
+        includes (list[str]): The dir or files that should be included.
 
     Returns:
         URI (str)
@@ -519,14 +608,20 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
     Raises:
         ValueError if the directory doesn't exist.
     """
-    if excludes is None:
-        excludes = []
-
     directory = Path(directory).absolute()
     if not directory.exists() or not directory.is_dir():
         raise ValueError(f"directory {directory} must be an existing directory")
 
-    hash_val = _hash_directory(directory, directory, _get_excludes(directory, excludes))
+    excludes_matching_paths_call = (
+        None if excludes is None else _get_matching_paths(directory, excludes)
+    )
+    includes_matching_paths_call = (
+        None if includes is None else _get_matching_paths(directory, includes)
+    )
+
+    hash_val = _hash_directory(
+        directory, directory, excludes_matching_paths_call, includes_matching_paths_call
+    )
 
     return "{protocol}://{pkg_name}.zip".format(
         protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex()
@@ -563,10 +658,14 @@ def create_package(
     target_path: Path,
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
+    includes: Optional[List[str]] = None,
     logger: Optional[logging.Logger] = default_logger,
 ):
     if excludes is None:
         excludes = []
+
+    if includes is None:
+        includes = []
 
     if logger is None:
         logger = default_logger
@@ -576,6 +675,7 @@ def create_package(
         _zip_files(
             module_path,
             excludes,
+            includes,
             str(target_path),
             include_parent_dir=include_parent_dir,
             logger=logger,
@@ -588,6 +688,7 @@ def upload_package_if_needed(
     module_path: str,
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
+    includes: Optional[List[str]] = None,
     logger: Optional[logging.Logger] = default_logger,
 ) -> bool:
     """Upload the contents of the directory under the given URI.
@@ -604,6 +705,7 @@ def upload_package_if_needed(
         include_parent_dir: If true, includes the top-level directory as a
             directory inside the zip file.
         excludes: List specifying files to exclude.
+        includes: List specifying files to include.
 
     Raises:
         RuntimeError: If the upload fails.
@@ -635,6 +737,7 @@ def upload_package_if_needed(
         package_file,
         include_parent_dir=include_parent_dir,
         excludes=excludes,
+        includes=includes,
     )
     package_file_bytes = package_file.read_bytes()
     # Remove the local file to avoid accumulating temporary zip files.

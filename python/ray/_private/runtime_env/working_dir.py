@@ -61,8 +61,11 @@ def upload_working_dir_if_needed(
         return runtime_env
 
     excludes = runtime_env.get("excludes", None)
+    includes = runtime_env.get("includes", None)
     try:
-        working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
+        working_dir_uri = get_uri_for_directory(
+            working_dir, excludes=excludes, includes=includes
+        )
     except ValueError:  # working_dir is not a directory
         package_path = Path(working_dir)
         if not package_path.exists() or package_path.suffix != ".zip":
@@ -88,6 +91,7 @@ def upload_working_dir_if_needed(
                 working_dir,
                 include_parent_dir=False,
                 excludes=excludes,
+                includes=includes,
                 logger=logger,
             )
         except Exception as e:

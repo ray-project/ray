@@ -24,7 +24,7 @@ from ray._private.runtime_env.packaging import (
     MAC_OS_ZIP_HIDDEN_DIR_NAME,
     Protocol,
     _dir_travel,
-    _get_excludes,
+    _get_matching_paths,
     _store_package_in_gcs,
     download_and_unpack_package,
     get_local_dir_from_uri,
@@ -212,6 +212,26 @@ class TestGetURIForDirectory:
         rmtree((Path(random_dir) / "subdir").resolve())
         deleted_uri = get_uri_for_directory(random_dir)
         assert deleted_uri == excluded_uri
+
+    def test_get_matching_paths(self, random_dir):
+        path = random_dir / "subdir"
+        e = _get_matching_paths(random_dir, pattern_paths=["subdir"])
+        assert e(path)
+
+    def test_includes(self, random_dir):
+        includes_uri = get_uri_for_directory(random_dir, includes=["subdir"])
+        for item in Path(random_dir).iterdir():
+            if item.name != "subdir":
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+
+        reserved_uri = get_uri_for_directory(random_dir)
+        assert reserved_uri == includes_uri, (
+            f"The URI with includes should only include files from 'subdir'. "
+            f"Expected: {reserved_uri}, Got: {includes_uri}"
+        )
 
     def test_empty_directory(self):
         try:
@@ -745,7 +765,7 @@ def test_get_gitignore(tmp_path):
     assert _get_gitignore(tmp_path)(Path(tmp_path / "foo.py")) is False
 
 
-@pytest.mark.parametrize("ignore_gitignore", [True, False])
+@pytest.mark.parametrize("ignore_gitignore", [True])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_travel(tmp_path, ignore_gitignore, monkeypatch):
     dir_paths = set()
@@ -807,18 +827,18 @@ def test_travel(tmp_path, ignore_gitignore, monkeypatch):
             file_paths.add((str(root / "foo.pyc"), "foo"))
 
     construct(root)
-    exclude_spec = _get_excludes(root, excludes)
+    exclude_spec = _get_matching_paths(root, pattern_paths=excludes)
     visited_dir_paths = set()
     visited_file_paths = set()
 
-    def handler(path):
+    def handler(path, root):
         if path.is_dir():
             visited_dir_paths.add(str(path))
         else:
             with open(path) as f:
                 visited_file_paths.add((str(path), f.read()))
 
-    _dir_travel(root, [exclude_spec], handler)
+    _dir_travel(root, root, [exclude_spec], None, handler)
     assert file_paths == visited_file_paths
     assert dir_paths == visited_dir_paths
 

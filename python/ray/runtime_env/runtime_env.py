@@ -287,6 +287,7 @@ class RuntimeEnv(dict):
         "uv",
         "container",
         "excludes",
+        "includes",
         "env_vars",
         "_ray_release",
         "_ray_commit",
