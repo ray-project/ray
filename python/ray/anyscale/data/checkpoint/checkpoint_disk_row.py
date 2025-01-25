@@ -71,7 +71,7 @@ class RowBasedDiskCheckpointFilter(RowBasedCheckpointFilter, DiskCheckpointIO):
 
         with ThreadPoolExecutor(max_workers=self.filter_num_threads) as executor:
             file_exists = list(executor.map(_exists, files))
-        return {path: exists for path, exists in zip(files, file_exists)}
+        return dict(zip(files, file_exists))
 
 
 class RowBasedDiskCheckpointWriter(CheckpointWriter, DiskCheckpointIO):
