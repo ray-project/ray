@@ -26,8 +26,16 @@ from ray.train._internal.storage import (
     _exists_at_fs_path,
     get_fs_and_path,
 )
-from ray.util import PublicAPI
-from ray.util.annotations import DeveloperAPI
+from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
+from ray.train.utils import _log_deprecation_warning
+from ray.train.v2.api.data_parallel_trainer import (
+    _TRAINER_RESTORE_DEPRECATION_WARNING,
+    _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
+)
+from ray.train.v2._internal.migration_utils import (
+    _v2_migration_warnings_enabled,
+)
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -237,6 +245,12 @@ class BaseTrainer(abc.ABC):
         self.datasets = datasets if datasets is not None else {}
         self.starting_checkpoint = resume_from_checkpoint
 
+        if _v2_migration_warnings_enabled():
+            if metadata is not None:
+                _log_deprecation_warning(_GET_METADATA_DEPRECATION_MESSAGE)
+            if resume_from_checkpoint is not None:
+                _log_deprecation_warning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
+
         # These attributes should only be set through `BaseTrainer.restore`
         self._restore_path = None
         self._restore_storage_filesystem = None
@@ -245,8 +259,11 @@ class BaseTrainer(abc.ABC):
 
         air_usage.tag_air_trainer(self)
 
-    @PublicAPI(stability="alpha")
     @classmethod
+    @Deprecated(
+        message=_TRAINER_RESTORE_DEPRECATION_WARNING,
+        warning=_v2_migration_warnings_enabled(),
+    )
     def restore(
         cls: Type["BaseTrainer"],
         path: Union[str, os.PathLike],
@@ -401,8 +418,11 @@ class BaseTrainer(abc.ABC):
         trainer._restore_storage_filesystem = storage_filesystem
         return trainer
 
-    @PublicAPI(stability="alpha")
     @classmethod
+    @Deprecated(
+        message=_TRAINER_RESTORE_DEPRECATION_WARNING,
+        warning=_v2_migration_warnings_enabled(),
+    )
     def can_restore(
         cls: Type["BaseTrainer"],
         path: Union[str, os.PathLike],
@@ -756,10 +776,10 @@ class BaseTrainer(abc.ABC):
                 )
                 if isinstance(merged_scaling_config, dict):
                     merged_scaling_config = ScalingConfig(**merged_scaling_config)
-                self._merged_config[
-                    "scaling_config"
-                ] = self._reconcile_scaling_config_with_trial_resources(
-                    merged_scaling_config
+                self._merged_config["scaling_config"] = (
+                    self._reconcile_scaling_config_with_trial_resources(
+                        merged_scaling_config
+                    )
                 )
                 if self.has_base_dataset():
                     # Set the DataContext on the Trainer actor to the DataContext
