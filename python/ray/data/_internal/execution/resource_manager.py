@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import time
 from abc import ABC, abstractmethod
@@ -10,16 +11,25 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.streaming_executor_state import OpState
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 
 logger = logging.getLogger(__name__)
 DEBUG_RESOURCE_MANAGER = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
+
+# These are physical operators that must receive all inputs before they start
+# processing data.
+MATERIALIZING_OPERATORS = (AllToAllOperator, ZipOperator)
 
 
 class ResourceManager:
@@ -92,7 +102,9 @@ class ResourceManager:
             )
         )
 
-    def _estimate_object_store_memory(self, op, state) -> int:
+    def _estimate_object_store_memory(
+        self, op: "PhysicalOperator", state: "OpState"
+    ) -> int:
         # Don't count input refs towards dynamic memory usage, as they have been
         # pre-created already outside this execution.
         if isinstance(op, InputDataBuffer):
@@ -241,14 +253,6 @@ class ResourceManager:
                 usage_str += f",object store={budget.object_store_memory_str()})"
         return usage_str
 
-    def get_downstream_fraction(self, op: PhysicalOperator) -> float:
-        """Return the downstream fraction of the given operator."""
-        return self._downstream_fraction[op]
-
-    def get_downstream_object_store_memory(self, op: PhysicalOperator) -> float:
-        """Return the downstream object store memory usage of the given operator."""
-        return self._downstream_object_store_memory[op]
-
     def op_resource_allocator_enabled(self) -> bool:
         """Return whether OpResourceAllocator is enabled."""
         return self._op_resource_allocator is not None
@@ -285,6 +289,11 @@ class OpResourceAllocator(ABC):
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         """Return the maximum bytes of pending task outputs can be read for
         the given operator. None means no limit."""
+        ...
+
+    @abstractmethod
+    def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
+        """Return the budget for the given operator."""
         ...
 
 
@@ -500,6 +509,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         res = op.incremental_resource_usage().satisfies_limit(budget)
         return res
 
+    def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
+        return self._op_budgets[op]
+
     def _should_unblock_streaming_output_backpressure(
         self, op: PhysicalOperator
     ) -> bool:
@@ -540,6 +552,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Add the remaining of `_reserved_for_op_outputs`.
         op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
         res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
+        if math.isinf(res):
+            return None
+
         res = int(res)
         assert res >= 0
         if res == 0 and self._should_unblock_streaming_output_backpressure(op):
@@ -641,3 +656,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
             self._op_budgets[op].gpu = float("inf")
+
+        # A materializing operator like `AllToAllOperator` waits for all its input
+        # operator’s outputs before processing data. This often forces the input
+        # operator to exceed its object store memory budget. To prevent deadlock, we
+        # disable object store memory backpressure for the input operator.
+        for op in eligible_ops:
+            if any(
+                isinstance(next_op, MATERIALIZING_OPERATORS)
+                for next_op in op.output_dependencies
+            ):
+                self._op_budgets[op].object_store_memory = float("inf")

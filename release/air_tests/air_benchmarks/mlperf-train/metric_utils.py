@@ -8,10 +8,10 @@ def get_ray_spilled_and_restored_mb():
 
     summary_str = internal_api.memory_summary(stats_only=True)
 
-    match = re.search("Spilled (\d+) MiB", summary_str)
+    match = re.search(r"Spilled (\d+) MiB", summary_str)
     spilled_mb = int(match.group(1)) if match else 0
 
-    match = re.search("Restored (\d+) MiB", summary_str)
+    match = re.search(r"Restored (\d+) MiB", summary_str)
     restored_mb = int(match.group(1)) if match else 0
 
     return spilled_mb, restored_mb

@@ -115,7 +115,7 @@ class ImageDatasource(FileBasedDatasource):
         )
         num_files = len(non_empty_path_and_size)
         if num_files == 0:
-            logger.warn(
+            logger.warning(
                 "All input image files are empty. "
                 "Use on-disk file size to estimate images in-memory size."
             )
@@ -133,7 +133,7 @@ class ImageDatasource(FileBasedDatasource):
             elif self.mode in ["RGBA", "CMYK", "I", "F"]:
                 dimension = 4
             else:
-                logger.warn(f"Found unknown image mode: {self.mode}.")
+                logger.warning(f"Found unknown image mode: {self.mode}.")
                 return IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
             height, width = self.size
             single_image_size = height * width * dimension
@@ -146,7 +146,7 @@ class ImageDatasource(FileBasedDatasource):
 
         sampling_duration = time.perf_counter() - start_time
         if sampling_duration > 5:
-            logger.warn(
+            logger.warning(
                 "Image input size estimation took "
                 f"{round(sampling_duration, 2)} seconds."
             )

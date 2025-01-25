@@ -20,7 +20,7 @@ run() {
         --num-shards "$NUM_FILES" \
         --shard-url "$SHARD_URL_PREFIX/single-image-repeated-$NUM_IMAGES_PER_FILE-times" \
         --output-directory "$DATA_DIR"
-    
+
     time python resnet50_ray_air.py \
         --num-images-per-input-file "$NUM_IMAGES_PER_FILE" \
         --num-epochs "$NUM_EPOCHS" \

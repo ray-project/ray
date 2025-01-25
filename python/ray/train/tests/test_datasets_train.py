@@ -26,13 +26,12 @@ import torch.optim as optim
 import ray
 from ray import train
 from ray.air.integrations.mlflow import MLflowLoggerCallback
-from ray.data._internal.aggregate import Mean, Std
+from ray.data.aggregate import Mean, Std
 from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 
 
 def make_and_upload_dataset(dir_path):
-
     import os
     import random
 

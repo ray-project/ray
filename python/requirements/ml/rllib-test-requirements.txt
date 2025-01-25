@@ -1,5 +1,3 @@
--r dl-cpu-requirements.txt
-
 # Environment adapters.
 # ---------------------
 # Atari

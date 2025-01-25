@@ -24,7 +24,7 @@ def test_power_transformer():
     processed_col_b = [0, np.log(2)]
     expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # yeo-johnson power=2
     transformer = PowerTransformer(["A", "B"], power=2)
@@ -34,7 +34,7 @@ def test_power_transformer():
     processed_col_b = [0, 1.5]
     expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # box-cox
     col_a = [1, 2]
@@ -51,7 +51,7 @@ def test_power_transformer():
     processed_col_b = [np.log(3), np.log(4)]
     expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # box-cox power=2
     transformer = PowerTransformer(["A", "B"], power=2, method="box-cox")
@@ -61,7 +61,39 @@ def test_power_transformer():
     processed_col_b = [4, 7.5]
     expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
+
+    # Test append mode
+    # First test that providing wrong number of output columns raises error
+    with pytest.raises(
+        ValueError, match="The length of columns and output_columns must match."
+    ):
+        PowerTransformer(columns=["A", "B"], power=2, output_columns=["A_transformed"])
+
+    # Test append mode with correct output columns
+    transformer = PowerTransformer(
+        columns=["A", "B"],
+        power=2,
+        method="box-cox",
+        output_columns=["A_transformed", "B_transformed"],
+    )
+    transformed = transformer.transform(ds)
+    out_df = transformed.to_pandas()
+
+    # Transformed columns should have the expected values
+    processed_col_a = [0, 1.5]
+    processed_col_b = [4, 7.5]
+
+    expected_df = pd.DataFrame(
+        {
+            "A": col_a,
+            "B": col_b,
+            "A_transformed": processed_col_a,
+            "B_transformed": processed_col_b,
+        }
+    )
+
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
 
 if __name__ == "__main__":

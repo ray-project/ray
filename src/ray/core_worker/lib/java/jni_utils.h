@@ -281,7 +281,7 @@ extern jmethodID java_object_ref_impl_class_on_memory_store_object_allocated;
 
 /// ResourceValue class that is used to convert resource_ids() to java class
 extern jclass java_resource_value_class;
-/// Construtor of ResourceValue class
+/// Constructor of ResourceValue class
 extern jmethodID java_resource_value_init;
 
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8

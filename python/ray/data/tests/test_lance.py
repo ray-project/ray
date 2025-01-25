@@ -114,6 +114,44 @@ def test_lance_read_many_files(data_path):
     wait_for_condition(test_lance, timeout=10)
 
 
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write(data_path):
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
+
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_lance(data_path)
+
+    ds = lance.dataset(data_path)
+    ds.count_rows() == 10
+    assert ds.schema.names == schema.names
+    # The schema is platform-dependent, because numpy uses int32 on Windows.
+    # So we observe the schema that is written and use that.
+    schema = ds.schema
+
+    tbl = ds.to_table()
+    assert sorted(tbl["id"].to_pylist()) == list(range(10))
+    assert set(tbl["str"].to_pylist()) == {f"str-{i}" for i in range(10)}
+
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"] + 10, "str": f"str-{x['id'] + 10}"}
+    ).write_lance(data_path, mode="append")
+
+    ds = lance.dataset(data_path)
+    ds.count_rows() == 20
+    tbl = ds.to_table()
+    assert sorted(tbl["id"].to_pylist()) == list(range(20))
+    assert set(tbl["str"].to_pylist()) == {f"str-{i}" for i in range(20)}
+
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_lance(data_path, schema=schema, mode="overwrite")
+
+    ds = lance.dataset(data_path)
+    ds.count_rows() == 10
+    assert ds.schema == schema
+
+
 if __name__ == "__main__":
     import sys
 

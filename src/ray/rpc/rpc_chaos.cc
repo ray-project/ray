@@ -15,7 +15,9 @@
 #include "ray/rpc/rpc_chaos.h"
 
 #include <random>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"

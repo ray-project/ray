@@ -5,7 +5,12 @@ from typing import Any, Dict, Optional, List, Tuple
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
 from ray_release.test import Test, TestState
-from ray_release.config import DEFAULT_ANYSCALE_PROJECT, DEFAULT_CLOUD_ID, as_smoke_test
+from ray_release.config import (
+    DEFAULT_ANYSCALE_PROJECT,
+    DEFAULT_CLOUD_ID,
+    as_smoke_test,
+    get_test_project_id,
+)
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.template import get_test_env_var
 from ray_release.util import DeferredEnvVar
@@ -135,6 +140,13 @@ def get_step(
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
     env_dict.update(env)
+
+    # Set the project id for the test, based on the follow priority:
+    #  1. Specified in the test, as "project_id" field.
+    #  2. Specified in the specific test environment, as RELEASE_DEFAULT_PROJECT env var
+    #  3. Specified in the global environment, as RELEASE_DEFAULT_PROJECT env var
+    default_project_id = env_dict.get("RELEASE_DEFAULT_PROJECT")
+    env_dict["ANYSCALE_PROJECT"] = get_test_project_id(test, default_project_id)
 
     step["env"].update(env_dict)
     step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.9"

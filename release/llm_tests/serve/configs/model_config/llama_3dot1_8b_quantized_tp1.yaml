@@ -1,0 +1,7 @@
+model_loading_config:
+  model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
+
+accelerator_type: A10G
+
+engine_kwargs:
+  max_model_len: 8192

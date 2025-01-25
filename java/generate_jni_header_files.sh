@@ -44,4 +44,3 @@ generate_one runtime/src/main/java/io/ray/runtime/metric/NativeMetric.java io.ra
 # Remove empty files
 rm -f io_ray_runtime_RayNativeRuntime_AsyncContext.h
 rm -f io_ray_runtime_task_NativeTaskExecutor_NativeActorContext.h
-

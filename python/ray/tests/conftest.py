@@ -14,10 +14,11 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import gettempdir
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from unittest import mock
 import psutil
 import pytest
+import copy
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -40,6 +41,7 @@ from ray._private.test_utils import (
     find_available_port,
     wait_for_condition,
     find_free_port,
+    reset_autoscaler_v2_enabled_cache,
     RayletKiller,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
@@ -446,6 +448,25 @@ def external_redis_with_sentinel(request):
 
 
 @pytest.fixture
+def local_autoscaling_cluster(request, enable_v2):
+    reset_autoscaler_v2_enabled_cache()
+
+    # Start a mock multi-node autoscaling cluster.
+    head_resources, worker_node_types, system_config = copy.deepcopy(request.param)
+    cluster = AutoscalingCluster(
+        head_resources=head_resources,
+        worker_node_types=worker_node_types,
+        autoscaler_v2=enable_v2,
+    )
+    cluster.start(_system_config=system_config)
+
+    yield None
+
+    # Shutdown the cluster
+    cluster.shutdown()
+
+
+@pytest.fixture
 def shutdown_only(maybe_external_redis):
     yield None
     # The code after the yield will run as teardown code.
@@ -549,6 +570,13 @@ def ray_start_regular_with_external_redis(request, external_redis):
 def ray_start_regular_shared(request):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
+def ray_start_regular_shared_2_cpus(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=2, **param) as res:
         yield res
 
 
@@ -1198,7 +1226,6 @@ def append_short_test_summary(rep):
         # ":" is not legal in filenames in windows
         test_name = test_name.replace(":", "$")
 
-    header_file = os.path.join(summary_dir, "000_header.txt")
     summary_file = os.path.join(summary_dir, test_name + ".txt")
 
     if rep.passed and os.path.exists(summary_file):
@@ -1219,13 +1246,6 @@ def append_short_test_summary(rep):
     if not hasattr(rep.longrepr, "chain"):
         return
 
-    if not os.path.exists(header_file):
-        with open(header_file, "wt") as fp:
-            test_label = os.environ.get("BUILDKITE_LABEL", "Unknown")
-            job_id = os.environ.get("BUILDKITE_JOB_ID")
-
-            fp.write(f"### Pytest failures for: [{test_label}](#{job_id})\n\n")
-
     # Use `wt` here to overwrite so we only have one result per test (exclude retries)
     with open(summary_file, "wt") as fp:
         fp.write(_get_markdown_annotation(rep))
@@ -1244,12 +1264,10 @@ def _get_markdown_annotation(rep) -> str:
     markdown += "<details>\n"
     markdown += f"<summary>{short_message}</summary>\n\n"
 
-    # Add link to test definition
+    # Add location to the test definition
     test_file, test_lineno, _test_node = rep.location
-    test_path, test_url = _get_repo_github_path_and_link(
-        os.path.abspath(test_file), test_lineno
-    )
-    markdown += f"Link to test: [{test_path}:{test_lineno}]({test_url})\n\n"
+    test_path = os.path.abspath(test_file)
+    markdown += f"Test location: {test_path}:{test_lineno}\n\n"
 
     # Print main traceback
     markdown += "##### Traceback\n\n"
@@ -1257,27 +1275,20 @@ def _get_markdown_annotation(rep) -> str:
     markdown += str(main_tb)
     markdown += "\n```\n\n"
 
-    # Print link to test definition in github
-    path, url = _get_repo_github_path_and_link(main_loc.path, main_loc.lineno)
-    markdown += f"[{path}:{main_loc.lineno}]({url})\n\n"
+    # Print test definition location
+    markdown += f"{main_loc.path}:{main_loc.lineno}\n\n"
 
     # If this is a longer exception chain, users can expand the full traceback
     if len(rep.longrepr.chain) > 1:
         markdown += "<details><summary>Full traceback</summary>\n\n"
 
-        # Here we just print each traceback and the link to the respective
-        # lines in GutHub
+        # Here we just print each traceback and the respective lines.
         for tb, loc, _ in rep.longrepr.chain:
-            if loc:
-                path, url = _get_repo_github_path_and_link(loc.path, loc.lineno)
-                github_link = f"[{path}:{loc.lineno}]({url})\n\n"
-            else:
-                github_link = ""
-
             markdown += "```\n"
             markdown += str(tb)
             markdown += "\n```\n\n"
-            markdown += github_link
+            if loc:
+                markdown += f"{loc.path}:{loc.lineno}\n\n"
 
         markdown += "</details>\n"
 
@@ -1298,19 +1309,6 @@ def _get_pip_packages() -> List[str]:
         return list(freeze.freeze())
     except Exception:
         return ["invalid"]
-
-
-def _get_repo_github_path_and_link(file: str, lineno: int) -> Tuple[str, str]:
-    base_url = "https://github.com/ray-project/ray/blob/{commit}/{path}#L{lineno}"
-
-    commit = os.environ.get("BUILDKITE_COMMIT")
-
-    if not commit:
-        return file, ""
-
-    path = file.split("com_github_ray_project_ray/")[-1]
-
-    return path, base_url.format(commit=commit, path=path, lineno=lineno)
 
 
 def create_ray_logs_for_failed_test(rep):

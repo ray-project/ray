@@ -134,7 +134,7 @@ assign each worker a NVIDIA A100 GPU.
 PyTorch Distributed supports multiple `backends <https://pytorch.org/docs/stable/distributed.html#backends>`__
 for communicating tensors across workers. By default Ray Train will use NCCL when ``use_gpu=True`` and Gloo otherwise.
 
-If you explictly want to override this setting, you can configure a :class:`~ray.train.torch.TorchConfig`
+If you explicitly want to override this setting, you can configure a :class:`~ray.train.torch.TorchConfig`
 and pass it into the :class:`~ray.train.torch.TorchTrainer`.
 
 .. testcode::

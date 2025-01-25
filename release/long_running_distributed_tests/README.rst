@@ -11,7 +11,7 @@ forever until they fail. To set up the project you need to run
 
 Running the Workloads
 ---------------------
-Easiest approach is to use the `Anyscale UI <https://www.anyscale.dev/>`_. First run ``anyscale snapshot create`` from the command line to create a project snapshot. Then from the UI, you can launch an individual session and execute the test_workload command for each test. 
+Easiest approach is to use the `Anyscale UI <https://www.anyscale.dev/>`_. First run ``anyscale snapshot create`` from the command line to create a project snapshot. Then from the UI, you can launch an individual session and execute the test_workload command for each test.
 
 You can also start the workloads using the CLI with:
 

@@ -13,7 +13,7 @@ def test_accelerators():
         AttributeError,
         match="module 'ray.util.accelerators' has no attribute 'NVIDIA_INVALID'",
     ):
-        accelerators.NVIDIA_INVALID
+        _ = accelerators.NVIDIA_INVALID
     with pytest.warns(RayDeprecationWarning):
         assert accelerators.NVIDIA_TESLA_A100 == "A100"
 

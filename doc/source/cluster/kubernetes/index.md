@@ -41,6 +41,8 @@ See [Getting Started](kuberay-quickstart) to learn the basics of KubeRay and fol
 * [RayJob Quick Start](kuberay-rayjob-quickstart)
 * [RayService Quick Start](kuberay-rayservice-quickstart)
 
+Additionally, [Anyscale](https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=deploy-ray-on-k8s) is the managed Ray platform developed by the creators of Ray. It offers an easy path to deploy Ray clusters on your existing Kubernetes infrastructure, including EKS, GEK, AKS, or self-hosted Kubernetes.
+
 ## Learn More
 
 The Ray docs present all the information you need to start running Ray workloads on Kubernetes.

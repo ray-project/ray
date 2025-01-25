@@ -399,7 +399,12 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                 } else {
                   error_type = rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED;
                 }
-                error_info.set_error_message(reply.scheduling_failure_message());
+                error_info.set_error_message(
+                    absl::StrCat(reply.scheduling_failure_message(),
+                                 " task_id=",
+                                 task_id.Hex(),
+                                 ", task_name=",
+                                 task_name));
 
                 tasks_to_fail = std::move(scheduling_key_entry.task_queue);
                 scheduling_key_entry.task_queue.clear();

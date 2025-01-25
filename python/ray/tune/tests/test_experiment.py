@@ -3,7 +3,7 @@ import unittest
 
 import ray
 import ray.train
-from ray.train import CheckpointConfig
+from ray.tune import CheckpointConfig
 from ray.tune import register_trainable
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
@@ -17,7 +17,7 @@ class ExperimentTest(unittest.TestCase):
     def setUp(self):
         def train_fn(config):
             for i in range(100):
-                ray.train.report(dict(timesteps_total=i))
+                ray.tune.report(dict(timesteps_total=i))
 
         register_trainable("f1", train_fn)
 

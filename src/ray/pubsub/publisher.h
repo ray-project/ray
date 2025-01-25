@@ -18,9 +18,12 @@
 
 #include <deque>
 #include <functional>
+#include <memory>
 #include <queue>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -91,7 +94,7 @@ class EntityState {
 /// Also supports subscribers to all keys in the channel.
 class SubscriptionIndex {
  public:
-  SubscriptionIndex(rpc::ChannelType channel_type);
+  explicit SubscriptionIndex(rpc::ChannelType channel_type);
   ~SubscriptionIndex() = default;
 
   SubscriptionIndex(SubscriptionIndex &&) noexcept = default;

@@ -14,7 +14,7 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class OrdinalEncoder(Preprocessor):
-    """Encode values within columns as ordered integer values.
+    r"""Encode values within columns as ordered integer values.
 
     :class:`OrdinalEncoder` encodes categorical features as integers that range from
     :math:`0` to :math:`n - 1`, where :math:`n` is the number of categories.
@@ -43,6 +43,18 @@ class OrdinalEncoder(Preprocessor):
         1    0      2
         2    1      0
         3    0      1
+
+        :class:`OrdinalEncoder` can also be used in append mode by providing the
+        name of the output_columns that should hold the encoded values.
+
+        >>> encoder = OrdinalEncoder(columns=["sex", "level"], output_columns=["sex_encoded", "level_encoded"])
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
+              sex level  sex_encoded  level_encoded
+        0    male    L4            1              1
+        1  female    L5            0              2
+        2    male    L3            1              0
+        3  female    L4            0              1
+
 
         If you transform a value not present in the original dataset, then the value
         is encoded as ``float("nan")``.
@@ -76,6 +88,10 @@ class OrdinalEncoder(Preprocessor):
         encode_lists: If ``True``, encode list elements.  If ``False``, encode
             whole lists (i.e., replace each list with an integer). ``True``
             by default.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
 
     .. seealso::
 
@@ -83,10 +99,19 @@ class OrdinalEncoder(Preprocessor):
             Another preprocessor that encodes categorical data.
     """
 
-    def __init__(self, columns: List[str], *, encode_lists: bool = True):
+    def __init__(
+        self,
+        columns: List[str],
+        *,
+        encode_lists: bool = True,
+        output_columns: Optional[List[str]] = None,
+    ):
         # TODO: allow user to specify order of values within each column.
         self.columns = columns
         self.encode_lists = encode_lists
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
@@ -116,19 +141,20 @@ class OrdinalEncoder(Preprocessor):
             s_values = self.stats_[f"unique_values({s.name})"]
             return s.map(s_values)
 
-        df[self.columns] = df[self.columns].apply(column_ordinal_encoder)
+        df[self.output_columns] = df[self.columns].apply(column_ordinal_encoder)
         return df
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"encode_lists={self.encode_lists!r})"
+            f"encode_lists={self.encode_lists!r}, "
+            f"output_columns={self.output_columns!r})"
         )
 
 
 @PublicAPI(stability="alpha")
 class OneHotEncoder(Preprocessor):
-    """`One-hot encode <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_
+    r"""`One-hot encode <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_
     categorical data.
 
     This preprocessor transforms each specified column into a one-hot encoded vector.
@@ -153,13 +179,26 @@ class OneHotEncoder(Preprocessor):
         >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>> encoder = OneHotEncoder(columns=["color"])
         >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
-           color_blue  color_green  color_red
-        0           0            0          1
-        1           0            1          0
-        2           0            0          1
-        3           0            0          1
-        4           1            0          0
-        5           0            1          0
+               color
+        0  [0, 0, 1]
+        1  [0, 1, 0]
+        2  [0, 0, 1]
+        3  [0, 0, 1]
+        4  [1, 0, 0]
+        5  [0, 1, 0]
+
+        :class:`MultiHotEncoder` can also be used in append mode by providing the
+        name of the output_columns that should hold the encoded values.
+
+        >>> encoder = OneHotEncoder(columns=["color"], output_columns=["color_encoded"])
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           color color_encoded
+        0    red     [0, 0, 1]
+        1  green     [0, 1, 0]
+        2    red     [0, 0, 1]
+        3    red     [0, 0, 1]
+        4   blue     [1, 0, 0]
+        5  green     [0, 1, 0]
 
         If you one-hot encode a value that isn't in the fitted dataset, then the
         value is encoded with zeros.
@@ -188,6 +227,10 @@ class OneHotEncoder(Preprocessor):
         max_categories: The maximum number of features to create for each column.
             If a value isn't specified for a column, then a feature is created
             for every category in that column.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
 
     .. seealso::
 
@@ -201,11 +244,18 @@ class OneHotEncoder(Preprocessor):
     """  # noqa: E501
 
     def __init__(
-        self, columns: List[str], *, max_categories: Optional[Dict[str, int]] = None
+        self,
+        columns: List[str],
+        *,
+        max_categories: Optional[Dict[str, int]] = None,
+        output_columns: Optional[List[str]] = None,
     ):
         # TODO: add `drop` parameter.
         self.columns = columns
         self.max_categories = max_categories
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
@@ -220,7 +270,7 @@ class OneHotEncoder(Preprocessor):
         _validate_df(df, *self.columns)
 
         # Compute new one-hot encoded columns
-        for column in self.columns:
+        for column, output_column in zip(self.columns, self.output_columns):
             column_values = self.stats_[f"unique_values({column})"]
             if _is_series_composed_of_lists(df[column]):
                 df[column] = df[column].map(lambda x: tuple(x))
@@ -236,19 +286,20 @@ class OneHotEncoder(Preprocessor):
             df = df.drop(columns=value_columns)
             # Use a Pandas Series for column assignment to get more consistent
             # behavior across Pandas versions.
-            df.loc[:, column] = pd.Series(list(concatenated))
+            df.loc[:, output_column] = pd.Series(list(concatenated))
         return df
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"max_categories={self.max_categories!r})"
+            f"max_categories={self.max_categories!r}, "
+            f"output_columns={self.output_columns!r})"
         )
 
 
 @PublicAPI(stability="alpha")
 class MultiHotEncoder(Preprocessor):
-    """Multi-hot encode categorical data.
+    r"""Multi-hot encode categorical data.
 
     This preprocessor replaces each list of categories with an :math:`m`-length binary
     list, where :math:`m` is the number of unique categories in the column or the value
@@ -259,9 +310,7 @@ class MultiHotEncoder(Preprocessor):
     Also, you can't have both types in the same column.
 
     .. note::
-        The logic is similar to scikit-learn's `MultiLabelBinarizer \
-    <https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing\
-    .MultiLabelBinarizer.html>`_.
+        The logic is similar to scikit-learn's [MultiLabelBinarizer][1]
 
     Examples:
         >>> import pandas as pd
@@ -285,6 +334,16 @@ class MultiHotEncoder(Preprocessor):
         1                          Moana  [1, 1, 1, 0, 0]
         2  The Smartest Guys in the Room  [0, 0, 0, 1, 0]
 
+        :class:`MultiHotEncoder` can also be used in append mode by providing the
+        name of the output_columns that should hold the encoded values.
+
+        >>> encoder = MultiHotEncoder(columns=["genre"], output_columns=["genre_encoded"])
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
+                                    name                        genre    genre_encoded
+        0                 Shaolin Soccer     [comedy, action, sports]  [1, 0, 1, 0, 1]
+        1                          Moana  [animation, comedy, action]  [1, 1, 1, 0, 0]
+        2  The Smartest Guys in the Room                [documentary]  [0, 0, 0, 1, 0]
+
         If you specify ``max_categories``, then :class:`MultiHotEncoder`
         creates features for only the most frequent categories.
 
@@ -302,6 +361,10 @@ class MultiHotEncoder(Preprocessor):
         max_categories: The maximum number of features to create for each column.
             If a value isn't specified for a column, then a feature is created
             for every unique category in that column.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
 
     .. seealso::
 
@@ -312,14 +375,23 @@ class MultiHotEncoder(Preprocessor):
         :class:`OrdinalEncoder`
             If your categories are ordered, you may want to use
             :class:`OrdinalEncoder`.
+
+    [1]: https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.MultiLabelBinarizer.html
     """
 
     def __init__(
-        self, columns: List[str], *, max_categories: Optional[Dict[str, int]] = None
+        self,
+        columns: List[str],
+        *,
+        max_categories: Optional[Dict[str, int]] = None,
+        output_columns: Optional[List[str]] = None,
     ):
         # TODO: add `drop` parameter.
         self.columns = columns
         self.max_categories = max_categories
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
@@ -342,21 +414,22 @@ class MultiHotEncoder(Preprocessor):
             counter = Counter(element)
             return [counter.get(x, 0) for x in stats]
 
-        for column in self.columns:
-            df[column] = df[column].map(partial(encode_list, name=column))
+        for column, output_column in zip(self.columns, self.output_columns):
+            df[output_column] = df[column].map(partial(encode_list, name=column))
 
         return df
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"max_categories={self.max_categories!r})"
+            f"max_categories={self.max_categories!r}, "
+            f"output_columns={self.output_columns})"
         )
 
 
 @PublicAPI(stability="alpha")
 class LabelEncoder(Preprocessor):
-    """Encode labels as integer targets.
+    r"""Encode labels as integer targets.
 
     :class:`LabelEncoder` encodes labels as integer targets that range from
     :math:`0` to :math:`n - 1`, where :math:`n` is the number of unique labels.
@@ -383,6 +456,17 @@ class LabelEncoder(Preprocessor):
         2          4.9           3.0        0
         3          6.2           3.4        2
 
+        You can also provide the name of the output column that should hold the encoded
+        labels if you want to use :class:`LabelEncoder` in append mode.
+
+        >>> encoder = LabelEncoder(label_column="species", output_column="species_encoded")
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           sepal_width  sepal_height     species  species_encoded
+        0          5.1           3.5      setosa                0
+        1          7.0           3.2  versicolor                1
+        2          4.9           3.0      setosa                0
+        3          6.2           3.4   virginica                2
+
         If you transform a label not present in the original dataset, then the new
         label is encoded as ``float("nan")``.
 
@@ -398,6 +482,9 @@ class LabelEncoder(Preprocessor):
 
     Args:
         label_column: A column containing labels that you want to encode.
+        output_column: The name of the column that will contain the encoded
+            labels. If None, the output column will have the same name as the
+            input column.
 
     .. seealso::
 
@@ -406,8 +493,9 @@ class LabelEncoder(Preprocessor):
             :class:`LabelEncoder`.
     """
 
-    def __init__(self, label_column: str):
+    def __init__(self, label_column: str, *, output_column: Optional[str] = None):
         self.label_column = label_column
+        self.output_column = output_column or label_column
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(dataset, [self.label_column])
@@ -420,7 +508,7 @@ class LabelEncoder(Preprocessor):
             s_values = self.stats_[f"unique_values({s.name})"]
             return s.map(s_values)
 
-        df[self.label_column] = df[self.label_column].transform(column_label_encoder)
+        df[self.output_column] = df[self.label_column].transform(column_label_encoder)
         return df
 
     def inverse_transform(self, ds: "Dataset") -> "Dataset":
@@ -462,16 +550,16 @@ class LabelEncoder(Preprocessor):
             }
             return s.map(inverse_values)
 
-        df[self.label_column] = df[self.label_column].transform(column_label_decoder)
+        df[self.label_column] = df[self.output_column].transform(column_label_decoder)
         return df
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(label_column={self.label_column!r})"
+        return f"{self.__class__.__name__}(label_column={self.label_column!r}, output_column={self.output_column!r})"
 
 
 @PublicAPI(stability="alpha")
 class Categorizer(Preprocessor):
-    """Convert columns to ``pd.CategoricalDtype``.
+    r"""Convert columns to ``pd.CategoricalDtype``.
 
     Use this preprocessor with frameworks that have built-in support for
     ``pd.CategoricalDtype`` like LightGBM.
@@ -497,6 +585,17 @@ class Categorizer(Preprocessor):
         >>> categorizer.fit_transform(ds).schema().types  # doctest: +SKIP
         [CategoricalDtype(categories=['female', 'male'], ordered=False), CategoricalDtype(categories=['L3', 'L4', 'L5'], ordered=False)]
 
+        :class:`Categorizer` can also be used in append mode by providing the
+        name of the output_columns that should hold the categorized values.
+
+        >>> categorizer = Categorizer(columns=["sex", "level"], output_columns=["sex_cat", "level_cat"])
+        >>> categorizer.fit_transform(ds).to_pandas()  # doctest: +SKIP
+              sex level sex_cat level_cat
+        0    male    L4    male        L4
+        1  female    L5  female        L5
+        2    male    L3    male        L3
+        3  female    L4  female        L4
+
         If you know the categories in advance, you can specify the categories with the
         ``dtypes`` parameter.
 
@@ -512,18 +611,27 @@ class Categorizer(Preprocessor):
         dtypes: An optional dictionary that maps columns to ``pd.CategoricalDtype``
             objects. If you don't include a column in ``dtypes``, the categories
             are inferred.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
+
     """  # noqa: E501
 
     def __init__(
         self,
         columns: List[str],
         dtypes: Optional[Dict[str, pd.CategoricalDtype]] = None,
+        output_columns: Optional[List[str]] = None,
     ):
         if not dtypes:
             dtypes = {}
 
         self.columns = columns
         self.dtypes = dtypes
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         columns_to_get = [
@@ -544,13 +652,13 @@ class Categorizer(Preprocessor):
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
-        df = df.astype(self.stats_)
+        df[self.output_columns] = df[self.columns].astype(self.stats_)
         return df
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"dtypes={self.dtypes!r})"
+            f"dtypes={self.dtypes!r}, output_columns={self.output_columns!r})"
         )
 
 
@@ -608,7 +716,8 @@ def _get_unique_value_indices(
     for batch in value_counts.iter_batches(batch_size=None):
         for col, counters in batch.items():
             for counter in counters:
-                final_counters[col] += counter
+                counter = {k: v for k, v in counter.items() if v is not None}
+                final_counters[col] += Counter(counter)
 
     # Inspect if there is any NA values.
     for col in columns:

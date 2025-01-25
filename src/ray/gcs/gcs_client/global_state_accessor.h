@@ -229,7 +229,7 @@ class GlobalStateAccessor {
   template <class DATA>
   MultiItemCallback<DATA> TransformForMultiItemCallback(
       std::vector<std::string> &data_vec, std::promise<bool> &promise) {
-    return [&data_vec, &promise](const Status &status, std::vector<DATA> &&result) {
+    return [&data_vec, &promise](const Status &status, std::vector<DATA> result) {
       RAY_CHECK_OK(status);
       std::transform(result.begin(),
                      result.end(),

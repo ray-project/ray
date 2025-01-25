@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 from unittest.mock import MagicMock, patch
 
 import pyarrow.fs
@@ -48,7 +49,7 @@ def train_fn(config):
 
 @pytest.fixture
 def tuner(tmp_path):
-    yield tune.Tuner(train_fn, run_config=train.RunConfig(storage_path=str(tmp_path)))
+    yield tune.Tuner(train_fn, run_config=tune.RunConfig(storage_path=str(tmp_path)))
 
 
 @pytest.fixture
@@ -201,6 +202,31 @@ def test_tag_air_entrypoint(ray_start_4_cpus, mock_record, entrypoint, tuner, tr
         trainer.fit()
 
     assert mock_record[TagKey.AIR_ENTRYPOINT] == entrypoint.value
+
+
+@pytest.mark.skipif(
+    sys.version_info.major == 3 and sys.version_info.minor >= 12,
+    reason="Python 3.12+ does not have Tensorflow installed on CI due to dependency conflicts.",
+)
+def test_tag_train_entrypoint(mock_record):
+    """Test that Train v2 entrypoints are recorded correctly."""
+    from ray.train.v2.torch.torch_trainer import TorchTrainer
+    from ray.train.v2.tensorflow.tensorflow_trainer import TensorflowTrainer
+    from ray.train.v2.xgboost.xgboost_trainer import XGBoostTrainer
+    from ray.train.v2.lightgbm.lightgbm_trainer import LightGBMTrainer
+
+    trainer_classes = [
+        TorchTrainer,
+        TensorflowTrainer,
+        XGBoostTrainer,
+        LightGBMTrainer,
+    ]
+    for trainer_cls in trainer_classes:
+        trainer = trainer_cls(
+            train_loop_per_worker=train_fn,
+            scaling_config=train.ScalingConfig(num_workers=2),
+        )
+        assert mock_record[TagKey.TRAIN_TRAINER] == trainer.__class__.__name__
 
 
 if __name__ == "__main__":

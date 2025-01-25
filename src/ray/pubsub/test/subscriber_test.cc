@@ -14,6 +14,15 @@
 
 #include "ray/pubsub/subscriber.h"
 
+#include <deque>
+#include <memory>
+#include <queue>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -236,13 +245,13 @@ TEST_F(SubscriberTest, TestBasicSubscription) {
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   // Make sure the long polling batch works as expected.
   for (const auto &object_id : objects_batched) {
-    ASSERT_TRUE(object_subscribed_[object_id] == 1);
+    ASSERT_EQ(object_subscribed_[object_id], 1);
   }
 
   // Publish the objects again, and subscriber should receive it.
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
   for (const auto &object_id : objects_batched) {
-    ASSERT_TRUE(object_subscribed_[object_id] == 2);
+    ASSERT_EQ(object_subscribed_[object_id], 2);
   }
 
   ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
@@ -279,7 +288,7 @@ TEST_F(SubscriberTest, TestIgnoreOutofOrderMessage) {
   ASSERT_EQ(2, owner_client->GetReportedMaxProcessedSequenceId());
 
   for (const auto &object_id : objects_batched) {
-    ASSERT_TRUE(object_subscribed_[object_id] == 1);
+    ASSERT_EQ(object_subscribed_[object_id], 1);
   }
 
   // By resetting the sequence_id, the message now come out of order,
@@ -289,14 +298,14 @@ TEST_F(SubscriberTest, TestIgnoreOutofOrderMessage) {
 
   // Make sure the long polling batch works as expected.
   for (const auto &object_id : objects_batched) {
-    ASSERT_TRUE(object_subscribed_[object_id] == 1);
+    ASSERT_EQ(object_subscribed_[object_id], 1);
   }
 
   // message arrives out of order (sequence_id 4 comes before 3),
   // we will ignore message with sequence id 3.
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched, {4, 3}));
-  ASSERT_TRUE(object_subscribed_[object_id] == 2);
-  ASSERT_TRUE(object_subscribed_[object_id1] == 1);
+  ASSERT_EQ(object_subscribed_[object_id], 2);
+  ASSERT_EQ(object_subscribed_[object_id1], 1);
   ASSERT_EQ(4, owner_client->GetReportedMaxProcessedSequenceId());
 }
 
@@ -325,7 +334,7 @@ TEST_F(SubscriberTest, TestPublisherFailsOver) {
   ASSERT_EQ(2, owner_client->GetReportedMaxProcessedSequenceId());
 
   for (const auto &object_id : objects_batched) {
-    ASSERT_TRUE(object_subscribed_[object_id] == 1);
+    ASSERT_EQ(object_subscribed_[object_id], 1);
   }
 
   // By resetting the sequence_id, the message now come out of order,
@@ -376,7 +385,7 @@ TEST_F(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions) {
   // Make sure the long polling batch works as expected.
   for (const auto &object_id : objects_batched) {
     // RAY_LOG(ERROR) << "haha " << object_subscribed_[object_id];
-    ASSERT_TRUE(object_subscribed_[object_id] > 0);
+    ASSERT_GT(object_subscribed_[object_id], 0);
   }
 }
 
@@ -407,7 +416,7 @@ TEST_F(SubscriberTest, TestMultiLongPollingWithTheSameSubscription) {
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
-  ASSERT_TRUE(object_subscribed_[object_id] > 0);
+  ASSERT_GT(object_subscribed_[object_id], 0);
   objects_batched.clear();
   object_subscribed_.clear();
 
@@ -415,7 +424,7 @@ TEST_F(SubscriberTest, TestMultiLongPollingWithTheSameSubscription) {
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 1);
   objects_batched.push_back(object_id);
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
-  ASSERT_TRUE(object_subscribed_[object_id] > 0);
+  ASSERT_GT(object_subscribed_[object_id], 0);
 }
 
 TEST_F(SubscriberTest, TestCallbackNotInvokedForNonSubscribedObject) {

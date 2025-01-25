@@ -3,7 +3,7 @@ import time
 import unittest
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.air.util.node import _force_on_node
 from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
 from ray.tune.callback import Callback
@@ -103,7 +103,7 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         def autoscaling_train(config):
             time.sleep(120)
-            train.report({"_metric": 1.0})
+            tune.report({"_metric": 1.0})
 
         tune.run(
             autoscaling_train,
@@ -139,7 +139,7 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         def train_fn(config):
             time.sleep(120)
-            train.report({"_metric": 1.0})
+            tune.report({"_metric": 1.0})
 
         class FailureInjectionCallback(Callback):
             def __init__(self):

@@ -15,6 +15,9 @@
 #include "ray/util/filesystem.h"
 
 #include <filesystem>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/file_system_monitor.h"
@@ -82,8 +85,8 @@ TEST(FileSystemTest, TestFileSystemMonitor) {
     FileSystemMonitor monitor({tmp_path}, 0);
     auto result = monitor.Space(tmp_path);
     ASSERT_TRUE(result.has_value());
-    ASSERT_TRUE(result->available > 0);
-    ASSERT_TRUE(result->capacity > 0);
+    ASSERT_GT(result->available, 0);
+    ASSERT_GT(result->capacity, 0);
   }
 
   auto noop_monitor = std::make_unique<ray::FileSystemMonitor>();

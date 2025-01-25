@@ -1,6 +1,7 @@
 import logging.config
 import os
 from enum import Enum
+from typing import Optional
 
 import ray
 from ray._private.log import PlainRayHandler
@@ -196,21 +197,20 @@ class SessionFileHandler(logging.Handler):
             self._handler.setFormatter(fmt)
         self._formatter = fmt
 
-    def _get_log_directory(self, session_dir):
-        """Return the directory where Ray Train writes log files."""
-        return os.path.join(session_dir, "logs", "train")
+    def get_log_file_path(self) -> Optional[str]:
+        if self._handler is None:
+            self._try_create_handler()
+        return self._path
 
     def _try_create_handler(self):
         assert self._handler is None
 
-        # Get the Ray session directory. If not in a Ray session, return.
+        # Get the Ray Train log directory. If not in a Ray session, return.
         # This handler will only be created within a Ray session.
-        global_node = ray._private.worker._global_node
-        if not global_node:
+        log_directory = get_log_directory()
+        if log_directory is None:
             return
 
-        # Create the log directory if it doesn't exist.
-        log_directory = self._get_log_directory(global_node.get_session_dir_path())
         os.makedirs(log_directory, exist_ok=True)
 
         # Create the log file.
@@ -226,6 +226,7 @@ def configure_controller_logger(context: TrainRunContext) -> None:
     """
     config = get_controller_logger_config_dict(context)
     logging.config.dictConfig(config)
+    # TODO: Return the controller log file path.
 
 
 def configure_worker_logger(context: TrainRunContext) -> None:
@@ -235,3 +236,52 @@ def configure_worker_logger(context: TrainRunContext) -> None:
     """
     config = get_worker_logger_config_dict(context)
     logging.config.dictConfig(config)
+    # TODO: Return the worker log file path.
+
+
+def get_log_directory() -> Optional[str]:
+    """Return the directory where Ray Train writes log files.
+
+    If not in a Ray session, return None.
+
+    This path looks like: "/tmp/ray/session_xxx/logs/train/"
+    """
+    global_node = ray._private.worker._global_node
+
+    if global_node is None:
+        return None
+
+    root_dir = global_node.get_session_dir_path()
+    return os.path.join(root_dir, "logs", "train")
+
+
+def get_train_application_controller_log_path() -> Optional[str]:
+    """
+    Return the path to the file train application controller log file.
+    """
+    # TODO: This is a temporary solution. We should return the log file path in
+    # the `configure_controller_logger` function.
+    logger = logging.getLogger("ray.train")
+    for handler in logger.handlers:
+        if (
+            isinstance(handler, SessionFileHandler)
+            and "ray-train-app-controller" in handler._filename
+        ):
+            return handler.get_log_file_path()
+    return None
+
+
+def get_train_application_worker_log_path() -> Optional[str]:
+    """
+    Return the path to the file train application worker log file.
+    """
+    # TODO: This is a temporary solution. We should return the log file path in
+    # the `configure_worker_logger` function.
+    logger = logging.getLogger("ray.train")
+    for handler in logger.handlers:
+        if (
+            isinstance(handler, SessionFileHandler)
+            and "ray-train-app-worker" in handler._filename
+        ):
+            return handler.get_log_file_path()
+    return None

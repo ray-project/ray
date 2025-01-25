@@ -139,19 +139,19 @@ TEST(Metric, MultiThreadMetricRegisterViewTest) {
     threads.emplace_back([tag1, tag2, index]() {
       for (int i = 0; i < 100; i++) {
         stats::Count random_counter(
-            "ray.random.counter" + std::to_string(index) + std::to_string(i),
+            "ray_random_counter" + std::to_string(index) + std::to_string(i),
             "",
             "",
             {tag1, tag2});
         random_counter.Record(i);
         stats::Gauge random_gauge(
-            "ray.random.gauge" + std::to_string(index) + std::to_string(i),
+            "ray_random_gauge" + std::to_string(index) + std::to_string(i),
             "",
             "",
             {tag1, tag2});
         random_gauge.Record(i);
         stats::Sum random_sum(
-            "ray.random.sum" + std::to_string(index) + std::to_string(i),
+            "ray_random_sum" + std::to_string(index) + std::to_string(i),
             "",
             "",
             {tag1, tag2});

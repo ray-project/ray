@@ -1,10 +1,12 @@
 from collections import defaultdict
 from functools import partial
 import logging
+import math
 import time
 from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
+import ray
 from gymnasium.wrappers.vector import DictInfoToList
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -407,15 +409,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
                     # Create a new episode object with no data in it and execute
                     # `on_episode_created` callback (before the `env.reset()` call).
-                    episodes[env_index] = SingleAgentEpisode(
-                        observation_space=self.env.single_observation_space,
-                        action_space=self.env.single_action_space,
-                    )
-                    self._make_on_episode_callback(
-                        "on_episode_created",
-                        env_index,
-                        episodes,
-                    )
+                    self._new_episode(env_index, episodes)
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
@@ -543,6 +537,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 rl_module_state = state[COMPONENT_RL_MODULE]
+                if isinstance(rl_module_state, ray.ObjectRef):
+                    rl_module_state = ray.get(rl_module_state)
                 if (
                     isinstance(rl_module_state, dict)
                     and DEFAULT_MODULE_ID in rl_module_state
@@ -756,7 +752,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         )
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
-    def _make_on_episode_callback(self, which: str, idx: int, episodes):
+    def _make_on_episode_callback(
+        self, which: str, idx: int, episodes: List[SingleAgentEpisode] = None
+    ):
         make_callback(
             which,
             callbacks_objects=self._callbacks,
@@ -820,9 +818,18 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
     def _log_episode_metrics(self, length, ret, sec):
         # Log general episode metrics.
-        # To mimic the old API stack behavior, we'll use `window` here for
-        # these particular stats (instead of the default EMA).
-        win = self.config.metrics_num_episodes_for_smoothing
+        # Use the configured window, but factor in the parallelism of the EnvRunners.
+        # As a result, we only log the last `window / num_env_runners` steps here,
+        # b/c everything gets parallel-merged in the Algorithm process.
+        win = max(
+            1,
+            int(
+                math.ceil(
+                    self.config.metrics_num_episodes_for_smoothing
+                    / (self.config.num_env_runners or 1)
+                )
+            ),
+        )
         self.metrics.log_value(EPISODE_LEN_MEAN, length, window=win)
         self.metrics.log_value(EPISODE_RETURN_MEAN, ret, window=win)
         self.metrics.log_value(EPISODE_DURATION_SEC_MEAN, sec, window=win)
