@@ -31,7 +31,7 @@ DEFAULT_CLOUD_ID = DeferredEnvVar(
 )
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
-    "prj_FKRmeV5pA6X72aVscFALNC32",
+    "prj_6rfevmf12tbsbd6g3al5f6zssh",
 )
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -253,3 +253,9 @@ def get_test_cloud_id(test: Test) -> str:
     else:
         cloud_id = cloud_id or str(DEFAULT_CLOUD_ID)
     return cloud_id
+
+
+def get_test_project_id(test: Test, default_project_id: Optional[str] = None) -> str:
+    if default_project_id is None:
+        default_project_id = str(DEFAULT_ANYSCALE_PROJECT)
+    return test.get("cluster", {}).get("project_id", default_project_id)

@@ -22,8 +22,6 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/callback.h"
-#include "ray/util/logging.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 

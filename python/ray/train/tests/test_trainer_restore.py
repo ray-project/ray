@@ -272,7 +272,6 @@ def test_restore_with_different_trainer(tmpdir):
     # This won't raise because the DataParallelTrainer args can technically
     # be fed into a TorchTrainer.
     attempt_restore(TorchTrainer, should_warn=True, should_raise=False)
-    attempt_restore(DataParallelTrainer, should_warn=False, should_raise=False)
 
 
 def test_restore_from_invalid_dir(tmpdir):

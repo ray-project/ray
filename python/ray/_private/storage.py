@@ -447,7 +447,7 @@ def _init_filesystem(create_valid_file: bool = False, check_valid_file: bool = T
     # could not be understood by pyarrow. We replace it with slash here.
     parsed_uri = urllib.parse.urlparse(_storage_uri.replace("\\", "/"))
     if parsed_uri.scheme == "custom":
-        fs_creator = _load_class(parsed_uri.netloc)
+        fs_creator = load_class(parsed_uri.netloc)
         _filesystem, _storage_prefix = fs_creator(parsed_uri.path)
     else:
         # Arrow's S3FileSystem doesn't allow creating buckets by default, so we add a
@@ -484,8 +484,3 @@ def _reset() -> None:
     """Resets all initialized state to None."""
     global _storage_uri, _filesystem, _storage_prefix
     _storage_uri = _filesystem = _storage_prefix = None
-
-
-# TODO(ekl): remove this indirection.
-def _load_class(path):
-    return load_class(path)

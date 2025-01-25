@@ -3,7 +3,13 @@ exclude: |
     python/ray/core/generated/|
     python/ray/serve/generated/|
     python/ray/cloudpickle/|
+    python/ray/dashboard/client/public/|
+    python/ray/tests/test_cli_patterns|
     python/ray/_private/runtime_env/_clonevirtualenv.py|
+    python/ray/data/examples/data/|
+    release/release_logs/|
+    rllib/tests/data|
+    thirdparty/patches/|
     doc/external/|
     doc/source/
   )
@@ -35,6 +41,21 @@ repos:
     hooks:
       - id: ruff
         args: [ --fix, --exit-non-zero-on-fix ]
+
+  - repo: https://github.com/cpplint/cpplint
+    rev: 2.0.0
+    hooks:
+      - id: cpplint
+        args: ["--filter=-whitespace/braces,-whitespace/line_length,-build/c++11,-build/c++14,-build/c++17,-readability/braces,-whitespace/indent_namespace,-runtime/int,-runtime/references,-build/include_order"]
+        files: ^src/ray/(util|raylet_client|internal|scheduling|pubsub|object_manager|rpc(?:/.*)?)/.*\.(h|cc)$
+
+  - repo: https://github.com/keith/pre-commit-buildifier
+    rev: 8.0.1
+    hooks:
+      - id: buildifier
+        files: ^(src|cpp)(/[^/]+)*/BUILD$
+      - id: buildifier-lint
+        files: ^(src|cpp)(/[^/]+)*/BUILD$
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
@@ -87,8 +108,8 @@ repos:
       - id: python-no-log-warn
       - id: python-check-mock-methods
 
-  - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.9.0
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.1
     hooks:
       - id: shellcheck
         args: ['--exclude=1090,1091,2207']
@@ -125,6 +146,37 @@ repos:
 
   - repo: local
     hooks:
+      - id: bazel_team_owner_check
+        name: Check for bazel team owner tagging violations
+        entry: python ci/lint/check_bazel_team_owner.py
+        language: python
+        types: [python]
+
+  - repo: local
+    hooks:
+      - id: copyright_format_check
+        name: Check for file copyright format violations
+        entry: ci/lint/copyright-format.sh
+        language: system
+        args: ["-c"]
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: code_format_check
+        name: Check for code format violations
+        entry: ci/lint/format.sh
+        language: system
+
+  - repo: local
+    hooks:
+      - id: documentation_style_check
+        name: Check for documentation style violations
+        entry: ci/lint/check-documentation-style.sh
+        language: system
+
+  - repo: local
+    hooks:
       - id: check-import-order
         name: Check for Ray import order violations
         entry: python ci/lint/check_import_order.py
@@ -135,7 +187,7 @@ repos:
 
   - repo: local
     hooks:
-      - id: check_cpp_files_inclusion
+      - id: check-cpp-files-inclusion
         name: Check ray core C++ files inclusion violations
         entry: ci/lint/check_cpp_files_inclusion.py
         language: python

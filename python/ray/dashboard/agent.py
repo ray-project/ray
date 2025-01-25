@@ -4,7 +4,6 @@ import json
 import logging
 import logging.handlers
 import os
-import pathlib
 import signal
 import sys
 
@@ -17,7 +16,9 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
-from ray._private.ray_logging import configure_log_file, setup_component_logger
+from ray._private.ray_logging import setup_component_logger
+from ray._raylet import StreamRedirector
+from ray._private.utils import open_log
 
 logger = logging.getLogger(__name__)
 
@@ -88,11 +89,7 @@ class DashboardAgent:
         from ray.dashboard.http_server_agent import HttpServerAgent
 
         self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
-
-        try:
-            from grpc import aio as aiogrpc
-        except ImportError:
-            from grpc.experimental import aio as aiogrpc
+        from grpc import aio as aiogrpc
 
         # We would want to suppress deprecating warnings from aiogrpc library
         # with the usage of asyncio.get_event_loop() in python version >=3.10
@@ -196,17 +193,26 @@ class DashboardAgent:
                     "disable the http service."
                 )
 
-        # Write the dashboard agent port to kv.
-        # TODO: Use async version if performance is an issue
+        # Writes agent address to kv.
+        # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
+        # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
         # -1 should indicate that http server is not started.
         http_port = -1 if not self.http_server else self.http_server.http_port
         grpc_port = -1 if not self.server else self.grpc_port
-        await self.gcs_aio_client.internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}".encode(),
-            json.dumps([http_port, grpc_port]).encode(),
+        put_by_node_id = self.gcs_aio_client.internal_kv_put(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
+            json.dumps([self.ip, http_port, grpc_port]).encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
+        put_by_ip = self.gcs_aio_client.internal_kv_put(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
+            json.dumps([self.node_id, http_port, grpc_port]).encode(),
+            True,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        )
+
+        await asyncio.gather(put_by_node_id, put_by_ip)
 
         tasks = [m.run(self.server) for m in modules]
 
@@ -238,11 +244,15 @@ class DashboardAgent:
             await self.http_server.cleanup()
 
 
-def open_capture_files(log_dir):
+def get_capture_filepaths(log_dir):
+    """Get filepaths for the given [log_dir].
+    log_dir:
+        Logging directory to place output and error logs.
+    """
     filename = f"agent-{args.agent_id}"
     return (
-        ray._private.utils.open_log(pathlib.Path(log_dir) / f"{filename}.out"),
-        ray._private.utils.open_log(pathlib.Path(log_dir) / f"{filename}.err"),
+        f"{log_dir}/{filename}.out",
+        f"{log_dir}/{filename}.err",
     )
 
 
@@ -329,20 +339,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--logging-rotate-bytes",
-        required=False,
+        required=True,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
-        help="Specify the max bytes for rotating "
-        "log file, default is {} bytes.".format(ray_constants.LOGGING_ROTATE_BYTES),
+        help="Specify the max bytes for rotating log file.",
     )
     parser.add_argument(
         "--logging-rotate-backup-count",
-        required=False,
+        required=True,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        help="Specify the backup count of rotated log file, default is {}.".format(
-            ray_constants.LOGGING_ROTATE_BACKUP_COUNT
-        ),
+        help="Specify the backup count of rotated log file.",
     )
     parser.add_argument(
         "--log-dir",
@@ -398,13 +403,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
+        # Disable log rotation for windows platform.
+        logging_rotation_bytes = (
+            args.logging_rotate_bytes if sys.platform != "win32" else 0
+        )
+        logging_rotation_backup_count = (
+            args.logging_rotate_backup_count if sys.platform != "win32" else 1
+        )
+
         logging_params = dict(
             logging_level=args.logging_level,
             logging_format=args.logging_format,
             log_dir=args.log_dir,
             filename=args.logging_filename,
-            max_bytes=args.logging_rotate_bytes,
-            backup_count=args.logging_rotate_backup_count,
+            max_bytes=logging_rotation_bytes,
+            backup_count=logging_rotation_backup_count,
         )
         logger = setup_component_logger(**logging_params)
 
@@ -413,8 +426,32 @@ if __name__ == "__main__":
         loop = ray._private.utils.get_or_create_event_loop()
 
         # Setup stdout/stderr redirect files
-        out_file, err_file = open_capture_files(args.log_dir)
-        configure_log_file(out_file, err_file)
+        out_filepath, err_filepath = get_capture_filepaths(args.log_dir)
+        StreamRedirector.redirect_stdout(
+            out_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
+            False,
+            False,
+        )
+        StreamRedirector.redirect_stderr(
+            err_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
+            False,
+            False,
+        )
+
+        # Setup stdout/stderr redirect files
+        stdout_fileno = sys.stdout.fileno()
+        stderr_fileno = sys.stderr.fileno()
+        # We also manually set sys.stdout and sys.stderr because that seems to
+        # have an effect on the output buffering. Without doing this, stdout
+        # and stderr are heavily buffered resulting in seemingly lost logging
+        # statements. We never want to close the stdout file descriptor, dup2 will
+        # close it when necessary and we don't want python's GC to close it.
+        sys.stdout = open_log(stdout_fileno, unbuffered=True, closefd=False)
+        sys.stderr = open_log(stderr_fileno, unbuffered=True, closefd=False)
 
         agent = DashboardAgent(
             args.node_ip_address,

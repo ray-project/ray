@@ -15,7 +15,6 @@ import ray
 import ray.cloudpickle as ray_pickle
 from ray.air._internal.util import exception_cause, skip_exceptions
 from ray.air.constants import TIME_THIS_ITER_S, TIMESTAMP, TRAINING_ITERATION
-from ray.train import Checkpoint
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
 from ray.train.constants import DEFAULT_STORAGE_PATH
@@ -418,7 +417,7 @@ class Trainable:
 
         This is to get class trainables to work with storage backend used by
         function trainables.
-        This basically re-implements `train.report` for class trainables,
+        This basically re-implements `tune.report` for class trainables,
         making sure to persist the checkpoint to storage.
         """
         if isinstance(checkpoint_dict_or_path, dict):
@@ -432,7 +431,7 @@ class Trainable:
                     f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
                 )
 
-        local_checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        local_checkpoint = ray.tune.Checkpoint.from_directory(checkpoint_dir)
 
         metrics = self._last_result.copy() if self._last_result else {}
 
@@ -505,7 +504,9 @@ class Trainable:
         return checkpoint_result
 
     @DeveloperAPI
-    def restore(self, checkpoint_path: Union[str, Checkpoint, _TrainingResult]):
+    def restore(
+        self, checkpoint_path: Union[str, "ray.tune.Checkpoint", _TrainingResult]
+    ):
         """Restores training state from a given model checkpoint.
 
         These checkpoints are returned from calls to save().
@@ -517,22 +518,15 @@ class Trainable:
         `checkpoint_path` should match with the return from ``save()``.
 
         Args:
-            checkpoint_path: Path to restore checkpoint from. If this
-                path does not exist on the local node, it will be fetched
-                from external (cloud) storage if available, or restored
-                from a remote node.
-            checkpoint_node_ip: If given, try to restore
-                checkpoint from this node if it doesn't exist locally or
-                on cloud storage.
-            fallback_to_latest: If True, will try to recover the
-                latest available checkpoint if the given ``checkpoint_path``
-                could not be found.
-
+            checkpoint_path: training result that was returned by a
+                previous call to `save()`.
         """
-        # TODO(justinvyu): Clean up this interface
+        # TODO(justinvyu): This also supports restoring from a Checkpoint object
+        # or a path, which are legacy APIs that RLlib depends on.
+        # RLlib should remove this dependency since `restore` is a DeveloperAPI.
         if isinstance(checkpoint_path, str):
-            checkpoint_path = Checkpoint.from_directory(checkpoint_path)
-        if isinstance(checkpoint_path, Checkpoint):
+            checkpoint_path = ray.tune.Checkpoint.from_directory(checkpoint_path)
+        if isinstance(checkpoint_path, ray.tune.Checkpoint):
             checkpoint_result = _TrainingResult(checkpoint=checkpoint_path, metrics={})
         else:
             checkpoint_result: _TrainingResult = checkpoint_path

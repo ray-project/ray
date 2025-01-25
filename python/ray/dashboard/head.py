@@ -50,10 +50,7 @@ RAY_DASHBOARD_DASHBOARD_HEAD_TPE_MAX_WORKERS = env_integer(
 
 
 def initialize_grpc_port_and_server(grpc_ip, grpc_port):
-    try:
-        from grpc import aio as aiogrpc
-    except ImportError:
-        from grpc.experimental import aio as aiogrpc
+    from grpc import aio as aiogrpc
 
     import ray._private.tls_utils
 

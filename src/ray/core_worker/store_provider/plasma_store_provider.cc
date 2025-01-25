@@ -382,8 +382,8 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
 
   bool should_break = false;
   int64_t remaining_timeout = timeout_ms;
+  absl::flat_hash_set<ObjectID> ready_in_plasma;
   while (!should_break) {
-    WaitResultPair result_pair;
     int64_t call_timeout = RayConfig::instance().get_check_signal_interval_milliseconds();
     if (remaining_timeout >= 0) {
       call_timeout = std::min(remaining_timeout, call_timeout);
@@ -392,22 +392,22 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     }
 
     const auto owner_addresses = reference_counter_.GetOwnerAddresses(id_vector);
-    RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector,
-                                           owner_addresses,
-                                           num_objects,
-                                           call_timeout,
-                                           ctx.GetCurrentTaskID(),
-                                           &result_pair));
+    RAY_ASSIGN_OR_RETURN(ready_in_plasma,
+                         raylet_client_->Wait(id_vector,
+                                              owner_addresses,
+                                              num_objects,
+                                              call_timeout,
+                                              ctx.GetCurrentTaskID()));
 
-    if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
+    if (ready_in_plasma.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;
-    }
-    for (const auto &entry : result_pair.first) {
-      ready->insert(entry);
     }
     if (check_signals_) {
       RAY_RETURN_NOT_OK(check_signals_());
     }
+  }
+  for (const auto &entry : ready_in_plasma) {
+    ready->insert(entry);
   }
   if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
     RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskUnblocked());

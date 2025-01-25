@@ -28,7 +28,6 @@
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_common.h"
-#include "ray/util/container_util.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"

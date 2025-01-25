@@ -1,5 +1,5 @@
 import pathlib
-from collections import defaultdict, Counter
+from collections import defaultdict
 import copy
 from functools import partial
 import itertools
@@ -37,7 +37,6 @@ from ray.rllib.utils.actor_manager import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.minibatch_utils import (
     ShardBatchIterator,
     ShardEpisodesIterator,
@@ -133,19 +132,18 @@ class LearnerGroup(Checkpointable):
         else:
             backend_config = _get_backend_config(learner_class)
 
-            # TODO (sven): Can't set both `num_cpus_per_learner`>1 and
-            #  `num_gpus_per_learner`>0! Users must set one or the other due
-            #  to issues with placement group fragmentation. See
-            #  https://github.com/ray-project/ray/issues/35409 for more details.
             num_cpus_per_learner = (
                 self.config.num_cpus_per_learner
-                if not self.config.num_gpus_per_learner
+                if self.config.num_cpus_per_learner != "auto"
+                else 1
+                if self.config.num_gpus_per_learner == 0
                 else 0
             )
             num_gpus_per_learner = max(
                 0,
                 self.config.num_gpus_per_learner
-                - (0.01 * self.config.num_aggregator_actors_per_learner),
+                # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
+                # - (0.01 * self.config.num_aggregator_actors_per_learner),
             )
             resources_per_learner = {
                 "CPU": num_cpus_per_learner,
@@ -178,19 +176,13 @@ class LearnerGroup(Checkpointable):
                     self.config.max_requests_in_flight_per_learner
                 ),
             )
-            # Counters for the tags for asynchronous update requests that are
-            # in-flight. Used for keeping trakc of and grouping together the results of
-            # requests that were sent to the workers at the same time.
-            self._update_request_tags = Counter()
-            self._update_request_tag = 0
-            self._update_request_results = {}
 
     # TODO (sven): Replace this with call to `self.metrics.peek()`?
     #  Currently LearnerGroup does not have a metrics object.
     def get_stats(self) -> Dict[str, Any]:
         """Returns the current stats for the input queue for this learner group."""
         return {
-            "learner_group_ts_dropped": self._ts_dropped,
+            "learner_group_ts_dropped_lifetime": self._ts_dropped,
             "actor_manager_num_outstanding_async_reqs": (
                 0
                 if self.is_local
@@ -391,17 +383,21 @@ class LearnerGroup(Checkpointable):
                     num_total_minibatches=_num_total_minibatches,
                     **_kwargs,
                 )
-            if _return_state and result:
-                result["_rl_module_state_after_update"] = _learner.get_state(
-                    # Only return the state of those RLModules that actually returned
-                    # results and thus got probably updated.
+            if _return_state:
+                learner_state = _learner.get_state(
+                    # Only return the state of those RLModules that actually
+                    # returned results and thus got probably updated.
                     components=[
                         COMPONENT_RL_MODULE + "/" + mid
-                        for mid in result
-                        if mid != ALL_MODULES
+                        for mid in _learner.module.keys()
+                        if _learner.should_module_be_updated(mid)
                     ],
                     inference_only=True,
                 )
+                learner_state[COMPONENT_RL_MODULE] = ray.put(
+                    learner_state[COMPONENT_RL_MODULE]
+                )
+                result["_rl_module_state_after_update"] = learner_state
 
             return result
 
@@ -414,9 +410,15 @@ class LearnerGroup(Checkpointable):
                     " local mode! Try setting `config.num_learners > 0`."
                 )
 
-            if isinstance(batch, list) and isinstance(batch[0], ray.ObjectRef):
+            if isinstance(batch, list):
+                # Ensure we are not in a multi-learner setting.
                 assert len(batch) == 1
-                batch = ray.get(batch[0])
+                # If we have `ObjectRef`s, get the respective objects.
+                if isinstance(batch[0], ray.ObjectRef):
+                    batch = ray.get(batch[0])
+                # If we have a `DataIterator`, get the iterator.
+                elif isinstance(batch[0], ray.data.DataIterator):
+                    batch = batch[0]
 
             results = [
                 _learner_update(
@@ -537,45 +539,25 @@ class LearnerGroup(Checkpointable):
 
             if async_update:
                 # Retrieve all ready results (kicked off by prior calls to this method).
-                tags_to_get = []
-                for tag in self._update_request_tags.keys():
-                    result = self._worker_manager.fetch_ready_async_reqs(
-                        tags=[str(tag)], timeout_seconds=0.0
-                    )
-                    if tag not in self._update_request_results:
-                        self._update_request_results[tag] = result
-                    else:
-                        for r in result:
-                            self._update_request_results[tag].add_result(
-                                r.actor_id, r.result_or_error, tag
-                            )
-
-                    # Still not done with this `tag` -> skip out early.
-                    if (
-                        self._update_request_tags[tag]
-                        > len(self._update_request_results[tag].result_or_errors)
-                        > 0
-                    ):
-                        break
-                    tags_to_get.append(tag)
-
+                results = self._worker_manager.fetch_ready_async_reqs(
+                    timeout_seconds=0.0
+                )
                 # Send out new request(s), if there is still capacity on the actors
                 # (each actor is allowed only some number of max in-flight requests
                 # at the same time).
-                update_tag = self._update_request_tag
-                self._update_request_tag += 1
-                num_sent_requests = self._worker_manager.foreach_actor_async(
-                    partials, tag=str(update_tag)
-                )
-                if num_sent_requests:
-                    self._update_request_tags[update_tag] = num_sent_requests
+                num_sent_requests = self._worker_manager.foreach_actor_async(partials)
 
                 # Some requests were dropped, record lost ts/data.
                 if num_sent_requests != len(self._workers):
                     factor = 1 - (num_sent_requests / len(self._workers))
                     # Batch: Measure its length.
                     if episodes is None:
-                        dropped = len(batch)
+                        if isinstance(batch, list) and isinstance(batch[0], ObjectRef):
+                            dropped = (
+                                len(batch) * self.config.train_batch_size_per_learner
+                            )
+                        else:
+                            dropped = len(batch)
                     # List of Ray ObjectRefs (each object ref is a list of episodes of
                     # total len=`rollout_fragment_length * num_envs_per_env_runner`)
                     elif isinstance(episodes[0], ObjectRef):
@@ -595,7 +577,7 @@ class LearnerGroup(Checkpointable):
                 # a list of lists where each inner list should be the length of the
                 # number of learner workers, if results from an non-blocking update are
                 # ready.
-                results = self._get_async_results(tags_to_get)
+                results = self._get_async_results(results)
 
             else:
                 results = self._get_results(
@@ -615,7 +597,7 @@ class LearnerGroup(Checkpointable):
                 raise result_or_error
         return processed_results
 
-    def _get_async_results(self, tags_to_get):
+    def _get_async_results(self, results):
         """Get results from the worker manager and group them by tag.
 
         Returns:
@@ -623,32 +605,15 @@ class LearnerGroup(Checkpointable):
             for same tags.
 
         """
-        unprocessed_results = defaultdict(list)
-        for tag in tags_to_get:
-            results = self._update_request_results[tag]
-            for result in results:
-                result_or_error = result.get()
-                if result.ok:
-                    if result.tag is None:
-                        raise RuntimeError(
-                            "Cannot call `LearnerGroup._get_async_results()` on "
-                            "untagged async requests!"
-                        )
-                    tag = int(result.tag)
-                    unprocessed_results[tag].append(result_or_error)
+        ret = []
+        for result in results:
+            result_or_error = result.get()
+            if result.ok:
+                ret.append(result_or_error)
+            else:
+                raise result_or_error
 
-                    if tag in self._update_request_tags:
-                        self._update_request_tags[tag] -= 1
-                        if self._update_request_tags[tag] == 0:
-                            del self._update_request_tags[tag]
-                            del self._update_request_results[tag]
-                    else:
-                        assert False
-
-                else:
-                    raise result_or_error
-
-        return list(unprocessed_results.values())
+        return ret
 
     def add_module(
         self,
@@ -857,10 +822,10 @@ class LearnerGroup(Checkpointable):
         remote_actor_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
         **kwargs,
     ) -> RemoteCallResults:
-        """Calls the given function on each Learner L with the args: (L, \*\*kwargs).
+        r"""Calls the given function on each Learner L with the args: (L, \*\*kwargs).
 
         Args:
             func: The function to call on each Learner L with args: (L, \*\*kwargs).

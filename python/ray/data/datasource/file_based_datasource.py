@@ -18,9 +18,11 @@ import numpy as np
 
 import ray
 from ray.data._internal.util import (
+    RetryingContextManager,
+    RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
-    call_with_retry,
+    iterate_with_retry,
     make_async_gen,
 )
 from ray.data.block import Block, BlockAccessor
@@ -54,12 +56,6 @@ FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
 
 # 16 file size fetches from S3 takes ~1.5 seconds with Arrow's S3FileSystem.
 PATHS_PER_FILE_SIZE_FETCH_TASK = 16
-
-# The max retry backoff in seconds for opening file.
-OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
-
-# The max number of attempts for opening file.
-OPEN_FILE_MAX_ATTEMPTS = 10
 
 
 @DeveloperAPI
@@ -137,6 +133,7 @@ class FileBasedDatasource(Datasource):
             )
 
         self._schema = schema
+        self._data_context = DataContext.get_current()
         self._open_stream_args = open_stream_args
         self._meta_provider = meta_provider
         self._partition_filter = partition_filter
@@ -144,6 +141,9 @@ class FileBasedDatasource(Datasource):
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        self._filesystem = RetryingPyFileSystem.wrap(
+            self._filesystem, context=self._data_context
+        )
         paths, file_sizes = map(
             list,
             zip(
@@ -214,7 +214,6 @@ class FileBasedDatasource(Datasource):
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import numpy as np
 
-        ctx = DataContext.get_current()
         open_stream_args = self._open_stream_args
         partitioning = self._partitioning
 
@@ -229,34 +228,33 @@ class FileBasedDatasource(Datasource):
             ]
             paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
 
-        read_stream = self._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
 
         if open_stream_args is None:
             open_stream_args = {}
-
-        open_input_source = self._open_input_source
 
         def read_files(
             read_paths: Iterable[str],
         ) -> Iterable[Block]:
             nonlocal filesystem, open_stream_args, partitioning
 
-            DataContext._set_current(ctx)
             fs = _unwrap_s3_serialization_workaround(filesystem)
+
             for read_path in read_paths:
                 partitions: Dict[str, str] = {}
                 if partitioning is not None:
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
 
-                with _open_file_with_retry(
-                    read_path,
-                    lambda read_path=read_path: open_input_source(
-                        fs, read_path, **open_stream_args
-                    ),
+                with RetryingContextManager(
+                    self._open_input_source(fs, read_path, **open_stream_args),
+                    context=self._data_context,
                 ) as f:
-                    for block in read_stream(f, read_path):
+                    for block in iterate_with_retry(
+                        lambda: self._read_stream(f, read_path),
+                        description="read stream iteratively",
+                        match=self._data_context.retried_io_errors,
+                    ):
                         if partitions:
                             block = _add_partitions(block, partitions)
                         if self._include_paths:
@@ -272,7 +270,7 @@ class FileBasedDatasource(Datasource):
 
                 # TODO: We should refactor the code so that we can get the results in
                 # order even when using multiple threads.
-                if ctx.execution_options.preserve_order:
+                if self._data_context.execution_options.preserve_order:
                     num_threads = 0
 
                 if num_threads > 0:
@@ -322,23 +320,21 @@ class FileBasedDatasource(Datasource):
 
     def _open_input_source(
         self,
-        filesystem: "pyarrow.fs.FileSystem",
+        filesystem: "RetryingPyFileSystem",
         path: str,
         **open_args,
     ) -> "pyarrow.NativeFile":
         """Opens a source path for reading and returns the associated Arrow NativeFile.
 
         The default implementation opens the source path as a sequential input stream,
-        using ctx.streaming_read_buffer_size as the buffer size if none is given by the
-        caller.
+        using self._data_context.streaming_read_buffer_size as the buffer size if none
+        is given by the caller.
 
         Implementations that do not support streaming reads (e.g. that require random
         access) should override this method.
         """
         import pyarrow as pa
         from pyarrow.fs import HadoopFileSystem
-
-        ctx = DataContext.get_current()
 
         compression = open_args.get("compression", None)
         if compression is None:
@@ -359,7 +355,7 @@ class FileBasedDatasource(Datasource):
 
         buffer_size = open_args.pop("buffer_size", None)
         if buffer_size is None:
-            buffer_size = ctx.streaming_read_buffer_size
+            buffer_size = self._data_context.streaming_read_buffer_size
 
         if compression == "snappy":
             # Arrow doesn't support streaming Snappy decompression since the canonical
@@ -369,19 +365,13 @@ class FileBasedDatasource(Datasource):
         else:
             open_args["compression"] = compression
 
-        file = call_with_retry(
-            lambda: filesystem.open_input_stream(
-                path, buffer_size=buffer_size, **open_args
-            ),
-            description=f"open file {path}",
-            match=ctx.retried_io_errors,
-        )
+        file = filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
 
         if compression == "snappy":
             import snappy
 
             stream = io.BytesIO()
-            if isinstance(filesystem, HadoopFileSystem):
+            if isinstance(filesystem.unwrap(), HadoopFileSystem):
                 snappy.hadoop_snappy.stream_decompress(src=file, dst=stream)
             else:
                 snappy.stream_decompress(src=file, dst=stream)
@@ -483,23 +473,43 @@ def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
     import pyarrow as pa
     import pyarrow.fs
 
-    if isinstance(filesystem, pa.fs.S3FileSystem):
-        return _S3FileSystemWrapper(filesystem)
+    wrap_retries = False
+    fs_to_be_wrapped = filesystem  # Only unwrap for S3FileSystemWrapper
+    context = None
+    if isinstance(fs_to_be_wrapped, RetryingPyFileSystem):
+        wrap_retries = True
+        context = fs_to_be_wrapped.data_context
+        fs_to_be_wrapped = fs_to_be_wrapped.unwrap()
+    if isinstance(fs_to_be_wrapped, pa.fs.S3FileSystem):
+        return _S3FileSystemWrapper(
+            fs_to_be_wrapped, wrap_retries=wrap_retries, context=context
+        )
     return filesystem
 
 
 def _unwrap_s3_serialization_workaround(
-    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"]
+    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"],
+    context: Optional[DataContext] = None,
 ):
     if isinstance(filesystem, _S3FileSystemWrapper):
-        return filesystem.unwrap()
-    else:
-        return filesystem
+        wrap_retries = filesystem._wrap_retries
+        context = filesystem._context
+        filesystem = filesystem.unwrap()
+        if wrap_retries:
+            filesystem = RetryingPyFileSystem.wrap(filesystem, context=context)
+    return filesystem
 
 
 class _S3FileSystemWrapper:
-    def __init__(self, fs: "pyarrow.fs.S3FileSystem"):
+    def __init__(
+        self,
+        fs: "pyarrow.fs.S3FileSystem",
+        wrap_retries: bool = False,
+        context: Optional[DataContext] = None,
+    ):
         self._fs = fs
+        self._wrap_retries = wrap_retries
+        self._context = context
 
     def unwrap(self):
         return self._fs
@@ -536,30 +546,6 @@ def _resolve_kwargs(
         kwarg_overrides = kwargs_fn()
         kwargs.update(kwarg_overrides)
     return kwargs
-
-
-def _open_file_with_retry(
-    file_path: str,
-    open_file: Callable[[], "pyarrow.NativeFile"],
-) -> "pyarrow.NativeFile":
-    """Open file with an exponential backoff retry strategy.
-
-    This is to avoid transient task failure with remote storage (such as S3),
-    when the remote storage throttles the requests.
-    """
-    if OPEN_FILE_MAX_ATTEMPTS < 1:
-        raise ValueError(
-            "OPEN_FILE_MAX_ATTEMPTS cannot be negative or 0. Get: "
-            f"{OPEN_FILE_MAX_ATTEMPTS}"
-        )
-
-    return call_with_retry(
-        open_file,
-        description=f"open file {file_path}",
-        match=DataContext.get_current().retried_io_errors,
-        max_attempts=OPEN_FILE_MAX_ATTEMPTS,
-        max_backoff_s=OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
-    )
 
 
 def _validate_shuffle_arg(shuffle: Optional[str]) -> None:

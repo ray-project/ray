@@ -25,12 +25,9 @@ from ray._private.signature import extract_signature, get_signature
 from ray._private.utils import check_oversized_function
 from ray.util.client import ray
 from ray.util.client.options import validate_options
+from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
-
-# The maximum field value for int32 id's -- which is also the maximum
-# number of simultaneous in-flight requests.
-INT32_MAX = (2**31) - 1
 
 # gRPC status codes that the client shouldn't attempt to recover from
 # Resource exhausted: Server is low on resources, or has hit the max number
@@ -707,7 +704,7 @@ def _get_client_id_from_context(context: Any) -> str:
     Get `client_id` from gRPC metadata. If the `client_id` is not present,
     this function logs an error and sets the status_code.
     """
-    metadata = {k: v for k, v in context.invocation_metadata()}
+    metadata = dict(context.invocation_metadata())
     client_id = metadata.get("client_id") or ""
     if client_id == "":
         logger.error("Client connecting with no client_id")
