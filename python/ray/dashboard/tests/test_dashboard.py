@@ -56,6 +56,7 @@ try:
     import ray.dashboard.optional_utils as dashboard_optional_utils
 
     head_routes = dashboard_optional_utils.DashboardHeadRouteTable
+    from ray.dashboard.subprocesses.module import SubprocessModule
 except Exception:
     pass
 
@@ -1170,11 +1171,11 @@ def test_dashboard_module_load(tmpdir):
     )
 
     # Test basic.
-    dashboard_head_modules, subprocess_module_handles = head._load_modules()
-    assert {type(m).__name__ for m in dashboard_head_modules} == {
-        "UsageStatsHead",
-        "JobHead",
-    }
+    loaded_modules_expected = {"UsageStatsHead", "JobHead"}
+    dashboard_head_modules, subprocess_module_handles = head._load_modules(
+        modules_to_load=loaded_modules_expected
+    )
+    assert {type(m).__name__ for m in dashboard_head_modules} == loaded_modules_expected
     assert len(subprocess_module_handles) == 0
 
     # Test modules that don't exist.
@@ -1186,12 +1187,19 @@ def test_dashboard_module_load(tmpdir):
     # It is needed to pass assertion check from one of modules.
     gcs_client = MagicMock()
     _initialize_internal_kv(gcs_client)
-    loaded_modules_expected = {
+    loaded_dashboard_head_modules_expected = {
         m.__name__ for m in dashboard_utils.get_all_modules(DashboardHeadModule)
     }
+    loaded_subprocess_module_handles_expected = {
+        m.__name__ for m in dashboard_utils.get_all_modules(SubprocessModule)
+    }
     dashboard_head_modules, subprocess_module_handles = head._load_modules()
-    assert {type(m).__name__ for m in dashboard_head_modules} == loaded_modules_expected
-    assert len(subprocess_module_handles) == 0
+    assert {
+        type(m).__name__ for m in dashboard_head_modules
+    } == loaded_dashboard_head_modules_expected
+    assert {
+        m.module_cls.__name__ for m in subprocess_module_handles
+    } == loaded_subprocess_module_handles_expected
 
 
 @pytest.mark.skipif(

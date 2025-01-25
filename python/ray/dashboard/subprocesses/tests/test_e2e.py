@@ -45,7 +45,7 @@ async def test_handle_can_health_check(default_module_config):
 
     subprocess_handle = SubprocessModuleHandle(loop, TestModule, default_module_config)
     subprocess_handle.start_module()
-    response = await subprocess_handle.health_check()
+    response = await subprocess_handle._health_check()
     assert response.status == 200
     assert response.body == b"ok!"
 

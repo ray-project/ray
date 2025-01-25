@@ -118,6 +118,9 @@ class SubprocessModuleHandle:
             self.incarnation, self.process.pid if self.process else None
         )
 
+    def __del__(self):
+        self.destroy_module(RuntimeError("SubprocessModuleHandle is being deleted"))
+
     def start_module(self, start_dispatch_parent_bound_messages_thread: bool = True):
         """
         Params:
@@ -164,23 +167,29 @@ class SubprocessModuleHandle:
         """
         self.incarnation += 1
         self.next_request_id = 0
-        self.process.kill()
-        self.process.join()
-        self.process = None
+        if self.process:
+            self.process.kill()
+            self.process.join()
+            self.process = None
 
         for active_request in self.active_requests.pop_all().values():
             active_request.response_fut.set_exception(reason)
-        self.parent_bound_queue.close()
-        self.parent_bound_queue = None
 
-        self.child_bound_queue.close()
-        self.child_bound_queue = None
+        if self.parent_bound_queue:
+            self.parent_bound_queue.close()
+            self.parent_bound_queue = None
+
+        if self.child_bound_queue:
+            self.child_bound_queue.close()
+            self.child_bound_queue = None
 
         # dispatch_parent_bound_messages_thread is daemon so we don't need to join it.
-        self.dispatch_parent_bound_messages_thread = None
+        if self.dispatch_parent_bound_messages_thread:
+            self.dispatch_parent_bound_messages_thread = None
 
-        self.health_check_task.cancel()
-        self.health_check_task = None
+        if self.health_check_task:
+            self.health_check_task.cancel()
+            self.health_check_task = None
 
     async def _health_check(self) -> aiohttp.web.Response:
         """
