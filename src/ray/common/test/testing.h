@@ -19,3 +19,19 @@
 #define RAY_EXPECT_OK(s) EXPECT_TRUE((s).ok())
 
 #define RAY_ASSERT_OK(s) ASSERT_TRUE((s).ok())
+
+#define __RAY_ASSIGN_OR_EXPECT(var, expr, statusor_name) \
+  auto statusor_name = (expr);                           \
+  RAY_EXPECT_OK(statusor_name.status());                 \
+  var = std::move(statusor_name).value()
+
+#define RAY_ASSIGN_OR_EXPECT(var, expr) \
+  __RAY_ASSIGN_OR_EXPECT(var, expr, RAY_UNIQUE_VARIABLE(statusor))
+
+#define __RAY_ASSIGN_OR_ASSERT(var, expr, statusor_name) \
+  auto statusor_name = (expr);                           \
+  RAY_ASSERT_OK(statusor_name.status());                 \
+  var = std::move(statusor_name).value()
+
+#define RAY_ASSIGN_OR_ASSERT(var, expr) \
+  __RAY_ASSIGN_OR_ASSERT(var, expr, RAY_UNIQUE_VARIABLE(statusor))
