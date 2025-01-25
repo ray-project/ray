@@ -40,23 +40,27 @@ ray_cc_library(
 # TODO(hjiang): filesystem and logging has interdependency, we should split them into three targets: filesystem, logging, ray_check_macros.
 ray_cc_library(
     name = "logging",
-    hdrs = [
-        "filesystem.h",
-        "logging.h",
-    ],
-    srcs = [
-        "filesystem.cc",
-        "logging.cc",
-    ],
+    hdrs = ["logging.h"],
+    srcs = ["logging.cc"],
     deps = [
         ":event_label",
         ":macros",
+        ":string_utils",
         ":thread_utils",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_prod",
         "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "filesystem",
+    hdrs = ["filesystem.h"],
+    srcs = ["filesystem.cc"],
+    deps = [
+        "//src/ray/common:status_or",
     ],
 )
 
@@ -81,6 +85,8 @@ ray_cc_library(
         "subreaper.cc",
     ],
     deps = [
+        ":cmd_line_utils",
+        ":filesystem",
         ":logging",
         ":macros",
         "@boost//:asio",
@@ -141,6 +147,7 @@ ray_cc_library(
 ray_cc_library(
     name = "string_utils",
     hdrs = ["string_utils.h"],
+    srcs = ["string_utils.cc"],
 )
 
 ray_cc_library(
@@ -176,6 +183,16 @@ ray_cc_library(
     hdrs = ["sample.h"],
 )
 
+ray_cc_library(
+    name = "cmd_line_utils",
+    hdrs = ["cmd_line_utils.h"],
+    srcs = ["cmd_line_utils.cc"],
+    deps = [
+        ":logging",
+        ":string_utils",
+    ],
+)
+
 # A giant 'util' target is split since PR https://github.com/ray-project/ray/pull/49938, here we keep the 'util' target for API compatibility.
 #
 # TODO(hjiang): We include a bunch of misc util function/class inside of the class, should split into multiple files and build targets.
@@ -185,6 +202,7 @@ ray_cc_library(
     srcs = ["util.cc"],
     deps = [
         ":array",
+        ":cmd_line_utils",
         ":container_util",
         ":counter_map",
         ":event",
