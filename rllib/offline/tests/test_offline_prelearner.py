@@ -195,7 +195,7 @@ class TestOfflinePreLearner(unittest.TestCase):
             config=self.config,
             learner=algo.offline_data.learner_handles[0],
         )
-        # Now, pull a batch of defined size formt he dataset.
+        # Now, pull a batch of defined size from the dataset.
         batch = algo.offline_data.data.take_batch(
             self.config.train_batch_size_per_learner
         )

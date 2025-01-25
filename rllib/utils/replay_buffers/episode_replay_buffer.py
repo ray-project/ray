@@ -1134,11 +1134,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             sampled_episodes.append(sampled_episode)
             sampled_episode_idxs.add(episode_idx)
             sampled_n_steps.append(actual_n_step)
-            sampled_episode_idxs.add(episode_idx)
-            sampled_n_steps.append(actual_n_step)
 
             # Increment counter.
-            B += (actual_length - episode_ts - (actual_n_step - 1) + 1) or 1
             B += (actual_length - episode_ts - (actual_n_step - 1) + 1) or 1
 
         # Update the metric.

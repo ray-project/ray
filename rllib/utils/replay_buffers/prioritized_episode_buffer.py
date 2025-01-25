@@ -570,11 +570,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Record the actual n-step for this sample.
             sampled_n_steps.append(actual_n_step)
 
-            # Add the episode buffer index to the sampled indices.
-            sampled_episode_idxs.add(episode_idx)
-            # Record the actual n-step for this sample.
-            sampled_n_steps.append(actual_n_step)
-
             # Increment counter.
             B += 1
 
