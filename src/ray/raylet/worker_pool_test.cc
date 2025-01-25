@@ -651,6 +651,24 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkers) {
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), POOL_SIZE_SOFT_LIMIT);
 }
 
+TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkersWithRuntimeEnv) {
+  auto task_spec = ExampleTaskSpec();
+  task_spec.GetMutableMessage().mutable_runtime_env_info()->set_serialized_runtime_env(
+      "{\"env_vars\": {\"FOO\": \"bar\"}}");
+  // Prestarts 2 workers.
+  worker_pool_->PrestartWorkers(task_spec, 2);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
+  // Prestarts 1 more worker.
+  worker_pool_->PrestartWorkers(task_spec, 3);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
+  // No more needed.
+  worker_pool_->PrestartWorkers(task_spec, 1);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
+  // Capped by soft limit.
+  worker_pool_->PrestartWorkers(task_spec, 20);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), POOL_SIZE_SOFT_LIMIT);
+}
+
 TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
   std::shared_ptr<WorkerInterface> popped_worker;
   const auto task_spec = ExampleTaskSpec();
