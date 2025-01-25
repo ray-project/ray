@@ -14,6 +14,8 @@ import gymnasium as gym
 import io
 import numpy as np
 import os
+import time
+import wandb
 
 from PIL import Image
 from typing import Optional
@@ -22,12 +24,14 @@ from ray import tune
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.images import resize
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
 )
-
+from ray.tune.logger.unified import UnifiedLogger
 
 # Define a `ConnectorV2` to decode stacked encoded Atari frames.
 class DecodeObservations(ConnectorV2):
@@ -62,6 +66,14 @@ class DecodeObservations(ConnectorV2):
         self._as_learner_connector = as_learner_connector
 
     @override(ConnectorV2)
+    def recompute_output_observation_space(
+        self, input_observation_space, input_action_space
+    ):
+        return gym.spaces.Box(
+            -1.0, 1.0, (64, 64, 4), float
+        )  # <- to keep it simple hardcoded to a fixed space
+
+    @override(ConnectorV2)
     def __call__(
         self,
         *,
@@ -76,10 +88,12 @@ class DecodeObservations(ConnectorV2):
         for sa_episode in self.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=False
         ):
-            # Map encoded PNGs into arrays of shape (84, 84, 4).
+            # Map encoded PNGs into arrays of shape (64, 64, 4).
             def _map_fn(s):
                 construct = [
-                    np.array(Image.open(io.BytesIO(s[i]))).reshape(84, 84, 1)
+                    resize(
+                        np.array(Image.open(io.BytesIO(s[i]))), height=64, width=64
+                    ).reshape(64, 64, 1)
                     for i in range(4)
                 ]
                 result = np.concatenate(construct, axis=2)
@@ -128,7 +142,7 @@ def _env_creator(cfg):
         gym.make("ale_py:ALE/Pong-v5", **cfg),
         # Perform frame-stacking through ConnectorV2 API.
         framestack=4,
-        dim=84,
+        dim=64,
     )
 
 
@@ -179,11 +193,26 @@ anyscale_rlunplugged_atari_path = anyscale_storage_bucket + "/rllib/rl_unplugged
 game = "Pong"
 
 # Path to the directory with all runs from Atari Pong.
-anyscale_rlunplugged_atari_pong_path = anyscale_rlunplugged_atari_path + f"/{game}"
+anyscale_rlunplugged_atari_pong_path = (
+    anyscale_rlunplugged_atari_path + f"/{game}"
+)  # + f"/run_1-00009-of-00100/73_007494_000000.parquet"
 print(
     "Streaming RLUnplugged Atari Pong data from path: "
     f"{anyscale_rlunplugged_atari_pong_path}"
 )
+
+# As we can not run with `Ray Tune` we use the `UnifiedLogger`.
+def default_logger_creator(config):
+    """Creates a Unified logger with the default prefix."""
+    timestr = time.strftime("%Y-%m-%d_%H:%M:%S")
+    return UnifiedLogger(
+        config, f"repos/ray_results/single_learner_gpu_all_data_{timestr}", loggers=None
+    )
+
+
+# Use a local Learner and a single GPU.
+args.num_learners = 0
+args.num_gpus_per_learner = 1
 
 # Define the config for Behavior Cloning.
 config = (
@@ -197,18 +226,24 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
+    .resources(
+        num_cpus_for_main_process=2,
+    )
     # Evaluate in the actual environment online.
     .evaluation(
         evaluation_interval=3,
         evaluation_num_env_runners=1,
         evaluation_duration=5,
         evaluation_parallel_to_training=True,
+        evaluation_config={
+            "explore": False,
+        },
     )
     .learners(
-        num_learners=args.num_learners
-        if args.num_learners and args.num_learners > 1
-        else 0,
-        num_gpus_per_learner=args.num_gpus_per_learner,
+        num_learners=args.num_learners,
+        # if args.num_learners and args.num_learners > 1
+        # else 0,
+        num_gpus_per_learner=(args.num_gpus_per_learner or 0) * 0.99,
     )
     # Note, the `input_` argument is the major argument for the
     # new offline API. Via the `input_read_method_kwargs` the
@@ -236,50 +271,71 @@ config = (
         # training, new batches are transformed while others are used in updating.
         map_batches_kwargs={
             "concurrency": 12,
+            "num_cpus": 1,
+            # Reserve fractions of the `Learner`'s GPU to preload data on it.
+            "num_gpus": args.num_gpus_per_learner * round(0.01 / 12, 4),
         },
         # When iterating over batches in the dataset, prefetch at least 4
         # batches per learner.
         iter_batches_kwargs={
-            "prefetch_batches": 4,
+            "prefetch_batches": 10,
         },
-        # Iterate over 10 batches per RLlib iteration if multiple learners
+        # Iterate over 100 batches per RLlib iteration if multiple learners
         # are used.
-        dataset_num_iters_per_learner=100
-        if args.num_learners and args.num_learners > 1
-        else 1,
+        dataset_num_iters_per_learner=100,
     )
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.0008
+        lr=0.0001
         * max(
             1,
             (args.num_learners if args.num_learners and args.num_learners > 1 else 1)
             ** 0.5,
         ),
-        train_batch_size_per_learner=1024,
+        train_batch_size_per_learner=2048,
         # Use the defined learner connector above, to decode observations.
         learner_connector=_make_learner_connector,
     )
     .rl_module(
-        model_config_dict={
-            "vf_share_layers": True,
-            "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-            "conv_activation": "relu",
-            "post_fcnet_hiddens": [256],
-            "uses_new_env_runners": True,
-        }
+        model_config=DefaultModelConfig(
+            conv_filters=[[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+            conv_activation="relu",
+            head_fcnet_hiddens=[256],
+        ),
+    )
+    .debugging(
+        logger_creator=default_logger_creator,
+        log_level="ERROR",
     )
 )
+
 
 # TODO (simon): Change to use the `run_rllib_example` function as soon as this works
 # with Ray Tune.
 algo = config.build()
 
-for i in range(100):
+# Shall we use wandb for logging results?
+if args.wandb_key:
+    # Login to wandb.
+    wandb.login(
+        key=args.wandb_api_key,
+        verify=True,
+        relogin=True,
+        force=True,
+    )
+
+    # Initialize wandb.
+    wandb.init(project="benchmark_atari_pong_bc")
+    # Clean results to log seemlessly to wandb.
+    from ray.air.integrations.wandb import _clean_log
+
+for i in range(4):
     print(f"Iteration: {i + 1}")
     results = algo.train()
     print(results)
+    if args.wandb_key:
+        # Log results to wandb.
+        wandb.log(data=_clean_log(results), step=i)
 
-for i in range(4):
-    print("FINISHED")
+print("\nFinished training.")

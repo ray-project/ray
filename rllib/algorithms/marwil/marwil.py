@@ -17,6 +17,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
     train_one_step,
 )
+from ray.rllib.offline.offline_data import OfflineData
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import deprecation_warning
@@ -204,6 +205,7 @@ class MARWILConfig(AlgorithmConfig):
         #   iterations into the object storage (maybe also connector states).
         self.materialize_data = True
         self.materialize_mapped_data = False
+
         # __sphinx_doc_end__
         # fmt: on
         self._set_off_policy_estimation_methods = False
@@ -412,6 +414,21 @@ class MARWILConfig(AlgorithmConfig):
 
 
 class MARWIL(Algorithm):
+    @override(Algorithm)
+    def __init__(self, config, *args, **kwargs):
+        """Initialize a MARWIL instance."""
+
+        # Reserve a fraction of the learner GPUs for the `OfflinePreLearner`. The
+        # latter should load batches onto the GPU device of the corresponding. learner.
+        # Note, GPU training does not work, yet, with a multi-learner setup.
+        # TODO (simon): Check, if and how the module should be loaded on GPU in the
+        # `OfflinePreLearner`s to run the GAE.
+        if config.num_gpus_per_learner and config._validate_config:
+            config.num_gpus_per_learner *= 0.99
+
+        # Call the super's constructor first.
+        super().__init__(config=config, *args, **kwargs)
+
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
@@ -461,7 +478,7 @@ class MARWIL(Algorithm):
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
-                return_iterator=self.config.num_learners > 1,
+                return_iterator=True,  # self.config.num_learners > 1,
             )
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):

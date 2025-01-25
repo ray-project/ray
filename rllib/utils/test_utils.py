@@ -1213,11 +1213,13 @@ def run_rllib_example_script_experiment(
                         break
                 if val is not None and not np.isnan(val) and val >= threshold:
                     print(f"Stop criterium ({key}={threshold}) fulfilled!")
+                    algo.stop()
                     if not keep_ray_up:
                         ray.shutdown()
                     return results
 
         if not keep_ray_up:
+            algo.stop()
             ray.shutdown()
         return results
 
