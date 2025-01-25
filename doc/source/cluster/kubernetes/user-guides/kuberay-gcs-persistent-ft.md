@@ -97,7 +97,7 @@ auto-aof-rewrite-percentage 100
 auto-aof-rewrite-min-size 64mb
 ```
 
-You can view the full reference for 5.0.8
+You can view the full reference
 [here](https://raw.githubusercontent.com/redis/redis/refs/tags/7.4.0/redis.conf).
 
 

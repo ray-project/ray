@@ -16,6 +16,11 @@ Hence, we recommend enabling GCS fault tolerance on the RayService custom resour
 See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide-gcs>` for more information.
 ```
 
+```{seealso}
+If you need fault tolerance for Redis as well, see [](kuberay-gcs-persistent-ft)
+for tuning Redis.
+```
+
 ## Use cases
 
 * **Ray Serve**: The recommended configuration is enabling GCS fault tolerance on the RayService custom resource to ensure high availability.
