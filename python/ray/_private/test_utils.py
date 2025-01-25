@@ -51,6 +51,9 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
+# Directory for ray local filesystem.
+_LOG_DIRECTORY = "/tmp/ray/session_latest/logs"
+
 EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 REDIS_EXECUTABLE = os.path.join(
@@ -65,6 +68,24 @@ except (ImportError, ModuleNotFoundError):
 
     def text_string_to_metric_families(*args, **kwargs):
         raise ModuleNotFoundError("`prometheus_client` not found")
+
+
+def get_non_empty_err_log(files: List[str], exclude_components: List[str]) -> List[str]:
+    """Filter out empty error files for the given components."""
+    results = []
+    for file in files:
+        if not file.startswith(_LOG_DIRECTORY):
+            file = f"{_LOG_DIRECTORY}/{file}"
+
+        should_exclude = False
+        if os.path.isfile(file) and os.path.getsize(file) == 0:
+            for component in exclude_components:
+                if component in file:
+                    should_exclude = True
+                    break
+        if not should_exclude:
+            results.append(file)
+    return results
 
 
 def check_content_in_stdout_log(content: str):

@@ -11,6 +11,7 @@ import pytest
 from ray.util.state.state_cli import logs_state_cli_group
 from ray.util.state import list_jobs
 import requests
+from ray._private import ray_constants
 from click.testing import CliRunner
 import grpc
 
@@ -23,6 +24,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
     get_all_redirected_stdout,
     get_all_redirected_stderr,
+    get_non_empty_err_log,
 )
 
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
@@ -49,6 +51,13 @@ from ray.util.state import get_log, list_logs, list_nodes, list_workers
 from ray.util.state.common import GetLogOptions
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_manager import StateDataSourceClient
+
+# The following components use spdlog to persist error log, so even if there's no error message streamed, error log will still be created.
+_EMPTY_ERR_LOG_COMPONENT_EXCLUDE_LIST = [
+    ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
+    ray_constants.PROCESS_TYPE_GCS_SERVER,
+    ray_constants.PROCESS_TYPE_RAYLET,
+]
 
 
 def generate_task_event(
@@ -823,13 +832,19 @@ def test_logs_list(ray_start_with_dashboard):
 
         # Test worker logs
         outs = logs["worker_out"]
-        errs = logs["worker_err"]
-        core_worker_logs = logs["core_worker"]
+        errs = get_non_empty_err_log(
+            logs["worker_err"], _EMPTY_ERR_LOG_COMPONENT_EXCLUDE_LIST
+        )
+        core_worker_logs = get_non_empty_err_log(
+            logs["core_worker"], _EMPTY_ERR_LOG_COMPONENT_EXCLUDE_LIST
+        )
 
-        assert len(outs) == len(errs), f"out = {outs}, err = {errs}"
+        assert len(outs) == len(
+            errs
+        ), f"out = {outs}, err = {errs}, worker logs = {core_worker_logs}"
         assert len(outs) == len(
             core_worker_logs
-        ), f"out = {outs}, worker logs = {core_worker_logs}"
+        ), f"out = {outs}, err = {errs}, worker logs = {core_worker_logs}"
         assert len(outs) > 0
 
         # Test gcs / raylet / dashboard
@@ -883,7 +898,11 @@ def test_logs_list(ray_start_with_dashboard):
         )
         assert (
             len(logs["worker_out"])
-            == len(logs["worker_err"])
+            == len(
+                get_non_empty_err_log(
+                    logs["worker_err"], _EMPTY_ERR_LOG_COMPONENT_EXCLUDE_LIST
+                )
+            )
             == len(logs["worker_out"])
         )
         assert num_workers == len(logs["worker_out"])
