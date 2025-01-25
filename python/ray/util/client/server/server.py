@@ -892,7 +892,10 @@ def main():
     )
 
     hostport = "%s:%d" % (args.host, args.port)
-    logger.info(f"Starting Ray Client server on {hostport}, args {args}")
+    args_str = str(args)
+    if args.redis_password:
+        args_str = args_str.replace(args.redis_password, "****")
+    logger.info(f"Starting Ray Client server on {hostport}, args {args_str}")
     if args.mode == "proxy":
         server = serve_proxier(
             hostport,

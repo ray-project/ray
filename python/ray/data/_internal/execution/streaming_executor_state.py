@@ -643,24 +643,23 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
         gpu=math.floor(global_usage.gpu or 0),
         object_store_memory=global_usage.object_store_memory,
     )
-    inc = op.incremental_resource_usage()
-    if inc.cpu and inc.gpu:
+    inc_resource_req = op.incremental_resource_usage()
+    if inc_resource_req.cpu and inc_resource_req.gpu:
         raise NotImplementedError(
             "Operator incremental resource usage cannot specify both CPU "
             "and GPU at the same time, since it may cause deadlock."
         )
 
-    # Ignore the scale of CPU and GPU requests, i.e., treating them as either 1 or 0.
-    # This ensures operators don't get starved due to the shape of their resource
-    # requests.
-    inc_indicator = ExecutionResources(
-        cpu=1 if inc.cpu else 0,
-        gpu=1 if inc.gpu else 0,
+    # NOTE: Resources requests are clamped at 1.0, to allow scheduling of operators
+    #       with larger resource requirements in tight environment
+    inc_resource_req_adjusted = ExecutionResources(
+        cpu=min(1.0, inc_resource_req.cpu),
+        gpu=min(1.0, inc_resource_req.gpu),
         object_store_memory=0,
     )
 
     # Under global limits; always allow.
-    new_usage = global_floored.add(inc_indicator)
+    new_usage = global_floored.add(inc_resource_req_adjusted)
     if new_usage.satisfies_limit(global_limits):
         return True
 

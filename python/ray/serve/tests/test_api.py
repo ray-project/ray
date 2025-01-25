@@ -762,7 +762,7 @@ def test_no_slash_route_prefix(serve_instance):
         ValueError,
         match=(
             r"Invalid route_prefix 'no_slash', "
-            "must start with a forward slash \('/'\)"
+            r"must start with a forward slash \('/'\)"
         ),
     ):
         serve.run(f.bind(), route_prefix="no_slash")
@@ -844,7 +844,7 @@ def test_status_constructor_error(serve_instance):
     @serve.deployment
     class A:
         def __init__(self):
-            1 / 0
+            _ = 1 / 0
 
     serve._run(A.bind(), _blocking=False)
 

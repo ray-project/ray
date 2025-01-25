@@ -5,6 +5,7 @@ import time
 from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
+import ray
 from gymnasium.wrappers.vector import DictInfoToList
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -543,6 +544,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 rl_module_state = state[COMPONENT_RL_MODULE]
+                if isinstance(rl_module_state, ray.ObjectRef):
+                    rl_module_state = ray.get(rl_module_state)
                 if (
                     isinstance(rl_module_state, dict)
                     and DEFAULT_MODULE_ID in rl_module_state

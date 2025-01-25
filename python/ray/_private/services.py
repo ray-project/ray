@@ -1707,7 +1707,6 @@ def start_raylet(
             f"--raylet-name={raylet_name}",
             f"--redis-address={redis_address}",
             f"--metrics-agent-port={metrics_agent_port}",
-            f"--runtime-env-agent-port={runtime_env_agent_port}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--runtime-env-agent-port={runtime_env_agent_port}",

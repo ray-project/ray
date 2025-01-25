@@ -316,7 +316,7 @@ class TestAlgorithm(unittest.TestCase):
 
             # Test restoring from the checkpoint (which has more policies
             # than what's defined in the config dict).
-            test = ppo.PPO.from_checkpoint(checkpoint=checkpoint)
+            test = ppo.PPO.from_checkpoint(checkpoint)
 
             # Make sure evaluation worker also got the restored, added policy.
             def _has_policies(w, pid=pid):

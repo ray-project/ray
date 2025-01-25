@@ -26,8 +26,13 @@ from ray.train._internal.storage import (
     _exists_at_fs_path,
     get_fs_and_path,
 )
-from ray.util import PublicAPI
-from ray.util.annotations import DeveloperAPI
+from ray.train.constants import (
+    _v2_migration_warnings_enabled,
+    V2_MIGRATION_GUIDE_MESSAGE,
+)
+from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
+from ray.train.utils import _log_deprecation_warning
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -49,6 +54,16 @@ PREPROCESSOR_DEPRECATION_MESSAGE = (
     "in using the `metadata` argument of the `Trainer`. "
     "For a full example, see "
     "https://docs.ray.io/en/master/train/user-guides/data-loading-preprocessing.html#preprocessing-structured-data "  # noqa:E501
+)
+
+_TRAINER_RESTORE_DEPRECATION_WARNING = (
+    "The `restore` and `can_restore` APIs are deprecated and "
+    f"will be removed in a future release. {V2_MIGRATION_GUIDE_MESSAGE}"
+)
+
+_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = (
+    "`resume_from_checkpoint` is deprecated and will be removed in an upcoming "
+    f"release. {V2_MIGRATION_GUIDE_MESSAGE}"
 )
 
 
@@ -90,7 +105,7 @@ def _train_coordinator_fn(
     trainer = trainer_cls(**config)
 
     # Get the checkpoint from Tune and pass it to workers later on.
-    checkpoint = ray.train.get_checkpoint()
+    checkpoint = ray.tune.get_checkpoint()
     if checkpoint:
         # Set `starting_checkpoint` for auto-recovery fault-tolerance
         # as well as manual restoration.
@@ -237,6 +252,12 @@ class BaseTrainer(abc.ABC):
         self.datasets = datasets if datasets is not None else {}
         self.starting_checkpoint = resume_from_checkpoint
 
+        if _v2_migration_warnings_enabled():
+            if metadata is not None:
+                _log_deprecation_warning(_GET_METADATA_DEPRECATION_MESSAGE)
+            if resume_from_checkpoint is not None:
+                _log_deprecation_warning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
+
         # These attributes should only be set through `BaseTrainer.restore`
         self._restore_path = None
         self._restore_storage_filesystem = None
@@ -245,8 +266,8 @@ class BaseTrainer(abc.ABC):
 
         air_usage.tag_air_trainer(self)
 
-    @PublicAPI(stability="alpha")
     @classmethod
+    @Deprecated(message=_TRAINER_RESTORE_DEPRECATION_WARNING)
     def restore(
         cls: Type["BaseTrainer"],
         path: Union[str, os.PathLike],
@@ -345,6 +366,9 @@ class BaseTrainer(abc.ABC):
         Returns:
             BaseTrainer: A restored instance of the class that is calling this method.
         """
+        if _v2_migration_warnings_enabled():
+            _log_deprecation_warning(_TRAINER_RESTORE_DEPRECATION_WARNING)
+
         if not cls.can_restore(path, storage_filesystem):
             raise ValueError(
                 f"Invalid restore path: {path}. Make sure that this path exists and "
@@ -401,8 +425,11 @@ class BaseTrainer(abc.ABC):
         trainer._restore_storage_filesystem = storage_filesystem
         return trainer
 
-    @PublicAPI(stability="alpha")
     @classmethod
+    @Deprecated(
+        message=_TRAINER_RESTORE_DEPRECATION_WARNING,
+        warning=_v2_migration_warnings_enabled(),
+    )
     def can_restore(
         cls: Type["BaseTrainer"],
         path: Union[str, os.PathLike],
@@ -418,6 +445,9 @@ class BaseTrainer(abc.ABC):
         Returns:
             bool: Whether this path exists and contains the trainer state to resume from
         """
+        if _v2_migration_warnings_enabled():
+            _log_deprecation_warning(_TRAINER_RESTORE_DEPRECATION_WARNING)
+
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
         trainer_pkl_path = Path(fs_path, _TRAINER_PKL).as_posix()
         return _exists_at_fs_path(fs, trainer_pkl_path)
@@ -504,6 +534,58 @@ class BaseTrainer(abc.ABC):
                 f"`ray.train.Checkpoint`, found {type(self.starting_checkpoint)} "
                 f"with value `{self.starting_checkpoint}`."
             )
+
+        self._log_v2_deprecation_warnings()
+
+    def _log_v2_deprecation_warnings(self):
+        """Logs deprecation warnings for v2 migration.
+
+        Log them here in the Ray Train case rather than in the configuration
+        constructors to avoid logging incorrect deprecation warnings when
+        `ray.train.RunConfig` is passed to Ray Tune.
+        """
+
+        if not _v2_migration_warnings_enabled():
+            return
+
+        from ray.train.v2._internal.migration_utils import (
+            FAIL_FAST_DEPRECATION_MESSAGE,
+            TRAINER_RESOURCES_DEPRECATION_MESSAGE,
+            VERBOSE_DEPRECATION_MESSAGE,
+            LOG_TO_FILE_DEPRECATION_MESSAGE,
+            STOP_DEPRECATION_MESSAGE,
+            CALLBACKS_DEPRECATION_MESSAGE,
+            PROGRESS_REPORTER_DEPRECATION_MESSAGE,
+            SYNC_CONFIG_DEPRECATION_MESSAGE,
+        )
+
+        # ScalingConfig deprecations
+        if self.scaling_config.trainer_resources is not None:
+            _log_deprecation_warning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
+
+        # FailureConfig deprecations
+        if self.run_config.failure_config.fail_fast:
+            _log_deprecation_warning(FAIL_FAST_DEPRECATION_MESSAGE)
+
+        # RunConfig deprecations
+        # NOTE: _verbose is the original verbose value passed by the user
+        if self.run_config._verbose is not None:
+            _log_deprecation_warning(VERBOSE_DEPRECATION_MESSAGE)
+
+        if self.run_config.log_to_file:
+            _log_deprecation_warning(LOG_TO_FILE_DEPRECATION_MESSAGE)
+
+        if self.run_config.stop is not None:
+            _log_deprecation_warning(STOP_DEPRECATION_MESSAGE)
+
+        if self.run_config.callbacks is not None:
+            _log_deprecation_warning(CALLBACKS_DEPRECATION_MESSAGE)
+
+        if self.run_config.progress_reporter is not None:
+            _log_deprecation_warning(PROGRESS_REPORTER_DEPRECATION_MESSAGE)
+
+        if self.run_config.sync_config != ray.train.SyncConfig():
+            _log_deprecation_warning(SYNC_CONFIG_DEPRECATION_MESSAGE)
 
     @classmethod
     def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:

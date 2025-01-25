@@ -501,9 +501,7 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
 
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
-        # async_update only needs to be tested for the most complex case.
-        # so we'll only test it for multi-gpu-ddp.
-        scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
+        scaling_modes = ["multi-gpu-ddp", "multi-cpu-ddp", "remote-gpu"]
 
         for scaling_mode in scaling_modes:
             print(f"Testing scaling mode: {scaling_mode}.")
@@ -534,30 +532,24 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
                 )
                 if not result_async:
                     continue
-                self.assertIsInstance(result_async[0], list)
-                self.assertIsInstance(result_async[0][0], dict)
-                # Check the latest async result AND those sub-results of the first
-                # Learner in the group.
-                loss = result_async[-1][0][DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY]
+                self.assertIsInstance(result_async, list)
+                self.assertIsInstance(result_async[0], dict)
+                # Check one async Learner result.
+                loss = result_async[0][DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY]
                 # The loss is initially around 0.69 (ln2). When it gets to around
                 # 0.57 the return of the policy gets to around 100.
                 if loss < 0.57:
                     break
                 # Compare reported "mean_weight" with actual ones.
-                _check_multi_worker_weights(
-                    learner_group, result_async, result_async=True
-                )
+                _check_multi_worker_weights(learner_group, result_async)
                 iter_i += 1
             learner_group.shutdown()
             self.assertLess(loss, 0.57)
 
 
-def _check_multi_worker_weights(learner_group, results, result_async=False):
+def _check_multi_worker_weights(learner_group, results):
     # Check that module weights are updated across workers and synchronized.
     # for i in range(1, len(results)):
-
-    if result_async:
-        results = results[-1]
 
     learner_1_results = results[0]
     for module_id, mod_result in learner_1_results.items():

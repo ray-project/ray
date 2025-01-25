@@ -344,6 +344,21 @@ Apart from `hide-cell`, you also have `hide-input` and `hide-output` tags that h
 Also, if you need code that gets executed in the notebook, but you don't want to show it in the documentation,
 you can use the `remove-cell`, `remove-input`, and `remove-output` tags in the same way.
 
+### Reference section labels
+
+[Reference sections labels](https://jupyterbook.org/en/stable/content/references.html#reference-section-labels) are a way to link to specific parts of the documentation from within a notebook. Creating one inside a markdown cell is simple:
+
+```markdown
+(my-label)=
+# The thing to label
+```
+
+Then, you can link it in .rst files with the following syntax:
+
+```rst
+See {ref}`the thing that I labeled <my-label>` for more information.
+```
+
 ### Testing notebooks
 
 Removing cells can be particularly interesting for compute-intensive notebooks.

@@ -3,12 +3,12 @@ from datetime import datetime, timedelta
 from typing import Dict
 
 import numpy as np
+from benchmark import Benchmark
+
 import ray
 
 # TODO: We should make these public again.
-from ray.data._internal.aggregate import Count, Sum, Mean
-
-from benchmark import Benchmark
+from ray.data.aggregate import Count, Mean, Sum
 
 
 def parse_args() -> argparse.Namespace:

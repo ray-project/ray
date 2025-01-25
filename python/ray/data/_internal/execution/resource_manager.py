@@ -287,6 +287,11 @@ class OpResourceAllocator(ABC):
         the given operator. None means no limit."""
         ...
 
+    @abstractmethod
+    def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
+        """Return the budget for the given operator."""
+        ...
+
 
 class ReservationOpResourceAllocator(OpResourceAllocator):
     """An OpResourceAllocator implementation that reserves resources for each operator.
@@ -499,6 +504,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         budget = self._op_budgets[op]
         res = op.incremental_resource_usage().satisfies_limit(budget)
         return res
+
+    def get_budget(self, op: PhysicalOperator) -> ExecutionResources:
+        return self._op_budgets[op]
 
     def _should_unblock_streaming_output_backpressure(
         self, op: PhysicalOperator

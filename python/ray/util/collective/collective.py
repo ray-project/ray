@@ -558,8 +558,8 @@ def send_multigpu(
 ):
     """Send a tensor to a remote GPU synchronously.
 
-    The function asssume each process owns >1 GPUs, and the sender
-    process and receiver process has equal nubmer of GPUs.
+    The function assumes each process owns >1 GPUs, and the sender
+    process and receiver process has equal number of GPUs.
 
     Args:
         tensor: the tensor to send, located on a GPU.

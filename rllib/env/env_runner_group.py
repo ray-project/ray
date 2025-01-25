@@ -329,57 +329,46 @@ class EnvRunnerGroup:
         """Returns the local EnvRunner."""
         return self._local_env_runner
 
-    @DeveloperAPI
     def healthy_env_runner_ids(self) -> List[int]:
         """Returns the list of remote worker IDs."""
         return self._worker_manager.healthy_actor_ids()
 
-    @DeveloperAPI
     def healthy_worker_ids(self) -> List[int]:
         """Returns the list of remote worker IDs."""
         return self.healthy_env_runner_ids()
 
-    @DeveloperAPI
     def num_remote_env_runners(self) -> int:
         """Returns the number of remote EnvRunners."""
         return self._worker_manager.num_actors()
 
-    @DeveloperAPI
     def num_remote_workers(self) -> int:
         """Returns the number of remote EnvRunners."""
         return self.num_remote_env_runners()
 
-    @DeveloperAPI
     def num_healthy_remote_env_runners(self) -> int:
         """Returns the number of healthy remote workers."""
         return self._worker_manager.num_healthy_actors()
 
-    @DeveloperAPI
     def num_healthy_remote_workers(self) -> int:
         """Returns the number of healthy remote workers."""
         return self.num_healthy_remote_env_runners()
 
-    @DeveloperAPI
     def num_healthy_env_runners(self) -> int:
         """Returns the number of all healthy workers, including the local worker."""
         return int(bool(self._local_env_runner)) + self.num_healthy_remote_workers()
 
-    @DeveloperAPI
     def num_healthy_workers(self) -> int:
         """Returns the number of all healthy workers, including the local worker."""
         return self.num_healthy_env_runners()
 
-    @DeveloperAPI
     def num_in_flight_async_reqs(self) -> int:
         """Returns the number of in-flight async requests."""
         return self._worker_manager.num_outstanding_async_reqs()
 
-    @DeveloperAPI
     def num_remote_worker_restarts(self) -> int:
         """Total number of times managed remote workers have been restarted."""
         return self._worker_manager.total_num_restarts()
 
-    @DeveloperAPI
     def sync_env_runner_states(
         self,
         *,
@@ -425,7 +414,11 @@ class EnvRunnerGroup:
                         if env_steps_sampled is not None
                         else {}
                     ),
-                    **(rl_module_state if rl_module_state is not None else {}),
+                    **(
+                        {COMPONENT_RL_MODULE: rl_module_state}
+                        if rl_module_state is not None
+                        else {}
+                    ),
                 }
             )
             return
@@ -507,7 +500,7 @@ class EnvRunnerGroup:
 
         # Update the rl_module component of the EnvRunner states, if necessary:
         if rl_module_state:
-            env_runner_states.update(rl_module_state)
+            env_runner_states.update({COMPONENT_RL_MODULE: rl_module_state})
 
         # If we do NOT want remote EnvRunners to get their Connector states updated,
         # only update the local worker here (with all state components) and then remove
@@ -535,7 +528,6 @@ class EnvRunnerGroup:
                 timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
             )
 
-    @DeveloperAPI
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
@@ -794,7 +786,6 @@ class EnvRunnerGroup:
         # Add the policy to all remote workers.
         self.foreach_env_runner(_create_new_policy_fn, local_env_runner=False)
 
-    @DeveloperAPI
     def add_workers(self, num_workers: int, validate: bool = False) -> None:
         """Creates and adds a number of remote workers to this worker set.
 
@@ -840,7 +831,6 @@ class EnvRunnerGroup:
                     else:
                         raise e
 
-    @DeveloperAPI
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
         """Hard overrides the remote EnvRunners in this set with the provided ones.
 
@@ -851,7 +841,6 @@ class EnvRunnerGroup:
         self._worker_manager.clear()
         self._worker_manager.add_actors(new_remote_workers)
 
-    @DeveloperAPI
     def stop(self) -> None:
         """Calls `stop` on all EnvRunners (including the local one)."""
         try:
@@ -866,7 +855,6 @@ class EnvRunnerGroup:
         finally:
             self._worker_manager.clear()
 
-    @DeveloperAPI
     def is_policy_to_train(
         self, policy_id: PolicyID, batch: Optional[SampleBatchType] = None
     ) -> bool:
@@ -878,7 +866,6 @@ class EnvRunnerGroup:
         else:
             raise NotImplementedError
 
-    @DeveloperAPI
     def foreach_env_runner(
         self,
         func: Callable[[EnvRunner], T],
@@ -947,7 +934,6 @@ class EnvRunnerGroup:
 
         return local_result + remote_results
 
-    @DeveloperAPI
     def foreach_env_runner_with_id(
         self,
         func: Callable[[int, EnvRunner], T],
@@ -1014,7 +1000,6 @@ class EnvRunnerGroup:
 
         return local_result + remote_results
 
-    @DeveloperAPI
     def foreach_env_runner_async(
         self,
         func: Callable[[EnvRunner], T],
@@ -1046,13 +1031,12 @@ class EnvRunnerGroup:
             remote_actor_ids=remote_worker_ids,
         )
 
-    @DeveloperAPI
     def fetch_ready_async_reqs(
         self,
         *,
         timeout_seconds: Optional[float] = 0.0,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
     ) -> List[Tuple[int, T]]:
         """Get esults from outstanding asynchronous requests that are ready.
 
@@ -1086,7 +1070,6 @@ class EnvRunnerGroup:
 
         return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
 
-    @DeveloperAPI
     def foreach_policy(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
         """Calls `func` with each worker's (policy, PolicyID) tuple.
 
@@ -1112,7 +1095,6 @@ class EnvRunnerGroup:
             results.extend(r)
         return results
 
-    @DeveloperAPI
     def foreach_policy_to_train(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
         """Apply `func` to all workers' Policies iff in `policies_to_train`.
 
@@ -1132,7 +1114,6 @@ class EnvRunnerGroup:
             results.extend(r)
         return results
 
-    @DeveloperAPI
     def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:
         """Calls `func` with all workers' sub-environments as args.
 
@@ -1156,7 +1137,6 @@ class EnvRunnerGroup:
             )
         )
 
-    @DeveloperAPI
     def foreach_env_with_context(
         self, func: Callable[[BaseEnv, EnvContext], List[T]]
     ) -> List[List[T]]:
@@ -1183,8 +1163,7 @@ class EnvRunnerGroup:
             )
         )
 
-    @DeveloperAPI
-    def probe_unhealthy_workers(self) -> List[int]:
+    def probe_unhealthy_env_runners(self) -> List[int]:
         """Checks for unhealthy workers and tries restoring their states.
 
         Returns:
@@ -1244,6 +1223,10 @@ class EnvRunnerGroup:
                     f"input {class_path}"
                 )
         return False
+
+    @Deprecated(new="EnvRunnerGroup.probe_unhealthy_env_runners", error=False)
+    def probe_unhealthy_workers(self, *args, **kwargs):
+        return self.probe_unhealthy_env_runners(*args, **kwargs)
 
     @Deprecated(new="EnvRunnerGroup.foreach_env_runner", error=False)
     def foreach_worker(self, *args, **kwargs):

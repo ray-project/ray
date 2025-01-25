@@ -379,8 +379,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int node_manager_port
         c_string raylet_ip_address
         c_string driver_name
-        c_string stdout_file
-        c_string stderr_file
         (CRayStatus(
             const CAddress &caller_address,
             CTaskType task_type,
@@ -440,6 +438,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string entrypoint
         int64_t worker_launch_time_ms
         int64_t worker_launched_time_ms
+        c_string debug_source
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod

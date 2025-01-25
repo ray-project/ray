@@ -695,6 +695,8 @@ class RunConfig:
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
 
+        # Save the original verbose value to check for deprecations
+        self._verbose = self.verbose
         if self.verbose is None:
             # Default `verbose` value. For new output engine,
             # this is AirVerbosity.DEFAULT.

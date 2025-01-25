@@ -257,39 +257,28 @@ class RLlibCallback(metaclass=_CallbackMeta):
     ) -> None:
         """Callback run when a new episode is created (but has not started yet!).
 
-        This method gets called after a new Episode(V2) (old stack) or
-        MultiAgentEpisode instance has been created.
-        This happens before the respective sub-environment's (usually a gym.Env)
+        This method gets called after a new SingleAgentEpisode or MultiAgentEpisode
+        instance has been created. This happens before the respective sub-environment's
         `reset()` is called by RLlib.
 
-        Note, at the moment this callback does not get called in the new API stack
-        and single-agent mode.
-
-        1) Episode(V2)/MultiAgentEpisode created: This callback is called.
+        1) SingleAgentEpisode/MultiAgentEpisode created: This callback is called.
         2) Respective sub-environment (gym.Env) is `reset()`.
         3) Callback `on_episode_start` is called.
         4) Stepping through sub-environment/episode commences.
 
         Args:
-            episode: The newly created episode. On the new API stack, this will be a
-                MultiAgentEpisode object. On the old API stack, this will be a
-                Episode or EpisodeV2 object.
+            episode: The newly created SingleAgentEpisode or MultiAgentEpisode.
                 This is the episode that is about to be started with an upcoming
                 `env.reset()`. Only after this reset call, the `on_episode_start`
                 callback will be called.
-            env_runner: Replaces `worker` arg. Reference to the current EnvRunner.
+            env_runner: Reference to the current EnvRunner.
             metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
                 used to log custom metrics after Episode creation.
-            env: Replaces `base_env` arg.  The gym.Env (new API stack) or RLlib
-                BaseEnv (old API stack) running the episode. On the old stack, the
-                underlying sub environment objects can be retrieved by calling
-                `base_env.get_sub_environments()`.
-            rl_module: Replaces `policies` arg. Either the RLModule (new API stack) or a
-                dict mapping policy IDs to policy objects (old stack). In single agent
-                mode there will only be a single policy/RLModule under the
-                `rl_module["default_policy"]` key.
-            env_index: The index of the sub-environment that is about to be reset
-                (within the vector of sub-environments of the BaseEnv).
+            env: The gym.Env running the episode.
+            rl_module: The RLModule used to compute actions for stepping the env. In
+                single-agent mode, this is a simple RLModule, in multi-agent mode, this
+                is a MultiRLModule.
+            env_index: The index of the sub-environment that is about to be reset.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -329,9 +318,9 @@ class RLlibCallback(metaclass=_CallbackMeta):
             env: The gym.Env or gym.vector.Env object running the started episode.
             env_index: The index of the sub-environment that is about to be reset
                 (within the vector of sub-environments of the BaseEnv).
-            rl_module: The RLModule used to compute actions for stepping the env.
-                In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiRLModule.
+            rl_module: The RLModule used to compute actions for stepping the env. In
+                single-agent mode, this is a simple RLModule, in multi-agent mode, this
+                is a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -372,9 +361,9 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 used to log custom metrics during env/episode stepping.
             env: The gym.Env or gym.vector.Env object running the started episode.
             env_index: The index of the sub-environment that has just been stepped.
-            rl_module: The RLModule used to compute actions for stepping the env.
-                In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiRLModule.
+            rl_module: The RLModule used to compute actions for stepping the env. In
+                single-agent mode, this is a simple RLModule, in multi-agent mode, this
+                is a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -432,9 +421,9 @@ class RLlibCallback(metaclass=_CallbackMeta):
             env: The gym.Env or gym.vector.Env object running the started episode.
             env_index: The index of the sub-environment that has just been terminated
                 or truncated.
-            rl_module: The RLModule used to compute actions for stepping the env.
-                In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiRLModule.
+            rl_module: The RLModule used to compute actions for stepping the env. In
+                single-agent mode, this is a simple RLModule, in multi-agent mode, this
+                is a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -456,8 +445,9 @@ class RLlibCallback(metaclass=_CallbackMeta):
             env_runner: Reference to the current EnvRunner object.
             metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
                 used to log custom metrics during env/episode stepping.
-            samples: Batch to be returned. You can mutate this
-                object to modify the samples generated.
+            samples: Lists of SingleAgentEpisode or MultiAgentEpisode instances to be
+                returned. You can mutate the episodes to modify the returned training
+                data.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -480,13 +470,13 @@ class RLlibCallback(metaclass=_CallbackMeta):
         `Algorithm.validate_env()`), wrapped (e.g. video-wrapper), and seeded.
 
         Args:
-            worker: Reference to the current rollout worker.
+            worker: Reference to the current EnvRunner.
             sub_environment: The sub-environment instance that has been
                 created. This is usually a gym.Env object.
             env_context: The `EnvContext` object that has been passed to
                 the env's constructor.
             env_index: The index of the sub-environment that has been created
-                (within the vector of sub-environments of the BaseEnv).
+                (within the vector of sub-environments of the gym.vector.Env).
             kwargs: Forward compatibility placeholder.
         """
         pass

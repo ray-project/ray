@@ -13,6 +13,9 @@ from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
 from ray.rllib.connectors.learner.add_columns_from_episodes_to_train_batch import (
     AddColumnsFromEpisodesToTrainBatch,
 )
+from ray.rllib.connectors.learner.add_infos_from_episodes_to_train_batch import (
+    AddInfosFromEpisodesToTrainBatch,
+)
 from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
     AddNextObservationsFromEpisodesToTrainBatch,
 )
@@ -29,6 +32,7 @@ from ray.rllib.connectors.learner.learner_connector_pipeline import (
 
 __all__ = [
     "AddColumnsFromEpisodesToTrainBatch",
+    "AddInfosFromEpisodesToTrainBatch",
     "AddNextObservationsFromEpisodesToTrainBatch",
     "AddObservationsFromEpisodesToBatch",
     "AddOneTsToEpisodesAndTruncate",

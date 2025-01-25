@@ -278,6 +278,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   std::string serialized_job_config =
       (jobConfig == nullptr ? "" : JavaByteArrayToNativeString(env, jobConfig));
   CoreWorkerOptions options;
+  options.debug_source = "java runtime";
   options.worker_type = static_cast<WorkerType>(workerMode);
   options.language = Language::JAVA;
   options.store_socket = JavaStringToNativeString(env, storeSocket);

@@ -669,7 +669,12 @@ def _warn_session_misuse(default_value: Any = None):
 
 @PublicAPI(stability="stable")
 @_warn_session_misuse()
-def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
+def report(
+    metrics: Dict,
+    *,
+    checkpoint: Optional[Checkpoint] = None,
+    checkpoint_dir_name: Optional[str] = None,
+) -> None:
     """Report metrics and optionally save a checkpoint.
 
     If a checkpoint is provided, it will be
@@ -750,6 +755,13 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         metrics: The metrics you want to report.
         checkpoint: The optional checkpoint you want to report.
     """
+    if checkpoint_dir_name is not None:
+        logger.warning(
+            "`checkpoint_dir_name` is only supported in the new Ray Train "
+            "implementation, which can be enabled with `RAY_TRAIN_V2_ENABLED=1`. "
+            "This argument will be ignored."
+        )
+
     # If we are running in a Tune function, switch to `ray.tune.report`.
     from ray.tune.trainable.trainable_fn_utils import _in_tune_session
 
@@ -760,7 +772,9 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
             _log_deprecation_warning(
                 "`ray.train.report` should be switched to "
                 "`ray.tune.report` when running in a function "
-                "passed to Ray Tune. This will be an error in the future."
+                "passed to Ray Tune. This will be an error in the future. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
             )
         return ray.tune.report(metrics, checkpoint=checkpoint)
 
@@ -820,7 +834,9 @@ def get_checkpoint() -> Optional[Checkpoint]:
             _log_deprecation_warning(
                 "`ray.train.get_checkpoint` should be switched to "
                 "`ray.tune.get_checkpoint` when running in a function "
-                "passed to Ray Tune. This will be an error in the future."
+                "passed to Ray Tune. This will be an error in the future. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/49454"
             )
         return ray.tune.get_checkpoint()
 

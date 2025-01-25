@@ -45,7 +45,14 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
 )
 from ray.data._internal.stats import StatsDict
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    BlockStats,
+    to_stats,
+)
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -88,7 +95,7 @@ class MapOperator(OneToOneOperator, ABC):
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: _OutputQueue = None
         # Output metadata, added to on get_next().
-        self._output_metadata: List[BlockMetadata] = []
+        self._output_blocks_stats: List[BlockStats] = []
         # All active `DataOpTask`s.
         self._data_tasks: Dict[int, DataOpTask] = {}
         self._next_data_task_idx = 0
@@ -428,7 +435,7 @@ class MapOperator(OneToOneOperator, ABC):
         assert self._started
         bundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
-        self._output_metadata.extend(bundle.metadata)
+        self._output_blocks_stats.extend(to_stats(bundle.metadata))
         return bundle
 
     @abstractmethod
@@ -439,7 +446,7 @@ class MapOperator(OneToOneOperator, ABC):
         return {"ray_remote_args": dict(sorted(self._remote_args_for_metrics.items()))}
 
     def get_stats(self) -> StatsDict:
-        return {self._name: self._output_metadata}
+        return {self._name: self._output_blocks_stats}
 
     def get_map_transformer(self) -> MapTransformer:
         return self._map_transformer

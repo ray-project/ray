@@ -194,7 +194,7 @@ pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. For
         batch = ...
 
         # return batch
-        return output
+        return batch
 
 The user defined function can also be a Python generator that yields batches, so the function can also
 be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``.
@@ -311,6 +311,28 @@ To transform data with a Python class, complete these steps:
             :hide:
 
             ds.materialize()
+
+Avoiding out-of-memory errors
+=============================
+
+If your user defined function uses lots of memory, you might encounter out-of-memory 
+errors. To avoid these errors, configure the ``memory`` parameter. It tells Ray how much 
+memory your function uses, and prevents Ray from scheduling too many tasks on a node.
+
+.. testcode::
+    :hide:
+
+    import ray
+    
+    ds = ray.data.range(1)
+
+.. testcode::
+
+    def uses_lots_of_memory(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        ...
+
+    # Tell Ray that the function uses 1 GiB of memory
+    ds.map_batches(uses_lots_of_memory, memory=1 * 1024 * 1024)
 
 .. _transforming_groupby:
 

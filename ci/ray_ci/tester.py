@@ -75,6 +75,13 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Only include tests with the given tags."),
 )
 @click.option(
+    "--cache-test-results",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("If cache and use test results in bazel cache."),
+)
+@click.option(
     "--run-flaky-tests",
     is_flag=True,
     show_default=True,
@@ -185,6 +192,7 @@ def main(
     operating_system: str,
     except_tags: str,
     only_tags: str,
+    cache_test_results: bool,
     run_flaky_tests: bool,
     run_high_impact_tests: bool,
     skip_ray_installation: bool,
@@ -249,6 +257,7 @@ def main(
         test_arg,
         is_bisect_run=bisect_run_test_target is not None,
         run_flaky_tests=run_flaky_tests,
+        cache_test_results=cache_test_results,
     )
     sys.exit(0 if success else 42)
 

@@ -1,6 +1,6 @@
 from typing import Dict
 
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.sac.sac_learner import (
     LOGPS_KEY,
     QF_LOSS_KEY,

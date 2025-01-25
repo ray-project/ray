@@ -1657,18 +1657,14 @@ async def test_state_data_source_client(ray_start_cluster):
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
         node_id = node["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
+        key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
 
-        def get_port():
+        def get_addr():
             return ray.experimental.internal_kv._internal_kv_get(
                 key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
             )
 
-        wait_for_condition(lambda: get_port() is not None)
-        # The second index is the gRPC port
-        port = json.loads(get_port())[1]
-        ip = node["NodeManagerAddress"]
-        client.register_agent_client(node_id, ip, port)
+        wait_for_condition(lambda: get_addr() is not None)
         result = await client.get_runtime_envs_info(node_id)
         assert isinstance(result, GetRuntimeEnvsInfoReply)
 
@@ -1829,18 +1825,14 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     """
     for node in ray.nodes():
         node_id = node["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
+        key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
 
-        def get_port():
+        def get_addr():
             return ray.experimental.internal_kv._internal_kv_get(
                 key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
             )
 
-        wait_for_condition(lambda: get_port() is not None)
-        # The second index is the gRPC port
-        port = json.loads(get_port())[1]
-        ip = node["NodeManagerAddress"]
-        client.register_agent_client(node_id, ip, port)
+        wait_for_condition(lambda: get_addr() is not None)
 
     @ray.remote
     class Actor:

@@ -1,8 +1,6 @@
-# Script used for checking changes for incremental testing cases
-from __future__ import absolute_import, division, print_function
+#!/usr/bin/env python3
 
 import argparse
-import json
 import os
 import re
 import subprocess
@@ -49,17 +47,12 @@ if __name__ == "__main__":
     assert os.environ.get("BUILDKITE")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--output", type=str, help="json, rayci_tags or envvars", default="envvars"
-    )
     args = parser.parse_args()
 
-    RAY_CI_BRANCH_BUILD = int(
-        os.environ.get("BUILDKITE_PULL_REQUEST", "false") == "false"
-    )
     RAY_CI_ML_AFFECTED = 0
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_TRAIN_AFFECTED = 0
+    RAY_CI_LLM_AFFECTED = 0
     # Whether only the most important (high-level) RLlib tests should be run.
     # Set to 1 for any changes to Ray Tune or python source files that are
     # NOT related to Serve, Dashboard or Train.
@@ -107,10 +100,15 @@ if __name__ == "__main__":
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
+            elif (
+                changed_file.startswith("python/ray/llm")
+                or changed_file == ".buildkite/llm.rayci.yml"
+                or changed_file == "ci/docker/llm.build.Dockerfile"
+            ):
+                RAY_CI_LLM_AFFECTED = 1
             elif (
                 changed_file.startswith("python/ray/data")
                 or changed_file == ".buildkite/data.rayci.yml"
@@ -132,7 +130,6 @@ if __name__ == "__main__":
             elif changed_file.startswith("python/ray/tune"):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
@@ -188,7 +185,6 @@ if __name__ == "__main__":
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_WORKFLOW_AFFECTED = 1
                 RAY_CI_DATA_AFFECTED = 1
@@ -201,7 +197,7 @@ if __name__ == "__main__":
                 RAY_CI_JAVA_AFFECTED = 1
                 if (
                     changed_file.startswith("python/setup.py")
-                    or re.match(".*requirements.*\.txt", changed_file)
+                    or re.match(r".*requirements.*\.txt", changed_file)
                     or changed_file == "python/requirements_compiled.txt"
                 ):
                     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 1
@@ -325,7 +321,6 @@ if __name__ == "__main__":
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_CORE_CPP_AFFECTED = 1
                 RAY_CI_CPP_AFFECTED = 1
@@ -349,8 +344,6 @@ if __name__ == "__main__":
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
-                RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_CORE_CPP_AFFECTED = 1
@@ -390,10 +383,10 @@ if __name__ == "__main__":
     # Log the modified environment variables visible in console.
     output_string = " ".join(
         [
-            "RAY_CI_BRANCH_BUILD={}".format(RAY_CI_BRANCH_BUILD),
             "RAY_CI_ML_AFFECTED={}".format(RAY_CI_ML_AFFECTED),
             "RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED),
             "RAY_CI_TRAIN_AFFECTED={}".format(RAY_CI_TRAIN_AFFECTED),
+            "RAY_CI_LLM_AFFECTED={}".format(RAY_CI_LLM_AFFECTED),
             "RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED),
             "RAY_CI_RLLIB_GPU_AFFECTED={}".format(RAY_CI_RLLIB_GPU_AFFECTED),
             "RAY_CI_RLLIB_DIRECTLY_AFFECTED={}".format(RAY_CI_RLLIB_DIRECTLY_AFFECTED),
@@ -430,17 +423,12 @@ if __name__ == "__main__":
     # Used by buildkite log format
     pairs = [item.split("=") for item in output_string.split(" ")]
     affected_vars = [key for key, affected in pairs if affected == "1"]
-    if args.output.lower() == "json":
-        print(json.dumps(affected_vars))
-    elif args.output.lower() == "rayci_tags":
 
-        def f(s):
-            if s.startswith("RAY_CI_"):
-                s = s[7:]
-            if s.endswith("_AFFECTED"):
-                s = s[:-9]
-            return s.lower()
+    def to_tag(s):
+        if s.startswith("RAY_CI_"):
+            s = s[7:]
+        if s.endswith("_AFFECTED"):
+            s = s[:-9]
+        return s.lower()
 
-        print(" ".join(list(map(f, affected_vars))))
-    else:
-        print(output_string)
+    print(" ".join(list(map(to_tag, affected_vars))))

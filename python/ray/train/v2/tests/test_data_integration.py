@@ -6,6 +6,9 @@ from ray.data import DataContext, ExecutionResources
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.train.v2._internal.callbacks import DatasetsSetupCallback
+from ray.train.v2._internal.execution.worker_group.worker_group import (
+    WorkerGroupContext,
+)
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.tests.test_controller import DummyWorkerGroup
 
@@ -64,18 +67,22 @@ def test_dataset_setup_callback(ray_start_4_cpus):
         num_workers=NUM_WORKERS, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1}
     )
     worker_group = DummyWorkerGroup()
-    worker_group.start(
-        lambda: None,
+
+    worker_group_context = WorkerGroupContext(
+        train_fn=lambda: None,
         num_workers=scaling_config.num_workers,
         resources_per_worker=scaling_config.resources_per_worker,
     )
+    worker_group._start(worker_group_context)
 
     callback = DatasetsSetupCallback(
         datasets={"train": train_ds, "valid": valid_ds},
         data_config=data_config,
         scaling_config=scaling_config,
     )
-    dataset_shards = callback.before_init_train_context(worker_group)["dataset_shards"]
+    dataset_shards = callback.before_init_train_context(worker_group.get_workers())[
+        "dataset_shards"
+    ]
     assert len(dataset_shards) == NUM_WORKERS
 
     processed_train_ds = dataset_shards[0]["train"]

@@ -64,6 +64,15 @@ Text
 
    read_text
 
+Audio
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_audio
+
 Avro
 ----
 
@@ -212,6 +221,7 @@ Lance
    :toctree: doc/
 
    read_lance
+   Dataset.write_lance
 
 ClickHouse
 ----------
@@ -288,6 +298,15 @@ TensorFlow
    :toctree: doc/
 
    from_tf
+
+Video
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_videos
 
 WebDataset
 ----------

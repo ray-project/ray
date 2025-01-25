@@ -74,7 +74,7 @@ void GcsInitData::AsyncLoadActorTableData(Postable<void()> on_done) {
   RAY_LOG(INFO) << "Loading actor table data.";
   RAY_CHECK_OK(gcs_table_storage_.ActorTable().AsyncRebuildIndexAndGetAll(
       std::move(on_done).TransformArg(
-          [this](absl::flat_hash_map<ActorID, ActorTableData> result) {
+          [this](absl::flat_hash_map<ActorID, rpc::ActorTableData> result) {
             actor_table_data_ = std::move(result);
             RAY_LOG(INFO) << "Finished loading actor table data, size = "
                           << actor_table_data_.size();
@@ -85,7 +85,7 @@ void GcsInitData::AsyncLoadActorTaskSpecTableData(Postable<void()> on_done) {
   RAY_LOG(INFO) << "Loading actor task spec table data.";
   RAY_CHECK_OK(
       gcs_table_storage_.ActorTaskSpecTable().GetAll(std::move(on_done).TransformArg(
-          [this](absl::flat_hash_map<ActorID, TaskSpec> result) -> void {
+          [this](absl::flat_hash_map<ActorID, rpc::TaskSpec> result) -> void {
             actor_task_spec_table_data_ = std::move(result);
             RAY_LOG(INFO) << "Finished loading actor task spec table data, size = "
                           << actor_task_spec_table_data_.size();
