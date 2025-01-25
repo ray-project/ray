@@ -283,7 +283,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         if isinstance(prometheus_headers, list):
             prometheus_header_pairs = prometheus_headers
         elif isinstance(prometheus_headers, dict):
-            prometheus_header_pairs = [(k, v) for k, v in prometheus_headers.items()]
+            prometheus_header_pairs = list(prometheus_headers.items())
 
         data_sources_path = os.path.join(grafana_provisioning_folder, "datasources")
         os.makedirs(

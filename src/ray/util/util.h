@@ -44,12 +44,13 @@
 #include <thread>
 #include <unordered_map>
 
+// TODO(hjiang): Revisit these inclusion when we split `util` dependency targets; keep
+// them here for backward compatibility and avoid breaking too much compilation.
 #include "absl/container/flat_hash_map.h"
-#include "absl/random/random.h"
+#include "ray/util/cmd_line_utils.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/process.h"
-#include "ray/util/thread_checker.h"
 
 #ifdef _WIN32
 #include <process.h>  // to ensure getpid() on Windows
@@ -71,20 +72,6 @@ class stream_protocol;
 
 }  // namespace boost::asio::generic
 
-enum class CommandLineSyntax { System, POSIX, Windows };
-
-// Transfer the string to the Hex format. It can be more readable than the ANSI mode
-inline std::string StringToHex(const std::string &str) {
-  constexpr char hex[] = "0123456789abcdef";
-  std::string result;
-  for (size_t i = 0; i < str.size(); i++) {
-    unsigned char val = str[i];
-    result.push_back(hex[val >> 4]);
-    result.push_back(hex[val & 0xf]);
-  }
-  return result;
-}
-
 // Append append_str to the begining of each line of str.
 inline std::string AppendToEachLine(const std::string &str,
                                     const std::string &append_str) {
@@ -98,19 +85,6 @@ inline std::string AppendToEachLine(const std::string &str,
   }
   return ss.str();
 }
-
-// Returns the TID of the calling thread.
-#ifdef __APPLE__
-inline uint64_t GetTid() {
-  uint64_t tid;
-  RAY_CHECK_EQ(pthread_threadid_np(NULL, &tid), 0);
-  return tid;
-}
-#elif defined(_WIN32)
-inline DWORD GetTid() { return GetCurrentThreadId(); }
-#else
-inline pid_t GetTid() { return syscall(__NR_gettid); }
-#endif
 
 inline int64_t current_sys_time_s() {
   std::chrono::seconds s_since_epoch = std::chrono::duration_cast<std::chrono::seconds>(
@@ -149,23 +123,6 @@ inline int64_t current_sys_time_us() {
 }
 
 std::string GenerateUUIDV4();
-
-/// A helper function to parse command-line arguments in a platform-compatible manner.
-///
-/// \param cmdline The command-line to split.
-///
-/// \return The command-line arguments, after processing any escape sequences.
-std::vector<std::string> ParseCommandLine(
-    const std::string &cmdline, CommandLineSyntax syntax = CommandLineSyntax::System);
-
-/// A helper function to combine command-line arguments in a platform-compatible manner.
-/// The result of this function is intended to be suitable for the shell used by popen().
-///
-/// \param cmdline The command-line arguments to combine.
-///
-/// \return The command-line string, including any necessary escape sequences.
-std::string CreateCommandLine(const std::vector<std::string> &args,
-                              CommandLineSyntax syntax = CommandLineSyntax::System);
 
 /// Converts the given endpoint (such as TCP or UNIX domain socket address) to a string.
 /// \param include_scheme Whether to include the scheme prefix (such as tcp://).
@@ -230,19 +187,6 @@ struct EnumClassHash {
 template <typename Key, typename T>
 using EnumUnorderedMap = absl::flat_hash_map<Key, T, EnumClassHash>;
 
-/// A helper function to fill random bytes into the `data`.
-/// Warning: this is not fork-safe, we need to re-seed after that.
-template <typename T>
-void FillRandom(T *data) {
-  RAY_CHECK(data != nullptr);
-
-  thread_local absl::BitGen generator;
-  for (size_t i = 0; i < data->size(); i++) {
-    (*data)[i] = static_cast<uint8_t>(
-        absl::Uniform(generator, 0, std::numeric_limits<uint8_t>::max()));
-  }
-}
-
 inline void setEnv(const std::string &name, const std::string &value) {
 #ifdef _WIN32
   std::string env = name + "=" + value;
@@ -264,108 +208,7 @@ inline void unsetEnv(const std::string &name) {
   RAY_CHECK_EQ(ret, 0) << "Failed to unset env var " << name;
 }
 
-// Set [thread_name] to current thread; if it fails, error will be logged.
-// NOTICE: It only works for macos and linux.
-inline void SetThreadName(const std::string &thread_name) {
-  int ret = 0;
-#if defined(__APPLE__)
-  ret = pthread_setname_np(thread_name.c_str());
-#elif defined(__linux__)
-  ret = pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
-#endif
-  if (ret < 0) {
-    RAY_LOG(ERROR) << "Fails to set thread name to " << thread_name << " since "
-                   << strerror(errno);
-  }
-}
-
-inline std::string GetThreadName() {
-#if defined(__linux__) || defined(__APPLE__)
-  char name[128];
-  auto rc = pthread_getname_np(pthread_self(), name, sizeof(name));
-  if (rc != 0) {
-    return "ERROR";
-  } else {
-    return name;
-  }
-#else
-  return "UNKNOWN";
-#endif
-}
-
 namespace ray {
-template <typename T>
-class ThreadPrivate {
- public:
-  template <typename... Ts>
-  explicit ThreadPrivate(Ts &&...ts) : t_(std::forward<Ts>(ts)...) {}
-
-  T &operator*() {
-    RAY_CHECK(thread_checker_.IsOnSameThread());
-    return t_;
-  }
-
-  T *operator->() {
-    RAY_CHECK(thread_checker_.IsOnSameThread());
-    return &t_;
-  }
-
-  const T &operator*() const {
-    RAY_CHECK(thread_checker_.IsOnSameThread());
-    return t_;
-  }
-
-  const T *operator->() const {
-    RAY_CHECK(thread_checker_.IsOnSameThread());
-    return &t_;
-  }
-
- private:
-  T t_;
-  mutable ThreadChecker thread_checker_;
-};
-
-class ExponentialBackOff {
- public:
-  ExponentialBackOff() = default;
-  ExponentialBackOff(const ExponentialBackOff &) = default;
-  ExponentialBackOff(ExponentialBackOff &&) = default;
-  ExponentialBackOff &operator=(const ExponentialBackOff &) = default;
-  ExponentialBackOff &operator=(ExponentialBackOff &&) = default;
-
-  /// Construct an exponential back off counter.
-  ///
-  /// \param[in] initial_value The start value for this counter
-  /// \param[in] multiplier The multiplier for this counter.
-  /// \param[in] max_value The maximum value for this counter. By default it's
-  ///    infinite double.
-  ExponentialBackOff(uint64_t initial_value,
-                     double multiplier,
-                     uint64_t max_value = std::numeric_limits<uint64_t>::max())
-      : curr_value_(initial_value),
-        initial_value_(initial_value),
-        max_value_(max_value),
-        multiplier_(multiplier) {
-    RAY_CHECK(multiplier > 0.0) << "Multiplier must be greater than 0";
-  }
-
-  uint64_t Next() {
-    auto ret = curr_value_;
-    curr_value_ = curr_value_ * multiplier_;
-    curr_value_ = std::min(curr_value_, max_value_);
-    return ret;
-  }
-
-  uint64_t Current() { return curr_value_; }
-
-  void Reset() { curr_value_ = initial_value_; }
-
- private:
-  uint64_t curr_value_;
-  uint64_t initial_value_;
-  uint64_t max_value_;
-  double multiplier_;
-};
 
 /// Return true if the raylet is failed. This util function is only meant to be used by
 /// core worker modules.
