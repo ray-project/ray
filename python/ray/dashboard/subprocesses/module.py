@@ -140,7 +140,7 @@ class SubprocessModule(abc.ABC):
         while True:
             try:
                 message = self._child_bound_queue.get()
-            except Exception as e:
+            except Exception:
                 # This can happen if the parent process died, and getting from the queue
                 # can have EOFError.
                 logger.exception(
