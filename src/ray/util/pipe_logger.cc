@@ -278,7 +278,6 @@ RedirectionFileHandle CreateRedirectionFileHandle(
           std::move(pipe_write_sink));
 
   auto close_fn = [pipe_ostream, promise]() mutable {
-    pipe_ostream->flush();
     pipe_ostream->close();
     // Block until destruction finishes.
     promise->get_future().get();
