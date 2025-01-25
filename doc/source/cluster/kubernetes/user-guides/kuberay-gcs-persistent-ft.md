@@ -127,3 +127,24 @@ kubectl get pods
 
 After running a job with some state in GCS, you will be able to delete the ray
 head pod as well as the redis pod without data loss.
+
+## Verifying
+
+Forward connections to the ray cluster you just created with the Ray Kubectl
+plugin:
+
+```
+$ kubectl ray session raycluster-external-redis
+```
+
+Then submit any Ray job of your choosing and let it run. When finished, delete
+all your pods:
+
+```
+$ kubectl delete pods --all
+```
+
+Wait for the ray head to be provisioned again and enter ready state. Then
+restart your port forwarding and view the ray dashboard. You should find the
+job's metadata has been persisted, despite the loss of the ray head as well as
+the redis replica.
