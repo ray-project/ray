@@ -163,7 +163,7 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
 #if defined(__APPLE__) || defined(__linux__)
     RAY_CHECK_EQ(fdatasync(handle), 0);
 #elif defined(_WIN32)
-    RAY_CHECK_EQ(FlushFileBuffers(handle));
+    RAY_CHECK(FlushFileBuffers(handle));
 #endif
   };
   auto close_fn = [flush_fn, ostream]() {
