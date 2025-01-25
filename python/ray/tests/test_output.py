@@ -105,16 +105,22 @@ for _ in range(10):
     x.append(ray.put(bytes(100 * 1024 * 1024)))
 
 """
-    stdout_str, stderr_str = run_string_as_driver_and_get_redirected_stdout_stderr(
+    (
+        stdout_str_list,
+        stderr_str_list,
+    ) = run_string_as_driver_and_get_redirected_stdout_stderr(
         script, env={"RAY_verbose_spill_logs": "1"}
     )
-    out_str = stdout_str + stderr_str
+    out_str = " ".join(stdout_str_list) + " ".join(stderr_str_list)
     assert "Spilled " in out_str, out_str
 
-    stdout_str, stderr_str = run_string_as_driver_and_get_redirected_stdout_stderr(
+    (
+        stdout_str_list,
+        stderr_str_list,
+    ) = run_string_as_driver_and_get_redirected_stdout_stderr(
         script, env={"RAY_verbose_spill_logs": "0"}
     )
-    out_str = stdout_str + stderr_str
+    out_str = " ".join(stdout_str_list) + " ".join(stderr_str_list)
     assert "Spilled " not in out_str
 
 
@@ -898,9 +904,10 @@ ray._private.worker._global_node.kill_raylet()
 time.sleep(sleep_time)
 ray.shutdown()
     """
-    stdout_str, _ = run_string_as_driver_and_get_redirected_stdout_stderr(script)
+    stdout_str_list, _ = run_string_as_driver_and_get_redirected_stdout_stderr(script)
     expected = f"node name: {NODE_NAME} has been marked dead"
-    assert expected in stdout_str
+    all_stdout_str = " ".join(stdout_str_list)
+    assert expected in all_stdout_str
 
 
 if __name__ == "__main__":

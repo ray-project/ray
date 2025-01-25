@@ -681,7 +681,7 @@ def run_string_as_driver_stdout_stderr(
 
 def run_string_as_driver_and_get_redirected_stdout_stderr(
     driver_script: str, env: Dict = None, encode: str = "utf-8"
-) -> Tuple[str, str]:
+) -> Tuple[List[str], List[str]]:
     """Run a driver as a separate process.
 
     Args:
@@ -701,12 +701,8 @@ def run_string_as_driver_and_get_redirected_stdout_stderr(
     proc.communicate(driver_script.encode(encoding=encode))
     proc.wait()
 
-    stdout_content = get_redirected_stdout_for_component(
-        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER
-    )
-    stderr_content = get_redirected_stderr_for_component(
-        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER
-    )
+    stdout_content = get_all_redirected_stdout()
+    stderr_content = get_all_redirected_stderr()
     return stdout_content, stderr_content
 
 
