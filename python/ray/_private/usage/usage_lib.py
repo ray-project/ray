@@ -561,7 +561,7 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
             if node_info.state == gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
                 total_num_nodes += 1
         return total_num_nodes
-    except Exception as e:
+    except Exception:
         logger.exception("Faile to query number of nodes in the cluster")
         return None
 
@@ -592,7 +592,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
             for kv in kvs:
                 k, v = kv.split("=")
                 extra_usage_tags[k] = v
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to parse extra usage tags env var")
 
     valid_tag_keys = [tag_key.lower() for tag_key in TagKey.keys()]
@@ -609,7 +609,7 @@ def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
             key = key[len(usage_constant.EXTRA_USAGE_TAG_PREFIX) :]
             assert key in valid_tag_keys
             extra_usage_tags[key] = value.decode("utf-8")
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to get extra usage tags from kv store")
     return extra_usage_tags
 
