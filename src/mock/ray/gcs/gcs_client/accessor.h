@@ -152,7 +152,9 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (override));
   MOCK_METHOD(Status,
               AsyncGetAll,
-              (const MultiItemCallback<rpc::GcsNodeInfo> &callback, int64_t timeout_ms),
+              (const MultiItemCallback<rpc::GcsNodeInfo> &callback,
+               int64_t timeout_ms,
+               std::optional<NodeID> node_id),
               (override));
   MOCK_METHOD(Status,
               AsyncSubscribeToNodeChange,

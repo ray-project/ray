@@ -52,6 +52,7 @@ aiohttp==3.9.5
     #   delta-sharing
     #   fsspec
     #   google-auth
+    #   pytest-aiohttp
     #   s3fs
     #   torch-geometric
 aiohttp-cors==0.7.0
@@ -1638,6 +1639,7 @@ pyspark==3.4.1
 pytest==7.4.4
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   pytest-aiohttp
     #   pytest-asyncio
     #   pytest-docker-tools
     #   pytest-fixture-config
@@ -1652,6 +1654,8 @@ pytest==7.4.4
     #   pytest-sugar
     #   pytest-timeout
     #   pytest-virtualenv
+pytest-aiohttp==0.3.0
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 pytest-asyncio==0.17.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 pytest-docker-tools==3.1.3
