@@ -436,19 +436,20 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             j = len(self._indices)
 
         # Update the adding metrics.
+        # Update the adding metrics.
         self._update_add_metrics(
-            num_episodes_added,
-            num_env_steps_added,
-            num_episodes_evicted,
-            num_env_steps_evicted,
-            agent_to_num_episodes_added,
-            agent_to_num_steps_added,
-            agent_to_num_episodes_evicted,
-            agent_to_num_steps_evicted,
-            module_to_num_steps_added,
-            module_to_num_episodes_added,
-            module_to_num_episodes_evicted,
-            module_to_num_steps_evicted,
+            num_episodes_added=num_episodes_added,
+            num_env_steps_added=num_env_steps_added,
+            num_episodes_evicted=num_episodes_evicted,
+            num_env_steps_evicted=num_env_steps_evicted,
+            agent_to_num_episodes_added=agent_to_num_episodes_added,
+            agent_to_num_steps_added=agent_to_num_steps_added,
+            agent_to_num_episodes_evicted=agent_to_num_episodes_evicted,
+            agent_to_num_steps_evicted=agent_to_num_steps_evicted,
+            module_to_num_episodes_added=module_to_num_steps_added,
+            module_to_num_steps_added=module_to_num_episodes_added,
+            module_to_num_episodes_evicted=module_to_num_episodes_evicted,
+            module_to_num_steps_evicted=module_to_num_steps_evicted,
         )
 
     @override(MultiAgentEpisodeReplayBuffer)
