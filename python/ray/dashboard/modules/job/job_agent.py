@@ -7,10 +7,11 @@ import aiohttp
 from aiohttp.web import Request, Response
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.job.common import (
-    JobDeleteResponse,
+    JOB_ID_METADATA_KEY,
     JobLogsResponse,
     JobStopResponse,
     JobSubmitRequest,
@@ -28,6 +29,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._job_manager = None
+        self._gcs_aio_client = dashboard_agent.gcs_aio_client
 
     @routes.post("/api/job_agent/jobs/")
     @optional_utils.deny_browser_requests()
@@ -110,34 +112,49 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     @optional_utils.init_ray_and_catch_exceptions()
     async def delete_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
-        job = await find_job_by_ids(
-            self._dashboard_agent.gcs_aio_client,
-            self.get_job_manager().job_info_client(),
-            job_or_submission_id,
-        )
-        if not job:
-            return Response(
-                text=f"Job {job_or_submission_id} does not exist",
-                status=aiohttp.web.HTTPNotFound.status_code,
-            )
-        if job.type is not JobType.SUBMISSION:
-            return Response(
-                text="Can only delete submission type jobs",
-                status=aiohttp.web.HTTPBadRequest.status_code,
-            )
-
         try:
-            deleted = await self.get_job_manager().delete_job(job.submission_id)
-            resp = JobDeleteResponse(deleted=deleted)
+            job_mgr = self.get_job_manager()
+            deleted = await job_mgr.delete_from_job_table(job_or_submission_id)
+            if deleted:
+                return Response(
+                    text=json.dumps({"deleted": deleted}),
+                    content_type="application/json",
+                )
+
+            submission_id = job_or_submission_id
+            job = await job_mgr.get_job_info(submission_id)
+            if job:
+                if job.status is None or not job.status.is_terminal():
+                    raise RuntimeError(
+                        f"Attempted to delete job '{submission_id}', "
+                        f"but it is in a non-terminal state {job.status}."
+                    )
+                job_infos = await self._gcs_aio_client.get_all_job_info()
+                for job_id, job_item in job_infos.items():
+                    if job_item.config.ray_namespace.startswith(
+                        ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
+                    ):
+                        # Skip jobs in any _ray_internal_namespace
+                        continue
+                    metadata = job_item.config.metadata
+                    job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
+                    if job_submission_id and job_submission_id == submission_id:
+                        await job_mgr.delete_from_job_table(job_id.hex())
+                deleted = await job_mgr.delete_job(submission_id)
+                return Response(
+                    text=json.dumps({"deleted": deleted}),
+                    content_type="application/json",
+                )
+            else:
+                return Response(
+                    text=f"Job {submission_id} does not exist",
+                    status=aiohttp.web.HTTPNotFound.status_code,
+                )
         except Exception:
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
-
-        return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
 
     @routes.get("/api/job_agent/jobs/{job_or_submission_id}/logs")
     @optional_utils.init_ray_and_catch_exceptions()
