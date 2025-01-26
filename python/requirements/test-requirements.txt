@@ -1,5 +1,4 @@
 ## Requirements for running tests
-# These should all be pinned to versions that work
 
 # General test requirements
 async-exit-stack==1.0.1
@@ -42,7 +41,7 @@ opentelemetry-exporter-opencensus==0.20b0
 pexpect==4.8.0
 Pillow==10.3.0; platform_system != "Windows"
 proxy.py==2.4.3
-pydantic==2.5.0
+pydantic>=2.9.0
 pydot==1.4.2
 pyopenssl==24.2.1
 pygame==2.5.2
