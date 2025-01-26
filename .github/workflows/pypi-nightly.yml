@@ -75,7 +75,35 @@ jobs:
           name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
           path: ./python/dist/*.whl
 
+  build_macos_wheels13:
+    name: Build macOS wheels (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-13]
+        python-version: [39, 310, 311]
 
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || 'main' }}
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.22.0
+        env:
+          CIBW_BEFORE_BUILD: brew install node && pip install "cython>=0.29.32" wheel && sudo ./ci/env/install-bazel.sh && python -m ensurepip --upgrade && sudo chmod a+x /Users/runner/bin/bazel && sudo chown -R runner /Users/runner/Library/Caches/bazelisk && pushd python/ray/dashboard/client && npm ci && npm run build && popd
+          CIBW_BUILD: cp${{ matrix.python-version }}-macosx_*
+          MACOSX_DEPLOYMENT_TARGET: 14.2
+          CIBW_ENVIRONMENT: RAY_DEBUG_BUILD=nightly
+        with:
+          package-dir: ./python
+          output-dir: ./python/dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./python/dist/*.whl
+ 
   build_macos_wheels:
     name: Build macOS wheels (${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -106,7 +134,7 @@ jobs:
 
 
   upload_pypi:
-    needs: [build_linux_wheels_aarch64, build_linux_wheels, build_macos_wheels]
+    needs: [build_macos_wheels, build_macos_wheels13, build_linux_wheels, build_linux_wheels_aarch64]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -125,9 +153,10 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: python/dist
+          skip-existing: true
 
   upload_test_pypi:
-    needs: [build_linux_wheels_aarch64, build_linux_wheels, build_macos_wheels]
+    needs: [build_macos_wheels, build_macos_wheels13, build_linux_wheels, build_linux_wheels_aarch64]
     runs-on: ubuntu-latest
     environment: testpypi-publish
     permissions:
@@ -144,3 +173,4 @@ jobs:
         with:
           packages-dir: python/dist
           repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
