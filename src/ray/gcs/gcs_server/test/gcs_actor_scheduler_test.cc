@@ -65,14 +65,21 @@ class GcsActorSchedulerTest : public ::testing::Test {
         /*get_node_info=*/
         [this](const NodeID &node_id) {
           auto node = gcs_node_manager_->GetAliveNode(node_id);
-          return node.has_value() ? node.value().get() : nullptr;
+          std::shared_ptr<const rpc::GcsNodeInfo> node_ptr;
+          if (node.has_value()) {
+            node_ptr = node.value();
+          }
+          return node_ptr;
         },
         /*announce_infeasible_task=*/nullptr,
         /*local_task_manager=*/*local_task_manager_);
+    auto update_node_postable = UpdateNodeResourceUsagePostable{
+        [](NodeID, int64_t, google::protobuf::RepeatedPtrField<std::string>, bool) {},
+        io_context_->GetIoService()};
     auto gcs_resource_manager = std::make_shared<gcs::GcsResourceManager>(
         io_context_->GetIoService(),
         cluster_resource_scheduler_->GetClusterResourceManager(),
-        *gcs_node_manager_,
+        update_node_postable,
         local_node_id_);
     gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
         io_context_->GetIoService(),
@@ -98,16 +105,17 @@ class GcsActorSchedulerTest : public ::testing::Test {
           gcs_resource_manager->UpdateNodeNormalTaskResources(node_id, resources);
         });
 
-    gcs_node_manager_->AddNodeAddedListener(
-        [cluster_resource_scheduler =
-             cluster_resource_scheduler_.get()](std::shared_ptr<rpc::GcsNodeInfo> node) {
-          scheduling::NodeID node_id(node->node_id());
-          auto &cluster_resource_manager =
-              cluster_resource_scheduler->GetClusterResourceManager();
-          auto resource_map = MapFromProtobuf(node->resources_total());
-          auto node_resources = ResourceMapToNodeResources(resource_map, resource_map);
-          cluster_resource_manager.AddOrUpdateNode(node_id, node_resources);
-        });
+    gcs_node_manager_->SetNodeAddedListener(
+        {[cluster_resource_scheduler = cluster_resource_scheduler_.get()](
+             std::shared_ptr<const rpc::GcsNodeInfo> node) {
+           scheduling::NodeID node_id(node->node_id());
+           auto &cluster_resource_manager =
+               cluster_resource_scheduler->GetClusterResourceManager();
+           auto resource_map = MapFromProtobuf(node->resources_total());
+           auto node_resources = ResourceMapToNodeResources(resource_map, resource_map);
+           cluster_resource_manager.AddOrUpdateNode(node_id, node_resources);
+         },
+         io_context_->GetIoService()});
   }
 
   void TearDown() override { io_context_->Stop(); }

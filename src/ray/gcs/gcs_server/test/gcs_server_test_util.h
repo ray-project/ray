@@ -382,8 +382,9 @@ struct GcsServerMocker {
     }
 
    protected:
-    void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
-                                    std::shared_ptr<rpc::GcsNodeInfo> node) override {
+    void RetryLeasingWorkerFromNode(
+        std::shared_ptr<gcs::GcsActor> actor,
+        std::shared_ptr<const rpc::GcsNodeInfo> node) override {
       ++num_retry_leasing_count_;
       if (num_retry_leasing_count_ <= 1) {
         DoRetryLeasingWorkerFromNode(actor, node);

@@ -18,25 +18,28 @@ namespace ray {
 namespace gcs {
 static instrumented_io_context __mock_io_context_;
 static ClusterResourceManager __mock_cluster_resource_manager_(__mock_io_context_);
-static GcsNodeManager __mock_gcs_node_manager_(
-    nullptr, nullptr, __mock_io_context_, nullptr, ClusterID::Nil());
 
 class MockGcsResourceManager : public GcsResourceManager {
  public:
   using GcsResourceManager::GcsResourceManager;
   explicit MockGcsResourceManager()
-      : GcsResourceManager(__mock_io_context_,
-                           __mock_cluster_resource_manager_,
-                           __mock_gcs_node_manager_,
-                           NodeID::FromRandom(),
-                           nullptr) {}
-  explicit MockGcsResourceManager(ClusterResourceManager &cluster_resource_manager,
-                                  GcsNodeManager &gcs_node_manager)
-      : GcsResourceManager(__mock_io_context_,
-                           cluster_resource_manager,
-                           gcs_node_manager,
-                           NodeID::FromRandom(),
-                           nullptr) {}
+      : GcsResourceManager(
+            __mock_io_context_,
+            __mock_cluster_resource_manager_,
+            {[](NodeID, int64_t, google::protobuf::RepeatedPtrField<std::string>, bool) {
+             },
+             __mock_io_context_},
+            NodeID::FromRandom(),
+            nullptr) {}
+  explicit MockGcsResourceManager(ClusterResourceManager &cluster_resource_manager)
+      : GcsResourceManager(
+            __mock_io_context_,
+            cluster_resource_manager,
+            {[](NodeID, int64_t, google::protobuf::RepeatedPtrField<std::string>, bool) {
+             },
+             __mock_io_context_},
+            NodeID::FromRandom(),
+            nullptr) {}
 
   MOCK_METHOD(void,
               HandleGetAllAvailableResources,
