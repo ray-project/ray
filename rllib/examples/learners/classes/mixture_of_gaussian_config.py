@@ -6,7 +6,8 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.learners.classes.mixture_of_gaussian_rlm import MOGTorchRLModule
 from ray.rllib.examples.learners.classes.mixture_of_gaussian_learner import (
-    PPOTorchLearnerWithMOGLoss)
+    PPOTorchLearnerWithMOGLoss,
+)
 from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
     AddObservationsFromEpisodesToBatch,
 )
@@ -27,8 +28,8 @@ class PPOConfigWithMOG(PPOConfig):
     The get_default_learner_class simply imports the new PPOTorchLearnerWithMOGLoss class which inherits
     from PPOTorchLearner and uses the custom loss associated mixture of gaussians.
 
-    To have the 'new_obs' in the 'Columns' and 'batch' we need to add the 
-    AddNextObservationsFromEpisodesToTrainBatch class to the pipeline and insert after adding the 
+    To have the 'new_obs' in the 'Columns' and 'batch' we need to add the
+    AddNextObservationsFromEpisodesToTrainBatch class to the pipeline and insert after adding the
     AddObservationsFromEpisodesToBatch to the batch.
     """
 
@@ -42,10 +43,10 @@ class PPOConfigWithMOG(PPOConfig):
     def get_default_learner_class(self) -> Learner:
         # Override the learner with the custom learner class
         return PPOTorchLearnerWithMOGLoss
-    
+
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:
-        # Return the custom module spec / module 
+        # Return the custom module spec / module
         custom_config = {
             "vf_share_layers": False,
             "fcnet_hiddens": [128, 128],
@@ -56,6 +57,7 @@ class PPOConfigWithMOG(PPOConfig):
             module_class=MOGTorchRLModule,
             model_config=custom_config,
         )
+
     @override(AlgorithmConfig)
     def build_learner_connector(
         self,

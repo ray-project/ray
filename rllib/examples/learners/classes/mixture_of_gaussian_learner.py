@@ -52,17 +52,17 @@ class PPOTorchLearnerWithMOGLoss(PPOTorchLearner):
         sigma_current: torch.Tensor,
         alpha_current: torch.Tensor,
     ) -> torch.Tensor:
-        
+
         """
         Computes a custom negative log-likelihood loss for a mixture of Gaussian (MoG)
 
         This loss function incorporates a small adjustment: passing alpha_current through
-        a log_softmax instead of a regular softmax to prevent very small values that could 
+        a log_softmax instead of a regular softmax to prevent very small values that could
         lead to numerical instability
 
-        The purpose of this loss is to measure how well the critic's predicted value distribution 
+        The purpose of this loss is to measure how well the critic's predicted value distribution
         aligns with the target value distribution, as derived from the Bellman operator.
-        Intuitively, it can be thought of as comparing two "mounds of dirt" and quantifying the 
+        Intuitively, it can be thought of as comparing two "mounds of dirt" and quantifying the
         difference between them.
 
         Args:
@@ -78,7 +78,7 @@ class PPOTorchLearnerWithMOGLoss(PPOTorchLearner):
         Returns:
             summing_log : torch.Tensor
                 The computed negative log-likelihood loss for the given inputs.
-        """     
+        """
 
         td_targets_expanded = td_targets.unsqueeze(1)
         sigma_clamped = sigma_current

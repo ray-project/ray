@@ -10,6 +10,7 @@ from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 
+
 class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
     """
     Custom rl_module that demonstrates setting up, defining the necessary _forward methods,
@@ -18,6 +19,7 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
     This also uses a custom_config from the module_to_load_spec to get the fcnet_hiddens
     as well as custom arg num_mog_components
     """
+
     def __init__(
         self,
         observation_space: gym.spaces.Space,
@@ -35,10 +37,10 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
             model_config=model_config,
         )
         # Add mixture of gaussian components to the Columns class
-        Columns.NEXT_MOG_COMPONENTS = 'next_mog_components'
-        Columns.MOG_COMPONENTS = 'mog_components'
-        Columns.VF_OUT = 'vf_out'
-        self.inference_only=False
+        Columns.NEXT_MOG_COMPONENTS = "next_mog_components"
+        Columns.MOG_COMPONENTS = "mog_components"
+        Columns.VF_OUT = "vf_out"
+        self.inference_only = False
 
     def setup(self):
         input_dim = self.observation_space.shape[0]
@@ -117,7 +119,7 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
         sigmas_prev = mog_output[:, self.num_gaussians : self.num_gaussians * 2]
         sigmas = nn.functional.softplus(sigmas_prev) + 1e-6
         # Do not run alphas through softmax yet since in the loss function it uses the
-        # log_softmax of the current alphas. 
+        # log_softmax of the current alphas.
         alphas = mog_output[:, self.num_gaussians * 2 :]
         return {
             "means": means,
@@ -133,7 +135,7 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
                 "flag `inference_only=False` when building the module."
             )
         obs = batch[Columns.OBS]
-        if 'new_obs' not in batch:
+        if "new_obs" not in batch:
             next_obs = obs
         else:
             next_obs = batch[Columns.NEXT_OBS]

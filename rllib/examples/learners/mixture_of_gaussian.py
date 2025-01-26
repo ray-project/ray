@@ -56,7 +56,9 @@ With --num_guassians=2 and --lr=0.0001
 |          100.105 |                 44_000 |              252.31 |
 +------------------+------------------------+---------------------+
 """
-from ray.rllib.examples.learners.classes.mixture_of_gaussian_config import PPOConfigWithMOG
+from ray.rllib.examples.learners.classes.mixture_of_gaussian_config import (
+    PPOConfigWithMOG,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
