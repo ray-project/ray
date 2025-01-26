@@ -37,11 +37,11 @@ def test_dummy_servicer_can_take_any_methods():
     When dummy_servicer is called with any custom defined methods, it won't raise error.
     """
     dummy_servicer = DummyServicer()
-    dummy_servicer.foo
-    dummy_servicer.bar
-    dummy_servicer.baz
-    dummy_servicer.my_method
-    dummy_servicer.Predict
+    _ = dummy_servicer.foo
+    _ = dummy_servicer.bar
+    _ = dummy_servicer.baz
+    _ = dummy_servicer.my_method
+    _ = dummy_servicer.Predict
 
 
 def test_grpc_server():

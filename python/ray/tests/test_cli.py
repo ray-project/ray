@@ -919,7 +919,7 @@ def test_ray_status(shutdown_only, monkeypatch, enable_v2):
 
     def output_ready():
         result = runner.invoke(scripts.status)
-        result.stdout
+        _ = result.stdout
         if not result.exception and "memory" in result.output:
             return True
         raise RuntimeError(
@@ -967,7 +967,7 @@ def test_ray_status_multinode(ray_start_cluster, enable_v2):
 
     def output_ready():
         result = runner.invoke(scripts.status)
-        result.stdout
+        _ = result.stdout
         if not result.exception and "memory" in result.output:
             return True
         raise RuntimeError(

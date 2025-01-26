@@ -130,7 +130,7 @@ def test_read_operator_emits_warning_for_large_read_tasks():
             large_object = np.zeros((128, 1024, 1024), dtype=np.uint8)  # 128 MiB
 
             def read_fn():
-                large_object
+                _ = large_object
                 yield pd.DataFrame({"column": [0]})
 
             return [ReadTask(read_fn, BlockMetadata(1, None, None, None, None))]

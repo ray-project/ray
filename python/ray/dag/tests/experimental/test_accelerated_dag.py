@@ -2539,14 +2539,14 @@ def test_inflight_requests_exceed_capacity(ray_start_regular):
             match=(expected_error_message),
         ):
             _ = await async_compiled_dag.execute_async(1)
-        (ref1, ref2)
+        _ = (ref1, ref2)
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
     # to show variables are being used and avoid destruction since
     # CompiledDagRef __del__ will release buffers and
     # increment _max_finished_execution_index
-    (ref1, ref2)
+    _ = (ref1, ref2)
 
 
 def test_result_buffer_exceeds_capacity(ray_start_regular):
@@ -2587,12 +2587,12 @@ def test_result_buffer_exceeds_capacity(ray_start_regular):
             match=(expected_error_message),
         ):
             _ = await async_compiled_dag.execute_async(4)
-        (ref1, ref3)
+        _ = (ref1, ref3)
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
     # same reason as comment for test_inflight_requests_exceed_capacity
-    (ref1, ref3)
+    _ = (ref1, ref3)
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
