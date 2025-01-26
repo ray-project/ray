@@ -12,4 +12,3 @@ RELATIVE_PATH="../../ci/lint"
 
 ln -sf "${RELATIVE_PATH}/pre-push" "${ROOT}/.git/hooks/pre-push"
 ln -sf "${RELATIVE_PATH}/prepare-commit-msg" "${ROOT}/.git/hooks/prepare-commit-msg"
-

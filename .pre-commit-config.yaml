@@ -3,6 +3,8 @@ exclude: |
     python/ray/core/generated/|
     python/ray/serve/generated/|
     python/ray/cloudpickle/|
+    python/ray/dashboard/client/public/|
+    python/ray/tests/test_cli_patterns|
     python/ray/_private/runtime_env/_clonevirtualenv.py|
     doc/external/|
     doc/source/

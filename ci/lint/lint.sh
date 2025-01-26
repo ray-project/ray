@@ -30,6 +30,7 @@ pre_commit() {
     docstyle
     check-import-order
     check-cpp-files-inclusion
+    end-of-file-fixer
   )
 
   for HOOK in "${HOOKS[@]}"; do
