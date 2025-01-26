@@ -94,8 +94,8 @@ struct PlasmaObjectHeader {
   // has been WriteRelease'd. A reader may read the actual object value if
   // is_sealed=true and num_read_acquires_remaining != 0.
   bool is_sealed = false;
-  std::mutex version_sealed_mutex;
-  std::condition_variable version_sealed_cv;
+  std::optional<std::mutex> version_sealed_mutex;
+  std::optional<std::condition_variable> version_sealed_cv;
   // Set to indicate an error was encountered computing the next version of
   // the mutable object. Lockless access allowed.
   std::atomic<bool> has_error = false;

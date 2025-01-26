@@ -32,6 +32,8 @@ void PlasmaObjectHeader::Init() {
   memcpy(unique_name, name.c_str(), name.size());
 #endif  // defined(__APPLE__) || defined(__linux__)
 
+  version_sealed_mutex.emplace();
+  version_sealed_cv.emplace();
   version = 0;
   is_sealed = false;
   has_error = false;
@@ -151,7 +153,7 @@ Status PlasmaObjectHeader::WriteAcquire(
   RAY_CHECK_EQ(num_read_acquires_remaining, 0UL);
   RAY_CHECK_EQ(num_read_releases_remaining, 0UL);
 
-  std::unique_lock<std::mutex> lock(version_sealed_mutex);
+  std::unique_lock<std::mutex> lock(*version_sealed_mutex);
   version++;
   is_sealed = false;
   data_size = write_data_size;
@@ -160,7 +162,7 @@ Status PlasmaObjectHeader::WriteAcquire(
 
   RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
   lock.unlock();
-  version_sealed_cv.notify_all();
+  version_sealed_cv->notify_all();
   return Status::OK();
 }
 
@@ -180,8 +182,8 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
 
 bool PlasmaObjectHeader::WaitForNewVersionSealed(
     int64_t version_to_wait_for, std::chrono::milliseconds time_to_wait_for) {
-  std::unique_lock<std::mutex> lock(version_sealed_mutex);
-  return version_sealed_cv.wait_for(lock, time_to_wait_for, [this, version_to_wait_for] {
+  std::unique_lock<std::mutex> lock(*version_sealed_mutex);
+  return version_sealed_cv->wait_for(lock, time_to_wait_for, [this, version_to_wait_for] {
     return version >= version_to_wait_for && is_sealed;
   });
 }
