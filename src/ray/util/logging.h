@@ -61,6 +61,7 @@
 #include <vector>
 
 #include "ray/util/macros.h"
+#include "ray/util/string_utils.h"
 
 #if defined(_WIN32)
 #ifndef _WINDOWS_
