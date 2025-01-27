@@ -41,11 +41,22 @@ MultiRLModuleSpec
     MultiRLModuleSpec.build
 
 .. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.multi_rl_module_class
+    :no-index:
+
 .. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.observation_space
+    :no-index:
+
 .. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.action_space
+    :no-index:
+
 .. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.inference_only
+    :no-index:
+
 .. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.model_config
+    :no-index:
+
 .. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.rl_module_specs
+    :no-index:
 
 
 DefaultModelConfig
