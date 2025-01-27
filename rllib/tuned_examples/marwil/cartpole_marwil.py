@@ -53,7 +53,7 @@ config = (
         # The `kwargs` for the `map_batches` method in which our
         # `OfflinePreLearner` is run. 2 data workers should be run
         # concurrently.
-        map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
+        map_batches_kwargs={"concurrency": 2, "num_cpus": 1},
         # The `kwargs` for the `iter_batches` method. Due to the small
         # dataset we choose only a single batch to prefetch.
         iter_batches_kwargs={"prefetch_batches": 1},

@@ -44,7 +44,7 @@ config = (
         # Concurrency defines the number of processes that run the
         # `map_batches` transformations. This should be aligned with the
         # 'prefetch_batches' argument in 'iter_batches_kwargs'.
-        map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
+        map_batches_kwargs={"concurrency": 2, "num_cpus": 1},
         # This data set is small so do not prefetch too many batches and use no
         # local shuffle.
         iter_batches_kwargs={"prefetch_batches": 1},
