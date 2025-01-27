@@ -808,6 +808,7 @@ def test_serve_instance_details_is_json_serializable():
                             },
                         },
                         "target_num_replicas": 0,
+                        "required_resources": {"CPU": 1},
                         "replicas": [],
                     }
                 },
@@ -841,6 +842,7 @@ def test_serve_instance_details_is_json_serializable():
                                 "autoscaling_config": {},
                             },
                             "target_num_replicas": 0,
+                            "required_resources": {"CPU": 1},
                             "replicas": [],
                         }
                     },
