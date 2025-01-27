@@ -527,36 +527,34 @@ class MultiRLModuleSpec:
     share neural networks across the modules, the build method can be overridden to
     create the shared module first and then pass it to custom module classes that would
     then use it as a shared module.
-
-    Args:
-        multi_rl_module_class: The class of the MultiRLModule to construct. By default,
-            this is the base `MultiRLModule` class.
-        observation_space: Optional global observation space for the MultiRLModule.
-            Useful for shared network components that live only inside the MultiRLModule
-            and don't have their own ModuleID and own RLModule within
-            `self._rl_modules`.
-        action_space: Optional global action space for the MultiRLModule. Useful for
-            shared network components that live only inside the MultiRLModule and don't
-            have their own ModuleID and own RLModule within `self._rl_modules`.
-        inference_only: An optional global inference_only flag. If not set (None by
-            default), considers the MultiRLModule to be inference_only=True, only if all
-            submodules also have their own inference_only flags set to True.
-        model_config: An optional global model_config dict. Useful to configure shared
-            network components that only live inside the MultiRLModule and don't have
-            their own ModuleID and own RLModule within `self._rl_modules`.
-        rl_module_specs: The module specs for each individual module. It can be either
-            an RLModuleSpec used for all module_ids or a dictionary mapping from module
-            IDs to RLModuleSpecs for each individual module.
     """
 
+    #: The class of the MultiRLModule to construct. By default,
+    #: this is the base `MultiRLModule` class.
     multi_rl_module_class: Type[MultiRLModule] = MultiRLModule
+    #: Optional global observation space for the MultiRLModule.
+    #: Useful for shared network components that live only inside the MultiRLModule
+    #: and don't have their own ModuleID and own RLModule within
+    #: `self._rl_modules`.
     observation_space: Optional[gym.Space] = None
+    #: Optional global action space for the MultiRLModule. Useful for
+    #: shared network components that live only inside the MultiRLModule and don't
+    #: have their own ModuleID and own RLModule within `self._rl_modules`.
     action_space: Optional[gym.Space] = None
+    #: An optional global inference_only flag. If not set (None by
+    #: default), considers the MultiRLModule to be inference_only=True, only if all
+    #: submodules also have their own inference_only flags set to True.
     inference_only: Optional[bool] = None
     # TODO (sven): Once we support MultiRLModules inside other MultiRLModules, we would
     #  need this flag in here as well, but for now, we'll leave it out for simplicity.
     # learner_only: bool = False
+    #: An optional global model_config dict. Useful to configure shared
+    #: network components that only live inside the MultiRLModule and don't have
+    #: their own ModuleID and own RLModule within `self._rl_modules`.
     model_config: Optional[dict] = None
+    #: The module specs for each individual module. It can be either
+    #: an RLModuleSpec used for all module_ids or a dictionary mapping from module
+    #: IDs to RLModuleSpecs for each individual module.
     rl_module_specs: Union[RLModuleSpec, Dict[ModuleID, RLModuleSpec]] = None
 
     # TODO (sven): Deprecate these in favor of using the pure Checkpointable APIs for

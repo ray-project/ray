@@ -10,11 +10,11 @@ class InferenceOnlyAPI(abc.ABC):
 
     Only the `get_non_inference_attributes` method needs to get implemented for
     an RLModule to have the following functionality:
-        - On EnvRunners (or when self.inference_only=True), RLlib will remove
-        those parts of the model not required for action computation.
-        - An RLModule on a Learner (where `self.inference_only=False`) will
-        return only those weights from `get_state()` that are part of its inference-only
-        version, thus possibly saving network traffic/time.
+    - On EnvRunners (or when self.inference_only=True), RLlib will remove
+      those parts of the model not required for action computation.
+    - An RLModule on a Learner (where `self.inference_only=False`) will
+      return only those weights from `get_state()` that are part of its inference-only
+      version, thus possibly saving network traffic/time.
     """
 
     @abc.abstractmethod
