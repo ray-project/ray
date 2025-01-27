@@ -1097,16 +1097,17 @@ class HTTPProxy(GenericProxy):
         assert status is not None
         yield status
 
-def _set_proxy_default_http_options(
-    http_options: HTTPOptions
-) -> HTTPOptions:
+
+def _set_proxy_default_http_options(http_options: HTTPOptions) -> HTTPOptions:
     http_options = deepcopy(http_options)
     # Override keep alive setting if the environment variable is set.
     # TODO(edoakes): more sane behavior here.
     if RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S > 0:
         http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
 
-    http_options.request_timeout_s = (http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S)
+    http_options.request_timeout_s = (
+        http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+    )
 
     http_options.middlewares = http_options.middlewares or []
     if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
@@ -1114,15 +1115,16 @@ def _set_proxy_default_http_options(
             "Calling user-provided callback from import path "
             f"'{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}'."
         )
-        middlewares = validate_http_proxy_callback_return(
-            call_function_from_import_path(
-                RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
+        http_options.middlewares.extend(
+            validate_http_proxy_callback_return(
+                call_function_from_import_path(RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH)
             )
         )
 
-        self._http_options.middlewares.extend(middlewares)
+        
 
     return http_options
+
 
 @ray.remote(num_cpus=0)
 class ProxyActor:
@@ -1142,7 +1144,8 @@ class ProxyActor:
         self._http_options = _set_proxy_default_http_options(http_options)
         self._grpc_options = grpc_options or gRPCOptions()
         grpc_enabled = (
-            self._grpc_options.port > 0 and len(self._grpc_options.grpc_servicer_functions) > 0
+            self._grpc_options.port > 0
+            and len(self._grpc_options.grpc_servicer_functions) > 0
         )
 
         event_loop = get_or_create_event_loop()
@@ -1161,9 +1164,7 @@ class ProxyActor:
             logging_config=logging_config,
         )
 
-        startup_msg = (
-            f"Proxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
-        )
+        startup_msg = f"Proxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
         if grpc_enabled:
             startup_msg += f", gRPC port: {self._grpc_options.port})."
         else:
