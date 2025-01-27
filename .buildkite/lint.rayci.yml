@@ -2,14 +2,13 @@ group: lint
 steps:
   - label: ":lint-roller: lint: {{matrix}}"
     key: lint-small
+    tags:
+      - lint
     depends_on:
       - forge
     commands:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
-      - clang_format
-      - code_format
-      - pre_commit
       - untested_code_snippet
       - banned_words
       - doc_readme
@@ -20,6 +19,20 @@ steps:
       - pytest_format
       - test_coverage
       - documentation_style
+
+  - label: ":lint-roller: code lint: {{matrix}}"
+    key: code-lint-small
+    tags:
+      - lint
+    depends_on:
+      - oss-ci-base_test
+    job_env: oss-ci-base_test
+    commands:
+      - ./ci/lint/lint.sh {{matrix}}
+    matrix:
+      - clang_format
+      - code_format
+      - pre_commit
 
   - label: ":lint-roller: lint: {{matrix}}"
     tags:
