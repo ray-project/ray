@@ -92,8 +92,7 @@ def test_comm_all_reduces(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {
-            (frozenset([workers[0]]), None),
-            (frozenset([workers[1]]), None),
+            (frozenset(workers), None),
         },
     )
 

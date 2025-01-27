@@ -1,4 +1,3 @@
-import copy
 import uuid
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 
@@ -153,7 +152,7 @@ class MockNcclGroupSet:
             set(self.ids_to_actors_and_custom_comms.values()) == actors_and_custom_comms
         )
 
-        nccl_group_id_p2p = compiled_dag.communicator_id_p2p
+        nccl_group_id_p2p = compiled_dag._default_communicator
         if p2p_actors_and_custom_comm is None:
             assert nccl_group_id_p2p is None
         else:
@@ -228,7 +227,7 @@ def check_nccl_group_init(
         mock_nccl_group_set,
     )
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
     mock_nccl_group_set.check_init(
         compiled_dag,
         actors_and_custom_comms,
@@ -248,6 +247,9 @@ def check_nccl_group_teardown(
         mock_nccl_group_set.mock_destroy_nccl_group,
     )
 
-    nccl_group_ids = copy.deepcopy(compiled_dag.communicator_ids)
+    if compiled_dag._create_default_communicator:
+        nccl_group_ids = [compiled_dag._default_communicator_id]
+    else:
+        nccl_group_ids = []
     compiled_dag.teardown()
     mock_nccl_group_set.check_teardown(nccl_group_ids)
