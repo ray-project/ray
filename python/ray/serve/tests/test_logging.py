@@ -937,7 +937,7 @@ def test_stream_to_logger():
 
     # Calling non-existing attribute on the StreamToLogger should still raise error.
     with pytest.raises(AttributeError):
-        stream_to_logger.i_dont_exist
+        _ = stream_to_logger.i_dont_exist
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
