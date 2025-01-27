@@ -292,9 +292,11 @@ RedirectionFileHandle CreateRedirectionFileHandle(
                    std_ostream = std_ostream](std::string content) {
     if (stream_redirect_opt.tee_to_stdout) {
       std_ostream.stdout_ostream->write(content.data(), content.length());
+      RAY_CHECK(std_ostream.stdout_ostream->good());
     }
     if (stream_redirect_opt.tee_to_stderr) {
       std_ostream.stderr_ostream->write(content.data(), content.length());
+      RAY_CHECK(std_ostream.stderr_ostream->good());
     }
     if (logger != nullptr) {
       // spdlog adds newliner for every content, no need to maintan the application-passed
