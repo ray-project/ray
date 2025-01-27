@@ -2590,6 +2590,7 @@ class DeploymentStateManager:
                     id.name, self.get_deployment(id)
                 ),
                 target_num_replicas=deployment_state._target_state.target_num_replicas,
+                required_resources=deployment_state.target_info.replica_config.resource_dict,
                 replicas=deployment_state.list_replica_details(),
             )
 
