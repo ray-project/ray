@@ -399,7 +399,7 @@ class OfflinePreLearner:
 
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                NotImplementedError
+                pass
             else:
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
@@ -516,7 +516,7 @@ class OfflinePreLearner:
 
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                NotImplementedError
+                pass
             else:
                 # Unpack observations, if needed. Note, observations could
                 # be either compressed by their entirety (the complete batch
