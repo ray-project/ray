@@ -239,7 +239,6 @@ ray_cc_test(
     size = "small",
     tags = [
         "team:core",
-        "no_tsan", # Fails on CI, but doesn't reproduce for 10000 runs.
     ],
 )
 
