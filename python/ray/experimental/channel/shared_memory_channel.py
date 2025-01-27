@@ -540,7 +540,8 @@ class BufferedSharedMemoryChannel(ChannelInterface):
     Args:
         writer: The actor that may write to the channel. None signifies the driver.
         reader_and_node_list: A list of tuples, where each tuple contains a reader
-            actor handle and the node ID where the actor is located.
+            actor handle and the node ID where the actor is located. Note that currently
+            we only support this for readers on the same node as the writer.
         num_shm_buffers: Number of shared memory buffers to read/write.
         typ: Type information about the values passed through the channel.
             Either an integer representing the max buffer size in bytes

@@ -49,7 +49,8 @@ def split_actors_by_node_locality(
 ) -> Tuple[
     List[Tuple["ray.actor.ActorHandle", str]], List[Tuple["ray.actor.ActorHandle", str]]
 ]:
-    """Split actors into remote and local actors based on writer.
+    """Split actors into remote and local actors based on node. The local actors will be
+    on the same node as the given node. The remote actors will be on a different node.
 
     Args:
         writer_node: The node of the writer
@@ -57,8 +58,8 @@ def split_actors_by_node_locality(
 
     Returns:
         Tuple containing:
-            - List of (reader, node) tuples for actors on the same node
-            - List of (reader, node) tuples for actors on a different node
+            - List of (actor, node) tuples for actors on the same node
+            - List of (actor, node) tuples for actors on a different node
     """
     actors_on_same_node = []
     actors_on_different_node = []
