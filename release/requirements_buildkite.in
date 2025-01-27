@@ -22,3 +22,6 @@ tzdata
 aws_requests_auth
 requests >= 2.31.0
 -r requirements-doc.txt
+
+# Upgrades
+typing-extensions>=4.10
