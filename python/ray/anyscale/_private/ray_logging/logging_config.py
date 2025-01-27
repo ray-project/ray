@@ -21,25 +21,25 @@ class AnyscaleLoggingConfigurator(logging_config.LoggingConfigurator):
         )
         return supported_encodings
 
-    def configure_logging(self, encoding: str, log_level: str):
-        if encoding in self._encoding_to_formatter:
-            formatter = self._encoding_to_formatter[encoding]
+    def configure(self, logging_config: "logging_config.LoggingConfig"):
+        if logging_config.encoding in self._encoding_to_formatter:
+            formatter = self._encoding_to_formatter[logging_config.encoding]
             core_context_filter = CoreContextFilter()
             handler = logging.StreamHandler()
-            handler.setLevel(log_level)
+            handler.setLevel(logging_config.log_level)
             handler.setFormatter(formatter)
             handler.addFilter(core_context_filter)
 
             root_logger = logging.getLogger()
-            root_logger.setLevel(log_level)
+            root_logger.setLevel(logging_config.log_level)
             root_logger.addHandler(handler)
 
             ray_logger = logging.getLogger("ray")
-            ray_logger.setLevel(log_level)
+            ray_logger.setLevel(logging_config.log_level)
             # Remove all existing handlers added by `ray/__init__.py`.
             for h in ray_logger.handlers[:]:
                 ray_logger.removeHandler(h)
             ray_logger.addHandler(handler)
             ray_logger.propagate = False
         else:
-            self._default_logging_configurator.configure_logging(encoding, log_level)
+            self._default_logging_configurator.configure(logging_config)
