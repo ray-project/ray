@@ -18,8 +18,6 @@
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/pb_util.h"
-#include "src/ray/common/scheduling/cluster_resource_data.h"
-#include "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 
 namespace ray {
 namespace gcs {
