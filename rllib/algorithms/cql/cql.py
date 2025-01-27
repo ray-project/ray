@@ -31,7 +31,6 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
-    ALL_MODULES,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     LAST_TARGET_UPDATE_TS,
@@ -330,24 +329,6 @@ class CQL(SAC):
 
             # Log training results.
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-
-        # Synchronize weights.
-        # As the results contain for each policy the loss and in addition the
-        # total loss over all policies is returned, this total loss has to be
-        # removed.
-        modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
-
-        if self.eval_env_runner_group:
-            # Update weights - after learning on the local worker -
-            # on all remote workers. Note, we only have the local `EnvRunner`,
-            # but from this `EnvRunner` the evaulation `EnvRunner`s get updated.
-            with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-                self.eval_env_runner_group.sync_weights(
-                    # Sync weights from learner_group to all EnvRunners.
-                    from_worker_or_learner_group=self.learner_group,
-                    policies=modules_to_update,
-                    inference_only=True,
-                )
 
     @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:
