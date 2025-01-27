@@ -16,7 +16,6 @@ import ray.cluster_utils
 from ray.dag import InputNode, DAGContext
 from ray.util.collective.collective_group import nccl_util
 
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray._private.ray_microbenchmark_helpers import timeit
 
 
@@ -68,24 +67,6 @@ class TorchTensorWorker:
         # we return only a byte string.
         assert tensor.device == self.device
         return b"x"
-
-
-@ray.remote
-class TorchTensorWorkerWithDataTransfer:
-    def __init__(self):
-        self.device = torch_utils.get_devices()[0]
-
-    def send(self, shape, dtype, value: int, sleep_time: int):
-        t = torch.ones(shape, dtype=dtype, device=self.device) * value
-        time.sleep(sleep_time)
-        return t
-
-    def recv(self, tensor):
-        # This benchmark tests the overhead of sending a tensor between
-        # actors. To minimize the overhead of shared memory transfer,
-        # we return only a byte string.
-        assert tensor.device == self.device
-        return (tensor[0].item(), tensor.shape, tensor.dtype)
 
 
 @ray.remote(num_gpus=1)
@@ -140,20 +121,16 @@ def exec_ray_dag(
     use_cgraph=True,
     static_shape=False,
     direct_return=False,
-    num_executions=1,
-    data_transfer=False,
 ):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(SHAPE, DTYPE, inp)
 
         if use_cgraph:
-            dag = dag.with_type_hint(
-                TorchTensorType(
-                    _static_shape=static_shape,
-                    _direct_return=direct_return,
-                    transport="nccl" if use_nccl else "auto",
-                )
+            dag = dag.with_tensor_transport(
+                transport="nccl" if use_nccl else "auto",
+                _static_shape=static_shape,
+                _direct_return=direct_return,
             )
 
         dag = receiver.recv.bind(dag)
@@ -162,12 +139,9 @@ def exec_ray_dag(
         dag = dag.experimental_compile()
 
         def _run():
-            results = []
-            for i in range(num_executions):
-                results.append(
-                    dag.execute(np.random.randint(100) if data_transfer else b"x")
-                )
-            ray.get(results)
+            ref = dag.execute(b"x")
+            result = ray.get(ref)
+            assert result == b"x"
 
     else:
 
@@ -320,53 +294,6 @@ def exec_ray_dag_cpu(sender_hint, receiver_hint):
     return exec_ray_dag("exec_ray_dag_cpu", sender, receiver)
 
 
-def exec_ray_dag_cpu_five_times(sender_hint, receiver_hint):
-    sender = TorchTensorWorker.options(scheduling_strategy=sender_hint).remote()
-    receiver = TorchTensorWorker.options(scheduling_strategy=receiver_hint).remote()
-    return exec_ray_dag(
-        "exec_ray_dag_cpu_five_times", sender, receiver, num_executions=5
-    )
-
-
-def exec_ray_dag_cpu_five_times_data_transfer(sender_hint, receiver_hint):
-    sender = TorchTensorWorkerWithDataTransfer.options(
-        scheduling_strategy=sender_hint
-    ).remote()
-    receiver = TorchTensorWorkerWithDataTransfer.options(
-        scheduling_strategy=receiver_hint
-    ).remote()
-    with InputNode() as inp:
-        dag = sender.send.bind(50_000, DTYPE, inp[0], inp[1])
-        dag = dag.with_type_hint(
-            TorchTensorType(
-                _static_shape=False,
-                _direct_return=False,
-                transport="auto",
-            )
-        )
-        dag = receiver.recv.bind(dag)
-    dag = dag.experimental_compile()
-
-    def _run():
-        results = []
-        for i in range(5):
-            num = np.random.randint(100)
-            if i % 2 == 0:
-                results.append(dag.execute(num, 0.2))
-            else:
-                results.append(dag.execute(num, 0.1))
-        ray.get(results)
-
-    results = timeit("exec_ray_dag_cpu_five_times_data_transfer", _run)
-
-    dag.teardown()
-    ray.kill(sender)
-    ray.kill(receiver)
-    time.sleep(1)
-
-    return results
-
-
 def exec_ray_core_cpu(sender_hint, receiver_hint):
     time.sleep(1)
     sender = TorchTensorWorker.options(scheduling_strategy=sender_hint).remote()
@@ -464,8 +391,6 @@ def main(distributed):
             remote_node_id, soft=False
         )
 
-    results += exec_ray_dag_cpu_five_times_data_transfer(sender_hint, receiver_hint)
-
     if not distributed:
         results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
         results += timeit("exec_torch_gpu", _exec_torch_gpu)
@@ -480,7 +405,6 @@ def main(distributed):
 
     results += exec_ray_core_cpu(sender_hint, receiver_hint)
     results += exec_ray_dag_cpu(sender_hint, receiver_hint)
-    results += exec_ray_dag_cpu_five_times(sender_hint, receiver_hint)
     results += exec_ray_core_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_cpu_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_nccl(
