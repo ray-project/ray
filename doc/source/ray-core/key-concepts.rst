@@ -26,21 +26,21 @@ See the :ref:`User Guide for Actors <actor-guide>`.
 Objects
 -------
 
-Tasks and actors create objects and compute on objects. You can refer to these objects as *remote objects* because they're stored anywhere in a Ray cluster, and you use *object refs* to refer to them. Ray caches remote objects in its distributed `shared-memory <https://en.wikipedia.org/wiki/Shared_memory>`__ *object store*, and there is one object store per node in the cluster. In the cluster setting, a remote object can live on one or many nodes, independent of who holds the object ref.
+Tasks and actors create objects and compute on objects. You can refer to these objects as *remote objects* because Ray stores them anywhere in a Ray cluster, and you use *object refs* to refer to them. Ray caches remote objects in its distributed `shared-memory <https://en.wikipedia.org/wiki/Shared_memory>`__ *object store* and creates one object store per node in the cluster. In the cluster setting, a remote object can live on one or many nodes, independent of who holds the object ref.
 
 See the :ref:`User Guide for Objects <objects-in-ray>`.
 
 Placement Groups
 ----------------
 
-Placement groups allow users to atomically reserve groups of resources across multiple nodes. They can be then used to schedule Ray tasks and actors packed as close as possible for locality (PACK), or spread apart (SPREAD). Placement groups are generally used for gang-scheduling actors, but also support tasks.
+Placement groups allow users to atomically reserve groups of resources across multiple nodes. You can use them to schedule Ray tasks and actors packed as close as possible for locality (PACK), or spread apart (SPREAD). A common use case is gang-scheduling actors or tasks.
 
 See the :ref:`User Guide for Placement Groups <ray-placement-group-doc-ref>`.
 
 Environment Dependencies
 ------------------------
 
-When Ray executes tasks and actors on remote machines, their environment dependencies (such as Python packages, local files, environment variables) must be available for the code to run. To address this problem, you can
+When Ray executes tasks and actors on remote machines, their environment dependencies, such as Python packages, local files, and environment variables, must be available on the remote machines. To address this problem, you can
 1. Prepare your dependencies on the cluster in advance using the Ray :ref:`Cluster Launcher <vm-cluster-quick-start>`
 2. Use Ray's :ref:`runtime environments <runtime-environments>` to install them on the fly.
 

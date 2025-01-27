@@ -181,7 +181,7 @@ value.
             auto object_ref = counter.Task(&Counter::increment).Remote();
             assert(*object_ref.Get() == 1);
 
-Methods called on different actors can execute in parallel, and methods called on the same actor are executed serially in the order that they're called. Methods on the same actor share state with one another, as shown below.
+Methods called on different actors execute in parallel, and methods called on the same actor execute serially in the order you call them. Methods on the same actor share state with one another, as shown below.
 
 .. tab-set::
 
@@ -272,7 +272,7 @@ Methods called on different actors can execute in parallel, and methods called o
 Passing around actor handles
 ----------------------------
 
-Actor handles can be passed into other tasks. You can define remote functions (or actor methods) that use actor handles.
+You can pass actor handles into other tasks. You can also define remote functions or actor methods that use actor handles.
 
 .. tab-set::
 
@@ -403,9 +403,9 @@ Cancel Actor Tasks by calling :func:`ray.cancel() <ray.cancel>` on the returned 
 In Ray, Task cancellation behavior is contingent on the Task's current state:
 
 **Unscheduled tasks**:
-If the Actor Task hasn't been scheduled yet, Ray attempts to cancel the scheduling.
-When successfully cancelled at this stage, invoking ``ray.get(actor_task_ref)``
-produce a :class:`TaskCancelledError <ray.exceptions.TaskCancelledError>`.
+If Ray hasn't scheduled an Actor Task yet, Ray attempts to cancel the scheduling.
+When Ray successfully cancels at this stage, it invokes ``ray.get(actor_task_ref)``
+which produces a :class:`TaskCancelledError <ray.exceptions.TaskCancelledError>`.
 
 **Running actor tasks (regular actor, threaded actor)**:
 For tasks classified as a single-threaded Actor or a multi-threaded Actor,
@@ -453,18 +453,18 @@ What's the difference between a worker and an actor?
 
 Each "Ray worker" is a python process.
 
-Ray treats a worker differently for tasks and actors. Any "Ray worker" is either 1. used to execute multiple Ray tasks or 2. started as a dedicated Ray actor.
+Ray treats a worker differently for tasks and actors. For tasks, Ray uses a "Ray worker" to execute multiple Ray tasks. For actors, Ray starts a "Ray worker" as a dedicated Ray actor.
 
-* **Tasks**: When Ray starts on a machine, a number of Ray workers start automatically (1 per CPU by default). They're used to execute tasks (like a process pool). If you execute 8 tasks with `num_cpus=2`, and total number of CPUs is 16 (`ray.cluster_resources()["CPU"] == 16`), you end up with 8 of your 16 workers idling.
+* **Tasks**: When Ray starts on a machine, a number of Ray workers start automatically (1 per CPU by default). Ray uses them to execute tasks (like a process pool). If you execute 8 tasks with `num_cpus=2`, and total number of CPUs is 16 (`ray.cluster_resources()["CPU"] == 16`), you end up with 8 of your 16 workers idling.
 
-* **Actor**: A Ray Actor is also a "Ray worker" but you instantiate it at runtime (upon `actor_cls.remote()`). All of its methods run on the same process, using the same resources (designated when defining the Actor). Note that unlike tasks, the python processes that runs Ray Actors aren't reused. Ray terminates them when you delete the Actor.
+* **Actor**: A Ray Actor is also a "Ray worker" but you instantiate it at runtime with `actor_cls.remote()`. All of its methods run on the same process, using the same resources Ray designates when you define the Actor. Note that unlike tasks, Ray doesn't reuse the Python processes that run Ray Actors. Ray terminates them when you delete the Actor.
 
 To maximally utilize your resources, you want to maximize the time that
-your workers are working. You also want to allocate enough cluster resources
-so that all of your needed actors and any other tasks you
-define can run. This also implies that Ray schedules tasks more flexibly,
-and that if you don't need the stateful part of an actor, you're mostly
-better off using tasks.
+your workers work. You also want to allocate enough cluster resources
+so Ray can run all of your needed actors and any other tasks you
+define. This also implies that Ray schedules tasks more flexibly,
+and that if you don't need the stateful part of an actor, it's better
+to use tasks.
 
 Task Events
 -----------
@@ -472,7 +472,7 @@ Task Events
 By default, Ray traces the execution of actor tasks, reporting task status events and profiling events
 that Ray Dashboard and :ref:`State API <state-api-overview-ref>` use.
 
-You can disable task event reporting for the actor by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`, which reduces the overhead of task execution, and the amount of data sent to the Ray Dashboard.
+You can disable task event reporting for the actor by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`. This setting reduces the overhead of task execution by reducing the amount of data Ray sends to the Ray Dashboard.
 
 You can also disable task event reporting for some actor methods by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>` on the actor method.
 Method settings override the actor setting:

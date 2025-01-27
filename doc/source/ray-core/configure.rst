@@ -9,7 +9,7 @@ This page discusses the various way to configure Ray, both from the Python API
 and from the command line. Take a look at the ``ray.init`` `documentation
 <package-ref.html#ray.init>`__ for a complete overview of the configurations.
 
-.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``ray.init`` in Python to connect to the cluster services. On a single machine, you can run ``ray.init()`` without ``ray start``, which both start the Ray cluster services and connect to them.
+.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``ray.init`` in Python to connect to the cluster services. On a single machine, you can run ``ray.init()`` without ``ray start``, which both starts the Ray cluster services and connects to them.
 
 
 .. _cluster-resources:
@@ -123,10 +123,10 @@ The following options specify the range of ports used by worker processes across
 - ``--min-worker-port``: Minimum port number for the worker to bind to. Default: 10002.
 - ``--max-worker-port``: Maximum port number for the worker to bind to. Default: 19999.
 
-Port numbers are how Ray differentiates input and output to and from multiple workers on a single node. Each worker takes input and gives output on a single port number. Thus, for example, by default, there is a maximum of 10,000 workers on each node, irrespective of number of CPUs.
+Port numbers are how Ray differentiates input and output to and from multiple workers on a single node. Each worker takes input and gives output on a single port number. Therefore, by default, there's a maximum of 10,000 workers on each node, irrespective of number of CPUs.
 
-In general, it's recommended to give Ray a wide range of possible worker ports, in case any of those ports happen to be in use by some other program on your machine. However, when debugging it's useful to explicitly specify a short list of worker ports such as ``--worker-port-list=10000,10001,10002,10003,10004``
-Note that this limits the number of workers, just like specifying a narrow range.
+In general, you should give Ray a wide range of possible worker ports, in case any of those ports happen to be in use by some other program on your machine. However, when debugging, it's useful to explicitly specify a short list of worker ports such as ``--worker-port-list=10000,10001,10002,10003,10004``
+Note that this practice limits the number of workers, just like specifying a narrow range.
 
 Head node
 ~~~~~~~~~
@@ -154,7 +154,7 @@ the head node, you won't be able to access the dashboard, and you repeatedly get
     debug_error_string = "{"description":"Failed to pick subchannel","file":"src/core/ext/filters/client_channel/client_channel.cc","file_line":4165,"referenced_errors":[{"description":"failed to connect to all addresses","file":"src/core/ext/filters/client_channel/lb_policy/pick_first/pick_first.cc","file_line":397,"grpc_status":14}]}"
 
 If you see that error, check whether the ``--dashboard-port`` is accessible
-through ``nc``, ``nmap``, or your browser.
+through ``nc``, ``nmap``, or your hello browser.
 
 .. code-block:: bash
 
@@ -168,10 +168,10 @@ through ``nc``, ``nmap``, or your browser.
 
 Note that the dashboard runs as a separate subprocess which can crash invisibly
 in the background, so even if you checked port 8265 earlier, the port might be
-closed *now* (for the prosaic reason that there is no longer a service running
-on it). This also means that if that port is unreachable, if you ``ray stop``
-and ``ray start``, it may become reachable again due to the dashboard
-restarting.
+closed *now* (for the prosaic reason that there's no longer a service running
+on it). This also means that if you ``ray stop`` and ``ray start`` when the port is
+unreachable, it may become reachable again due to the dashboard restarting.
+
 
 If you don't want the dashboard, set ``--include-dashboard=false``.
 
@@ -278,14 +278,14 @@ The exact overhead depends on the nature of your workload.
 Java applications
 -----------------
 
-.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``Ray.init()`` in Java to connect to the cluster services. On a single machine, you can run ``Ray.init()`` without ``ray start``. It both starts the Ray cluster services and connects to them.
+.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``ray.init()`` in Java to connect to the cluster services. On a single machine, you can run ``ray.init()`` without ``ray start``. It both starts the Ray cluster services and connects to them.
 
 .. _code_search_path:
 
 Code search path
 ~~~~~~~~~~~~~~~~
 
-If you want to run a Java application in a multi-node cluster, you must specify the code search path in your driver. The code search path is to tell Ray where to load jars when starting Java workers. You must distribute your jar files to the same paths on all nodes of the Ray cluster before running your code.
+If you want to run a Java application in a multi-node cluster, you must specify the code search path in your driver. The code search path tells Ray where to load jars when starting Java workers. You must distribute your jar files to the same paths on all nodes of the Ray cluster before running your code.
 
 .. code-block:: bash
 
@@ -294,7 +294,7 @@ If you want to run a Java application in a multi-node cluster, you must specify 
       -Dray.job.code-search-path=/path/to/jars/ \
       <classname> <args>
 
-The ``/path/to/jars/`` here points to a directory which contains jars. Workers load all jars in the directory. You can also provide multiple directories for this parameter.
+The ``/path/to/jars/`` points to a directory which contains jars. Workers load all jars in the directory. You can also provide multiple directories for this parameter.
 
 .. code-block:: bash
 
@@ -314,7 +314,7 @@ See ``ray.job.code-search-path`` under :ref:`Driver Options <java-driver-options
 Driver options
 ~~~~~~~~~~~~~~
 
-There is a limited set of options for Java drivers. they're not for configuring the Ray cluster, but only for configuring the driver.
+There's a limited set of options for Java drivers. They're not for configuring the Ray cluster, but only for configuring the driver.
 
 Ray uses `Typesafe Config <https://lightbend.github.io/config/>`__ to read options. There are several ways to set options:
 
@@ -333,14 +333,14 @@ The list of available driver options:
 
 - ``ray.job.code-search-path``
 
-  - The paths for Java workers to load code from. Currently, Ray only supports directories. You can specify one or more directories split by a ``:``. You don't need to configure code search path if you run a Java application in single machine mode or local mode. Code search path is also used for loading Python code if it's specified. This is required for :ref:`cross_language`. If you specify a code search path, you can only run Python remote functions which you can find in the code search path.
+  - The paths for Java workers to load code from. Currently, Ray only supports directories. You can specify one or more directories split by a ``:``. You don't need to configure code search path if you run a Java application in single machine mode or local mode. Ray also uses the code search path to load Python code, if specified. This parameter is required for :ref:`cross_language`. If you specify a code search path, you can only run Python remote functions which you can find in the code search path.
   - Type: ``String``
   - Default: empty string.
   - Example: ``/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2``
 
 - ``ray.job.namespace``
 
-  - The namespace of this job. It's used for isolation between jobs. Jobs in different namespaces can't access each other. If it's not specified, Ray uses a randomized value.
+  - The namespace of this job. Ray uses it for isolation between jobs. Jobs in different namespaces can't access each other. If it's not specified, Ray uses a randomized value.
   - Type: ``String``
   - Default: A random UUID string value.
 

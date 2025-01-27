@@ -28,7 +28,7 @@ You need to set :ref:`code_search_path` in your driver.
                 -Dray.job.code-search-path=/path/to/code/ \
                 <classname> <args>
 
-You may want to include multiple directories to load both Python and Java code for workers, if they're placed in different directories.
+You may want to include multiple directories to load both Python and Java code for workers, if you place them in different directories.
 
 .. tab-set::
 
@@ -178,7 +178,7 @@ if their types are the following:
   * Be aware of float / double precision between Python and Java. If Java is using a
     float type to receive the input argument, the double precision Python data
     reduces to float precision in Java.
-  * BigInteger can support a max value of 2^64-1, refer to:
+  * BigInteger can support a max value of 2^64-1. See:
     https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family.
     If the value is larger than 2^64-1, then sending the value to Python raises an exception.
 

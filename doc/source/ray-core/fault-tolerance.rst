@@ -4,8 +4,10 @@ Fault tolerance
 ===============
 
 Ray is a distributed system, and that means failures can happen. Generally, Ray classifies
-failures into two classes: 1) application-level failures, and 2)
-system-level failures. Bugs in user-level code or external system failures trigger application-level failures.
+failures into two classes:
+1. application-level failures
+2. system-level failures
+Bugs in user-level code or external system failures trigger application-level failures.
 Node failures, network failures, or just bugs in Ray trigger system-level failures.
 The following section contains the mechanisms that Ray provides to allow applications to recover from failures.
 
@@ -43,9 +45,9 @@ One example of creating such outlived objects is returning ``ObjectRef`` created
     :end-before: __return_ray_put_end__
 
 In the preceding example, object ``x`` outlives its owner task ``a``.
-If the worker process running task ``a`` fails, calling ``ray.get`` on ``x_ref`` afterwards will result in an ``OwnerDiedError`` exception.
+If the worker process running task ``a`` fails, calling ``ray.get`` on ``x_ref`` afterwards results in an ``OwnerDiedError`` exception.
 
-A fault tolerant version is returning ``x`` directly so that it's owned by the driver and it's only accessed within the lifetime of the driver.
+The following example is a fault tolerant version which returns ``x`` directly. In this example, the driver owns ``x`` and you only access it within the lifetime of the driver.
 If ``x`` is lost, Ray can automatically recover it via :ref:`lineage reconstruction <fault-tolerance-objects-reconstruction>`.
 See :doc:`/ray-core/patterns/return-ray-put` for more details.
 
