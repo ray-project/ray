@@ -699,6 +699,8 @@ def start(
     include_log_monitor,
 ):
     """Start Ray processes manually on the local machine."""
+    # TODO(hjiang): Expose physical mode interface to ray cluster start command after
+    # all features implemented.
 
     if gcs_server_port is not None:
         cli_logger.error(
@@ -787,6 +789,7 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
+        enable_physical_mode=False,
         include_log_monitor=include_log_monitor,
     )
 
@@ -1047,6 +1050,9 @@ def start(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
         temp_dir = node.get_temp_dir_path()
+
+        # TODO(hjiang): Validate whether specified resource is true for physical
+        # resource.
 
         # Ray and Python versions should probably be checked before
         # initializing Node.
@@ -1991,13 +1997,6 @@ def timeline(address):
     "--address", required=False, type=str, help="Override the address to connect to."
 )
 @click.option(
-    "--redis_password",
-    required=False,
-    type=str,
-    default=ray_constants.REDIS_DEFAULT_PASSWORD,
-    help="Connect to ray with redis_password.",
-)
-@click.option(
     "--group-by",
     type=click.Choice(["NODE_ADDRESS", "STACK_TRACE"]),
     default="NODE_ADDRESS",
@@ -2038,7 +2037,6 @@ terminal width is less than 137 characters.",
 )
 def memory(
     address,
-    redis_password,
     group_by,
     sort_by,
     units,
@@ -2069,13 +2067,6 @@ def memory(
     "--address", required=False, type=str, help="Override the address to connect to."
 )
 @click.option(
-    "--redis_password",
-    required=False,
-    type=str,
-    default=ray_constants.REDIS_DEFAULT_PASSWORD,
-    help="Connect to ray with redis_password.",
-)
-@click.option(
     "-v",
     "--verbose",
     required=False,
@@ -2084,7 +2075,7 @@ def memory(
     help="Experimental: Display additional debuggging information.",
 )
 @PublicAPI
-def status(address: str, redis_password: str, verbose: bool):
+def status(address: str, verbose: bool):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address_or_die(address)
     gcs_client = ray._raylet.GcsClient(address=address)
@@ -2431,13 +2422,6 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     "--address", required=False, type=str, help="Override the address to connect to."
 )
 @click.option(
-    "--redis_password",
-    required=False,
-    type=str,
-    default=ray_constants.REDIS_DEFAULT_PASSWORD,
-    help="Connect to ray with redis_password.",
-)
-@click.option(
     "--component",
     required=False,
     type=str,
@@ -2450,7 +2434,7 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     default=False,
     help="Skip comparison of GCS version with local Ray version.",
 )
-def healthcheck(address, redis_password, component, skip_version_check):
+def healthcheck(address, component, skip_version_check):
     """
     This is NOT a public API.
 

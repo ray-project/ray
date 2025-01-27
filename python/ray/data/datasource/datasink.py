@@ -1,6 +1,6 @@
 import logging
-from dataclasses import dataclass, fields
-from typing import Iterable, List, Optional
+from dataclasses import dataclass
+from typing import Generic, Iterable, List, Optional, TypeVar
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
@@ -10,45 +10,25 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
+WriteReturnType = TypeVar("WriteReturnType")
+"""Generic type for the return value of `Datasink.write`."""
+
+
 @dataclass
 @DeveloperAPI
-class WriteResult:
-    """Result of a write operation, containing stats/metrics
-    on the written data.
+class WriteResult(Generic[WriteReturnType]):
+    """Aggregated result of the Datasink write operations."""
 
-    Attributes:
-        total_num_rows: The total number of rows written.
-        total_size_bytes: The total size of the written data in bytes.
-    """
-
-    num_rows: int = 0
-    size_bytes: int = 0
-
-    @staticmethod
-    def aggregate_write_results(write_results: List["WriteResult"]) -> "WriteResult":
-        """Aggregate a list of write results.
-
-        Args:
-            write_results: A list of write results.
-
-        Returns:
-            A single write result that aggregates the input results.
-        """
-        total_num_rows = 0
-        total_size_bytes = 0
-
-        for write_result in write_results:
-            total_num_rows += write_result.num_rows
-            total_size_bytes += write_result.size_bytes
-
-        return WriteResult(
-            num_rows=total_num_rows,
-            size_bytes=total_size_bytes,
-        )
+    # Total number of written rows.
+    num_rows: int
+    # Total size in bytes of written data.
+    size_bytes: int
+    # All returned values of `Datasink.write`.
+    write_returns: List[WriteReturnType]
 
 
 @DeveloperAPI
-class Datasink:
+class Datasink(Generic[WriteReturnType]):
     """Interface for defining write-related logic.
 
     If you want to write data to something that isn't built-in, subclass this class
@@ -67,16 +47,21 @@ class Datasink:
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> None:
+    ) -> WriteReturnType:
         """Write blocks. This is used by a single write task.
 
         Args:
             blocks: Generator of data blocks.
             ctx: ``TaskContext`` for the write task.
+
+        Returns:
+            Result of this write task. When the entire write operator finishes,
+            All returned values will be passed as `WriteResult.write_returns`
+            to `Datasink.on_write_complete`.
         """
         raise NotImplementedError
 
-    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
+    def on_write_complete(self, write_result: WriteResult[WriteReturnType]):
         """Callback for when a write job completes.
 
         This can be used to "commit" a write output. This method must
@@ -84,27 +69,10 @@ class Datasink:
         method fails, then ``on_write_failed()`` is called.
 
         Args:
-            write_result_blocks: The blocks resulting from executing
+            write_result: Aggregated result of the
             the Write operator, containing write results and stats.
-        Returns:
-            A ``WriteResult`` object containing the aggregated stats of all
-            the input write results.
         """
-        write_results = [
-            result["write_result"].iloc[0] for result in write_result_blocks
-        ]
-        aggregated_write_results = WriteResult.aggregate_write_results(write_results)
-
-        aggregated_results_str = ""
-        for k in fields(aggregated_write_results.__class__):
-            v = getattr(aggregated_write_results, k.name)
-            aggregated_results_str += f"\t- {k.name}: {v}\n"
-
-        logger.info(
-            f"Write operation succeeded. Aggregated write results:\n"
-            f"{aggregated_results_str}"
-        )
-        return aggregated_write_results
+        pass
 
     def on_write_failed(self, error: Exception) -> None:
         """Callback for when a write job fails.
@@ -135,7 +103,7 @@ class Datasink:
         return True
 
     @property
-    def num_rows_per_write(self) -> Optional[int]:
+    def min_rows_per_write(self) -> Optional[int]:
         """The target number of rows to pass to each :meth:`~ray.data.Datasink.write` call.
 
         If ``None``, Ray Data passes a system-chosen number of rows.
@@ -144,7 +112,7 @@ class Datasink:
 
 
 @DeveloperAPI
-class DummyOutputDatasink(Datasink):
+class DummyOutputDatasink(Datasink[None]):
     """An example implementation of a writable datasource for testing.
     Examples:
         >>> import ray
@@ -189,10 +157,8 @@ class DummyOutputDatasink(Datasink):
             tasks.append(self.data_sink.write.remote(b))
         ray.get(tasks)
 
-    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
+    def on_write_complete(self, write_result: WriteResult[None]):
         self.num_ok += 1
-        aggregated_results = super().on_write_complete(write_result_blocks)
-        return aggregated_results
 
     def on_write_failed(self, error: Exception) -> None:
         self.num_failed += 1

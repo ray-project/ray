@@ -330,6 +330,144 @@ def test_flat_map_generator(ray_start_regular_shared):
     ]
 
 
+# Helper function to process timestamp data in nanoseconds
+def process_timestamp_data(row):
+    # Convert numpy.datetime64 to pd.Timestamp if needed
+    if isinstance(row["timestamp"], np.datetime64):
+        row["timestamp"] = pd.Timestamp(row["timestamp"])
+
+    # Add 1ns to timestamp
+    row["timestamp"] = row["timestamp"] + pd.Timedelta(1, "ns")
+
+    # Ensure the timestamp column is in the expected dtype (datetime64[ns])
+    row["timestamp"] = pd.to_datetime(row["timestamp"], errors="raise")
+
+    return row
+
+
+def process_timestamp_data_batch_arrow(batch: pa.Table) -> pa.Table:
+    # Convert pyarrow Table to pandas DataFrame to process the timestamp column
+    df = batch.to_pandas()
+
+    df["timestamp"] = df["timestamp"].apply(
+        lambda x: pd.Timestamp(x) if isinstance(x, np.datetime64) else x
+    )
+
+    # Add 1ns to timestamp
+    df["timestamp"] = df["timestamp"] + pd.Timedelta(1, "ns")
+
+    # Convert back to pyarrow Table
+    return pa.table(df)
+
+
+def process_timestamp_data_batch_pandas(batch: pd.DataFrame) -> pd.DataFrame:
+    # Add 1ns to timestamp column
+    batch["timestamp"] = batch["timestamp"] + pd.Timedelta(1, "ns")
+    return batch
+
+
+@pytest.mark.parametrize(
+    "df, expected_df",
+    [
+        pytest.param(
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456789",
+                            "2024-01-02 00:00:00.987654321",
+                            "2024-01-03 00:00:00.111222333",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456790",
+                            "2024-01-02 00:00:00.987654322",
+                            "2024-01-03 00:00:00.111222334",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+            id="nanoseconds_increment",
+        )
+    ],
+)
+def test_map_batches_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
+    """Verify handling timestamp with nanosecs in map_batches"""
+    ray_data = ray.data.from_pandas(df)
+
+    # Using pyarrow format
+    result_arrow = ray_data.map_batches(
+        process_timestamp_data_batch_arrow, batch_format="pyarrow"
+    )
+    processed_df_arrow = result_arrow.to_pandas()
+    processed_df_arrow["timestamp"] = processed_df_arrow["timestamp"].astype(
+        "datetime64[ns]"
+    )
+    pd.testing.assert_frame_equal(processed_df_arrow, expected_df)
+
+    # Using pandas format
+    result_pandas = ray_data.map_batches(
+        process_timestamp_data_batch_pandas, batch_format="pandas"
+    )
+    processed_df_pandas = result_pandas.to_pandas()
+    processed_df_pandas["timestamp"] = processed_df_pandas["timestamp"].astype(
+        "datetime64[ns]"
+    )
+    pd.testing.assert_frame_equal(processed_df_pandas, expected_df)
+
+
+@pytest.mark.parametrize(
+    "df, expected_df",
+    [
+        pytest.param(
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456789",
+                            "2024-01-02 00:00:00.987654321",
+                            "2024-01-03 00:00:00.111222333",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456790",
+                            "2024-01-02 00:00:00.987654322",
+                            "2024-01-03 00:00:00.111222334",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+            id="nanoseconds_increment_map",
+        )
+    ],
+)
+def test_map_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
+    """Verify handling timestamp with nanosecs in map"""
+    ray_data = ray.data.from_pandas(df)
+    result = ray_data.map(process_timestamp_data)
+    processed_df = result.to_pandas()
+    processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
+    pd.testing.assert_frame_equal(processed_df, expected_df)
+
+
 def test_add_column(ray_start_regular_shared):
     """Tests the add column API."""
 
@@ -416,13 +554,91 @@ def test_add_column(ray_start_regular_shared):
         ray.data.range(5).add_column("foo", lambda x: x["id"] + 1, batch_format="foo")
 
 
-@pytest.mark.parametrize("names", (["foo", "bar"], {"spam": "foo", "ham": "bar"}))
-def test_rename_columns(ray_start_regular_shared, names):
+@pytest.mark.parametrize(
+    "names, expected_schema",
+    [
+        ({"spam": "foo", "ham": "bar"}, ["foo", "bar"]),
+        ({"spam": "foo"}, ["foo", "ham"]),
+        (["foo", "bar"], ["foo", "bar"]),
+    ],
+)
+def test_rename_columns(ray_start_regular_shared, names, expected_schema):
     ds = ray.data.from_items([{"spam": 0, "ham": 0}])
 
     renamed_ds = ds.rename_columns(names)
+    renamed_schema_names = renamed_ds.schema().names
 
-    assert renamed_ds.schema().names == ["foo", "bar"]
+    assert sorted(renamed_schema_names) == sorted(expected_schema)
+
+
+@pytest.mark.parametrize(
+    "names, expected_exception, expected_message",
+    [
+        # Case 1: Empty dictionary, should raise ValueError
+        ({}, ValueError, "rename_columns received 'names' with no entries."),
+        # Case 2: Invalid dictionary (duplicate values), should raise ValueError
+        (
+            {"spam": "foo", "ham": "foo"},
+            ValueError,
+            "rename_columns received duplicate values in the 'names': "
+            "{'spam': 'foo', 'ham': 'foo'}",
+        ),
+        # Case 3: Dictionary with non-string keys/values, should raise ValueError
+        (
+            {"spam": 1, "ham": "bar"},
+            ValueError,
+            "rename_columns requires both keys and values in the 'names' to be "
+            "strings.",
+        ),
+        # Case 4: Empty list, should raise ValueError
+        (
+            [],
+            ValueError,
+            "rename_columns requires 'names' with at least one column name.",
+        ),
+        # Case 5: List with duplicate values, should raise ValueError
+        (
+            ["foo", "bar", "foo"],
+            ValueError,
+            "rename_columns received duplicate values in the 'names': "
+            "['foo', 'bar', 'foo']",
+        ),
+        # Case 6: List with non-string values, should raise ValueError
+        (
+            ["foo", "bar", 1],
+            ValueError,
+            "rename_columns requires all elements in the 'names' to be strings.",
+        ),
+        # Case 7: Mismatched length of list and current column names, should raise
+        # ValueError
+        (
+            ["foo", "bar", "baz"],
+            ValueError,
+            "rename_columns requires 'names': ['foo', 'bar', 'baz'] length match "
+            "current schema names: ['spam', 'ham'].",
+        ),
+        # Case 8: Invalid type for `names` (integer instead of dict or list), should
+        # raise TypeError
+        (
+            42,
+            TypeError,
+            "rename_columns expected names to be either List[str] or Dict[str, str], "
+            "got <class 'int'>.",
+        ),
+    ],
+)
+def test_rename_columns_error_cases(
+    ray_start_regular_shared, names, expected_exception, expected_message
+):
+    # Simulate a dataset with two columns: "spam" and "ham"
+    ds = ray.data.from_items([{"spam": 0, "ham": 0}])
+
+    # Test that the correct exception is raised
+    with pytest.raises(expected_exception) as exc_info:
+        ds.rename_columns(names)
+
+    # Verify that the exception message matches the expected message
+    assert str(exc_info.value) == expected_message
 
 
 def test_filter_mutex(ray_start_regular_shared, tmp_path):
@@ -552,6 +768,29 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
         ds1.drop_columns(["col1", "col2", "col2"])
 
 
+def test_select_rename_columns(ray_start_regular_shared):
+    ds = ray.data.range(1)
+
+    def map_fn(row):
+        return {"a": "a", "b": "b", "c": "c"}
+
+    ds = ds.map(map_fn)
+    result = ds.rename_columns({"a": "A"}).select_columns("A").take_all()
+    assert result == [{"A": "a"}]
+    result = ds.rename_columns({"a": "A"}).select_columns("b").take_all()
+    assert result == [{"b": "b"}]
+    result = ds.rename_columns({"a": "x", "b": "y"}).select_columns("c").take_all()
+    assert result == [{"c": "c"}]
+    result = ds.rename_columns({"a": "x", "b": "y"}).select_columns("x").take_all()
+    assert result == [{"x": "a"}]
+    result = ds.rename_columns({"a": "x", "b": "y"}).select_columns("y").take_all()
+    assert result == [{"y": "b"}]
+    result = ds.rename_columns({"a": "b", "b": "a"}).select_columns("b").take_all()
+    assert result == [{"b": "a"}]
+    result = ds.rename_columns({"a": "b", "b": "a"}).select_columns("a").take_all()
+    assert result == [{"a": "b"}]
+
+
 def test_select_columns(ray_start_regular_shared):
     # Test pandas and arrow
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
@@ -560,7 +799,7 @@ def test_select_columns(ray_start_regular_shared):
     ds2 = ds1.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
 
     for each_ds in [ds1, ds2]:
-        assert each_ds.select_columns(cols=[]).take(1) == []
+        # Test selecting with empty columns
         assert each_ds.select_columns(cols=["col1", "col2", "col3"]).take(1) == [
             {"col1": 1, "col2": 2, "col3": 3}
         ]
@@ -578,12 +817,34 @@ def test_select_columns(ray_start_regular_shared):
             each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).materialize()
 
 
-@pytest.mark.parametrize("cols", [None, 1, [1]])
-def test_select_columns_validation(ray_start_regular_shared, cols):
+@pytest.mark.parametrize(
+    "cols, expected_exception, expected_error",
+    [
+        ([], ValueError, "select_columns requires at least one column to select"),
+        (
+            None,
+            TypeError,
+            "select_columns requires 'cols' to be a string or a list of strings.",
+        ),
+        (
+            1,
+            TypeError,
+            "select_columns requires 'cols' to be a string or a list of strings.",
+        ),
+        (
+            [1],
+            ValueError,
+            "select_columns requires all elements of 'cols' to be strings.",
+        ),
+    ],
+)
+def test_select_columns_validation(
+    ray_start_regular_shared, cols, expected_exception, expected_error
+):
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds1 = ray.data.from_pandas(df)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(expected_exception, match=expected_error):
         ds1.select_columns(cols=cols)
 
 
@@ -1181,7 +1442,7 @@ def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
     block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
 
     assert len(block_refs) == 1
-    assert type(ray.get(block_refs[0])) == pd.DataFrame
+    assert type(ray.get(block_refs[0])) is pd.DataFrame
 
 
 def test_map_with_objects_and_tensors(ray_start_regular_shared):
@@ -1237,6 +1498,31 @@ def test_random_sample_checks(ray_start_regular_shared):
     with pytest.raises(ValueError):
         # Cannot sample fraction > 1
         ray.data.range(1).random_sample(10)
+
+
+def test_actor_udf_cleanup(ray_start_regular_shared, tmp_path):
+    """Test that for the actor map operator, the UDF object is deleted properly."""
+    test_file = tmp_path / "test.txt"
+
+    # Simulate the case that the UDF depends on some external resources that
+    # need to be cleaned up.
+    class StatefulUDF:
+        def __init__(self):
+            with open(test_file, "w") as f:
+                f.write("test")
+
+        def __call__(self, row):
+            return row
+
+        def __del__(self):
+            # Delete the file when the UDF is deleted.
+            os.remove(test_file)
+
+    ds = ray.data.range(10)
+    ds = ds.map(StatefulUDF, concurrency=1)
+    assert sorted(extract_values("id", ds.take_all())) == list(range(10))
+
+    wait_for_condition(lambda: not os.path.exists(test_file))
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These

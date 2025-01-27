@@ -1,10 +1,11 @@
 import argparse
-from typing import Callable
+import functools
 import uuid
-
-import ray
+from typing import Callable
 
 from benchmark import Benchmark
+
+import ray
 
 # Add a random prefix to avoid conflicts between different runs.
 WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
@@ -35,21 +36,27 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
-    benchmark = Benchmark("read-and-consume")
-    read_fn = get_read_fn(args)
-    consume_fn = get_consume_fn(args)
+    benchmark = Benchmark()
 
     def benchmark_fn():
+        read_fn = get_read_fn(args)
+        consume_fn = get_consume_fn(args)
+
         ds = read_fn(args.path)
         consume_fn(ds)
 
-    benchmark.run_fn(str(vars(args)), benchmark_fn)
+        # Report arguments for the benchmark.
+        return vars(args)
+
+    benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
 
 
 def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:
     if args.format == "image":
-        read_fn = ray.data.read_images
+        # FIXME: We specify the mode as a workaround for
+        # https://github.com/ray-project/ray/issues/49883.
+        read_fn = functools.partial(ray.data.read_images, mode="RGB")
     elif args.format == "parquet":
         read_fn = ray.data.read_parquet
     elif args.format == "tfrecords":
@@ -75,12 +82,14 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
     elif args.iter_batches:
 
         def consume_fn(ds):
-            ds.iter_batches(batch_format=args.iter_batches)
+            for _ in ds.iter_batches(batch_format=args.iter_batches):
+                pass
 
     elif args.iter_torch_batches:
-
+        # In addition to consuming the data, we also want to test the performance of
+        # moving data to GPU.
         def consume_fn(ds):
-            for _ in ds.iter_torch_batches():
+            for _ in ds.iter_torch_batches(device="cuda"):
                 pass
 
     elif args.to_tf:

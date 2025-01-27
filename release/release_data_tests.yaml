@@ -142,92 +142,31 @@
           python groupby_benchmark.py --sf 10 --map-groups
           --group-by column02 column14
 
-########################
-# Streaming ingest tests
-########################
+#######################
+# Streaming split tests
+#######################
 
-- name: streaming_data_ingest_benchmark_1tb
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
+- name: streaming_split
 
   cluster:
-    byod:
-      type: gpu
-    cluster_compute: data_ingest_benchmark_compute.yaml
+    cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
     timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --streaming
+    script: python streaming_split_benchmark.py --num-workers 10
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 10
 
   variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: data_ingest_benchmark_compute_gce.yaml
-
-- name: streaming_data_ingest_benchmark_100gb_gpu
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: data_ingest_benchmark_compute_gpu.yaml
-
-  run:
-    timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --streaming --use-gpu
-    wait_for_nodes:
-      num_nodes: 3
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
-
-# This test case will early stop the data ingestion iteration on the GPU actors.
-# This is a common usage in PyTorch Lightning
-# (https://lightning.ai/docs/pytorch/stable/common/trainer.html#limit-train-batches).
-# There was a bug in Ray Data that caused GPU memoy leak (see #3.919).
-# We add this test case to cover this scenario.
-- name: streaming_data_ingest_benchmark_100gb_gpu_early_stop
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: data_ingest_benchmark_compute_gpu.yaml
-
-  run:
-    timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --streaming --use-gpu --early-stop
-    wait_for_nodes:
-      num_nodes: 3
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
+    - __suffix__: regular
+    - __suffix__: early_stop
+      # This test case will early stop the data ingestion iteration on the GPU actors.
+      # This is a common usage in PyTorch Lightning
+      # (https://lightning.ai/docs/pytorch/stable/common/trainer.html#limit-train-batches).
+      # There was a bug in Ray Data that caused GPU memory leak (see #34819).
+      # We add this test case to cover this scenario.
+      run:
+        script: python streaming_split_benchmark.py --num-workers 10 --early-stop
 
 ################
 # Training tests
@@ -269,19 +208,19 @@
       run:
         script: >
           python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet
+          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
           --iter-batches numpy
     - __suffix__: pandas
       run:
         script: >
           python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet
+          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
           --iter-batches pandas
     - __suffix__: pyarrow
       run:
         script: >
           python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet
+          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
           --iter-batches pyarrow
 
 - name: to_tf
@@ -295,6 +234,9 @@
 
 - name: iter_torch_batches
 
+  cluster:
+    cluster_compute: autoscaling_gpu_compute.yaml
+
   run:
     timeout: 2400
     script: >
@@ -306,19 +248,39 @@
 # Map tests
 ###########
 
-- name: map_batches_benchmark_single_node
+- name: map
   run:
-    # Expect the benchmark to finish around 12 minutes.
-    timeout: 1080
-    script: python iter_batches_benchmark.py
+    timeout: 1800
+    script: python map_benchmark.py --api map --sf 10
+
+- name: flat_map
+  run:
+    timeout: 1800
+    script: python map_benchmark.py --api flat_map --sf 10
+
+- name: map_batches
+  run:
+    timeout: 5400
 
   variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
+    - __suffix__: numpy
+      # FIXME: Investigate why this is slow and OOMs.
+      stable: False
+      run:
+        script: >
+          python map_benchmark.py --api map_batches --batch-format numpy --sf 1000
+    - __suffix__: pandas
+      run:
+        script: >
+          python map_benchmark.py --api map_batches --batch-format pandas --sf 1000
+    - __suffix__: pyarrow
+      run:
+        script: >
+          python map_benchmark.py --api map_batches --batch-format pyarrow --sf 1000
+    - __suffix__: actors
+      run:
+        script: >
+          python map_benchmark.py --api map_batches --compute actors --sf 1000
 
 ########################
 # Sort and shuffle tests

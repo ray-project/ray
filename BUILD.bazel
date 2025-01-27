@@ -114,8 +114,8 @@ ray_cc_library(
     srcs = [
         "src/ray/rpc/common.cc",
         "src/ray/rpc/grpc_server.cc",
-        "src/ray/rpc/rpc_chaos.cc",
         "src/ray/rpc/retryable_grpc_client.cc",
+        "src/ray/rpc/rpc_chaos.cc",
         "src/ray/rpc/server_call.cc",
     ],
     hdrs = glob([
@@ -361,7 +361,6 @@ ray_cc_library(
         "src/ray/object_manager/common.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/common.h",
-        "src/ray/object_manager/plasma/compat.h",
         "src/ray/object_manager/plasma/connection.h",
         "src/ray/object_manager/plasma/malloc.h",
         "src/ray/object_manager/plasma/plasma.h",
@@ -386,6 +385,7 @@ ray_cc_library(
         ":ray_common",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:compat",
         "@msgpack",
     ],
 )
@@ -471,6 +471,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_syncer",
         "//src/ray/common:status",
+        "//src/ray/common:status_or",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/protobuf:gcs_cc_proto",
@@ -588,6 +589,7 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:size_literals",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -785,6 +787,7 @@ ray_cc_library(
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:shared_lru",
         "@boost//:circular_buffer",
         "@boost//:fiber",
         "@com_google_absl//absl/cleanup",
@@ -2043,6 +2046,7 @@ ray_cc_test(
         "//:redis-server",
     ],
     tags = [
+        "exclusive",
         "no_tsan",
         "team:core",
     ],
@@ -2239,6 +2243,7 @@ ray_cc_library(
     deps = [
         ":ray_common",
         "//src/ray/util",
+        "@com_google_absl//absl/container:node_hash_map",
     ],
 )
 
@@ -2591,7 +2596,6 @@ filegroup(
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:instance_manager_py_proto",
-        "//src/ray/protobuf:job_agent_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",

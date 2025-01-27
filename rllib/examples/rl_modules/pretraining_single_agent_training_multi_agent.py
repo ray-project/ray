@@ -62,8 +62,9 @@ from ray.rllib.core import (
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -111,11 +112,11 @@ if __name__ == "__main__":
     as_test = args.as_test
 
     # Override these criteria for the pre-training run.
-    setattr(args, "stop_iters", 10000)
-    setattr(args, "stop_timesteps", 100000000)
-    setattr(args, "stop_reward", args.stop_reward_pretraining)
-    setattr(args, "num_agents", 0)
-    setattr(args, "as_test", False)
+    args.stop_iters = 10000
+    args.stop_timesteps = 100000000
+    args.stop_reward = args.stop_reward_pretraining
+    args.num_agents = 0
+    args.as_test = False
 
     # Define out pre-training single-agent algorithm. We will use the same module
     # configuration for the pre-training and the training.
@@ -124,7 +125,7 @@ if __name__ == "__main__":
         .environment("CartPole-v1")
         .rl_module(
             # Use a different number of hidden units for the pre-trained module.
-            model_config={"fcnet_hiddens": [64]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[64]),
         )
     )
 
@@ -141,11 +142,11 @@ if __name__ == "__main__":
     assert module_chkpt_path.is_dir()
 
     # Restore the user's stopping criteria for the training run.
-    setattr(args, "stop_iters", stop_iters)
-    setattr(args, "stop_timesteps", stop_timesteps)
-    setattr(args, "stop_reward", stop_reward)
-    setattr(args, "num_agents", num_agents)
-    setattr(args, "as_test", as_test)
+    args.stop_iters = stop_iters
+    args.stop_timesteps = stop_timesteps
+    args.stop_reward = stop_reward
+    args.num_agents = num_agents
+    args.as_test = as_test
 
     # Create a new MultiRLModule using the pre-trained module for policy 0.
     env = gym.make("CartPole-v1")
@@ -156,7 +157,7 @@ if __name__ == "__main__":
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[32]),
             catalog_class=PPOCatalog,
         )
 
@@ -165,7 +166,7 @@ if __name__ == "__main__":
         module_class=PPOTorchRLModule,
         observation_space=env.observation_space,
         action_space=env.action_space,
-        model_config={"fcnet_hiddens": [64]},
+        model_config=DefaultModelConfig(fcnet_hiddens=[64]),
         catalog_class=PPOCatalog,
         # Note, we load here the module directly from the checkpoint.
         load_state_path=module_chkpt_path,

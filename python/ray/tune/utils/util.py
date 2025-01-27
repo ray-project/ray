@@ -81,7 +81,7 @@ class UtilMonitor(Thread):
                     float(psutil.cpu_percent(interval=None))
                 )
                 self.values["ram_util_percent"].append(
-                    float(getattr(psutil.virtual_memory(), "percent"))
+                    float(psutil.virtual_memory().percent)
                 )
             if self.GPUtil is not None:
                 gpu_list = []

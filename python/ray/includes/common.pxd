@@ -119,6 +119,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsUnknownError()
         c_bool IsNotImplemented()
         c_bool IsObjectStoreFull()
+        c_bool IsAlreadyExists()
         c_bool IsOutOfDisk()
         c_bool IsRedisError()
         c_bool IsTimedOut()
@@ -443,7 +444,8 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
 
         CRayStatus AsyncGetAll(
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
-            int64_t timeout_ms)
+            int64_t timeout_ms,
+            optional[CNodeID] node_id)
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(
@@ -514,7 +516,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const c_string &value,
             c_bool overwrite,
             int64_t timeout_ms,
-            const OptionalItemPyCallback[int] &callback)
+            const OptionalItemPyCallback[c_bool] &callback)
 
         CRayStatus AsyncInternalKVExists(
             const c_string &ns,
@@ -556,6 +558,11 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
         CRayStatus ReportAutoscalingState(
             int64_t timeout_ms,
             const c_string &serialized_state
+        )
+
+        CRayStatus ReportClusterConfig(
+            int64_t timeout_ms,
+            const c_string &serialized_cluster_config
         )
 
         CRayStatus DrainNode(
@@ -737,3 +744,6 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef int kResourceUnitScaling
     cdef const char[] kImplicitResourcePrefix
     cdef int kStreamingGeneratorReturn
+    cdef const char[] kGcsAutoscalerStateNamespace
+    cdef const char[] kGcsAutoscalerV2EnabledKey
+    cdef const char[] kGcsAutoscalerClusterConfigKey

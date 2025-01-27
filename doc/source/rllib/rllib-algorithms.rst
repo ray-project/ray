@@ -1,16 +1,13 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-algorithms-doc:
 
 Algorithms
 ==========
 
-Overview
-~~~~~~~~
+.. include:: /_includes/rllib/new_api_stack.rst
 
-The following table is an overview of all available algorithms in RLlib. Note that all of them support
+The following table is an overview of all available algorithms in RLlib. Note that all algorithms support
 multi-GPU training on a single (GPU) node in `Ray (open-source) <https://docs.ray.io/en/latest/index.html>`__ (|multi_gpu|)
 as well as multi-GPU training on multi-node (GPU) clusters when using the `Anyscale platform <https://www.anyscale.com/platform>`__
 (|multi_node_multi_gpu|).
@@ -62,6 +59,7 @@ Proximal Policy Optimization (PPO)
 
 .. figure:: images/algos/ppo-architecture.svg
     :width: 750
+    :align: left
 
     **PPO architecture:** In a training iteration, PPO performs three major steps:
     1. Sampling a set of episodes or episode fragments
@@ -77,7 +75,7 @@ Proximal Policy Optimization (PPO)
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/pendulum_ppo.py>`__.
 
 
-**PPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**PPO-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.ppo.ppo.PPOConfig
    :members: training
@@ -95,6 +93,7 @@ Deep Q Networks (DQN, Rainbow, Parametric DQN)
 
 .. figure:: images/algos/dqn-architecture.svg
     :width: 650
+    :align: left
 
     **DQN architecture:** DQN uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
     Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
@@ -124,7 +123,7 @@ See also how to use `parametric-actions in DQN <rllib-models.html#variable-lengt
     "v_max": 10.0``
     (set ``v_min`` and ``v_max`` according to your expected range of returns).
 
-**DQN-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**DQN-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.dqn.dqn.DQNConfig
    :members: training
@@ -140,6 +139,7 @@ Soft Actor Critic (SAC)
 
 .. figure:: images/algos/sac-architecture.svg
     :width: 750
+    :align: left
 
     **SAC architecture:** SAC uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
     Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
@@ -153,7 +153,7 @@ Soft Actor Critic (SAC)
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
 `HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah-sac.yaml>`__,
 
-**SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**SAC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.sac.sac.SACConfig
    :members: training
@@ -176,6 +176,7 @@ Asynchronous Proximal Policy Optimization (APPO)
 
 .. figure:: images/algos/appo-architecture.svg
     :width: 750
+    :align: left
 
     **APPO architecture:** APPO is an asynchronous variant of :ref:`Proximal Policy Optimization (PPO) <ppo>` based on the IMPALA architecture,
     but using a surrogate policy loss with clipping, allowing for multiple SGD passes per collected train batch.
@@ -193,7 +194,7 @@ Asynchronous Proximal Policy Optimization (APPO)
 `Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong_appo.py>`__
 `HalfCheetah-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/halfcheetah_appo.py>`__
 
-**APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**APPO-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.appo.appo.APPOConfig
    :members: training
@@ -208,6 +209,7 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
 
 .. figure:: images/algos/impala-architecture.svg
     :width: 750
+    :align: left
 
     **IMPALA architecture:** In a training iteration, IMPALA requests samples from all EnvRunners asynchronously and the collected episodes
     are returned to the main algorithm process as Ray references rather than actual objects available on the local process.
@@ -232,7 +234,7 @@ Tuned examples:
     The maximum training throughput reached is ~30k transitions per second (~120k environment frames per second).
 
 
-**IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**IMPALA-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.impala.impala.IMPALAConfig
    :members: training
@@ -251,6 +253,7 @@ DreamerV3
 
 .. figure:: images/algos/dreamerv3-architecture.svg
     :width: 850
+    :align: left
 
     **DreamerV3 architecture:** DreamerV3 trains a recurrent WORLD_MODEL in supervised fashion
     using real environment interactions sampled from a replay buffer. The world model's objective
@@ -311,6 +314,7 @@ Behavior Cloning (BC)
 
 .. figure:: images/algos/bc-architecture.svg
     :width: 750
+    :align: left
 
     **BC architecture:** RLlib's behavioral cloning (BC) uses Ray Data to tap into its parallel data
     processing capabilities. In one training iteration, BC reads episodes in parallel from
@@ -325,7 +329,7 @@ Behavior Cloning (BC)
 `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole_bc.py>`__
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/pendulum_bc.py>`__
 
-**BC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**BC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.bc.bc.BCConfig
    :members: training
@@ -340,6 +344,7 @@ Conservative Q-Learning (CQL)
 
 .. figure:: images/algos/cql-architecture.svg
     :width: 750
+    :align: left
 
     **CQL architecture:** CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values
     outside the dataset distribution through a conservative critic estimate. It adds a simple Q regularizer loss to the standard
@@ -350,7 +355,7 @@ Conservative Q-Learning (CQL)
 **Tuned examples:**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/pendulum_cql.py>`__
 
-**CQL-specific configs** and `common configs <rllib-training.html#common-parameters>`__):
+**CQL-specific configs** and :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.cql.cql.CQLConfig
    :members: training
@@ -365,6 +370,7 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 
 .. figure:: images/algos/marwil-architecture.svg
     :width: 750
+    :align: left
 
     **MARWIL architecture:** MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on
     batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to plain
@@ -377,7 +383,7 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 **Tuned examples:**
 `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole_marwil.py>`__
 
-**MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**MARWIL-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
 .. autoclass:: ray.rllib.algorithms.marwil.marwil.MARWILConfig
    :members: training
@@ -396,6 +402,7 @@ Curiosity-driven Exploration by Self-supervised Prediction
 
 .. figure:: images/algos/curiosity-architecture.svg
     :width: 850
+    :align: left
 
     **Intrinsic Curiosity Model (ICM) architecture:** The main idea behind ICM is to train a world-model
     (in parallel to the "main" policy) to predict the environment's dynamics. The loss of

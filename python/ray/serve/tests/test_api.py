@@ -844,7 +844,7 @@ def test_status_constructor_error(serve_instance):
     @serve.deployment
     class A:
         def __init__(self):
-            1 / 0
+            _ = 1 / 0
 
     serve._run(A.bind(), _blocking=False)
 
@@ -859,6 +859,13 @@ def test_status_constructor_error(serve_instance):
         return True
 
     wait_for_condition(check_for_failed_app)
+
+    # Instead of hanging forever, a request to the application should
+    # return a 503 error to reflect the failed deployment state.
+    # The timeout is there to prevent the test from hanging and blocking
+    # the test suite if it does fail.
+    r = requests.post("http://localhost:8000", timeout=10)
+    assert r.status_code == 503 and "unavailable" in r.text
 
     @serve.deployment
     class A:

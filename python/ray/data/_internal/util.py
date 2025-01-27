@@ -7,12 +7,13 @@ import sys
 import threading
 import time
 import urllib.parse
-from collections import deque
+from queue import Empty, Full, Queue
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Generator,
     Iterable,
     Iterator,
     List,
@@ -46,6 +47,9 @@ MiB = 1024 * KiB
 GiB = 1024 * MiB
 
 
+SENTINEL = object()
+
+
 # NOTE: Make sure that these lower and upper bounds stay in sync with version
 # constraints given in python/setup.py.
 # Inclusive minimum pyarrow version.
@@ -77,6 +81,9 @@ class _NullSentinel:
 
     def __ge__(self, other):
         return True
+
+    def __hash__(self):
+        return id(self)
 
 
 NULL_SENTINEL = _NullSentinel()
@@ -720,9 +727,29 @@ def unify_block_metadata_schema(
 
 def find_partition_index(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
-    desired: List[Any],
+    desired: Tuple[Union[int, float]],
     sort_key: "SortKey",
 ) -> int:
+    """For the given block, find the index where the desired value should be
+    added, to maintain sorted order.
+
+    We do this by iterating over each column, starting with the primary sort key,
+    and binary searching for the desired value in the column. Each binary search
+    shortens the "range" of indices (represented by ``left`` and ``right``, which
+    are indices of rows) where the desired value could be inserted.
+
+    Args:
+        table: The block to search in.
+        desired: A single tuple representing the boundary to partition at.
+            ``len(desired)`` must be less than or equal to the number of columns
+            being sorted.
+        sort_key: The sort key to use for sorting, providing the columns to be
+            sorted and their directions.
+
+    Returns:
+        The index where the desired value should be inserted to maintain sorted
+        order.
+    """
     columns = sort_key.get_columns()
     descending = sort_key.get_descending()
 
@@ -745,7 +772,13 @@ def find_partition_index(
             col_vals[null_mask] = NULL_SENTINEL
 
         prevleft = left
-        if descending is True:
+        if descending[i] is True:
+            # ``np.searchsorted`` expects the array to be sorted in ascending
+            # order, so we pass ``sorter``, which is an array of integer indices
+            # that sort ``col_vals`` into ascending order. The returned index
+            # is an index into the ascending order of ``col_vals``, so we need
+            # to subtract it from ``len(col_vals)`` to get the index in the
+            # original descending order of ``col_vals``.
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
@@ -767,10 +800,14 @@ def find_partition_index(
         else:
             left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
             right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
-    return right if descending is True else left
+    return right if descending[0] is True else left
 
 
-def find_partitions(table, boundaries, sort_key):
+def find_partitions(
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
+    boundaries: List[Tuple[Union[int, float]]],
+    sort_key: "SortKey",
+):
     partitions = []
 
     # For each boundary value, count the number of items that are less
@@ -808,163 +845,267 @@ def get_attribute_from_class_name(class_name: str) -> Any:
     return getattr(import_module(module_name), attribute_name)
 
 
-class Queue:
-    """A thread-safe queue implementation for multiple producers and consumers.
-
-    Provide `release()` to exit producer threads cooperatively for resource release.
-    """
-
-    def __init__(self, queue_size: int):
-        # The queue shared across multiple producer threads.
-        self._queue = deque()
-        # The boolean varilable to indicate whether producer threads should exit.
-        self._threads_exit = False
-        # The semaphore for producer threads to put item into queue.
-        self._producer_semaphore = threading.Semaphore(queue_size)
-        # The semaphore for consumer threads to get item from queue.
-        self._consumer_semaphore = threading.Semaphore(0)
-        # The mutex lock to guard access of `self._queue` and `self._threads_exit`.
-        self._mutex = threading.Lock()
-
-    def put(self, item: Any) -> bool:
-        """Put an item into the queue.
-
-        Block if necessary until a free slot is available in queue.
-        This method is called by producer threads.
-
-        Returns:
-            True if the caller thread should exit immediately.
-        """
-        self._producer_semaphore.acquire()
-        with self._mutex:
-            if self._threads_exit:
-                return True
-            else:
-                self._queue.append(item)
-        self._consumer_semaphore.release()
-        return False
-
-    def get(self) -> Any:
-        """Remove and return an item from the queue.
-
-        Block if necessary until an item is available in queue.
-        This method is called by consumer threads.
-        """
-        self._consumer_semaphore.acquire()
-        with self._mutex:
-            next_item = self._queue.popleft()
-        self._producer_semaphore.release()
-        return next_item
-
-    def release(self, num_threads: int):
-        """Release `num_threads` of producers so they would exit cooperatively."""
-        with self._mutex:
-            self._threads_exit = True
-        for _ in range(num_threads):
-            # NOTE: After Python 3.9+, Semaphore.release(n) can be used to
-            # release all threads at once.
-            self._producer_semaphore.release()
-
-    def qsize(self):
-        """Return the size of the queue."""
-        with self._mutex:
-            return len(self._queue)
-
-
 T = TypeVar("T")
 U = TypeVar("U")
+
+
+class _InterruptibleQueue(Queue):
+    """Extension of Python's `queue.Queue` providing ability to get interrupt its
+    method callers in other threads"""
+
+    INTERRUPTION_CHECK_FREQUENCY_SEC = 0.5
+
+    def __init__(
+        self, max_size: int, interrupted_event: Optional[threading.Event] = None
+    ):
+        super().__init__(maxsize=max_size)
+        self._interrupted_event = interrupted_event or threading.Event()
+
+    def get(self, block=True, timeout=None):
+        if not block or timeout is not None:
+            return super().get(block, timeout)
+
+        # In case when the call is blocking and no timeout is specified (ie blocking
+        # indefinitely) we apply the following protocol to make it interruptible:
+        #
+        #   1. `Queue.get` is invoked w/ 500ms timeout
+        #   2. `Empty` exception is intercepted (will be raised upon timeout elapsing)
+        #   3. If interrupted flag is set `InterruptedError` is raised
+        #   4. Otherwise, protocol retried (until interrupted or queue
+        #      becoming non-empty)
+        while True:
+            if self._interrupted_event.is_set():
+                raise InterruptedError()
+
+            try:
+                return super().get(
+                    block=True, timeout=self.INTERRUPTION_CHECK_FREQUENCY_SEC
+                )
+            except Empty:
+                pass
+
+    def put(self, item, block=True, timeout=None):
+        if not block or timeout is not None:
+            super().put(item, block, timeout)
+            return
+
+        # In case when the call is blocking and no timeout is specified (ie blocking
+        # indefinitely) we apply the following protocol to make it interruptible:
+        #
+        #   1. `Queue.pet` is invoked w/ 500ms timeout
+        #   2. `Full` exception is intercepted (will be raised upon timeout elapsing)
+        #   3. If interrupted flag is set `InterruptedError` is raised
+        #   4. Otherwise, protocol retried (until interrupted or queue
+        #      becomes non-full)
+        while True:
+            if self._interrupted_event.is_set():
+                raise InterruptedError()
+
+            try:
+                super().put(
+                    item, block=True, timeout=self.INTERRUPTION_CHECK_FREQUENCY_SEC
+                )
+                return
+            except Full:
+                pass
 
 
 def make_async_gen(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],
     num_workers: int = 1,
-) -> Iterator[U]:
-    """Returns a new iterator with elements fetched from the base_iterator
-    in an async fashion using a threadpool.
+    queue_buffer_size: int = 2,
+) -> Generator[U, None, None]:
 
-    Each thread in the threadpool will fetch data from the base_iterator in a
-    thread-safe fashion, and apply the provided `fn` computation concurrently.
+    gen_id = random.randint(0, 2**31 - 1)
+
+    """Returns a generator (iterator) mapping items from the
+    provided iterator applying provided transformation in parallel (using a
+    thread-pool).
+
+    NOTE: Even though the mapping is performed in parallel across N
+          threads, this method provides crucial guarantee of preserving the
+          ordering of the source iterator, ie that
+
+            iterator = [A1, A2, ... An]
+            mapped iterator = [map(A1), map(A2), ..., map(An)]
+
+          Preserving ordering is crucial to eliminate non-determinism in producing
+          content of the blocks.
 
     Args:
-        base_iterator: The iterator to asynchronously fetch from.
-        fn: The function to run on the input iterator.
-        num_workers: The number of threads to use in the threadpool. Defaults to 1.
+        base_iterator: Iterator yielding elements to map
+        fn: Transformation to apply to each element
+        num_workers: The number of threads to use in the threadpool (defaults to 1)
+        buffer_size: Number of objects to be buffered in its input/output
+                     queues (per queue; defaults to 2). Total number of objects held
+                     in memory could be calculated as:
+
+                        num_workers * buffer_size * 2 (input and output)
 
     Returns:
-        An iterator with the same elements as outputted from `fn`.
+        An generator (iterator) of the elements corresponding to the source
+        elements mapped by provided transformation (while *preserving the ordering*)
     """
 
     if num_workers < 1:
         raise ValueError("Size of threadpool must be at least 1.")
 
-    # Use a lock to fetch from the base_iterator in a thread-safe fashion.
-    def convert_to_threadsafe_iterator(base_iterator: Iterator[T]) -> Iterator[T]:
-        class ThreadSafeIterator:
-            def __init__(self, it):
-                self.lock = threading.Lock()
-                self.it = it
+    # To apply transformations to elements in parallel *and* preserve the ordering
+    # following invariants are established:
+    #   - Every worker is handled by standalone thread
+    #   - Every worker is assigned an input and an output queue
+    #
+    # And following protocol is implemented:
+    #   - Filling worker traverses input iterator round-robin'ing elements across
+    #     the input queues (in order!)
+    #   - Transforming workers traverse respective input queue in-order: de-queueing
+    #     element, applying transformation and enqueuing the result into the output
+    #     queue
+    #   - Generator (returned from this method) traverses output queues (in the same
+    #     order as input queues) dequeues 1 mapped element at a time from each output
+    #     queue and yields it
+    #
+    # Signal handler used to interrupt workers when terminating
+    interrupted_event = threading.Event()
 
-            def __next__(self):
-                with self.lock:
-                    return next(self.it)
-
-            def __iter__(self):
-                return self
-
-        return ThreadSafeIterator(base_iterator)
-
-    thread_safe_generator = convert_to_threadsafe_iterator(base_iterator)
-
-    class Sentinel:
-        def __init__(self, thread_index: int):
-            self.thread_index = thread_index
-
-    output_queue = Queue(1)
-
-    # Because pulling from the base iterator cannot happen concurrently,
-    # we must execute the expensive computation in a separate step which
-    # can be parallelized via a threadpool.
-    def execute_computation(thread_index: int):
-        try:
-            for item in fn(thread_safe_generator):
-                if output_queue.put(item):
-                    # Return early when it's instructed to do so.
-                    return
-            output_queue.put(Sentinel(thread_index))
-        except Exception as e:
-            output_queue.put(e)
-
-    # Use separate threads to produce output batches.
-    threads = [
-        threading.Thread(target=execute_computation, args=(i,), daemon=True)
-        for i in range(num_workers)
+    input_queues = [
+        _InterruptibleQueue(queue_buffer_size, interrupted_event)
+        for _ in range(num_workers)
+    ]
+    output_queues = [
+        _InterruptibleQueue(queue_buffer_size, interrupted_event)
+        for _ in range(num_workers)
     ]
 
-    for thread in threads:
-        thread.start()
+    # Filling worker
+    def _run_filling_worker():
+        try:
+            # First, round-robin elements from the iterator into
+            # corresponding input queues (one by one)
+            for idx, item in enumerate(base_iterator):
+                input_queues[idx % num_workers].put(item)
 
-    # Use main thread to consume output batches.
-    num_threads_finished = 0
+            # Enqueue sentinel objects to signal end of the line
+            for idx in range(num_workers):
+                input_queues[idx].put(SENTINEL)
+
+        except InterruptedError:
+            pass
+
+        except Exception as e:
+            logger.warning("Caught exception in filling worker!", exc_info=e)
+            # In case of filling worker encountering an exception we have to propagate
+            # it back to the (main) iterating thread. To achieve that we're traversing
+            # output queues *backwards* relative to the order of iterator-thread such
+            # that they are more likely to meet w/in a single iteration.
+            for output_queue in reversed(output_queues):
+                output_queue.put(e)
+
+    # Transforming worker
+    def _run_transforming_worker(worker_id: int):
+        input_queue = input_queues[worker_id]
+        output_queue = output_queues[worker_id]
+
+        try:
+            # Create iterator draining the queue, until it receives sentinel
+            #
+            # NOTE: `queue.get` is blocking!
+            input_queue_iter = iter(input_queue.get, SENTINEL)
+
+            mapped_iter = fn(input_queue_iter)
+            for result in mapped_iter:
+                # Enqueue result of the transformation
+                output_queue.put(result)
+
+            # Enqueue sentinel (to signal that transformations are completed)
+            output_queue.put(SENTINEL)
+
+        except InterruptedError:
+            pass
+
+        except Exception as e:
+            logger.warning("Caught exception in transforming worker!", exc_info=e)
+            # NOTE: In this case we simply enqueue the exception rather than
+            #       interrupting
+            output_queue.put(e)
+
+    # Start workers threads
+    filling_worker_thread = threading.Thread(
+        target=_run_filling_worker,
+        name=f"map_tp_filling_worker-{gen_id}",
+        daemon=True,
+    )
+    filling_worker_thread.start()
+
+    transforming_worker_threads = [
+        threading.Thread(
+            target=_run_transforming_worker,
+            name=f"map_tp_transforming_worker-{gen_id}-{worker_idx}",
+            args=(worker_idx,),
+            daemon=True,
+        )
+        for worker_idx in range(num_workers)
+    ]
+
+    for t in transforming_worker_threads:
+        t.start()
+
+    # Use main thread to yield output batches
     try:
-        while True:
-            next_item = output_queue.get()
-            if isinstance(next_item, Exception):
-                raise next_item
-            if isinstance(next_item, Sentinel):
-                num_threads_finished += 1
-            else:
-                yield next_item
-            if num_threads_finished >= num_workers:
-                break
+        # Keep track of remaining non-empty output queues
+        remaining_output_queues = output_queues
+
+        while len(remaining_output_queues) > 0:
+            # To provide deterministic ordering of the produced iterator we rely
+            # on the following invariants:
+            #
+            #   - Elements from the original iterator are round-robin'd into
+            #     input queues (in order)
+            #   - Individual workers drain their respective input queues populating
+            #     output queues with the results of applying transformation to the
+            #     original item (and hence preserving original ordering of the input
+            #     queue)
+            #   - To yield from the generator output queues are traversed in the same
+            #     order and one single element is dequeued (in a blocking way!) at a
+            #     time from every individual output queue
+            #
+            non_empty_queues = []
+            empty_queues = []
+
+            # At every iteration only remaining non-empty queues
+            # are traversed (to prevent blocking on exhausted queue)
+            for output_queue in remaining_output_queues:
+                # NOTE: This is blocking!
+                item = output_queue.get()
+
+                if isinstance(item, Exception):
+                    raise item
+
+                if item is SENTINEL:
+                    empty_queues.append(output_queue)
+                else:
+                    non_empty_queues.append(output_queue)
+                    yield item
+
+            assert (
+                non_empty_queues + empty_queues == remaining_output_queues
+            ), "Exhausted non-trailing queue!"
+
+            remaining_output_queues = non_empty_queues
+
     finally:
-        # Cooperatively exit all producer threads.
-        # This is to avoid these daemon threads hanging there with holding batches in
-        # memory, which can cause GRAM OOM easily. This can happen when caller breaks
-        # in the middle of iteration.
-        num_threads_alive = num_workers - num_threads_finished
-        if num_threads_alive > 0:
-            output_queue.release(num_threads_alive)
+        # Set flag to interrupt workers (to make sure no dangling
+        # threads holding the objects are left behind)
+        #
+        # NOTE: Interrupted event is set to interrupt the running threads
+        #       that might be blocked otherwise waiting on inputs from respective
+        #       queues. However, even though we're interrupting the threads we can't
+        #       guarantee that threads will be interrupted in time (as this is
+        #       dependent on Python's GC finalizer to close the generator by raising
+        #       `GeneratorExit`) and hence we can't join on either filling or
+        #       transforming workers.
+        interrupted_event.set()
 
 
 def call_with_retry(
@@ -1031,11 +1172,11 @@ def iterate_with_retry(
     assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
 
     num_items_yielded = 0
-    for i in range(max_attempts):
+    for attempt in range(max_attempts):
         try:
             iterable = iterable_factory()
-            for i, item in enumerate(iterable):
-                if i < num_items_yielded:
+            for item_index, item in enumerate(iterable):
+                if item_index < num_items_yielded:
                     # Skip items that have already been yielded.
                     continue
 
@@ -1046,11 +1187,12 @@ def iterate_with_retry(
             is_retryable = match is None or any(
                 [pattern in str(e) for pattern in match]
             )
-            if is_retryable and i + 1 < max_attempts:
+            if is_retryable and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
-                backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
+                backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
                 logger.debug(
-                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
+                    f"Retrying {attempt+1} attempts to {description} "
+                    f"after {backoff} seconds."
                 )
                 time.sleep(backoff)
             else:
@@ -1072,3 +1214,49 @@ def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
     else:
         num_bytes_str = f"{round(num_bytes / 1e3)}KB"
     return num_bytes_str
+
+
+def _validate_rows_per_file_args(
+    *, num_rows_per_file: Optional[int] = None, min_rows_per_file: Optional[int] = None
+) -> Optional[int]:
+    """Helper method to validate and handle rows per file arguments.
+
+    Args:
+        num_rows_per_file: Deprecated parameter for number of rows per file
+        min_rows_per_file: New parameter for minimum rows per file
+
+    Returns:
+        The effective min_rows_per_file value to use
+    """
+    if num_rows_per_file is not None:
+        import warnings
+
+        warnings.warn(
+            "`num_rows_per_file` is deprecated and will be removed in a future release. "
+            "Use `min_rows_per_file` instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        if min_rows_per_file is not None:
+            raise ValueError(
+                "Cannot specify both `num_rows_per_file` and `min_rows_per_file`. "
+                "Use `min_rows_per_file` as `num_rows_per_file` is deprecated."
+            )
+        return num_rows_per_file
+    return min_rows_per_file
+
+
+def is_nan(value):
+    try:
+        return isinstance(value, float) and np.isnan(value)
+    except TypeError:
+        return False
+
+
+def keys_equal(keys1, keys2):
+    if len(keys1) != len(keys2):
+        return False
+    for k1, k2 in zip(keys1, keys2):
+        if not ((is_nan(k1) and is_nan(k2)) or k1 == k2):
+            return False
+    return True

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class _NcclGroup(Communicator):
     """
     Represents an actor's NCCL communicator. This is the default NCCL communicator
-    to be used in aDAG if a custom communicator is not provided.
+    to be used in Compiled Graph if a custom communicator is not provided.
 
     This class is not thread-safe.
     """

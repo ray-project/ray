@@ -1,7 +1,5 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-environments-doc:
 
 Environments
@@ -14,9 +12,7 @@ Environments
     hierarchical-envs
     external-envs
 
-
-Overview
---------
+.. include:: /_includes/rllib/new_api_stack.rst
 
 .. grid:: 1 2 3 4
     :gutter: 1
@@ -67,6 +63,7 @@ action choices eventually maximize the cumulative reward over the agent's lifeti
 
 .. figure:: images/envs/single_agent_setup.svg
     :width: 600
+    :align: left
 
     **Single-agent setup:** One agent lives in the environment and takes actions computed by a single policy.
     The mapping from agent to policy is fixed ("default_agent" maps to "default_policy").
@@ -126,6 +123,11 @@ For example:
     algo = config.build()
     print(algo.train())
 
+.. testcode::
+    :hide:
+
+    algo.stop()
+
 .. tip::
 
     For all supported environment names registered with Farama, refer to these
@@ -179,6 +181,11 @@ For example:
     algo = config.build()
     print(algo.train())
 
+.. testcode::
+    :hide:
+
+    algo.stop()
+
 
 Specifying by Tune-Registered Lambda
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -204,6 +211,11 @@ For example:
     )
     algo = config.build()
     print(algo.train())
+
+.. testcode::
+    :hide:
+
+    algo.stop()
 
 For a complete example using a custom environment, see the
 `custom_gym_env.py example script <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__.
@@ -261,6 +273,7 @@ Performance and Scaling
 
 .. figure:: images/envs/env_runners.svg
     :width: 600
+    :align: left
 
     **EnvRunner with gym.Env setup:** Environments in RLlib are located within the :py:class:`~ray.rllib.envs.env_runner.EnvRunner` actors, whose number
     (`n`) you can scale through the `config.env_runners(num_env_runners=..)` setting. Each :py:class:`~ray.rllib.envs.env_runner.EnvRunner` actor
@@ -294,7 +307,7 @@ in combination.
 
 .. tip::
 
-    See the `scaling guide <rllib-training.html#scaling-guide>`__ for more on RLlib training at scale.
+    See the :ref:`scaling guide <rllib-scaling-guide>` for more on RLlib training at scale.
 
 
 Expensive Environments

@@ -64,6 +64,15 @@ Text
 
    read_text
 
+Audio
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_audio
+
 Avro
 ----
 
@@ -289,6 +298,15 @@ TensorFlow
 
    from_tf
 
+Video
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_videos
+
 WebDataset
 ----------
 
@@ -324,6 +342,8 @@ Datasink API
    datasource.RowBasedFileDatasink
    datasource.BlockBasedFileDatasink
    datasource.FileBasedDatasource
+   datasource.WriteResult
+   datasource.WriteReturnType
 
 Partitioning API
 ----------------

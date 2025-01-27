@@ -18,7 +18,12 @@
 
 namespace ray {
 
-RayTask::RayTask(const rpc::Task &message) : task_spec_(message.task_spec()) {
+RayTask::RayTask(rpc::TaskSpec task_spec) : task_spec_(std::move(task_spec)) {
+  ComputeDependencies();
+}
+
+RayTask::RayTask(rpc::Task message)
+    : task_spec_(std::move(*message.mutable_task_spec())) {
   ComputeDependencies();
 }
 
