@@ -101,7 +101,9 @@ class SharedMemoryType(ChannelOutputType):
                 that can be passed between tasks in the DAG. The buffers will
                 be automatically resized if larger messages are written to the
                 channel.
-            num_shm_buffers: The number of shared memory buffer per channel.
+            num_shm_buffers: The number of shared memory buffers per channel.
+                Note: In the case of multiple nodes, we only support 1 shared
+                memory buffer.
         """
         super().__init__()
 
@@ -654,6 +656,9 @@ class CompositeChannel(ChannelInterface):
         writer: The actor that may write to the channel. None signifies the driver.
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
+        num_shm_buffers: The number of shared memory buffers per channel.
+            Note: In the case of multiple nodes, we only support 1 shared
+            memory buffer.
         driver_actor_id: If this channel is read by a driver and that driver is an
             actual actor, this will be the actor ID of that driver actor.
     """
