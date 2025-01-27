@@ -4,15 +4,13 @@ import json
 import logging
 import os
 import pickle
-import socket
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Generator, Optional, Set, Tuple
 
 import grpc
 import starlette
 import starlette.routing
-import uvicorn
 from packaging import version
 from starlette.types import Receive
 
@@ -29,7 +27,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
-    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
@@ -45,7 +42,6 @@ from ray.serve._private.http_util import (
     MessageQueue,
     convert_object_to_asgi_messages,
     receive_http_body,
-    set_socket_reuse_port,
     start_asgi_http_server,
     validate_http_proxy_callback_return,
 )
