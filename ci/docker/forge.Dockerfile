@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
 
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 
