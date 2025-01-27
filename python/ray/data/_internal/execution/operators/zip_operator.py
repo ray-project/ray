@@ -13,6 +13,7 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadata,
     BlockPartition,
+    to_stats,
 )
 from ray.data.context import DataContext
 
@@ -205,7 +206,7 @@ class ZipOperator(PhysicalOperator):
                     owns_blocks=input_owned,
                 )
             )
-        stats = {self._name: output_metadata}
+        stats = {self._name: to_stats(output_metadata)}
 
         # Clean up inputs.
         for ref in left_input:

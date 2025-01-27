@@ -37,7 +37,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
 )
 from ray.data._internal.util import GiB, MiB
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockStats, to_stats
 
 logger = logging.getLogger(__name__)
 
@@ -354,8 +354,8 @@ class HashShufflingOperatorBase(PhysicalOperator):
 
         self._output_queue: Deque[RefBundle] = deque()
 
-        self._output_blocks_metadata: List[BlockMetadata] = list()
-        self._shuffled_blocks_metadata: List[BlockMetadata] = list()
+        self._output_blocks_stats: List[BlockStats] = list()
+        self._shuffled_blocks_stats: List[BlockStats] = list()
 
         # Incremental individual partition metadata accumulated separately for
         # individual input sequences during shuffling. Maps
@@ -454,7 +454,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
         # TODO move to base class
         self._metrics.on_output_dequeued(bundle)
 
-        self._output_blocks_metadata.extend(bundle.metadata)
+        self._output_blocks_stats.extend(to_stats(bundle.metadata))
 
         return bundle
 
@@ -600,7 +600,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
     def get_stats(self):
         return {
             # TODO factor in output blocks metadata
-            self._name: self._shuffled_blocks_metadata,
+            self._name: self._shuffled_blocks_stats,
         }
 
     def current_processor_usage(self) -> ExecutionResources:
@@ -661,7 +661,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
         partition_shards_stats: Dict[int, _PartitionStats],
     ):
         # Keep track of the progress of shuffling incoming blocks
-        self._shuffled_blocks_metadata.append(input_block_metadata)
+        self._shuffled_blocks_stats.append(input_block_metadata.to_stats())
 
         # Update incremental input sequence partitions metadata
         for partition_id, new_partition_shard_stats in partition_shards_stats.items():
