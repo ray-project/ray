@@ -100,7 +100,7 @@ markdown-it-py
 attrs==21.4.0
 pytz==2022.7.1
 # Compatibility with spacy 3.5 (model en_core_web_sm)
-typing-extensions==4.8.0
+typing-extensions>=4.10
 # Aim requires segment-analytics-python, which requires backoff~=2.10,
 # which conflicts with the opentelemetry-api 1.1.0.
 segment-analytics-python==2.2.0
