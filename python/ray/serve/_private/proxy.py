@@ -6,6 +6,7 @@ import os
 import pickle
 import time
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from typing import Any, Callable, Dict, Generator, Optional, Set, Tuple
 
 import grpc
@@ -1096,6 +1097,32 @@ class HTTPProxy(GenericProxy):
         assert status is not None
         yield status
 
+def _set_proxy_default_http_options(
+    http_options: HTTPOptions
+) -> HTTPOptions:
+    http_options = deepcopy(http_options)
+    # Override keep alive setting if the environment variable is set.
+    # TODO(edoakes): more sane behavior here.
+    if RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S > 0:
+        http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
+
+    http_options.request_timeout_s = (http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S)
+
+    http_options.middlewares = http_options.middlewares or []
+    if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
+        logger.info(
+            "Calling user-provided callback from import path "
+            f"'{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}'."
+        )
+        middlewares = validate_http_proxy_callback_return(
+            call_function_from_import_path(
+                RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
+            )
+        )
+
+        self._http_options.middlewares.extend(middlewares)
+
+    return http_options
 
 @ray.remote(num_cpus=0)
 class ProxyActor:
@@ -1111,14 +1138,11 @@ class ProxyActor:
     ):  # noqa: F821
         self._node_id = node_id
         self._node_ip_address = node_ip_address
-        # Override keep alive setting if the environment variable is set.
-        # TODO(edoakes): more sane behavior here.
-        if RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S > 0:
-            http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
 
-        grpc_options = grpc_options or gRPCOptions()
+        self._http_options = _set_proxy_default_http_options(http_options)
+        self._grpc_options = grpc_options or gRPCOptions()
         grpc_enabled = (
-            grpc_options.port > 0 and len(grpc_options.grpc_servicer_functions) > 0
+            self._grpc_options.port > 0 and len(self._grpc_options.grpc_servicer_functions) > 0
         )
 
         event_loop = get_or_create_event_loop()
@@ -1138,10 +1162,10 @@ class ProxyActor:
         )
 
         startup_msg = (
-            f"Proxy starting on node {self._node_id} (HTTP port: {http_options.port}"
+            f"Proxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
         )
         if grpc_enabled:
-            startup_msg += f", gRPC port: {grpc_options.port})."
+            startup_msg += f", gRPC port: {self._grpc_options.port})."
         else:
             startup_msg += ")."
         logger.info(startup_msg)
@@ -1157,20 +1181,6 @@ class ProxyActor:
             component_name="proxy", component_id=node_ip_address
         )
 
-        http_options.middlewares = http_options.middlewares or []
-        if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
-            logger.info(
-                "Calling user-provided callback from import path "
-                f"'{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}'."
-            )
-            middlewares = validate_http_proxy_callback_return(
-                call_function_from_import_path(
-                    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
-                )
-            )
-
-            http_options.middlewares.extend(middlewares)
-
         is_head = self._node_id == get_head_node_id()
         self.proxy_router = ProxyRouter(get_proxy_handle)
         self.http_proxy = HTTPProxy(
@@ -1179,9 +1189,7 @@ class ProxyActor:
             is_head=is_head,
             self_actor_name=ray.get_runtime_context().get_actor_name(),
             proxy_router=self.proxy_router,
-            request_timeout_s=(
-                http_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-            ),
+            request_timeout_s=http_options.request_timeout_s,
         )
         self.grpc_proxy = (
             gRPCProxy(
@@ -1200,7 +1208,7 @@ class ProxyActor:
         self._start_http_server_task = event_loop.create_task(
             start_asgi_http_server(
                 self.http_proxy,
-                http_options,
+                self._http_options,
                 event_loop=event_loop,
                 enable_so_reuseport=SOCKET_REUSE_PORT_ENABLED,
             )
@@ -1216,7 +1224,7 @@ class ProxyActor:
             self._start_grpc_server_task = event_loop.create_task(
                 start_grpc_server(
                     self.grpc_proxy.service_handler_factory,
-                    grpc_options,
+                    self._grpc_options,
                     event_loop=event_loop,
                     enable_so_reuseport=SOCKET_REUSE_PORT_ENABLED,
                 ),
@@ -1345,14 +1353,9 @@ class ProxyActor:
                 "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
             )
 
-    async def _uvicorn_keep_alive(self) -> Optional[int]:
-        """Get the keep alive timeout used for the running uvicorn server.
-
-        Return the timeout_keep_alive config used on the uvicorn server if it's running.
-        If the server is not running, return None.
-        """
-        if self._uvicorn_server:
-            return self._uvicorn_server.config.timeout_keep_alive
+    def _get_http_options(self) -> HTTPOptions:
+        """Internal method to get HTTP options used by the proxy."""
+        return self._http_options
 
 
 def _configure_gc_options():

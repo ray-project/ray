@@ -29,7 +29,7 @@ class TestTimeoutKeepAliveConfig:
         serve.start()
         proxy_actor = self.get_proxy_actor()
         assert (
-            ray.get(proxy_actor._uvicorn_keep_alive.remote())
+            ray.get(proxy_actor._get_http_options.remote()).keep_alive_timeout_s
             == DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S
         )
 
@@ -42,7 +42,7 @@ class TestTimeoutKeepAliveConfig:
         keep_alive_timeout_s = 222
         serve.start(http_options={"keep_alive_timeout_s": keep_alive_timeout_s})
         proxy_actor = self.get_proxy_actor()
-        assert ray.get(proxy_actor._uvicorn_keep_alive.remote()) == keep_alive_timeout_s
+        assert ray.get(proxy_actor._get_http_options.remote()).keep_alive_timeout_s == keep_alive_timeout_s
 
     @pytest.mark.parametrize(
         "ray_instance",
@@ -59,7 +59,7 @@ class TestTimeoutKeepAliveConfig:
         """
         serve.start()
         proxy_actor = self.get_proxy_actor()
-        assert ray.get(proxy_actor._uvicorn_keep_alive.remote()) == 333
+        assert ray.get(proxy_actor._get_http_options.remote()).keep_alive_timeout_s == 333
 
     @pytest.mark.parametrize(
         "ray_instance",
@@ -79,7 +79,7 @@ class TestTimeoutKeepAliveConfig:
         keep_alive_timeout_s = 222
         serve.start(http_options={"keep_alive_timeout_s": keep_alive_timeout_s})
         proxy_actor = self.get_proxy_actor()
-        assert ray.get(proxy_actor._uvicorn_keep_alive.remote()) == 333
+        assert ray.get(proxy_actor._get_http_options.remote()).keep_alive_timeout_s == 333
 
 
 if __name__ == "__main__":
