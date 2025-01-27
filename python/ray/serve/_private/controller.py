@@ -109,7 +109,7 @@ class ServeController:
     async def __init__(
         self,
         *,
-        http_config: HTTPOptions,
+        http_options: HTTPOptions,
         global_logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
     ):
@@ -153,7 +153,7 @@ class ServeController:
         self.cluster_node_info_cache.update()
 
         self.proxy_state_manager = ProxyStateManager(
-            config=http_config,
+            http_options=http_options,
             head_node_id=self._controller_node_id,
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
