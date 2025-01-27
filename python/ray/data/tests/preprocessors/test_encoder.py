@@ -14,6 +14,38 @@ from ray.data.preprocessors import (
 )
 
 
+def test_ordinal_encoder_strings():
+    """Test the OrdinalEncoder for strings."""
+
+    input_dataframe = pd.DataFrame({"sex": ["male"] * 2000 + ["female"]})
+
+    ds = ray.data.from_pandas(input_dataframe)
+    encoder = OrdinalEncoder(columns=["sex"])
+    encoded_ds = encoder.fit_transform(ds)
+    encoded_ds_pd = encoded_ds.to_pandas()
+
+    # Check if the "sex" column exists and is correctly encoded as integers
+    assert (
+        "sex" in encoded_ds_pd.columns
+    ), "The 'sex' column is missing in the encoded DataFrame"
+    assert (
+        encoded_ds_pd["sex"].dtype == "int64"
+    ), "The 'sex' column is not encoded as integers"
+
+    # Verify that the encoding worked as expected.
+    # We expect "male" to be encoded as 0 and "female" as 1
+    unique_values = encoded_ds_pd["sex"].unique()
+    assert set(unique_values) == {
+        0,
+        1,
+    }, f"Unexpected unique values in 'sex' column: {unique_values}"
+    expected_encoding = {"male": 1, "female": 0}
+    for original, encoded in zip(input_dataframe["sex"], encoded_ds_pd["sex"]):
+        assert (
+            encoded == expected_encoding[original]
+        ), f"Expected {original} to be encoded as {expected_encoding[original]}, but got {encoded}"  # noqa: E501
+
+
 def test_ordinal_encoder():
     """Tests basic OrdinalEncoder functionality."""
     col_a = ["red", "green", "blue", "red"]
