@@ -278,7 +278,9 @@ class TestWorkerFailures(unittest.TestCase):
         self.assertEqual(algo.env_runner_group.num_healthy_remote_env_runners(), 1)
         if fail_eval:
             # One of the eval workers failed.
-            self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_env_runners(), 1)
+            self.assertEqual(
+                algo.eval_env_runner_group.num_healthy_remote_env_runners(), 1
+            )
 
         algo.stop()
 
@@ -335,7 +337,9 @@ class TestWorkerFailures(unittest.TestCase):
             algo.restore_env_runners(algo.eval_env_runner_group)
 
             self.assertEqual(algo.env_runner_group.num_healthy_remote_env_runners(), 1)
-            self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_env_runners(), 1)
+            self.assertEqual(
+                algo.eval_env_runner_group.num_healthy_remote_env_runners(), 1
+            )
             if multi_agent:
                 # Make a dummy call to the eval worker's policy_mapping_fn and
                 # make sure the restored eval worker received the correct one from
@@ -445,7 +449,9 @@ class TestWorkerFailures(unittest.TestCase):
                 # as we recover from all sub-env failures.
                 algo.train()
                 # No worker has been removed. Still 2 left.
-                self.assertEqual(algo.env_runner_group.num_healthy_remote_env_runners(), 4)
+                self.assertEqual(
+                    algo.env_runner_group.num_healthy_remote_env_runners(), 4
+                )
             algo.stop()
 
     def test_eval_workers_failing_ignore(self):

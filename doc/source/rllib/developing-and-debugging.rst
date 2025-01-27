@@ -165,7 +165,7 @@ When you have finished coding, commit your changes and push them back to your fo
     git push -u origin <name of your new branch>
 
 Click this link here to `create a new pull request on the github website <https://github.com/ray-project/ray/pulls/>`__.
-The pushed branch should be highlighted in yellow:
+Git should highlight the pushed branch in yellow:
 
 .. figure:: images/developing/git_pr.png
     :align: left
@@ -196,19 +196,19 @@ The guidelines for merging new algorithms into RLlib depend on the level of cont
 * `Example Algorithms <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__:
     - must subclass :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` and implement the :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` method.
     - must include an actual `example script <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__, which configures and runs the algorithm.
-      This script must be included in the `BUILD file <https://github.com/ray-project/ray/tree/master/rllib/BUILD>`__ to run as a CI test, proving that the algorithm can learn a certain task.
-    - must offer functionality not present in existing algorithms.
+      Add this script to the `BUILD file <https://github.com/ray-project/ray/tree/master/rllib/BUILD>`__ to run as a CI test, proving that the algorithm can learn a certain task.
+    - must offer features not present in existing algorithms.
 
 * `Fully integrated Algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__ also require the following:
-    - must offer substantial new functionality not possible to add to other algorithms.
+    - must offer a substantial new capability not possible to add to other algorithms.
     - must use RLlib abstractions and support distributed execution on the :py:class:`~ray.rllib.env.env_runner.EnvRunner` axis and :py:class:`~ray.rllib.core.learner.learner.Learner` axis.
       The respective config settings are ``config.env_runners(num_env_runners=...)`` and ``config.learners(num_learners=...)``
-    - must be added to the :ref:`algorithms overview page <rllib-algorithms-doc>` and described in detail.
+    - add your algorithm to the :ref:`algorithms overview page <rllib-algorithms-doc>` and describe it in detail.
     - must support custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` classes.
     - must include at least one `tuned hyperparameter example <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__,
-      added to the `BUILD file <https://github.com/ray-project/ray/tree/master/rllib/BUILD>`__ for automated CI-testing.
+      which you add to the `BUILD file <https://github.com/ray-project/ray/tree/master/rllib/BUILD>`__ for automated CI-testing.
 
-Both example- and fully integrated algorithms ship with the ``ray`` PyPI package, and are tested as part of Ray's automated CI-tests.
+Both example- and fully integrated algorithms ship with the ``ray`` PyPI package and the Ray CI system tests these automatically.
 
 API Stability
 +++++++++++++
@@ -235,7 +235,7 @@ The RLlib team recommends to install either one of these software first, before 
 Local debugging
 ~~~~~~~~~~~~~~~
 
-Even though, Ray and RLlib are distributed and best unfold all of their potential in production on large,
+Despite Ray's and RLlib's distributed architectures and the fact that they best unfold all of their potential in production on large,
 multi-node clusters, it's often helpful to start running your programs locally on your laptop or desktop machine and see,
 whether they roughly work as intended. Even if your local setup doesn't have some compute resources that are
 crucial for the actual training to succeed, most bugs already surface in the simplest of setups, for example in a single,
@@ -321,9 +321,9 @@ which Ray Tune may send to `Weights and Biases <https://wandb.ai/>`__, if config
 Structure of RLlib result dicts
 +++++++++++++++++++++++++++++++
 
-RLlib results are structured by subcomponents, such as
+RLlib structures training results by subcomponents, such as
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` or :py:class:`~ray.rllib.core.learner.learner.Learner`,
-but you'll also find timer information and global counts in the respective
+but you can also find timer information and global counts under the respective sub-keys:
 
 .. code-block:: text
 
@@ -333,71 +333,52 @@ but you'll also find timer information and global counts in the respective
      'date': '2025-01-27_14-46-33',
 
      # EnvRunnerGroup.
-     'env_runner_group': {'actor_manager_num_outstanding_async_reqs': 0},
+     'env_runner_group': {
+         'actor_manager_num_outstanding_async_reqs': 0
+         'num_healthy_env_runners': 2,
+         'num_remote_env_runner_restarts': 0},
 
      # Individual EnvRunners (reduced over parallel EnvRunner actors).
      'env_runners': {'agent_episode_returns_mean': {'default_agent': 19.92},
-                     'env_to_module_sum_episodes_length_in': 10.71828616526006,
-                     'env_to_module_sum_episodes_length_out': 10.71828616526006,
                      'episode_duration_sec_mean': 0.004189562468091026,
                      'episode_len_mean': 19.92,
                      'episode_return_mean': 19.92,
                      'module_episode_returns_mean': {'default_policy': 19.92},
                      ...
                      'weights_seq_no': 0.0},
-     'fault_tolerance': {'num_healthy_workers': 2, 'num_remote_worker_restarts': 0},
-     'learners': {'__all_modules__': {'learner_connector_sum_episodes_length_in': 4000,
-                                      'learner_connector_sum_episodes_length_out': 4190,
-                                      'num_env_steps_trained': 4190,
-                                      'num_env_steps_trained_lifetime': 4190,
-                                      'num_env_steps_trained_lifetime_throughput': nan,
-                                      'num_module_steps_trained': 4190,
-                                      'num_module_steps_trained_lifetime': 4190,
+
+     # Individual Learners (by ModuleID).
+     'learners': {'__all_modules__': {'num_env_steps_trained_lifetime': 4190,
                                       'num_non_trainable_parameters': 0,
-                                      'num_trainable_parameters': 259,
-                                      'timers': {'connectors': {'AddColumnsFromEpisodesToTrainBatch': 0.13207829208113253,
-                                                                'AddObservationsFromEpisodesToBatch': 0.002980082994326949,
-                                                                'AddOneTsToEpisodesAndTruncate': 0.025019917055033147,
-                                                                'AddStatesFromEpisodesToBatch': 1.4582998119294643e-05,
-                                                                'AddTimeDimToBatchAndZeroPad': 3.900006413459778e-05,
-                                                                'BatchIndividualItems': 0.05733262503053993,
-                                                                'GeneralAdvantageEstimation': 0.00825683306902647,
-                                                                'NumpyToTensor': 0.0010623749112710357}}},
+                                      'num_trainable_parameters': 259},
                   'default_policy': {'curr_entropy_coeff': 0.0,
                                      'curr_kl_coeff': 0.20000000298023224,
                                      'default_optimizer_learning_rate': 0.0003,
-                                     'diff_num_grad_updates_vs_sampler_policy': 0.0,
                                      'entropy': 0.6837567687034607,
-                                     'gradients_default_optimizer_global_norm': 0.0709063932299614,
                                      'mean_kl_loss': 0.01698029786348343,
                                      'module_train_batch_size_mean': 4190,
-                                     'num_module_steps_trained': 4190,
                                      'num_module_steps_trained_lifetime': 4190,
                                      'num_non_trainable_parameters': 0,
                                      'num_trainable_parameters': 259,
                                      'policy_loss': -0.1476544886827469,
                                      'total_loss': -0.05217256397008896,
-                                     'vf_explained_var': 0.0026567578315734863,
                                      'vf_loss': 9.208584785461426,
-                                     'vf_loss_unclipped': 238.84010314941406,
                                      'weights_seq_no': 1.0}},
-     'num_env_steps_sampled_lifetime': 4000,
-     'num_env_steps_sampled_lifetime_throughput': nan,
-     'num_training_step_calls_per_iteration': 1,
-     'perf': {'cpu_util_percent': 11.118181818181817,
-              'ram_util_percent': 47.72727272727273},
-     'time_since_restore': 7.14180588722229,
-     'time_this_iter_s': 7.14180588722229,
-     'time_total_s': 7.14180588722229,
+
+     # Algorithm timers (mostly directly from within `training_step()`).
      'timers': {'env_runner_sampling_timer': 6.536753125023097,
                 'learner_update_timer': 0.5848377080401406,
-                'restore_env_runners': 2.258399035781622e-05,
                 'synch_weights': 0.0052911670645698905,
                 'training_iteration': 7.127688749926165,
                 'training_step': 7.127490875078365},
+
+     # Other global stats: Lifetime counts, performance, timers, etc.
+     'num_env_steps_sampled_lifetime': 4000,
+     'num_training_step_calls_per_iteration': 1,
+     'perf': {'cpu_util_percent': 11.118181818181817,
+              'ram_util_percent': 47.72727272727273},
      'timestamp': 1737985593,
      'training_iteration': 1,
-     'trial_id': 'default'
     }
 
 
@@ -422,7 +403,7 @@ Log verbosity
 ~~~~~~~~~~~~~
 
 You can control the log level through the ``--log_level`` command line argument in most of RLlib's example and tuned example scripts.
-Valid values are "DEBUG", "INFO", "WARN", and "ERROR". This can be used to increase or decrease the verbosity of internal logging.
+Valid values are ``DEBUG``, ``INFO``, ``WARN``, and ``ERROR``. Use different verbosity levels to increase or decrease the information content of your logs.
 
 The default log level is ``WARN``, but you should use at least the ``INFO`` level logging for development.
 

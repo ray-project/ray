@@ -1299,7 +1299,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         all_batches = []
 
         # How many episodes have we run (across all eval workers)?
-        num_healthy_workers = self.eval_env_runner_group.num_healthy_remote_env_runners()
+        num_healthy_workers = (
+            self.eval_env_runner_group.num_healthy_remote_env_runners()
+        )
         # Do we have to force-reset the EnvRunners before the first round of `sample()`
         # calls.?
         force_reset = self.config.evaluation_force_reset_envs_before_iteration
@@ -1489,7 +1491,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # How many episodes have we run (across all eval workers)?
         num_units_done = 0
-        num_healthy_workers = self.eval_env_runner_group.num_healthy_remote_env_runners()
+        num_healthy_workers = (
+            self.eval_env_runner_group.num_healthy_remote_env_runners()
+        )
 
         env_steps = agent_steps = 0
 

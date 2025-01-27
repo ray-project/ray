@@ -773,7 +773,9 @@ class IMPALA(Algorithm):
         episode_refs = []
         connector_states = []
         env_runner_metrics = []
-        num_healthy_remote_workers = self.env_runner_group.num_healthy_remote_env_runners()
+        num_healthy_remote_workers = (
+            self.env_runner_group.num_healthy_remote_env_runners()
+        )
 
         # Perform asynchronous sampling on all (healthy) remote rollout workers.
         if num_healthy_remote_workers > 0:
