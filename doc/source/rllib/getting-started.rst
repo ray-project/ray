@@ -83,7 +83,7 @@ you can call the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfi
 
 .. testcode::
 
-    config.env_runners(num_env_runners=3)
+    config.env_runners(num_env_runners=2)
 
 For training-related settings or any algorithm-specific settings, use the
 :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training` method:
@@ -122,7 +122,7 @@ which returns a result dictionary that you can pretty-print for debugging purpos
 
     from pprint import pprint
 
-    for _ in range(5):
+    for _ in range(4):
         pprint(ppo.train())
 
 
@@ -181,6 +181,11 @@ results of collecting training samples with its "regular" :py:class:`~ray.rllib.
 
     for _ in range(3):
         pprint(ppo_with_evaluation.train())
+
+.. testcode::
+    :hide:
+
+    ppo_with_evaluation.stop()
 
 
 .. _rllib-with-ray-tune:
@@ -245,8 +250,8 @@ on your Ray cluster:
     ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
     │ Trial name                   status       lr   iter  total time (s)  episode_return_mean  .._sampled_lifetime │
     ├───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
-    │ PPO_Pendulum-v1_b5c41_00000  RUNNING  0.01       29         86.2426             -998.449               108000 │
-    │ PPO_Pendulum-v1_b5c41_00001  RUNNING  0.001      25         74.4335             -997.079               100000 │
+    │ PPO_Pendulum-v1_b5c41_00000  RUNNING  0.001      29         86.2426             -998.449               108000 │
+    │ PPO_Pendulum-v1_b5c41_00001  RUNNING  0.0005     25         74.4335             -997.079               100000 │
     │ PPO_Pendulum-v1_b5c41_00002  RUNNING  0.0001     20         60.0421             -960.293                80000 │
     ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 
@@ -312,8 +317,8 @@ method to compute actions:
     obs, info = env.reset()
 
     while not done:
-        # Render the env.
-        env.render()
+        # Uncomment this line to render the env.
+        # env.render()
 
         # Compute the next action from a batch (B=1) of observations.
         obs_batch = torch.from_numpy(obs).unsqueeze(0)  # add batch B=1 dimension
@@ -345,9 +350,9 @@ Alternatively, if you still have an :py:class:`~ray.rllib.algorithms.algorithm.A
 in your script, you can get the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` through the
 :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.get_module` method:
 
-.. testcode::
+.. code-block:: python
 
-    rl_module = ppo_with_evaluation.get_module("default_policy")
+    rl_module = ppo.get_module("default_policy")  # Equivalent to `rl_module = ppo.get_module()`
 
 
 Customizing your RL environment
@@ -425,7 +430,6 @@ and how to customize them.
     .. testcode::
         :hide:
 
-        # Test that our setup is working.
         ppo_w_custom_env.stop()
 
 
