@@ -275,10 +275,10 @@ class TestWorkerFailures(unittest.TestCase):
         algo.train()
 
         # One of the rollout workers failed.
-        self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 1)
+        self.assertEqual(algo.env_runner_group.num_healthy_remote_env_runners(), 1)
         if fail_eval:
             # One of the eval workers failed.
-            self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_workers(), 1)
+            self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_env_runners(), 1)
 
         algo.stop()
 
@@ -334,8 +334,8 @@ class TestWorkerFailures(unittest.TestCase):
             algo.restore_env_runners(algo.env_runner_group)
             algo.restore_env_runners(algo.eval_env_runner_group)
 
-            self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 1)
-            self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_workers(), 1)
+            self.assertEqual(algo.env_runner_group.num_healthy_remote_env_runners(), 1)
+            self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_env_runners(), 1)
             if multi_agent:
                 # Make a dummy call to the eval worker's policy_mapping_fn and
                 # make sure the restored eval worker received the correct one from
@@ -445,7 +445,7 @@ class TestWorkerFailures(unittest.TestCase):
                 # as we recover from all sub-env failures.
                 algo.train()
                 # No worker has been removed. Still 2 left.
-                self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 4)
+                self.assertEqual(algo.env_runner_group.num_healthy_remote_env_runners(), 4)
             algo.stop()
 
     def test_eval_workers_failing_ignore(self):
@@ -557,18 +557,18 @@ class TestWorkerFailures(unittest.TestCase):
         algo = config.build()
 
         # Before training, 2 healthy workers.
-        self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 2)
+        self.assertEqual(algo.env_runner_group.num_healthy_remote_env_runners(), 2)
         # Nothing is restarted.
-        self.assertEqual(algo.env_runner_group.num_remote_worker_restarts(), 0)
+        self.assertEqual(algo.env_runner_group.num_remote_env_runner_restarts(), 0)
 
         algo.train()
         time.sleep(15.0)
         algo.restore_env_runners(algo.env_runner_group)
 
         # After training, still 2 healthy workers.
-        self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 2)
+        self.assertEqual(algo.env_runner_group.num_healthy_remote_env_runners(), 2)
         # Both workers are restarted.
-        self.assertEqual(algo.env_runner_group.num_remote_worker_restarts(), 2)
+        self.assertEqual(algo.env_runner_group.num_remote_env_runner_restarts(), 2)
 
     def test_modules_are_restored_on_recovered_worker(self):
         # Counter that will survive restarts.
@@ -638,10 +638,10 @@ class TestWorkerFailures(unittest.TestCase):
         self.assertIsNotNone(algo.get_module("test_module"))
 
         # Before train loop, workers are fresh and not recreated.
-        self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 2)
-        self.assertEqual(algo.env_runner_group.num_remote_worker_restarts(), 0)
-        self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_workers(), 1)
-        self.assertEqual(algo.eval_env_runner_group.num_remote_worker_restarts(), 0)
+        self.assertEqual(algo.env_runner_group.num_healthy_remote_env_runners(), 2)
+        self.assertEqual(algo.env_runner_group.num_remote_env_runner_restarts(), 0)
+        self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_env_runners(), 1)
+        self.assertEqual(algo.eval_env_runner_group.num_remote_env_runner_restarts(), 0)
 
         algo.train()
         time.sleep(15.0)
@@ -649,12 +649,12 @@ class TestWorkerFailures(unittest.TestCase):
         algo.restore_env_runners(algo.eval_env_runner_group)
 
         # Everything healthy again. And all workers have been restarted.
-        self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 2)
-        self.assertEqual(algo.env_runner_group.num_remote_worker_restarts(), 2)
-        self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_workers(), 1)
-        self.assertEqual(algo.eval_env_runner_group.num_remote_worker_restarts(), 1)
+        self.assertEqual(algo.env_runner_group.num_healthy_remote_env_runners(), 2)
+        self.assertEqual(algo.env_runner_group.num_remote_env_runner_restarts(), 2)
+        self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_env_runners(), 1)
+        self.assertEqual(algo.eval_env_runner_group.num_remote_env_runner_restarts(), 1)
 
-        # Let's verify that our custom module exists on all recovered workers.
+        # Let's verify that our custom module exists on all recovered EnvRunners.
         def has_test_module(w):
             return "test_module" in w.module
 
@@ -725,16 +725,16 @@ class TestWorkerFailures(unittest.TestCase):
         algo = config.build()
 
         # Before train loop, workers are fresh and not recreated.
-        self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_workers(), 2)
-        self.assertEqual(algo.eval_env_runner_group.num_remote_worker_restarts(), 0)
+        self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_env_runners(), 2)
+        self.assertEqual(algo.eval_env_runner_group.num_remote_env_runner_restarts(), 0)
 
         algo.train()
         time.sleep(15.0)
         algo.restore_env_runners(algo.eval_env_runner_group)
 
         # Everything still healthy. And all workers are restarted.
-        self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_workers(), 2)
-        self.assertEqual(algo.eval_env_runner_group.num_remote_worker_restarts(), 2)
+        self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_env_runners(), 2)
+        self.assertEqual(algo.eval_env_runner_group.num_remote_env_runner_restarts(), 2)
 
     def test_worker_failing_recover_with_hanging_workers(self):
         # Counter that will survive restarts.
@@ -797,8 +797,8 @@ class TestWorkerFailures(unittest.TestCase):
         algo = config.build()
 
         # Before train loop, workers are fresh and not recreated.
-        self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 3)
-        self.assertEqual(algo.env_runner_group.num_remote_worker_restarts(), 0)
+        self.assertEqual(algo.env_runner_group.num_healthy_remote_env_runners(), 3)
+        self.assertEqual(algo.env_runner_group.num_remote_env_runner_restarts(), 0)
 
         algo.train()
         time.sleep(15.0)
@@ -807,10 +807,10 @@ class TestWorkerFailures(unittest.TestCase):
         algo.train()
 
         # 2 healthy remote workers left, although worker 3 is stuck in rollout.
-        self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 2)
+        self.assertEqual(algo.env_runner_group.num_healthy_remote_env_runners(), 2)
         # Only 1 successful restore, since worker 2 is stuck in indefinite init
         # and can not be properly restored.
-        self.assertEqual(algo.env_runner_group.num_remote_worker_restarts(), 1)
+        self.assertEqual(algo.env_runner_group.num_remote_env_runner_restarts(), 1)
 
     def test_eval_workers_on_infinite_episodes(self):
         """Tests whether eval workers warn appropriately after some episode timeout."""

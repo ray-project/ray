@@ -167,7 +167,7 @@ class VPG(Algorithm):
             ),
             # Loop over remote EnvRunners' `sample()` method in parallel or use the
             # local EnvRunner if there aren't any remote ones.
-            local_env_runner=self.env_runner_group.num_remote_workers() <= 0,
+            local_env_runner=self.env_runner_group.num_remote_env_runners() <= 0,
         )
         # Return one list of episodes and a list of metrics dicts (one per EnvRunner).
         episodes = tree.flatten([s[0] for s in sampled_data])

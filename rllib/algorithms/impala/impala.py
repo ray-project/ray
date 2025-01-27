@@ -773,7 +773,7 @@ class IMPALA(Algorithm):
         episode_refs = []
         connector_states = []
         env_runner_metrics = []
-        num_healthy_remote_workers = self.env_runner_group.num_healthy_remote_workers()
+        num_healthy_remote_workers = self.env_runner_group.num_healthy_remote_env_runners()
 
         # Perform asynchronous sampling on all (healthy) remote rollout workers.
         if num_healthy_remote_workers > 0:
@@ -1029,7 +1029,7 @@ class IMPALA(Algorithm):
             # env_instance (either because there are no remote workers or
             # self.config.create_env_on_local_worker == True), then sample from the
             # local worker. Otherwise just return an empty list.
-            if self.env_runner_group.num_healthy_remote_workers() > 0:
+            if self.env_runner_group.num_healthy_remote_env_runners() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.
                 self.env_runner_group.foreach_env_runner_async(
                     lambda worker: worker.sample()
@@ -1284,7 +1284,7 @@ class IMPALA(Algorithm):
         # Only need to update workers if there are remote workers.
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
-            self.env_runner_group.num_remote_workers() > 0
+            self.env_runner_group.num_remote_env_runners() > 0
             and self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
             >= self.config.broadcast_interval
             and workers_that_need_updates

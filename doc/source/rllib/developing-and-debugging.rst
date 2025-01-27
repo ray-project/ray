@@ -144,29 +144,6 @@ conflicting with either the pip-installed Ray or with RLlib's source code.
     python python/ray/setup-dev.py  # <- only say `Y` to linking RLlib, then press CTRL+C to abort the script
 
 
-Modifying your own RLlib branch
--------------------------------
-
-To create a new branch
-
-You can now start coding and modifying your own against RLlib
-
-API Stability
-+++++++++++++
-
-Objects and methods annotated with ``@PublicAPI``, ``@DeveloperAPI``, or ``@OldAPIStack`` have the following
-API compatibility guarantees:
-
-.. autofunction:: ray.util.annotations.PublicAPI
-    :noindex:
-
-.. autofunction:: ray.util.annotations.DeveloperAPI
-    :noindex:
-
-.. autofunction:: ray.rllib.utils.annotations.OldAPIStack
-    :noindex:
-
-
 Contributing to RLlib and creating a pull request
 -------------------------------------------------
 
@@ -233,6 +210,21 @@ The guidelines for merging new algorithms into RLlib depend on the level of cont
 
 Both example- and fully integrated algorithms ship with the ``ray`` PyPI package, and are tested as part of Ray's automated CI-tests.
 
+API Stability
++++++++++++++
+
+Objects and methods annotated with ``@PublicAPI``, ``@DeveloperAPI``, or ``@OldAPIStack`` have the following
+API compatibility guarantees:
+
+.. autofunction:: ray.util.annotations.PublicAPI
+    :noindex:
+
+.. autofunction:: ray.util.annotations.DeveloperAPI
+    :noindex:
+
+.. autofunction:: ray.rllib.utils.annotations.OldAPIStack
+    :noindex:
+
 Debugging RLlib
 ---------------
 
@@ -249,8 +241,7 @@ whether they roughly work as intended. Even if your local setup doesn't have som
 crucial for the actual training to succeed, most bugs already surface in the simplest of setups, for example in a single,
 local process running on the CPU.
 
-To change your config, such that your RLlib program runs in such local setup, you should - before anything else - try
-the following settings:
+Thus, before anything else, change your config for running an RLlib program in such a local setup:
 
 .. testcode::
 
@@ -270,15 +261,144 @@ the following settings:
     )
 
 
-With the preceding config setup, you can debug your Algorithm code through your IDE's visual debugger.
-For example, go to the `PPO training_step() <>`__ method implementation
-and set a breakpoint somewhere
+With the preceding config, you can debug your Algorithm code through your IDE's visual debugger.
+For example, go to the `PPO training_step() <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo.py>`__ method
+implementation and set a breakpoint somewhere inside it:
 
+.. figure:: images/developing/pycharm_breakpoint_ppo.png
+    :align: left
+
+    **A breakpoint set inside PPO's ``training_step()`` method**: When running your script without Ray Tune, your IDE should pause
+    execution at that location in the code in each iteration.
+
+Your script stops at the breakpoint and you can look into variable values, execute custom python statements in the debugging
+console, or go back in the call stack to the callers of ``training_step()``:
+
+.. figure:: images/developing/pycharm_debugging_variables.png
+    :align: left
+
+    **Looking at variables at a breakpoint**: When execution pauses because of a breakpoint,
+    you can look into variable values, go back to parent callers in the call stack, or execute custom
+    code.
 
 
 Logging with Weights and Biases (WandB)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+After finding bugs in your code and making sure your script runs without throwing errors,
+the next problem for you to tackle is typically the learning behavior of your algorithm, models,
+and RL environment.
+
+A good place to start are the metrics RLlib provides by default. Each call to the
+:py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.train` method returns a result dict,
+which Ray Tune may send to `Weights and Biases <https://wandb.ai/>`__, if configured.
+
+.. code-block:: python
+
+    from ray import train, tune
+    from ray.air.integrations.wandb import WandbLoggerCallback
+
+    config = ...  # <- your RLlib algorithm config
+
+    results = tune.Tuner(
+        config.algo_class,
+        param_space=config,
+        run_config=train.RunConfig(
+            stop=stop,
+            verbose=2,  # value between 0 and 3
+            callbacks=[  # configure the WandB logger for this experiment
+                WandbLoggerCallback(
+                    api_key=[your WandB API key],
+                    project=[WandB project name],
+                    upload_checkpoints=True,
+                    name=[your WandB run name for this experiment],
+                )
+            ],
+        ),
+    ).fit()
+
+
+Structure of RLlib result dicts
++++++++++++++++++++++++++++++++
+
+RLlib results are structured by subcomponents, such as
+:py:class:`~ray.rllib.env.env_runner.EnvRunner` or :py:class:`~ray.rllib.core.learner.learner.Learner`,
+but you'll also find timer information and global counts in the respective
+
+.. code-block:: text
+
+    {
+     # your RLlib algorithm config
+     'config': { ... },
+     'date': '2025-01-27_14-46-33',
+
+     # EnvRunnerGroup.
+     'env_runner_group': {'actor_manager_num_outstanding_async_reqs': 0},
+
+     # Individual EnvRunners (reduced over parallel EnvRunner actors).
+     'env_runners': {'agent_episode_returns_mean': {'default_agent': 19.92},
+                     'env_to_module_sum_episodes_length_in': 10.71828616526006,
+                     'env_to_module_sum_episodes_length_out': 10.71828616526006,
+                     'episode_duration_sec_mean': 0.004189562468091026,
+                     'episode_len_mean': 19.92,
+                     'episode_return_mean': 19.92,
+                     'module_episode_returns_mean': {'default_policy': 19.92},
+                     ...
+                     'weights_seq_no': 0.0},
+     'fault_tolerance': {'num_healthy_workers': 2, 'num_remote_worker_restarts': 0},
+     'learners': {'__all_modules__': {'learner_connector_sum_episodes_length_in': 4000,
+                                      'learner_connector_sum_episodes_length_out': 4190,
+                                      'num_env_steps_trained': 4190,
+                                      'num_env_steps_trained_lifetime': 4190,
+                                      'num_env_steps_trained_lifetime_throughput': nan,
+                                      'num_module_steps_trained': 4190,
+                                      'num_module_steps_trained_lifetime': 4190,
+                                      'num_non_trainable_parameters': 0,
+                                      'num_trainable_parameters': 259,
+                                      'timers': {'connectors': {'AddColumnsFromEpisodesToTrainBatch': 0.13207829208113253,
+                                                                'AddObservationsFromEpisodesToBatch': 0.002980082994326949,
+                                                                'AddOneTsToEpisodesAndTruncate': 0.025019917055033147,
+                                                                'AddStatesFromEpisodesToBatch': 1.4582998119294643e-05,
+                                                                'AddTimeDimToBatchAndZeroPad': 3.900006413459778e-05,
+                                                                'BatchIndividualItems': 0.05733262503053993,
+                                                                'GeneralAdvantageEstimation': 0.00825683306902647,
+                                                                'NumpyToTensor': 0.0010623749112710357}}},
+                  'default_policy': {'curr_entropy_coeff': 0.0,
+                                     'curr_kl_coeff': 0.20000000298023224,
+                                     'default_optimizer_learning_rate': 0.0003,
+                                     'diff_num_grad_updates_vs_sampler_policy': 0.0,
+                                     'entropy': 0.6837567687034607,
+                                     'gradients_default_optimizer_global_norm': 0.0709063932299614,
+                                     'mean_kl_loss': 0.01698029786348343,
+                                     'module_train_batch_size_mean': 4190,
+                                     'num_module_steps_trained': 4190,
+                                     'num_module_steps_trained_lifetime': 4190,
+                                     'num_non_trainable_parameters': 0,
+                                     'num_trainable_parameters': 259,
+                                     'policy_loss': -0.1476544886827469,
+                                     'total_loss': -0.05217256397008896,
+                                     'vf_explained_var': 0.0026567578315734863,
+                                     'vf_loss': 9.208584785461426,
+                                     'vf_loss_unclipped': 238.84010314941406,
+                                     'weights_seq_no': 1.0}},
+     'num_env_steps_sampled_lifetime': 4000,
+     'num_env_steps_sampled_lifetime_throughput': nan,
+     'num_training_step_calls_per_iteration': 1,
+     'perf': {'cpu_util_percent': 11.118181818181817,
+              'ram_util_percent': 47.72727272727273},
+     'time_since_restore': 7.14180588722229,
+     'time_this_iter_s': 7.14180588722229,
+     'time_total_s': 7.14180588722229,
+     'timers': {'env_runner_sampling_timer': 6.536753125023097,
+                'learner_update_timer': 0.5848377080401406,
+                'restore_env_runners': 2.258399035781622e-05,
+                'synch_weights': 0.0052911670645698905,
+                'training_iteration': 7.127688749926165,
+                'training_step': 7.127490875078365},
+     'timestamp': 1737985593,
+     'training_iteration': 1,
+     'trial_id': 'default'
+    }
 
 
 Episode traces

@@ -333,39 +333,23 @@ class EnvRunnerGroup:
         """Returns the list of remote worker IDs."""
         return self._worker_manager.healthy_actor_ids()
 
-    def healthy_worker_ids(self) -> List[int]:
-        """Returns the list of remote worker IDs."""
-        return self.healthy_env_runner_ids()
-
     def num_remote_env_runners(self) -> int:
         """Returns the number of remote EnvRunners."""
         return self._worker_manager.num_actors()
-
-    def num_remote_workers(self) -> int:
-        """Returns the number of remote EnvRunners."""
-        return self.num_remote_env_runners()
 
     def num_healthy_remote_env_runners(self) -> int:
         """Returns the number of healthy remote workers."""
         return self._worker_manager.num_healthy_actors()
 
-    def num_healthy_remote_workers(self) -> int:
-        """Returns the number of healthy remote workers."""
-        return self.num_healthy_remote_env_runners()
-
     def num_healthy_env_runners(self) -> int:
         """Returns the number of all healthy workers, including the local worker."""
-        return int(bool(self._local_env_runner)) + self.num_healthy_remote_workers()
-
-    def num_healthy_workers(self) -> int:
-        """Returns the number of all healthy workers, including the local worker."""
-        return self.num_healthy_env_runners()
+        return int(bool(self._local_env_runner)) + self.num_healthy_remote_env_runners()
 
     def num_in_flight_async_reqs(self) -> int:
         """Returns the number of in-flight async requests."""
         return self._worker_manager.num_outstanding_async_reqs()
 
-    def num_remote_worker_restarts(self) -> int:
+    def num_remote_env_runner_restarts(self) -> int:
         """Total number of times managed remote workers have been restarted."""
         return self._worker_manager.total_num_restarts()
 
@@ -406,7 +390,7 @@ class EnvRunnerGroup:
         # Early out if the number of (healthy) remote workers is 0. In this case, the
         # local worker is the only operating worker and thus of course always holds
         # the reference connector state.
-        if self.num_healthy_remote_workers() == 0:
+        if self.num_healthy_remote_env_runners() == 0:
             self.local_env_runner.set_state(
                 {
                     **(
@@ -566,7 +550,7 @@ class EnvRunnerGroup:
 
         # Only sync if we have remote workers or `from_worker_or_trainer` is provided.
         rl_module_state = None
-        if self.num_remote_workers() or from_worker_or_learner_group is not None:
+        if self.num_remote_env_runners() or from_worker_or_learner_group is not None:
             weights_src = from_worker_or_learner_group or self.local_env_runner
 
             if weights_src is None:
@@ -1016,7 +1000,7 @@ class EnvRunnerGroup:
 
         Returns:
              The number of async requests that have actually been made. This is the
-             length of `remote_worker_ids` (or self.num_remote_workers()` if
+             length of `remote_worker_ids` (or self.num_remote_env_runners()` if
              `remote_worker_ids` is None) minus the number of requests that were NOT
              made b/c a remote EnvRunner already had its
              `max_remote_requests_in_flight_per_actor` counter reached.
@@ -1219,6 +1203,26 @@ class EnvRunnerGroup:
                     f"input {class_path}"
                 )
         return False
+
+    @Deprecated(new="EnvRunnerGroup.healthy_env_runner_ids", error=False)
+    def healthy_worker_ids(self):
+        return self.healthy_env_runner_ids()
+
+    @Deprecated(new="EnvRunnerGroup.num_remote_env_runners", error=False)
+    def num_remote_workers(self):
+        return self.num_remote_env_runners()
+
+    @Deprecated(new="EnvRunnerGroup.num_healthy_remote_env_runners", error=False)
+    def num_healthy_remote_workers(self):
+        return self.num_healthy_remote_env_runners()
+
+    @Deprecated(new="EnvRunnerGroup.num_healthy_env_runners", error=False)
+    def num_healthy_workers(self):
+        return self.num_healthy_env_runners()
+
+    @Deprecated(new="EnvRunnerGroup.num_remote_env_runner_restarts", error=False)
+    def num_remote_worker_restarts(self):
+        return self.num_remote_env_runner_restarts()
 
     @Deprecated(new="EnvRunnerGroup.probe_unhealthy_env_runners", error=False)
     def probe_unhealthy_workers(self, *args, **kwargs):

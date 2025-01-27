@@ -145,7 +145,7 @@ class TestNodeFailures(unittest.TestCase):
             )
 
             self.assertEqual(algo.env_runner_group.num_remote_env_runners(), 6)
-            healthy_env_runners = algo.env_runner_group.num_healthy_remote_workers()
+            healthy_env_runners = algo.env_runner_group.num_healthy_remote_env_runners()
             # After node has been removed and we recreate failed EnvRunners, we'd expect
             # 2 EnvRunners to be gone.
             # If we ignore EnvRunner failures, and both nodes have been shut down at

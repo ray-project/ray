@@ -504,7 +504,7 @@ class PPO(Algorithm):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            if self.env_runner_group.num_remote_workers() > 0:
+            if self.env_runner_group.num_remote_env_runners() > 0:
                 from_worker_or_learner_group = None
                 self.env_runner_group.sync_weights(
                     from_worker_or_learner_group=from_worker_or_learner_group,
