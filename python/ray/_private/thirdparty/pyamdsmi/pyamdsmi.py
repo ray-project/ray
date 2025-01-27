@@ -549,4 +549,3 @@ def smi_get_device_xgmi_hive_id(dev):
     hive_id = c_uint64()
     ret = rocm_lib.rsmi_dev_xgmi_hive_id_get(dev, byref(hive_id))
     return hive_id.value if rsmi_ret_ok(ret) else -1
-

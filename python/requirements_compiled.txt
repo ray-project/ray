@@ -52,6 +52,7 @@ aiohttp==3.9.5
     #   delta-sharing
     #   fsspec
     #   google-auth
+    #   pytest-aiohttp
     #   s3fs
     #   torch-geometric
 aiohttp-cors==0.7.0
@@ -1547,7 +1548,7 @@ pycparser==2.21
     # via cffi
 pycurl==7.45.3
     # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
-pydantic==2.5.0
+pydantic==2.9.2
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -1556,7 +1557,7 @@ pydantic==2.5.0
     #   fastapi
     #   gradio
     #   pyiceberg
-pydantic-core==2.14.1
+pydantic-core==2.23.4
     # via pydantic
 pydot==1.4.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
@@ -1638,6 +1639,7 @@ pyspark==3.4.1
 pytest==7.4.4
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   pytest-aiohttp
     #   pytest-asyncio
     #   pytest-docker-tools
     #   pytest-fixture-config
@@ -1652,6 +1654,8 @@ pytest==7.4.4
     #   pytest-sugar
     #   pytest-timeout
     #   pytest-virtualenv
+pytest-aiohttp==0.3.0
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 pytest-asyncio==0.17.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 pytest-docker-tools==3.1.3
@@ -2291,7 +2295,7 @@ types-requests==2.31.0.6
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.8.0
+typing-extensions==4.12.2
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   alembic

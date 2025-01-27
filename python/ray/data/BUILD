@@ -146,6 +146,14 @@ py_test(
 )
 
 py_test(
+    name = "test_audio",
+    size = "small",
+    srcs = ["tests/test_audio.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_avro",
     size = "small",
     srcs = ["tests/test_avro.py"],
@@ -345,11 +353,13 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+# Added "data_non_parallel" tag to prevent parallel execution of this test.
+# It needs about 5GB memory.
 py_test(
     name = "test_dynamic_block_split",
     size = "medium",
     srcs = ["tests/test_dynamic_block_split.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "data_non_parallel"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -564,6 +574,14 @@ py_test(
 )
 
 py_test(
+    name = "test_video",
+    size = "small",
+    srcs = ["tests/test_video.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_webdataset",
     size = "medium",
     srcs = ["tests/test_webdataset.py"],
@@ -655,6 +673,14 @@ py_test(
     name = "test_expression_evaluator",
     size = "small",
     srcs = ["tests/test_expression_evaluator.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_block_boundaries",
+    size = "small",
+    srcs = ["tests/test_block_boundaries.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
