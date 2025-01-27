@@ -1157,7 +1157,6 @@ class ProxyActor:
             component_name="proxy", component_id=node_ip_address
         )
 
-        # Always prepend the request ID middleware and.
         http_options.middlewares = http_options.middlewares or []
         if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
             logger.info(
