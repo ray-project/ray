@@ -128,7 +128,6 @@ def get_default_settings() -> Dict:
         "frequency": Frequency.ANY,
         "prefer_smoke_tests": False,
         "test_attr_regex_filters": None,
-        "ray_wheels": None,
         "ray_test_repo": None,
         "ray_test_branch": None,
         "priority": Priority.DEFAULT,
@@ -156,9 +155,6 @@ def update_settings_from_environment(settings: Dict) -> Dict:
 
         settings["ray_test_repo"] = repo_url
         settings["ray_test_branch"] = branch
-
-    if "RAY_WHEELS" in os.environ:
-        settings["ray_wheels"] = os.environ["RAY_WHEELS"]
 
     if "TEST_NAME" in os.environ:
         # This is for backward compatibility.
@@ -192,10 +188,6 @@ def update_settings_from_buildkite(settings: Dict):
         repo, branch = split_ray_repo_str(ray_test_repo_branch)
         settings["ray_test_repo"] = repo
         settings["ray_test_branch"] = branch
-
-    ray_wheels = get_buildkite_prompt_value("release-ray-wheels")
-    if ray_wheels:
-        settings["ray_wheels"] = ray_wheels
 
     test_name_filter = get_buildkite_prompt_value("release-test-name")
     if test_name_filter:

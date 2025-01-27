@@ -25,7 +25,6 @@ from ray._private.utils import (
     get_or_create_event_loop,
 )
 from ray.dag import DAGContext
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_pid_to_exit,
@@ -226,6 +225,7 @@ class TestDAGRefDestruction:
         ref = compiled_dag.execute(2)
         ref2 = compiled_dag.execute(2)
         ref3 = compiled_dag.execute(2)
+        del ref
         del ref2
         # Test that ray.get() works correctly if preceding ref was destructed
         assert ray.get(ref3) == 6
@@ -242,6 +242,7 @@ class TestDAGRefDestruction:
         del ref3
         ray.get(ref)
         ref4 = compiled_dag.execute(3)
+        del ref4
         # Test that max_inflight error is not raised as ref2 and ref3
         # should be destructed and not counted in the inflight executions
         ref5 = compiled_dag.execute(3)
@@ -891,13 +892,13 @@ class TestMultiArgs:
         a2 = Actor.remote(0)
         c = Collector.remote()
         with InputNode() as i:
-            i.with_type_hint(TorchTensorType())
+            i.with_tensor_transport()
             branch1 = a1.echo.bind(i[0])
-            branch1.with_type_hint(TorchTensorType())
+            branch1.with_tensor_transport()
             branch2 = a2.echo.bind(i[1])
-            branch2.with_type_hint(TorchTensorType())
+            branch2.with_tensor_transport()
             dag = c.collect_two.bind(branch2, branch1)
-            dag.with_type_hint(TorchTensorType())
+            dag.with_tensor_transport()
 
         compiled_dag = dag.experimental_compile()
 
@@ -2537,14 +2538,14 @@ def test_inflight_requests_exceed_capacity(ray_start_regular):
             match=(expected_error_message),
         ):
             _ = await async_compiled_dag.execute_async(1)
-        (ref1, ref2)
+        _ = (ref1, ref2)
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
     # to show variables are being used and avoid destruction since
     # CompiledDagRef __del__ will release buffers and
     # increment _max_finished_execution_index
-    (ref1, ref2)
+    _ = (ref1, ref2)
 
 
 def test_result_buffer_exceeds_capacity(ray_start_regular):
@@ -2585,12 +2586,12 @@ def test_result_buffer_exceeds_capacity(ray_start_regular):
             match=(expected_error_message),
         ):
             _ = await async_compiled_dag.execute_async(4)
-        (ref1, ref3)
+        _ = (ref1, ref3)
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
     # same reason as comment for test_inflight_requests_exceed_capacity
-    (ref1, ref3)
+    _ = (ref1, ref3)
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
@@ -2849,7 +2850,7 @@ def test_torch_tensor_type(shutdown_only):
                     inp,
                     self._base.generate_torch_tensor.bind(
                         inp,
-                    ).with_type_hint(TorchTensorType()),
+                    ).with_tensor_transport(),
                 )
             self._cdag = dag.experimental_compile()
 
@@ -2993,6 +2994,36 @@ def test_signature_mismatch(shutdown_only):
     ):
         with InputNode() as inp:
             _ = worker.g.bind(inp)
+
+
+def test_missing_input_node():
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+        def f(self, input):
+            return input
+
+        def add(self, a, b):
+            return a + b
+
+    actor = Actor.remote()
+
+    with ray.dag.InputNode() as dag_input:
+        input0, input1, input2 = dag_input[0], dag_input[1], dag_input[2]
+        _ = actor.f.bind(input1)
+        dag = actor.add.bind(input0, input2)
+
+    with pytest.raises(
+        ValueError,
+        match="Compiled Graph expects input to be accessed "
+        "using all of attributes 0, 1, 2, "
+        "but 1 is unused. "
+        "Ensure all input attributes are used and contribute "
+        "to the computation of the Compiled Graph output.",
+    ):
+        dag.experimental_compile()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Sigint not supported on Windows")

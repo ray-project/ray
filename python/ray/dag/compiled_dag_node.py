@@ -20,6 +20,10 @@ import time
 import uuid
 import traceback
 
+from ray.experimental.channel.auto_transport_type import (
+    AutoTransportType,
+    TypeHintResolver,
+)
 import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
@@ -97,6 +101,52 @@ def _shutdown_all_compiled_dags():
         # cannot be cancelled.
         compiled_dag.teardown(kill_actors=True)
     _compiled_dags = weakref.WeakValueDictionary()
+
+
+def _check_unused_dag_input_attributes(
+    output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]
+) -> Set[str]:
+    """
+    Helper function to check that all input attributes are used in the DAG.
+    For example, if the user creates an input attribute by calling
+    InputNode()["x"], we ensure that there is a path from the
+    InputAttributeNode corresponding to "x" to the DAG's output. If an
+    input attribute is not used, throw an error.
+
+    Args:
+        output_node: The starting node for the traversal.
+        input_attributes: A set of attributes accessed by the InputNode.
+    """
+    from ray.dag import InputAttributeNode
+
+    used_attributes = set()
+    visited_nodes = set()
+    stack: List["ray.dag.DAGNode"] = [output_node]
+
+    while stack:
+        current_node = stack.pop()
+        if current_node in visited_nodes:
+            continue
+        visited_nodes.add(current_node)
+
+        if isinstance(current_node, InputAttributeNode):
+            used_attributes.add(current_node.key)
+
+        stack.extend(current_node._upstream_nodes)
+
+    unused_attributes = input_attributes - used_attributes
+    if unused_attributes:
+        unused_attributes_str = ", ".join(str(key) for key in unused_attributes)
+        input_attributes_str = ", ".join(str(key) for key in input_attributes)
+        unused_phrase = "is unused" if len(unused_attributes) == 1 else "are unused"
+
+        raise ValueError(
+            "Compiled Graph expects input to be accessed "
+            f"using all of attributes {input_attributes_str}, "
+            f"but {unused_attributes_str} {unused_phrase}. "
+            "Ensure all input attributes are used and contribute "
+            "to the computation of the Compiled Graph output."
+        )
 
 
 @DeveloperAPI
@@ -329,7 +379,9 @@ class CompiledTask:
         # corresponding value from `args` or `kwargs` in the DAG's input.
         self.output_channels: List[ChannelInterface] = []
         self.output_idxs: List[Optional[Union[int, str]]] = []
-        self.arg_type_hints: List["ChannelOutputType"] = []
+        # The DAGNodes that are arguments to this task.
+        # This is used for lazy resolution of the arguments' type hints.
+        self.arg_nodes: List["ray.dag.DAGNode"] = []
         # idxs of possible ClassMethodOutputNodes if they exist, used for visualization
         self.output_node_idxs: List[int] = []
 
@@ -344,6 +396,10 @@ class CompiledTask:
     @property
     def num_readers(self) -> int:
         return len(self.downstream_task_idxs)
+
+    @property
+    def arg_type_hints(self) -> List["ChannelOutputType"]:
+        return [arg_node.type_hint for arg_node in self.arg_nodes]
 
     def __str__(self) -> str:
         return f"""
@@ -844,6 +900,9 @@ class CompiledDAG:
         self.actor_to_tasks: Dict[
             "ray.actor.ActorHandle", List["CompiledTask"]
         ] = defaultdict(list)
+        # Mapping from actor handle to its GPU IDs.
+        # This is used for type hint resolution for with_tensor_transport("auto").
+        self.actor_to_gpu_ids: Dict["ray.actor.ActorHandle", List[str]] = {}
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
@@ -853,7 +912,8 @@ class CompiledDAG:
             "ray.actor.ActorHandle", List[_DAGNodeOperation]
         ] = defaultdict(list)
         # Mapping from the actor handle to the node ID that the actor is on.
-        self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
+        # A None actor handle means the actor is the driver.
+        self.actor_to_node_id: Dict[Optional["ray.actor.ActorHandle"], str] = {}
 
         # This is set to true when type hint of `transport="nccl"` is used.
         self._use_default_nccl_group = False
@@ -948,11 +1008,16 @@ class CompiledDAG:
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
         collective_ops: Set[_CollectiveOperation] = set()
 
+        input_attributes: Set[str] = set()
         # Find the input node and input attribute nodes in the DAG.
         for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode):
                 assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
+                # handle_unused_attributes:
+                # Save input attributes in a set.
+                input_node = task.dag_node
+                input_attributes.update(input_node.input_attribute_nodes.keys())
             elif isinstance(task.dag_node, InputAttributeNode):
                 self.input_attr_task_idxs.append(idx)
 
@@ -992,6 +1057,10 @@ class CompiledDAG:
         # Collect the set of InputNode keys bound to DAG node args.
         input_positional_args: Set[int] = set()
         input_kwargs: Set[str] = set()
+        # Set of tasks with annotation of with_tensor_transport("auto").
+        # These only correspond to ClassMethodNodes, but not InputNodes
+        # or InputAttributeNodes.
+        auto_transport_tasks: Set["CompiledTask"] = set()
 
         # For each task node, set its upstream and downstream task nodes.
         # Also collect the set of tasks that produce torch.tensors.
@@ -1018,6 +1087,14 @@ class CompiledDAG:
                         "Compiled DAGs can only bind methods to an actor "
                         "that is already created with Actor.remote()"
                     )
+
+                if actor_handle not in self.actor_to_gpu_ids:
+                    self.actor_to_gpu_ids[actor_handle] = CompiledDAG._get_gpu_ids(
+                        actor_handle
+                    )
+
+                if isinstance(dag_node.type_hint, AutoTransportType):
+                    auto_transport_tasks.add(task)
 
                 # Collect actors for NCCL P2P methods.
                 if dag_node.type_hint.requires_nccl():
@@ -1058,17 +1135,23 @@ class CompiledDAG:
                         "supported for NCCL collective operations. Please set "
                         "overlap_gpu_communication=False."
                     )
-            elif isinstance(dag_node, InputNode):
+            elif isinstance(dag_node, InputNode) or isinstance(
+                dag_node, InputAttributeNode
+            ):
                 if dag_node.type_hint.requires_nccl():
                     raise ValueError(
                         "DAG inputs cannot be transferred via NCCL because "
                         "the driver cannot participate in the NCCL group"
                     )
+                if isinstance(dag_node.type_hint, AutoTransportType):
+                    # Currently driver on GPU is not supported, so we always
+                    # use shared memory to transfer tensors.
+                    dag_node.type_hint = TorchTensorType()
 
             if type(dag_node.type_hint) is ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
-                dag_node.with_type_hint(self._default_type_hint)
+                dag_node.type_hint = self._default_type_hint
 
             for _, val in task.kwargs.items():
                 if isinstance(val, DAGNode):
@@ -1089,8 +1172,9 @@ class CompiledDAG:
                 ):
                     downstream_actor_handle = dag_node._get_actor_handle()
 
-                # Add the type hint of the upstream node to the task.
-                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
+                # Add upstream node as the argument nodes of this task, whose
+                # type hints may be updated when resolved lazily.
+                task.arg_nodes.append(upstream_task.dag_node)
 
                 if isinstance(upstream_task.dag_node, InputAttributeNode):
                     # Record all of the keys used to index the InputNode.
@@ -1132,6 +1216,10 @@ class CompiledDAG:
                     # Add all readers to the NCCL actors of P2P.
                     nccl_actors_p2p.add(downstream_actor_handle)
 
+        # Check that all specified input attributes, e.g., InputNode()["x"],
+        # are used in the DAG.
+        _check_unused_dag_input_attributes(output_node, input_attributes)
+
         # Collect all leaf nodes.
         leaf_nodes: DAGNode = []
         for idx, task in self.idx_to_task.items():
@@ -1152,6 +1240,29 @@ class CompiledDAG:
                 f"{[leaf_node.get_method_name() for leaf_node in leaf_nodes]} to the "
                 f"the MultiOutputNode."
             )
+
+        type_hint_resolver = TypeHintResolver(self.actor_to_gpu_ids)
+        # Resolve AutoChannelType type hints and track the actors that use NCCL.
+        # This is needed so that the NCCL group can be initialized for these
+        # actors that use NCCL.
+        for task in auto_transport_tasks:
+            writer = task.dag_node._get_actor_handle()
+            readers = task.downstream_task_idxs.values()
+            writer_and_node = (writer, self._get_node_id(writer))
+            reader_and_node_list = [
+                (reader, self._get_node_id(reader)) for reader in readers
+            ]
+            # Update the type hint to the resolved one. This is needed because
+            # the resolved type hint's `register_custom_serializer` will be called
+            # in preparation for channel I/O.
+            task.dag_node.type_hint = type_hint_resolver.resolve(
+                task.dag_node.type_hint,
+                writer_and_node,
+                reader_and_node_list,
+            )
+            if task.dag_node.type_hint.requires_nccl():
+                nccl_actors_p2p.add(writer)
+                nccl_actors_p2p.update(readers)
 
         nccl_actors_p2p = list(nccl_actors_p2p)
         if None in nccl_actors_p2p:
@@ -1237,19 +1348,32 @@ class CompiledDAG:
             self._input_num_positional_args = max(input_positional_args) + 1
         self._input_kwargs = tuple(input_kwargs)
 
-    def _get_node_id(self, actor_handle: "ray.actor.ActorHandle") -> str:
+    @staticmethod
+    def _get_gpu_ids(actor_handle: "ray.actor.ActorHandle") -> List[str]:
+        """
+        Get the GPU IDs of an actor handle.
+        """
+        accelerator_ids = ray.get(
+            actor_handle.__ray_call__.remote(
+                lambda self: ray.get_runtime_context().get_accelerator_ids()
+            )
+        )
+        return accelerator_ids.get("GPU", [])
+
+    def _get_node_id(self, actor_handle: Optional["ray.actor.ActorHandle"]) -> str:
         """
         Get the node ID of an actor handle and cache it.
 
         Args:
-            actor_handle: The actor handle.
+            actor_handle: The actor handle, or None if the actor handle is the
+                driver.
         Returns:
-            The node ID of the actor handle.
+            The node ID of the actor handle or driver.
         """
         if actor_handle in self.actor_to_node_id:
             return self.actor_to_node_id[actor_handle]
         node_id = None
-        if actor_handle == self._proxy_actor:
+        if actor_handle == self._proxy_actor or actor_handle is None:
             node_id = ray.get_runtime_context().get_node_id()
         else:
             node_id = ray.get(
@@ -1257,7 +1381,6 @@ class CompiledDAG:
                     lambda self: ray.get_runtime_context().get_node_id()
                 )
             )
-        assert node_id is not None
         self.actor_to_node_id[actor_handle] = node_id
         return node_id
 
@@ -1437,10 +1560,11 @@ class CompiledDAG:
                     reader_and_node_list = list(
                         input_node_to_reader_and_node_set[input_dag_node]
                     )
+
                     output_channel = do_allocate_channel(
                         self,
                         reader_and_node_list,
-                        type_hint,
+                        input_dag_node.type_hint,
                         None,
                     )
                     task.output_channels.append(output_channel)

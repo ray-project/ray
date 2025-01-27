@@ -75,7 +75,7 @@ async def fetch_http(session, data):
 
 async def fetch_grpc(stub, data):
     result = await stub.grpc_call(serve_pb2.RawData(nums=data))
-    result.output
+    _ = result.output
 
 
 @ray.remote
