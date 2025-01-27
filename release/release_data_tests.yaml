@@ -355,6 +355,7 @@
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: batch_inference_from_metadata
+  #This benchmark errors because of the issues described in PLAN-383.
   frequency: manual
 
   cluster:
