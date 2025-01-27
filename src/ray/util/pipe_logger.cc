@@ -312,9 +312,11 @@ RedirectionFileHandle CreateRedirectionFileHandle(
         }
         if (stream_redirect_opt.tee_to_stdout) {
           std_ostream.stdout_ostream->flush();
+          RAY_CHECK(std_ostream.stdout_ostream->good());
         }
         if (stream_redirect_opt.tee_to_stderr) {
           std_ostream.stderr_ostream->flush();
+          RAY_CHECK(std_ostream.stderr_ostream->good());
         }
       };
 
