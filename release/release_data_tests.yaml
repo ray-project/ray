@@ -75,7 +75,6 @@
   variations:
     - __suffix__: numpy
       # FIXME: Investigate why this is slow and OOMs.
-      stable: 86400
       run:
         script: >
           python map_benchmark.py --api map_batches --batch-format numpy --sf 1000
