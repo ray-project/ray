@@ -155,6 +155,23 @@ inline absl::flat_hash_map<K, V> MapFromProtobuf(
   return absl::flat_hash_map<K, V>(pb_map.begin(), pb_map.end());
 }
 
+template <class K, class V>
+inline bool MapEqual(const ::google::protobuf::Map<K, V> &lhs,
+                     const ::google::protobuf::Map<K, V> &rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+
+  for (const auto &pair : lhs) {
+    auto it = rhs.find(pair.first);
+    if (it == rhs.end() || it->second != pair.second) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 inline grpc::ChannelArguments CreateDefaultChannelArguments() {
   grpc::ChannelArguments arguments;
   if (::RayConfig::instance().grpc_client_keepalive_time_ms() > 0) {

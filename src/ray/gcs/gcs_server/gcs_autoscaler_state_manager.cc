@@ -18,6 +18,8 @@
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/pb_util.h"
+#include "src/ray/common/scheduling/cluster_resource_data.h"
+#include "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 
 namespace ray {
 namespace gcs {
@@ -435,8 +437,9 @@ std::string GcsAutoscalerStateManager::DebugString() const {
          << "\n- last_seen_autoscaler_state_version_: "
          << last_seen_autoscaler_state_version_
          << "\n - autoscaling_status_.autoscaler_state_version"
-         << (autoscaling_state_.has_value() ? autoscaling_state_->autoscaler_state_version()
-                                            : -1)
+         << (autoscaling_state_.has_value()
+                 ? autoscaling_state_->autoscaler_state_version()
+                 : -1)
          << "\n- last_cluster_resource_state_version_: "
          << last_cluster_resource_state_version_ << "\n- pending demands:\n";
 
@@ -454,6 +457,74 @@ std::string GcsAutoscalerStateManager::DebugString() const {
     stream << "} * " << num_pending << "\n";
   }
   return stream.str();
+}
+
+std::optional<
+    absl::flat_hash_map<ray::NodeID,
+                        std::vector<google::protobuf::Map<std::string, double>>>>
+GcsAutoscalerStateManager::GetPerNodeInfeasibleResourceRequests() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+
+  if (!autoscaling_state_.has_value()) {
+    return std::nullopt;
+  }
+
+  absl::flat_hash_map<ray::NodeID,
+                      std::vector<google::protobuf::Map<std::string, double>>>
+      per_node_infeasible_requests;
+
+  // obtain the infeasible requests from the autoscaler state
+  std::vector<google::protobuf::Map<std::string, double>>
+      autoscaler_infeasible_resource_shapes;
+  for (size_t i = 0; i < autoscaling_state_.value().infeasible_resource_requests_size();
+       i++) {
+    autoscaler_infeasible_resource_shapes.emplace_back(
+        autoscaling_state_.value().infeasible_resource_requests(i).resources_bundle());
+  }
+
+  // collect the infeasible requests per node
+  for (const auto &info : node_resource_info_) {
+    const auto &node_id = info.first;
+    const auto &node_data = info.second.second;
+    const auto &resource_load_by_shape = node_data.resource_load_by_shape();
+
+    for (size_t i = 0; i < resource_load_by_shape.resource_demands_size(); i++) {
+      bool is_infeasible_shape = false;
+      auto &infeasible_resource_shape = autoscaler_infeasible_resource_shapes.at(0);
+      for (const auto &shape : autoscaler_infeasible_resource_shapes) {
+        if (resource_load_by_shape.resource_demands(i).num_infeasible_requests_queued() >
+                0 &&
+            MapEqual(shape, resource_load_by_shape.resource_demands(i).shape())) {
+          is_infeasible_shape = true;
+          infeasible_resource_shape = shape;
+          break;
+        }
+      }
+
+      if (is_infeasible_shape) {
+        if (per_node_infeasible_requests.find(node_id) ==
+            per_node_infeasible_requests.end()) {
+          per_node_infeasible_requests.emplace(
+              node_id, std::vector<google::protobuf::Map<std::string, double>>());
+        }
+        per_node_infeasible_requests.at(node_id).emplace_back(infeasible_resource_shape);
+      }
+    }
+  }
+  return per_node_infeasible_requests;
+}
+
+void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+
+  // Obtain the node & infeasible request mapping
+  auto per_node_infeasible_requests = GetPerNodeInfeasibleResourceRequests();
+  if (!per_node_infeasible_requests.has_value()) {
+    return;
+  }
+
+  // Cancel the infeasible requests
+  // TODO: Call raylet to cancle the infeasible requests
 }
 
 }  // namespace gcs
