@@ -1117,11 +1117,11 @@ def _set_proxy_default_http_options(http_options: HTTPOptions) -> HTTPOptions:
         )
         http_options.middlewares.extend(
             validate_http_proxy_callback_return(
-                call_function_from_import_path(RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH)
+                call_function_from_import_path(
+                    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
+                )
             )
         )
-
-        
 
     return http_options
 
