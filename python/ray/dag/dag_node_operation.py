@@ -87,8 +87,6 @@ class _DAGOperationGraphNode:
         # The NCCL operation of the task. It can be a NCCL read, write, or
         # collective operation.
         self.nccl_op: Optional[_NcclOperation] = nccl_op
-        # The input task index, if this is a NCCL collective operation.
-        self.nccl_collective_input_idx: Optional[int] = None
 
     def __repr__(self):
         return (
@@ -116,13 +114,10 @@ class _DAGOperationGraphNode:
                 return lhs.op.exec_task_idx < rhs.op.exec_task_idx
             return lhs.task_idx < rhs.task_idx
 
-        if self.actor_handle == other.actor_handle:
-            # When both nodes belong to the same actor, use the default comparison.
-            return compare(self, other)
-        elif self.requires_nccl_op != other.requires_nccl_op:
+        if self.requires_nccl_op != other.requires_nccl_op:
             # When one node is a NCCL operation and the other is not, prioritize
-            # the non-NCCL operation.
-            return not self.requires_nccl_op
+            # the NCCL operation.
+            return self.requires_nccl_op
         else:
             # When either both nodes are NCCL operations or both nodes are not
             # NCCL operations, use the default comparison.
@@ -213,17 +208,37 @@ def _add_edge(
 def _push_candidate_node_if_ready(
     actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
     node: _DAGOperationGraphNode,
+    graph: Dict[int, _DAGOperationGraphNode],
 ) -> None:
+    """
+    Push a node to the candidate list if it is ready to be scheduled.
+    If the node is a NCCL operation, all the nodes in the operation are pushed.
+
+    Args:
+        actor_to_candidates: A dictionary mapping an actor id to a list of
+            candidate nodes. The list is maintained as a priority queue, so
+            the head of the priority queue, i.e., `candidates[0]`, is the
+            "smallest" node.
+        node: The node in consideration.
+        graph: A dictionary mapping the index of a task to its corresponding
+            _DAGOperationGraphNode.
+    """
     if node.nccl_op is not None:
         node.nccl_op.ready_task_idxs.add(node.task_idx)
     if node.is_ready:
-        if node.nccl_op is None or not node.nccl_op.scheduled:
+        if node.nccl_op is None:
             heapq.heappush(
                 actor_to_candidates[node.actor_handle._actor_id],
                 node,
             )
-        if node.nccl_op is not None:
+        else:
             node.nccl_op.scheduled = True
+            for task_idx in node.nccl_op.task_idxs:
+                node = graph[task_idx]
+                heapq.heappush(
+                    actor_to_candidates[node.actor_handle._actor_id],
+                    node,
+                )
 
 
 def _select_next_nodes(
@@ -271,6 +286,10 @@ def _select_next_nodes(
     heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
     if top_priority_node.nccl_op is not None:
         next_nodes = [graph[idx] for idx in top_priority_node.nccl_op.task_idxs]
+        for node in next_nodes:
+            if node != top_priority_node:
+                actor_to_candidates[node.actor_handle._actor_id].remove(node)
+                heapq.heapify(actor_to_candidates[node.actor_handle._actor_id])
     else:
         next_nodes = [top_priority_node]
     return next_nodes
@@ -534,12 +553,12 @@ def _generate_actor_to_execution_schedule(
     # A dictionary mapping an actor id to a list of candidate nodes. The list
     # is maintained as a priority queue, so the head of the queue, i.e.,
     # `candidates[0]`, is the "smallest" node.
-    actor_to_candidates: Dict[
-        "ray._raylet.ActorID", List[_DAGOperationGraphNode]
-    ] = defaultdict(list)
+    actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]] = (
+        defaultdict(list)
+    )
     for node in graph.values():
         if node.in_degree == 0:
-            _push_candidate_node_if_ready(actor_to_candidates, node)
+            _push_candidate_node_if_ready(actor_to_candidates, node, graph)
 
     visited_nodes: Set[_DAGOperationGraphNode] = set()
 
@@ -563,8 +582,10 @@ def _generate_actor_to_execution_schedule(
                 out_node = graph[out_node_task_idx]
                 out_node.in_edges.pop(node.task_idx)
                 if out_node.in_degree == 0:
-                    _push_candidate_node_if_ready(actor_to_candidates, out_node)
-    assert len(visited_nodes) == len(graph), "Expected all nodes to be visited"
+                    _push_candidate_node_if_ready(actor_to_candidates, out_node, graph)
+    assert len(visited_nodes) == len(
+        graph
+    ), f"Expected all nodes to be visited {visited_nodes} vs {graph}"
     for node in visited_nodes:
         assert node.is_ready, f"Expected {node} to be ready"
     for candidates in actor_to_candidates.values():
@@ -609,11 +630,6 @@ def _generate_overlapped_execution_schedule(
         for i in range(1, len(overlapped_schedule)):
             if not overlapped_schedule[i - 1].requires_nccl_op and (
                 overlapped_schedule[i].requires_nccl_read
-                or (
-                    overlapped_schedule[i].requires_nccl_collective
-                    and overlapped_schedule[i].nccl_collective_input_idx
-                    != overlapped_schedule[i - 1].task_idx
-                )
             ):
                 overlapped_schedule[i], overlapped_schedule[i - 1] = (
                     overlapped_schedule[i - 1],

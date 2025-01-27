@@ -87,7 +87,7 @@ class TestSelectNextNodes:
 
         driver -> fake_actor.op -> fake_actor.op -> driver
 
-        In the example above, both READ operations on the fake_actor have zero
+        In the example above, both operations on the fake_actor have zero
         in-degree. The operation with the smaller index in the executable_tasks
         list should be selected first; therefore, the one on the left side will
         be selected first.
@@ -133,14 +133,12 @@ class TestSelectNextNodes:
         """
         Simulate the case where there is only one candidate which is a NCCL
         WRITE operation. In this case, `_select_next_nodes` should return both
-        the NCCL WRITE operation and the corresponding READ operation.
+        the NCCL WRITE operation and the corresponding NCCL READ operation.
 
         driver -> fake_actor_1.op -> fake_actor_2.op -> driver
 
         In the example above, communication between fake_actor_1 and fake_actor_2
-        is done using NCCL. The following test case simulates a scenario where the
-        READ and COMPUTE operations on fake_actor_1 have already been added to the
-        execution schedule.
+        is done using NCCL.
         """
         monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
 
@@ -165,6 +163,7 @@ class TestSelectNextNodes:
         }
 
         mock_actor_to_candidates = {
+            fake_actor_1: [mock_graph[task_idx_1]],
             fake_actor_2: [mock_graph[task_idx_2]],
         }
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
@@ -181,16 +180,15 @@ class TestSelectNextNodes:
         """
         Simulate a scenario where there are two candidates that are NCCL WRITE
         operations. In this case, _select_next_nodes can choose either of the
-        two NCCL WRITE operations and their corresponding READ operations.
+        two NCCL WRITE operations and their corresponding NCCL READ operations.
 
         driver -> fake_actor_1.op -> fake_actor_2.op -> driver
                |                                     |
                -> fake_actor_2.op -> fake_actor_1.op -
 
         In the example above, communication between fake_actor_1 and fake_actor_2 is
-        done using NCCL. The following test case simulates a scenario where the READ
-        and COMPUTE operations on both the DAG nodes with smaller bind_index on
-        fake_actor_1 and fake_actor_2 have already been added to the execution schedule.
+        done using NCCL. The following test case simulates a scenario where the
+        two NCCL WRITE operations are both ready.
         """
         monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
 
@@ -243,8 +241,8 @@ class TestSelectNextNodes:
             }
 
             mock_actor_to_candidates = {
-                fake_actor_1: [mock_graph[task_idx_1_0]],
-                fake_actor_2: [mock_graph[task_idx_2_0]],
+                fake_actor_1: [mock_graph[task_idx_1_0], mock_graph[task_idx_1_1]],
+                fake_actor_2: [mock_graph[task_idx_2_0], mock_graph[task_idx_2_1]],
             }
 
             next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
@@ -363,8 +361,8 @@ class TestSelectNextNodes:
         }
         mock_actor_to_candidates = {
             fake_actor_1: [mock_graph[task_idx_1]],
-            fake_actor_2: [],
-            fake_actor_3: [],
+            fake_actor_2: [mock_graph[task_idx_2]],
+            fake_actor_3: [mock_graph[task_idx_3]],
             fake_actor_4: [mock_graph[task_idx_4]],
         }
 
@@ -387,7 +385,7 @@ class TestSelectNextNodes:
 class TestBuildDAGNodeOperationGraph:
     """
     Test whether `_build_dag_node_operation_graph` function adds the correct
-    edges between the nodes in the operation graph base on the 3 rules mentioned
+    edges between the nodes in the operation graph base on the rules mentioned
     in the doc string of `_build_dag_node_operation_graph`.
     """
 
@@ -420,7 +418,7 @@ class TestBuildDAGNodeOperationGraph:
         driver -> fake_actor_1.op -> fake_actor_2.op -> driver
 
         This test case aims to verify whether the function correctly adds an edge
-        from the writer's WRITE operation to the reader's READ operation.
+        from the upstream operation to the downstream operation.
         """
         monkeypatch.setattr(ClassMethodNode, "__init__", mock_class_method_call_init)
         monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
@@ -483,7 +481,7 @@ class TestBuildDAGNodeOperationGraph:
                -> fake_actor_2.op -> fake_actor_1.op -
 
         This test includes two actors, each with two tasks. The
-        test case covers all three rules for adding edges between
+        test case covers all rules for adding edges between
         operation nodes in the operation graph.
         """
         monkeypatch.setattr(ClassMethodNode, "__init__", mock_class_method_call_init)
@@ -528,20 +526,18 @@ class TestGenerateActorToExecutionSchedule:
 
     def add_data_dependeny(
         self,
-        ops_writer: _DAGOperationGraphNode,
-        ops_reader: _DAGOperationGraphNode,
+        upstream: _DAGOperationGraphNode,
+        downstream: _DAGOperationGraphNode,
     ):
         """
-        Add a data dependency between the WRITE operation of the writer and the READ
-        operation of the reader.
+        Add a data dependency between the upstream and downstream nodes.
+        The upstream node's output is read by the downstream node.
 
         Args:
-            writer_operations: A dictionary where the key is the operation type and the
-                value is the operation node of the writer.
-            reader_operations: A dictionary where the key is the operation type and the
-                value is the operation node of the reader.
+            upstream: The upstream node.
+            downstream: The downstream node.
         """
-        _add_edge(ops_writer, ops_reader)
+        _add_edge(upstream, downstream)
 
     def add_control_dependency(
         self,
@@ -600,10 +596,10 @@ class TestGenerateActorToExecutionSchedule:
                                             |                            |
                                             -> fake_actor.op (task_idx_3) -
 
-        When the `dad_idx_1.WRITE` operation is picked, both `task_idx_2.READ` and
-        `task_idx_3.READ` operations should be zero in-degree. In this case, the one
+        When the `task_idx_1.COMPUTE` operation is picked, both `task_idx_2.COMPUTE` and
+        `task_idx_3.COMPUTE` operations should be zero in-degree. In this case, the one
         with the smaller `bind_index` should be selected first. That is,
-        `task_idx_2.READ` should be selected first.
+        `task_idx_2.COMPUTE` should be selected first.
         """
         monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
 
@@ -698,8 +694,8 @@ class TestGenerateActorToExecutionSchedule:
                -> actor_2.op (task_idx_2_1) -> actor_1.op (task_idx_1_2) -
 
         In this test, the communication between fake_actor_1 and fake_actor_2 is done
-        using NCCL. When the task_idx_1.WRITE operation is picked, the task_idx_2.READ
-        operation is also added to the execution schedule because of the NCCL operation.
+        using NCCL. When the task_idx_1.NCCL_WRITE operation is picked, the
+        task_idx_2.NCCL_READ operation is also added to the execution schedule.
         """
         monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
 
@@ -755,7 +751,7 @@ class TestGenerateActorToExecutionSchedule:
             graph[task_idx_1_2].op,
         ]
         assert actor_to_execution_schedule[fake_actor_2] == [
-            # The order of `task_idx_2_2.NCCL_READ` and `task_idx_2_2.COMPUTE`
+            # The order of `task_idx_2_2.NCCL_READ` and `task_idx_2_1.NCCL_WRITE`
             # is important.
             graph[task_idx_2_2].op,
             graph[task_idx_2_1].op,
@@ -1012,10 +1008,10 @@ class TestGenerateActorToExecutionSchedule:
         assert actor_to_execution_schedule[worker_2] == [
             graph[task_idx_2_1].op,
             graph[task_idx_2_2].op,
-            graph[task_idx_2_3].op,
-            # The order of `task_idx_2_3.NCCL_READ` and `task_idx_2_2.NCCL_WRITE`
+            # The order of `task_idx_2_5.NCCL_WRITE` and `task_idx_2_4.NCCL_READ`
             # is important.
             graph[task_idx_2_5].op,
+            graph[task_idx_2_3].op,
             graph[task_idx_2_4].op,
             graph[task_idx_2_6].op,
             graph[task_idx_2_7].op,
@@ -1128,8 +1124,8 @@ class TestGenerateActorToExecutionSchedule:
         extracted_schedule = _extract_execution_schedule(actor_to_execution_schedule)
         assert len(extracted_schedule) == 1
         assert extracted_schedule[fake_actor] == [
-            graph[task_idx_1].op,
             graph[task_idx_2].op,
+            graph[task_idx_1].op,
         ]
 
         overlapped_schedule = _generate_overlapped_execution_schedule(

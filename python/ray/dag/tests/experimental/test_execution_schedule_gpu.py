@@ -118,8 +118,8 @@ def test_simulate_pp_2workers_2batches_1f1b(
     This test simulates a simple 1F1B pipeline parallelism for training with
     2 workers and 2 batches.
 
-    w1: fwd_b1  send  fwd_b2          recv  send  bwd_b1          recv  bwd_b2
-    w2:         recv  fwd_b1  bwd_b1  send  recv  fwd_b2  bwd_b2  send
+    w1: fwd_b1 send               recv fwd_b2 send               recv bwd_b1 bwd_b2
+    w2:        recv fwd_b1 bwd_b1 send        recv fwd_b2 bwd_b2 send
 
     The communication between workers is done using NCCL. The communication
     within the worker actor is done using IntraProcessChannel.
@@ -147,7 +147,7 @@ def test_simulate_pp_2workers_2batches_1f1b(
         dag = MultiOutputNode([batch_1, batch_2])
     compiled_dag = dag.experimental_compile()
 
-    w1_expected_schedule = [0, 1, 2, 3, 5, 4, 6, 7, 8]
+    w1_expected_schedule = [0, 1, 2, 5, 3, 4, 7, 6, 8]
     w2_expected_schedule = [0, 1, 2, 3, 4, 5, 6, 7]
     w1_schedule = compiled_dag.actor_to_execution_schedule[w1]
     w2_schedule = compiled_dag.actor_to_execution_schedule[w2]
