@@ -28,7 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--sf",
-        metavar="scale_factor",
+        dest="scale_factor",
         type=int,
         default=1,
         help=(
