@@ -2295,7 +2295,7 @@ types-requests==2.31.0.6
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.8.0
+typing-extensions==4.12.2
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   alembic
