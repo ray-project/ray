@@ -46,9 +46,9 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
         input_dim = self.observation_space.shape[0]
         hidden_dim = self.model_config["fcnet_hiddens"][0]
 
-        # set failsafe for action space dim
+        # Set failsafe for action space dim
         if isinstance(self.action_space, gym.spaces.Box):
-            output_dim = self.action_space.shape[0]
+            output_dim = self.action_space.shape[0]*2
         elif isinstance(self.action_space, gym.spaces.Discrete):
             output_dim = self.action_space.n
         else:
