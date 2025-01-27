@@ -148,7 +148,7 @@ You may have to check whether your CNN configuration works with the incoming obs
 dimensions. For example, for an `Atari <https://ale.farama.org/environments/>`__ environment, you can
 use RLlib's Atari wrapper utility, which performs resizing (default 64x64) and gray scaling (default True),
 frame stacking (default None), frame skipping (default 4), normalization (from uint8 to float32), and
-applies up to 30 noop actions after a reset, which aren't part of the episode:
+applies up to 30 "noop" actions after a reset, which aren't part of the episode:
 
 .. testcode::
 
@@ -210,7 +210,7 @@ see :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig
 
 .. note::
 
-    To auto-wrap your default model with an extra LSTM layer to allow your model to learn in
+    To auto-wrap your default encoder with an extra LSTM layer and allow your model to learn in
     non-Markovian, partially observable environments, you can try the convenience
     ``DefaultModelConfig.use_lstm`` setting in combination with the
     ``DefaultModelConfig.lstm_cell_size`` and ``DefaultModelConfig.max_seq_len`` settings.
