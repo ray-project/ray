@@ -34,6 +34,8 @@ from ray.train.v2.api.data_parallel_trainer import (
 )
 from ray.train.v2._internal.migration_utils import (
     _v2_migration_warnings_enabled,
+    FAIL_FAST_DEPRECATION_MESSAGE,
+    TRAINER_RESOURCES_DEPRECATION_MESSAGE,
 )
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
@@ -524,6 +526,18 @@ class BaseTrainer(abc.ABC):
                 f"`ray.train.Checkpoint`, found {type(self.starting_checkpoint)} "
                 f"with value `{self.starting_checkpoint}`."
             )
+
+        self._log_v2_deprecation_warnings()
+
+    def _log_v2_deprecation_warnings(self):
+        if not _v2_migration_warnings_enabled():
+            return
+
+        if self.scaling_config.trainer_resources is not None:
+            _log_deprecation_warning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
+
+        if self.run_config.failure_config.fail_fast != False:
+            _log_deprecation_warning(FAIL_FAST_DEPRECATION_MESSAGE)
 
     @classmethod
     def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
