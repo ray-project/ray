@@ -1111,12 +1111,12 @@ class ProxyActor:
     ):  # noqa: F821
         self._node_id = node_id
         self._node_ip_address = node_ip_address
-        self.grpc_options = grpc_options or gRPCOptions()
         # Override keep alive setting if the environment variable is set.
         # TODO(edoakes): more sane behavior here.
         if RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S > 0:
             http_options.keep_alive_timeout_s = RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S
 
+        grpc_options = grpc_options or gRPCOptions()
         grpc_enabled = (
             grpc_options.port > 0 and len(grpc_options.grpc_servicer_functions) > 0
         )
