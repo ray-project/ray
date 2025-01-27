@@ -488,9 +488,10 @@ feather-format==0.4.1
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 ffmpy==0.3.1
     # via gradio
-filelock==3.13.1
+filelock==3.17.0
     # via
     #   -r /ray/ci/../python/requirements.txt
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   datasets
     #   huggingface-hub
