@@ -236,9 +236,9 @@ class Channel(ChannelInterface):
             self._writer_node_id = (
                 ray.runtime_context.get_runtime_context().get_node_id()
             )
-            self._writer_ref = _create_channel_ref(self, typ.buffer_size_bytes)
+            self._writer_ref = _create_channel_ref(self, self._buffer_size_bytes)
 
-            self._create_reader_refs(typ.buffer_size_bytes)
+            self._create_reader_refs(self._buffer_size_bytes)
         else:
             assert (
                 _writer_node_id is not None
