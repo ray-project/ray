@@ -25,7 +25,6 @@ class ProcessorConfig(BaseModel):
         "You can tune the batch size to balance the throughput and fault-tolerance "
         "based on your use case.",
     )
-
     accelerator_type: Optional[str] = Field(
         default=None,
         description="The accelerator type used by the LLM stage in a processor. "
