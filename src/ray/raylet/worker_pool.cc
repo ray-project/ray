@@ -1498,7 +1498,7 @@ void WorkerPool::PrestartWorkersInternal(const TaskSpecification &task_spec,
     GetOrCreateRuntimeEnv(
         task_spec.SerializedRuntimeEnv(),
         task_spec.RuntimeEnvConfig(),
-        task_spec.JobId(),
+        JobID::Nil(),
         [this, task_spec = task_spec](bool successful,
                                       const std::string &serialized_runtime_env_context,
                                       const std::string &setup_error_message) {
@@ -1510,7 +1510,7 @@ void WorkerPool::PrestartWorkersInternal(const TaskSpecification &task_spec,
           PopWorkerStatus status;
           StartWorkerProcess(task_spec.GetLanguage(),
                              rpc::WorkerType::WORKER,
-                             task_spec.JobId(),
+                             JobID::Nil(),
                              &status,
                              /*dynamic_options=*/{},
                              task_spec.GetRuntimeEnvHash(),
