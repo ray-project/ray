@@ -76,9 +76,9 @@ gcloud container clusters get-credentials $CLUSTER_NAME --zone $ZONE
 The remote GKE cluster is now reachable through `kubectl`. For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
 
 
-### [Optional] Manually install KubeRay and the TPU webhook in a GKE cluster without the Ray Addon:
+### [Optional] Manually install KubeRay and the TPU webhook in a GKE cluster without the Ray Operator Addon:
 
-In a cluster without the Ray Addon enabled, KubeRay can be manually installed using [helm](https://ray-project.github.io/kuberay/deploy/helm/) with the following commands:
+In a cluster without the Ray Operator Addon enabled, KubeRay can be manually installed using [helm](https://ray-project.github.io/kuberay/deploy/helm/) with the following commands:
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
