@@ -30,16 +30,16 @@ class MapTransformFnDataType(Enum):
 class MapTransformFnCategory(Enum):
     """An enum that represents the PreProcess/DataProcess/PostProcess category of a
     MapTransformFn.
-
-    PreProcess: Data Model conversion i.e. Block/Batch/Row to match Data Processing step.
-    DataProcess: Actual Data processing/transformation.
-    PostProcess: Data Model conversion for downstream data pipeline.
-
     """
 
+    # Data format conversion before the actual data processing, i.e. converting input blocks to rows or batches.
     PreProcess = 0
-    PostProcess = 1
-    DataProcess = 2
+
+    # Actual Data processing/transformation.
+    DataProcess = 1
+
+    # Data format conversion after the actual data processing, i.e., converting rows or batches to output blocks.
+    PostProcess = 2
 
 
 class MapTransformFn:
