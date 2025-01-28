@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Dict
 import os
 import setproctitle
+from packaging.version import Version
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
@@ -34,6 +35,7 @@ class SubprocessModuleConfig:
 
     cluster_id_hex: str
     gcs_address: str
+    session_name: str
     # Logger configs. Will be set up in subprocess entrypoint `run_module`.
     logging_level: str
     logging_format: str
@@ -52,6 +54,10 @@ class SubprocessModuleRequest:
     query: Dict[str, str]
     headers: Dict[str, str]
     body: bytes
+    # If the route has a match_info, it will be stored here.
+    # e.g. @SubprocessRouteTable.get("/api/data/datasets/{job_id}")
+    # match_info = {"job_id": "123"}
+    match_info: Dict[str, str]
 
 
 class SubprocessModule(abc.ABC):
@@ -79,6 +85,7 @@ class SubprocessModule(abc.ABC):
         # Lazy init
         self._gcs_aio_client = None
         self._parent_process_death_detection_task = None
+        self._http_session = None
 
     @staticmethod
     def is_minimal_module():
@@ -103,6 +110,31 @@ class SubprocessModule(abc.ABC):
         from the parent queue.
         """
         pass
+
+    @property
+    def session_name(self):
+        # Ray session name. It's not related to the aiohttp client session.
+        return self._config.session_name
+
+    @property
+    def http_session(self):
+        # Assumes non minimal Ray.
+        from ray.dashboard.optional_deps import aiohttp
+        from ray.dashboard.utils import get_or_create_event_loop
+
+        if self._http_session is not None:
+            return self._http_session
+        # Create a http session for this module.
+        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
+        if Version(aiohttp.__version__) < Version("4.0.0"):
+            self._http_session = aiohttp.ClientSession(loop=get_or_create_event_loop())
+        else:
+            self._http_session = aiohttp.ClientSession()
+        return self._http_session
+
+    @property
+    def gcs_address(self):
+        return self._config.gcs_address
 
     @property
     def gcs_aio_client(self):
