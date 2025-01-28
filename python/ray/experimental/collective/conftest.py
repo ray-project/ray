@@ -143,7 +143,7 @@ class MockNcclGroupSet:
         actors_and_custom_comms: Set[
             Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
         ],
-        p2p_actors_and_custom_comm: Optional[
+        default_actors_and_custom_comm: Optional[
             Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
         ],
     ) -> None:
@@ -151,14 +151,14 @@ class MockNcclGroupSet:
             set(self.ids_to_actors_and_custom_comms.values()) == actors_and_custom_comms
         )
 
-        nccl_group_id_p2p_id = compiled_dag._default_communicator_id
-        if p2p_actors_and_custom_comm is None:
-            assert nccl_group_id_p2p_id is None
+        default_communicator_id = compiled_dag._default_communicator_id
+        if default_actors_and_custom_comm is None:
+            assert default_communicator_id is None
         else:
-            assert nccl_group_id_p2p_id
+            assert default_communicator_id
             assert (
-                self.ids_to_actors_and_custom_comms[nccl_group_id_p2p_id]
-                == p2p_actors_and_custom_comm
+                self.ids_to_actors_and_custom_comms[default_communicator_id]
+                == default_actors_and_custom_comm
             )
 
     def check_teardown(self, nccl_group_ids: List[str]) -> None:
@@ -212,7 +212,7 @@ def check_nccl_group_init(
     actors_and_custom_comms: Set[
         Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
     ],
-    p2p_actors_and_custom_comm: Optional[
+    default_actors_and_custom_comm: Optional[
         Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
     ] = None,
 ) -> "ray.dag.CompiledDAG":
@@ -230,7 +230,7 @@ def check_nccl_group_init(
     mock_nccl_group_set.check_init(
         compiled_dag,
         actors_and_custom_comms,
-        p2p_actors_and_custom_comm,
+        default_actors_and_custom_comm,
     )
 
     return compiled_dag, mock_nccl_group_set
