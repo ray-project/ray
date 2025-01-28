@@ -12,6 +12,7 @@ from packaging.version import Version
 import json
 
 import ray
+from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
@@ -101,6 +102,7 @@ class SubprocessModule(abc.ABC):
         self._parent_process_pid = parent_process_pid
         # Lazy init
         self._gcs_aio_client = None
+        self._gcs_client = None
         self._parent_process_death_detection_task = None
         self._http_session = None
 
@@ -190,6 +192,18 @@ class SubprocessModule(abc.ABC):
             )
         return self._gcs_aio_client
 
+    @property
+    def gcs_client(self):
+        if self._gcs_client is None:
+            self._gcs_client = GcsClient(
+                address=self._config.gcs_address,
+                nums_reconnect_retry=0,
+                cluster_id=self._config.cluster_id_hex,
+            )
+            if not ray.experimental.internal_kv._internal_kv_initialized():
+                ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
+        return self._gcs_client
+
     def handle_child_bound_message(
         self,
         loop: asyncio.AbstractEventLoop,
@@ -233,7 +247,6 @@ class SubprocessModule(abc.ABC):
         while True:
             try:
                 message = self._child_bound_queue.get()
-                logger.error(f"message: {message}")
             except Exception:
                 # This can happen if the parent process died, and getting from the queue
                 # can have EOFError.
