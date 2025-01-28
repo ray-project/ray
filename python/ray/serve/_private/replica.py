@@ -344,6 +344,9 @@ class ReplicaBase(ABC):
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
 
+        # Flipped to `True` when health checks pass and `False` when they fail. May be
+        # used by replica subclass implementations.
+        self._healthy = False
         # Flipped to `True` once graceful shutdown is initiated. May be used by replica
         # subclass implementations.
         self._shutting_down = False
@@ -801,13 +804,19 @@ class ReplicaBase(ABC):
         await self._metrics_manager.shutdown()
 
     async def check_health(self):
-        # If there's no user-defined health check, nothing runs on the user code event
-        # loop and no future is returned.
-        f: Optional[
-            concurrent.futures.Future
-        ] = self._user_callable_wrapper.call_user_health_check()
-        if f is not None:
-            await asyncio.wrap_future(f)
+        try:
+            # If there's no user-defined health check, nothing runs on the user code event
+            # loop and no future is returned.
+            f: Optional[
+                concurrent.futures.Future
+            ] = self._user_callable_wrapper.call_user_health_check()
+            if f is not None:
+                await asyncio.wrap_future(f)
+            self._healthy = True
+        except Exception:
+            logger.warning("Replica health check failed.")
+            self._healthy = False
+
 
 
 class Replica(ReplicaBase):
