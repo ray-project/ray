@@ -39,7 +39,7 @@ class DefaultLoggingConfigurator(LoggingConfigurator):
 
     @Deprecated
     def configure_logging(self, encoding: str, log_level: str):
-        self.configure(self)
+        self.configure(LoggingConfig(encoding=encoding, log_level=log_level))
 
     def configure(self, logging_config: "LoggingConfig"):
         formatter = self._encoding_to_formatter[logging_config.encoding]

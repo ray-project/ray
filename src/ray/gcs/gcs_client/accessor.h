@@ -22,6 +22,7 @@
 #include "ray/gcs/callback.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/sequencer.h"
+#include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -990,6 +991,10 @@ class AutoscalerStateAccessor {
                                          std::string &serialized_reply);
 
   virtual Status GetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
+
+  virtual Status AsyncGetClusterStatus(
+      int64_t timeout_ms,
+      const OptionalItemCallback<rpc::autoscaler::GetClusterStatusReply> &callback);
 
   virtual Status ReportAutoscalingState(int64_t timeout_ms,
                                         const std::string &serialized_state);
