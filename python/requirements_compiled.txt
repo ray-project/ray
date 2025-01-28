@@ -128,7 +128,7 @@ async-generator==1.10
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 async-timeout==4.0.3
     # via redis
-attrs==21.4.0
+attrs==25.1.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aiohttp
@@ -137,6 +137,7 @@ attrs==21.4.0
     #   jsonschema
     #   jupyter-cache
     #   open-spiel
+    #   referencing
     #   sarif-om
     #   semgrep
 aws-sam-translator==1.81.0
@@ -488,9 +489,10 @@ feather-format==0.4.1
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 ffmpy==0.3.1
     # via gradio
-filelock==3.13.1
+filelock==3.17.0
     # via
     #   -r /ray/ci/../python/requirements.txt
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   datasets
     #   huggingface-hub
@@ -846,14 +848,14 @@ jsonpointer==2.4
     # via
     #   jsonpatch
     #   jsonschema
-jsonschema==4.17.3
+jsonschema==4.23.0
     # via
     #   -r /ray/ci/../python/requirements.txt
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   altair
     #   aws-sam-translator
     #   cfn-lint
     #   comet-ml
-    #   jsonschema-spec
     #   jupyter-events
     #   jupyterlab-server
     #   nbformat
@@ -861,8 +863,12 @@ jsonschema==4.17.3
     #   openapi-spec-validator
     #   ray
     #   semgrep
-jsonschema-spec==0.1.6
+jsonschema-path==0.3.4
     # via openapi-spec-validator
+jsonschema-specifications==2024.10.1
+    # via
+    #   jsonschema
+    #   openapi-schema-validator
 junit-xml==1.9
     # via cfn-lint
 jupyter-cache==0.6.1
@@ -1255,9 +1261,11 @@ onnxruntime==1.18.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
 open-spiel==1.4
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
-openapi-schema-validator==0.4.4
-    # via openapi-spec-validator
-openapi-spec-validator==0.5.7
+openapi-schema-validator==0.6.3
+    # via
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   openapi-spec-validator
+openapi-spec-validator==0.7.1
     # via moto
 opencensus==0.11.3
     # via -r /ray/ci/../python/requirements.txt
@@ -1393,7 +1401,7 @@ path==16.14.0
 path-py==12.5.0
     # via pytest-shutil
 pathable==0.4.3
-    # via jsonschema-spec
+    # via jsonschema-path
 pathspec==0.11.2
     # via black
 patsy==0.5.3
@@ -1628,8 +1636,6 @@ pyro-ppl==1.9.1
     # via botorch
 pyro4==4.82
     # via hpbandster
-pyrsistent==0.20.0
-    # via jsonschema
 pysocks==1.7.1
     # via requests
 pyspark==3.4.1
@@ -1742,7 +1748,7 @@ pyyaml==6.0.1
     #   distributed
     #   gradio
     #   huggingface-hub
-    #   jsonschema-spec
+    #   jsonschema-path
     #   jupyter-cache
     #   jupyter-events
     #   jupytext
@@ -1783,6 +1789,11 @@ raydp==1.7.0b20231020.dev0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 redis==4.4.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
+referencing==0.36.2
+    # via
+    #   jsonschema
+    #   jsonschema-path
+    #   jsonschema-specifications
 regex==2024.5.15
     # via
     #   cfn-lint
@@ -1809,7 +1820,7 @@ requests==2.31.0
     #   gradio
     #   gradio-client
     #   huggingface-hub
-    #   jsonschema-spec
+    #   jsonschema-path
     #   jupyterlab-server
     #   kubernetes
     #   mlflow
@@ -1868,6 +1879,10 @@ rich==13.3.2
     #   pyiceberg
     #   semgrep
     #   typer
+rpds-py==0.22.3
+    # via
+    #   jsonschema
+    #   referencing
 rsa==4.7.2
     # via
     #   gcs-oauth2-boto-plugin
@@ -2317,6 +2332,7 @@ typing-extensions==4.12.2
     #   pydantic
     #   pydantic-core
     #   pytorch-lightning
+    #   referencing
     #   semgrep
     #   snowflake-connector-python
     #   sqlalchemy
@@ -2372,7 +2388,7 @@ uvloop==0.19.0
     #   vmc-draas-client-bindings
     #   vsphere-automation-sdk
     # via vsphere-automation-sdk
-virtualenv==20.25.3
+virtualenv==20.29.1
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
