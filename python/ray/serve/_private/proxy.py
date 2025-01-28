@@ -1141,8 +1141,15 @@ class ProxyActor:
         self._node_id = node_id
         self._node_ip_address = node_ip_address
 
-        self._http_options = _set_proxy_default_http_options(http_options)
-        self._grpc_options = grpc_options or gRPCOptions()
+        # Configure proxy default HTTP and gRPC options.
+        http_options = _set_proxy_default_http_options(http_options)
+        grpc_options = grpc_options or gRPCOptions()
+        self._http_options = http_options
+        self._grpc_options = grpc_options
+
+        # We modify the HTTP and gRPC options above, so delete them to avoid
+        del http_options, grpc_options
+
         grpc_enabled = (
             self._grpc_options.port > 0
             and len(self._grpc_options.grpc_servicer_functions) > 0
@@ -1190,7 +1197,7 @@ class ProxyActor:
             is_head=is_head,
             self_actor_name=ray.get_runtime_context().get_actor_name(),
             proxy_router=self.proxy_router,
-            request_timeout_s=http_options.request_timeout_s,
+            request_timeout_s=self._http_options.request_timeout_s,
         )
         self.grpc_proxy = (
             gRPCProxy(
