@@ -12,7 +12,6 @@ from collections import defaultdict
 logger = logging.getLogger(__name__)
 
 
-# [CL] Merge it into `OperationGraphNode`.
 class _DAGNodeOperation:
     def __init__(
         self,
