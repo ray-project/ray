@@ -239,6 +239,8 @@ ray_cc_test(
     size = "small",
     tags = [
         "team:core",
+        # TSAN fails to understand synchroization logic, and the test suite always contains exactly one test case so we disable the whole test suite.
+        "no_tsan",
     ],
 )
 
