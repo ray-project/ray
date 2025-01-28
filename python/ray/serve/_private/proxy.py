@@ -1198,7 +1198,7 @@ class ProxyActor:
                 node_ip_address=self._node_ip_address,
                 is_head=is_head,
                 proxy_router=self.proxy_router,
-                request_timeout_s=(RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S),
+                request_timeout_s=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
             )
             if grpc_enabled
             else None
@@ -1268,14 +1268,16 @@ class ProxyActor:
         """
         try:
             self._running_http_server_task = await self._start_http_server_task
-        except Exception:
+        except Exception as e:
             logger.exception("Failed to start proxy HTTP server.")
+            raise e from None
 
         try:
             if self._start_grpc_server_task is not None:
                 self._running_grpc_server_task = await self._start_grpc_server_task
-        except Exception:
+        except Exception as e:
             logger.exception("Failed to start proxy gRPC server.")
+            raise e from None
 
         # Return proxy metadata used by the controller.
         # NOTE(zcin): We need to convert the metadata to a json string because
