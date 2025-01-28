@@ -58,6 +58,8 @@ class SubprocessModuleRequest:
     aiohttp.web.Request which is not pickleable.
     """
 
+    method: str
+    path_qs: str
     # Not really importing because we want to support minimal Ray later.
     # MultiMapping is just a dict, with `getall()` method to give (K -> List[V]).
     query: "multidict.MultiMapping[str, str]"  # noqa: F821
@@ -101,6 +103,30 @@ class SubprocessModule(abc.ABC):
         self._gcs_aio_client = None
         self._parent_process_death_detection_task = None
         self._http_session = None
+
+        # Cache methods by __name__. See __getattr__ for more details.
+        self._methods_by_name = {}
+        for method_name in dir(self):
+            method = getattr(self, method_name)
+            if (
+                callable(method)
+                and not method_name.startswith("_")
+                and hasattr(method, "__name__")
+            ):
+                self._methods_by_name[method.__name__] = method
+        logger.error(f"dir: {dir(self)}, methods_by_name: {self._methods_by_name}")
+
+    def __getattr__(self, name):
+        """
+        Hack to support aiohttp_cache that changes __name__ of the method. We look up
+        methods by getattr(module, method.__name__). If the method is decorated with
+        aiohttp_cache, the __name__ is changed but getattr by default will not work.
+
+        If there are multiple methods with the same __name__, raise an error.
+        """
+        if name in self._methods_by_name:
+            return self._methods_by_name[name]
+        raise AttributeError(f"Attribute {name} not found as __name__")
 
     @staticmethod
     def is_minimal_module():
@@ -208,6 +234,7 @@ class SubprocessModule(abc.ABC):
         while True:
             try:
                 message = self._child_bound_queue.get()
+                logger.error(f"message: {message}")
             except Exception:
                 # This can happen if the parent process died, and getting from the queue
                 # can have EOFError.

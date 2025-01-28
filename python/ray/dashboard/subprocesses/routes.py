@@ -117,6 +117,8 @@ class SubprocessRouteTable(BaseRouteTable):
             start_message_sent = False
             try:
                 request = SubprocessModuleRequest(
+                    method=message.http_method,
+                    path_qs=message.path_qs,
                     query=message.query,
                     headers=message.headers,
                     body=message.body,
@@ -175,6 +177,8 @@ class SubprocessRouteTable(BaseRouteTable):
         ) -> None:
             try:
                 request = SubprocessModuleRequest(
+                    method=message.http_method,
+                    path_qs=message.path_qs,
                     query=message.query,
                     headers=message.headers,
                     body=message.body,

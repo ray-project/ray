@@ -260,19 +260,26 @@ class SubprocessModuleHandle:
         )
         self.active_requests.put_new(request_id, new_active_request)
         body = b""
+        http_method = ""
+        path_qs = ""
         query = {}
         headers = {}
+        match_info = {}
         if request is not None:
             body = await request.read()
             # request.query can have type CIMultiDictProxy which is not serializable.
             # Need a copy to be serializable.
             query = request.query.copy()
             headers = request.headers.copy()
+            http_method = request.method
+            path_qs = request.path_qs
             match_info = request.match_info.copy()
         self._send_message(
             RequestMessage(
                 request_id=request_id,
                 method_name=method_name,
+                http_method=http_method,
+                path_qs=path_qs,
                 query=query,
                 headers=headers,
                 body=body,
