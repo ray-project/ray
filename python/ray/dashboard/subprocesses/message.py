@@ -13,8 +13,8 @@ class RequestMessage:
     # Name of the Module method to call, not the REST method name.
     method_name: str
     # aiohttp.web.Request is explicitly not serializable, so we pass these fields.
-    query: Dict[str, str]
-    headers: Dict[str, str]
+    query: "multidict.MultiMapping[str, str]"  # noqa: F821
+    headers: "multidict.MultiMapping[str, str]"  # noqa: F821
     body: bytes
     match_info: Dict[str, str]
 
