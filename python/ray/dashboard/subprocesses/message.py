@@ -16,6 +16,7 @@ class RequestMessage:
     query: Dict[str, str]
     headers: Dict[str, str]
     body: bytes
+    match_info: Dict[str, str]
 
 
 # Now it only contains RequestMessage. If later we need to add more messages, use Union.

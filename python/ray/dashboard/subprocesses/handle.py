@@ -267,6 +267,7 @@ class SubprocessModuleHandle:
             body = await request.read()
             query = dict(request.query)
             headers = dict(request.headers)
+            match_info = dict(request.match_info)
         self._send_message(
             RequestMessage(
                 request_id=request_id,
@@ -274,6 +275,7 @@ class SubprocessModuleHandle:
                 query=query,
                 headers=headers,
                 body=body,
+                match_info=match_info,
             )
         )
         return await new_active_request.response_fut

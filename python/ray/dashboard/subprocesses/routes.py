@@ -117,7 +117,10 @@ class SubprocessRouteTable(BaseRouteTable):
             start_message_sent = False
             try:
                 request = SubprocessModuleRequest(
-                    query=message.query, headers=message.headers, body=message.body
+                    query=message.query,
+                    headers=message.headers,
+                    body=message.body,
+                    match_info=message.match_info,
                 )
                 async_iter = handler(self, request)
                 async for chunk in async_iter:
@@ -172,7 +175,10 @@ class SubprocessRouteTable(BaseRouteTable):
         ) -> None:
             try:
                 request = SubprocessModuleRequest(
-                    query=message.query, headers=message.headers, body=message.body
+                    query=message.query,
+                    headers=message.headers,
+                    body=message.body,
+                    match_info=message.match_info,
                 )
                 response = await handler(self, request)
                 reply_message = UnaryResponseMessage(
