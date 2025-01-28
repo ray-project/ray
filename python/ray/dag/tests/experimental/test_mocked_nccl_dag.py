@@ -96,7 +96,7 @@ def test_p2p(ray_start_cluster):
         dag = dag.with_tensor_transport(transport="nccl")
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
     for i in range(3):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype, send_as_dict=False)
         assert ray.get(ref) == (i, shape, dtype)
@@ -149,7 +149,7 @@ def test_p2p_static_shape(ray_start_cluster, send_as_dict):
         dag = dag.with_tensor_transport(transport="nccl", _static_shape=True)
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
     for i in range(3):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
@@ -189,7 +189,7 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster, send_as_dict):
         dag = dag.with_tensor_transport(transport="nccl", _static_shape=True)
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
     for i in range(3):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
@@ -243,7 +243,7 @@ def test_p2p_direct_return(ray_start_cluster):
         dag = dag.with_tensor_transport(transport="nccl", _direct_return=True)
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     dtype = torch.float16
     for i in range(3):
@@ -285,7 +285,7 @@ def test_p2p_direct_return_error(capsys, ray_start_cluster):
         dag = dag.with_tensor_transport(transport="nccl", _direct_return=True)
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     dtype = torch.float16
     for i in range(3):
@@ -353,7 +353,7 @@ def test_p2p_static_shape_and_direct_return(
         )
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_default_communicator="create")
 
     shape = (10,)
     dtype = torch.float16
