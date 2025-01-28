@@ -11,6 +11,8 @@ from ray.anyscale.data._internal.logical.rules import (
     PredicatePushdown,
     ProjectionPushdown,
     PushdownCountFiles,
+    RedundantMapTransformBatchPruning,
+    RedundantMapTransformRowPruning,
 )
 from ray.anyscale.data.api.context_mixin import DataContextMixin
 from ray.anyscale.data.api.dataset_mixin import DatasetMixin
@@ -58,5 +60,7 @@ def apply_anyscale_patches():
     # Insert checkpointing rule before operator fusion.
     op_fusion_idx = _PHYSICAL_RULES.index(OperatorFusionRule)
     register_physical_rule(InsertCheckpointingLayerRule, op_fusion_idx - 1)
+    register_physical_rule(RedundantMapTransformRowPruning)
+    register_physical_rule(RedundantMapTransformBatchPruning)
 
     configure_anyscale_logging()

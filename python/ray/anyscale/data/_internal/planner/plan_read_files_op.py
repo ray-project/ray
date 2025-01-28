@@ -17,6 +17,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BuildOutputBlocksMapTransformFn,
     MapTransformer,
     MapTransformFn,
+    MapTransformFnCategory,
     MapTransformFnDataType,
 )
 from ray.data._internal.table_block import TableBlockAccessor
@@ -34,7 +35,11 @@ class FilterMapTransformFn(MapTransformFn):
 
     def __init__(self, filter_expr: "pyarrow.dataset.Expression"):
         self._filter_expr = filter_expr
-        super().__init__(MapTransformFnDataType.Block, MapTransformFnDataType.Block)
+        super().__init__(
+            MapTransformFnDataType.Block,
+            MapTransformFnDataType.Block,
+            MapTransformFnCategory.DataProcess,
+        )
 
     def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
         for block in blocks:

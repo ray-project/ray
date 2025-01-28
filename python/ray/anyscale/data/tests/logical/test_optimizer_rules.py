@@ -6,10 +6,19 @@ import pytest
 
 import ray
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
+from ray.data._internal.execution.operators.map_transformer import (
+    BatchMapTransformFn,
+    BlockMapTransformFn,
+    BlocksToBatchesMapTransformFn,
+    BlocksToRowsMapTransformFn,
+    BuildOutputBlocksMapTransformFn,
+    RowMapTransformFn,
+)
 from ray.data._internal.logical.operators.map_operator import Project
-from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.logical.optimizers import LogicalOptimizer, get_execution_plan
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_execution_optimizer import _check_valid_plan_and_result
+from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
 
 
@@ -576,6 +585,120 @@ def test_pushdown_divergent_branches(ray_start_regular_shared):
             "petal.width",
         ]
     )
+
+
+def test_map_batches_transformer_fusion(ray_start_regular_shared):
+    """Test removal of redundant Batch to Block transformations."""
+
+    ds = (
+        ray.data.range(5)
+        .map_batches(column_udf("id", lambda x: x + 1))
+        .map_batches(column_udf("id", lambda x: x + 2))
+        .map_batches(column_udf("id", lambda x: x + 3))
+        .map_batches(column_udf("id", lambda x: x + 4))
+        .map_batches(column_udf("id", lambda x: x + 5))
+    )
+
+    plan = get_execution_plan(ds._plan._logical_plan)
+    fns = plan.dag.get_map_transformer().get_transform_fns()
+    assert isinstance(
+        fns[1], BlocksToBatchesMapTransformFn
+    ), "First function should be a BlocksToBatchesMapTransformFn."
+    assert isinstance(
+        fns[-1], BuildOutputBlocksMapTransformFn
+    ), "Last function should be a BuildOutputBlocksMapTransformFn."
+
+    # Check that the intermediate transformation functions are BatchMapTransformFn
+    intermediate_fns = fns[2:-1]
+    assert all(
+        isinstance(fn, BatchMapTransformFn) for fn in intermediate_fns
+    ), "All intermediate functions should be BatchMapTransformFn."
+    assert len(fns) == 8, f"Expected 8 transformations, but got {len(fns)}."
+
+    output = [item["id"] for item in ds.take_all()]
+    expected_output = [15, 16, 17, 18, 19]
+    assert output == expected_output, f"Expected {expected_output}, but got {output}."
+
+
+def test_map_batches_transformer_non_fusion(ray_start_regular_shared):
+    """Test non-removal of redundant Batch to Block transformations."""
+
+    ds = (
+        ray.data.range(5)
+        .map_batches(column_udf("id", lambda x: x + 1), batch_size=1)
+        .map_batches(column_udf("id", lambda x: x + 2), batch_size=2)
+        .map_batches(column_udf("id", lambda x: x + 3), batch_size=1)
+        .map_batches(column_udf("id", lambda x: x + 4), batch_size=2)
+        .map_batches(column_udf("id", lambda x: x + 5), batch_size=1)
+    )
+
+    plan = get_execution_plan(ds._plan._logical_plan)
+    fns = plan.dag.get_map_transformer().get_transform_fns()
+    expected_fns = [
+        BlockMapTransformFn,
+        BlocksToBatchesMapTransformFn,
+        BatchMapTransformFn,
+        BuildOutputBlocksMapTransformFn,
+        BlocksToBatchesMapTransformFn,
+        BatchMapTransformFn,
+        BuildOutputBlocksMapTransformFn,
+        BlocksToBatchesMapTransformFn,
+        BatchMapTransformFn,
+        BuildOutputBlocksMapTransformFn,
+        BlocksToBatchesMapTransformFn,
+        BatchMapTransformFn,
+        BuildOutputBlocksMapTransformFn,
+        BlocksToBatchesMapTransformFn,
+        BatchMapTransformFn,
+        BuildOutputBlocksMapTransformFn,
+    ]
+
+    # Validate the entire list of functions
+    assert len(fns) == len(
+        expected_fns
+    ), f"Expected {len(expected_fns)} functions, but got {len(fns)}."
+    for i, (actual, expected) in enumerate(zip(fns, expected_fns)):
+        # Compare the type of actual with the class type of expected (not an instance)
+        assert isinstance(
+            actual, expected
+        ), f"Function at index {i} does not match type {expected.__name__}."
+
+    output = [item["id"] for item in ds.take_all()]
+    expected_output = [15, 16, 17, 18, 19]
+    assert output == expected_output, f"Expected {expected_output}, but got {output}."
+
+
+def test_map_rows_transformer_fusion(ray_start_regular_shared):
+    """Test removal of redundant Row to Block transformations."""
+
+    ds = (
+        ray.data.range(5)
+        .map(column_udf("id", lambda x: x + 1))
+        .map(column_udf("id", lambda x: x + 2))
+        .map(column_udf("id", lambda x: x + 3))
+        .map(column_udf("id", lambda x: x + 4))
+        .map(column_udf("id", lambda x: x + 5))
+    )
+
+    plan = get_execution_plan(ds._plan._logical_plan)
+    fns = plan.dag.get_map_transformer().get_transform_fns()
+    assert isinstance(
+        fns[1], BlocksToRowsMapTransformFn
+    ), "First function should be a BlocksToRowsMapTransformFn."
+    assert isinstance(
+        fns[-1], BuildOutputBlocksMapTransformFn
+    ), "Last function should be a BuildOutputBlocksMapTransformFn."
+
+    # Check that the intermediate transformation functions are RowMapTransformFn
+    intermediate_fns = fns[2:-1]
+    assert all(
+        isinstance(fn, RowMapTransformFn) for fn in intermediate_fns
+    ), "All intermediate functions should be RowMapTransformFn."
+    assert len(fns) == 8, f"Expected 8 transformations, but got {len(fns)}."
+
+    output = [item["id"] for item in ds.take_all()]
+    expected_output = [15, 16, 17, 18, 19]
+    assert output == expected_output, f"Expected {expected_output}, but got {output}."
 
 
 if __name__ == "__main__":
