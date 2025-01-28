@@ -460,9 +460,7 @@ def _run(
 
     if _local_testing_mode:
         if logging_config is None:
-            logging_config = LoggingConfig()
-        elif isinstance(logging_config, dict):
-            logging_config = LoggingConfig(**logging_config)
+            logging_config = LoggingConfig(**(logging_config or {}))
 
         configure_component_logger(
             component_name="local_test",
