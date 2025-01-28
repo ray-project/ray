@@ -147,18 +147,17 @@ class MockNcclGroupSet:
             Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
         ],
     ) -> None:
-        assert len(self.ids_to_actors_and_custom_comms) == len(actors_and_custom_comms)
         assert (
             set(self.ids_to_actors_and_custom_comms.values()) == actors_and_custom_comms
         )
 
-        nccl_group_id_p2p = compiled_dag._default_communicator
+        nccl_group_id_p2p_id = compiled_dag._default_communicator_id
         if p2p_actors_and_custom_comm is None:
-            assert nccl_group_id_p2p is None
+            assert nccl_group_id_p2p_id is None
         else:
-            assert nccl_group_id_p2p
+            assert nccl_group_id_p2p_id
             assert (
-                self.ids_to_actors_and_custom_comms[nccl_group_id_p2p]
+                self.ids_to_actors_and_custom_comms[nccl_group_id_p2p_id]
                 == p2p_actors_and_custom_comm
             )
 

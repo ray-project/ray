@@ -1107,7 +1107,7 @@ class CompiledDAG:
                     communicator_to_type_hints[communicator].add(dag_node.type_hint)
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
-                    communicator = self._select_communicator(dag_node)
+                    communicator = self._select_communicator(dag_node, collective=True)
                     communicator_to_actors[communicator].update(
                         dag_node.collective_op.actor_handles
                     )
@@ -1250,15 +1250,14 @@ class CompiledDAG:
                 self._default_communicator_id = communicator_id
 
     def _select_communicator(
-        self, dag_node: "ray.dag.DAGNode"
+        self, dag_node: "ray.dag.DAGNode", collective: bool = False
     ) -> Optional[Communicator]:
         """
         If custom_communicator is provided (i.e., not None), use it.
         Otherwise, use the default communicator.
         """
-        from ray.dag.collective_node import CollectiveOutputNode
 
-        if isinstance(dag_node, CollectiveOutputNode):
+        if collective:
             custom_communicator = (
                 dag_node.collective_op.type_hint.get_custom_communicator()
             )

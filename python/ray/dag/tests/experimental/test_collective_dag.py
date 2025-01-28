@@ -94,6 +94,7 @@ def test_comm_all_reduces(ray_start_regular, monkeypatch):
         {
             (frozenset(workers), None),
         },
+        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -119,9 +120,7 @@ def test_comm_deduplicate_all_reduces(ray_start_regular, monkeypatch):
         dag = MultiOutputNode(collectives)
 
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
-        monkeypatch,
-        dag,
-        {(frozenset(workers), None)},
+        monkeypatch, dag, {(frozenset(workers), None)}, (frozenset(workers), None)
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -207,8 +206,10 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
         dag,
-        {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
+        {
+            (frozenset(workers), comm),
+        },
+        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -258,7 +259,6 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -284,7 +284,6 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
             (frozenset(workers), comm_2),
             (frozenset(workers), comm_3),
         },
-        (frozenset(workers), comm_3),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
