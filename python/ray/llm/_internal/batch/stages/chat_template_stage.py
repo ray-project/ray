@@ -17,6 +17,7 @@ class ChatTemplateUDF(StatefulStageUDF):
     ):
         """
         Initialize the HttpRequestUDF.
+
         Args:
             data_column: The data column name.
             model: The model to use for the chat template.
@@ -29,8 +30,10 @@ class ChatTemplateUDF(StatefulStageUDF):
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
         Apply chat template to the given batch.
+
         Args:
             batch: A list of rows to send.
+
         Yields:
             A generator of rows with the chat template applied.
         """

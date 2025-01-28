@@ -17,6 +17,7 @@ class TokenizeUDF(StatefulStageUDF):
     ):
         """
         Initialize the TokenizeUDF.
+
         Args:
             data_column: The data column name.
             model: The model to use for the chat template.
@@ -29,8 +30,10 @@ class TokenizeUDF(StatefulStageUDF):
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
         Tokenize the given batch.
+
         Args:
             batch: A list of rows to send.
+
         Yields:
             A generator of rows with the tokenized prompt.
         """
@@ -66,6 +69,7 @@ class DetokenizeUDF(StatefulStageUDF):
     ):
         """
         Initialize the DetokenizeUDF.
+
         Args:
             data_column: The data column name.
             model: The model to use for the chat template.
@@ -78,8 +82,10 @@ class DetokenizeUDF(StatefulStageUDF):
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
         Detokenize the given batch.
+
         Args:
             batch: A list of rows to send.
+
         Yields:
             A generator of rows with the detokenized prompt.
         """
