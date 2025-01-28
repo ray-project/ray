@@ -163,5 +163,6 @@ def test_builder():
         processor.get_stage_by_name("DummyStage").map_batches_kwargs["concurrency"] == 2
     )
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

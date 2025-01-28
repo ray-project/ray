@@ -104,5 +104,6 @@ def test_stateful_stage():
     assert stage.fn_constructor_kwargs == {"data_column": "__data"}
     assert stage.map_batches_kwargs == {"batch_size": 10}
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
