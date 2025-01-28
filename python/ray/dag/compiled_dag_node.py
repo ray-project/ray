@@ -852,7 +852,7 @@ class CompiledDAG:
             # We conservatively set num_shm_buffers to _max_inflight_executions.
             # It means that the DAG can be underutilized, but it guarantees there's
             # no false positive timeouts.
-            num_shm_buffers=1,
+            num_shm_buffers=self._max_inflight_executions,
         )
         if not isinstance(self._buffer_size_bytes, int) or self._buffer_size_bytes <= 0:
             raise ValueError(
