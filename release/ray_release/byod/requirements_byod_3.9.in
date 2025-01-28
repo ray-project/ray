@@ -13,7 +13,7 @@ gsutil
 gymnasium
 gymnasium[atari]
 importlib-metadata
-jsonschema==4.17.3
+jsonschema
 lightgbm
 locust==2.18.0
 memray

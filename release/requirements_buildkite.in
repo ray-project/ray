@@ -25,3 +25,4 @@ requests >= 2.31.0
 
 # Upgrades
 typing-extensions>=4.10
+jsonschema>=4.23.0
