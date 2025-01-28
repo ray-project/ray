@@ -459,7 +459,7 @@ def _run(
     validate_route_prefix(route_prefix)
 
     if _local_testing_mode:
-        if logging_config is None:
+        if not isinstance(logging_config, LoggingConfig):
             logging_config = LoggingConfig(**(logging_config or {}))
 
         configure_component_logger(
