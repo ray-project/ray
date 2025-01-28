@@ -36,6 +36,12 @@ from ray.train.v2._internal.migration_utils import (
     _v2_migration_warnings_enabled,
     FAIL_FAST_DEPRECATION_MESSAGE,
     TRAINER_RESOURCES_DEPRECATION_MESSAGE,
+    VERBOSE_DEPRECATION_MESSAGE,
+    LOG_TO_FILE_DEPRECATION_MESSAGE,
+    STOP_DEPRECATION_MESSAGE,
+    CALLBACKS_DEPRECATION_MESSAGE,
+    PROGRESS_REPORTER_DEPRECATION_MESSAGE,
+    SYNC_CONFIG_DEPRECATION_MESSAGE,
 )
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
@@ -530,14 +536,43 @@ class BaseTrainer(abc.ABC):
         self._log_v2_deprecation_warnings()
 
     def _log_v2_deprecation_warnings(self):
+        """Logs deprecation warnings for v2 migration.
+
+        Log them here in the Ray Train case rather than in the configuration
+        constructors to avoid logging incorrect deprecation warnings when
+        `ray.train.RunConfig` is passed to Ray Tune.
+        """
+
         if not _v2_migration_warnings_enabled():
             return
 
+        # ScalingConfig deprecations
         if self.scaling_config.trainer_resources is not None:
             _log_deprecation_warning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
+        # FailureConfig deprecations
         if self.run_config.failure_config.fail_fast != False:
             _log_deprecation_warning(FAIL_FAST_DEPRECATION_MESSAGE)
+
+        # RunConfig deprecations
+        # NOTE: _verbose is the original verbose value passed by the user
+        if self.run_config._verbose is not None:
+            _log_deprecation_warning(VERBOSE_DEPRECATION_MESSAGE)
+
+        if self.run_config.log_to_file is not None:
+            _log_deprecation_warning(LOG_TO_FILE_DEPRECATION_MESSAGE)
+
+        if self.run_config.stop is not None:
+            _log_deprecation_warning(STOP_DEPRECATION_MESSAGE)
+
+        if self.run_config.callbacks is not None:
+            _log_deprecation_warning(CALLBACKS_DEPRECATION_MESSAGE)
+
+        if self.run_config.progress_reporter is not None:
+            _log_deprecation_warning(PROGRESS_REPORTER_DEPRECATION_MESSAGE)
+
+        if self.run_config.sync_config != ray.train.SyncConfig():
+            _log_deprecation_warning(SYNC_CONFIG_DEPRECATION_MESSAGE)
 
     @classmethod
     def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
