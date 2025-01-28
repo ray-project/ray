@@ -67,6 +67,8 @@ void StartStreamDump(
     SetThreadName("PipeReaderThd");
 
     std::string newline;
+
+    // Exit at pipe read EOF.
     while (std::getline(*pipe_instream, newline)) {
       // Backfill newliner for current segment.
       if (!pipe_instream->eof()) {
@@ -75,11 +77,6 @@ void StartStreamDump(
 
       absl::MutexLock lock(&stream_dumper->mu);
       stream_dumper->content.emplace_back(std::move(newline));
-
-      // Directly exit if already EOF to distinguish with stream fail/bad state.
-      if (pipe_instream->eof()) {
-        break;
-      }
     }
 
     RAY_CHECK(pipe_instream->eof());
