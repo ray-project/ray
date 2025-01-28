@@ -14,5 +14,5 @@ Tune Syncing Configuration
 .. autosummary::
     :nosignatures:
 
-    ray.train.SyncConfig
+    ray.tune.SyncConfig
         :noindex:
