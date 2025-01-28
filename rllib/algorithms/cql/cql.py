@@ -212,6 +212,10 @@ class CQLConfig(SACConfig):
             AddNextObservationsFromEpisodesToTrainBatch(),
         )
 
+        # If training on GPU, do not convert batches to tensors.
+        if self.num_gpus_per_learner > 0:
+            pipeline.remove("NumpyToTensor")
+
         return pipeline
 
     @override(SACConfig)
@@ -306,7 +310,11 @@ class CQL(SAC):
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
-                return_iterator=self.config.num_learners > 1,
+                # Return an iterator, if a `Learner` should update
+                # multiple times per RLlib iteration.
+                return_iterator=self.config.dataset_num_iters_per_learner > 1
+                if self.config.dataset_num_iters_per_learner
+                else True,
             )
 
         # Updating the policy.
