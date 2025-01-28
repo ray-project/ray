@@ -6,7 +6,6 @@ import pytest
 import ray.train
 import ray.tune
 from ray.train.constants import ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR
-from ray.train.base_trainer import BaseTrainer
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import RayDeprecationWarning
 
@@ -19,17 +18,88 @@ def enable_v2_migration_deprecation_messages(monkeypatch):
 
 
 def test_trainer_restore():
-    with pytest.warns(RayDeprecationWarning, match=""):
+    with pytest.warns(RayDeprecationWarning, match="restore"):
         try:
             DataParallelTrainer.restore("dummy")
-        except Exception as e:
+        except Exception:
             pass
 
-    with pytest.warns(RayDeprecationWarning, match=""):
+    with pytest.warns(RayDeprecationWarning, match="can_restore"):
         try:
             DataParallelTrainer.can_restore("dummy")
-        except Exception as e:
+        except Exception:
             pass
+
+
+def test_trainer_valid_configs(tmp_path):
+    with warnings.catch_warnings():
+        DataParallelTrainer(
+            lambda _: None,
+            scaling_config=ray.train.ScalingConfig(num_workers=1),
+            run_config=ray.train.RunConfig(
+                storage_path=tmp_path,
+                failure_config=ray.train.FailureConfig(max_failures=1),
+            ),
+        )
+
+
+def test_trainer_deprecated_configs():
+    with pytest.warns(RayDeprecationWarning, match="fail_fast"):
+        DataParallelTrainer(
+            lambda _: None,
+            run_config=ray.train.RunConfig(
+                failure_config=ray.train.FailureConfig(fail_fast=True)
+            ),
+        )
+
+    with pytest.warns(RayDeprecationWarning, match="trainer_resources"):
+        DataParallelTrainer(
+            lambda _: None,
+            scaling_config=ray.train.ScalingConfig(trainer_resources={"CPU": 1}),
+        )
+
+    with pytest.warns(RayDeprecationWarning, match="verbose"):
+        DataParallelTrainer(
+            lambda _: None,
+            run_config=ray.train.RunConfig(verbose=True),
+        )
+
+    with pytest.warns(RayDeprecationWarning, match="log_to_file"):
+        DataParallelTrainer(
+            lambda _: None,
+            run_config=ray.train.RunConfig(log_to_file=True),
+        )
+
+    with pytest.warns(RayDeprecationWarning, match="stop"):
+        DataParallelTrainer(
+            lambda _: None,
+            run_config=ray.train.RunConfig(stop={"training_iteration": 1}),
+        )
+
+    with pytest.warns(RayDeprecationWarning, match="callbacks"):
+        DataParallelTrainer(
+            lambda _: None,
+            run_config=ray.train.RunConfig(callbacks=[ray.tune.Callback()]),
+        )
+
+    with pytest.warns(RayDeprecationWarning, match="progress_reporter"):
+        DataParallelTrainer(
+            lambda _: None,
+            run_config=ray.train.RunConfig(
+                progress_reporter=ray.tune.ProgressReporter()
+            ),
+        )
+
+    with pytest.warns(RayDeprecationWarning, match="sync_config"):
+        DataParallelTrainer(
+            lambda _: None,
+            run_config=ray.train.RunConfig(
+                sync_config=ray.train.SyncConfig(sync_artifacts=True)
+            ),
+        )
+
+    with pytest.warns(RayDeprecationWarning, match=""):
+        ray.train.SyncConfig()
 
 
 if __name__ == "__main__":

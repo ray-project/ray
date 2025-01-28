@@ -64,6 +64,8 @@ class DataParallelTrainer:
         self.data_config = dataset_config or DataConfig()
 
         if resume_from_checkpoint is not None:
+            from ray.train.base_trainer import _TRAINER_RESTORE_DEPRECATION_WARNING
+
             raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
 
         if metadata is not None:
@@ -160,9 +162,13 @@ class DataParallelTrainer:
     @Deprecated
     @classmethod
     def restore(cls, *args, **kwargs):
+        from ray.train.base_trainer import _TRAINER_RESTORE_DEPRECATION_WARNING
+
         raise DeprecationWarning(_TRAINER_RESTORE_DEPRECATION_WARNING)
 
     @Deprecated
     @classmethod
     def can_restore(cls, *args, **kwargs):
+        from ray.train.base_trainer import _TRAINER_RESTORE_DEPRECATION_WARNING
+
         raise DeprecationWarning(_TRAINER_RESTORE_DEPRECATION_WARNING)

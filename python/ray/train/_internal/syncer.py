@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.train.constants import _DEPRECATED_VALUE
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.train.constants import _DEPRECATED_VALUE, _v2_migration_warnings_enabled
+from ray.train.utils import _log_deprecation_warning
+from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.widgets import Template
 
 logger = logging.getLogger(__name__)
@@ -20,46 +21,9 @@ DEFAULT_SYNC_PERIOD = 300
 DEFAULT_SYNC_TIMEOUT = 1800
 
 
-@PublicAPI(stability="stable")
+@Deprecated
 @dataclass
 class SyncConfig:
-    """Configuration object for Train/Tune file syncing to `RunConfig(storage_path)`.
-
-    In Ray Train/Tune, here is where syncing (mainly uploading) happens:
-
-    The experiment driver (on the head node) syncs the experiment directory to storage
-    (which includes experiment state such as searcher state, the list of trials
-    and their statuses, and trial metadata).
-
-    It's also possible to sync artifacts from the trial directory to storage
-    by setting `sync_artifacts=True`.
-    For a Ray Tune run with many trials, each trial will upload its trial directory
-    to storage, which includes arbitrary files that you dumped during the run.
-    For a Ray Train run doing distributed training, each remote worker will similarly
-    upload its trial directory to storage.
-
-    See :ref:`persistent-storage-guide` for more details and examples.
-
-    Args:
-        sync_period: Minimum time in seconds to wait between two sync operations.
-            A smaller ``sync_period`` will have the data in storage updated more often
-            but introduces more syncing overhead. Defaults to 5 minutes.
-        sync_timeout: Maximum time in seconds to wait for a sync process
-            to finish running. A sync operation will run for at most this long
-            before raising a `TimeoutError`. Defaults to 30 minutes.
-        sync_artifacts: [Beta] Whether or not to sync artifacts that are saved to the
-            trial directory (accessed via `train.get_context().get_trial_dir()`)
-            to the persistent storage configured via `train.RunConfig(storage_path)`.
-            The trial or remote worker will try to launch an artifact syncing
-            operation every time `train.report` happens, subject to `sync_period`
-            and `sync_artifacts_on_checkpoint`.
-            Defaults to False -- no artifacts are persisted by default.
-        sync_artifacts_on_checkpoint: If True, trial/worker artifacts are
-            forcefully synced on every reported checkpoint.
-            This only has an effect if `sync_artifacts` is True.
-            Defaults to True.
-    """
-
     sync_period: int = DEFAULT_SYNC_PERIOD
     sync_timeout: int = DEFAULT_SYNC_TIMEOUT
     sync_artifacts: bool = False
@@ -78,6 +42,13 @@ class SyncConfig:
             )
 
     def __post_init__(self):
+        if _v2_migration_warnings_enabled():
+            from ray.train.v2._internal.migration_utils import (
+                SYNC_CONFIG_DEPRECATION_MESSAGE,
+            )
+
+            _log_deprecation_warning(SYNC_CONFIG_DEPRECATION_MESSAGE)
+
         for attr_name, extra_msg in [
             (
                 "upload_dir",
