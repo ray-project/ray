@@ -1,0 +1,127 @@
+# See https://help.github.com/articles/about-codeowners/
+# for more info about CODEOWNERS file
+
+# It uses the same pattern rule for gitignore file,
+# see https://git-scm.com/docs/gitignore#_pattern_format.
+
+
+# ==== Documentation ====
+
+# Authors responsible for copy-editing of the documentation.
+# NOTE: Add @ray-project/ray-docs to all following docs subdirs.
+/doc/ @ray-project/ray-docs
+/doc/source/use-cases.rst @pcmoritz
+
+# ==== Ray core ====
+
+# API compatibility
+/src/ray/protobuf/common.proto @pcmoritz @raulchen @ray-project/ray-core
+/src/ray/protobuf/gcs.proto @pcmoritz @raulchen @ray-project/ray-core
+/src/ray/protobuf/gcs_service.proto @pcmoritz @raulchen @ray-project/ray-core
+
+# Autoscaler
+/python/ray/autoscaler/ @ray-project/ray-core @hongchaodeng
+
+# Metrics
+/src/ray/stats/metric_defs.h @ray-project/ray-core
+/src/ray/stats/metric_defs.cc @ray-project/ray-core
+
+# Telemetry
+/src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
+
+# All C++ code.
+# /src/ray @ray-project/ray-core-cpp
+
+# GCS
+/src/ray/gcs/ @ray-project/ray-core
+
+# Dependencies
+/python/setup.py @richardliaw @edoakes @aslonnie
+
+# CI
+/ci/lint/format.sh @ray-project/ray-ci
+/ci/docker @ray-project/ray-ci
+/ci/ray_ci @ray-project/ray-ci
+
+# Python worker.
+#/python/ray/ @ray-project/ray-core
+#!/python/ray/tune/ @ray-project/ray-core
+#!/python/ray/rllib/ @ray-project/ray-core
+
+# Java worker.
+/java/dependencies.bzl @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
+/java/pom.xml @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
+/java/pom_template.xml @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
+/java/*/pom_template.xml @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
+/java/api/ @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
+
+# C++ worker
+/cpp/include/ray @SongGuyang @raulchen @kfstorm @ray-project/ray-core
+
+# Ray Client
+/src/ray/protobuf/ray_client.proto @ray-project/ray-core
+
+# Runtime Env
+# TODO(SongGuyang): Add new items to guarantee runtime env API compatibility in multiple languages.
+/src/ray/protobuf/runtime_env_common.proto @SongGuyang @raulchen @edoakes @ray-project/ray-core
+/src/ray/protobuf/runtime_env_agent.proto @SongGuyang @raulchen @edoakes @ray-project/ray-core
+
+# ==== Libraries and frameworks ====
+
+# Ray data.
+/python/ray/data/ @ray-project/ray-data
+/doc/source/data/ @ray-project/ray-data
+
+# Ray workflows.
+/python/ray/workflow/ @stephanie-wang
+/doc/source/workflows/ @stephanie-wang @maxpumperla @ray-project/ray-docs
+
+# RLlib.
+/rllib/ @sven1977 @simonsays1980
+/doc/source/rllib/ @sven1977 @maxpumperla @simonsays1980 @ray-project/ray-docs
+
+# Cluster (docs)
+/doc/source/cluster/ @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
+
+# Tune
+/python/ray/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
+/doc/source/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
+
+# Train
+/python/ray/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
+/doc/source/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
+
+# Serve (docs)
+/doc/source/serve/ @edoakes @zcin @GeneDer @akshay-anyscale @ray-project/ray-docs
+
+# ML Docker Dependencies
+/python/requirements/ml/dl-cpu-requirements.txt @richardliaw @matthewdeng
+/python/requirements/ml/dl-gpu-requirements.txt @richardliaw @matthewdeng
+
+# Ray symbol export
+/src/ray/ray_version_script.lds @aslonnie
+/src/ray/ray_exported_symbols.lds @aslonnie
+
+# Ray usage stats
+/python/ray/_private/usage/ @richardliaw @rkooo567 @jjyao
+/python/ray/dashboard/modules/usage_stats/ @richardliaw @rkooo567 @jjyao
+
+
+# ==== Build and CI ====
+
+# Bazel.
+#/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci
+#/WORKSPACE @ray-project/ray-core @ray-project/ray-ci
+#/bazel/ @ray-project/ray-core @ray-project/ray-ci
+
+# CI scripts.
+#/ci/ @ray-project/ray-core @ray-project/ray-ci
+
+# Buildkite pipeline management
+.buildkite/hooks @ray-project/ray-ci
+
+/release/ray_release @ray-project/ray-ci
+
+/.github/ISSUE_TEMPLATE/ @anyscalesam @aslonnie
+
+/.github/workflows/ @ray-project/ray-ci
