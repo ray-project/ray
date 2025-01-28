@@ -208,6 +208,7 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
         dag,
         {
             (frozenset(workers), comm),
+            (frozenset(workers), None),
         },
         (frozenset(workers), None),
     )
@@ -225,8 +226,11 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
         dag,
-        {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
+        {
+            (frozenset(workers), comm),
+            (frozenset(workers), None),
+        },
+        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
