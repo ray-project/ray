@@ -101,7 +101,7 @@ py_test(
     name = "test_arrow_block",
     size = "medium",
     srcs = ["tests/test_arrow_block.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "data_non_parallel"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
