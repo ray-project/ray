@@ -96,7 +96,6 @@ tensorboard
 tensorboard-data-server==0.7.2
 h11==0.12.0
 markdown-it-py
-attrs==21.4.0
 pytz==2022.7.1
 # Aim requires segment-analytics-python, which requires backoff~=2.10,
 # which conflicts with the opentelemetry-api 1.1.0.
@@ -116,3 +115,6 @@ watchfiles==0.19.0
 typing-extensions>=4.10
 filelock>=3.16.1
 virtualenv>=20.29
+jsonschema>=4.23.0
+attrs>=22.2.0
+openapi-schema-validator>=0.6.3
