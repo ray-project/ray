@@ -3,6 +3,8 @@ import logging
 
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.dataset as ds
+
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class ExpressionEvaluator:
     @staticmethod
-    def get_filters(expression: str) -> pa.dataset.Expression:
+    def get_filters(expression: str) -> ds.Expression:
         """Parse and evaluate the expression to generate a filter condition.
 
         Args:
@@ -37,7 +39,7 @@ class ExpressionEvaluator:
 
 
 class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
-    def visit_Compare(self, node: ast.Compare) -> pa.dataset.Expression:
+    def visit_Compare(self, node: ast.Compare) -> ds.Expression:
         """Handle comparison operations (e.g., a == b, a < b, a in b).
 
         Args:
@@ -82,7 +84,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
         else:
             raise ValueError(f"Unsupported operator type: {op}")
 
-    def visit_BoolOp(self, node: ast.BoolOp) -> pa.dataset.Expression:
+    def visit_BoolOp(self, node: ast.BoolOp) -> ds.Expression:
         """Handle logical operations (e.g., a and b, a or b).
 
         Args:
@@ -108,7 +110,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
 
         return combined_expr
 
-    def visit_Name(self, node: ast.Name) -> pa.dataset.Expression:
+    def visit_Name(self, node: ast.Name) -> ds.Expression:
         """Handle variable (name) nodes and return them as pa.dataset.Expression.
 
         Even if the name contains periods, it's treated as a single string.
@@ -148,7 +150,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
 
         raise ValueError(f"Unsupported attribute: {node.attr}")
 
-    def visit_List(self, node: ast.List) -> pa.dataset.Expression:
+    def visit_List(self, node: ast.List) -> ds.Expression:
         """Handle list literals.
 
         Args:
@@ -176,7 +178,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
         """
         return node.value  # Return the constant value directly.
 
-    def visit_Call(self, node: ast.Call) -> pa.dataset.Expression:
+    def visit_Call(self, node: ast.Call) -> ds.Expression:
         """Handle function calls (e.g., is_nan(a), is_valid(b)).
 
         Args:
