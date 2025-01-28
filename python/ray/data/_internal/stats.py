@@ -17,7 +17,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     OpRuntimeMetrics,
 )
 from ray.data._internal.util import capfirst
-from ray.data.block import BlockMetadata
+from ray.data.block import BlockMetadata, BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Gauge
@@ -29,7 +29,7 @@ STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
 
 
-StatsDict = Dict[str, List[BlockMetadata]]
+StatsDict = Dict[str, List[BlockStats]]
 
 
 def fmt(seconds: float) -> str:
@@ -717,11 +717,11 @@ class DatasetStats:
 
         operators_stats = []
         is_sub_operator = len(self.metadata) > 1
-        for name, meta in self.metadata.items():
+        for name, stats in self.metadata.items():
             operators_stats.append(
                 OperatorStatsSummary.from_block_metadata(
                     name,
-                    meta,
+                    stats,
                     is_sub_operator=is_sub_operator,
                 )
             )
@@ -1055,20 +1055,20 @@ class OperatorStatsSummary:
     def from_block_metadata(
         cls,
         operator_name: str,
-        block_metas: List[BlockMetadata],
+        block_stats: List[BlockStats],
         is_sub_operator: bool,
     ) -> "OperatorStatsSummary":
         """Calculate the stats for a operator from a given list of blocks,
         and generates a `OperatorStatsSummary` object with the results.
 
         Args:
-            block_metas: List of `BlockMetadata` to calculate stats of
+            block_stats: List of `BlockStats` to calculate stats of
             operator_name: Name of operator associated with `blocks`
             is_sub_operator: Whether this set of blocks belongs to a sub operator.
         Returns:
             A `OperatorStatsSummary` object initialized with the calculated statistics
         """
-        exec_stats = [m.exec_stats for m in block_metas if m.exec_stats is not None]
+        exec_stats = [m.exec_stats for m in block_stats if m.exec_stats is not None]
         rounded_total = 0
         time_total_s = 0
         earliest_start_time, latest_end_time = 0, 0
@@ -1097,7 +1097,7 @@ class OperatorStatsSummary:
             exec_summary_str += "\n"
 
         task_rows = collections.defaultdict(int)
-        for meta in block_metas:
+        for meta in block_stats:
             if meta.num_rows is not None and meta.exec_stats is not None:
                 task_rows[meta.exec_stats.task_idx] += meta.num_rows
         task_rows_stats = None
@@ -1144,7 +1144,7 @@ class OperatorStatsSummary:
             }
 
         output_num_rows_stats = None
-        output_num_rows = [m.num_rows for m in block_metas if m.num_rows is not None]
+        output_num_rows = [m.num_rows for m in block_stats if m.num_rows is not None]
         if output_num_rows:
             output_num_rows_stats = {
                 "min": min(output_num_rows),
@@ -1155,7 +1155,7 @@ class OperatorStatsSummary:
 
         output_size_bytes_stats = None
         output_size_bytes = [
-            m.size_bytes for m in block_metas if m.size_bytes is not None
+            m.size_bytes for m in block_stats if m.size_bytes is not None
         ]
         if output_size_bytes:
             output_size_bytes_stats = {

@@ -275,7 +275,7 @@ class ActorPoolMapOperator(MapOperator):
         # parallelization across the actor pool. We only know this information after
         # execution has completed.
         min_workers = self._actor_pool.min_size()
-        if len(self._output_metadata) < min_workers:
+        if len(self._output_blocks_stats) < min_workers:
             # The user created a stream that has too few blocks to begin with.
             logger.warning(
                 "To ensure full parallelization across an actor pool of size "
