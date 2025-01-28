@@ -12,13 +12,12 @@ User Guides
 
     rllib-advanced-api
     rllib-callback
-    rllib-models
     checkpoints
     metrics-logger
     single-agent-episode
     rllib-replay-buffers
     rllib-offline
-    rllib-rlmodule
+    rl-modules
     rllib-learner
     rllib-torch2x
     rllib-fault-tolerance
@@ -57,14 +56,6 @@ RLlib Feature Guides
         .. button-ref:: metrics-logger
 
             Logging metrics and statistics from custom code
-
-    .. grid-item-card::
-        :img-top: /rllib/images/rllib-logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: rllib-models
-
-            Working with models, preprocessors and action distributions
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
