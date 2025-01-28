@@ -6,7 +6,11 @@ from urllib.parse import urlparse
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.util import _is_local_scheme, call_with_retry
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _is_local_scheme,
+    call_with_retry,
+)
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
@@ -21,10 +25,6 @@ if TYPE_CHECKING:
     import pyarrow
 
 logger = logging.getLogger(__name__)
-
-
-WRITE_FILE_MAX_ATTEMPTS = 10
-WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
 
 class _FileDatasink(Datasink[None]):
@@ -62,8 +62,12 @@ class _FileDatasink(Datasink[None]):
                 dataset_uuid=dataset_uuid, file_format=file_format
             )
 
+        self._data_context = DataContext.get_current()
         self.unresolved_path = path
         paths, self.filesystem = _resolve_paths_and_filesystem(path, filesystem)
+        self.filesystem = RetryingPyFileSystem.wrap(
+            self.filesystem, context=self._data_context
+        )
         assert len(paths) == 1, len(paths)
         self.path = paths[0]
 
@@ -101,9 +105,7 @@ class _FileDatasink(Datasink[None]):
         # should not.
         parsed_uri = urlparse(dest)
         is_s3_uri = parsed_uri.scheme == "s3"
-        skip_create_dir_for_s3 = (
-            is_s3_uri and not DataContext.get_current().s3_try_create_dir
-        )
+        skip_create_dir_for_s3 = is_s3_uri and not self._data_context.s3_try_create_dir
 
         if self.try_create_dir and not skip_create_dir_for_s3:
             if self.filesystem.get_file_info(dest).type is FileType.NotFound:
@@ -190,20 +192,16 @@ class RowBasedFileDatasink(_FileDatasink):
                 row, ctx.task_idx, block_index, row_index
             )
             write_path = posixpath.join(self.path, filename)
+            logger.debug(f"Writing {write_path} file.")
 
-            def write_row_to_path(row, write_path):
+            def write_row_to_path():
                 with self.open_output_stream(write_path) as file:
                     self.write_row_to_file(row, file)
 
-            logger.debug(f"Writing {write_path} file.")
             call_with_retry(
-                lambda row=row, write_path=write_path: write_row_to_path(
-                    row, write_path
-                ),
+                write_row_to_path,
                 description=f"write '{write_path}'",
-                match=DataContext.get_current().retried_io_errors,
-                max_attempts=WRITE_FILE_MAX_ATTEMPTS,
-                max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
+                match=self._data_context.retried_io_errors,
             )
 
 
@@ -256,9 +254,7 @@ class BlockBasedFileDatasink(_FileDatasink):
         call_with_retry(
             write_block_to_path,
             description=f"write '{write_path}'",
-            match=DataContext.get_current().retried_io_errors,
-            max_attempts=WRITE_FILE_MAX_ATTEMPTS,
-            max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
+            match=self._data_context.retried_io_errors,
         )
 
     @property
