@@ -8,8 +8,8 @@ from typing import Iterable, Optional
 import pyarrow.parquet as pq
 
 import ray
-from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.datasource import bigquery_datasource
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor

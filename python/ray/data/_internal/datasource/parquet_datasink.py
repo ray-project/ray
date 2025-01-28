@@ -6,7 +6,6 @@ from ray.data._internal.arrow_ops.transform_pyarrow import concat
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
-from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datasource.filename_provider import FilenameProvider
@@ -95,7 +94,7 @@ class ParquetDatasink(_FileDatasink):
         call_with_retry(
             write_blocks_to_path,
             description=f"write '{filename}' to '{self.path}'",
-            match=DataContext.get_current().retried_io_errors,
+            match=self._data_context.retried_io_errors,
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )
