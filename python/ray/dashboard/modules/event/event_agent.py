@@ -57,7 +57,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 return self._dashboard_http_address
             try:
                 dashboard_http_address = await self._gcs_aio_client.internal_kv_get(
-                    dashboard_consts.DASHBOARD_ADDRESS.encode(),
+                    ray_constants.DASHBOARD_ADDRESS.encode(),
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
                     timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
                 )
