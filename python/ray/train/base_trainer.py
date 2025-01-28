@@ -838,10 +838,10 @@ class BaseTrainer(abc.ABC):
                 )
                 if isinstance(merged_scaling_config, dict):
                     merged_scaling_config = ScalingConfig(**merged_scaling_config)
-                self._merged_config["scaling_config"] = (
-                    self._reconcile_scaling_config_with_trial_resources(
-                        merged_scaling_config
-                    )
+                self._merged_config[
+                    "scaling_config"
+                ] = self._reconcile_scaling_config_with_trial_resources(
+                    merged_scaling_config
                 )
                 if self.has_base_dataset():
                     # Set the DataContext on the Trainer actor to the DataContext
