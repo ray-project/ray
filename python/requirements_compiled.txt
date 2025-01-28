@@ -488,9 +488,10 @@ feather-format==0.4.1
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 ffmpy==0.3.1
     # via gradio
-filelock==3.13.1
+filelock==3.17.0
     # via
     #   -r /ray/ci/../python/requirements.txt
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   datasets
     #   huggingface-hub
@@ -1548,7 +1549,7 @@ pycparser==2.21
     # via cffi
 pycurl==7.45.3
     # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
-pydantic==2.5.0
+pydantic==2.9.2
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -1557,7 +1558,7 @@ pydantic==2.5.0
     #   fastapi
     #   gradio
     #   pyiceberg
-pydantic-core==2.14.1
+pydantic-core==2.23.4
     # via pydantic
 pydot==1.4.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
@@ -2295,7 +2296,7 @@ types-requests==2.31.0.6
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.8.0
+typing-extensions==4.12.2
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   alembic
@@ -2372,7 +2373,7 @@ uvloop==0.19.0
     #   vmc-draas-client-bindings
     #   vsphere-automation-sdk
     # via vsphere-automation-sdk
-virtualenv==20.25.3
+virtualenv==20.29.1
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
