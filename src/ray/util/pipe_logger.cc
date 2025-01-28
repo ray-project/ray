@@ -162,9 +162,8 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
   auto ostream =
       std::make_shared<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
           std::move(sink));
+  ostream->setf(std::ios::unitbuf);
   auto flush_fn = [ostream, handle]() {
-    // Flush stream internal buffer to fd.
-    ostream->flush();
 // Flush file handle.
 #if defined(__APPLE__) || defined(__linux__)
     RAY_CHECK_EQ(fdatasync(handle), 0);
@@ -210,6 +209,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     std_ostream.stdout_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
+    std_ostream.stdout_ostream->setf(std::ios::unitbuf);
   }
   if (stream_redirect_opt.tee_to_stderr) {
     int duped_stderr_fd = dup(STDERR_FILENO);
@@ -220,6 +220,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     std_ostream.stderr_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
+    std_ostream.stderr_ostream->setf(std::ios::unitbuf);
   }
 
   int pipefd[2] = {0};
@@ -247,6 +248,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     std_ostream.stdout_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
+    std_ostream.stdout_ostream->setf(std::ios::unitbuf);
   }
   if (stream_redirect_opt.tee_to_stderr) {
     HANDLE duped_stderr_handle;
@@ -263,6 +265,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     std_ostream.stderr_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
+    std_ostream.stderr_ostream->setf(std::ios::unitbuf);
   }
 
   HANDLE read_handle = nullptr;
@@ -282,6 +285,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   auto pipe_ostream =
       std::make_shared<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
           std::move(pipe_write_sink));
+  pipe_ostream->setf(std::ios::unitbuf);
 
   auto close_fn = [pipe_ostream, promise]() mutable {
     pipe_ostream->close();
@@ -313,20 +317,11 @@ RedirectionFileHandle CreateRedirectionFileHandle(
       logger->log(spdlog::level::info, content);
     }
   };
-  auto flush_fn =
-      [logger, stream_redirect_opt = stream_redirect_opt, std_ostream = std_ostream]() {
-        if (logger != nullptr) {
-          logger->flush();
-        }
-        if (stream_redirect_opt.tee_to_stdout) {
-          std_ostream.stdout_ostream->flush();
-          RAY_CHECK(std_ostream.stdout_ostream->good());
-        }
-        if (stream_redirect_opt.tee_to_stderr) {
-          std_ostream.stderr_ostream->flush();
-          RAY_CHECK(std_ostream.stderr_ostream->good());
-        }
-      };
+  auto flush_fn = [logger]() {
+    if (logger != nullptr) {
+      logger->flush();
+    }
+  };
 
   StartStreamDump(std::move(pipe_instream),
                   std::move(write_fn),
