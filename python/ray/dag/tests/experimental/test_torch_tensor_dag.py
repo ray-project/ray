@@ -1155,7 +1155,7 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
         ]
         dag = MultiOutputNode(recvs)
 
-    compiled_dag = dag.experimental_compile(_max_inflight_executions=1)
+    compiled_dag = dag.experimental_compile()
 
     ref = compiled_dag.execute([((20,), dtype, idx + 1) for idx in range(num_workers)])
     reduced_val = (1 + num_workers) * num_workers / 2
@@ -1168,11 +1168,12 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
     with pytest.raises(RayChannelError):
         ray.get(ref)
 
-    # The DAG will be torn down after any task throws an application-level
-    # exception, such as when the task returns torch tensors of the wrong
-    # shape or dtype. Check that we can no longer submit to the DAG.
+    # Since we have buffered channels, the execution should not error, but the
+    # get should error, as the dag should no longer work after the application-
+    # level exception.
+    ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
     with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+        ray.get(ref)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
