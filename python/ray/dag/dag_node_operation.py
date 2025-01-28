@@ -614,9 +614,9 @@ def _generate_overlapped_execution_schedule(
     compute node to swap with so that the NCCL read operation can be overlapped
     with computation.
 
-    Overlapping Collective operations is in alpha stage. They are overlapped
-    with computation by prioritizing the NCCL operation in the `__lt__` function
-    of the `_DAGOperationGraphNode`.
+    Overlapping collective operations and communications is in alpha stage.
+    They are overlapped by prioritizing NCCL operations over non-NCCL operations
+    in the `__lt__` function of the `_DAGOperationGraphNode`.
 
     Args:
         actor_to_execution_schedule: A dictionary that maps an actor handle to
