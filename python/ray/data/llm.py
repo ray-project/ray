@@ -19,6 +19,7 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
 
     Examples:
         .. testcode::
+            :skipif: True
 
             import ray
             from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
@@ -26,6 +27,7 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
             config = HttpRequestProcessorConfig(
                 url="https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": "Bearer sk-..."},
+                concurrency=1,
             )
             processor = build_llm_processor(
                 config,
@@ -41,7 +43,6 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
                 postprocess=lambda row: dict(
                     resp=row["choices"][0]["message"]["content"],
                 ),
-                concurrency=1,
             )
 
             ds = ray.data.range(10)
