@@ -237,7 +237,9 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
-    tags = ["team:core"],
+    tags = [
+        "team:core",
+    ],
 )
 
 ray_cc_test(
