@@ -105,7 +105,7 @@ def _train_coordinator_fn(
     trainer = trainer_cls(**config)
 
     # Get the checkpoint from Tune and pass it to workers later on.
-    checkpoint = ray.train.get_checkpoint()
+    checkpoint = ray.tune.get_checkpoint()
     if checkpoint:
         # Set `starting_checkpoint` for auto-recovery fault-tolerance
         # as well as manual restoration.
@@ -572,7 +572,7 @@ class BaseTrainer(abc.ABC):
         if self.run_config._verbose is not None:
             _log_deprecation_warning(VERBOSE_DEPRECATION_MESSAGE)
 
-        if self.run_config.log_to_file is not None:
+        if self.run_config.log_to_file:
             _log_deprecation_warning(LOG_TO_FILE_DEPRECATION_MESSAGE)
 
         if self.run_config.stop is not None:

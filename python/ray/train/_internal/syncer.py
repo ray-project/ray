@@ -28,42 +28,6 @@ class SyncConfig:
     sync_timeout: int = DEFAULT_SYNC_TIMEOUT
     sync_artifacts: bool = False
     sync_artifacts_on_checkpoint: bool = True
-    upload_dir: Optional[str] = _DEPRECATED_VALUE
-    syncer: Optional[Union[str, "Syncer"]] = _DEPRECATED_VALUE
-    sync_on_checkpoint: bool = _DEPRECATED_VALUE
-
-    # TODO(justinvyu): [Deprecated] Remove in 2.11.
-    def _deprecation_warning(self, attr_name: str, extra_msg: str):
-        if getattr(self, attr_name) != _DEPRECATED_VALUE:
-            raise DeprecationWarning(
-                f"`SyncConfig({attr_name})` is a deprecated configuration "
-                "Please remove it from your `SyncConfig`. "
-                f"{extra_msg}"
-            )
-
-    def __post_init__(self):
-        if _v2_migration_warnings_enabled():
-            from ray.train.v2._internal.migration_utils import (
-                SYNC_CONFIG_DEPRECATION_MESSAGE,
-            )
-
-            _log_deprecation_warning(SYNC_CONFIG_DEPRECATION_MESSAGE)
-
-        for attr_name, extra_msg in [
-            (
-                "upload_dir",
-                "\nPlease specify `ray.train.RunConfig(storage_path)` instead.",
-            ),
-            (
-                "syncer",
-                "\nPlease implement custom syncing logic with a custom "
-                "`pyarrow.fs.FileSystem` instead, and pass it into "
-                "`ray.train.RunConfig(storage_filesystem)`. "
-                "See here: https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html#custom-storage",  # noqa: E501
-            ),
-            ("sync_on_checkpoint", ""),
-        ]:
-            self._deprecation_warning(attr_name, extra_msg)
 
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig."""

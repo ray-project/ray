@@ -114,5 +114,27 @@ def test_trainer_deprecated_configs():
         ray.train.SyncConfig()
 
 
+def test_train_context_deprecations(ray_start_4_cpus, tmp_path):
+    def train_fn_per_worker(config):
+        with pytest.warns(RayDeprecationWarning, match="get_trial_dir"):
+            ray.train.get_context().get_trial_dir()
+
+        with pytest.warns(RayDeprecationWarning, match="get_trial_id"):
+            ray.train.get_context().get_trial_id()
+
+        with pytest.warns(RayDeprecationWarning, match="get_trial_name"):
+            ray.train.get_context().get_trial_name()
+
+        with pytest.warns(RayDeprecationWarning, match="get_trial_resources"):
+            ray.train.get_context().get_trial_resources()
+
+    trainer = DataParallelTrainer(
+        train_fn_per_worker,
+        scaling_config=ray.train.ScalingConfig(num_workers=1),
+        run_config=ray.train.RunConfig(storage_path=tmp_path),
+    )
+    trainer.fit()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-x", __file__]))
