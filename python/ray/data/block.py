@@ -132,6 +132,7 @@ def _apply_batch_size(
         return given_batch_size
 
 
+@DeveloperAPI
 def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
     return [m.to_stats() for m in metas]
 
