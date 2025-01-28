@@ -16,7 +16,7 @@ class ChatTemplateUDF(StatefulStageUDF):
         model: str,
     ):
         """
-        Initialize the HttpRequestUDF.
+        Initialize the ChatTemplateUDF.
 
         Args:
             data_column: The data column name.
