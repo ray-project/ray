@@ -831,13 +831,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     # Provide the actor handles for the learners for module
                     # updating during preprocessing.
                     self.offline_data.learner_handles = self.learner_group._workers
-                    # Provide the module_spec. Note, in the remote case this is needed
-                    # because the learner module cannot be copied, but must be built.
-                    self.offline_data.module_spec = module_spec
                 # Otherwise we can simply pass in the local learner.
                 else:
                     self.offline_data.learner_handles = [self.learner_group._learner]
-
+                # TODO (simon, sven): Replace these set-some-object's-attributes-
+                # directly? We should find some solution for this in the future, an API,
+                # or setting these in the OfflineData constructor?
+                # Provide the module_spec. Note, in the remote case this is needed
+                # because the learner module cannot be copied, but must be built.
+                self.offline_data.module_spec = module_spec
                 # Provide the `OfflineData` instance with space information. It might
                 # need it for reading recorded experiences.
                 self.offline_data.spaces = spaces
