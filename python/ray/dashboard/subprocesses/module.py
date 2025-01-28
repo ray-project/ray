@@ -9,6 +9,7 @@ from typing import Dict
 import os
 import setproctitle
 from packaging.version import Version
+import json
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
@@ -16,6 +17,7 @@ from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
     RequestMessage,
     UnaryResponseMessage,
+    ErrorMessage,
 )
 from ray.dashboard.subprocesses.utils import (
     assert_not_in_asyncio_loop,
@@ -51,13 +53,26 @@ class SubprocessModuleConfig:
 
 @dataclass
 class SubprocessModuleRequest:
-    query: Dict[str, str]
-    headers: Dict[str, str]
+    """
+    Request type for an endpoint handler in SubprocessModule. Modeled after
+    aiohttp.web.Request which is not pickleable.
+    """
+
+    # Not really importing because we want to support minimal Ray later.
+    # MultiMapping is just a dict, with `getall()` method to give (K -> List[V]).
+    query: "multidict.MultiMapping[str, str]"  # noqa: F821
+    headers: "multidict.MultiMapping[str, str]"  # noqa: F821
     body: bytes
     # If the route has a match_info, it will be stored here.
     # e.g. @SubprocessRouteTable.get("/api/data/datasets/{job_id}")
     # match_info = {"job_id": "123"}
     match_info: Dict[str, str]
+
+    async def json(self):
+        return json.loads(self.body)
+
+    async def read(self):
+        return self.body
 
 
 class SubprocessModule(abc.ABC):
@@ -117,6 +132,10 @@ class SubprocessModule(abc.ABC):
         return self._config.session_name
 
     @property
+    def log_dir(self):
+        return self._config.log_dir
+
+    @property
     def http_session(self):
         # Assumes non minimal Ray.
         from ray.dashboard.optional_deps import aiohttp
@@ -160,7 +179,16 @@ class SubprocessModule(abc.ABC):
             #                      parent_bound_queue: multiprocessing.Queue) -> None
             #
             # which comes from the decorators from MethodRouteTable.
-            method = getattr(self, message.method_name)
+            try:
+                method = getattr(self, message.method_name)
+            except Exception as e:
+                logger.exception(
+                    f"Error getting method {message.method_name} from module {self.__class__.__name__}"
+                )
+                msg = ErrorMessage(request_id=message.request_id, error=e)
+                self._parent_bound_queue.put(msg)
+                return
+
             # getattr() already binds self to method, so we don't need to pass it.
             asyncio.run_coroutine_threadsafe(
                 method(message, self._parent_bound_queue), loop

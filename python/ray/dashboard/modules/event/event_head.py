@@ -12,6 +12,8 @@ import aiohttp.web
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
+from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleRequest
 from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.utils import get_or_create_event_loop
@@ -25,7 +27,6 @@ from ray.dashboard.state_api_utils import do_filter, handle_list_api
 from ray.util.state.common import ClusterEventState, ListApiOptions, ListApiResponse
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 JobEvents = OrderedDict
 dashboard_utils._json_compatible_types.add(JobEvents)
@@ -79,11 +80,11 @@ async def _list_cluster_events_impl(
 
 
 class EventHead(
-    dashboard_utils.DashboardHeadModule,
+    SubprocessModule,
     dashboard_utils.RateLimitedModule,
 ):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        dashboard_utils.DashboardHeadModule.__init__(self, config)
+    def __init__(self, *args, **kwargs):
+        SubprocessModule.__init__(self, *args, **kwargs)
         dashboard_utils.RateLimitedModule.__init__(
             self,
             min(
@@ -141,8 +142,8 @@ class EventHead(
                 while len(job_events) > MAX_EVENTS_TO_CACHE:
                     job_events.popitem(last=False)
 
-    @routes.post("/report_events")
-    async def report_events(self, request):
+    @SubprocessRouteTable.post("/report_events")
+    async def report_events(self, request: SubprocessModuleRequest):
         """
         Report events to the dashboard.
 
@@ -172,9 +173,9 @@ class EventHead(
             "total_uptime": elapsed,
         }
 
-    @routes.get("/events")
+    @SubprocessRouteTable.get("/events")
     @dashboard_optional_utils.aiohttp_cache
-    async def get_event(self, req) -> aiohttp.web.Response:
+    async def get_event(self, req: SubprocessModuleRequest) -> aiohttp.web.Response:
         job_id = req.query.get("job_id")
         if job_id is None:
             all_events = {
@@ -193,10 +194,10 @@ class EventHead(
             events=list(job_events.values()),
         )
 
-    @routes.get("/api/v0/cluster_events")
+    @SubprocessRouteTable.get("/api/v0/cluster_events")
     @dashboard_utils.RateLimitedModule.enforce_max_concurrent_calls
     async def list_cluster_events(
-        self, req: aiohttp.web.Request
+        self, req: SubprocessModuleRequest
     ) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
 
@@ -207,13 +208,9 @@ class EventHead(
 
         return await handle_list_api(list_api_fn, req)
 
-    async def run(self, server):
+    async def init(self):
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: self._update_events(parse_event_strings(data)),
             self._executor,
         )
-
-    @staticmethod
-    def is_minimal_module():
-        return False
