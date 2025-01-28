@@ -14,7 +14,6 @@ from ray.llm._internal.batch.stages import (
 )
 
 
-@PublicAPI(stability="alpha")
 class ProcessorConfig(BaseModel):
     """The processor configuration."""
 
