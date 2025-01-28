@@ -1,6 +1,5 @@
 import ast
 import logging
-from typing import Any, List, Union
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -16,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 class ExpressionEvaluator:
-    def get_filters(self, expression: str) -> pc.Expression:
+    @staticmethod
+    def get_filters(expression: str) -> pa.dataset.Expression:
         """Parse and evaluate the expression to generate a filter condition.
 
         Args:
@@ -28,29 +28,16 @@ class ExpressionEvaluator:
         """
         try:
             tree = ast.parse(expression, mode="eval")
-            return self._build_filter_condition(tree.body)
+            return _ConvertToArrowExpressionVisitor().visit(tree.body)
         except SyntaxError as e:
             raise ValueError(f"Invalid syntax in the expression: {expression}") from e
         except Exception as e:
             logger.exception(f"Error processing expression: {e}")
             raise
 
-    def _build_filter_condition(self, node) -> Union[pc.Expression, List[Any], str]:
-        """Recursively evaluate an AST node to build the filter condition.
-
-        Args:
-            node: The AST node to evaluate, representing part of the expression.
-
-        Returns:
-            The evaluated result for the node, which could be a
-                filter condition, list, or field name.
-        """
-        visitor = _ConvertToArrowExpressionVisitor()
-        return visitor.visit(node)
-
 
 class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
-    def visit_Compare(self, node: ast.Compare) -> pc.Expression:
+    def visit_Compare(self, node: ast.Compare) -> pa.dataset.Expression:
         """Handle comparison operations (e.g., a == b, a < b, a in b).
 
         Args:
@@ -62,11 +49,14 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
         # Handle left operand
         # TODO Validate columns
         if isinstance(node.left, ast.Attribute):
-            left_expr = self.visit(node.left)  # Visit and handle attributes
+            # Visit and handle attributes
+            left_expr = self.visit(node.left)
         elif isinstance(node.left, ast.Name):
-            left_expr = self.visit(node.left)  # Treat as a simple field
+            # Treat as a simple field
+            left_expr = self.visit(node.left)
         elif isinstance(node.left, ast.Constant):
-            left_expr = node.left.value  # Constant values are used directly
+            # Constant values are used directly
+            left_expr = node.left.value
         else:
             raise ValueError(f"Unsupported left operand type: {type(node.left)}")
 
@@ -92,7 +82,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
         else:
             raise ValueError(f"Unsupported operator type: {op}")
 
-    def visit_BoolOp(self, node: ast.BoolOp) -> pc.Expression:
+    def visit_BoolOp(self, node: ast.BoolOp) -> pa.dataset.Expression:
         """Handle logical operations (e.g., a and b, a or b).
 
         Args:
@@ -118,8 +108,8 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
 
         return combined_expr
 
-    def visit_Name(self, node: ast.Name) -> pc.Expression:
-        """Handle variable (name) nodes and return them as pc.Expression.
+    def visit_Name(self, node: ast.Name) -> pa.dataset.Expression:
+        """Handle variable (name) nodes and return them as pa.dataset.Expression.
 
         Even if the name contains periods, it's treated as a single string.
 
@@ -127,11 +117,10 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
             node: The AST node representing a variable.
 
         Returns:
-            The variable wrapped as a pc.Expression.
+            The variable wrapped as a pa.dataset.Expression.
         """
-        field_name = (
-            node.id
-        )  # Directly use the field name as a string (even if it contains periods)
+        # Directly use the field name as a string (even if it contains periods)
+        field_name = node.id
         return pc.field(field_name)
 
     def visit_Attribute(self, node: ast.Attribute) -> object:
@@ -159,21 +148,21 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
 
         raise ValueError(f"Unsupported attribute: {node.attr}")
 
-    def visit_List(self, node: ast.List) -> pc.Expression:
+    def visit_List(self, node: ast.List) -> pa.dataset.Expression:
         """Handle list literals.
 
         Args:
             node: The AST node representing a list.
 
         Returns:
-            The list of elements wrapped as a pc.Expression.
+            The list of elements wrapped as a pa.dataset.Expression.
         """
         elements = [self.visit(elt) for elt in node.elts]
         return pa.array(elements)
 
-    # TODO (srinathk) Note that visit_Constant does not return pc.Expression
+    # TODO (srinathk) Note that visit_Constant does not return pa.dataset.Expression
     # because to support function in() which takes in a List, the elements in the List
-    # needs to values instead of pc.Expression per pyarrow.dataset.Expression
+    # needs to values instead of pa.dataset.Expression per pyarrow.dataset.Expression
     # specification. May be down the road, we can update it as Arrow relaxes this
     # constraint.
     def visit_Constant(self, node: ast.Constant) -> object:
@@ -187,7 +176,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
         """
         return node.value  # Return the constant value directly.
 
-    def visit_Call(self, node: ast.Call) -> pc.Expression:
+    def visit_Call(self, node: ast.Call) -> pa.dataset.Expression:
         """Handle function calls (e.g., is_nan(a), is_valid(b)).
 
         Args:
