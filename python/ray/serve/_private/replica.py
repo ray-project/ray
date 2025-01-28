@@ -813,9 +813,10 @@ class ReplicaBase(ABC):
             if f is not None:
                 await asyncio.wrap_future(f)
             self._healthy = True
-        except Exception:
+        except Exception as e:
             logger.warning("Replica health check failed.")
             self._healthy = False
+            raise e from None
 
 
 class Replica(ReplicaBase):
