@@ -7,5 +7,5 @@ anyscale/ci @aslonnie @khluu
 anyscale/docker @aslonnie @khluu
 
 # Data team
-/python/ray/anyscale/data @bveeramani @raulchen @omatthew98 @alexeykudinkin @srinathk10
-/release/anyscale/data @bveeramani @raulchen @omatthew98 @alexeykudinkin @srinathk10
+/python/ray/anyscale/data @anyscale/ray-data
+/release/anyscale/data @anyscale/ray-data
