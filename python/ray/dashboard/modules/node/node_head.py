@@ -276,10 +276,20 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         from ray.autoscaler.v2.utils import is_autoscaler_v2
 
         if is_autoscaler_v2():
-            from ray.autoscaler.v2.sdk import get_cluster_status
+            from ray.autoscaler.v2.sdk import ClusterStatusParser
+            from ray.autoscaler.v2.schema import Stats
 
             try:
-                cluster_status = get_cluster_status(self.gcs_address)
+                # here we have a sync request
+                req_time = time.time()
+                cluster_status = await self.gcs_aio_client.get_cluster_status()
+                reply_time = time.time()
+                cluster_status = ClusterStatusParser.from_get_cluster_status_reply(
+                    cluster_status,
+                    stats=Stats(
+                        gcs_request_time_s=reply_time - req_time, request_ts_s=req_time
+                    ),
+                )
             except Exception:
                 logger.exception("Error getting cluster status")
                 return {}
