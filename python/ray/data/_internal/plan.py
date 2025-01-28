@@ -10,8 +10,6 @@ from ray._private.internal_api import get_memory_info_reply, get_state_from_addr
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
-from ray.data._internal.logical.operators.from_operators import AbstractFrom
-from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import create_dataset_tag, unify_block_metadata_schema
@@ -124,7 +122,7 @@ class ExecutionPlan:
             ):
                 """Traverse (DFS) the LogicalPlan DAG and
                 return a string representation of the operators."""
-                if isinstance(op, (Read, InputData, AbstractFrom)):
+                if not op.input_dependencies or op.is_read():
                     return curr_str, depth
 
                 curr_max_depth = depth
@@ -156,16 +154,23 @@ class ExecutionPlan:
                 count = self._snapshot_metadata.num_rows
             else:
                 # This plan hasn't executed any operators.
-                sources = self._logical_plan.sources()
+                has_n_ary_operator = False
+                dag = self._logical_plan.dag
+                while not dag.is_read() and dag.input_dependencies:
+                    if len(dag.input_dependencies) > 1:
+                        has_n_ary_operator = True
+                        break
+
+                    dag = dag.input_dependencies[0]
+
                 # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
-                if len(sources) > 1:
-                    # Multiple sources, cannot determine schema.
+                if has_n_ary_operator:
                     schema = None
                     count = None
                 else:
-                    assert len(sources) == 1
+                    assert dag.is_read() or not dag.input_dependencies, dag
                     plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
-                    plan.link_logical_plan(LogicalPlan(sources[0], plan._context))
+                    plan.link_logical_plan(LogicalPlan(dag, plan._context))
                     schema = plan.schema()
                     count = plan.meta_count()
         else:
@@ -580,7 +585,7 @@ class ExecutionPlan:
         the LogicalPlan is used."""
         if root_op is None:
             root_op = self._logical_plan.dag
-        return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
+        return root_op.is_read()
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final operator, i.e. for

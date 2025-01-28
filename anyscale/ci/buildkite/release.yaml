@@ -1,0 +1,17 @@
+steps:
+  - name: "Launch release tests"
+    command:
+      - /bin/bash anyscale/ci/run-release-tests.sh
+    artifact_paths:
+      - "/artifacts/**/*"
+    env:
+      BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+    plugins:
+      - docker#v5.9.0:
+          image: "ubuntu:22.04"
+          mount-buildkite-agent: True
+          propagate-environment: True
+          volumes:
+            - "/var/run/docker.sock:/var/run/docker.sock"
+    agents:
+      queue: large

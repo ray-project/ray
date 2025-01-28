@@ -1,0 +1,7 @@
+group: runtime train tests
+steps:
+  - label: ":bullettrain_front: train: runtime tests"
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/train/... ml
+    depends_on: [ "mlbuild", "forge" ]

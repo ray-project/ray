@@ -1,0 +1,45 @@
+[
+   {
+      "name":"proxy_route_to_replica",
+      "kind":"SpanKind.SERVER",
+      "status":{
+         "status_code":"OK"
+      },
+      "attributes":{
+         "request_id":"",
+         "deployment":"grpc-deployment",
+         "app":"default",
+         "call_method":"__call__",
+         "route":"default",
+         "multiplexed_model_id":"",
+         "is_streaming":false,
+         "is_http_request":false,
+         "is_grpc_request":true
+      },
+      "events":[
+         
+      ],
+      "links":[
+         
+      ]
+   },
+   {
+      "name":"proxy_grpc_request",
+      "kind":"SpanKind.SERVER",
+      "status":{
+         "status_code":"OK"
+      },
+      "attributes":{
+         "request_id":"",
+         "deployment":"grpc-deployment",
+         "app":"default",
+         "request_type":"grpc"
+      },
+      "events":[
+         
+      ],
+      "links":[
+         
+      ]
+   }
+]

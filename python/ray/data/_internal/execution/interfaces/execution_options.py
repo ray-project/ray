@@ -43,8 +43,8 @@ class ExecutionResources:
     ):
         """Create an ExecutionResources object from a resource dict."""
         return ExecutionResources(
-            cpu=resource_dict.get("CPU", None),
-            gpu=resource_dict.get("GPU", None),
+            cpu=resource_dict.get("CPU", None) or resource_dict.get("num_cpus", None),
+            gpu=resource_dict.get("GPU", None) or resource_dict.get("num_gpus", None),
             object_store_memory=resource_dict.get("object_store_memory", None),
             default_to_inf=default_to_inf,
         )

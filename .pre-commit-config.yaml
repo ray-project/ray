@@ -75,10 +75,14 @@ repos:
             python/ray/autoscaler/_private/commands.py|
             python/ray/autoscaler/_private/autoscaler.py|
             python/ray/_private/gcs_utils.py
+            python/ray/anyscale/safetensors/.*\.py
           )
         additional_dependencies:
           [
+            mypy-extensions==1.0.0,
             types-PyYAML==6.0.12.2,
+            types-pycurl==7.45.3.20240421,
+            types-requests==2.31.0.6,
           ]
 
   - repo: https://github.com/pre-commit/pygrep-hooks
