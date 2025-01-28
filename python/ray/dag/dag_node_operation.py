@@ -105,14 +105,14 @@ class _DAGOperationGraphNode:
         `_select_next_nodes`. The priority queue is a min-heap, so the node with
         higher priority is considered "less than" the other node.
         """
-        # [CL] Comments.
         if self.requires_nccl_op != other.requires_nccl_op:
             # When one node is a NCCL operation and the other is not, prioritize
             # the NCCL operation.
             return self.requires_nccl_op
         else:
             # When either both nodes are NCCL operations or both nodes are not
-            # NCCL operations, use the default comparison.
+            # NCCL operations, prioritize the earlier task within the same actor
+            # and load balance tasks across actors.
             return (self.op.exec_task_idx, self.task_idx) < (
                 other.op.exec_task_idx,
                 other.task_idx,
@@ -330,14 +330,16 @@ def _build_dag_node_operation_graph(
             assert node.task_idx not in idx_to_op_node
             idx_to_op_node[node.task_idx] = node
             if i > 0:
-                # [CL] Comments for `continue`.
-                # [CF] Update.
                 prev_node = op_nodes[i - 1]
                 if prev_node.requires_nccl_read or node.requires_nccl_write:
+                    # Skip the control edges `ClassMethodNode` -> `P2PSendNode` and
+                    # `P2PRecvNode` -> `ClassMethodNode`.
                     continue
                 if prev_node.requires_nccl_write and node.requires_nccl_read:
+                    # Skip the control edge `P2PSendNode` -> `P2PRecvNode`.
                     continue
                 if node.requires_nccl_collective:
+                    # Skip the control edge `ClassMethodNode` -> `CollectiveOutputNode`.
                     continue
                 _add_edge(prev_node, node, control_dependency=True)
 
@@ -613,8 +615,9 @@ def _generate_overlapped_execution_schedule(
     compute node to swap with so that the NCCL read operation can be overlapped
     with computation.
 
-    [CL]
-    Collective operations are not yet supported.
+    Overlapping Collective operations is in alpha stage. They are overlapped
+    with computation by prioritizing the NCCL operation in the `__lt__` function
+    of the `_DAGOperationGraphNode`.
 
     Args:
         actor_to_execution_schedule: A dictionary that maps an actor handle to
