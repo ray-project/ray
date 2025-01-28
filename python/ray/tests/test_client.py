@@ -878,7 +878,7 @@ def test_client_actor_missing_field(call_ray_start_shared):
         assert ray.get(handle.child_func.remote()) == 42
         with pytest.raises(AttributeError):
             # We should raise attribute error when accessing a non-existent func
-            SomeClass.nonexistent_func
+            _ = SomeClass.nonexistent_func
 
 
 def test_serialize_client_actor_handle(call_ray_start_shared):
