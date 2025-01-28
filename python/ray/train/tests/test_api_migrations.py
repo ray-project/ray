@@ -44,6 +44,18 @@ def test_trainer_valid_configs(tmp_path):
 
 
 def test_trainer_deprecated_configs():
+    with pytest.warns(RayDeprecationWarning, match="metadata"):
+        DataParallelTrainer(
+            lambda _: None,
+            metadata={"dummy": "dummy"},
+        )
+
+    with pytest.warns(RayDeprecationWarning, match="resume_from_checkpoint"):
+        DataParallelTrainer(
+            lambda _: None,
+            resume_from_checkpoint=ray.train.Checkpoint.from_directory("dummy"),
+        )
+
     with pytest.warns(RayDeprecationWarning, match="fail_fast"):
         DataParallelTrainer(
             lambda _: None,
