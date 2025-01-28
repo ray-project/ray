@@ -4,11 +4,9 @@ import threading
 import time
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.train.constants import _DEPRECATED_VALUE, _v2_migration_warnings_enabled
-from ray.train.utils import _log_deprecation_warning
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.widgets import Template
 
