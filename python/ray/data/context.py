@@ -315,6 +315,8 @@ class DataContext:
     enable_progress_bar_name_truncation: bool = (
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
+    enable_show_backpressure_reason: bool = False
+    # By default, disable the backpressure reason for operator-level progress.
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )
