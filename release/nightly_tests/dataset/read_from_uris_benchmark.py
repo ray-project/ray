@@ -2,11 +2,11 @@ import io
 
 import boto3
 import numpy as np
+from benchmark import Benchmark
 from PIL import Image
 
 import ray
 from ray.data import ActorPoolStrategy
-from benchmark import Benchmark
 
 BUCKET = "anyscale-imagenet"
 # This Parquet file contains the keys of images in the 'anyscale-imagenet' bucket.
@@ -24,7 +24,7 @@ def benchmark_fn():
     # Assuming there are 80 CPUs and 4 in-flight tasks per actor, we need at least 320
     # partitions to utilize all CPUs.
     # TODO: This is a temporary workaround. We need to improve the default partitioning.
-    metadata = metadata.repartition(320)
+    # metadata = metadata.repartition(320)
 
     class LoadImage:
         def __init__(self):
