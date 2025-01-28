@@ -877,20 +877,22 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         module_to_num_episodes_per_sample = {DEFAULT_MODULE_ID: num_episodes_per_sample}
         module_to_num_steps_per_sample = {DEFAULT_MODULE_ID: num_env_steps_per_sample}
         module_to_num_resamples = {DEFAULT_MODULE_ID: num_resamples}
-
         self._update_sample_metrics(
             num_env_steps_sampled=num_env_steps_sampled,
             num_episodes_per_sample=num_episodes_per_sample,
             num_env_steps_per_sample=num_env_steps_per_sample,
             num_resamples=num_resamples,
+            sampled_n_step=None,
             agent_to_num_steps_sampled=agent_to_sample_size,
             agent_to_num_episodes_per_sample=agent_to_num_episodes_per_sample,
             agent_to_num_steps_per_sample=agent_to_num_steps_per_sample,
             agent_to_num_resamples=agent_to_num_resamples,
+            agent_to_sampled_n_step=None,
             module_to_num_steps_sampled=module_to_num_steps_sampled,
             module_to_num_episodes_per_sample=module_to_num_episodes_per_sample,
             module_to_num_steps_per_sample=module_to_num_steps_per_sample,
             module_to_num_resamples=module_to_num_resamples,
+            module_to_sampled_n_step=None,
         )
 
         # TODO: Return SampleBatch instead of this simpler dict.
