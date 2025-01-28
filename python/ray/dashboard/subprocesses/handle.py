@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Awaitable, Optional
 
 from ray.dashboard.optional_deps import aiohttp
-
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
     ErrorMessage,
@@ -265,9 +264,11 @@ class SubprocessModuleHandle:
         headers = {}
         if request is not None:
             body = await request.read()
-            query = dict(request.query)
-            headers = dict(request.headers)
-            match_info = dict(request.match_info)
+            # request.query can have type CIMultiDictProxy which is not serializable.
+            # Need a copy to be serializable.
+            query = request.query.copy()
+            headers = request.headers.copy()
+            match_info = request.match_info.copy()
         self._send_message(
             RequestMessage(
                 request_id=request_id,
