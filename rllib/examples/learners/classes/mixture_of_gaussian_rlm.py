@@ -48,7 +48,7 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
 
         # Set failsafe for action space dim
         if isinstance(self.action_space, gym.spaces.Box):
-            output_dim = self.action_space.shape[0]*2
+            output_dim = self.action_space.shape[0] * 2
         elif isinstance(self.action_space, gym.spaces.Discrete):
             output_dim = self.action_space.n
         else:
