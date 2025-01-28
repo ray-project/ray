@@ -33,11 +33,6 @@ data_path = base_path / "tests/data/pendulum/pendulum-v1_enormous"
 config = (
     CQLConfig()
     .environment("Pendulum-v1")
-    # Use the new API stack.
-    .api_stack(
-        enable_env_runner_and_connector_v2=True,
-        enable_rl_module_and_learner=True,
-    )
     .offline_data(
         input_=[data_path.as_posix()],
         # The `kwargs` for the `map_batches` method in which our

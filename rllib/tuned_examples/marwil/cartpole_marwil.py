@@ -33,10 +33,7 @@ print(f"data_path={data_path}")
 config = (
     MARWILConfig()
     .environment(env="CartPole-v1")
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
+    # Evaluate every 3 training iterations.
     .evaluation(
         evaluation_interval=3,
         evaluation_num_env_runners=1,
