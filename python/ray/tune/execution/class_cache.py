@@ -2,12 +2,12 @@ import os
 
 import ray
 from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+from ray.train.constants import (
+    RAY_CHDIR_TO_TRIAL_DIR,
+    ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR,
+)
 from ray.train.v2._internal.constants import (
     ENV_VARS_TO_PROPAGATE as TRAIN_ENV_VARS_TO_PROPAGATE,
-)
-from ray.train.v2._internal.migration_utils import (
-    ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR,
 )
 
 

@@ -267,10 +267,7 @@ class BaseTrainer(abc.ABC):
         air_usage.tag_air_trainer(self)
 
     @classmethod
-    @Deprecated(
-        message=_TRAINER_RESTORE_DEPRECATION_WARNING,
-        warning=_v2_migration_warnings_enabled(),
-    )
+    @Deprecated(message=_TRAINER_RESTORE_DEPRECATION_WARNING)
     def restore(
         cls: Type["BaseTrainer"],
         path: Union[str, os.PathLike],
@@ -369,6 +366,9 @@ class BaseTrainer(abc.ABC):
         Returns:
             BaseTrainer: A restored instance of the class that is calling this method.
         """
+        if _v2_migration_warnings_enabled():
+            _log_deprecation_warning(_TRAINER_RESTORE_DEPRECATION_WARNING)
+
         if not cls.can_restore(path, storage_filesystem):
             raise ValueError(
                 f"Invalid restore path: {path}. Make sure that this path exists and "
@@ -445,6 +445,9 @@ class BaseTrainer(abc.ABC):
         Returns:
             bool: Whether this path exists and contains the trainer state to resume from
         """
+        if _v2_migration_warnings_enabled():
+            _log_deprecation_warning(_TRAINER_RESTORE_DEPRECATION_WARNING)
+
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
         trainer_pkl_path = Path(fs_path, _TRAINER_PKL).as_posix()
         return _exists_at_fs_path(fs, trainer_pkl_path)
@@ -835,10 +838,10 @@ class BaseTrainer(abc.ABC):
                 )
                 if isinstance(merged_scaling_config, dict):
                     merged_scaling_config = ScalingConfig(**merged_scaling_config)
-                self._merged_config[
-                    "scaling_config"
-                ] = self._reconcile_scaling_config_with_trial_resources(
-                    merged_scaling_config
+                self._merged_config["scaling_config"] = (
+                    self._reconcile_scaling_config_with_trial_resources(
+                        merged_scaling_config
+                    )
                 )
                 if self.has_base_dataset():
                     # Set the DataContext on the Trainer actor to the DataContext

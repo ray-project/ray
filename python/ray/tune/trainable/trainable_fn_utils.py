@@ -2,11 +2,11 @@ from typing import Dict, Optional
 
 from ray.train._checkpoint import Checkpoint as TrainCheckpoint
 from ray.train._internal.session import _warn_session_misuse, get_session
-from ray.train.utils import _copy_doc, _log_deprecation_warning
-from ray.train.v2._internal.migration_utils import (
+from ray.train.constants import (
     _v2_migration_warnings_enabled,
     V2_MIGRATION_GUIDE_MESSAGE,
 )
+from ray.train.utils import _copy_doc, _log_deprecation_warning
 from ray.util.annotations import PublicAPI
 
 

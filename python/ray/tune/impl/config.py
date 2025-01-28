@@ -3,11 +3,11 @@ from dataclasses import dataclass
 from ray.air.config import CheckpointConfig as _CheckpointConfig
 from ray.air.config import FailureConfig as _FailureConfig
 from ray.air.config import RunConfig as _RunConfig
-from ray.train.utils import _copy_doc, _log_deprecation_warning
-from ray.train.v2._internal.migration_utils import (
+from ray.train.constants import (
     _v2_migration_warnings_enabled,
     V2_MIGRATION_GUIDE_MESSAGE,
 )
+from ray.train.utils import _copy_doc, _log_deprecation_warning
 
 # NOTE: This is just a pass-through wrapper around `ray.train.RunConfig`
 # in order to detect whether the import module was correct (e.g. `ray.tune.RunConfig`).

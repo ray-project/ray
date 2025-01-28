@@ -6,6 +6,7 @@ import pytest
 import ray.train
 import ray.tune
 from ray.train.constants import ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR
+from ray.train.base_trainer import BaseTrainer
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import RayDeprecationWarning
 
