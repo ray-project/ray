@@ -2,11 +2,12 @@ from abc import ABC, abstractmethod
 from typing import Set
 
 from ray._private.ray_logging import default_impl
+from ray._private.ray_logging.constants import LOGRECORD_STANDARD_ATTRS
 from ray._private.ray_logging.formatters import TextFormatter
 from ray._private.ray_logging.filters import CoreContextFilter
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, Deprecated
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import logging
 
@@ -16,9 +17,15 @@ class LoggingConfigurator(ABC):
     def get_supported_encodings(self) -> Set[str]:
         raise NotImplementedError
 
-    @abstractmethod
+    @Deprecated
     def configure_logging(self, encoding: str, log_level: str):
         raise NotImplementedError
+
+    # Should be marked as @abstractmethod, but we can't do that because of backwards
+    # compatibility.
+    # Also, assuming the function will only be called inside LoggingConfig._apply()
+    def configure(self, logging_config: "LoggingConfig"):
+        self.configure_logging(logging_config.encoding, logging_config.log_level)
 
 
 class DefaultLoggingConfigurator(LoggingConfigurator):
@@ -30,20 +37,28 @@ class DefaultLoggingConfigurator(LoggingConfigurator):
     def get_supported_encodings(self) -> Set[str]:
         return self._encoding_to_formatter.keys()
 
+    @Deprecated
     def configure_logging(self, encoding: str, log_level: str):
-        formatter = self._encoding_to_formatter[encoding]
+        self.configure(LoggingConfig(encoding=encoding, log_level=log_level))
+
+    def configure(self, logging_config: "LoggingConfig"):
+        formatter = self._encoding_to_formatter[logging_config.encoding]
+        formatter.set_additional_log_standard_attrs(
+            logging_config.additional_log_standard_attrs
+        )
+
         core_context_filter = CoreContextFilter()
         handler = logging.StreamHandler()
-        handler.setLevel(log_level)
+        handler.setLevel(logging_config.log_level)
         handler.setFormatter(formatter)
         handler.addFilter(core_context_filter)
 
         root_logger = logging.getLogger()
-        root_logger.setLevel(log_level)
+        root_logger.setLevel(logging_config.log_level)
         root_logger.addHandler(handler)
 
         ray_logger = logging.getLogger("ray")
-        ray_logger.setLevel(log_level)
+        ray_logger.setLevel(logging_config.log_level)
         # Remove all existing handlers added by `ray/__init__.py`.
         for h in ray_logger.handlers[:]:
             ray_logger.removeHandler(h)
@@ -54,11 +69,19 @@ class DefaultLoggingConfigurator(LoggingConfigurator):
 _logging_configurator: LoggingConfigurator = default_impl.get_logging_configurator()
 
 
+# Class defines the logging configurations for a Ray job.
+# To add a new logging configuration: (1) add a new field to this class; (2) Update the
+# logic in the __post_init__ method in this class to add the validation logic;
+# (3) Update the configure method in the DefaultLoggingConfigurator
+# class to use the new field.
 @PublicAPI(stability="alpha")
 @dataclass
 class LoggingConfig:
     encoding: str = "TEXT"
     log_level: str = "INFO"
+    # The list of valid attributes are defined as LOGRECORD_STANDARD_ATTRS in
+    # constants.py.
+    additional_log_standard_attrs: list = field(default_factory=list)
 
     def __post_init__(self):
         if self.encoding not in _logging_configurator.get_supported_encodings():
@@ -68,9 +91,17 @@ class LoggingConfig:
                 f"{list(_logging_configurator.get_supported_encodings())}"
             )
 
+        for attr in self.additional_log_standard_attrs:
+            if attr not in LOGRECORD_STANDARD_ATTRS:
+                raise ValueError(
+                    f"Unknown python logging standard attribute: {attr}. "
+                    "The valid attributes are: "
+                    f"{LOGRECORD_STANDARD_ATTRS}"
+                )
+
     def _configure_logging(self):
         """Set up the logging configuration for the current process."""
-        _logging_configurator.configure_logging(self.encoding, self.log_level)
+        _logging_configurator.configure(self)
 
     def _apply(self):
         """Set up the logging configuration."""
@@ -89,7 +120,7 @@ LoggingConfig.__doc__ = f"""
             import logging
 
             ray.init(
-                logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO")
+                logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO", additional_log_standard_attrs=['name'])
             )
 
             @ray.remote
@@ -102,11 +133,16 @@ LoggingConfig.__doc__ = f"""
         .. testoutput::
             :options: +MOCK
 
-            2024-06-03 07:53:50,815 INFO test.py:11 -- This is a Ray task job_id=01000000 worker_id=0dbbbd0f17d5343bbeee8228fa5ff675fe442445a1bc06ec899120a8 node_id=577706f1040ea8ebd76f7cf5a32338d79fe442e01455b9e7110cddfc task_id=c8ef45ccd0112571ffffffffffffffffffffffff01000000
+            2024-06-03 07:53:50,815 INFO test.py:11 -- This is a Ray task name=__main__ job_id=01000000 worker_id=0dbbbd0f17d5343bbeee8228fa5ff675fe442445a1bc06ec899120a8 node_id=577706f1040ea8ebd76f7cf5a32338d79fe442e01455b9e7110cddfc task_id=c8ef45ccd0112571ffffffffffffffffffffffff01000000
 
     Args:
         encoding: Encoding type for the logs. The valid values are
             {list(_logging_configurator.get_supported_encodings())}
         log_level: Log level for the logs. Defaults to 'INFO'. You can set
             it to 'DEBUG' to receive more detailed debug logs.
+        additional_log_standard_attrs: List of additional standard python logger attributes to 
+            include in the log. Defaults to an empty list. The list of already 
+            included standard attributes are: "asctime", "levelname", "message", 
+            "filename", "lineno", "exc_text". The list of valid attributes are specified
+            here: http://docs.python.org/library/logging.html#logrecord-attributes
     """  # noqa: E501

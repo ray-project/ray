@@ -40,23 +40,27 @@ ray_cc_library(
 # TODO(hjiang): filesystem and logging has interdependency, we should split them into three targets: filesystem, logging, ray_check_macros.
 ray_cc_library(
     name = "logging",
-    hdrs = [
-        "filesystem.h",
-        "logging.h",
-    ],
-    srcs = [
-        "filesystem.cc",
-        "logging.cc",
-    ],
+    hdrs = ["logging.h"],
+    srcs = ["logging.cc"],
     deps = [
         ":event_label",
         ":macros",
+        ":string_utils",
         ":thread_utils",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_prod",
         "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "filesystem",
+    hdrs = ["filesystem.h"],
+    srcs = ["filesystem.cc"],
+    deps = [
+        "//src/ray/common:status_or",
     ],
 )
 
@@ -82,6 +86,7 @@ ray_cc_library(
     ],
     deps = [
         ":cmd_line_utils",
+        ":filesystem",
         ":logging",
         ":macros",
         "@boost//:asio",
