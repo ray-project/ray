@@ -293,13 +293,13 @@ Finally, use a LogQL query to view logs for a specific RayCluster or RayJob, and
 If you want to deploy your Ray cluster on GKE and use Cloud Logging, you can read the following steps:
 When you create a cluster on GKE using these [instructions](https://github.com/GoogleCloudPlatform/ai-on-gke/blob/main/ray-on-gke/README.md), 
 a Fluentbit sidecar container is deployed alongside the Ray head container in the same pod. 
-This Fluent Bit sidecar collects logs from the Ray container, and then the DaemonSet Fluent Bit forwards logs to Cloud Logging, so you are ready to read logs in your GCP Logs Explorer.
-For example, if you submit a Ray job as described in the instructions, you can follow this [document]([doc](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/collect-view-logs-metrics#view_ray_logs)) to read the job's logs.
+This Fluentbit sidecar collects logs from the Ray container, and then the DaemonSet Fluentbit forwards logs to Cloud Logging, so you are ready to read logs in your GCP Logs Explorer.
+For example, if you submit a Ray job as described in the instructions, you can follow this [document](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/collect-view-logs-metrics#view_ray_logs) to read the job's logs.
 If you don't see the logs in GCP Logs Explorer, below is some debugging information.
 
 #### Verify the Fluenbit sidecar and Daemonset
 When the Ray cluster is created on GKE using the above instructions, a Fluentbit sidecar container should be ready in the Pod and collecting logs from the Ray container.  
-DaemonSet Fluent Bit pods should also be ready to forward the logs to Cloud Logging. You can use these commands to verify this.
+DaemonSet Fluentbit pods should also be ready to forward the logs to Cloud Logging. You can use these commands to verify this.
 * Get the name of the pod. You may need to modify the namespace if you've modified the terraform file in the instruction.
 ```shell
  kubectl get pods -n ai-on-gke -o yaml 
@@ -309,12 +309,12 @@ DaemonSet Fluent Bit pods should also be ready to forward the logs to Cloud Logg
 kubectl get pod <pod-name> -n ai-on-gke -o go-template='{{range .spec.containers}}{{.name}}{{"\n"}}{{end}}'
 ```
 
-* Verify that the Fluent Bit sidecar has collected logs from the Ray container.
+* Verify that the Fluentbit sidecar has collected logs from the Ray container.
 ```shell
 kubectl logs pod <pod-name> -n ai-on-gke -c fluentbit
 ```
 
-* Verify that a Fluent Bit DaemonSet is ready to forward logs to Cloud Logging.
+* Verify that a Fluentbit DaemonSet is ready to forward logs to Cloud Logging.
 ```shell
 kubectl get daemonsets -n kube-system | grep fluentbit
 ```
