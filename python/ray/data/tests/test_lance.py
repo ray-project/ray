@@ -11,6 +11,7 @@ from ray._private.test_utils import wait_for_condition
 from ray._private.utils import _get_pyarrow_version
 from ray.data import Schema
 from ray.data.datasource.path_util import _unwrap_protocol
+from ray.data.datasource._internal.lance_datasink import LanceDatasink
 
 
 @pytest.mark.parametrize(
@@ -112,6 +113,47 @@ def test_lance_read_many_files(data_path):
         return ds.count() == num_rows
 
     wait_for_condition(test_lance, timeout=10)
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_ray_sink(data_path):
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
+
+    sink = LanceDatasink(data_path)
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_datasink(sink)
+
+    ds = lance.dataset(data_path)
+    ds.count_rows() == 10
+    assert ds.schema.names == schema.names
+    # The schema is platform-dependent, because numpy uses int32 on Windows.
+    # So we observe the schema that is written and use that.
+    schema = ds.schema
+
+    tbl = ds.to_table()
+    assert sorted(tbl["id"].to_pylist()) == list(range(10))
+    assert set(tbl["str"].to_pylist()) == set([f"str-{i}" for i in range(10)])
+
+    sink = LanceDatasink(tmp_path, mode="append")
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"] + 10, "str": f"str-{x['id'] + 10}"}
+    ).write_datasink(sink)
+
+    ds = lance.dataset(tmp_path)
+    ds.count_rows() == 20
+    tbl = ds.to_table()
+    assert sorted(tbl["id"].to_pylist()) == list(range(20))
+    assert set(tbl["str"].to_pylist()) == set([f"str-{i}" for i in range(20)])
+
+    sink = LanceDatasink(tmp_path, schema=schema, mode="overwrite")
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_datasink(sink)
+
+    ds = lance.dataset(tmp_path)
+    ds.count_rows() == 10
+    assert ds.schema == schema
 
 
 if __name__ == "__main__":
