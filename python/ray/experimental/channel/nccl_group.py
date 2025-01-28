@@ -281,7 +281,7 @@ class _NcclGroup(GPUCommunicator):
         # TODO(swang): Avoid CUDA synchronization.
         # TODO(wxdeng): Use check_async_error.
         if not self._use_communication_streams:
-            self._collective_stream.synchronize()
+            self._cuda_stream.synchronize()
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
 

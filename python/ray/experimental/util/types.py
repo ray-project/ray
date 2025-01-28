@@ -3,17 +3,17 @@ from enum import Enum
 from ray.util.annotations import PublicAPI
 
 
-class _NcclOp(Enum):
+class _NcclOpType(Enum):
     pass
 
 
 @PublicAPI
-class P2POp(_NcclOp):
+class P2POp(_NcclOpType):
     SEND = 0
     RECV = 1
 
 
-class _CollectiveOp(_NcclOp):
+class _CollectiveOp(_NcclOpType):
     pass
 
 

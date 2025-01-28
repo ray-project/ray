@@ -53,15 +53,15 @@ def generate_dag_graph_nodes(
     exec_task_idx,
     task_idx,
     actor_handle,
-    nccl_op=None,
     nccl_op_type=None,
+    nccl_op=None,
 ) -> _DAGOperationGraphNode:
     node = _DAGOperationGraphNode(
         _DAGNodeOperation(exec_task_idx),
         task_idx,
         actor_handle,
-        nccl_op,
         nccl_op_type,
+        nccl_op,
     )
     return node
 
@@ -118,15 +118,15 @@ class TestSelectNextNodes:
             ],
         }
         # The graph is not accessed because there are no NCCL ops.
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, dict())
+        next_nodes = _select_next_nodes(dict(), mock_actor_to_candidates)
         assert len(next_nodes) == 1
         assert next_nodes[0] == dag_node_1
 
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, dict())
+        next_nodes = _select_next_nodes(dict(), mock_actor_to_candidates)
         assert len(next_nodes) == 1
         assert next_nodes[0] == dag_node_2
 
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, dict())
+        next_nodes = _select_next_nodes(dict(), mock_actor_to_candidates)
         assert next_nodes is None
 
     def test_only_one_nccl_write(self, monkeypatch):
@@ -150,15 +150,15 @@ class TestSelectNextNodes:
                 exec_task_idx_1,
                 task_idx_1,
                 fake_actor_1,
-                nccl_op,
                 P2POp.SEND,
+                nccl_op,
             ),
             task_idx_2: generate_dag_graph_nodes(
                 exec_task_idx_2,
                 task_idx_2,
                 fake_actor_2,
-                nccl_op,
                 P2POp.RECV,
+                nccl_op,
             ),
         }
 
@@ -166,14 +166,14 @@ class TestSelectNextNodes:
             fake_actor_1: [mock_graph[task_idx_1]],
             fake_actor_2: [mock_graph[task_idx_2]],
         }
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        next_nodes = _select_next_nodes(mock_graph, mock_actor_to_candidates)
         assert len(next_nodes) == 2
         assert set(next_nodes) == {
             mock_graph[task_idx_1],
             mock_graph[task_idx_2],
         }
 
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        next_nodes = _select_next_nodes(mock_graph, mock_actor_to_candidates)
         assert next_nodes is None
 
     def test_two_nccl_writes(self, monkeypatch):
@@ -214,29 +214,29 @@ class TestSelectNextNodes:
                     exec_task_idx_1_0,
                     task_idx_1_0,
                     fake_actor_1,
-                    nccl_op_1,
                     P2POp.SEND,
+                    nccl_op_1,
                 ),
                 task_idx_1_1: generate_dag_graph_nodes(
                     exec_task_idx_1_1,
                     task_idx_1_1,
                     fake_actor_1,
-                    nccl_op_2,
                     P2POp.RECV,
+                    nccl_op_2,
                 ),
                 task_idx_2_0: generate_dag_graph_nodes(
                     exec_task_idx_2_0,
                     task_idx_2_0,
                     fake_actor_2,
-                    nccl_op_2,
                     P2POp.SEND,
+                    nccl_op_2,
                 ),
                 task_idx_2_1: generate_dag_graph_nodes(
                     exec_task_idx_2_1,
                     task_idx_2_1,
                     fake_actor_2,
-                    nccl_op_1,
                     P2POp.RECV,
+                    nccl_op_1,
                 ),
             }
 
@@ -245,21 +245,21 @@ class TestSelectNextNodes:
                 fake_actor_2: [mock_graph[task_idx_2_0], mock_graph[task_idx_2_1]],
             }
 
-            next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+            next_nodes = _select_next_nodes(mock_graph, mock_actor_to_candidates)
             assert len(next_nodes) == 2
             assert set(next_nodes) == {
                 mock_graph[task_idx_1_0],
                 mock_graph[task_idx_2_1],
             }
 
-            next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+            next_nodes = _select_next_nodes(mock_graph, mock_actor_to_candidates)
             assert len(next_nodes) == 2
             assert set(next_nodes) == {
                 mock_graph[task_idx_2_0],
                 mock_graph[task_idx_1_1],
             }
 
-            next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+            next_nodes = _select_next_nodes(mock_graph, mock_actor_to_candidates)
             assert next_nodes is None
 
     def test_only_one_nccl_collective(self, monkeypatch):
@@ -283,15 +283,15 @@ class TestSelectNextNodes:
                 exec_task_idx_1,
                 task_idx_1,
                 fake_actor_1,
-                nccl_op,
                 ReduceOp.SUM,
+                nccl_op,
             ),
             task_idx_2: generate_dag_graph_nodes(
                 exec_task_idx_2,
                 task_idx_2,
                 fake_actor_2,
-                nccl_op,
                 ReduceOp.SUM,
+                nccl_op,
             ),
         }
 
@@ -299,7 +299,7 @@ class TestSelectNextNodes:
             fake_actor_1: [mock_graph[task_idx_1]],
             fake_actor_2: [mock_graph[task_idx_2]],
         }
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        next_nodes = _select_next_nodes(mock_graph, mock_actor_to_candidates)
         assert set(next_nodes) == {
             mock_graph[task_idx_1],
             mock_graph[task_idx_2],
@@ -334,29 +334,29 @@ class TestSelectNextNodes:
                 exec_task_idx_1,
                 task_idx_1,
                 fake_actor_1,
-                nccl_op_1,
                 ReduceOp.SUM,
+                nccl_op_1,
             ),
             task_idx_2: generate_dag_graph_nodes(
                 exec_task_idx_2,
                 task_idx_2,
                 fake_actor_2,
-                nccl_op_1,
                 ReduceOp.SUM,
+                nccl_op_1,
             ),
             task_idx_3: generate_dag_graph_nodes(
                 exec_task_idx_3,
                 task_idx_3,
                 fake_actor_3,
-                nccl_op_2,
                 ReduceOp.SUM,
+                nccl_op_2,
             ),
             task_idx_4: generate_dag_graph_nodes(
                 exec_task_idx_4,
                 task_idx_4,
                 fake_actor_4,
-                nccl_op_2,
                 ReduceOp.SUM,
+                nccl_op_2,
             ),
         }
         mock_actor_to_candidates = {
@@ -366,19 +366,19 @@ class TestSelectNextNodes:
             fake_actor_4: [mock_graph[task_idx_4]],
         }
 
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        next_nodes = _select_next_nodes(mock_graph, mock_actor_to_candidates)
         assert set(next_nodes) == {
             mock_graph[task_idx_1],
             mock_graph[task_idx_2],
         }
 
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        next_nodes = _select_next_nodes(mock_graph, mock_actor_to_candidates)
         assert set(next_nodes) == {
             mock_graph[task_idx_3],
             mock_graph[task_idx_4],
         }
 
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        next_nodes = _select_next_nodes(mock_graph, mock_actor_to_candidates)
         assert next_nodes is None
 
 
@@ -715,29 +715,29 @@ class TestGenerateActorToExecutionSchedule:
                 exec_task_idx_1_1,
                 task_idx_1_1,
                 fake_actor_1,
-                nccl_op_1,
                 P2POp.SEND,
+                nccl_op_1,
             ),
             task_idx_2_1: generate_dag_graph_nodes(
                 exec_task_idx_2_1,
                 task_idx_2_1,
                 fake_actor_2,
-                nccl_op_2,
                 P2POp.SEND,
+                nccl_op_2,
             ),
             task_idx_2_2: generate_dag_graph_nodes(
                 exec_task_idx_2_2,
                 task_idx_2_2,
                 fake_actor_2,
-                nccl_op_1,
                 P2POp.RECV,
+                nccl_op_1,
             ),
             task_idx_1_2: generate_dag_graph_nodes(
                 exec_task_idx_1_2,
                 task_idx_1_2,
                 fake_actor_1,
-                nccl_op_2,
                 P2POp.RECV,
+                nccl_op_2,
             ),
         }
 
@@ -923,57 +923,57 @@ class TestGenerateActorToExecutionSchedule:
                 exec_task_idx_1_2,
                 task_idx_1_2,
                 worker_1,
-                nccl_op_1,
                 P2POp.SEND,
+                nccl_op_1,
             ),
             task_idx_1_4: generate_dag_graph_nodes(
                 exec_task_idx_1_4,
                 task_idx_1_4,
                 worker_1,
-                nccl_op_2,
                 P2POp.SEND,
+                nccl_op_2,
             ),
             task_idx_1_5: generate_dag_graph_nodes(
                 exec_task_idx_1_5,
                 task_idx_1_5,
                 worker_1,
-                nccl_op_3,
                 P2POp.RECV,
+                nccl_op_3,
             ),
             task_idx_1_7: generate_dag_graph_nodes(
                 exec_task_idx_1_7,
                 task_idx_1_7,
                 worker_1,
-                nccl_op_4,
                 P2POp.RECV,
+                nccl_op_4,
             ),
             task_idx_2_1: generate_dag_graph_nodes(
                 exec_task_idx_2_1,
                 task_idx_2_1,
                 worker_2,
-                nccl_op_1,
                 P2POp.RECV,
+                nccl_op_1,
             ),
             task_idx_2_4: generate_dag_graph_nodes(
                 exec_task_idx_2_4,
                 task_idx_2_4,
                 worker_2,
-                nccl_op_3,
                 P2POp.SEND,
+                nccl_op_3,
             ),
             task_idx_2_5: generate_dag_graph_nodes(
                 exec_task_idx_2_5,
                 task_idx_2_5,
                 worker_2,
-                nccl_op_2,
                 P2POp.RECV,
+                nccl_op_2,
             ),
             task_idx_2_8: generate_dag_graph_nodes(
                 exec_task_idx_2_8,
                 task_idx_2_8,
                 worker_2,
-                nccl_op_4,
                 P2POp.SEND,
+                nccl_op_4,
             ),
         }
         self.add_data_dependeny(graph[task_idx_1_1], graph[task_idx_1_2])
@@ -1044,29 +1044,29 @@ class TestGenerateActorToExecutionSchedule:
                 exec_task_idx_1,
                 task_idx_1,
                 fake_actor_1,
-                nccl_op_1,
                 ReduceOp.SUM,
+                nccl_op_1,
             ),
             task_idx_2: generate_dag_graph_nodes(
                 exec_task_idx_2,
                 task_idx_2,
                 fake_actor_2,
-                nccl_op_1,
                 ReduceOp.SUM,
+                nccl_op_1,
             ),
             task_idx_3: generate_dag_graph_nodes(
                 exec_task_idx_3,
                 task_idx_3,
                 fake_actor_1,
-                nccl_op_2,
                 ReduceOp.SUM,
+                nccl_op_2,
             ),
             task_idx_4: generate_dag_graph_nodes(
                 exec_task_idx_4,
                 task_idx_4,
                 fake_actor_2,
-                nccl_op_2,
                 ReduceOp.SUM,
+                nccl_op_2,
             ),
         }
 
@@ -1115,8 +1115,8 @@ class TestGenerateActorToExecutionSchedule:
                 exec_task_idx_2,
                 task_idx_2,
                 fake_actor,
-                nccl_op,
                 ReduceOp.SUM,
+                nccl_op,
             ),
         }
 

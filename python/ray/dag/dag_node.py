@@ -20,7 +20,7 @@ from typing import (
 import uuid
 import asyncio
 
-from ray.experimental.util.types import _NcclOp
+from ray.experimental.util.types import _NcclOpType
 from ray.dag.nccl_operation import _NcclOperation
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.experimental.channel import ChannelOutputType
@@ -141,13 +141,13 @@ class DAGNode(DAGNodeBase):
         return self._type_hint
 
     @property
-    def nccl_op(self) -> Optional[_NcclOperation]:
-        """Return the NCCL operation for this node."""
+    def nccl_op_type(self) -> Optional[_NcclOpType]:
+        """Return the NCCL operation type for this node."""
         return None
 
     @property
-    def nccl_op_type(self) -> Optional[_NcclOp]:
-        """Return the NCCL operation type for this node."""
+    def nccl_op(self) -> Optional[_NcclOperation]:
+        """Return the NCCL operation for this node."""
         return None
 
     def get_args(self) -> Tuple[Any]:
@@ -429,7 +429,7 @@ class DAGNode(DAGNodeBase):
             )
         )
 
-    def construct_topo_queue(self) -> List["DAGNode"]:
+    def get_topo_queue(self) -> List["DAGNode"]:
         """
         Traverse all nodes in the connected component of the DAG that contains the
         `self` node, and return them in topological order.
