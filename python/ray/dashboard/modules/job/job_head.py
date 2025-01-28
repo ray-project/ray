@@ -19,8 +19,8 @@ from ray.dashboard.consts import (
     TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS,
     WAIT_AVAILABLE_AGENT_TIMEOUT,
 )
-import ray.dashboard.optional_utils as optional_utils
-import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 from ray._private.ray_constants import env_bool, KV_NAMESPACE_DASHBOARD
 from ray._private.runtime_env.packaging import (
     package_exists,
@@ -49,7 +49,6 @@ from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-routes = optional_utils.DashboardHeadRouteTable
 
 # Feature flag controlling whether critical Ray Job control operations are performed
 # exclusively by the Job Agent running on the Head node (or randomly sampled Worker one)
@@ -146,7 +145,7 @@ class JobAgentSubmissionClient:
                 raise
 
 
-class JobHead(dashboard_utils.DashboardHeadModule):
+class JobHead(SubprocessModule):
     """Runs on the head node of a Ray cluster and handles Ray Jobs APIs.
 
     NOTE(architkulkarni): Please keep this class in sync with the OpenAPI spec at
@@ -164,9 +163,13 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     # to read the logs from until then.
     WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S = 1
 
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._job_info_client = None
+
+        # To make sure that the internal KV is initialized by getting the lazy property
+        self.gcs_client
+        assert ray.experimental.internal_kv._internal_kv_initialized()
 
         # It contains all `JobAgentSubmissionClient` that
         # `JobHead` has ever used, and will not be deleted
@@ -328,7 +331,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 )
                 await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
 
-    @routes.get("/api/version")
+    @SubprocessRouteTable.get("/api/version")
     async def get_version(self, req: Request) -> Response:
         # NOTE(edoakes): CURRENT_VERSION should be bumped and checked on the
         # client when we have backwards-incompatible changes.
@@ -344,7 +347,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             status=aiohttp.web.HTTPOk.status_code,
         )
 
-    @routes.get("/api/packages/{protocol}/{package_name}")
+    @SubprocessRouteTable.get("/api/packages/{protocol}/{package_name}")
     async def get_package(self, req: Request) -> Response:
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -368,7 +371,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         return Response()
 
-    @routes.put("/api/packages/{protocol}/{package_name}")
+    @SubprocessRouteTable.put("/api/packages/{protocol}/{package_name}")
     async def upload_package(self, req: Request):
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -391,7 +394,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         return Response(status=aiohttp.web.HTTPOk.status_code)
 
-    @routes.post("/api/jobs/")
+    @SubprocessRouteTable.post("/api/jobs/")
     async def submit_job(self, req: Request) -> Response:
         result = await parse_and_validate_request(req, JobSubmitRequest)
         # Request parsing failed, returned with Response object.
@@ -428,7 +431,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             status=aiohttp.web.HTTPOk.status_code,
         )
 
-    @routes.post("/api/jobs/{job_or_submission_id}/stop")
+    @SubprocessRouteTable.post("/api/jobs/{job_or_submission_id}/stop")
     async def stop_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
@@ -463,7 +466,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
 
-    @routes.delete("/api/jobs/{job_or_submission_id}")
+    @SubprocessRouteTable.delete("/api/jobs/{job_or_submission_id}")
     async def delete_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
@@ -498,7 +501,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
 
-    @routes.get("/api/jobs/{job_or_submission_id}")
+    @SubprocessRouteTable.get("/api/jobs/{job_or_submission_id}")
     async def get_job_info(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
@@ -520,7 +523,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     # TODO(rickyx): This endpoint's logic is also mirrored in state API's endpoint.
     # We should eventually unify the backend logic (and keep the logic in sync before
     # that).
-    @routes.get("/api/jobs/")
+    @SubprocessRouteTable.get("/api/jobs/")
     async def list_jobs(self, req: Request) -> Response:
         (driver_jobs, submission_job_drivers), submission_jobs = await asyncio.gather(
             get_driver_jobs(self.gcs_aio_client), self._job_info_client.get_all_jobs()
@@ -548,7 +551,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             content_type="application/json",
         )
 
-    @routes.get("/api/jobs/{job_or_submission_id}/logs")
+    @SubprocessRouteTable.get("/api/jobs/{job_or_submission_id}/logs")
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
@@ -585,8 +588,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
 
-    @routes.get("/api/jobs/{job_or_submission_id}/logs/tail")
-    async def tail_job_logs(self, req: Request) -> Response:
+    @SubprocessRouteTable.get(
+        "/api/jobs/{job_or_submission_id}/logs/tail", streaming=True
+    )
+    async def tail_job_logs(self, req: Request):
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self.gcs_aio_client,
@@ -594,19 +599,14 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             job_or_submission_id,
         )
         if not job:
-            return Response(
+            raise aiohttp.web.HTTPNotFound(
                 text=f"Job {job_or_submission_id} does not exist",
-                status=aiohttp.web.HTTPNotFound.status_code,
             )
 
         if job.type is not JobType.SUBMISSION:
-            return Response(
+            raise aiohttp.web.HTTPBadRequest(
                 text="Can only get logs of submission type jobs",
-                status=aiohttp.web.HTTPBadRequest.status_code,
             )
-
-        ws = aiohttp.web.WebSocketResponse()
-        await ws.prepare(req)
 
         driver_agent_http_address = None
         while driver_agent_http_address is None:
@@ -619,16 +619,16 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             status = job.status
             if status.is_terminal() and driver_agent_http_address is None:
                 # Job exited before supervisor actor started.
-                return ws
+                raise aiohttp.web.HTTPNotFound(
+                    text="Job exited before supervisor actor started.",
+                )
 
             await asyncio.sleep(self.WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S)
 
         job_agent_client = self.get_job_driver_agent_client(job)
 
         async for lines in job_agent_client.tail_job_logs(job.submission_id):
-            await ws.send_str(lines)
-
-        return ws
+            yield lines
 
     def get_job_driver_agent_client(
         self, job: JobDetails
@@ -644,10 +644,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         return self._agents[driver_node_id]
 
-    async def run(self, server):
+    async def init(self):
         if not self._job_info_client:
             self._job_info_client = JobInfoStorageClient(self.gcs_aio_client)
-
-    @staticmethod
-    def is_minimal_module():
-        return False

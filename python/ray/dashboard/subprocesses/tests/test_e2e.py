@@ -3,7 +3,6 @@ import re
 import sys
 from typing import List
 
-from ray import UniqueID
 from ray.dashboard.optional_deps import aiohttp
 import pytest
 
@@ -28,9 +27,8 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
     Creates a tmpdir to hold the logs.
     """
     yield SubprocessModuleConfig(
-        # Assumes ClusterID has same size as UniqueID.
-        cluster_id_hex=UniqueID.from_random().hex(),
         # until we really need one in tests...
+        cluster_id_hex=None,
         gcs_address=None,
         session_name="test_session",
         logging_level=ray_constants.LOGGER_LEVEL,
