@@ -83,7 +83,7 @@ void StartStreamDump(
     }
 
     RAY_CHECK(pipe_instream->eof());
-    RAY_LOG(INFO) << "Pipe is closed";
+    //RAY_LOG(INFO) << "Pipe is closed";
     {
       absl::MutexLock lock(&stream_dumper->mu);
       stream_dumper->stopped = true;
