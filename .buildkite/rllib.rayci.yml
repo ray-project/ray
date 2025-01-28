@@ -83,6 +83,7 @@ steps:
     tags:
       - rllib_gpu
       - gpu
+      - skip-on-microcheck
     parallelism: 5
     instance_type: gpu
     commands:
@@ -137,6 +138,7 @@ steps:
     tags:
       - rllib_directly
       - doc
+      - skip-on-microcheck
     instance_type: medium
     commands:
       # doc tests
@@ -159,6 +161,7 @@ steps:
     tags:
       - rllib_gpu
       - gpu
+      - skip-on-microcheck
     parallelism: 5
     instance_type: gpu-large
     commands:
