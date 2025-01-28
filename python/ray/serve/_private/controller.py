@@ -1154,9 +1154,6 @@ class ServeControllerAvatar:
         except ValueError:
             self._controller = None
         if self._controller is None:
-            http_config = HTTPOptions()
-            logging_config = LoggingConfig()
-            http_config.port = http_proxy_port
             self._controller = ServeController.options(
                 num_cpus=0,
                 name=SERVE_CONTROLLER_NAME,
@@ -1168,8 +1165,8 @@ class ServeControllerAvatar:
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
                 enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
             ).remote(
-                http_config=http_config,
-                global_logging_config=logging_config,
+                http_options=HTTPOptions(port=http_proxy_port),
+                global_logging_config=LoggingConfig(),
             )
 
     def check_alive(self) -> None:
