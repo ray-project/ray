@@ -27,6 +27,21 @@ class MapTransformFnDataType(Enum):
     Batch = 2
 
 
+class MapTransformFnCategory(Enum):
+    """An enum that represents the PreProcess/DataProcess/PostProcess category of a
+    MapTransformFn.
+
+    PreProcess: Data Model conversion i.e. Block/Batch/Row to match Data Processing step.
+    DataProcess: Actual Data processing/transformation.
+    PostProcess: Data Model conversion for downstream data pipeline.
+
+    """
+
+    PreProcess = 0
+    PostProcess = 1
+    DataProcess = 2
+
+
 class MapTransformFn:
     """Represents a single transform function in a MapTransformer."""
 
@@ -34,6 +49,7 @@ class MapTransformFn:
         self,
         input_type: MapTransformFnDataType,
         output_type: MapTransformFnDataType,
+        category: MapTransformFnCategory,
         is_udf: bool = False,
     ):
         """
@@ -45,6 +61,7 @@ class MapTransformFn:
         self._callable = callable
         self._input_type = input_type
         self._output_type = output_type
+        self._category = category
         self._target_max_block_size = None
         self._is_udf = is_udf
 
@@ -63,6 +80,10 @@ class MapTransformFn:
     @property
     def output_type(self) -> MapTransformFnDataType:
         return self._output_type
+
+    @property
+    def category(self) -> MapTransformFnCategory:
+        return self._category
 
     def set_target_max_block_size(self, target_max_block_size: int):
         self._target_max_block_size = target_max_block_size
@@ -90,6 +111,7 @@ class MapTransformer:
             Used for the actor-based map operator.
         """
         self.set_transform_fns(transform_fns)
+
         self._init_fn = init_fn if init_fn is not None else lambda: None
         self._target_max_block_size = None
         self._udf_time = 0
@@ -209,7 +231,10 @@ class RowMapTransformFn(MapTransformFn):
     def __init__(self, row_fn: MapTransformCallable[Row, Row], is_udf: bool = False):
         self._row_fn = row_fn
         super().__init__(
-            MapTransformFnDataType.Row, MapTransformFnDataType.Row, is_udf=is_udf
+            MapTransformFnDataType.Row,
+            MapTransformFnDataType.Row,
+            category=MapTransformFnCategory.DataProcess,
+            is_udf=is_udf,
         )
 
     def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Row]:
@@ -217,6 +242,9 @@ class RowMapTransformFn(MapTransformFn):
 
     def __repr__(self) -> str:
         return f"RowMapTransformFn({self._row_fn})"
+
+    def __eq__(self, other):
+        return isinstance(other, RowMapTransformFn) and self._row_fn == other._row_fn
 
 
 class BatchMapTransformFn(MapTransformFn):
@@ -227,7 +255,10 @@ class BatchMapTransformFn(MapTransformFn):
     ):
         self._batch_fn = batch_fn
         super().__init__(
-            MapTransformFnDataType.Batch, MapTransformFnDataType.Batch, is_udf=is_udf
+            MapTransformFnDataType.Batch,
+            MapTransformFnDataType.Batch,
+            category=MapTransformFnCategory.DataProcess,
+            is_udf=is_udf,
         )
 
     def __call__(
@@ -238,6 +269,11 @@ class BatchMapTransformFn(MapTransformFn):
     def __repr__(self) -> str:
         return f"BatchMapTransformFn({self._batch_fn})"
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, BatchMapTransformFn) and self._batch_fn == other._batch_fn
+        )
+
 
 class BlockMapTransformFn(MapTransformFn):
     """A block-to-block MapTransformFn."""
@@ -247,6 +283,7 @@ class BlockMapTransformFn(MapTransformFn):
         super().__init__(
             MapTransformFnDataType.Block,
             MapTransformFnDataType.Block,
+            category=MapTransformFnCategory.DataProcess,
         )
 
     def __call__(self, input: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
@@ -254,6 +291,11 @@ class BlockMapTransformFn(MapTransformFn):
 
     def __repr__(self) -> str:
         return f"BlockMapTransformFn({self._block_fn})"
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, BlockMapTransformFn) and self._block_fn == other._block_fn
+        )
 
 
 class BlocksToRowsMapTransformFn(MapTransformFn):
@@ -263,6 +305,7 @@ class BlocksToRowsMapTransformFn(MapTransformFn):
         super().__init__(
             MapTransformFnDataType.Block,
             MapTransformFnDataType.Row,
+            category=MapTransformFnCategory.PreProcess,
         )
 
     def __call__(self, blocks: Iterable[Block], _: TaskContext) -> Iterable[Row]:
@@ -281,6 +324,9 @@ class BlocksToRowsMapTransformFn(MapTransformFn):
     def __repr__(self) -> str:
         return "BlocksToRowsMapTransformFn()"
 
+    def __eq__(self, other):
+        return isinstance(other, BlocksToRowsMapTransformFn)
+
 
 class BlocksToBatchesMapTransformFn(MapTransformFn):
     """A MapTransformFn that converts input blocks to batches."""
@@ -297,6 +343,7 @@ class BlocksToBatchesMapTransformFn(MapTransformFn):
         super().__init__(
             MapTransformFnDataType.Block,
             MapTransformFnDataType.Batch,
+            category=MapTransformFnCategory.PreProcess,
         )
 
     def __call__(
@@ -352,6 +399,14 @@ class BlocksToBatchesMapTransformFn(MapTransformFn):
             f")"
         )
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, BlocksToBatchesMapTransformFn)
+            and self.batch_format == other.batch_format
+            and self.batch_size == other.batch_size
+            and self.zero_copy_batch == other.zero_copy_batch
+        )
+
 
 class BuildOutputBlocksMapTransformFn(MapTransformFn):
     """A MapTransformFn that converts UDF-returned data to output blocks."""
@@ -365,6 +420,7 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
         super().__init__(
             input_type,
             MapTransformFnDataType.Block,
+            category=MapTransformFnCategory.PostProcess,
         )
 
     def __call__(
@@ -415,6 +471,12 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
     def __repr__(self) -> str:
         return f"BuildOutputBlocksMapTransformFn(input_type={self._input_type})"
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, BuildOutputBlocksMapTransformFn)
+            and self.input_type == other.input_type
+        )
+
 
 def _splitrange(n, k):
     """Calculates array lens of np.array_split().
@@ -445,7 +507,11 @@ class ApplyAdditionalSplitToOutputBlocks(MapTransformFn):
         """
         assert additional_split_factor > 1
         self._additional_split_factor = additional_split_factor
-        super().__init__(MapTransformFnDataType.Block, MapTransformFnDataType.Block)
+        super().__init__(
+            MapTransformFnDataType.Block,
+            MapTransformFnDataType.Block,
+            category=MapTransformFnCategory.PostProcess,
+        )
 
     def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
         for block in blocks:
