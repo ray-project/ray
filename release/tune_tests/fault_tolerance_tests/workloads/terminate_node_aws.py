@@ -127,7 +127,7 @@ class InstanceKillerActor:
                 "terminated_succesfully": terminated_succesfully,
             }
         )
-        safe_write_to_results_json(self.history)
+        # safe_write_to_results_json(self.history)
 
 
 def create_instance_killer(
