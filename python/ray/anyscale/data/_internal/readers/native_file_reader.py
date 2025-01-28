@@ -7,14 +7,14 @@ import pyarrow
 
 from .file_reader import FileReader
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.util import call_with_retry, make_async_gen
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    iterate_with_retry,
+    make_async_gen,
+)
 from ray.data.block import BlockAccessor, DataBatch
 from ray.data.context import DataContext
 from ray.data.datasource import Partitioning, PathPartitionParser
-from ray.data.datasource.file_based_datasource import (
-    OPEN_FILE_MAX_ATTEMPTS,
-    OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
-)
 
 
 class NativeFileReader(FileReader):
@@ -80,14 +80,13 @@ class NativeFileReader(FileReader):
                     parse = PathPartitionParser(self._partitioning)
                     partitions = parse(path)
 
-                file = call_with_retry(
-                    lambda: self._open_input_source(path, filesystem=filesystem),
-                    description=f"open file {path}",
+                file = self._open_input_source(path, filesystem=filesystem)
+
+                for batch in iterate_with_retry(
+                    lambda: self.read_stream(file, path),
+                    description="read stream iteratively",
                     match=self._data_context.retried_io_errors,
-                    max_attempts=OPEN_FILE_MAX_ATTEMPTS,
-                    max_backoff_s=OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
-                )
-                for batch in self.read_stream(file, path):
+                ):
                     if self._include_paths:
                         batch = _add_column_to_batch(batch, "path", path)
                     for partition, value in partitions.items():
@@ -112,7 +111,7 @@ class NativeFileReader(FileReader):
         self,
         path: str,
         *,
-        filesystem: "pyarrow.fs.FileSystem",
+        filesystem: "RetryingPyFileSystem",
     ) -> "pyarrow.NativeFile":
         """Opens a source path and returns a file-like object that can be read from.
 
@@ -153,21 +152,17 @@ class NativeFileReader(FileReader):
         else:
             open_args["compression"] = compression
 
-        file = call_with_retry(
-            lambda: filesystem.open_input_stream(
-                path,
-                buffer_size=buffer_size,
-                **open_args,
-            ),
-            description=f"open file {path}",
-            match=self._data_context.retried_io_errors,
+        file = filesystem.open_input_stream(
+            path,
+            buffer_size=buffer_size,
+            **open_args,
         )
 
         if compression == "snappy":
             import snappy
 
             stream = io.BytesIO()
-            if isinstance(filesystem, HadoopFileSystem):
+            if isinstance(filesystem.unwrap(), HadoopFileSystem):
                 snappy.hadoop_snappy.stream_decompress(src=file, dst=stream)
             else:
                 snappy.stream_decompress(src=file, dst=stream)

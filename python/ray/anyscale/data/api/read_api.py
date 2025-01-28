@@ -35,7 +35,7 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import RandomShuffle
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import _is_local_scheme
+from ray.data._internal.util import RetryingPyFileSystem, _is_local_scheme
 from ray.data.dataset import Dataset
 from ray.data.datasource import Partitioning, PathPartitionFilter
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
@@ -701,7 +701,7 @@ def read_files(
     _validate_shuffle_arg(shuffle)
 
     paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-
+    filesystem = RetryingPyFileSystem.wrap(filesystem, context=reader._data_context)
     list_files_op = ListFiles(
         paths=paths,
         filesystem=filesystem,

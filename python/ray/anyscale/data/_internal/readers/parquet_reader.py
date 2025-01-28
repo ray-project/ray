@@ -14,7 +14,12 @@ from ray.data._internal.datasource.parquet_datasource import (
     check_for_legacy_tensor_type,
     get_parquet_dataset,
 )
-from ray.data._internal.util import call_with_retry, iterate_with_retry, make_async_gen
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    call_with_retry,
+    iterate_with_retry,
+    make_async_gen,
+)
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.data.datasource import Partitioning, PathPartitionParser
@@ -274,12 +279,13 @@ class ParquetReader(FileReader):
         # information, see https://github.com/anyscale/rayturbo/issues/924.
         return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT * file_size
 
-    def count_rows(self, paths: List[str], *, filesystem) -> int:
+    def count_rows(self, paths: List[str], *, filesystem: RetryingPyFileSystem) -> int:
+        num_rows = 0
+
         def open_file(path: str) -> ParquetFile:
             stream = filesystem.open_input_file(path)
             return ParquetFile(stream)
 
-        num_rows = 0
         for path in paths:
             file = call_with_retry(
                 lambda: open_file(path),
