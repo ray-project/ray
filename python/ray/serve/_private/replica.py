@@ -818,7 +818,6 @@ class ReplicaBase(ABC):
             self._healthy = False
 
 
-
 class Replica(ReplicaBase):
     async def _on_initialized(self):
         self._set_internal_replica_context(
