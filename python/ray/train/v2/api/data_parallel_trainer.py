@@ -38,20 +38,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
-_TRAINER_RESTORE_DEPRECATION_WARNING = (
-    "The `restore` and `can_restore` APIs are deprecated and "
-    "will be removed in a future release. "
-    "See this issue for more context: "
-    "https://github.com/ray-project/ray/issues/49454"
-)
-
-_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = (
-    "`resume_from_checkpoint` is deprecated and will be removed in an upcoming "
-    "release. See this issue for more context: "
-    "https://github.com/ray-project/ray/issues/49454"
-)
-
-
 @DeveloperAPI
 class DataParallelTrainer:
     def __init__(

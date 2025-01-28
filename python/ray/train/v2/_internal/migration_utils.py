@@ -1,13 +1,5 @@
-from ray._private.ray_constants import env_bool
+from ray.train.constants import V2_MIGRATION_GUIDE_MESSAGE
 
-
-# Set this to 1 to enable deprecation warnings for V2 migration.
-ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR = "RAY_TRAIN_ENABLE_V2_MIGRATION_WARNINGS"
-
-V2_MIGRATION_GUIDE_MESSAGE = (
-    "See this issue for more context and migration options: "
-    "https://github.com/ray-project/ray/issues/49454"
-)
 
 FAIL_FAST_DEPRECATION_MESSAGE = (
     "`ray.train.FailureConfig(fail_fast)` is deprecated since it is "
@@ -72,7 +64,3 @@ SYNC_CONFIG_DEPRECATION_MESSAGE = (
     "and this class is moved to `ray.tune.SyncConfig`. "
     f"{V2_MIGRATION_GUIDE_MESSAGE}"
 )
-
-
-def _v2_migration_warnings_enabled() -> bool:
-    return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, False)

@@ -26,23 +26,9 @@ from ray.train._internal.storage import (
     _exists_at_fs_path,
     get_fs_and_path,
 )
+from ray.train.constants import _v2_migration_warnings_enabled
 from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.utils import _log_deprecation_warning
-from ray.train.v2.api.data_parallel_trainer import (
-    _TRAINER_RESTORE_DEPRECATION_WARNING,
-    _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
-)
-from ray.train.v2._internal.migration_utils import (
-    _v2_migration_warnings_enabled,
-    FAIL_FAST_DEPRECATION_MESSAGE,
-    TRAINER_RESOURCES_DEPRECATION_MESSAGE,
-    VERBOSE_DEPRECATION_MESSAGE,
-    LOG_TO_FILE_DEPRECATION_MESSAGE,
-    STOP_DEPRECATION_MESSAGE,
-    CALLBACKS_DEPRECATION_MESSAGE,
-    PROGRESS_REPORTER_DEPRECATION_MESSAGE,
-    SYNC_CONFIG_DEPRECATION_MESSAGE,
-)
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -65,6 +51,19 @@ PREPROCESSOR_DEPRECATION_MESSAGE = (
     "in using the `metadata` argument of the `Trainer`. "
     "For a full example, see "
     "https://docs.ray.io/en/master/train/user-guides/data-loading-preprocessing.html#preprocessing-structured-data "  # noqa:E501
+)
+
+_TRAINER_RESTORE_DEPRECATION_WARNING = (
+    "The `restore` and `can_restore` APIs are deprecated and "
+    "will be removed in a future release. "
+    "See this issue for more context: "
+    "https://github.com/ray-project/ray/issues/49454"
+)
+
+_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = (
+    "`resume_from_checkpoint` is deprecated and will be removed in an upcoming "
+    "release. See this issue for more context: "
+    "https://github.com/ray-project/ray/issues/49454"
 )
 
 
@@ -546,6 +545,17 @@ class BaseTrainer(abc.ABC):
         if not _v2_migration_warnings_enabled():
             return
 
+        from ray.train.v2._internal.migration_utils import (
+            FAIL_FAST_DEPRECATION_MESSAGE,
+            TRAINER_RESOURCES_DEPRECATION_MESSAGE,
+            VERBOSE_DEPRECATION_MESSAGE,
+            LOG_TO_FILE_DEPRECATION_MESSAGE,
+            STOP_DEPRECATION_MESSAGE,
+            CALLBACKS_DEPRECATION_MESSAGE,
+            PROGRESS_REPORTER_DEPRECATION_MESSAGE,
+            SYNC_CONFIG_DEPRECATION_MESSAGE,
+        )
+
         # ScalingConfig deprecations
         if self.scaling_config.trainer_resources is not None:
             _log_deprecation_warning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
@@ -825,10 +835,10 @@ class BaseTrainer(abc.ABC):
                 )
                 if isinstance(merged_scaling_config, dict):
                     merged_scaling_config = ScalingConfig(**merged_scaling_config)
-                self._merged_config[
-                    "scaling_config"
-                ] = self._reconcile_scaling_config_with_trial_resources(
-                    merged_scaling_config
+                self._merged_config["scaling_config"] = (
+                    self._reconcile_scaling_config_with_trial_resources(
+                        merged_scaling_config
+                    )
                 )
                 if self.has_base_dataset():
                     # Set the DataContext on the Trainer actor to the DataContext

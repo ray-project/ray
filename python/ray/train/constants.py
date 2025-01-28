@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import ray
+from ray._private.ray_constants import env_bool
 from ray.air.constants import (  # noqa: F401
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     EVALUATION_DATASET_KEY,
@@ -43,6 +44,25 @@ TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 
 # Deprecated configs can use this value to detect if the user has set it.
 _DEPRECATED_VALUE = "DEPRECATED"
+
+
+# ==================================================
+#               Train V2 constants
+# ==================================================
+
+# Set this to 1 to enable deprecation warnings for V2 migration.
+ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR = "RAY_TRAIN_ENABLE_V2_MIGRATION_WARNINGS"
+
+
+V2_MIGRATION_GUIDE_MESSAGE = (
+    "See this issue for more context and migration options: "
+    "https://github.com/ray-project/ray/issues/49454"
+)
+
+
+def _v2_migration_warnings_enabled() -> bool:
+    return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, False)
+
 
 # ==================================================
 #               Environment Variables
