@@ -133,25 +133,25 @@ def test_ray_sink(data_path):
 
     tbl = ds.to_table()
     assert sorted(tbl["id"].to_pylist()) == list(range(10))
-    assert set(tbl["str"].to_pylist()) == set([f"str-{i}" for i in range(10)])
+    assert set(tbl["str"].to_pylist()) == {f"str-{i}" for i in range(10)}
 
-    sink = LanceDatasink(tmp_path, mode="append")
+    sink = LanceDatasink(data_path, mode="append")
     ray.data.range(10).map(
         lambda x: {"id": x["id"] + 10, "str": f"str-{x['id'] + 10}"}
     ).write_datasink(sink)
 
-    ds = lance.dataset(tmp_path)
+    ds = lance.dataset(data_path)
     ds.count_rows() == 20
     tbl = ds.to_table()
     assert sorted(tbl["id"].to_pylist()) == list(range(20))
-    assert set(tbl["str"].to_pylist()) == set([f"str-{i}" for i in range(20)])
+    assert set(tbl["str"].to_pylist()) == {f"str-{i}" for i in range(20)}
 
-    sink = LanceDatasink(tmp_path, schema=schema, mode="overwrite")
+    sink = LanceDatasink(data_path, schema=schema, mode="overwrite")
     ray.data.range(10).map(
         lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
     ).write_datasink(sink)
 
-    ds = lance.dataset(tmp_path)
+    ds = lance.dataset(data_path)
     ds.count_rows() == 10
     assert ds.schema == schema
 
