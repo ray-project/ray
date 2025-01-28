@@ -3,6 +3,7 @@ import re
 import sys
 from typing import List
 
+from ray import UniqueID
 from ray.dashboard.optional_deps import aiohttp
 import pytest
 
@@ -27,7 +28,8 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
     Creates a tmpdir to hold the logs.
     """
     yield SubprocessModuleConfig(
-        cluster_id_hex="test_cluster_id",
+        # Assumes ClusterID has same size as UniqueID.
+        cluster_id_hex=UniqueID.from_random().hex(),
         # until we really need one in tests...
         gcs_address=None,
         session_name="test_session",
@@ -65,8 +67,11 @@ def test_module_side_handler(default_module_config):
         RequestMessage(
             request_id="request_for_test",
             method_name="test",
+            http_method="GET",
+            path_qs="/test",
             query={},
             headers={},
+            match_info={},
             body=b"",
         )
     )
@@ -80,8 +85,11 @@ def test_module_side_handler(default_module_config):
         RequestMessage(
             request_id="request_for_echo",
             method_name="echo",
+            http_method="POST",
+            path_qs="/echo",
             query={},
             headers={},
+            match_info={},
             body=b"a new dashboard",
         )
     )
@@ -95,9 +103,12 @@ def test_module_side_handler(default_module_config):
         RequestMessage(
             request_id="request_for_error",
             method_name="make_error",
+            http_method="GET",
+            path_qs="/error",
             query={},
             headers={},
             body=b"",
+            match_info={},
         )
     )
     response = subprocess.parent_bound_queue.get()
