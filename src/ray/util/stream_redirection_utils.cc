@@ -46,22 +46,8 @@ int GetStderrHandle() { return _fileno(stderr); }
 // Maps from original stream file handle (i.e. stdout/stderr) to its stream redirector.
 absl::flat_hash_map<int, RedirectionFileHandle> redirection_file_handles;
 
-// Block synchronize on stream redirection related completion, should be call **EXACTLY
-// ONCE** at program termination.
-std::once_flag stream_exit_once_flag;
-void SyncOnStreamRedirection() {
-  for (auto &[_, handle] : redirection_file_handles) {
-    handle.Close();
-  }
-}
-
 // Redirect the given [stream_fd] based on the specified option.
 void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
-  std::call_once(stream_exit_once_flag, []() {
-    RAY_CHECK_EQ(std::atexit(SyncOnStreamRedirection), 0)
-        << "Fails to register stream redirection termination hook.";
-  });
-
   RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
 
 #if defined(__APPLE__) || defined(__linux__)
