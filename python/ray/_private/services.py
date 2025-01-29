@@ -1492,6 +1492,8 @@ def start_gcs_server(
 
     if ray_log_filepath:
         command += [f"--ray_log_filepath={ray_log_filepath}"]
+    if ray_err_log_filepath:
+        command += [f"--ray_err_log_filepath={ray_err_log_filepath}"]
 
     if redis_address:
         redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
@@ -1837,6 +1839,8 @@ def start_raylet(
 
     if ray_log_filepath:
         command.append(f"--ray_log_filepath={ray_log_filepath}")
+    if ray_err_log_filepath:
+        command.append(f"--ray_err_log_filepath={ray_err_log_filepath}")
 
     if is_head_node:
         command.append("--head")
@@ -1868,8 +1872,6 @@ def start_raylet(
     stdout_file = None
     if ray_log_filepath:
         stdout_file = open(os.devnull, "w")
-    else:
-        stdout_file = None
 
     process_info = start_ray_process(
         command,
