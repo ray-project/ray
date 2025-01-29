@@ -17,15 +17,9 @@ class LoggingConfigurator(ABC):
     def get_supported_encodings(self) -> Set[str]:
         raise NotImplementedError
 
-    @Deprecated
-    def configure_logging(self, encoding: str, log_level: str):
-        raise NotImplementedError
-
-    # Should be marked as @abstractmethod, but we can't do that because of backwards
-    # compatibility.
-    # Also, assuming the function will only be called inside LoggingConfig._apply()
+    @abstractmethod
     def configure(self, logging_config: "LoggingConfig"):
-        self.configure_logging(logging_config.encoding, logging_config.log_level)
+        raise NotImplementedError
 
 
 class DefaultLoggingConfigurator(LoggingConfigurator):
@@ -36,10 +30,6 @@ class DefaultLoggingConfigurator(LoggingConfigurator):
 
     def get_supported_encodings(self) -> Set[str]:
         return self._encoding_to_formatter.keys()
-
-    @Deprecated
-    def configure_logging(self, encoding: str, log_level: str):
-        self.configure(LoggingConfig(encoding=encoding, log_level=log_level))
 
     def configure(self, logging_config: "LoggingConfig"):
         formatter = self._encoding_to_formatter[logging_config.encoding]
