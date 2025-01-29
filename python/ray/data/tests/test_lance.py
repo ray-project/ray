@@ -11,7 +11,6 @@ from ray._private.test_utils import wait_for_condition
 from ray._private.utils import _get_pyarrow_version
 from ray.data import Schema
 from ray.data.datasource.path_util import _unwrap_protocol
-from ray.data.datasource._internal.lance_datasink import LanceDatasink
 
 
 @pytest.mark.parametrize(
@@ -119,10 +118,7 @@ def test_lance_read_many_files(data_path):
 def test_ray_sink(data_path):
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
 
-    sink = LanceDatasink(data_path)
-    ray.data.range(10).map(
-        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
-    ).write_datasink(sink)
+    ray.data.range(10).write_lance(lambda x: {"id": x["id"], "str": f"str-{x['id']}"})
 
     ds = lance.dataset(data_path)
     ds.count_rows() == 10
@@ -135,10 +131,9 @@ def test_ray_sink(data_path):
     assert sorted(tbl["id"].to_pylist()) == list(range(10))
     assert set(tbl["str"].to_pylist()) == {f"str-{i}" for i in range(10)}
 
-    sink = LanceDatasink(data_path, mode="append")
     ray.data.range(10).map(
         lambda x: {"id": x["id"] + 10, "str": f"str-{x['id'] + 10}"}
-    ).write_datasink(sink)
+    ).write_lance(data_path, mode="append")
 
     ds = lance.dataset(data_path)
     ds.count_rows() == 20
@@ -146,10 +141,9 @@ def test_ray_sink(data_path):
     assert sorted(tbl["id"].to_pylist()) == list(range(20))
     assert set(tbl["str"].to_pylist()) == {f"str-{i}" for i in range(20)}
 
-    sink = LanceDatasink(data_path, schema=schema, mode="overwrite")
     ray.data.range(10).map(
         lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
-    ).write_datasink(sink)
+    ).write_lance(data_path, schema=schema, mode="overwrite")
 
     ds = lance.dataset(data_path)
     ds.count_rows() == 10

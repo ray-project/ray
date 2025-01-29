@@ -14,7 +14,6 @@ import pickle
 
 import ray
 from ray.data._internal.util import _check_import
-from lance.fragment import DEFAULT_MAX_BYTES_PER_FILE, FragmentMetadata, write_fragments
 
 
 if TYPE_CHECKING:
@@ -53,6 +52,7 @@ def _write_fragment(
     storage_options: Optional[Dict[str, Any]] = None,
 ) -> List[Tuple[FragmentMetadata, pa.Schema]]:
     import pandas as pd
+    from lance.fragment import write_fragments, DEFAULT_MAX_BYTES_PER_FILE
 
     if schema is None:
         first = next(stream)
@@ -191,24 +191,22 @@ class LanceDatasink(_BaseLanceDatasink):
     If we expect to write larger-than-memory files,
     we can use `LanceFragmentWriter` and `LanceCommitter`.
 
-    Parameters
-    ----------
-    uri : str
-        The base URI of the dataset.
-    schema : pyarrow.Schema, optional.
-        The schema of the dataset.
-    mode : str, optional
-        The write mode. Default is 'append'.
-        Choices are 'append', 'create', 'overwrite'.
-    max_rows_per_file : int, optional
-        The maximum number of rows per file. Default is 1024 * 1024.
-    data_storage_version: optional, str, default None
-        The version of the data storage format to use. Newer versions are more
-        efficient but require newer versions of lance to read.  The default is
-        "legacy" which will use the legacy v1 version.  See the user guide
-        for more details.
-    storage_options : Dict[str, Any], optional
-        The storage options for the writer. Default is None.
+    Args:
+        uri : the base URI of the dataset.
+        schema : pyarrow.Schema, optional.
+            The schema of the dataset.
+        mode : str, optional
+            The write mode. Default is 'append'.
+            Choices are 'append', 'create', 'overwrite'.
+        max_rows_per_file : int, optional
+            The maximum number of rows per file. Default is 1024 * 1024.
+        data_storage_version: optional, str, default None
+            The version of the data storage format to use. Newer versions are more
+            efficient but require newer versions of lance to read.  The default is
+            "legacy" which will use the legacy v1 version.  See the user guide
+            for more details.
+        storage_options : Dict[str, Any], optional
+            The storage options for the writer. Default is None.
     """
 
     NAME = "Lance"
