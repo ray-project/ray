@@ -110,7 +110,7 @@ def _get_basic_autoscaling_config() -> dict:
             # and modified max_workers and node_config.
             "tpu-group": {
                 "max_workers": 8,
-                "min_workers": 2,
+                "min_workers": 0,
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
