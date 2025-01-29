@@ -25,17 +25,13 @@ class AlgorithmBase:
                     config.num_cpus_per_learner
                     if config.num_gpus_per_learner == 0
                     else 0
-                ),
-                "GPU": max(0, config.num_gpus_per_learner - 0.01 * _num_agg),
+                )
+                + config.num_aggregator_actors_per_learner,
+                "GPU": max(0, config.num_gpus_per_learner),
             }
 
-            per_aggregation_actor = {
-                "CPU": 1,
-                "GPU": 0.01 if config.num_gpus_per_learner > 0 else 0,
-            }
+            return [per_learner] * config.num_learners
 
-            _num = config.num_learners
-            return [per_learner] * _num + [per_aggregation_actor] * _num * _num_agg
         # TODO (sven): Remove this logic, once rayturbo uses the latest master,
         #  which does not call this method anymore when `num_learners=0`.
         else:
@@ -46,7 +42,8 @@ class AlgorithmBase:
                     "CPU": max(
                         config.num_cpus_per_learner,
                         config.num_cpus_for_main_process,
-                    ),
+                    )
+                    + config.num_aggregator_actors_per_learner,
                     "GPU": config.num_gpus_per_learner,
                 }
             ]
