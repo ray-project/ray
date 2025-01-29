@@ -69,8 +69,8 @@ TEST(LoggingUtilTest, RedirectStderr) {
   EXPECT_EQ(stderr_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Delete temporary file.
-  EXPECT_EQ(unlink(log_file_path1.data()), 0);
-  EXPECT_EQ(unlink(log_file_path2.data()), 0);
+  EXPECT_TRUE(std::filesystem::remove(log_file_path1));
+  EXPECT_TRUE(std::filesystem::remove(log_file_path2));
 
   // Make sure flush hook works fine and process terminates with no problem.
 }
