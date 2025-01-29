@@ -1759,6 +1759,32 @@ void NodeManager::ProcessWaitRequestMessage(
                         current_task_id,
                         /*ray_get=*/false);
   }
+  if (message->num_ready_objects() == 0) {
+    // If we don't need to wait for any, return immediately after making the pull
+    // requests through AsyncResolveObjects above.
+    flatbuffers::FlatBufferBuilder fbb;
+    std::vector<ObjectID> ready;
+    std::vector<ObjectID> remaining;
+    auto wait_reply = protocol::CreateWaitReply(
+        fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
+    fbb.Finish(wait_reply);
+    const auto status =
+        client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
+                             fbb.GetSize(),
+                             fbb.GetBufferPointer());
+    if (status.ok()) {
+      if (resolve_objects) {
+        AsyncResolveObjectsFinish(client, current_task_id);
+      }
+    } else {
+      // We failed to write to the client, so disconnect the client.
+      std::ostringstream stream;
+      stream << "Failed to write WaitReply to the client. Status " << status
+             << ", message: " << status.message();
+      DisconnectClient(client, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
+    }
+    return;
+  }
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
   wait_manager_.Wait(
       object_ids,

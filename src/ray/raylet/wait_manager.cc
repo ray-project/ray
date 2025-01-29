@@ -28,7 +28,6 @@ void WaitManager::Wait(const std::vector<ObjectID> &object_ids,
       << "Waiting duplicate objects is not allowed. Please make sure all object IDs are "
          "unique before calling `WaitManager::Wait`.";
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
-  RAY_CHECK_NE(num_required_objects, 0u);
   RAY_CHECK_LE(num_required_objects, object_ids.size());
 
   const uint64_t wait_id = next_wait_id_++;

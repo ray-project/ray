@@ -2095,7 +2095,10 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   if (fetch_local) {
     RetryObjectInPlasmaErrors(
         memory_store_, worker_context_, memory_object_ids, plasma_object_ids, ready);
-    if (static_cast<int>(ready.size()) < num_objects && !plasma_object_ids.empty()) {
+    // We make the request to the plasma store even if we have num_objects ready since we
+    // want to at least make the request to pull these objects if the user specified
+    // fetch_local so the pulling can start.
+    if (!plasma_object_ids.empty()) {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
           plasma_object_ids,
           std::min(static_cast<int>(plasma_object_ids.size()),
