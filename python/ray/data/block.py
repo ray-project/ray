@@ -476,6 +476,10 @@ class BlockAccessor:
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
+    def sort(self, sort_key: "SortKey") -> "Block":
+        """Returns new block sorted according to provided `sort_key`"""
+        raise NotImplementedError
+
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:
@@ -495,7 +499,10 @@ class BlockAccessor:
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block], sort_key: "SortKey", aggs: Tuple["AggregateFn"]
+        blocks: List[Block],
+        sort_key: "SortKey",
+        aggs: Tuple["AggregateFn"],
+        finalize: bool = True,
     ) -> Tuple[Block, BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

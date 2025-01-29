@@ -15,12 +15,13 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import unify_block_metadata_schema
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 
 
 def generate_sort_fn(
     sort_key: SortKey,
     batch_format: str,
+    data_context: DataContext,
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to sort blocks by the specified key column or key function."""
@@ -63,7 +64,7 @@ def generate_sort_fn(
             boundaries=boundaries, sort_key=sort_key, batch_format=batch_format
         )
 
-        if DataContext.get_current().use_push_based_shuffle:
+        if data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
             scheduler = PushBasedShuffleTaskScheduler(sort_spec)
         else:
             scheduler = PullBasedShuffleTaskScheduler(sort_spec)

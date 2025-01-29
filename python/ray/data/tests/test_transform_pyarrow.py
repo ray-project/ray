@@ -48,6 +48,17 @@ def test_try_defragment_table():
 
 
 def test_hash_partitioning():
+    # Test hash-partitioning of the empty table
+    empty_table = pa.Table.from_pydict({"idx": []})
+
+    assert {} == hash_partition(empty_table, hash_cols=["idx"], num_partitions=5)
+
+    # Test hash-partitioning of table into 1 partition (returns table itself)
+    t = pa.Table.from_pydict({"idx": list(range(10))})
+
+    assert {0: t} == hash_partition(t, hash_cols=["idx"], num_partitions=1)
+
+    # Test hash-partitioning of proper table
     idx = list(range(100))
 
     t = pa.Table.from_pydict(

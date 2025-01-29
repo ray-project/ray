@@ -170,6 +170,9 @@ class JoinOperator(HashShufflingOperatorBase):
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
         )
 
+    def _get_default_aggregator_num_cpus(self):
+        return self.data_context.default_join_operator_actor_num_cpus_per_partition
+
     @classmethod
     def _estimate_aggregator_memory_allocation(
         cls,
@@ -201,13 +204,13 @@ class JoinOperator(HashShufflingOperatorBase):
         output_object_store_memory_required: int = 2 * partition_byte_size_estimate
 
         aggregator_total_memory_required: int = (
-            # Inputs (OS)
+            # Inputs (object store)
             aggregator_shuffle_object_store_memory_required
             +
             # Join (heap)
             join_memory_required
             +
-            # Output (OS)
+            # Output (object store)
             output_object_store_memory_required
         )
 
@@ -227,7 +230,7 @@ class JoinOperator(HashShufflingOperatorBase):
         *,
         num_partitions: int,
         num_aggregators: int,
-        partition_size_hint: Optional[int],
+        partition_size_hint: Optional[int] = None,
     ):
         shuffle_base_remote_args = super()._get_default_aggregator_ray_remote_args(
             num_partitions=num_partitions,

@@ -1,3 +1,4 @@
+import enum
 import logging
 import os
 import threading
@@ -20,6 +21,12 @@ logger = logging.getLogger(__name__)
 # The context singleton on this process.
 _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
+
+
+class ShuffleStrategy(str, enum.Enum):
+    SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
+    SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
+    HASH_SHUFFLE = "hash_shuffle"
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -56,7 +63,13 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
-DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = 256
+DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
+    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+)
+
+DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
+    "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 64
+)
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -72,7 +85,7 @@ DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
-DEFAULT_MIN_PARALLELISM = 200
+DEFAULT_MIN_PARALLELISM = env_integer("RAY_DATA_DEFAULT_MIN_PARALLELISM", 200)
 
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 
@@ -173,6 +186,25 @@ def _execution_options_factory() -> "ExecutionOptions":
     from ray.data._internal.execution.interfaces import ExecutionOptions
 
     return ExecutionOptions()
+
+
+def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
+    if DEFAULT_USE_PUSH_BASED_SHUFFLE:
+        logger.warning(
+            "RAY_DATA_PUSH_BASED_SHUFFLE is deprecated, please use "
+            "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY to set shuffling strategy"
+        )
+
+        return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
+    else:
+        vs = [s for s in ShuffleStrategy]  # noqa: C416
+
+        assert DEFAULT_SHUFFLE_STRATEGY in vs, (
+            f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the [{','.join(vs)}] "
+            f"(got {DEFAULT_SHUFFLE_STRATEGY})"
+        )
+
+        return DEFAULT_SHUFFLE_STRATEGY
 
 
 @DeveloperAPI
@@ -288,13 +320,60 @@ class DataContext:
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
 
+    ################################################################
     # Sort-based shuffling configuration
+    ################################################################
+
     use_push_based_shuffle: bool = DEFAULT_USE_PUSH_BASED_SHUFFLE
+
+    _shuffle_strategy: ShuffleStrategy = _deduce_default_shuffle_algorithm()
+
     pipeline_push_based_shuffle_reduce_tasks: bool = True
 
+    ################################################################
     # Hash-based shuffling configuration
-    max_hash_shuffle_aggregators: int = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+    ################################################################
+
+    # Default hash-shuffle parallelism level (will be used when not
+    # provided explicitly)
+    default_hash_shuffle_parallelism = DEFAULT_MIN_PARALLELISM
+
+    # Max number of aggregating actors that could be provisioned
+    # to perform aggregations on partitions produced during hash-shuffling
+    #
+    # When unset defaults to `DataContext.min_parallelism`
+    max_hash_shuffle_aggregators: Optional[int] = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+    # Max number of *concurrent* hash-shuffle finalization tasks running
+    # at the same time. This config is helpful to control concurrency of
+    # finalization tasks to prevent single aggregator running multiple tasks
+    # concurrently (for ex, to prevent it failing w/ OOM)
+    #
+    # When unset defaults to `DataContext.max_hash_shuffle_aggregators`
     max_hash_shuffle_finalization_batch_size: Optional[int] = None
+
+    # Following CPU allocations for aggregating actors of
+    # Join/Shuffle/Aggregate operators are calculated as:
+    #
+    #   num_cpus (per partition) = CPU budget / # partitions
+    #
+    # Assuming:
+    #
+    #   - Default number of partitions:
+    #       - Join: 64 (no default)
+    #       - Shuffle: 64 (no default)
+    #       - Aggregate: 200 (defaults to `DataContext.min_default_parallelism`)
+    #
+    #   - Total operator's CPU budget with default settings (ie operator executed with
+    #     default settings should require no more than that).
+    #       - Join: 8 cores
+    #       - Shuffle: 8 cores
+    #       - Aggregate: 4 cores
+    #
+    # These CPU budgets are derived such that Ray Data pipeline could run on a
+    # single node (using the default settings).
+    default_join_operator_actor_num_cpus_per_partition: float = 0.125
+    default_shuffle_operator_actor_num_cpus_per_partition: float = 0.125
+    default_aggregate_operator_actor_num_cpus_per_partition: float = 0.025
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
@@ -395,6 +474,12 @@ class DataContext:
                 "`retried_io_errors` instead.",
                 DeprecationWarning,
             )
+        elif name == "use_push_based_shuffle":
+            warnings.warn(
+                "`use_push_based_shuffle` is deprecated, please configure "
+                "`shuffle_strategy` instead.",
+                DeprecationWarning,
+            )
 
         super().__setattr__(name, value)
 
@@ -444,6 +529,22 @@ class DataContext:
         """
         global _default_context
         _default_context = context
+
+    @property
+    def shuffle_strategy(self) -> ShuffleStrategy:
+        if self.use_push_based_shuffle:
+            logger.warning(
+                "`use_push_based_shuffle` is deprecated, please configure "
+                "`shuffle_strategy` instead.",
+            )
+
+            return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
+
+        return self._shuffle_strategy
+
+    @shuffle_strategy.setter
+    def shuffle_strategy(self, value: ShuffleStrategy) -> None:
+        self._shuffle_strategy = value
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.

@@ -36,15 +36,21 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
 )
+from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import GiB, MiB
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockStats, to_stats
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    BlockStats,
+    to_stats,
+    BlockType,
+)
 
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_SHUFFLE_AGGREGATOR_NUM_CPUS = 1.0
-DEFAULT_SHUFFLE_AGGREGATOR_RAY_REMOTE_ARGS = {}
-
+BlockTransformer = Callable[[Block], Block]
 
 StatefulShuffleAggregationFactory = Callable[
     [int, List[int]], "StatefulShuffleAggregation"
@@ -138,7 +144,9 @@ def _shuffle_block(
     input_index: int,
     key_columns: List[str],
     pool: "AggregatorPool",
+    block_transformer: Optional[BlockTransformer] = None,
     send_empty_blocks: bool = False,
+    override_partition_id: Optional[int] = None,
 ) -> Tuple[BlockMetadata, Dict[int, "_PartitionStats"]]:
     """Shuffles provided block following the algorithm:
 
@@ -154,6 +162,13 @@ def _shuffle_block(
         key_columns: Columns to be used by hash-partitioning algorithm
         pool: Hash-shuffling operator's pool of aggregators that are due to receive
               corresponding partitions (of the block)
+        send_empty_blocks: If set to true, empty blocks will NOT be filtered and
+            still be fanned out to individual aggregators to distribute schemas
+            (only known once we receive incoming block)
+        override_partition_id: Target (overridden) partition id that input block will be
+            assigned to
+        block_transformer: Block transformer that will be applied to every block prior
+            to shuffling
 
     Returns:
         A tuple of
@@ -162,6 +177,20 @@ def _shuffle_block(
             shuffled block
     """
 
+    assert (len(key_columns) > 0) ^ (override_partition_id is not None), (
+        f"Either list of key columns to hash-partition by (got {key_columns} or "
+        f"target partition id override (got {override_partition_id}) must be provided!"
+    )
+
+    # Apply block transformer prior to shuffling (if any)
+    if block_transformer is not None:
+        block = block_transformer(block)
+
+    # Make sure we're handling Arrow blocks
+    block: Block = TableBlockAccessor.try_convert_block_type(
+        block, block_type=BlockType.ARROW
+    )
+
     if block.num_rows == 0:
         return BlockAccessor.for_block(block).get_metadata(), {}
 
@@ -169,9 +198,18 @@ def _shuffle_block(
 
     assert isinstance(block, pa.Table), f"Expected Pyarrow's `Table`, got {type(block)}"
 
-    block_partitions = hash_partition(
-        block, hash_cols=key_columns, num_partitions=num_partitions
-    )
+    # In case when no target key columns have been provided shuffling is
+    # reduced to just forwarding whole block to the target aggregator
+    if key_columns:
+        block_partitions = hash_partition(
+            block, hash_cols=key_columns, num_partitions=num_partitions
+        )
+    else:
+        assert (
+            0 <= override_partition_id < num_partitions
+        ), f"Expected override partition id < {num_partitions} (got {override_partition_id})"
+
+        block_partitions = {override_partition_id: block}
 
     partition_shards_stats = {}
     awaitable_to_partition_map = {}
@@ -280,6 +318,18 @@ class HashShufflingOperatorBase(PhysicalOperator):
     """Physical operator base-class for any operators requiring hash-based
     shuffling.
 
+    Hash-based shuffling follows standard map-reduce architecture:
+
+        1. Every incoming block is mapped (using provided `input_block_transformer`,
+           if any)
+
+        2. After mapping, every block is hash-partitioned into `num_partitions`
+           partitions and distributed (shuffled) to corresponding aggregators.
+
+        3. Aggregators perform "reducing" stage, aggregating individual partitions
+           (using configured `StatefulAggregation`), and ultimately yield resutling
+           blocks.
+
     NOTE: This operator can perform hash-based shuffling for multiple sequences
           simultaneously (as required by Join operator for ex).
     """
@@ -292,9 +342,10 @@ class HashShufflingOperatorBase(PhysicalOperator):
         *,
         key_columns: List[Tuple[str]],
         num_partitions: int,
-        aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
-        partition_size_hint: Optional[int] = None,
         partition_aggregation_factory: StatefulShuffleAggregationFactory,
+        partition_size_hint: Optional[int] = None,
+        input_block_transformer: Optional[BlockTransformer] = None,
+        aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             name=name,
@@ -311,8 +362,14 @@ class HashShufflingOperatorBase(PhysicalOperator):
         self._key_column_names: List[Tuple[str]] = key_columns
         self._num_partitions = num_partitions
 
+        # Determine max number of shuffle aggregators (defaults to
+        # `DataContext.min_parallelism`)
+        max_shuffle_aggregators = (
+            data_context.max_hash_shuffle_aggregators
+            or data_context.default_hash_shuffle_parallelism
+        )
         # Cap number of aggregators to not exceed max configured
-        num_aggregators = min(num_partitions, data_context.max_hash_shuffle_aggregators)
+        num_aggregators = min(num_partitions, max_shuffle_aggregators)
 
         self._aggregator_pool: AggregatorPool = AggregatorPool(
             num_partitions=num_partitions,
@@ -327,6 +384,8 @@ class HashShufflingOperatorBase(PhysicalOperator):
                 )
             ),
         )
+
+        self._input_block_transformer = input_block_transformer
 
         self._next_shuffle_tasks_idx: int = 0
         # Shuffling tasks are mapped like following
@@ -395,6 +454,19 @@ class HashShufflingOperatorBase(PhysicalOperator):
                 "memory": self._estimate_shuffling_memory_req(block_metadata),
             }
 
+            cur_shuffle_task_idx = self._next_shuffle_tasks_idx
+            self._next_shuffle_tasks_idx += 1
+
+            # NOTE: In cases when NO key-columns are provided for hash-partitioning
+            #       to be performed on (legitimate scenario for global aggregations),
+            #       shuffling is essentially reduced to round-robin'ing of the blocks
+            #       among the aggregators
+            override_partition_id = (
+                cur_shuffle_task_idx % self._num_partitions
+                if not input_key_column_names
+                else None
+            )
+
             # Fan out provided input blocks to "shuffle" it
             #   - Block is first hash-partitioned into N partitions
             #   - Individual partitions then are submitted to the corresponding
@@ -409,14 +481,13 @@ class HashShufflingOperatorBase(PhysicalOperator):
                 input_index,
                 input_key_column_names,
                 self._aggregator_pool,
+                block_transformer=self._input_block_transformer,
                 send_empty_blocks=should_broadcast_schemas,
+                override_partition_id=override_partition_id,
             )
 
             if should_broadcast_schemas:
                 self._has_schemas_broadcasted[input_index] = True
-
-            cur_shuffle_task_idx = self._next_shuffle_tasks_idx
-            self._next_shuffle_tasks_idx += 1
 
             def _on_partitioning_done():
                 task = self._shuffling_tasks[input_index].pop(cur_shuffle_task_idx)
@@ -521,7 +592,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
         #       of shuffle aggregators
         max_batch_size = (
             self.data_context.max_hash_shuffle_finalization_batch_size
-            or self.data_context.max_hash_shuffle_aggregators
+            or self._aggregator_pool.num_aggregators
         )
 
         num_remaining_partitions = (
@@ -700,7 +771,7 @@ class HashShufflingOperatorBase(PhysicalOperator):
         *,
         num_partitions: int,
         num_aggregators: int,
-        partition_size_hint: Optional[int],
+        partition_size_hint: Optional[int] = None,
     ):
         assert num_partitions >= num_aggregators
         assert partition_size_hint is None or partition_size_hint > 0
@@ -716,19 +787,28 @@ class HashShufflingOperatorBase(PhysicalOperator):
             num_partitions=num_partitions,
             # NOTE: If no partition size hint is provided we simply assume target
             #       max block size specified as the best partition size estimate
-            partition_byte_size_estimate=partition_size_hint
-            or self.data_context.target_max_block_size,
+            partition_byte_size_estimate=(
+                partition_size_hint or self.data_context.target_max_block_size
+            ),
+        )
+
+        aggregator_num_cpus = self._get_default_aggregator_num_cpus()
+
+        assert aggregator_num_cpus > 0, (
+            f"{self.__class__.__name__} aggregating actor CPU allocation "
+            f"has to be positive"
         )
 
         remote_args = {
-            **DEFAULT_SHUFFLE_AGGREGATOR_RAY_REMOTE_ARGS,
-            "num_cpus": (
-                DEFAULT_SHUFFLE_AGGREGATOR_NUM_CPUS * partition_aggregator_ratio
-            ),
+            "num_cpus": aggregator_num_cpus * partition_aggregator_ratio,
             "memory": aggregator_total_memory_required,
         }
 
         return remote_args
+
+    @abc.abstractmethod
+    def _get_default_aggregator_num_cpus(self):
+        pass
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
@@ -761,6 +841,9 @@ class ShuffleOperator(HashShufflingOperatorBase):
             partition_aggregation_factory=Concat.__init__,
         )
 
+    def _get_default_aggregator_num_cpus(self):
+        return self.data_context.default_shuffle_operator_actor_num_cpus_per_partition
+
     @classmethod
     def _estimate_aggregator_memory_allocation(
         cls,
@@ -780,15 +863,15 @@ class ShuffleOperator(HashShufflingOperatorBase):
         output_object_store_memory_required: int = partition_byte_size_estimate
 
         aggregator_total_memory_required: int = (
-            # Inputs (OS)
+            # Inputs (object store)
             aggregator_shuffle_object_store_memory_required
             +
-            # Output (OS)
+            # Output (object store)
             output_object_store_memory_required
         )
 
         logger.debug(
-            f"Estimated memory requirement for shuffling aggregator "
+            f"Estimated memory requirement for shuffling operator "
             f"(partitions={num_partitions}, aggregators={num_aggregators}): "
             f"shuffle={aggregator_shuffle_object_store_memory_required / GiB:.2f}GiB, "
             f"output={output_object_store_memory_required / GiB:.2f}GiB, "
