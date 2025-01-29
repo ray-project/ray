@@ -522,9 +522,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     # that).
     @routes.get("/api/jobs/")
     async def list_jobs(self, req: Request) -> Response:
-        driver_jobs, submission_job_drivers = await get_driver_jobs(self.gcs_aio_client)
+        (driver_jobs, submission_job_drivers), submission_jobs = await asyncio.gather(
+            get_driver_jobs(self.gcs_aio_client), self._job_info_client.get_all_jobs()
+        )
 
-        submission_jobs = await self._job_info_client.get_all_jobs()
         submission_jobs = [
             JobDetails(
                 **dataclasses.asdict(job),

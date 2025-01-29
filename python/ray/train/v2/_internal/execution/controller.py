@@ -2,11 +2,11 @@ import logging
 import os
 import time
 from enum import Enum
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+import pandas as pd
+
 from ray._private.auto_init_hook import wrap_auto_init
-from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
@@ -39,7 +39,7 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingDecision,
     ScalingPolicy,
 )
-from ray.train.v2._internal.execution.storage import StorageContext, get_fs_and_path
+from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
 from ray.train.v2._internal.logging.logging import configure_controller_logger
 from ray.train.v2._internal.util import time_monotonic
@@ -91,8 +91,6 @@ class TrainController:
         scaling_policy: ScalingPolicy,
         failure_policy: FailurePolicy,
         callbacks: Optional[List[RayTrainCallback]] = None,
-        # TODO: [Deprecation]
-        resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         self._train_run_context = train_run_context
         configure_controller_logger(self._train_run_context)
@@ -101,7 +99,6 @@ class TrainController:
         self._failure_policy = failure_policy
         self._run_config = self._train_run_context.run_config
         self._callbacks = callbacks or []
-        self._resume_from_checkpoint = resume_from_checkpoint
         self._storage_context = StorageContext(
             storage_path=self._run_config.storage_path,
             experiment_dir_name=self._run_config.name,
@@ -238,7 +235,7 @@ class TrainController:
                 num_workers=num_workers,
                 resources_per_worker=resources_per_worker,
                 placement_strategy=placement_strategy,
-                checkpoint=latest_checkpoint or self._resume_from_checkpoint,
+                checkpoint=latest_checkpoint,
             )
         except (WorkerGroupStartupTimeoutError, WorkerGroupStartupFailedError) as e:
             logger.error(
@@ -339,17 +336,8 @@ class TrainController:
 
         self._shutdown()
 
-    def get_result(self) -> Result:
-        """Get the final training result from the TrainController."""
-
-        controller_state = self.get_state()
-        if controller_state not in (
-            TrainControllerState.FINISHED,
-            TrainControllerState.ERRORED,
-        ):
-            raise ValueError(
-                f"Cannot get result when controller is in state {controller_state}"
-            )
+    def _build_result(self) -> Result:
+        storage = self._checkpoint_manager._storage_context
 
         latest_checkpoint_result = self._checkpoint_manager.latest_checkpoint_result
         latest_metrics = (
@@ -362,16 +350,32 @@ class TrainController:
             (r.checkpoint, r.metrics)
             for r in self._checkpoint_manager.best_checkpoint_results
         ]
-        storage_filesystem, storage_fs_path = get_fs_and_path(
-            self._run_config.storage_path, self._run_config.storage_filesystem
-        )
-        experiment_fs_path = Path(storage_fs_path, self._run_config.name).as_posix()
+
+        # Provide the history of metrics attached to checkpoints as a dataframe.
+        metrics_dataframe = None
+        if best_checkpoints:
+            metrics_dataframe = pd.DataFrame([m for _, m in best_checkpoints])
 
         return Result(
             metrics=latest_metrics,
             checkpoint=latest_checkpoint,
             error=self._training_failed_error,
-            path=experiment_fs_path,
+            path=storage.experiment_fs_path,
             best_checkpoints=best_checkpoints,
-            _storage_filesystem=storage_filesystem,
+            metrics_dataframe=metrics_dataframe,
+            _storage_filesystem=storage.storage_filesystem,
         )
+
+    def get_result(self) -> Result:
+        """Get the final training result from the TrainController."""
+
+        controller_state = self.get_state()
+        if controller_state not in (
+            TrainControllerState.FINISHED,
+            TrainControllerState.ERRORED,
+        ):
+            raise ValueError(
+                f"Cannot get result when controller is in state {controller_state}"
+            )
+
+        return self._build_result()

@@ -21,6 +21,7 @@ from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
+    RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
     call_with_retry,
@@ -196,6 +197,9 @@ class ParquetDatasource(Datasource):
             )
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        filesystem = RetryingPyFileSystem.wrap(
+            filesystem, context=DataContext.get_current()
+        )
 
         # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
         # files. To avoid this, we expand the input paths with the default metadata

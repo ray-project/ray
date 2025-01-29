@@ -101,7 +101,7 @@ py_test(
     name = "test_arrow_block",
     size = "medium",
     srcs = ["tests/test_arrow_block.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "data_non_parallel"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -141,6 +141,14 @@ py_test(
     name = "test_context_propagation",
     size = "small",
     srcs = ["tests/test_context_propagation.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_audio",
+    size = "small",
+    srcs = ["tests/test_audio.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -561,6 +569,14 @@ py_test(
     name = "test_util",
     size = "small",
     srcs = ["tests/test_util.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_video",
+    size = "small",
+    srcs = ["tests/test_video.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

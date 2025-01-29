@@ -38,9 +38,7 @@ def generate_worker_group_status(num_workers, num_ckpt, num_dummy, num_none):
     )
     random.shuffle(worker_statuses)
 
-    return WorkerGroupStatus(
-        num_workers, 0.0, {i: ws for i, ws in enumerate(worker_statuses)}
-    )
+    return WorkerGroupStatus(num_workers, 0.0, dict(enumerate(worker_statuses)))
 
 
 @pytest.mark.parametrize(
