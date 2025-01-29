@@ -36,7 +36,7 @@ Setting up Redis
 
         .. code-block:: shell
 
-          RAY_REDIS_ADDRESS=redis_ip:port ray start --head --redis-password PASSWORD
+          RAY_REDIS_ADDRESS=redis_ip:port ray start --head --redis-password PASSWORD --redis-username default
 
     .. tab-item:: ray up
 
@@ -46,7 +46,7 @@ Setting up Redis
 
           head_start_ray_commands:
             - ray stop
-            - ulimit -n 65536; RAY_REDIS_ADDRESS=redis_ip:port ray start --head --redis-password PASSWORD --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host=0.0.0.0
+            - ulimit -n 65536; RAY_REDIS_ADDRESS=redis_ip:port ray start --head --redis-password PASSWORD --redis-username default --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host=0.0.0.0
 
     .. tab-item:: Kubernetes
 

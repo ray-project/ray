@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -556,6 +555,12 @@ message TaskSpec {
   // this field contains the detached actor id.
   // Otherwise it's empty and is originated from a driver.
   bytes root_detached_actor_id = 40;
+  // The key-value labels for task and actor.
+  map<string, string> labels = 41;
+  // Human readable stacktrace of the task invocation, or actor creation. The exact data
+  // format depends on the language. Only populated if environment variable
+  // `RAY_record_task_actor_creation_sites` is set to `true`.
+  optional string call_site = 42;
 }
 
 message TaskInfoEntry {
@@ -589,6 +594,9 @@ message TaskInfoEntry {
   // If the task/actor is created within a placement group,
   // this value is configured.
   optional bytes placement_group_id = 26;
+  // Human readable stacktrace of the task invocation, or actor creation. The exact data
+  // format depends on the language. Only populated if the flag is enabled.
+  optional string call_site = 27;
 }
 
 message Bundle {
@@ -986,6 +994,10 @@ message NamedActorInfo {
 
 message LineageReconstructionTask {
   string name = 1;
-  map<string, double> resources = 2;
-  TaskStatus status = 3;
+  TaskStatus status = 2;
+  // If the task is a normal task,
+  // this has the labels of the normal task.
+  // If the task is an actor task,
+  // this has the labels of the corresponding actor.
+  map<string, string> labels = 3;
 }

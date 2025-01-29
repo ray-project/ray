@@ -2,7 +2,7 @@ from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
+from ray.rllib.connectors.common import TensorToNumpy
 from ray.rllib.connectors.learner import (
     AddObservationsFromEpisodesToBatch,
     AddOneTsToEpisodesAndTruncate,
@@ -22,7 +22,6 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
-    ALL_MODULES,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -45,6 +44,9 @@ class MARWILConfig(AlgorithmConfig):
 
     .. testcode::
 
+        import gymnasium as gym
+        import numpy as np
+
         from pathlib import Path
         from ray.rllib.algorithms.marwil import MARWILConfig
 
@@ -61,7 +63,15 @@ class MARWILConfig(AlgorithmConfig):
         )
         # Define the environment for which to learn a policy
         # from offline data.
-        config.environment("CartPole-v1")
+        config.environment(
+            observation_space=gym.spaces.Box(
+                np.array([-4.8, -np.inf, -0.41887903, -np.inf]),
+                np.array([4.8, np.inf, 0.41887903, np.inf]),
+                shape=(4,),
+                dtype=np.float32,
+            ),
+            action_space=gym.spaces.Discrete(2),
+        )
         # Set the training parameters.
         config.training(
             beta=1.0,
@@ -84,6 +94,9 @@ class MARWILConfig(AlgorithmConfig):
         algo.train()
 
     .. testcode::
+
+        import gymnasium as gym
+        import numpy as np
 
         from pathlib import Path
         from ray.rllib.algorithms.marwil import MARWILConfig
@@ -118,7 +131,15 @@ class MARWILConfig(AlgorithmConfig):
             dataset_num_iters_per_learner=1,
         )
         # Set the config's environment for evalaution.
-        config.environment(env="CartPole-v1")
+        config.environment(
+            observation_space=gym.spaces.Box(
+                np.array([-4.8, -np.inf, -0.41887903, -np.inf]),
+                np.array([4.8, np.inf, 0.41887903, np.inf]),
+                shape=(4,),
+                dtype=np.float32,
+            ),
+            action_space=gym.spaces.Discrete(2),
+        )
         # Set up a tuner to run the experiment.
         tuner = tune.Tuner(
             "MARWIL",
@@ -239,14 +260,11 @@ class MARWILConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule,
+            from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+                DefaultPPOTorchRLModule,
             )
 
-            return RLModuleSpec(
-                module_class=PPOTorchRLModule,
-                catalog_class=MARWILCatalog,
-            )
+            return RLModuleSpec(module_class=DefaultPPOTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -356,6 +374,11 @@ class MARWILConfig(AlgorithmConfig):
             GeneralAdvantageEstimation(gamma=self.gamma, lambda_=self.lambda_)
         )
 
+        # If training on GPU, convert batches to `numpy` arrays to load them
+        # on GPU in the `Learner`.
+        if self.num_gpus_per_learner > 0:
+            pipeline.insert_after(GeneralAdvantageEstimation, TensorToNumpy())
+
         return pipeline
 
     @override(AlgorithmConfig)
@@ -364,10 +387,10 @@ class MARWILConfig(AlgorithmConfig):
         super().validate()
 
         if self.beta < 0.0 or self.beta > 1.0:
-            raise ValueError("`beta` must be within 0.0 and 1.0!")
+            self._value_error("`beta` must be within 0.0 and 1.0!")
 
         if self.postprocess_inputs is False and self.beta > 0.0:
-            raise ValueError(
+            self._value_error(
                 "`postprocess_inputs` must be True for MARWIL (to "
                 "calculate accum., discounted returns)! Try setting "
                 "`config.offline_data(postprocess_inputs=True)`."
@@ -381,7 +404,7 @@ class MARWILConfig(AlgorithmConfig):
             and not self.dataset_num_iters_per_learner
             and self.enable_rl_module_and_learner
         ):
-            raise ValueError(
+            self._value_error(
                 "When using a local Learner (`config.num_learners=0`), the number of "
                 "iterations per learner (`dataset_num_iters_per_learner`) has to be "
                 "defined! Set this hyperparameter through `config.offline_data("
@@ -443,7 +466,11 @@ class MARWIL(Algorithm):
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
-                return_iterator=self.config.num_learners > 1,
+                # Return an iterator, if a `Learner` should update
+                # multiple times per RLlib iteration.
+                return_iterator=self.config.dataset_num_iters_per_learner > 1
+                if self.config.dataset_num_iters_per_learner
+                else True,
             )
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -454,26 +481,11 @@ class MARWIL(Algorithm):
                 batch=batch_or_iterator,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
+                **self.offline_data.iter_batches_kwargs,
             )
 
             # Log training results.
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-
-        # Synchronize weights.
-        # As the results contain for each policy the loss and in addition the
-        # total loss over all policies is returned, this total loss has to be
-        # removed.
-        modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
-
-        # Update weights - after learning on the local worker -
-        # on all remote workers.
-        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-            self.env_runner_group.sync_weights(
-                # Sync weights from learner_group to all EnvRunners.
-                from_worker_or_learner_group=self.learner_group,
-                policies=modules_to_update,
-                inference_only=True,
-            )
 
     @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:
@@ -508,7 +520,7 @@ class MARWIL(Algorithm):
 
         # Update weights - after learning on the local worker - on all remote
         # workers (only those policies that were actually trained).
-        if self.env_runner_group.remote_workers():
+        if self.env_runner_group.num_remote_env_runners() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.env_runner_group.sync_weights(
                     policies=list(train_results.keys()), global_vars=global_vars

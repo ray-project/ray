@@ -1,3 +1,4 @@
+import copy
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -29,8 +30,8 @@ class MetricsLogger:
     - Reducing these collected values using a user specified reduction method (for
     example "min" or "mean") and other settings controlling the reduction and internal
     data, such as sliding windows or EMA coefficients.
-    - Resetting the logged values after a `reduce()` call in order to make space for
-    new values to be logged.
+    - Optionally clearing all logged values after a `reduce()` call to make space for
+    new data.
 
     .. testcode::
 
@@ -108,6 +109,14 @@ class MetricsLogger:
         self.stats = {}
         self._tensor_mode = False
         self._tensor_keys = set()
+        # TODO (sven): We use a dummy RLock here for most RLlib algos, however, APPO
+        #  and IMPALA require this to be an actual RLock (b/c of thread safety reasons).
+        #  An actual RLock, however, breaks our current OfflineData and
+        #  OfflinePreLearner logic, in which the Learner (which contains a
+        #  MetricsLogger) is serialized and deserialized. We will have to fix this
+        #  offline RL logic first, then can remove this hack here and return to always
+        #  using the RLock.
+        self._threading_lock = _DummyRLock()
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
@@ -126,6 +135,7 @@ class MetricsLogger:
         key: Union[str, Tuple[str, ...]],
         *,
         default: Optional[Any] = None,
+        throughput: bool = False,
     ) -> Any:
         """Returns the (reduced) value(s) found under the given key or key sequence.
 
@@ -171,6 +181,8 @@ class MetricsLogger:
                 values to return.
             default: An optional default value in case `key` cannot be found in `self`.
                 If default is not provided and `key` cannot be found, throws a KeyError.
+            throughput: Whether to return the current throughput estimate instead of the
+                actual (reduced) value.
 
         Returns:
             The (reduced) values of the (possibly nested) sub-structure found under
@@ -184,10 +196,18 @@ class MetricsLogger:
             return default
 
         # Otherwise, return the reduced Stats' (peek) value.
+        struct = self._get_key(key)
 
         # Create a reduced view of the requested sub-structure or leaf (Stats object).
-        ret = tree.map_structure(lambda s: s.peek(), self._get_key(key))
-        return ret
+        with self._threading_lock:
+            if isinstance(struct, Stats):
+                return struct.peek(throughput=throughput)
+
+            ret = tree.map_structure(
+                lambda s: s.peek(throughput=throughput),
+                struct.copy(),
+            )
+            return ret
 
     @staticmethod
     def peek_results(results: Any) -> Any:
@@ -213,6 +233,7 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
+        with_throughput: bool = False,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -308,6 +329,14 @@ class MetricsLogger:
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
+            with_throughput: Whether to track a throughput estimate together with this
+                metric. This is only supported for `reduce=sum` and
+                `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
+                object under the logged key then keeps track of the time passed
+                between two consecutive calls to `reduce()` and update its throughput
+                estimate. The current throughput estimate of a key can be obtained
+                through: peeked_value, throuthput_per_sec =
+                <MetricsLogger>.peek([key], throughput=True).
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
@@ -316,28 +345,31 @@ class MetricsLogger:
 
         self._check_tensor(key, value)
 
-        # `key` doesn't exist -> Automatically create it.
-        if not self._key_in_stats(key):
-            self._set_key(
-                key,
-                (
-                    Stats.similar_to(value, init_value=value.values)
-                    if isinstance(value, Stats)
-                    else Stats(
-                        value,
-                        reduce=reduce,
-                        window=window,
-                        ema_coeff=ema_coeff,
-                        clear_on_reduce=clear_on_reduce,
-                    )
-                ),
-            )
-        # If value itself is a `Stats`, we merge it on time axis into self's `Stats`.
-        elif isinstance(value, Stats):
-            self._get_key(key).merge_on_time_axis(value)
-        # Otherwise, we just push the value into self's `Stats`.
-        else:
-            self._get_key(key).push(value)
+        with self._threading_lock:
+            # `key` doesn't exist -> Automatically create it.
+            if not self._key_in_stats(key):
+                self._set_key(
+                    key,
+                    (
+                        Stats.similar_to(value, init_value=value.values)
+                        if isinstance(value, Stats)
+                        else Stats(
+                            value,
+                            reduce=reduce,
+                            window=window,
+                            ema_coeff=ema_coeff,
+                            clear_on_reduce=clear_on_reduce,
+                            throughput=with_throughput,
+                        )
+                    ),
+                )
+            # If value itself is a `Stats`, we merge it on time axis into self's
+            # `Stats`.
+            elif isinstance(value, Stats):
+                self._get_key(key).merge_on_time_axis(value)
+            # Otherwise, we just push the value into self's `Stats`.
+            else:
+                self._get_key(key).push(value)
 
     def log_dict(
         self,
@@ -423,6 +455,10 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
         """
+        assert isinstance(
+            stats_dict, dict
+        ), f"`stats_dict` ({stats_dict}) must be dict!"
+
         prefix_key = force_tuple(key)
 
         def _map(path, stat_or_value):
@@ -437,7 +473,8 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
             )
 
-        tree.map_structure_with_path(_map, stats_dict)
+        with self._threading_lock:
+            tree.map_structure_with_path(_map, stats_dict)
 
     def merge_and_log_n_dicts(
         self,
@@ -632,16 +669,16 @@ class MetricsLogger:
                     more_stats.append(stat_or_value)
 
             # Special case: `base_stats` is a lifetime sum (reduce=sum,
-            # clear_on_reduce=False) -> We only(!) use `base_stats`'s values, not
-            # our own (b/c the sum over `base_stats` already contains older values from
-            # before).
+            # clear_on_reduce=False) -> We subtract the previous value (from 2
+            # `reduce()` calls ago) from all to-be-merged stats, so we don't count
+            # twice the older sum from before.
             if (
                 base_stats._reduce_method == "sum"
                 and base_stats._window is None
                 and base_stats._clear_on_reduce is False
             ):
                 for stat in [base_stats] + more_stats:
-                    stat.push(-stat.peek(previous=True))
+                    stat.push(-stat.peek(previous=2))
 
             # There are more than one incoming parallel others -> Merge all of them
             # first in parallel.
@@ -665,13 +702,8 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
-        key_for_throughput: Optional[Union[str, Tuple[str, ...]]] = None,
-        key_for_unit_count: Optional[Union[str, Tuple[str, ...]]] = None,
-    ) -> None:
+    ) -> Stats:
         """Measures and logs a time delta value under `key` when used with a with-block.
-
-        Additionally, measures and logs the throughput for the timed code, iff
-        `key_for_throughput` and `key_for_unit_count` are provided.
 
         .. testcode::
 
@@ -733,11 +765,6 @@ class MetricsLogger:
             clear_on_reduce = True
 
         if not self._key_in_stats(key):
-            measure_throughput = None
-            if key_for_unit_count is not None:
-                measure_throughput = True
-                key_for_throughput = key_for_throughput or (key + "_throughput_per_s")
-
             self._set_key(
                 key,
                 Stats(
@@ -745,20 +772,6 @@ class MetricsLogger:
                     window=window,
                     ema_coeff=ema_coeff,
                     clear_on_reduce=clear_on_reduce,
-                    on_exit=(
-                        lambda time_delta_s, kt=key_for_throughput, ku=key_for_unit_count, r=reduce, w=window, e=ema_coeff, c=clear_on_reduce: (  # noqa
-                            self.log_value(
-                                kt,
-                                value=self.peek(ku) / time_delta_s,
-                                reduce=r,
-                                window=w,
-                                ema_coeff=e,
-                                clear_on_reduce=c,
-                            )
-                        )
-                    )
-                    if measure_throughput
-                    else None,
                 ),
             )
 
@@ -884,21 +897,29 @@ class MetricsLogger:
             PATH = path
             return stats.reduce()
 
-        # Create a shallow copy of `self.stats` in case we need to reset some of our
-        # stats due to this `reduce()` call (and the Stat having self.clear_on_reduce
-        # set to True). In case we clear the Stats upon `reduce`, we receive a
-        # new empty `Stats` object from `stat.reduce()` with the same settings as
-        # existing one and can now re-assign it to `self.stats[key]` (while we return
-        # from this method the properly reduced, but not cleared/emptied new `Stats`).
+        # Create a shallow (yet nested) copy of `self.stats` in case we need to reset
+        # some of our stats due to this `reduce()` call and Stats having
+        # `self.clear_on_reduce=True`. In the latter case we would receive a new empty
+        # `Stats` object from `stat.reduce()` with the same settings as existing one and
+        # can now re-assign it to `self.stats[key]`, while we return from this method
+        # the properly reduced, but not cleared/emptied new `Stats`.
+        if key is not None:
+            stats_to_return = self._get_key(key, key_error=False)
+        else:
+            stats_to_return = self.stats
+
         try:
-            if key is not None:
-                stats_to_return = self._get_key(key, key_error=False).copy()
-                self._set_key(
-                    key, tree.map_structure_with_path(_reduce, stats_to_return)
+            with self._threading_lock:
+                assert (
+                    not self.tensor_mode
+                ), "Can't reduce if `self.tensor_mode` is True!"
+                reduced = copy.deepcopy(
+                    tree.map_structure_with_path(_reduce, stats_to_return)
                 )
-            else:
-                stats_to_return = self.stats.copy()
-                self.stats = tree.map_structure_with_path(_reduce, stats_to_return)
+                if key is not None:
+                    self._set_key(key, reduced)
+                else:
+                    self.stats = reduced
         # Provide proper error message if reduction fails due to bad data.
         except Exception as e:
             raise ValueError(
@@ -914,7 +935,7 @@ class MetricsLogger:
             return stats_to_return
         # Return actual (reduced) values (not reduced `Stats` objects) as leafs.
         else:
-            return tree.map_structure(lambda s: s.peek(), stats_to_return)
+            return self.peek_results(stats_to_return)
 
     def activate_tensor_mode(self):
         """Switches to tensor-mode, in which in-graph tensors can be logged.
@@ -929,6 +950,7 @@ class MetricsLogger:
         them TODO (sven) continue docstring
 
         """
+        self._threading_lock.acquire()
         assert not self.tensor_mode
         self._tensor_mode = True
 
@@ -937,16 +959,17 @@ class MetricsLogger:
         assert self.tensor_mode
         self._tensor_mode = False
         # Return all logged tensors (logged during the tensor-mode phase).
-        ret = {key: self._get_key(key).peek() for key in self._tensor_keys}
+        logged_tensors = {key: self._get_key(key).peek() for key in self._tensor_keys}
         # Clear out logged tensor keys.
         self._tensor_keys.clear()
-        return ret
+        return logged_tensors
 
     def tensors_to_numpy(self, tensor_metrics):
         """Converts all previously logged and returned tensors back to numpy values."""
         for key, values in tensor_metrics.items():
             assert self._key_in_stats(key)
             self._get_key(key).set_to_numpy_values(values)
+        self._threading_lock.release()
 
     @property
     def tensor_mode(self):
@@ -961,6 +984,7 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
+        with_throughput: bool = False,
     ) -> None:
         """Overrides the logged values under `key` with `value`.
 
@@ -997,10 +1021,20 @@ class MetricsLogger:
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
                 Note that this is only applied if `key` does not exist in `self` yet.
+            with_throughput: Whether to track a throughput estimate together with this
+                metric. This is only supported for `reduce=sum` and
+                `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
+                object under the logged key then keeps track of the time passed
+                between two consecutive calls to `reduce()` and update its throughput
+                estimate. The current throughput estimate of a key can be obtained
+                through: peeked_value, throuthput_per_sec =
+                <MetricsLogger>.peek([key], throughput=True).
         """
         # Key already in self -> Erase internal values list with [`value`].
         if self._key_in_stats(key):
-            self._get_key(key).values = [value]
+            stats = self._get_key(key)
+            with self._threading_lock:
+                stats.values = [value]
         # Key cannot be found in `self` -> Simply log as a (new) value.
         else:
             self.log_value(
@@ -1010,6 +1044,7 @@ class MetricsLogger:
                 window=window,
                 ema_coeff=ema_coeff,
                 clear_on_reduce=clear_on_reduce,
+                with_throughput=with_throughput,
             )
 
     def reset(self) -> None:
@@ -1026,8 +1061,9 @@ class MetricsLogger:
             logger.reset()
             check(logger.reduce(), {})
         """
-        self.stats = {}
-        self._tensor_keys = set()
+        with self._threading_lock:
+            self.stats = {}
+            self._tensor_keys = set()
 
     def delete(self, *key: Tuple[str, ...], key_error: bool = True) -> None:
         """Deletes the given `key` from this metrics logger's stats.
@@ -1051,9 +1087,11 @@ class MetricsLogger:
         stats_dict = {}
 
         def _map(path, stats):
-            stats_dict[force_tuple(path)] = stats.get_state()
+            # Convert keys to strings for msgpack-friendliness.
+            stats_dict["--".join(path)] = stats.get_state()
 
-        tree.map_structure_with_path(_map, self.stats)
+        with self._threading_lock:
+            tree.map_structure_with_path(_map, self.stats)
 
         return {"stats": stats_dict}
 
@@ -1063,8 +1101,9 @@ class MetricsLogger:
         Args:
             state: The state to set `self` to.
         """
-        for flat_key, stats_state in state["stats"].items():
-            self._set_key(flat_key, Stats.from_state(stats_state))
+        with self._threading_lock:
+            for flat_key, stats_state in state["stats"].items():
+                self._set_key(flat_key.split("--"), Stats.from_state(stats_state))
 
     def _check_tensor(self, key: Tuple[str], value) -> None:
         # `value` is a tensor -> Log it in our keys set.
@@ -1097,34 +1136,51 @@ class MetricsLogger:
 
     def _set_key(self, flat_key, stats):
         flat_key = force_tuple(tree.flatten(flat_key))
-        _dict = self.stats
-        for i, key in enumerate(flat_key):
-            # If we are at the end of the key sequence, set
-            # the key, no matter, whether it already exists or not.
-            if i == len(flat_key) - 1:
-                _dict[key] = stats
-                return
-            # If an intermediary key in the sequence is missing,
-            # add a sub-dict under this key.
-            if key not in _dict:
-                _dict[key] = {}
-            _dict = _dict[key]
+
+        with self._threading_lock:
+            _dict = self.stats
+            for i, key in enumerate(flat_key):
+                # If we are at the end of the key sequence, set
+                # the key, no matter, whether it already exists or not.
+                if i == len(flat_key) - 1:
+                    _dict[key] = stats
+                    return
+                # If an intermediary key in the sequence is missing,
+                # add a sub-dict under this key.
+                if key not in _dict:
+                    _dict[key] = {}
+                _dict = _dict[key]
 
     def _del_key(self, flat_key, key_error=False):
         flat_key = force_tuple(tree.flatten(flat_key))
 
-        # Erase the tensor key as well, if applicable.
-        if flat_key in self._tensor_keys:
-            self._tensor_keys.discard(flat_key)
+        with self._threading_lock:
+            # Erase the tensor key as well, if applicable.
+            if flat_key in self._tensor_keys:
+                self._tensor_keys.discard(flat_key)
 
-        # Erase the key from the (nested) `self.stats` dict.
-        _dict = self.stats
-        try:
-            for i, key in enumerate(flat_key):
-                if i == len(flat_key) - 1:
-                    del _dict[key]
-                    return
-                _dict = _dict[key]
-        except KeyError as e:
-            if key_error:
-                raise e
+            # Erase the key from the (nested) `self.stats` dict.
+            _dict = self.stats
+            try:
+                for i, key in enumerate(flat_key):
+                    if i == len(flat_key) - 1:
+                        del _dict[key]
+                        return
+                    _dict = _dict[key]
+            except KeyError as e:
+                if key_error:
+                    raise e
+
+
+class _DummyRLock:
+    def acquire(self, blocking=True, timeout=-1):
+        return True
+
+    def release(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass

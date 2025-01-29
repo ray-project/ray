@@ -14,7 +14,6 @@ pyyaml
 pybuildkite
 PyGithub
 requests
-retry
 twine == 5.0.0
 docker >= 7.1.0
 
@@ -23,3 +22,7 @@ tzdata
 aws_requests_auth
 requests >= 2.31.0
 -r requirements-doc.txt
+
+# Upgrades
+typing-extensions>=4.10
+jsonschema>=4.23.0

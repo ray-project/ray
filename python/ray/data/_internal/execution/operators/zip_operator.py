@@ -13,7 +13,9 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadata,
     BlockPartition,
+    to_stats,
 )
+from ray.data.context import DataContext
 
 
 class ZipOperator(PhysicalOperator):
@@ -28,6 +30,7 @@ class ZipOperator(PhysicalOperator):
         self,
         left_input_op: PhysicalOperator,
         right_input_op: PhysicalOperator,
+        data_context: DataContext,
     ):
         """Create a ZipOperator.
 
@@ -40,7 +43,10 @@ class ZipOperator(PhysicalOperator):
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
         super().__init__(
-            "Zip", [left_input_op, right_input_op], target_max_block_size=None
+            "Zip",
+            [left_input_op, right_input_op],
+            data_context,
+            target_max_block_size=None,
         )
 
     def num_outputs_total(self) -> Optional[int]:
@@ -200,7 +206,7 @@ class ZipOperator(PhysicalOperator):
                     owns_blocks=input_owned,
                 )
             )
-        stats = {self._name: output_metadata}
+        stats = {self._name: to_stats(output_metadata)}
 
         # Clean up inputs.
         for ref in left_input:

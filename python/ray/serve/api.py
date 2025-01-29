@@ -459,10 +459,13 @@ def _run(
     validate_route_prefix(route_prefix)
 
     if _local_testing_mode:
+        if not isinstance(logging_config, LoggingConfig):
+            logging_config = LoggingConfig(**(logging_config or {}))
+
         configure_component_logger(
             component_name="local_test",
             component_id="-",
-            logging_config=logging_config or LoggingConfig(),
+            logging_config=logging_config,
             stream_handler_only=True,
         )
         built_app = build_app(
@@ -474,11 +477,16 @@ def _run(
     else:
         client = _private_api.serve_start(
             http_options={"location": "EveryNode"},
+            global_logging_config=logging_config,
         )
         # Record after Ray has been started.
         ServeUsageTag.API_VERSION.record("v2")
         handle = client.deploy_application(
-            build_app(target, name=name),
+            build_app(
+                target,
+                name=name,
+                default_runtime_env=ray.get_runtime_context().runtime_env,
+            ),
             blocking=_blocking,
             route_prefix=route_prefix,
             logging_config=logging_config,
@@ -720,7 +728,7 @@ def get_multiplexed_model_id() -> str:
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
     """
-    _request_context = ray.serve.context._serve_request_context.get()
+    _request_context = ray.serve.context._get_serve_request_context()
     return _request_context.multiplexed_model_id
 
 

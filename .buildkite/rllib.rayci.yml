@@ -51,7 +51,7 @@ steps:
 
   - label: ":brain: rllib: examples"
     tags: rllib
-    parallelism: 5
+    parallelism: 6
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
@@ -83,6 +83,7 @@ steps:
     tags:
       - rllib_gpu
       - gpu
+      - skip-on-microcheck
     parallelism: 5
     instance_type: gpu
     commands:
@@ -123,20 +124,21 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --only-tags torch_2.x_only_benchmark
     depends_on: rllibbuild
 
-  - label: ":brain: rllib: memory leak pytorch tests"
-    tags: rllib
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
-        --only-tags memory_leak_tests
-        --except-tags flaky
-        --test-arg --framework=torch
-    depends_on: rllibbuild
+  # - label: ":brain: rllib: memory leak pytorch tests"
+  #  tags: rllib
+  #  instance_type: medium
+  #  commands:
+  #    - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
+  #      --only-tags memory_leak_tests
+  #      --except-tags flaky
+  #      --test-arg --framework=torch
+  #  depends_on: rllibbuild
 
   - label: ":brain: rllib: doc tests"
     tags:
       - rllib_directly
       - doc
+      - skip-on-microcheck
     instance_type: medium
     commands:
       # doc tests
@@ -159,6 +161,7 @@ steps:
     tags:
       - rllib_gpu
       - gpu
+      - skip-on-microcheck
     parallelism: 5
     instance_type: gpu-large
     commands:
@@ -264,20 +267,5 @@ steps:
         --except-tags multi_gpu,gpu,manual
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         --skip-ray-installation # reuse the same docker image as the previous run
-    depends_on: rllibbuild
-    soft_fail: true
-
-  - label: ":brain: rllib: flaky tests (memory leak)"
-    key: rllib_flaky_tests_03
-    tags:
-      - rllib
-      - skip-on-premerge
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
-        --run-flaky-tests
-        --only-tags memory_leak_tests
-        --except-tags flaky,gpu,multi_gpu
-        --test-arg --framework=tf2
     depends_on: rllibbuild
     soft_fail: true

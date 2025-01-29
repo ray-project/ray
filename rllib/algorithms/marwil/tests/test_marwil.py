@@ -1,12 +1,14 @@
+import gymnasium as gym
 import numpy as np
 from pathlib import Path
 import unittest
 
 import ray
 import ray.rllib.algorithms.marwil as marwil
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import DEFAULT_MODULE_ID, COMPONENT_RL_MODULE
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
@@ -129,11 +131,19 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
+            .environment(
+                observation_space=gym.spaces.Box(
+                    np.array([-4.8, -np.inf, -0.41887903, -np.inf]),
+                    np.array([4.8, np.inf, 0.41887903, np.inf]),
+                    (4,),
+                    np.float32,
+                ),
+                action_space=gym.spaces.Discrete(2),
+            )
             .api_stack(
                 enable_rl_module_and_learner=True,
                 enable_env_runner_and_connector_v2=True,
             )
-            .env_runners(num_env_runners=0)
             .offline_data(
                 input_=[data_path],
                 dataset_num_iters_per_learner=1,
@@ -148,8 +158,18 @@ class TestMARWIL(unittest.TestCase):
         # Sample a batch from the offline data.
         batch = algo.offline_data.data.take_batch(2000)
 
+        # Get the module state.
+        module_state = algo.offline_data.learner_handles[0].get_state(
+            component=COMPONENT_RL_MODULE,
+        )[COMPONENT_RL_MODULE]
+
         # Create the prelearner and compute advantages and values.
-        offline_prelearner = OfflinePreLearner(config, algo.learner_group._learner)
+        offline_prelearner = OfflinePreLearner(
+            config=config,
+            module_spec=algo.offline_data.module_spec,
+            module_state=module_state,
+            spaces=algo.offline_data.spaces[INPUT_ENV_SPACES],
+        )
         # Note, for `ray.data`'s pipeline everything has to be a dictionary
         # therefore the batch is embedded into another dictionary.
         batch = offline_prelearner(batch)["batch"][0]
@@ -168,9 +188,7 @@ class TestMARWIL(unittest.TestCase):
         # Calculate our own expected values (to then compare against the
         # agent's loss output).
         module = algo.learner_group._learner.module[DEFAULT_MODULE_ID].unwrapped()
-        fwd_out = module.forward_train(
-            {k: v for k, v in batch[DEFAULT_MODULE_ID].items()}
-        )
+        fwd_out = module.forward_train(dict(batch[DEFAULT_MODULE_ID]))
         advantages = (
             batch[DEFAULT_MODULE_ID][Columns.VALUE_TARGETS].detach().cpu().numpy()
             - module.compute_values(batch[DEFAULT_MODULE_ID]).detach().cpu().numpy()
@@ -199,7 +217,7 @@ class TestMARWIL(unittest.TestCase):
         # calculation above).
         total_loss = algo.learner_group._learner.compute_loss_for_module(
             module_id=DEFAULT_MODULE_ID,
-            batch={k: v for k, v in batch[DEFAULT_MODULE_ID].items()},
+            batch=dict(batch[DEFAULT_MODULE_ID]),
             fwd_out=fwd_out,
             config=config,
         )

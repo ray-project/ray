@@ -16,7 +16,6 @@ from ray.autoscaler._private.constants import (
     DEFAULT_UPSCALING_SPEED,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
-    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
@@ -128,6 +127,8 @@ class NodeTypeConfig:
     min_worker_nodes: int
     # The maximal number of worker nodes can be launched for this node type.
     max_worker_nodes: int
+    # Idle timeout seconds for worker nodes of this node type.
+    idle_timeout_s: Optional[float] = None
     # The total resources on the node.
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
@@ -346,6 +347,7 @@ class AutoscalingConfig:
                 name=node_type,
                 min_worker_nodes=node_config.get("min_workers", 0),
                 max_worker_nodes=max_workers_nodes,
+                idle_timeout_s=node_config.get("idle_timeout_s", None),
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
                 launch_config_hash=launch_config_hash,
@@ -398,10 +400,6 @@ class AutoscalingConfig:
     def disable_launch_config_check(self) -> bool:
         provider_config = self.get_provider_config()
         return provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, True)
-
-    def worker_rpc_drain(self) -> bool:
-        provider_config = self._configs.get("provider", {})
-        return provider_config.get(WORKER_RPC_DRAIN_KEY, True)
 
     def get_instance_reconcile_config(self) -> InstanceReconcileConfig:
         # TODO(rickyx): we need a way to customize these configs,

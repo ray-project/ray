@@ -49,6 +49,7 @@ class ActorPoolMapOperator(MapOperator):
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         target_max_block_size: Optional[int],
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
@@ -79,10 +80,12 @@ class ActorPoolMapOperator(MapOperator):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
+                See :func:`ray.remote` for details.
         """
         super().__init__(
             map_transformer,
             input_op,
+            data_context,
             name,
             target_max_block_size,
             min_rows_per_bundle,
@@ -91,11 +94,11 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args,
         )
         self._ray_actor_task_remote_args = {}
-        actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
+        actor_task_errors = self.data_context.actor_task_retry_on_errors
         if actor_task_errors:
             self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
         _add_system_error_to_retry_exceptions(self._ray_actor_task_remote_args)
-        data_context = DataContext.get_current()
+        data_context = self.data_context
         if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
             # The `_generator_backpressure_num_objects` parameter should be
             # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
@@ -105,9 +108,17 @@ class ActorPoolMapOperator(MapOperator):
             )
         self._min_rows_per_bundle = min_rows_per_bundle
         self._ray_remote_args_fn = ray_remote_args_fn
-        self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
+        self._ray_remote_args = self._apply_default_remote_args(
+            self._ray_remote_args, data_context
+        )
 
-        self._actor_pool = _ActorPool(compute_strategy, self._start_actor)
+        per_actor_resource_usage = ExecutionResources(
+            cpu=self._ray_remote_args.get("num_cpus", 0),
+            gpu=self._ray_remote_args.get("num_gpus", 0),
+        )
+        self._actor_pool = _ActorPool(
+            compute_strategy, self._start_actor, per_actor_resource_usage
+        )
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
         # Cached actor class.
@@ -133,7 +144,7 @@ class ActorPoolMapOperator(MapOperator):
         # upstream operators, leading to a spike in memory usage prior to steady state.
         logger.debug(f"{self._name}: Waiting for {len(refs)} pool actors to start...")
         try:
-            timeout = DataContext.get_current().wait_for_min_actors_s
+            timeout = self.data_context.wait_for_min_actors_s
             ray.get(refs, timeout=timeout)
         except ray.exceptions.GetTimeoutError:
             raise ray.exceptions.GetTimeoutError(
@@ -148,7 +159,7 @@ class ActorPoolMapOperator(MapOperator):
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
-        ctx = DataContext.get_current()
+        ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
         actor = self._cls.remote(
@@ -209,7 +220,12 @@ class ActorPoolMapOperator(MapOperator):
                 num_returns="streaming",
                 name=self.name,
                 **self._ray_actor_task_remote_args,
-            ).remote(DataContext.get_current(), ctx, *input_blocks)
+            ).remote(
+                self.data_context,
+                ctx,
+                *input_blocks,
+                **self.get_map_task_kwargs(),
+            )
 
             def _task_done_callback(actor_to_return):
                 # Return the actor that was running the task to the pool.
@@ -259,7 +275,7 @@ class ActorPoolMapOperator(MapOperator):
         # parallelization across the actor pool. We only know this information after
         # execution has completed.
         min_workers = self._actor_pool.min_size()
-        if len(self._output_metadata) < min_workers:
+        if len(self._output_blocks_stats) < min_workers:
             # The user created a stream that has too few blocks to begin with.
             logger.warning(
                 "To ensure full parallelization across an actor pool of size "
@@ -322,12 +338,13 @@ class ActorPoolMapOperator(MapOperator):
         return res
 
     @staticmethod
-    def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
+    def _apply_default_remote_args(
+        ray_remote_args: Dict[str, Any], data_context: DataContext
+    ) -> Dict[str, Any]:
         """Apply defaults to the actor creation remote args."""
         ray_remote_args = ray_remote_args.copy()
         if "scheduling_strategy" not in ray_remote_args:
-            ctx = DataContext.get_current()
-            ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+            ray_remote_args["scheduling_strategy"] = data_context.scheduling_strategy
         # Enable actor fault tolerance by default, with infinite actor recreations and
         # up to N retries per task. The user can customize this in map_batches via
         # extra kwargs (e.g., map_batches(..., max_restarts=0) to disable).
@@ -386,16 +403,30 @@ class _MapWorker:
         data_context: DataContext,
         ctx: TaskContext,
         *blocks: Block,
+        **kwargs: Dict[str, Any],
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
         yield from _map_task(
             self._map_transformer,
             data_context,
             ctx,
             *blocks,
+            **kwargs,
         )
 
     def __repr__(self):
         return f"MapWorker({self.src_fn_name})"
+
+    def on_exit(self):
+        """Called when the actor is about to exist.
+        This enables performing cleanup operations via `UDF.__del__`.
+
+        Note, this only ensures cleanup is performed when the job exists gracefully.
+        If the driver or the actor is forcefully killed, `__del__` will not be called.
+        """
+        # `_map_actor_context` is a global variable that references the UDF object.
+        # Delete it to trigger `UDF.__del__`.
+        del ray.data._map_actor_context
+        ray.data._map_actor_context = None
 
 
 @dataclass
@@ -424,6 +455,7 @@ class _ActorPool(AutoscalingActorPool):
         self,
         compute_strategy: ActorPoolStrategy,
         create_actor_fn: Callable[[], Tuple[ActorHandle, ObjectRef[Any]]],
+        per_actor_resource_usage: ExecutionResources,
     ):
         self._min_size: int = compute_strategy.min_size
         self._max_size: int = compute_strategy.max_size
@@ -432,6 +464,7 @@ class _ActorPool(AutoscalingActorPool):
             or DEFAULT_MAX_TASKS_IN_FLIGHT
         )
         self._create_actor_fn = create_actor_fn
+        self._per_actor_resource_usage = per_actor_resource_usage
         assert self._min_size >= 1
         assert self._max_size >= self._min_size
         assert self._max_tasks_in_flight >= 1
@@ -725,6 +758,9 @@ class _ActorPool(AutoscalingActorPool):
         # garbage collect the actor, instead of using ray.kill.
         # Because otherwise the actor cannot be restarted upon lineage reconstruction.
         if actor in self._running_actors:
+            # Call `on_exit` to trigger `UDF.__del__` which may perform
+            # cleanup operations.
+            actor.on_exit.remote()
             del self._running_actors[actor]
 
     def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
@@ -750,3 +786,7 @@ class _ActorPool(AutoscalingActorPool):
                 f"; Actors: {total} (alive {alive}, restarting {restarting}, "
                 f"pending {pending})"
             )
+
+    def per_actor_resource_usage(self) -> ExecutionResources:
+        """Per actor resource usage."""
+        return self._per_actor_resource_usage

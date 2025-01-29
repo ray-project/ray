@@ -1,8 +1,14 @@
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING, List, Union, Dict
 
+import numpy as np
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
+from ray.air.util.tensor_extensions.arrow import (
+    INT32_OVERFLOW_THRESHOLD,
+    MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
+    PYARROW_VERSION,
+)
 
 try:
     import pyarrow
@@ -180,23 +186,193 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
 
     tensor_types = get_arrow_extension_tensor_types()
 
-    # Single flat list of chunks across all chunked arrays.
-    chunks = []
+    # Infer the type as the first non-null type.
     type_ = None
     for arr in arrs:
-        if type_ is None:
+        assert not isinstance(arr.type, tensor_types), (
+            "'_concatenate_chunked_arrays' should only be used on non-tensor "
+            f"extension types, but got a chunked array of type {type_}."
+        )
+        if type_ is None and not pyarrow.types.is_null(arr.type):
             type_ = arr.type
-        else:
-            if isinstance(type_, tensor_types):
-                raise ValueError(
-                    "_concatenate_chunked_arrays should only be used on non-tensor "
-                    f"extension types, but got a chunked array of type {type_}."
-                )
-            assert type_ == arr.type, f"Types mismatch: {type_} != {arr.type}"
+            break
+
+    if type_ is None:
+        # All arrays are null, so the inferred type is null.
+        type_ = pyarrow.null()
+
+    # Single flat list of chunks across all chunked arrays.
+    chunks = []
+    for arr in arrs:
+        if pyarrow.types.is_null(arr.type) and not pyarrow.types.is_null(type_):
+            # If the type is null, we need to cast the array to the inferred type.
+            arr = arr.cast(type_)
+        elif not pyarrow.types.is_null(arr.type) and type_ != arr.type:
+            raise RuntimeError(f"Types mismatch: {type_} != {arr.type}")
+
         # Add chunks for this chunked array to flat chunk list.
         chunks.extend(arr.chunks)
+
     # Construct chunked array on flat list of chunks.
     return pyarrow.chunked_array(chunks, type=type_)
+
+
+def _extract_unified_struct_types(
+    schema: "pyarrow.Schema",
+) -> Dict[str, "pyarrow.StructType"]:
+    """
+    Extract all struct fields from a schema and map their names to types.
+
+    Args:
+        schema: Arrow schema to extract struct types from.
+
+    Returns:
+        Dict[str, pa.StructType]: Mapping of struct field names to their types.
+    """
+    import pyarrow as pa
+
+    return {
+        field.name: field.type for field in schema if pa.types.is_struct(field.type)
+    }
+
+
+def _backfill_missing_fields(
+    column: "pyarrow.ChunkedArray",
+    unified_struct_type: "pyarrow.StructType",
+    block_length: int,
+) -> "pyarrow.StructArray":
+    """
+    Align a struct column's fields to match the unified schema's struct type.
+
+    Args:
+        column: The column data to align.
+        unified_struct_type: The unified struct type to align to.
+        block_length: The number of rows in the block.
+
+    Returns:
+        pa.StructArray: The aligned struct array.
+    """
+    import pyarrow as pa
+
+    # Flatten chunked arrays into a single array if necessary
+    if isinstance(column, pa.ChunkedArray):
+        column = pa.concat_arrays(column.chunks)
+
+    # Extract the current struct field names and their corresponding data
+    current_fields = {
+        field.name: column.field(i) for i, field in enumerate(column.type)
+    }
+
+    # Assert that the current fields are a subset of the unified struct type's field names
+    unified_field_names = {field.name for field in unified_struct_type}
+    assert set(current_fields.keys()).issubset(
+        unified_field_names
+    ), f"Fields {set(current_fields.keys())} are not a subset of unified struct fields {unified_field_names}."
+
+    # Early exit if no fields are missing in the schema
+    if column.type == unified_struct_type:
+        return column
+
+    aligned_fields = []
+
+    # Iterate over the fields in the unified struct type schema
+    for field in unified_struct_type:
+        field_name = field.name
+        field_type = field.type
+
+        if field_name in current_fields:
+            # If the field exists in the current column, align it
+            current_array = current_fields[field_name]
+            if pa.types.is_struct(field_type):
+                # Recursively align nested struct fields
+                current_array = _backfill_missing_fields(
+                    column=current_array,
+                    unified_struct_type=field_type,
+                    block_length=block_length,
+                )
+            aligned_fields.append(current_array)
+        else:
+            # If the field is missing, fill with nulls
+            aligned_fields.append(pa.nulls(block_length, type=field_type))
+
+    # Reconstruct the struct column with aligned fields
+    return pa.StructArray.from_arrays(
+        aligned_fields,
+        fields=unified_struct_type,
+    )
+
+
+def _align_struct_fields(
+    blocks: List["pyarrow.Table"], schema: "pyarrow.Schema"
+) -> List["pyarrow.Table"]:
+    """
+    Align struct columns across blocks to match the provided schema.
+
+    Args:
+        blocks: List of Arrow tables to align.
+        schema: Unified schema with desired struct column alignment.
+
+    Returns:
+        List[pa.Table]: List of aligned Arrow tables.
+    """
+    import pyarrow as pa
+
+    # Check if all block schemas are already aligned
+    if all(block.schema == schema for block in blocks):
+        return blocks
+
+    # Extract all struct column types from the provided schema
+    unified_struct_types = _extract_unified_struct_types(schema)
+
+    # If there are no struct columns in the schema, return blocks as is
+    if not unified_struct_types:
+        return blocks
+
+    aligned_blocks = []
+
+    # Iterate over each block (table) in the list
+    for block in blocks:
+        # Store aligned struct columns
+        aligned_columns = {}
+
+        # Get the number of rows in the block
+        block_length = len(block)
+
+        # Process each struct column defined in the unified schema
+        for column_name, unified_struct_type in unified_struct_types.items():
+            # If the column exists in the block, align its fields
+            if column_name in block.schema.names:
+                column = block[column_name]
+
+                # Check if the column type matches a struct type
+                if isinstance(column.type, pa.StructType):
+                    aligned_columns[column_name] = _backfill_missing_fields(
+                        column, unified_struct_type, block_length
+                    )
+                else:
+                    # If the column is not a struct, simply keep the original column
+                    aligned_columns[column_name] = column
+            else:
+                # If the column is missing, create a null-filled column with the same
+                # length as the block
+                aligned_columns[column_name] = pa.array(
+                    [None] * block_length, type=unified_struct_type
+                )
+
+        # Create a new aligned block with the updated columns and the unified schema.
+        new_columns = []
+        for column_name in schema.names:
+            if column_name in aligned_columns:
+                # Use the aligned column if available
+                new_columns.append(aligned_columns[column_name])
+            else:
+                # Use the original column if not aligned
+                assert column_name in block.schema.names
+                new_columns.append(block[column_name])
+        aligned_blocks.append(pa.table(new_columns, schema=schema))
+
+    # Return the list of aligned blocks
+    return aligned_blocks
 
 
 def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
@@ -222,6 +398,16 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     if len(blocks) == 1:
         return blocks[0]
 
+    # If the result contains pyarrow schemas, unify them
+    schemas_to_unify = [b.schema for b in blocks]
+    try:
+        schema = unify_schemas(schemas_to_unify)
+    except Exception as e:
+        raise ArrowConversionError(str(blocks)) from e
+
+    # Handle alignment of struct type columns.
+    blocks = _align_struct_fields(blocks, schema)
+
     # Rollup columns with opaque (null-typed) lists, to process in following for-loop.
     cols_with_null_list = set()
     for b in blocks:
@@ -230,12 +416,6 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
             if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
                 cols_with_null_list.add(col_name)
 
-    # If the result contains pyarrow schemas, unify them
-    schemas_to_unify = [b.schema for b in blocks]
-    try:
-        schema = unify_schemas(schemas_to_unify)
-    except Exception as e:
-        raise ArrowConversionError(str(blocks)) from e
     if (
         any(isinstance(type_, pa.ExtensionType) for type_ in schema.types)
         or cols_with_null_list
@@ -246,6 +426,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
             col_chunked_arrays = []
             for block in blocks:
                 col_chunked_arrays.append(block.column(col_name))
+
             if isinstance(schema.field(col_name).type, tensor_types):
                 # For our tensor extension types, manually construct a chunked array
                 # containing chunks from all blocks. This is to handle
@@ -326,24 +507,164 @@ def concat_and_sort(
     return take_table(ret, indices)
 
 
-def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
-    """This is pyarrow.Table.combine_chunks()
-    with support for extension types.
+def to_numpy(
+    array: Union["pyarrow.Array", "pyarrow.ChunkedArray"],
+    *,
+    zero_copy_only: bool = True,
+) -> np.ndarray:
+    """Wrapper for `Array`s and `ChunkedArray`s `to_numpy` API,
+    handling API divergence b/w Arrow versions"""
 
-    This will create a new table by combining the chunks the input table has.
+    import pyarrow as pa
+
+    if isinstance(array, pa.Array):
+        return array.to_numpy(zero_copy_only=zero_copy_only)
+    elif isinstance(array, pa.ChunkedArray):
+        if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
+            return array.to_numpy(zero_copy_only=zero_copy_only)
+        else:
+            return array.to_numpy()
+    else:
+        raise ValueError(
+            f"Either of `Array` or `ChunkedArray` was expected, got {type(array)}"
+        )
+
+
+def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
+    """This is counterpart for Pyarrow's `Table.combine_chunks` that's using
+    extended `ChunkedArray` combination protocol.
+
+    For more details check out `combine_chunked_array` py-doc
     """
+
+    new_column_values_arrays = []
+
+    for col in table.columns:
+        new_column_values_arrays.append(combine_chunked_array(col))
+
+    return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
+
+
+def combine_chunked_array(
+    array: "pyarrow.ChunkedArray",
+) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
+    """This is counterpart for Pyarrow's `ChunkedArray.combine_chunks` that additionally
+
+        1. Handles `ExtensionType`s (like ArrowTensorType, ArrowTensorTypeV2,
+           ArrowPythonObjectType, etc)
+
+        2. Making sure `ChunkedArray`s comprising provided `Table` are combined
+           safely, ie avoiding overflows of Arrow's internal offsets (using int32 for
+           most of its native types, other than "large" kind).
+
+    For more details check py-doc of `_try_combine_chunks_safe` method.
+    """
+
+    import pyarrow as pa
+
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
         _is_column_extension_type,
     )
 
-    cols = table.columns
-    new_cols = []
-    for col in cols:
-        if _is_column_extension_type(col):
-            # Extension arrays don't support concatenation.
-            arr = _concatenate_extension_column(col)
-        else:
-            arr = col.combine_chunks()
-        new_cols.append(arr)
-    return pyarrow.Table.from_arrays(new_cols, schema=table.schema)
+    assert isinstance(
+        array, pa.ChunkedArray
+    ), f"Expected `ChunkedArray`, got {type(array)}"
+
+    if _is_column_extension_type(array):
+        # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
+        # hence require manual concatenation
+        return _concatenate_extension_column(array)
+    elif len(array.chunks) == 0:
+        # NOTE: In case there's no chunks, we need to explicitly create
+        #       an empty array since calling into `combine_chunks` would fail
+        #       due to it expecting at least 1 chunk to be present
+        return pa.array([], type=array.type)
+    else:
+        return _try_combine_chunks_safe(array)
+
+
+def _try_combine_chunks_safe(
+    array: "pyarrow.ChunkedArray", max_chunk_size=INT32_OVERFLOW_THRESHOLD
+) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
+    """This method provides a safe way of combining `ChunkedArray`s exceeding 2 GiB
+    in size, which aren't using "large_*" types (and therefore relying on int32
+    offsets).
+
+    When handling provided `ChunkedArray` this method will be either
+
+        - Relying on PyArrow's default `combine_chunks` (therefore returning single
+        contiguous `Array`) in cases when
+            - Array's total size is < 2 GiB
+            - Array's underlying type is of "large" kind (ie using one of the
+            `large_*` type family)
+        - Safely combining subsets of tasks such that resulting `Array`s to not
+        exceed 2 GiB in size (therefore returning another `ChunkedArray` albeit
+        with potentially smaller number of chunks that have resulted from clumping
+        the original ones)
+
+    Returns:
+        - pa.Array if it's possible to combine provided pa.ChunkedArray into single
+        contiguous array
+        - pa.ChunkedArray (albeit with chunks re-combined) if it's not possible to
+        produce single pa.Array
+    """
+
+    import pyarrow as pa
+
+    from ray.air.util.transform_pyarrow import _is_column_extension_type
+
+    assert not _is_column_extension_type(
+        array
+    ), f"Arrow `ExtensionType`s are not accepted (got {array.type})"
+
+    int64_type_predicates = [
+        pa.types.is_large_list,
+        pa.types.is_large_string,
+        pa.types.is_large_binary,
+        pa.types.is_large_unicode,
+    ]
+
+    if array.nbytes < max_chunk_size or any(
+        p(array.type) for p in int64_type_predicates
+    ):
+        # It's safe to combine provided `ChunkedArray` in either of 2 cases:
+        #   - It's cumulative size is < 2 GiB
+        #   - It's of 'large' kind (ie one using int64 offsets internally)
+        return array.combine_chunks()
+
+    # In this case it's actually *NOT* safe to try to directly combine
+    # Arrow's `ChunkedArray` and is impossible to produce single, contiguous
+    # `Array` since
+    #     - It's estimated to hold > 2 GiB
+    #     - Its type is not of the "large" kind (and hence is using int32
+    #       offsets internally, which would overflow)
+    #
+    # In this case instead of combining into single contiguous array, we
+    # instead just "clump" existing chunks into bigger ones, but no bigger
+    # than 2 GiB each.
+    #
+    # NOTE: This branch actually returns `ChunkedArray` and not an `Array`
+
+    # To stay under 2 GiB limit we are slicing provided list of chunks into
+    # slices no larger than 2 GiB (as compared to just directly using `concat_arrays`)
+    slices = []
+
+    cur_slice_start = 0
+    cur_slice_size_bytes = 0
+
+    for i, chunk in enumerate(array.chunks):
+        chunk_size = chunk.nbytes
+
+        if cur_slice_size_bytes + chunk_size > max_chunk_size:
+            slices.append(array.chunks[cur_slice_start:i])
+
+            cur_slice_start = i
+            cur_slice_size_bytes = 0
+
+        cur_slice_size_bytes += chunk_size
+
+    # Add remaining chunks as last slice
+    slices.append(array.chunks[cur_slice_start:])
+
+    return pa.chunked_array([pa.concat_arrays(s) for s in slices])

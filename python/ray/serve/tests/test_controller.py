@@ -179,11 +179,11 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                 "health_check_period_s": 10.0,
                                 "health_check_timeout_s": 30.0,
                                 "ray_actor_options": {
-                                    "runtime_env": {},
                                     "num_cpus": 1.0,
                                 },
                             },
                             "target_num_replicas": 1,
+                            "required_resources": {"CPU": 1},
                             "replicas": [
                                 {
                                     "node_id": node_id,

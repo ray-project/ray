@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdlib>
 #include <iostream>
-
-#ifdef __linux__
-#include <stdlib.h>
-#endif
+#include <limits>
 
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
@@ -73,6 +71,10 @@ DEFINE_string(native_library_path,
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
+DEFINE_string(
+    ray_log_filepath,
+    "",
+    "The filename to dump raylet log on stdout, which is written via `RAY_LOG`.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
@@ -80,6 +82,10 @@ DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.")
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
 DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
+DEFINE_bool(enable_physical_mode,
+            false,
+            "Whether physical mode is enaled, which applies constraint to tasks' "
+            "resource consumption.");
 
 #ifdef __linux__
 DEFINE_string(plasma_directory,
@@ -121,15 +127,32 @@ absl::flat_hash_map<std::string, std::string> parse_node_labels(
 }
 
 int main(int argc, char *argv[]) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog,
-                                         argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  // TODO(hjiang): For the current implementation, we assume all logging are managed by
+  // spdlog, the caveat is there could be there's writing to stdout/stderr as well. The
+  // final solution is implement self-customized sink for spdlog, and redirect
+  // stderr/stdout to the file descritor. Hold until it's confirmed necessary.
+  //
+  // Backward compatibility notes:
+  // By default, GCS server flushes all logging and stdout/stderr to a single file called
+  // `gcs_server.out`, without log rotations. To keep backward compatibility at best
+  // effort, we use the same filename as output, and disable log rotation by default.
+
+  // For compatibility, by default GCS server dumps logging into a single file with no
+  // rotation.
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      /*app_name=*/argv[0],
+      ray::RayLogLevel::INFO,
+      /*ray_log_filepath=*/FLAGS_ray_log_filepath,
+      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
+
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
 #ifdef __linux__
   // Reset LD_PRELOAD if it's loaded with ray jemalloc
   auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD");
@@ -180,6 +203,12 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
+  // Setup cgroup preparation if specified.
+  // TODO(hjiang): Depends on
+  // - https://github.com/ray-project/ray/pull/48833, which checks cgroup V2 availability.
+  // - https://github.com/ray-project/ray/pull/48828, which sets up cgroup preparation for
+  // cgroup related operations.
+
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
   absl::flat_hash_map<std::string, double> static_resource_conf;
@@ -211,7 +240,7 @@ int main(int argc, char *argv[]) {
     if (ray::SetThisProcessAsSubreaper()) {
       ray::KnownChildrenTracker::instance().Enable();
       ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
-      auto runner = std::make_shared<ray::PeriodicalRunner>(main_service);
+      auto runner = ray::PeriodicalRunner::Create(main_service);
       runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
                                 /*period_ms=*/10000,
                                 "Raylet.KillUnknownChildren");

@@ -53,19 +53,22 @@ config = (
     .env_runners(
         env_to_module_connector=_make_env_to_module_connector,
         num_envs_per_env_runner=2,
-        max_requests_in_flight_per_env_runner=1,
+    )
+    .learners(
+        num_aggregator_actors_per_learner=2,
     )
     .training(
         learner_connector=_make_learner_connector,
         train_batch_size_per_learner=500,
-        grad_clip=30.0,
-        grad_clip_by="global_norm",
-        lr=0.0009 * ((args.num_learners or 1) ** 0.5),
+        target_network_update_freq=4,
+        lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         vf_loss_coeff=1.0,
-        entropy_coeff=[[0, 0.05], [3000000, 0.0]],  # <- crucial parameter to finetune
+        entropy_coeff=[[0, 0.01], [3000000, 0.0]],  # <- crucial parameter to finetune
         # Only update connector states and model weights every n training_step calls.
         broadcast_interval=5,
-        learner_queue_size=1,
+        # learner_queue_size=1,
+        circular_buffer_num_batches=4,
+        circular_buffer_iterations_per_batch=2,
     )
     .rl_module(
         model_config=DefaultModelConfig(

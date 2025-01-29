@@ -55,7 +55,7 @@ class _IterableFromIterator(Iterable[T]):
         return self.iterator_gen()
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class DataIterator(abc.ABC):
     """An iterator for reading records from a :class:`~Dataset`.
 
@@ -90,7 +90,7 @@ class DataIterator(abc.ABC):
         """
         raise NotImplementedError
 
-    @PublicAPI(stability="beta")
+    @PublicAPI
     def iter_batches(
         self,
         *,
@@ -187,6 +187,7 @@ class DataIterator(abc.ABC):
     def _get_dataset_tag(self) -> str:
         return "unknown_dataset"
 
+    @PublicAPI
     def iter_rows(self) -> Iterable[Dict[str, Any]]:
         """Return a local row iterable over the dataset.
 
@@ -218,7 +219,7 @@ class DataIterator(abc.ABC):
         return _IterableFromIterator(_wrapped_iterator)
 
     @abc.abstractmethod
-    @PublicAPI(stability="beta")
+    @PublicAPI
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
         raise NotImplementedError
@@ -228,7 +229,7 @@ class DataIterator(abc.ABC):
         """Return the schema of the dataset iterated over."""
         raise NotImplementedError
 
-    @PublicAPI(stability="beta")
+    @PublicAPI
     def iter_torch_batches(
         self,
         *,
@@ -645,7 +646,7 @@ class DataIterator(abc.ABC):
 
         return TorchIterableDataset(make_generator)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI
     def to_tf(
         self,
         feature_columns: Union[str, List[str]],
@@ -734,7 +735,8 @@ class DataIterator(abc.ABC):
             If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
             A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
 
-            >>> ds = ds.add_column("sample weights", lambda df: 1)
+            >>> import pandas as pd
+            >>> ds = ds.add_column("sample weights", lambda df: pd.Series([1] * len(df)))
             >>> it = ds.iterator()
             >>> it.to_tf(feature_columns="sepal length (cm)", label_columns="target", additional_columns="sample weights")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
@@ -895,7 +897,7 @@ class DataIterator(abc.ABC):
         )
         return dataset.with_options(options)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this data iterator into object store memory.
 

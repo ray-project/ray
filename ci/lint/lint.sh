@@ -10,6 +10,34 @@ clang_format() {
   ./ci/lint/check-git-clang-format-output.sh
 }
 
+pre_commit() {
+  # Run pre-commit on all files
+  # TODO(MortalHappiness): Run all pre-commit checks because currently we only run some of them.
+  pip install -c python/requirements_compiled.txt pre-commit clang-format
+
+  HOOKS=(
+    ruff
+    check-added-large-files
+    check-ast
+    check-toml
+    black
+    prettier
+    mypy
+    rst-directive-colons
+    rst-inline-touching-normal
+    python-check-mock-methods
+    clang-format
+    docstyle
+    check-import-order
+    check-cpp-files-inclusion
+    end-of-file-fixer
+  )
+
+  for HOOK in "${HOOKS[@]}"; do
+    pre-commit run "$HOOK" --all-files --show-diff-on-failure
+  done
+}
+
 code_format() {
   pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
   FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts

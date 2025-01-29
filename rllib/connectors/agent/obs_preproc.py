@@ -44,7 +44,7 @@ class ObsPreprocessorConnector(AgentConnector):
 
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
-        assert type(d) == dict, (
+        assert type(d) is dict, (
             "Single agent data must be of type Dict[str, TensorStructType] but is of "
             "type {}".format(type(d))
         )

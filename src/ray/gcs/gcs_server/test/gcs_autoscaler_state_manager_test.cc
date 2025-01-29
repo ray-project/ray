@@ -61,14 +61,16 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
   void SetUp() override {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+    client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
     kv_manager_ = std::make_unique<GcsInternalKVManager>(
         std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()),
-        kRayletConfig);
-    function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
+        kRayletConfig,
+        io_service_);
+    function_manager_ =
+        std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance(), io_service_);
     runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
         [](const std::string &, std::function<void(bool)>) {});
     gcs_actor_manager_ =
@@ -86,7 +88,9 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                       *gcs_node_manager_,
                                       *gcs_actor_manager_,
                                       *gcs_placement_group_manager_,
-                                      client_pool_));
+                                      *client_pool_,
+                                      kv_manager_->GetInstance(),
+                                      io_service_));
   }
 
  public:
@@ -636,9 +640,10 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
         Mocker::GenClusterResourcesConstraint({{{"CPU", 2}, {"GPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
-    ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
-    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0).request(),
-                         {{"CPU", 2}, {"GPU", 1}});
+    ASSERT_EQ(state.cluster_resource_constraints(0).resource_requests_size(), 1);
+    CheckResourceRequest(
+        state.cluster_resource_constraints(0).resource_requests(0).request(),
+        {{"CPU", 2}, {"GPU", 1}});
   }
 
   // Override it
@@ -647,9 +652,10 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
         {{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
-    ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
-    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0).request(),
-                         {{"CPU", 4}, {"GPU", 5}, {"TPU", 1}});
+    ASSERT_EQ(state.cluster_resource_constraints(0).resource_requests_size(), 1);
+    CheckResourceRequest(
+        state.cluster_resource_constraints(0).resource_requests(0).request(),
+        {{"CPU", 4}, {"GPU", 5}, {"TPU", 1}});
   }
 }
 
@@ -847,8 +853,3 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGcsKvManagerInternalConfig) {
 
 }  // namespace gcs
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
