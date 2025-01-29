@@ -36,9 +36,7 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
         self.scaling_config = scaling_config
 
     @abc.abstractmethod
-    def make_decision_for_non_running_worker_group(
-        self, worker_group_status: WorkerGroupStatus
-    ) -> ScalingDecision:
+    def make_decision_for_non_running_worker_group(self) -> ScalingDecision:
         """Makes a scaling decision when the worker group is initializing
         or recovering from an error."""
         raise NotImplementedError
