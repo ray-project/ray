@@ -147,6 +147,7 @@ int main(int argc, char *argv[]) {
       /*app_name=*/argv[0],
       ray::RayLogLevel::INFO,
       /*ray_log_filepath=*/FLAGS_ray_log_filepath,
+      "/tmp/raylet.err",
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
 

@@ -1446,7 +1446,7 @@ def start_gcs_server(
     redis_address: str,
     log_dir: str,
     ray_log_filepath: Optional[str],
-    stderr_file: Optional[IO[AnyStr]],
+    ray_err_log_filepath: Optional[str],
     session_name: str,
     redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
@@ -1509,6 +1509,10 @@ def start_gcs_server(
     stdout_file = None
     if ray_log_filepath:
         stdout_file = open(os.devnull, "w")
+
+    stderr_file = None
+    if ray_err_log_filepath:
+        stderr_file = open(os.devnull, "w")
 
     process_info = start_ray_process(
         command,

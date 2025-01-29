@@ -280,6 +280,7 @@ class RayLog {
       const std::string &app_name,
       RayLogLevel severity_threshold = RayLogLevel::INFO,
       const std::string &log_filepath = "",
+      const std::string &err_log_filepath = "",
       size_t log_rotation_max_size = std::numeric_limits<size_t>::max(),
       size_t log_rotation_file_num = 1);
 

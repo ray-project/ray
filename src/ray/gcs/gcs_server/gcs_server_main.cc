@@ -65,6 +65,7 @@ int main(int argc, char *argv[]) {
       argv[0],
       ray::RayLogLevel::INFO,
       /*log_filepath=*/FLAGS_ray_log_filepath,
+      "/tmp/gcs_service_main.err",
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
