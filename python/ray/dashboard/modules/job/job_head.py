@@ -198,10 +198,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         """
         # NOTE: Following call will block until there's at least 1 agent info
         #       being populated from GCS
-        agent_infos = await self._fetch_all_agent_infos()
+        agent_node_ids = await self._fetch_all_agent_node_ids()
 
         # delete dead agents.
-        for dead_node in set(self._agents) - set(agent_infos):
+        for dead_node in set(self._agents) - set(agent_node_ids):
             client = self._agents.pop(dead_node)
             await client.close()
 
@@ -211,11 +211,11 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         else:
             # Randomly select one from among all agents, it is possible that
             # the selected one already exists in `self._agents`
-            node_id = choice(list(agent_infos))
-            agent_info = agent_infos[node_id]
+            node_id = choice(list(agent_node_ids))
 
             if node_id not in self._agents:
-                ip, http_port, grpc_port = agent_info
+                # Fetch agent info from InternalKV, and create a new JobAgentSubmissionClient.
+                ip, http_port, grpc_port = await self._fetch_agent_info(node_id)
                 agent_http_address = f"http://{ip}:{http_port}"
                 self._agents[node_id] = JobAgentSubmissionClient(agent_http_address)
 
@@ -233,28 +233,20 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         head_node_id = NodeID.from_hex(head_node_id_hex)
 
         if head_node_id not in self._agents:
-            agent_infos = await self._fetch_agent_infos([head_node_id])
-            if head_node_id not in agent_infos:
-                logger.error(
-                    f"Head node agent's information was not found: {head_node_id} not in {agent_infos}"
-                )
-                return None
-
-            ip, http_port, grpc_port = agent_infos[head_node_id]
+            ip, http_port, grpc_port = await self._fetch_agent_info(head_node_id)
             agent_http_address = f"http://{ip}:{http_port}"
-
             self._agents[head_node_id] = JobAgentSubmissionClient(agent_http_address)
 
         return self._agents[head_node_id]
 
-    async def _fetch_all_agent_infos(self) -> Dict[NodeID, Tuple[str, int, int]]:
+    async def _fetch_all_agent_node_ids(self) -> List[NodeID]:
         """
-        Fetches all agent infos for all nodes in the cluster.
+        Fetches all NodeIDs with agent infos in the cluster.
 
         If there's no agent available at all, or there's exception, it will retry every
         `TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS` seconds indefinitely.
 
-        Returns: {node_id_hex: (ip, http_port, grpc_port)}
+        Returns: List[NodeID]
         """
         while True:
             try:
@@ -266,20 +258,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 if not keys:
                     # No agent keys found, retry
                     raise Exception()
-                values: Dict[
-                    bytes, bytes
-                ] = await self.gcs_aio_client.internal_kv_multi_get(
-                    keys,
-                    namespace=KV_NAMESPACE_DASHBOARD,
-                    timeout=GCS_RPC_TIMEOUT_SECONDS,
-                )
-                prefix_len = len(DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX)
-                return {
-                    NodeID.from_hex(key[prefix_len:].decode()): json.loads(
-                        value.decode()
+                return [
+                    NodeID.from_hex(
+                        key[len(DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX) :].decode()
                     )
-                    for key, value in values.items()
-                }
+                    for key in keys
+                ]
 
             except Exception:
                 logger.info(
@@ -287,44 +271,32 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 )
                 await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
 
-    async def _fetch_agent_infos(
-        self, target_node_ids: List[NodeID]
-    ) -> Dict[NodeID, Tuple[str, int, int]]:
+    async def _fetch_agent_info(self, target_node_id: NodeID) -> Tuple[str, int, int]:
         """
-        Fetches agent infos for nodes identified by provided node-ids.
+        Fetches agent info by the Node ID.
 
-        If any of the node-ids is not found, it will retry every
+        If the agent info is not found, it will retry every
         `TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS` seconds indefinitely.
 
-        Returns: {node_id_hex: (ip, http_port, grpc_port)}
+        Returns: (ip, http_port, grpc_port)
         """
 
         while True:
             try:
-                keys = [
-                    f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}"
-                    for node_id in target_node_ids
-                ]
-                values: Dict[
-                    bytes, bytes
-                ] = await self.gcs_aio_client.internal_kv_multi_get(
-                    keys,
+                key = f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{target_node_id.hex()}"
+                value = await self.gcs_aio_client.internal_kv_get(
+                    key,
                     namespace=KV_NAMESPACE_DASHBOARD,
                     timeout=GCS_RPC_TIMEOUT_SECONDS,
                 )
-                if not values or len(values) != len(target_node_ids):
-                    # Not all agent infos found, retry
+                if not value:
+                    # Agent info not found, retry
                     raise Exception()
-                prefix_len = len(DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX)
-                return {
-                    NodeID.from_hex(key[prefix_len:].decode()): json.loads(
-                        value.decode()
-                    )
-                    for key, value in values.items()
-                }
+                return json.loads(value.decode())
+
             except Exception:
                 logger.info(
-                    f"Failed to fetch agent infos for nodes {target_node_ids}, retrying in {TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS} seconds..."
+                    f"Failed to fetch agent info for node {target_node_id}, retrying in {TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS} seconds..."
                 )
                 await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
 
