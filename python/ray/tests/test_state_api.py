@@ -121,7 +121,7 @@ from ray.util.state.state_cli import (
 )
 from ray.util.state.state_cli import ray_get
 from ray.util.state.state_cli import ray_list
-from ray.util.state.state_manager import IdToIpMap, StateDataSourceClient
+from ray.util.state.state_manager import StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
 
@@ -489,22 +489,6 @@ def test_parse_filter():
         _parse_filter("key>value")
     with pytest.raises(ValueError):
         _parse_filter("key>value!=")
-
-
-def test_id_to_ip_map():
-    node_id_1 = "1"
-    node_ip_1 = "ip_1"
-    node_id_2 = "2"
-    node_ip_2 = "ip_2"
-    m = IdToIpMap()
-    m.put(node_id_1, node_ip_1)
-    assert m.get_ip(node_ip_2) is None
-    assert m.get_node_id(node_id_2) is None
-    assert m.get_ip(node_id_1) == node_ip_1
-    assert m.get_node_id(node_ip_1) == node_id_1
-    m.pop(node_id_1)
-    assert m.get_ip(node_id_1) is None
-    assert m.get_node_id(node_id_1) is None
 
 
 # Without this, capsys will have a race condition
@@ -1274,8 +1258,13 @@ async def test_api_manager_list_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     obj_1_id = b"1" * 28
     obj_2_id = b"2" * 28
-    data_source_client.get_all_registered_raylet_ids = MagicMock()
-    data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
+    data_source_client.get_all_node_info = MagicMock()
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[
+            GcsNodeInfo(node_id="1", state=GcsNodeInfo.GcsNodeState.ALIVE),
+            GcsNodeInfo(node_id="2", state=GcsNodeInfo.GcsNodeState.ALIVE),
+        ]
+    )
 
     data_source_client.get_object_info = AsyncMock()
     data_source_client.get_object_info.side_effect = [
@@ -1380,12 +1369,29 @@ async def test_api_manager_list_objects(state_api_manager):
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    data_source_client.get_all_registered_runtime_env_agent_ids = MagicMock()
-    data_source_client.get_all_registered_runtime_env_agent_ids.return_value = [
-        "1",
-        "2",
-        "3",
-    ]
+    data_source_client.get_all_node_info = MagicMock()
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[
+            GcsNodeInfo(
+                node_id="1",
+                node_manager_address="192.168.1.1",
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                runtime_env_agent_port=10000,
+            ),
+            GcsNodeInfo(
+                node_id="2",
+                node_manager_address="192.168.1.2",
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                runtime_env_agent_port=10001,
+            ),
+            GcsNodeInfo(
+                node_id="3",
+                node_manager_address="192.168.1.3",
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                runtime_env_agent_port=10002,
+            ),
+        ]
+    )
 
     data_source_client.get_runtime_envs_info = AsyncMock()
     data_source_client.get_runtime_envs_info.side_effect = [
@@ -1398,14 +1404,14 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
     result = await state_api_manager.list_runtime_envs(option=create_api_options())
     data = result.result
     data_source_client.get_runtime_envs_info.assert_any_await(
-        "1", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.1", 10000, timeout=DEFAULT_RPC_TIMEOUT
     )
     data_source_client.get_runtime_envs_info.assert_any_await(
-        "2", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.2", 10001, timeout=DEFAULT_RPC_TIMEOUT
     )
 
     data_source_client.get_runtime_envs_info.assert_any_await(
-        "3", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.3", 10002, timeout=DEFAULT_RPC_TIMEOUT
     )
     assert len(data) == 3
     verify_schema(RuntimeEnvState, data[0])
@@ -1623,28 +1629,17 @@ async def test_state_data_source_client(ray_start_cluster):
     """
 
     wait_for_condition(lambda: len(ray.nodes()) == 2)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
-    assert len(client.get_all_registered_raylet_ids()) == 2
 
     """
     Test objects
     """
     with pytest.raises(ValueError):
-        # Since we didn't register this node id, it should raise an exception.
+        # Since we don't have this node id, it should raise an exception.
         result = await client.get_object_info("1234")
 
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
         node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
         result = await client.get_object_info(node_id)
         assert isinstance(result, GetObjectsInfoReply)
 
@@ -1652,8 +1647,8 @@ async def test_state_data_source_client(ray_start_cluster):
     Test runtime env
     """
     with pytest.raises(ValueError):
-        # Since we didn't register this node id, it should raise an exception.
-        result = await client.get_runtime_envs_info("1234")
+        # Since we don't have this node ip, it should raise an exception.
+        result = await client.get_runtime_envs_info("1.2.3.4", 10000)
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
         node_id = node["NodeID"]
@@ -1665,7 +1660,9 @@ async def test_state_data_source_client(ray_start_cluster):
             )
 
         wait_for_condition(lambda: get_addr() is not None)
-        result = await client.get_runtime_envs_info(node_id)
+        result = await client.get_runtime_envs_info(
+            node["NodeManagerAddress"], node["RuntimeEnvAgentPort"]
+        )
         assert isinstance(result, GetRuntimeEnvsInfoReply)
 
     """
@@ -1706,13 +1703,6 @@ async def test_state_data_source_client(ray_start_cluster):
         # Querying to the dead node raises gRPC error, which should raise an exception.
         with pytest.raises(DataSourceUnavailable):
             await client.get_object_info(node_id)
-
-        # Make sure unregister API works as expected.
-        client.unregister_raylet_client(node_id)
-        assert len(client.get_all_registered_raylet_ids()) == 1
-        # Since the node_id is unregistered, the API should raise ValueError.
-        with pytest.raises(ValueError):
-            result = await client.get_object_info(node_id)
 
 
 @pytest.mark.asyncio
@@ -1775,12 +1765,6 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     cluster.add_node(num_cpus=8)
     ray.init(address=cluster.address)
     client = state_source_client(cluster.address)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
     """
     Test objects
     """
@@ -1825,6 +1809,9 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     """
     for node in ray.nodes():
         node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
         key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
 
         def get_addr():
@@ -1845,7 +1832,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     ]
     ray.get([actor.ready.remote() for actor in actors])
 
-    result = await client.get_runtime_envs_info(node_id, limit=2)
+    result = await client.get_runtime_envs_info(ip, runtime_env_agent_port, limit=2)
     assert result.total == 3
     assert len(result.runtime_env_states) == 2
 

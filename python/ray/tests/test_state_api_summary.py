@@ -18,6 +18,7 @@ from ray._raylet import ActorID, TaskID, ObjectID
 
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
 from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
+from ray.core.generated.gcs_pb2 import GcsNodeInfo, GetAllNodeInfoReply
 from ray.tests.test_state_api import (
     generate_task_data,
     generate_task_event,
@@ -58,8 +59,6 @@ def create_summary_options(
 @pytest.mark.asyncio
 async def test_api_manager_summary_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    data_source_client.get_all_registered_raylet_ids = MagicMock()
-    data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
 
     first_task_name = "1"
     second_task_name = "2"
@@ -198,8 +197,13 @@ async def test_api_manager_summary_actors(state_api_manager):
 async def test_api_manager_summary_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     object_ids = [ObjectID((f"{i}" * 28).encode()) for i in range(9)]
-    data_source_client.get_all_registered_raylet_ids = MagicMock()
-    data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
+    data_source_client.get_all_node_info = MagicMock()
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[
+            GcsNodeInfo(node_id="1", state=GcsNodeInfo.GcsNodeState.ALIVE),
+            GcsNodeInfo(node_id="2", state=GcsNodeInfo.GcsNodeState.ALIVE),
+        ]
+    )
     first_callsite = "first.py"
     second_callsite = "second.py"
 

@@ -332,14 +332,11 @@ cdef class InnerGcsClient:
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     def async_get_all_node_info(
-        self, node_id: Optional[NodeID] = None, timeout: Optional[float] = None
+        self, timeout: Optional[float] = None
     ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            optional[CNodeID] c_node_id
             fut = incremented_fut()
-        if node_id:
-            c_node_id = (<NodeID>node_id).native()
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Nodes().AsyncGetAll(
@@ -347,8 +344,7 @@ cdef class InnerGcsClient:
                         convert_get_all_node_info,
                         assign_and_decrement_fut,
                         fut),
-                    timeout_ms,
-                    c_node_id))
+                    timeout_ms))
         return asyncio.wrap_future(fut)
 
     #############################################################
