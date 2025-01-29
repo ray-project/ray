@@ -83,6 +83,7 @@ AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
 METRICS_INPUT_ROOT = os.path.join(
     os.path.dirname(__file__), "modules", "metrics", "export"
 )
+METRICS_RECORD_INTERVAL_S = env_integer("METRICS_RECORD_INTERVAL_S", 5)
 PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )

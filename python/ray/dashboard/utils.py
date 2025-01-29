@@ -31,7 +31,6 @@ from ray._private.utils import (
     split_address,
 )
 from ray._raylet import GcsClient
-from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 try:
     create_task = asyncio.create_task
@@ -88,10 +87,6 @@ class DashboardHeadModuleConfig:
     ip: str
     http_host: str
     http_port: int
-    # We can't put this to ctor of DashboardHeadModule because ServeRestApiImpl requires
-    # DashboardHeadModule and DashboardAgentModule have the same shape of ctor, that
-    # is, single argument.
-    metrics: DashboardPrometheusMetrics
 
 
 class DashboardHeadModule(abc.ABC):
@@ -156,10 +151,6 @@ class DashboardHeadModule(abc.ABC):
         else:
             self._http_session = aiohttp.ClientSession()
         return self._http_session
-
-    @property
-    def metrics(self):
-        return self._config.metrics
 
     @property
     def gcs_client(self):

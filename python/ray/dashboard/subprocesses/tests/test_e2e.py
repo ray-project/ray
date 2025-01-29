@@ -26,14 +26,18 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
     """
     Creates a tmpdir to hold the logs.
     """
+    (tmp_path / "logs").mkdir(exist_ok=True)
+    (tmp_path / "temp").mkdir(exist_ok=True)
     yield SubprocessModuleConfig(
         # until we really need one in tests...
         cluster_id_hex=None,
         gcs_address=None,
         session_name="test_session",
+        temp_dir=tmp_path / "temp",
+        session_dir=tmp_path,
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
-        log_dir=tmp_path,
+        log_dir=tmp_path / "logs",
         logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
         logging_rotate_bytes=ray_constants.LOGGING_ROTATE_BYTES,
         logging_rotate_backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,

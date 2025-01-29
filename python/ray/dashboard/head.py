@@ -3,6 +3,8 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional, Set, List, Tuple
+import os
+import psutil
 
 import ray
 import ray.dashboard.consts as dashboard_consts
@@ -15,6 +17,9 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._raylet import GcsClient
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
+from ray._private.utils import get_or_create_event_loop
+from ray._private.async_utils import enable_monitor_loop_lag
+from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import (
     DashboardHeadModule,
@@ -147,6 +152,8 @@ class DashboardHead:
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = node_ip_address
+        self.pid = os.getpid()
+        self.dashboard_proc = psutil.Process()
         DataOrganizer.head_node_ip = self.ip
 
         if self.minimal:
@@ -255,7 +262,6 @@ class DashboardHead:
             ip=self.ip,
             http_host=self.http_host,
             http_port=self.http_port,
-            metrics=self.metrics,
         )
 
         # Select modules to load.
@@ -303,6 +309,8 @@ class DashboardHead:
             cluster_id_hex=self.cluster_id_hex,
             gcs_address=self.gcs_address,
             session_name=self.session_name,
+            temp_dir=self.temp_dir,
+            session_dir=self.session_dir,
             logging_level=self.logging_level,
             logging_format=self.logging_format,
             log_dir=self.log_dir,
@@ -359,6 +367,39 @@ class DashboardHead:
 
         return metrics
 
+    @dashboard_utils.async_loop_forever(dashboard_consts.METRICS_RECORD_INTERVAL_S)
+    async def _record_dashboard_metrics(self):
+        labels = {
+            "ip": self.ip,
+            "pid": self.pid,
+            "Version": ray.__version__,
+            "Component": "dashboard",
+            "SessionName": self.session_name,
+        }
+        assert "dashboard" in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
+        self.metrics.metrics_dashboard_cpu.labels(**labels).set(
+            float(self.dashboard_proc.cpu_percent())
+        )
+        self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
+            float(self.dashboard_proc.memory_full_info().uss) / 1.0e6
+        )
+        self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
+            float(self.dashboard_proc.memory_full_info().rss) / 1.0e6
+        )
+
+        loop = get_or_create_event_loop()
+
+        self.metrics.metrics_event_loop_tasks.labels(**labels).set(
+            len(asyncio.all_tasks(loop))
+        )
+
+        # Report the max lag since the last export, if any.
+        if self._event_loop_lag_s_max is not None:
+            self.metrics.metrics_event_loop_lag.labels(**labels).set(
+                float(self._event_loop_lag_s_max)
+            )
+            self._event_loop_lag_s_max = None
+
     async def run(self):
         gcs_address = self.gcs_address
 
@@ -373,6 +414,17 @@ class DashboardHead:
 
         if not self.minimal:
             self.metrics = await self._setup_metrics(self.gcs_aio_client)
+            self._event_loop_lag_s_max: Optional[float] = None
+
+            def on_new_lag(lag_s):
+                # Record the lag. It's exported in `record_dashboard_metrics`
+                self._event_loop_lag_s_max = max(self._event_loop_lag_s_max or 0, lag_s)
+
+            enable_monitor_loop_lag(on_new_lag)
+
+            self.record_dashboard_metrics_task = asyncio.create_task(
+                self._record_dashboard_metrics()
+            )
 
         try:
             assert internal_kv._internal_kv_initialized()
