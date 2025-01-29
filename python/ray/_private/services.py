@@ -1558,6 +1558,7 @@ def start_raylet(
     use_valgrind: bool = False,
     use_profiler: bool = False,
     ray_log_filepath: Optional[str] = None,
+    ray_err_log_filepath: Optional[str] = None,
     stderr_file: Optional[IO[AnyStr]] = None,
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,

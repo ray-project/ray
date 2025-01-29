@@ -1235,8 +1235,8 @@ class Node:
             use_profiler: True if we should start the process in the
                 valgrind profiler.
         """
-        stdout_log_fname, _ = self.get_log_file_names(
-            "raylet", unique=True, create_out=True, create_err=False
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "raylet", unique=True, create_out=True, create_err=True
         )
         _, stderr_file = self.get_log_file_handles(
             "raylet", unique=True, create_out=False, create_err=True
@@ -1275,6 +1275,7 @@ class Node:
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
             ray_log_filepath=stdout_log_fname,
+            ray_err_log_filepath=stderr_log_fname,
             stderr_file=stderr_file,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
