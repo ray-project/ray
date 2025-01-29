@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#if defined(__APPLE__) || defined(__linux__)
-
 #include "ray/util/stream_redirection_utils.h"
 
 #include <gtest/gtest.h>
@@ -78,5 +76,3 @@ TEST(LoggingUtilTest, RedirectStderr) {
 }
 
 }  // namespace ray
-
-#endif
