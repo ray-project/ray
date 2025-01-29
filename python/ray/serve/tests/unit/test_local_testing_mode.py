@@ -1,7 +1,8 @@
 import sys
 
 import pytest
-
+import logging
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
@@ -85,6 +86,28 @@ def test_to_object_ref_error_message():
 
     # Test the inner handle case (this would raise if it failed).
     h.remote().result()
+
+
+def test_dictionary_logging_config_with_local_mode():
+    """Test that the logging config can be passed as a dictionary.
+
+    See: https://github.com/ray-project/ray/issues/50052
+    """
+
+    @serve.deployment
+    class MyApp:
+        def __call__(self):
+            logger = logging.getLogger(SERVE_LOGGER_NAME)
+            return logger.level
+
+    app = MyApp.bind()
+    logging_config = {"log_level": "WARNING"}
+
+    # This should not raise exception.
+    h = serve.run(app, logging_config=logging_config, _local_testing_mode=True)
+
+    # The logger should be setup with WARNING level.
+    assert h.remote().result() == logging.WARNING
 
 
 if __name__ == "__main__":

@@ -90,18 +90,16 @@ class AutoregressiveActionsRLM(TorchRLModule, ValueFunctionAPI):
         # Squeeze out last dimension (single node value head).
         return vf_out.squeeze(-1)
 
+    # __sphinx_begin__
     def _pi(self, obs, inference: bool):
-        # Prior forward pass.
+        # Prior forward pass and sample a1.
         prior_out = self._prior_net(obs)
         dist_a1 = TorchCategorical.from_logits(prior_out)
-
-        # If in inference mode, we need to set the distribution to be deterministic.
         if inference:
             dist_a1 = dist_a1.to_deterministic()
-        # Sample a1.
         a1 = dist_a1.sample()
 
-        # Posterior forward pass.
+        # Posterior forward pass and sample a2.
         posterior_batch = torch.cat(
             [obs, one_hot(a1, self.action_space[0])],
             dim=-1,
@@ -110,22 +108,18 @@ class AutoregressiveActionsRLM(TorchRLModule, ValueFunctionAPI):
         dist_a2 = TorchDiagGaussian.from_logits(posterior_out)
         if inference:
             dist_a2 = dist_a2.to_deterministic()
-
         a2 = dist_a2.sample()
-
         actions = (a1, a2)
 
-        # We need the log-probabilities for the loss.
-        outputs = {
+        # We need logp and distribution parameters for the loss.
+        return {
             Columns.ACTION_LOGP: (
                 TorchMultiDistribution((dist_a1, dist_a2)).logp(actions)
             ),
             Columns.ACTION_DIST_INPUTS: torch.cat([prior_out, posterior_out], dim=-1),
-            # Concatenate the prior and posterior actions and log probabilities.
             Columns.ACTIONS: actions,
         }
-
-        return outputs
+        # __sphinx_end__
 
     @override(TorchRLModule)
     def get_inference_action_dist_cls(self):

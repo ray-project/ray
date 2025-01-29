@@ -90,7 +90,7 @@ def _create_proxy_state_manager(
 ) -> (ProxyStateManager, ClusterNodeInfoCache):
     return (
         ProxyStateManager(
-            config=http_options,
+            http_options=http_options,
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
             logging_config=LoggingConfig(),
