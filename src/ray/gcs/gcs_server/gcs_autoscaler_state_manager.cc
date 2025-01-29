@@ -470,7 +470,7 @@ GcsAutoscalerStateManager::GetPerNodeInfeasibleResourceRequests() const {
   // obtain the infeasible requests from the autoscaler state
   std::vector<google::protobuf::Map<std::string, double>>
       autoscaler_infeasible_resource_shapes;
-  for (size_t i = 0; i < autoscaling_state_.value().infeasible_resource_requests_size();
+  for (int i = 0; i < autoscaling_state_.value().infeasible_resource_requests_size();
        i++) {
     autoscaler_infeasible_resource_shapes.emplace_back(
         autoscaling_state_.value().infeasible_resource_requests(i).resources_bundle());
@@ -482,7 +482,7 @@ GcsAutoscalerStateManager::GetPerNodeInfeasibleResourceRequests() const {
     const auto &node_data = info.second.second;
     const auto &resource_load_by_shape = node_data.resource_load_by_shape();
 
-    for (size_t i = 0; i < resource_load_by_shape.resource_demands_size(); i++) {
+    for (int i = 0; i < resource_load_by_shape.resource_demands_size(); i++) {
       bool is_infeasible_shape = false;
       auto &infeasible_resource_shape = autoscaler_infeasible_resource_shapes.at(0);
       for (const auto &shape : autoscaler_infeasible_resource_shapes) {
