@@ -345,6 +345,20 @@ void RayLog::InitLogFormat() {
   return JoinPaths(log_dir, absl::StrFormat("%s_%d.log", app_name, pid));
 }
 
+/*static*/ std::string RayLog::GetErrLogFilepathFromDirectory(
+    const std::string &log_dir, const std::string &app_name) {
+  if (log_dir.empty()) {
+    return "";
+  }
+
+#ifdef _WIN32
+  int pid = _getpid();
+#else
+  pid_t pid = getpid();
+#endif
+  return JoinPaths(log_dir, absl::StrFormat("%s_%d.err", app_name, pid));
+}
+
 /*static*/ void RayLog::StartRayLog(const std::string &app_name,
                                     RayLogLevel severity_threshold,
                                     const std::string &log_filepath,
@@ -374,10 +388,8 @@ void RayLog::InitLogFormat() {
     }
   }
 
-  const auto log_fname = log_filepath;
-
   // Set sink for stdout.
-  if (!log_fname.empty()) {
+  if (!log_filepath.empty()) {
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
     auto file_logger = spdlog::get(RayLog::GetLoggerName());
@@ -388,7 +400,7 @@ void RayLog::InitLogFormat() {
     }
 
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        log_fname, log_rotation_max_size_, log_rotation_file_num_);
+        log_filepath, log_rotation_max_size_, log_rotation_file_num_);
     file_sink->set_level(level);
     sinks[0] = std::move(file_sink);
   } else {

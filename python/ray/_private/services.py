@@ -1463,8 +1463,8 @@ def start_gcs_server(
         log_dir: The path of the dir where gcs log files are created.
         ray_log_filepath: The file path to dump gcs server log, which is
             written via `RAY_LOG`. If None, logs will be sent to stdout.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
+        ray_err_log_filepath: The file path to dump gcs server error log, which is
+            written via `RAY_LOG`. If None, logs will be sent to stderr.
         session_name: The session name (cluster id) of this cluster.
         redis_username: The username of the Redis server.
         redis_password: The password of the Redis server.
@@ -1617,6 +1617,8 @@ def start_raylet(
             a profiler. If this is True, use_valgrind must be False.
         ray_log_filepath: The file path to dump raylet log, which is
             written via `RAY_LOG`. If None, logs will be sent to stdout.
+        ray_err_log_filepath: The file path to dump gcs server error log, which is
+            written via `RAY_LOG`. If None, logs will be sent to stderr.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         tracing_startup_hook: Tracing startup hook.
