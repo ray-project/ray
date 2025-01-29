@@ -18,7 +18,7 @@ def test_visible_amd_gpu_ids(mock_get_num_accelerators, monkeypatch, shutdown_on
     # we call get_accelerator_manager_for_resource
     del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
     ray.init()
-    mock_get_num_accelerators.called
+    _ = mock_get_num_accelerators.called
     assert ray.available_resources()["GPU"] == 3
 
 
@@ -28,7 +28,7 @@ def test_visible_amd_gpu_ids(mock_get_num_accelerators, monkeypatch, shutdown_on
 )
 def test_visible_amd_gpu_type(mock_get_amd_device_ids, shutdown_only):
     ray.init()
-    mock_get_amd_device_ids.called
+    _ = mock_get_amd_device_ids.called
     assert (
         AMDGPUAcceleratorManager.get_current_node_accelerator_type()
         == "AMD-Instinct-MI300X-OAM"
@@ -41,7 +41,7 @@ def test_visible_amd_gpu_type(mock_get_amd_device_ids, shutdown_only):
 )
 def test_visible_amd_gpu_type_bad_device_id(mock_get_num_accelerators, shutdown_only):
     ray.init()
-    mock_get_num_accelerators.called
+    _ = mock_get_num_accelerators.called
     assert AMDGPUAcceleratorManager.get_current_node_accelerator_type() is None
 
 

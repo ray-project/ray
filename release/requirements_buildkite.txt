@@ -810,10 +810,11 @@ jsonpointer==2.4 \
     # via
     #   jsonpatch
     #   sphinx-jsonschema
-jsonschema==4.22.0 \
-    --hash=sha256:5b22d434a45935119af990552c862e5d6d564e8f6601206b305a61fdf661a2b7 \
-    --hash=sha256:ff4cfd6b1367a40e7bc6411caec72effadd3db0bbe5017de188f2d6108335802
+jsonschema==4.23.0 \
+    --hash=sha256:d71497fef26351a33265337fa77ffeb82423f3ea21283cd9467bb03999266bc4 \
+    --hash=sha256:fbadb6f8b144a8f8cf9f0b89ba94501d143e50411a1278633f56a7acf7fd5566
     # via
+    #   -r release/requirements_buildkite.in
     #   anyscale
     #   nbformat
     #   sphinxcontrib-redoc
@@ -1890,6 +1891,7 @@ typing-extensions==4.11.0 \
     --hash=sha256:83f085bd5ca59c80295fc2a82ab5dac679cbe02b9f33f7d83af68e241bea51b0 \
     --hash=sha256:c1f94d72897edaf4ce775bb7558d5b79d8126906a14ea5ed1635921406c0387a
     # via
+    #   -r release/requirements_buildkite.in
     #   aioitertools
     #   anyio
     #   anyscale

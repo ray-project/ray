@@ -275,7 +275,7 @@ class ActorPoolMapOperator(MapOperator):
         # parallelization across the actor pool. We only know this information after
         # execution has completed.
         min_workers = self._actor_pool.min_size()
-        if len(self._output_metadata) < min_workers:
+        if len(self._output_blocks_stats) < min_workers:
             # The user created a stream that has too few blocks to begin with.
             logger.warning(
                 "To ensure full parallelization across an actor pool of size "
@@ -415,6 +415,18 @@ class _MapWorker:
 
     def __repr__(self):
         return f"MapWorker({self.src_fn_name})"
+
+    def on_exit(self):
+        """Called when the actor is about to exist.
+        This enables performing cleanup operations via `UDF.__del__`.
+
+        Note, this only ensures cleanup is performed when the job exists gracefully.
+        If the driver or the actor is forcefully killed, `__del__` will not be called.
+        """
+        # `_map_actor_context` is a global variable that references the UDF object.
+        # Delete it to trigger `UDF.__del__`.
+        del ray.data._map_actor_context
+        ray.data._map_actor_context = None
 
 
 @dataclass
@@ -746,6 +758,9 @@ class _ActorPool(AutoscalingActorPool):
         # garbage collect the actor, instead of using ray.kill.
         # Because otherwise the actor cannot be restarted upon lineage reconstruction.
         if actor in self._running_actors:
+            # Call `on_exit` to trigger `UDF.__del__` which may perform
+            # cleanup operations.
+            actor.on_exit.remote()
             del self._running_actors[actor]
 
     def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:

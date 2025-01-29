@@ -66,7 +66,6 @@ py_test_module_list(
         "test_max_replicas_per_node.py",
         "test_multiplex.py",
         "test_proxy_response_generator.py",
-        "test_proxy_state.py",
         "test_ray_client.py",
         "test_replica_placement_group.py",
         "test_request_timeout.py",

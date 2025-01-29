@@ -2,6 +2,7 @@ from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.connectors.common import TensorToNumpy
 from ray.rllib.connectors.learner import (
     AddObservationsFromEpisodesToBatch,
     AddOneTsToEpisodesAndTruncate,
@@ -21,7 +22,6 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
-    ALL_MODULES,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -374,6 +374,11 @@ class MARWILConfig(AlgorithmConfig):
             GeneralAdvantageEstimation(gamma=self.gamma, lambda_=self.lambda_)
         )
 
+        # If training on GPU, convert batches to `numpy` arrays to load them
+        # on GPU in the `Learner`.
+        if self.num_gpus_per_learner > 0:
+            pipeline.insert_after(GeneralAdvantageEstimation, TensorToNumpy())
+
         return pipeline
 
     @override(AlgorithmConfig)
@@ -461,7 +466,11 @@ class MARWIL(Algorithm):
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
-                return_iterator=self.config.num_learners > 1,
+                # Return an iterator, if a `Learner` should update
+                # multiple times per RLlib iteration.
+                return_iterator=self.config.dataset_num_iters_per_learner > 1
+                if self.config.dataset_num_iters_per_learner
+                else True,
             )
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -477,23 +486,6 @@ class MARWIL(Algorithm):
 
             # Log training results.
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-
-        # Synchronize weights.
-        # As the results contain for each policy the loss and in addition the
-        # total loss over all policies is returned, this total loss has to be
-        # removed.
-        modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
-
-        if self.eval_env_runner_group:
-            # Update weights - after learning on the local worker -
-            # on all remote workers.
-            with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-                self.eval_env_runner_group.sync_weights(
-                    # Sync weights from learner_group to all EnvRunners.
-                    from_worker_or_learner_group=self.learner_group,
-                    policies=list(modules_to_update),
-                    inference_only=True,
-                )
 
     @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:

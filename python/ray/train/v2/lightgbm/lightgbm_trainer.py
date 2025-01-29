@@ -5,9 +5,9 @@ import ray.train
 from ray.train import Checkpoint
 from ray.train.lightgbm.config import LightGBMConfig, get_network_params  # noqa
 from ray.train.trainer import GenDataset
-from ray.train.v2._internal.constants import _UNSUPPORTED
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,8 @@ class LightGBMTrainer(DataParallelTrainer):
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         dataset_config: Optional[ray.train.DataConfig] = None,
-        metadata: Optional[Dict[str, Any]] = _UNSUPPORTED,
+        # TODO: [Deprecated]
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         super(LightGBMTrainer, self).__init__(
@@ -139,6 +140,7 @@ class LightGBMTrainer(DataParallelTrainer):
             metadata=metadata,
         )
 
+    @Deprecated
     @classmethod
     def get_model(
         cls,
