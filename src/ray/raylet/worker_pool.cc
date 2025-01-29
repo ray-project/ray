@@ -266,38 +266,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
 
   // Append Ray-defined per-job options here
   std::string code_search_path;
-  if (language == Language::JAVA || language == Language::CPP) {
-    if (job_config) {
-      std::string code_search_path_str;
-      for (int i = 0; i < job_config->code_search_path_size(); i++) {
-        auto path = job_config->code_search_path(i);
-        if (i != 0) {
-          code_search_path_str += ":";
-        }
-        code_search_path_str += path;
-      }
-      if (!code_search_path_str.empty()) {
-        code_search_path = code_search_path_str;
-        if (language == Language::JAVA) {
-          code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
-        } else if (language == Language::CPP) {
-          code_search_path_str = "--ray_code_search_path=" + code_search_path_str;
-        } else {
-          RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
-        }
-        options.push_back(code_search_path_str);
-      }
-    }
-  }
-
-  // Append user-defined per-job options here
-  if (language == Language::JAVA) {
-    if (!job_config->jvm_options().empty()) {
-      options.insert(options.end(),
-                     job_config->jvm_options().begin(),
-                     job_config->jvm_options().end());
-    }
-  }
 
   // Append startup-token for JAVA here
   if (language == Language::JAVA) {
@@ -455,17 +423,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     const rpc::RuntimeEnvInfo &runtime_env_info,
     std::optional<absl::Duration> worker_startup_keep_alive_duration) {
   rpc::JobConfig *job_config = nullptr;
-  if (!job_id.IsNil()) {
-    auto it = all_jobs_.find(job_id);
-    if (it == all_jobs_.end()) {
-      RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
-      // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
-      *status = PopWorkerStatus::JobConfigMissing;
-      process_failed_job_config_missing_++;
-      return {Process(), (StartupToken)-1};
-    }
-    job_config = &it->second;
-  }
 
   auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers of the same worker type, then return
@@ -1510,7 +1467,7 @@ void WorkerPool::PrestartWorkersInternal(const TaskSpecification &task_spec,
           PopWorkerStatus status;
           StartWorkerProcess(task_spec.GetLanguage(),
                              rpc::WorkerType::WORKER,
-                             JobID::Nil(),
+                             task_spec.JobId(),
                              &status,
                              /*dynamic_options=*/{},
                              task_spec.GetRuntimeEnvHash(),
