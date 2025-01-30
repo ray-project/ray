@@ -240,7 +240,8 @@ RedirectionFileHandle CreateRedirectionFileHandle(
                                   DUPLICATE_SAME_ACCESS);
     RAY_CHECK(result) << "Fails to duplicate stdout handle";
 
-    boost::iostreams::file_descriptor_sink sink{duped_stdout_handle, std::ios_base::out};
+    boost::iostreams::file_descriptor_sink sink{
+        duped_stdout_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
     std_ostream.stdout_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
@@ -256,7 +257,8 @@ RedirectionFileHandle CreateRedirectionFileHandle(
                                   DUPLICATE_SAME_ACCESS);
     RAY_CHECK(result) << "Fails to duplicate stderr handle";
 
-    boost::iostreams::file_descriptor_sink sink{duped_stderr_handle, std::ios_base::out};
+    boost::iostreams::file_descriptor_sink sink{
+        duped_stderr_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
     std_ostream.stderr_ostream = std::make_shared<
         boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
         std::move(sink));
@@ -266,10 +268,12 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   HANDLE write_handle = nullptr;
   SECURITY_ATTRIBUTES sa = {sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
   RAY_CHECK(CreatePipe(&read_handle, &write_handle, &sa, 0)) << "Fails to create pipe";
-  boost::iostreams::file_descriptor_source pipe_read_source{read_handle,
-                                                            std::ios_base::in};
-  boost::iostreams::file_descriptor_sink pipe_write_sink{write_handle,
-                                                         std::ios_base::out};
+  boost::iostreams::file_descriptor_source pipe_read_source{
+      read_handle,
+      /*file_descriptor_flags=*/boost::iostreams::close_handle};
+  boost::iostreams::file_descriptor_sink pipe_write_sink{
+      write_handle,
+      /*file_descriptor_flags=*/boost::iostreams::close_handle};
 
 #endif
 
