@@ -381,7 +381,7 @@ class JobSubmissionClient(SubmissionClient):
             start_time=1647454832, end_time=None, metadata={}, runtime_env={})]
 
         Returns:
-            List all jobs along with their status and other information.
+            A list of JobDetails containing the job status and other information.
 
         Raises:
             RuntimeError: If the request to the job server fails.
