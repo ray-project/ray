@@ -28,8 +28,20 @@ TEST(TemporaryDirectoryTest, CreationAndDestruction) {
   {
     ScopedTemporaryDirectory dir{};
     temp_directory = dir.GetDirectory();
+
+    // Create a file under temporary directory.
     std::filesystem::path empty_file = temp_directory / "empty_file";
     std::ofstream(empty_file).close();
+    ASSERT_TRUE(std::filesystem::exists(empty_file));
+
+    // Create a sub-directory under temporary directory.
+    std::filesystem::path internal_dir = temp_directory / "dir";
+    ASSERT_TRUE(std::filesystem::create_directory(internal_dir));
+    ASSERT_TRUE(std::filesystem::exists(internal_dir));
+
+    // Create a file under internal directory.
+    std::filesystem::path internal_file = internal_dir / "empty_file";
+    std::ofstream(internal_file).close();
     ASSERT_TRUE(std::filesystem::exists(empty_file));
   }
   ASSERT_FALSE(std::filesystem::exists(temp_directory));

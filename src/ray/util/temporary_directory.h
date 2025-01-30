@@ -22,12 +22,13 @@
 
 namespace ray {
 
+// A scoped temporary directory, which deletes all files and sub-directories inside will
+// be deleted recursively at its destruction.
 class ScopedTemporaryDirectory {
  public:
   // Create a sub-directory under the given [dir].
   // If unspecified, new directory will be created under system temporary directory.
   //
-  // At destruction, all files and sub-directories inside will be deleted recursively.
   // If creation or deletion fails, the program will exit after logging error message.
   ScopedTemporaryDirectory(const std::string &dir = "");
   ~ScopedTemporaryDirectory();
