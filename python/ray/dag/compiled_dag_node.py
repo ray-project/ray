@@ -480,6 +480,8 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
+        # TODO: Move to constructor and just take one stream as ExecutableTask
+        # argument.
         self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         self._collective_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
@@ -527,6 +529,8 @@ class ExecutableTask:
             val: The value to wrap in a future.
             wrap_in_gpu_future: Whether to wrap the value in a GPUFuture.
         """
+        # TODO: See if we can remove self._intermediate_future / these two
+        # helper functions.
         assert self._intermediate_future is None
 
         if wrap_in_gpu_future:
@@ -573,6 +577,37 @@ class ExecutableTask:
         Returns:
             True if the next operation should not be executed; otherwise, False.
         """
+        # TODO: Basic structure for creator of ExecutableTask
+        # # NCCL write args:
+        # args = [P2POp.SEND, NCCLChannelWrapper(self.nccl_ch), upstream_task_output_channel]
+
+        # # NCCL read args:
+        # args = [P2POp.READ, NCCLChannelWrapper(self.nccl_ch)]
+
+        # # NCCL collective args:
+        # args = [CollectiveOp, NCCLChannelWrapper(self.nccl_ch)]
+
+        # Task lambda should take in a Tuple[TaskArgs, Optional[Exception]].
+        # Task can decide whether to re-raise the Exception or try to do something with it.
+        # t = ExecutableTask(task, args, stream: Optional[Stream])
+
+        # TODO: This function should have structure like this:
+        # with self._stream:
+        #     try:
+        #         # Get args.
+
+        #         # Call .wait() on args if needed.
+        #         val = val.wait()
+        #     except Exception as e:
+        #         exc = e
+
+        #     # Execute the task.
+        #     output_val = _exec_task(..., (args, exc))
+
+        #     if self.output_writer is not None:
+        #         self.output_writer.write(output_val)
+
+
         if self.requires_nccl_read:
             input_values = [P2POp.RECV, self.nccl_ch]
         else:
@@ -595,6 +630,10 @@ class ExecutableTask:
                     input_values.append(task_input.resolve(input_data_ready))
             except Exception as exc:
                 input_values = None
+                # overlap_gpu_communication should only be used in two places:
+                # - deciding how many streams to create
+                # - in wrap_and_set_intermediate_future: when deciding whether
+                #   to produce a GPUFuture or a ResolvedFuture
                 self.wrap_and_set_intermediate_future(
                     exc, wrap_in_gpu_future=overlap_gpu_communication
                 )
@@ -614,6 +653,8 @@ class ExecutableTask:
             else:
                 method = getattr(class_handle, self.method_name)
 
+            # TODO: Pass the stream to use at ExecutableTask constructor
+            # instead of each task needing access to all streams.
             if self.requires_nccl_read:
                 stream = self._recv_stream
             elif self.requires_nccl_write:
@@ -625,6 +666,10 @@ class ExecutableTask:
 
             with stream:
                 try:
+                    # TODO: Wrap `method` here:
+                    # method_wrapper: (input_values, resolved_kwargs, Optional[Exception])
+                    # - throw Exception if non-null
+                    # - calls internal method: (*input_values, **resolved_kwargs)
                     output_val = method(*input_values, **self.resolved_kwargs)
                 except RayChannelError:
                     return True
@@ -639,6 +684,9 @@ class ExecutableTask:
                         output_val, wrap_in_gpu_future=overlap_gpu_communication
                     )
 
+        # TODO:
+        # - Never wait for GPU output (it will get waited on in the downstream task).
+        # - Write to output_writer if it's not None.
         if not self.requires_nccl_write:
             if (
                 self.requires_nccl_read or self.requires_nccl_collective
