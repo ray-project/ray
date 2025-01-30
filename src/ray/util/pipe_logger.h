@@ -45,6 +45,8 @@ namespace ray {
 inline constexpr std::string_view kPipeLogReadBufSizeEnv = "RAY_PIPE_LOG_READ_BUF_SIZE";
 
 // File handle requires active destruction via owner calling [Close].
+//
+// TODO(hjiang): Wrap fd with spdlog sink to manage stream flush and close.
 class RedirectionFileHandle {
  public:
   RedirectionFileHandle() = default;
