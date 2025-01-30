@@ -10,6 +10,7 @@ from typing import Dict, Union, List
 
 import aiohttp.web
 
+import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
@@ -105,6 +106,10 @@ class EventHead(
             max_workers=RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS,
             thread_name_prefix="event_head_executor",
         )
+
+        # To init gcs_client in internal_kv for record_extra_usage_tag.
+        self.gcs_client
+        assert ray.experimental.internal_kv._internal_kv_initialized()
 
     async def limit_handler_(self):
         return dashboard_optional_utils.rest_response(
