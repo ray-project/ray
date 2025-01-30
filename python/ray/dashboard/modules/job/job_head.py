@@ -291,12 +291,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 )
                 if not value:
                     # Agent info not found, retry
-                    raise Exception()
+                    raise Exception("Agent info not found in internal kv")
                 return json.loads(value.decode())
 
-            except Exception:
+            except Exception as e:
                 logger.info(
-                    f"Failed to fetch agent info for node {target_node_id}, retrying in {TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS} seconds..."
+                    f"Failed to fetch agent info for node {target_node_id}: {e}. Retrying in {TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS} seconds..."
                 )
                 await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
 

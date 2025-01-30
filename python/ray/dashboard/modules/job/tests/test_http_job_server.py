@@ -8,7 +8,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Union, Dict
 from unittest.mock import patch
 
 import pytest
@@ -23,7 +23,10 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
-from ray.dashboard.consts import DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX
+from ray.dashboard.consts import (
+    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    DASHBOARD_AGENT_ADDR_IP_PREFIX,
+)
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.job_head import JobHead
 from ray.dashboard.modules.job.pydantic_models import JobDetails
@@ -741,29 +744,46 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
         # Fake GCS client
         class _FakeGcsClient:
             def __init__(self):
-                self._kv = {}
+                self._kv: Dict[bytes, bytes] = {}
 
-            async def internal_kv_put(self, key: bytes, value: bytes, **kwargs):
+            @staticmethod
+            def ensure_bytes(key: Union[bytes, str]) -> bytes:
+                return key.encode() if isinstance(key, str) else key
+
+            async def internal_kv_put(
+                self, key: Union[bytes, str], value: bytes, **kwargs
+            ):
+                key = self.ensure_bytes(key)
                 self._kv[key] = value
 
-            async def internal_kv_get(self, key: bytes, **kwargs):
+            async def internal_kv_get(self, key: Union[bytes, str], **kwargs):
+                key = self.ensure_bytes(key)
                 return self._kv.get(key, None)
 
-            async def internal_kv_multi_get(self, keys: List[bytes], **kwargs):
-                return {key: self._kv.get(key, None) for key in keys}
+            async def internal_kv_multi_get(
+                self, keys: List[Union[bytes, str]], **kwargs
+            ):
+                return {key: self.internal_kv_get(key) for key in keys}
 
-            async def internal_kv_del(self, key: bytes, **kwargs):
+            async def internal_kv_del(self, key: Union[bytes, str], **kwargs):
+                key = self.ensure_bytes(key)
                 self._kv.pop(key)
 
-            async def internal_kv_keys(self, prefix: bytes, **kwargs):
+            async def internal_kv_keys(self, prefix: Union[bytes, str], **kwargs):
+                prefix = self.ensure_bytes(prefix)
                 return [key for key in self._kv.keys() if key.startswith(prefix)]
 
         class MockJobHead(JobHead):
             def __init__(self):
                 self._agents = dict()
+                self._gcs_aio_client = _FakeGcsClient()
+
+            @property
+            def gcs_aio_client(self):
+                # Overrides JobHead.gcs_aio_client
+                return self._gcs_aio_client
 
         job_head = MockJobHead()
-        job_head._gcs_aio_client = _FakeGcsClient()
 
         async def add_agent(agent):
             node_id = agent[0]
@@ -776,11 +796,21 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
                 json.dumps([node_ip, http_port, grpc_port]).encode(),
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
+            await job_head._gcs_aio_client.internal_kv_put(
+                f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node_ip}".encode(),
+                json.dumps([node_id.hex(), http_port, grpc_port]).encode(),
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
 
         async def del_agent(agent):
             node_id = agent[0]
+            node_ip = agent[1]["ipAddress"]
             await job_head._gcs_aio_client.internal_kv_del(
                 f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
+            await job_head._gcs_aio_client.internal_kv_del(
+                f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node_ip}".encode(),
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
 
