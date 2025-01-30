@@ -13,7 +13,7 @@ import json
 
 import ray
 from ray._raylet import GcsClient
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
     RequestMessage,
@@ -103,6 +103,7 @@ class SubprocessModule(abc.ABC):
         # Lazy init
         self._gcs_aio_client = None
         self._gcs_client = None
+        self._aiogrpc_gcs_channel = None
         self._parent_process_death_detection_task = None
         self._http_session = None
 
@@ -203,6 +204,17 @@ class SubprocessModule(abc.ABC):
             if not ray.experimental.internal_kv._internal_kv_initialized():
                 ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
         return self._gcs_client
+
+    @property
+    def aiogrpc_gcs_channel(self):
+        # TODO(ryw): once we removed the old gcs stubs, also remove this.
+        if self._config.minimal:
+            return None
+        if self._aiogrpc_gcs_channel is None:
+            gcs_channel = GcsChannel(gcs_address=self._config.gcs_address, aio=True)
+            gcs_channel.connect()
+            self._aiogrpc_gcs_channel = gcs_channel.channel()
+        return self._aiogrpc_gcs_channel
 
     def handle_child_bound_message(
         self,
