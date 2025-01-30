@@ -289,7 +289,7 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "sodlog_fd_sink",
+    name = "spdlog_fd_sink",
     hdrs = ["spdlog_fd_sink.h"],
     deps = [
         ":compat",

@@ -255,7 +255,7 @@ ray_cc_test(
     name = "spdlog_fd_sink_test",
     srcs = ["spdlog_fd_sink_test.cc"],
     deps = [
-        "//src/ray/util:sodlog_fd_sink",
+        "//src/ray/util:spdlog_fd_sink",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",

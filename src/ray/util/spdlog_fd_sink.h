@@ -33,7 +33,7 @@ class fd_sink final : public base_sink<Mutex> {
  public:
   // [fd] is not owned by [FdSink], which means the file descriptor should be closed by
   // caller.
-  explicit fd_sink(int fd) : fd_(fd) {}
+  explicit fd_sink(MEMFD_TYPE_NON_UNIQUE fd) : fd_(fd) {}
 
  protected:
   void sink_it_(const details::log_msg &msg) override {
@@ -53,9 +53,9 @@ class fd_sink final : public base_sink<Mutex> {
   }
   void flush_() override {
 #if defined(__APPLE__) || defined(__linux__)
-    RAY_CHECK_EQ(close(fd_), 0) << "Fails to close file because " << strerror(errno);
+    RAY_CHECK_EQ(fdatasync(fd_), 0) << "Fails to flush file because " << strerror(errno);
 #elif defined(_WIN32)
-    RAY_CHECK(CloseHandle(fd_));
+    RAY_CHECK(FlushFileBuffers(fd_));
 #endif
   }
 

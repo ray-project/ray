@@ -26,22 +26,22 @@ int GetStdoutHandle() { return STDOUT_FILENO; }
 HANDLE GetStdoutHandle() { return GetStdHandle(STD_OUTPUT_HANDLE); }
 #endif
 
-// Returns "helloworld" for whatever message; here we don't care the what message is
-// logged, we only care whether msg has been written to the given file descriptor
-// correctly.
-class NoopFormatter : public formatter {
+// Logs "helloworld" for whatever given message; here we don't care the what message is
+// logged, the only thing matters is whether msg has been written to the given file
+// descriptor correctly.
+class HelloworldFormatter : public formatter {
  public:
   void format(const details::log_msg &msg, memory_buf_t &dest) override {
     dest.append(std::string{"helloworld"});
   }
   std::unique_ptr<formatter> clone() const override {
-    return std::make_unique<NoopFormatter>();
+    return std::make_unique<HelloworldFormatter>();
   }
 };
 
 TEST(SpdlogFdSinkTest, SinkWithFd) {
   fd_sink_st sink{GetStdoutHandle()};
-  sink.set_formatter(std::make_unique<NoopFormatter>());
+  sink.set_formatter(std::make_unique<HelloworldFormatter>());
   details::log_msg msg_to_log{
       /*logger_name=*/"logger_name", level::level_enum::info, /*msg=*/"content"};
 
