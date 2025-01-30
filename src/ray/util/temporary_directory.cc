@@ -15,18 +15,21 @@
 #include "ray/util/temporary_directory.h"
 
 #include <cstdlib>
-#include <filesystem>
 
-#include "absl/strings/str_format.h"
 #include "ray/util/util.h"
 
 namespace ray {
 
 ScopedTemporaryDirectory::ScopedTemporaryDirectory() {
-  const auto current_path = std::filesystem::current_path();
-  temporary_directory_ =
-      absl::StrFormat("%s/%s", current_path.native(), GenerateUUIDV4());
-  RAY_CHECK(std::filesystem::create_directory(temporary_directory_));
+  std::error_code ec;
+  temporary_directory_ = std::filesystem::temp_directory_path(ec);
+
+
+
+  RAY_LOG(ERROR) << "temp dir = " << temporary_directory_;
+
+
+  RAY_CHECK(!ec);
 }
 ScopedTemporaryDirectory::~ScopedTemporaryDirectory() {
   RAY_CHECK(std::filesystem::remove_all(temporary_directory_));

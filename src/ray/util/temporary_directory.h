@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <string>
+#include <filesystem>
 
 namespace ray {
 
@@ -26,10 +26,10 @@ class ScopedTemporaryDirectory {
   ScopedTemporaryDirectory();
   ~ScopedTemporaryDirectory();
 
-  const std::string &GetDirectory() const { return temporary_directory_; }
+  const std::filesystem::path &GetDirectory() const { return temporary_directory_; }
 
  private:
-  std::string temporary_directory_;
+  std::filesystem::path temporary_directory_;
 };
 
 }  // namespace ray

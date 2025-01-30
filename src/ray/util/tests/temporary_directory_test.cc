@@ -24,11 +24,11 @@
 namespace ray {
 
 TEST(TemporaryDirectoryTest, CreationAndDestruction) {
-  std::string temp_directory;
+  std::filesystem::path temp_directory;
   {
     ScopedTemporaryDirectory dir{};
     temp_directory = dir.GetDirectory();
-    std::filesystem::path empty_file{absl::StrFormat("%s/empty_file", temp_directory)};
+    std::filesystem::path empty_file = temp_directory / "empty_file";
     std::ofstream(empty_file).close();
     ASSERT_TRUE(std::filesystem::exists(empty_file));
   }
