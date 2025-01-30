@@ -114,7 +114,6 @@ class SubprocessModule(abc.ABC):
             ):
                 # Use self in getattr to bind `self` in method.
                 self._methods_by_name[method.__name__] = getattr(self, method_name)
-        logger.error(f"dir: {dir(self)}, methods_by_name: {self._methods_by_name}")
 
     def __getattr__(self, name):
         """
