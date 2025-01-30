@@ -296,8 +296,6 @@ A Fluentbit sidecar container should be deployed alongside the Ray head containe
 This Fluentbit sidecar collects logs from the Ray container, and then the DaemonSet Fluentbit in the GKE cluster forwards the logs to Cloud Logging, so you can read the logs in your GCP Logs Explorer.
 If you don't see the logs in GCP Logs Explorer, the following debugging information may be helpful.
 #### Verify the Fluenbit sidecar
-When the Ray cluster is created on GKE using the above instructions, a Fluentbit sidecar container should be ready in the Pod and collecting logs from the Ray container.  
-DaemonSet Fluentbit pods should also be ready to forward the logs to Cloud Logging. You can use these commands to verify this.
 * Get the information of the pod.
 ```shell
  kubectl get pods -n <raycluster-namespace> -o yaml 
