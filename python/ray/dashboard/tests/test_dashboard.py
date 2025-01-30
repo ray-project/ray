@@ -1175,12 +1175,20 @@ def test_dashboard_module_load(tmpdir):
     )
 
     # Test basic.
-    loaded_modules_expected = {"UsageStatsHead", "JobHead"}
+    dashboard_head_modules_expected = {"UsageStatsHead"}
+    subprocess_module_handles_expected = {"JobHead"}
+    loaded_modules_expected = (
+        dashboard_head_modules_expected | subprocess_module_handles_expected
+    )
     dashboard_head_modules, subprocess_module_handles = head._load_modules(
         modules_to_load=loaded_modules_expected
     )
-    assert {type(m).__name__ for m in dashboard_head_modules} == loaded_modules_expected
-    assert len(subprocess_module_handles) == 0
+    assert {
+        type(m).__name__ for m in dashboard_head_modules
+    } == dashboard_head_modules_expected
+    assert {
+        h.module_cls.__name__ for h in subprocess_module_handles
+    } == subprocess_module_handles_expected
 
     # Test modules that don't exist.
     loaded_modules_expected = {"StateHea"}
