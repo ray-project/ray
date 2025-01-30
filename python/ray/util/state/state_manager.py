@@ -395,14 +395,16 @@ class StateDataSourceClient:
     @handle_grpc_network_errors
     async def get_object_info(
         self,
-        node_id: str,
+        node_manager_ip: str,
+        node_manager_port: int,
         timeout: int = None,
         limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     ) -> Optional[GetObjectsInfoReply]:
-
-        stub = self._raylet_stubs.get(node_id)
+        stub = self.get_raylet_stub(node_manager_ip, node_manager_port)
         if not stub:
-            raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
+            raise ValueError(
+                f"Can't connect to raylet at {node_manager_ip}:{node_manager_port}."
+            )
 
         reply = await stub.GetObjectsInfo(
             GetObjectsInfoRequest(limit=limit),

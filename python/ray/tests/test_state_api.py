@@ -1261,8 +1261,18 @@ async def test_api_manager_list_objects(state_api_manager):
     data_source_client.get_all_node_info = MagicMock()
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
         node_info_list=[
-            GcsNodeInfo(node_id="1", state=GcsNodeInfo.GcsNodeState.ALIVE),
-            GcsNodeInfo(node_id="2", state=GcsNodeInfo.GcsNodeState.ALIVE),
+            GcsNodeInfo(
+                node_id="1",
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                node_manager_address="192.168.1.1",
+                node_manager_port=10001,
+            ),
+            GcsNodeInfo(
+                node_id="2",
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                node_manager_address="192.168.1.2",
+                node_manager_port=10002,
+            ),
         ]
     )
 
@@ -1278,10 +1288,10 @@ async def test_api_manager_list_objects(state_api_manager):
     result = await state_api_manager.list_objects(option=create_api_options())
     data = result.result
     data_source_client.get_object_info.assert_any_await(
-        "1", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.1", 10001, timeout=DEFAULT_RPC_TIMEOUT
     )
     data_source_client.get_object_info.assert_any_await(
-        "2", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.2", 10002, timeout=DEFAULT_RPC_TIMEOUT
     )
     data = data
     assert len(data) == 2
@@ -1634,8 +1644,8 @@ async def test_state_data_source_client(ray_start_cluster):
     Test objects
     """
     with pytest.raises(ValueError):
-        # Since we don't have this node id, it should raise an exception.
-        result = await client.get_object_info("1234")
+        # Since we don't have this raylet stub, it should raise an exception.
+        result = await client.get_object_info("1.2.3.4", 10000)
 
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
@@ -1702,7 +1712,9 @@ async def test_state_data_source_client(ray_start_cluster):
 
         # Querying to the dead node raises gRPC error, which should raise an exception.
         with pytest.raises(DataSourceUnavailable):
-            await client.get_object_info(node_id)
+            await client.get_object_info(
+                node["NodeManagerAddress"], node["NodeManagerPort"]
+            )
 
 
 @pytest.mark.asyncio
@@ -1810,7 +1822,6 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     for node in ray.nodes():
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
         runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
         key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
 

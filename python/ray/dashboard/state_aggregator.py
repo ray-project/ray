@@ -368,7 +368,9 @@ class StateAPIManager:
         )
         tasks = [
             self._client.get_object_info(
-                NodeID(node_info.node_id).hex(), timeout=option.timeout
+                node_info.node_manager_address,
+                node_info.node_manager_port,
+                timeout=option.timeout,
             )
             for node_info in all_node_info_reply.node_info_list
         ]
