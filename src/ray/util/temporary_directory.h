@@ -22,8 +22,8 @@
 
 namespace ray {
 
-// A scoped temporary directory, which deletes all files and sub-directories inside will
-// be deleted recursively at its destruction.
+// A scoped temporary directory, which deletes all files and sub-directories recursively
+// at its destruction.
 class ScopedTemporaryDirectory {
  public:
   // Create a sub-directory under the given [dir].
