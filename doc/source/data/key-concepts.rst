@@ -66,7 +66,7 @@ Note that a dataset's execution plan is executed when a dataset is materialized 
 
 See the below diagram for the planning process:
 
-.. image:: https://anyscale-materials.s3.us-west-2.amazonaws.com/pinterest/get_execution_plan.png
+.. image:: images/get_execution_plan.png
    :width: 600
    :align: center
 
