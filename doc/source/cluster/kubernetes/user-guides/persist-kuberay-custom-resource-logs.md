@@ -312,11 +312,6 @@ kubectl get pod <pod-name> -n <raycluster-namespace> -o go-template='{{range .sp
 kubectl logs pod <pod-name> -n <raycluster-namespace> -c fluentbit
 ```
 
-* Verify that a Fluentbit DaemonSet is ready to forward logs to Cloud Logging.
-```shell
-kubectl get daemonsets -n kube-system | grep fluentbit
-```
-
 #### Enable Cloud Logging
 If the Fluentbit sidecar and DaemonSet are functional but you still can't read the logs in Logs Explorer, 
 there might be a permissions issue. Follow these steps to debug:
