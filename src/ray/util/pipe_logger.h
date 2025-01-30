@@ -90,6 +90,10 @@ class RedirectionFileHandle {
     if (write_handle_ != INVALID_FD) {
       close_fn_();
       write_handle_ = INVALID_FD;
+
+      // Unset flush and close functor to close logger and underlying file handle.
+      flush_fn_ = nullptr;
+      close_fn_ = nullptr;
     }
   }
 
