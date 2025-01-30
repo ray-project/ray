@@ -290,28 +290,26 @@ Finally, use a LogQL query to view logs for a specific RayCluster or RayJob, and
 [KubernetesDownwardAPI]: https://kubernetes.io/docs/concepts/workloads/pods/downward-api/
 
 ### Configure logging sidecar with Fluentbit on GKE
-If you want to deploy your Ray cluster on GKE and use Cloud Logging, you can read the following steps:
-When you create a cluster on GKE using these [instructions](https://github.com/GoogleCloudPlatform/ai-on-gke/blob/main/ray-on-gke/README.md), 
-a Fluentbit sidecar container is deployed alongside the Ray head container in the same pod. 
-This Fluentbit sidecar collects logs from the Ray container, and then the DaemonSet Fluentbit forwards logs to Cloud Logging, so you are ready to read logs in your GCP Logs Explorer.
-For example, if you submit a Ray job as described in the instructions, you can follow this [document](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/collect-view-logs-metrics#view_ray_logs) to read the job's logs.
-If you don't see the logs in GCP Logs Explorer, below is some debugging information.
-
-#### Verify the Fluenbit sidecar and Daemonset
+If you want to deploy your Ray cluster on GKE and use Cloud Logging, you can read the following steps:\
+You can follow this [doc](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/collect-view-logs-metrics#view_ray_logs) to create a GKE cluster, and then create a Ray cluster on it.
+A Fluentbit sidecar container should be deployed alongside the Ray head container in the same pod.
+This Fluentbit sidecar collects logs from the Ray container, and then the DaemonSet Fluentbit in the GKE cluster forwards the logs to Cloud Logging, so you can read the logs in your GCP Logs Explorer.
+If you don't see the logs in GCP Logs Explorer, the following debugging information may be helpful.
+#### Verify the Fluenbit sidecar and DaemonSet
 When the Ray cluster is created on GKE using the above instructions, a Fluentbit sidecar container should be ready in the Pod and collecting logs from the Ray container.  
 DaemonSet Fluentbit pods should also be ready to forward the logs to Cloud Logging. You can use these commands to verify this.
-* Get the name of the pod. You may need to modify the namespace if you've modified the terraform file in the instruction.
+* Get the information of the pod.
 ```shell
- kubectl get pods -n ai-on-gke -o yaml 
+ kubectl get pods -n <raycluster-namespace> -o yaml 
 ```
 * Verify that a Fluentbit sidecar is present in the Pod.
 ```shell
-kubectl get pod <pod-name> -n ai-on-gke -o go-template='{{range .spec.containers}}{{.name}}{{"\n"}}{{end}}'
+kubectl get pod <pod-name> -n <raycluster-namespace> -o go-template='{{range .spec.containers}}{{.name}}{{"\n"}}{{end}}'
 ```
 
 * Verify that the Fluentbit sidecar has collected logs from the Ray container.
 ```shell
-kubectl logs pod <pod-name> -n ai-on-gke -c fluentbit
+kubectl logs pod <pod-name> -n <raycluster-namespace> -c fluentbit
 ```
 
 * Verify that a Fluentbit DaemonSet is ready to forward logs to Cloud Logging.
@@ -346,9 +344,9 @@ gcloud container node-pools create <node-pool-name> --cluster <cluster-name>  --
 
 * List the node pools and their service accounts. Confirm that the GKE node pool's service account has permission to write logs. If not, run the fourth command.
 ```shell
-gcloud container clusters describe <cluster-name> --format="value(nodePools.name)"
+gcloud container clusters describe <cluster-name> --zone=<cluster-zone> --format="value(nodePools.name)"
 
-gcloud container node-pools describe <node-pool-name> --cluster=<cluster-name> --format="value(config.serviceAccount)"
+gcloud container node-pools describe <node-pool-name> --cluster=<cluster-name> --zone=<cluster-zone> --format="value(config.serviceAccount)"
     
 gcloud projects get-iam-policy <project-id> --flatten="bindings[].members" --format='table(bindings.role)' --filter="bindings.members:<node-pool-service-account-email>"
 
