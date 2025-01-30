@@ -287,3 +287,13 @@ ray_cc_library(
         ":util",
     ],
 )
+
+ray_cc_library(
+    name = "sodlog_fd_sink",
+    hdrs = ["spdlog_fd_sink.h"],
+    deps = [
+        ":compat",
+        ":util",
+        "@com_github_spdlog//:spdlog",
+    ],
+)
