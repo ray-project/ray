@@ -20,16 +20,12 @@
 
 namespace ray {
 
-ScopedTemporaryDirectory::ScopedTemporaryDirectory() {
-  std::error_code ec;
-  temporary_directory_ = std::filesystem::temp_directory_path(ec);
-
-
-
-  RAY_LOG(ERROR) << "temp dir = " << temporary_directory_;
-
-
-  RAY_CHECK(!ec);
+ScopedTemporaryDirectory::ScopedTemporaryDirectory(const std::string &dir) {
+  temporary_directory_ =
+      dir.empty() ? std::filesystem::temp_directory_path() : std::filesystem::path{dir};
+  // Manually generate a directory name by appending UUID.
+  temporary_directory_ = temporary_directory_ / GenerateUUIDV4();
+  RAY_CHECK(std::filesystem::create_directory(temporary_directory_));
 }
 ScopedTemporaryDirectory::~ScopedTemporaryDirectory() {
   RAY_CHECK(std::filesystem::remove_all(temporary_directory_));

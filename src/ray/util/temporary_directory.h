@@ -18,12 +18,15 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
 
 namespace ray {
 
 class ScopedTemporaryDirectory {
  public:
-  ScopedTemporaryDirectory();
+  // Create a sub-directory under the given [dir].
+  // If unspecified, new directory will be created under system temporary directory.
+  ScopedTemporaryDirectory(const std::string &dir = "");
   ~ScopedTemporaryDirectory();
 
   const std::filesystem::path &GetDirectory() const { return temporary_directory_; }
