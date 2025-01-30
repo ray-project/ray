@@ -16,7 +16,7 @@
 
 #include <gtest/gtest.h>
 
-namespace spdlog::sinks {
+namespace ray {
 
 namespace {
 
@@ -29,21 +29,21 @@ HANDLE GetStdoutHandle() { return GetStdHandle(STD_OUTPUT_HANDLE); }
 // Logs "helloworld" for whatever given message; here we don't care the what message is
 // logged, the only thing matters is whether msg has been written to the given file
 // descriptor correctly.
-class HelloworldFormatter : public formatter {
+class HelloworldFormatter : public spdlog::formatter {
  public:
-  void format(const details::log_msg &msg, memory_buf_t &dest) override {
+  void format(const spdlog::details::log_msg &msg, spdlog::memory_buf_t &dest) override {
     dest.append(std::string{"helloworld"});
   }
-  std::unique_ptr<formatter> clone() const override {
+  std::unique_ptr<spdlog::formatter> clone() const override {
     return std::make_unique<HelloworldFormatter>();
   }
 };
 
 TEST(SpdlogFdSinkTest, SinkWithFd) {
-  fd_sink_st sink{GetStdoutHandle()};
+  non_owned_fd_sink_st sink{GetStdoutHandle()};
   sink.set_formatter(std::make_unique<HelloworldFormatter>());
-  details::log_msg msg_to_log{
-      /*logger_name=*/"logger_name", level::level_enum::info, /*msg=*/"content"};
+  spdlog::details::log_msg msg_to_log{
+      /*logger_name=*/"logger_name", spdlog::level::level_enum::info, /*msg=*/"content"};
 
   testing::internal::CaptureStdout();
   sink.log(msg_to_log);
@@ -54,4 +54,4 @@ TEST(SpdlogFdSinkTest, SinkWithFd) {
 
 }  // namespace
 
-}  // namespace spdlog::sinks
+}  // namespace ray

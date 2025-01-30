@@ -25,20 +25,20 @@
 #include <windows.h>
 #endif
 
-namespace spdlog::sinks {
+namespace ray {
 
 // A sink which logs to the file descriptor.
 template <typename Mutex>
-class fd_sink final : public base_sink<Mutex> {
+class non_owned_fd_sink final : public spdlog::sinks::base_sink<Mutex> {
  public:
   // [fd] is not owned by [FdSink], which means the file descriptor should be closed by
   // caller.
-  explicit fd_sink(MEMFD_TYPE_NON_UNIQUE fd) : fd_(fd) {}
+  explicit non_owned_fd_sink(MEMFD_TYPE_NON_UNIQUE fd) : fd_(fd) {}
 
  protected:
-  void sink_it_(const details::log_msg &msg) override {
-    memory_buf_t formatted;
-    base_sink<Mutex>::formatter_->format(msg, formatted);
+  void sink_it_(const spdlog::details::log_msg &msg) override {
+    spdlog::memory_buf_t formatted;
+    spdlog::sinks::base_sink<Mutex>::formatter_->format(msg, formatted);
 
 #if defined(__APPLE__) || defined(__linux__)
     RAY_CHECK_EQ(write(fd_, formatted.data(), formatted.size()), formatted.size())
@@ -63,7 +63,7 @@ class fd_sink final : public base_sink<Mutex> {
   MEMFD_TYPE_NON_UNIQUE fd_;
 };
 
-using fd_sink_mt = fd_sink<std::mutex>;
-using fd_sink_st = fd_sink<details::null_mutex>;
+using non_owned_fd_sink_mt = non_owned_fd_sink<std::mutex>;
+using non_owned_fd_sink_st = non_owned_fd_sink<spdlog::details::null_mutex>;
 
-}  // namespace spdlog::sinks
+}  // namespace ray
