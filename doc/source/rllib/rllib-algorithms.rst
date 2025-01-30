@@ -151,7 +151,7 @@ Soft Actor Critic (SAC)
 
 **Tuned examples:**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
-`HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah-sac.yaml>`__,
+`HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah_sac.py>`__,
 
 **SAC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -398,7 +398,7 @@ Algorithm Extensions- and Plugins
 Curiosity-driven Exploration by Self-supervised Prediction
 ----------------------------------------------------------
 `[paper] <https://arxiv.org/pdf/1705.05363.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/inverse_dynamics_model_based_curiosity.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__
 
 .. figure:: images/algos/curiosity-architecture.svg
     :width: 850

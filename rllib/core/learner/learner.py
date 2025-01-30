@@ -897,7 +897,7 @@ class Learner(Checkpointable):
         use the `forward_train()` outputs of the RLModule(s) to compute the required
         loss tensors.
         See here for a custom loss function example script:
-        https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py  # noqa
+        https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py  # noqa
 
         Args:
             fwd_out: Output from a call to the `forward_train()` method of the
