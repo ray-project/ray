@@ -114,15 +114,17 @@ This will create a logical plan like the following:
 
 The streaming topology will look like the following:
 
-.. image:: https://anyscale-materials.s3.us-west-2.amazonaws.com/pinterest/build_streaming_topology.png
+.. image:: images/streaming-topology.svg
    :width: 1000
    :align: center
 
 In the streaming execution model, operators are connected in a pipeline, with each operator's output queue feeding directly into the input queue of the next downstream operator. This creates an efficient flow of data through the execution plan.
 
-The streaming execution model provides significant advantages for data processing. In particular, the pipeline architecture enables multiple stages to execute concurrently, improving overall performance and resource utilization. For example, if the map operator requires GPU resources, the streaming execution model can execute the map operator concurrently with the filter operator (which may be run on CPUs), allowing the GPU to be utilized through the entire duration of the pipeline.
+The streaming execution model provides significant advantages for data processing.
 
-This streaming approach allows Ray Data to efficiently process datasets that are much larger than available memory while maintaining high performance through parallel execution across the cluster.
+In particular, the pipeline architecture enables multiple stages to execute concurrently, improving overall performance and resource utilization. For example, if the map operator requires GPU resources, the streaming execution model can execute the map operator concurrently with the filter operator (which may be run on CPUs), allowing the GPU to be utilized through the entire duration of the pipeline.
+
+To summarize, Ray Data's streaming execution model can efficiently process datasets that are much larger than available memory while maintaining high performance through parallel execution across the cluster.
 
 .. note::
    Operations like :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>` require materializing data, which may impact memory usage for very large datasets.
