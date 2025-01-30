@@ -1817,7 +1817,7 @@ def test_torch_tensor_nccl_reduce_scatter_scheduling(ray_start_regular):
 
         # Tensor to be sent from workes[0] to workers[1].
         t = workers[0].send.bind(shape, dtype, inp)
-        t.with_type_hint(TorchTensorType(transport="nccl"))
+        t.with_tensor_transport(transport="nccl")
 
         collectives = collective.reducescatter.bind([x, y])
         recv = workers[1].recv.bind(t)
@@ -2204,7 +2204,7 @@ def test_torch_tensor_nccl_all_gather_scheduling(ray_start_regular):
 
         # Tensor to be sent from workes[0] to workers[1].
         t = workers[0].send.bind(shape, dtype, inp)
-        t.with_type_hint(TorchTensorType(transport="nccl"))
+        t.with_tensor_transport(transport="nccl")
 
         collectives = collective.allgather.bind([x, y])
         recv = workers[1].recv.bind(t)
