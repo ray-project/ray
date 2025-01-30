@@ -33,7 +33,7 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
         metrics-logger
     rllib-advanced-api
         algorithm (general description of how algos work)
-        rllib-rlmodule
+        rl-modules
         rllib-offline
         single-agent-episode
         multi-agent-episode

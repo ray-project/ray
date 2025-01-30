@@ -160,6 +160,7 @@ ray_cc_test(
 ray_cc_library(
     name = "testing",
     hdrs = ["testing.h"],
+    deps = ["//src/ray/util:macros"],
     testonly = True,
 )
 

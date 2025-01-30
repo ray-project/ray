@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
 
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 
@@ -40,7 +40,7 @@ apt-get install -y \
 
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
-python -m pip install pip==23.2.1 cffi==1.16.0
+python -m pip install pip==25.0 cffi==1.16.0
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.

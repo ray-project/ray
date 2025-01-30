@@ -5,10 +5,8 @@ import uuid
 
 from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
 
-from ray.actor import ActorHandle
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner import Learner
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec, MultiRLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -72,9 +70,7 @@ class OfflinePreLearner:
     batches and make them 'Learner'-ready. When deriving from this class
     the `__call__` method and `_map_to_episodes` can be overridden to induce
     custom logic for the complete transformation pipeline (`__call__`) or
-    for converting to episodes only ('_map_to_episodes`). For an example
-    how this class can be used to also compute values and advantages see
-    `rllib.algorithm.marwil.marwil_prelearner.MAWRILOfflinePreLearner`.
+    for converting to episodes only ('_map_to_episodes`).
 
     Custom `OfflinePreLearner` classes can be passed into
     `AlgorithmConfig.offline`'s `prelearner_class`. The `OfflineData` class
@@ -86,28 +82,21 @@ class OfflinePreLearner:
         self,
         *,
         config: "AlgorithmConfig",
-        learner: Union[Learner, list[ActorHandle]],
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
         **kwargs: Dict[str, Any],
     ):
 
-        self.config = config
-        self.input_read_episodes = self.config.input_read_episodes
-        self.input_read_sample_batches = self.config.input_read_sample_batches
-        # We need this learner to run the learner connector pipeline.
-        # If it is a `Learner` instance, the `Learner` is local.
-        if isinstance(learner, Learner):
-            self._learner = learner
-            self.learner_is_remote = False
-            self._module = self._learner._module
-        # Otherwise we have remote `Learner`s.
-        else:
-            self.learner_is_remote = True
-            # Build the module from spec. Note, this will be a MultiRLModule.
-            self._module = module_spec.build()
-            self._module.set_state(module_state)
+        self.config: AlgorithmConfig = config
+        self.input_read_episodes: bool = self.config.input_read_episodes
+        self.input_read_sample_batches: bool = self.config.input_read_sample_batches
+        # Build the module from spec.
+        self._module: MultiRLModule = module_spec.build()
+        self._module.set_state(module_state)
+        # Map the module to the device, if necessary.
+        # TODO (simon): Check here if we already have a list.
+        # self._set_device(device_strings)
 
         # Store the observation and action space if defined, otherwise we
         # set them to `None`. Note, if `None` the `convert_from_jsonable`
@@ -121,9 +110,9 @@ class OfflinePreLearner:
         )
         # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
-        self._is_multi_agent = config.is_multi_agent
+        self._is_multi_agent: bool = config.is_multi_agent
         # Set the counter to zero.
-        self.iter_since_last_module_update = 0
+        self.iter_since_last_module_update: int = 0
         # self._future = None
 
         # Set up an episode buffer, if the module is stateful or we sample from
@@ -166,7 +155,7 @@ class OfflinePreLearner:
             import msgpack_numpy as mnp
 
             # Read the episodes and decode them.
-            episodes = [
+            episodes: List[SingleAgentEpisode] = [
                 SingleAgentEpisode.from_state(
                     msgpack.unpackb(state, object_hook=mnp.decode)
                 )
@@ -190,13 +179,17 @@ class OfflinePreLearner:
             )
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
-            episodes = OfflinePreLearner._map_sample_batch_to_episode(
+            episodes: List[
+                SingleAgentEpisode
+            ] = OfflinePreLearner._map_sample_batch_to_episode(
                 self._is_multi_agent,
                 batch,
                 to_numpy=True,
                 schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
-            )["episodes"]
+            )[
+                "episodes"
+            ]
             # Ensure that all episodes are done and no duplicates are in the batch.
             episodes = self._validate_episodes(episodes)
             # Add the episodes to the buffer.
@@ -215,7 +208,7 @@ class OfflinePreLearner:
             )
         # Otherwise we map the batch to episodes.
         else:
-            episodes = self._map_to_episodes(
+            episodes: List[SingleAgentEpisode] = self._map_to_episodes(
                 self._is_multi_agent,
                 batch,
                 schema=SCHEMA | self.config.input_read_schema,
@@ -404,7 +397,7 @@ class OfflinePreLearner:
 
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                NotImplementedError
+                pass
             else:
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
@@ -521,7 +514,7 @@ class OfflinePreLearner:
 
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                NotImplementedError
+                pass
             else:
                 # Unpack observations, if needed. Note, observations could
                 # be either compressed by their entirety (the complete batch
