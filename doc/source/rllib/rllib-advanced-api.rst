@@ -14,7 +14,7 @@ Tune will call ``train()`` on your algorithm once per training iteration and rep
 the new training results.
 Sometimes, it's desirable to have full control over training, but still run inside Tune.
 Tune supports using :ref:`custom trainable functions <trainable-docs>` to
-implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_train_function.py>`__.
+implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_experiment.py>`__.
 
 Curriculum learning
 ~~~~~~~~~~~~~~~~~~~
