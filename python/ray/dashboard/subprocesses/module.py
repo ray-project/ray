@@ -106,16 +106,16 @@ class SubprocessModule(abc.ABC):
         self._parent_process_death_detection_task = None
         self._http_session = None
 
-        # Cache methods by __name__. See __getattr__ for more details.
+        # Cache route methods by __name__. See __getattr__ for more details.
         self._methods_by_name = {}
-        for method_name in dir(self):
-            method = getattr(self, method_name)
-            if (
-                callable(method)
-                and not method_name.startswith("_")
-                and hasattr(method, "__name__")
+        for method_name in dir(type(self)):
+            # Use type(self) in getattr to avoid evaluating properties.
+            method = getattr(type(self), method_name)
+            if hasattr(method, "__route_method__") and hasattr(
+                method, "__route_path__"
             ):
-                self._methods_by_name[method.__name__] = method
+                # Use self in getattr to bind `self` in method.
+                self._methods_by_name[method.__name__] = getattr(self, method_name)
 
     def __getattr__(self, name):
         """
