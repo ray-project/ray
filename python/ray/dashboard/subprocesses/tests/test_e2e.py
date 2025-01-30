@@ -164,6 +164,20 @@ async def test_http_server(aiohttp_client, default_module_config):
     assert "you shall not pass" in await response.text()
 
 
+async def test_cached_endpoint(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.get("/echo_cached")
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /echo_cached, count: 1"
+
+    # Call again, count should NOT increase.
+    response = await client.get("/echo_cached")
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /echo_cached, count: 1"
+
+
 async def test_streamed_iota(aiohttp_client, default_module_config):
     # TODO(ryw): also test streams that raise exceptions.
     app = await start_http_server_app(default_module_config, [TestModule])

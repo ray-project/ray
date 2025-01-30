@@ -5,6 +5,7 @@ import signal
 from typing import AsyncIterator
 
 from ray.dashboard.optional_deps import aiohttp
+from ray.dashboard import optional_utils
 
 from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleRequest
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
@@ -20,6 +21,7 @@ class TestModule(SubprocessModule):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.run_finished = False
+        self.echo_cached_count = 0
 
     async def init(self):
         logger.info("TestModule is initing")
@@ -39,6 +41,16 @@ class TestModule(SubprocessModule):
         await asyncio.sleep(0.1)
         return aiohttp.web.Response(
             body=b"Hello, World from POST /echo from " + request.body
+        )
+
+    @SubprocessRouteTable.get("/echo_cached")
+    @optional_utils.aiohttp_cache
+    async def echo_cached(
+        self, request: SubprocessModuleRequest
+    ) -> aiohttp.web.Response:
+        self.echo_cached_count += 1
+        return aiohttp.web.Response(
+            text=f"Hello, World from GET /echo_cached, count: {self.echo_cached_count}"
         )
 
     @SubprocessRouteTable.put("/error")
