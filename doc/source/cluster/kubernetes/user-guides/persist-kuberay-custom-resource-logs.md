@@ -311,7 +311,7 @@ kubectl logs pod <pod-name> -n <raycluster-namespace> -c fluentbit
 ```
 
 #### Enable Cloud Logging
-If the Fluentbit sidecar and DaemonSet are functional but you still can't read the logs in Logs Explorer, 
+If the Fluentbit sidecar is functional but you still can't read the logs in Logs Explorer, 
 there might be a permissions issue. Follow these steps to debug:
 
 * Confirm that logging is enabled at the GCP project level. If not, run the second command.
