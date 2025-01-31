@@ -2,8 +2,9 @@ import collections
 import logging
 import os
 import traceback
+import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -49,7 +50,11 @@ from ray.train.v2._internal.util import (
     time_monotonic,
 )
 from ray.types import ObjectRef
-from ray.util.placement_group import placement_group, remove_placement_group
+from ray.util.placement_group import (
+    PlacementGroup,
+    placement_group,
+    remove_placement_group,
+)
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
@@ -61,9 +66,47 @@ T = TypeVar("T")
 
 
 @dataclass
-class WorkerGroupStatus:
+class WorkerGroupContext:
+    """Context for a worker group.
+
+    This stores the context that is shared when starting a worker group.
+
+    Attributes:
+        num_workers: The number of workers in the worker group.
+        resources_per_worker: The resources per worker.
+        session_id: The session id.
+    """
+
     num_workers: int
-    latest_start_time: float
+    resources_per_worker: Dict[str, float]
+    session_id: str
+
+
+@dataclass
+class WorkerGroupState:
+    """Ongoing state of an active worker group.
+
+    Attributes:
+        context: The context of the worker group.
+        start_time: The time when the worker group was started.
+        workers: The workers in the worker group.
+        placement_group: The placement group for the worker group.
+        sync_actor: The synchronization actor for the worker group.
+    """
+
+    context: WorkerGroupContext
+
+    start_time: float
+    # List of workers in this worker group.
+    # These should always be in sorted order by world rank.
+    workers: List[Worker]
+    placement_group: PlacementGroup
+    sync_actor: SynchronizationActor
+
+
+@dataclass
+class WorkerGroupPollStatus:
+    # _state: Optional[WorkerGroupState]
     worker_statuses: Dict[int, WorkerStatus]
 
     @property
@@ -79,6 +122,20 @@ class WorkerGroupStatus:
         return self.worker_statuses and all(
             not status.running for status in self.worker_statuses.values()
         )
+
+    # @property
+    # def num_workers(self) -> int:
+    #     if not self._state:
+    #         return 0
+    #     return len(self._state.workers)
+
+    # @property
+    # def latest_start_time(self) -> float:
+    #     # TODO: This will return -inf whenever the WorkerGroup shuts down/restarts.
+    #     # Should this return the previous start time?
+    #     if not self._state:
+    #         return float("-inf")
+    #     return self._state.start_time
 
 
 @dataclass(frozen=True)
@@ -121,13 +178,8 @@ class WorkerGroup:
             if isinstance(c, (WorkerCallback, TrainContextCallback))
         ]
 
-        # List of workers in this worker group.
-        # These should always be in sorted order by world rank.
-        self._workers: List[Worker] = []
-
-        self._latest_start_time = float("-inf")
-        self._pg = None
-        self._sync_actor = None
+        self._worker_group_context: Optional[WorkerGroupContext] = None
+        self._worker_group_state: Optional[WorkerGroupState] = None
 
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
@@ -153,17 +205,142 @@ class WorkerGroup:
             DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
         )
 
+    def start(
+        self,
+        train_fn: Callable[[], None],
+        num_workers: int,
+        resources_per_worker: dict,
+        placement_strategy: str = "PACK",
+        checkpoint: Optional[Checkpoint] = None,
+    ):
+        """Start the a number of workers with the given resources.
+
+        Assign ranks, and initialize the train context on the workers.
+
+        Raises:
+            ValueError: If workers are already started.
+            WorkerGroupStartupTimeoutError: If the worker group startup times out
+                when requesting resources.
+                `RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S` can configure the timeout.
+            WorkerGroupStartupFailedError: If the worker group fails to start
+                due to actors dying/failing during initialization.
+        """
+        if self._worker_group_state:
+            raise ValueError("Workers already started.")
+
+        worker_group_context = WorkerGroupContext(
+            session_id=uuid.uuid4().hex,
+            num_workers=num_workers,
+            resources_per_worker=resources_per_worker,
+        )
+        self._worker_group_context = worker_group_context
+
+        for callback in self._callbacks:
+            callback.before_worker_group_start(self)
+
+        # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
+        # The current execution order is as follows:`on_worker_group_start` callbacks
+        # are triggered before the `after_worker_group_start` callbacks.
+        with invoke_context_managers(
+            [callback.on_worker_group_start for callback in self._callbacks]
+        ):
+            pg = placement_group(
+                bundles=[resources_per_worker] * num_workers,
+                strategy=placement_strategy,
+            )
+            logger.info(
+                f"Attempting to start training worker group of size {num_workers} with "
+                f"the following resources: [{resources_per_worker}] * {num_workers}"
+            )
+
+            # Wait for the placement group to be ready before proceeding
+            # to create actors.
+            # This could hang if the resources are not available, so we should
+            # time out if this hangs for a while to try again with a different size.
+            # For example, the controller may try to set a worker group size
+            # based on stale information about cluster resources.
+            try:
+                ray.get(pg.ready(), timeout=self._worker_group_start_timeout_s)
+            except GetTimeoutError as timeout_exc:
+                remove_placement_group(pg)
+                raise WorkerGroupStartupTimeoutError(
+                    num_workers=num_workers
+                ) from timeout_exc
+
+            # Initialize the synchronization actor on the driver node
+            sync_actor = SynchronizationActor.options(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    node_id=ray.get_runtime_context().get_node_id(),
+                    soft=False,
+                )
+            ).remote(
+                timeout_s=self._report_barrier_timeout_s,
+                warn_interval_s=self._report_barrier_warn_interval_s,
+            )
+
+            workers = self._create_workers(num_workers, pg, resources_per_worker)
+
+            # TODO: Figure out ordering between these different calls/callbacks.
+            self._worker_group_state = WorkerGroupState(
+                context=worker_group_context,
+                workers=workers,
+                placement_group=pg,
+                sync_actor=sync_actor,
+                start_time=time_monotonic(),
+            )
+
+            # All the ray.get calls in this try block can possibly error if the
+            # worker actors die during initialization.
+            # To prevent the driver from crashing, catch all `RayActorError`s and
+            # raise a specially handled error to the controller.
+            try:
+                train_context_args = {"checkpoint": [checkpoint] * len(workers)}
+                for callable in self._callbacks:
+                    args = callable.before_init_train_context(self)
+                    for arg, arg_values in args.items():
+                        assert len(arg_values) == num_workers, (
+                            f"Callback {callable} returned {arg} with "
+                            f"{len(arg_values)} values, expected {num_workers}."
+                        )
+                        assert (
+                            arg not in train_context_args
+                        ), f"Callback {callable} returned {arg} which is already set."
+                        train_context_args[arg] = arg_values
+
+                self._init_train_context_on_workers(workers, train_context_args)
+
+                for callback in self._callbacks:
+                    callback.after_worker_group_start(self)
+
+                # Launch the training function on each worker.
+                # This task should start a worker thread and return immediately.
+                ray_get_safe(
+                    [worker.actor.run_train_fn.remote(train_fn) for worker in workers]
+                )
+
+                for callback in self._callbacks:
+                    callback.after_worker_group_training_start(self)
+            except RayActorError as actor_error:
+                self.shutdown()
+
+                error_msg = "At least one of the worker actors failed to initialize."
+                raise WorkerGroupStartupFailedError(error_msg) from actor_error
+
     def _create_workers(
         self,
         num_workers: int,
-        worker_actor_cls: Type[RayTrainWorker],
+        placement_group: PlacementGroup,
+        resources_per_worker: Dict[str, float],
     ) -> List[Worker]:
-        assert self._pg, "Placement group must be initialized before creating workers."
+
+        worker_actor_cls = ray.remote(**bundle_to_remote_args(resources_per_worker))(
+            self._worker_cls
+        )
 
         actors = [
             worker_actor_cls.options(
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=self._pg, placement_group_bundle_index=i
+                    placement_group=placement_group, placement_group_bundle_index=i
                 ),
                 runtime_env={"env_vars": get_env_vars_to_propagate()},
             ).remote()
@@ -188,143 +365,61 @@ class WorkerGroup:
             raise WorkerGroupStartupFailedError(error_msg) from actor_error
 
         workers = [Worker(actor, meta) for actor, meta in zip(actors, actor_metadatas)]
-        return self._assign_worker_ranks(workers)
+        return WorkerGroup._assign_worker_ranks(workers)
 
     def _init_train_context_on_workers(
         self,
+        workers: List[Worker],
         train_context_args: Dict[str, List[Any]],
     ) -> None:
         context_init_tasks = [
             worker.actor.init_train_context.remote(
                 train_run_context=self._train_run_context,
                 distributed_context=worker.distributed_context,
-                synchronization_actor=self._sync_actor,
+                synchronization_actor=self._worker_group_state.sync_actor,
                 storage_context=self._storage_context,
                 worker_callbacks=self._worker_callbacks_to_propagate,
                 **{
                     arg: arg_values[i] for arg, arg_values in train_context_args.items()
                 },
             )
-            for i, worker in enumerate(self._workers)
+            for i, worker in enumerate(workers)
         ]
         ray_get_safe(context_init_tasks)
 
-    def start(
-        self,
-        train_fn: Callable[[], None],
-        num_workers: int,
-        resources_per_worker: dict,
-        placement_strategy: str = "PACK",
-        checkpoint: Optional[Checkpoint] = None,
-    ):
-        """Start the a number of workers with the given resources.
 
-        Assign ranks, and initialize the train context on the workers.
+    @staticmethod
+    def _assign_worker_ranks(workers: List[Worker]) -> List[Worker]:
+        """Assign world ranks to workers by increasing node id and GPU id.
 
-        Raises:
-            ValueError: If workers are already started.
-            WorkerGroupStartupTimeoutError: If the worker group startup times out
-                when requesting resources.
-                `RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S` can configure the timeout.
-            WorkerGroupStartupFailedError: If the worker group fails to start
-                due to actors dying/failing during initialization.
+        Initializes the `DistributedContext` for each worker.
+
+        Returns:
+            workers: Workers sorted by increasing world rank,
+                with the `DistributedContext` set.
         """
-        # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
-        # The current execution order is as follows:`on_worker_group_start` callbacks
-        # are triggered before the `after_worker_group_start` callbacks.
-        with invoke_context_managers(
-            [callback.on_worker_group_start for callback in self._callbacks]
-        ):
-            if self._workers:
-                raise ValueError("Workers already started.")
+        workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers)
 
-            remote_actor_cls = ray.remote(
-                **bundle_to_remote_args(resources_per_worker)
-            )(self._worker_cls)
+        node_ip_to_workers = collections.defaultdict(list)
+        for worker in workers:
+            node_ip_to_workers[worker.metadata.node_ip].append(worker)
+        node_ips = list(node_ip_to_workers.keys())
 
-            pg = placement_group(
-                bundles=[resources_per_worker] * num_workers,
-                strategy=placement_strategy,
+        for world_rank, worker in enumerate(workers):
+            distributed_context = DistributedContext(
+                local_rank=node_ip_to_workers[worker.metadata.node_ip].index(worker),
+                local_world_size=len(node_ip_to_workers[worker.metadata.node_ip]),
+                world_rank=world_rank,
+                world_size=len(workers),
+                node_rank=node_ips.index(worker.metadata.node_ip),
             )
-            logger.info(
-                f"Attempting to start training worker group of size {num_workers} with "
-                f"the following resources: [{resources_per_worker}] * {num_workers}"
-            )
+            worker.distributed_context = distributed_context
 
-            # Wait for the placement group to be ready before proceeding
-            # to create actors.
-            # This could hang if the resources are not available, so we should
-            # time out if this hangs for a while to try again with a different size.
-            # For example, the controller may try to set a worker group size
-            # based on stale information about cluster resources.
-            try:
-                ray.get(pg.ready(), timeout=self._worker_group_start_timeout_s)
-            except GetTimeoutError as timeout_exc:
-                remove_placement_group(pg)
-                raise WorkerGroupStartupTimeoutError(
-                    num_workers=num_workers
-                ) from timeout_exc
-
-            self._pg = pg
-
-            # Initialize the synchronization actor on the driver node
-            self._sync_actor = SynchronizationActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node_id=ray.get_runtime_context().get_node_id(),
-                    soft=False,
-                )
-            ).remote(
-                timeout_s=self._report_barrier_timeout_s,
-                warn_interval_s=self._report_barrier_warn_interval_s,
-            )
-
-            self._workers = self._create_workers(num_workers, remote_actor_cls)
-
-            # All the ray.get calls in this try block can possibly error if the
-            # worker actors die during initialization.
-            # To prevent the driver from crashing, catch all `RayActorError`s and
-            # raise a specially handled error to the controller.
-            try:
-                train_context_args = {"checkpoint": [checkpoint] * len(self._workers)}
-                for callable in self._callbacks:
-                    args = callable.before_init_train_context(self)
-                    for arg, arg_values in args.items():
-                        assert len(arg_values) == num_workers, (
-                            f"Callback {callable} returned {arg} with "
-                            f"{len(arg_values)} values, expected {num_workers}."
-                        )
-                        assert (
-                            arg not in train_context_args
-                        ), f"Callback {callable} returned {arg} which is already set."
-                        train_context_args[arg] = arg_values
-
-                self._init_train_context_on_workers(train_context_args)
-
-                for callback in self._callbacks:
-                    callback.after_worker_group_start(self)
-
-                # Launch the training function on each worker.
-                # This task should start a worker thread and return immediately.
-                ray_get_safe(
-                    [
-                        worker.actor.run_train_fn.remote(train_fn)
-                        for worker in self._workers
-                    ]
-                )
-
-                for callback in self._callbacks:
-                    callback.after_worker_group_training_start(self)
-            except RayActorError as actor_error:
-                self.shutdown()
-
-                error_msg = "At least one of the worker actors failed to initialize."
-                raise WorkerGroupStartupFailedError(error_msg) from actor_error
-
-            self._latest_start_time = time_monotonic()
-
-    @classmethod
+        return workers
+    
+    @staticmethod
     def _sort_workers_by_node_id_and_gpu_id(
-        cls, workers: List[Worker], _first_id: Optional[str] = None
+        workers: List[Worker], _first_id: Optional[str] = None
     ) -> List[Worker]:
         """Reorder the workers by their node id and the lowest GPU id.
 
@@ -380,37 +475,12 @@ class WorkerGroup:
             sorted_workers.extend(workers)
         return sorted_workers
 
-    @classmethod
-    def _assign_worker_ranks(cls, workers: List[Worker]) -> List[Worker]:
-        """Assign world ranks to workers by increasing node id and GPU id.
-
-        Initializes the `DistributedContext` for each worker.
-
-        Returns:
-            workers: Workers sorted by increasing world rank,
-                with the `DistributedContext` set.
-        """
-        workers = cls._sort_workers_by_node_id_and_gpu_id(workers)
-
-        node_ip_to_workers = collections.defaultdict(list)
-        for worker in workers:
-            node_ip_to_workers[worker.metadata.node_ip].append(worker)
-        node_ips = list(node_ip_to_workers.keys())
-
-        for world_rank, worker in enumerate(workers):
-            distributed_context = DistributedContext(
-                local_rank=node_ip_to_workers[worker.metadata.node_ip].index(worker),
-                local_world_size=len(node_ip_to_workers[worker.metadata.node_ip]),
-                world_rank=world_rank,
-                world_size=len(workers),
-                node_rank=node_ips.index(worker.metadata.node_ip),
-            )
-            worker.distributed_context = distributed_context
-
-        return workers
-
     def has_started(self) -> bool:
-        return bool(self._workers)
+        return self._worker_group_state is not None
+
+    def _assert_workers_started(self):
+        if not self.has_started():
+            raise ValueError("Workers not started.")
 
     def shutdown(self, patience_s: float = 5.0):
         """Shutdown all the workers in this worker group.
@@ -425,69 +495,80 @@ class WorkerGroup:
         with invoke_context_managers(
             [callback.on_worker_group_shutdown for callback in self._callbacks]
         ):
-            if self._workers:
+
+            if self._worker_group_state:
+                # TODO: These callbacks currently assume the WorkerGroup is alive.
+                # This is inconsistent with `on_worker_group_shutdown`.
                 for callback in self._callbacks:
                     callback.before_worker_group_shutdown(self)
 
-                # Run the worker shutdown logic on each of the workers. This should
-                # be a non-blocking call to realize forceful shutdown after patience_s.
-                _ = [w.actor.shutdown.remote() for w in self._workers]
-
-            logger.debug(f"Shutting down {len(self._workers)} workers.")
-            if patience_s <= 0:
-                for worker in self._workers:
-                    ray.kill(worker.actor)
-            else:
-                done_refs = [w.actor.__ray_terminate__.remote() for w in self._workers]
-                # Wait for actors to die gracefully.
-                _, not_done = ray.wait(
-                    done_refs, num_returns=len(done_refs), timeout=patience_s
-                )
-                if not_done:
-                    logger.debug(
-                        "Graceful termination failed. Falling back to force kill."
-                    )
-                    # If all actors are not able to die gracefully, then kill them.
-                    for worker in self._workers:
-                        ray.kill(worker.actor)
-
-            if self._sync_actor:
-                ray.kill(self._sync_actor)
-
-            if self._pg:
-                remove_placement_group(self._pg)
+                WorkerGroup._shutdown_worker_group_state(self._worker_group_state, patience_s)
 
             self._clear_state()
 
             logger.debug("Worker group shutdown successful.")
 
+    @staticmethod
+    def _shutdown_worker_group_state(
+        worker_group_state: WorkerGroupState, patience_s: float
+    ):
+
+        workers = worker_group_state.workers
+        # Run the worker shutdown logic on each of the workers. This should
+        # be a non-blocking call to realize forceful shutdown after patience_s.
+        _ = [w.actor.shutdown.remote() for w in workers]
+
+        logger.debug(f"Shutting down {len(workers)} workers.")
+        if patience_s <= 0:
+            for worker in workers:
+                ray.kill(worker.actor)
+        else:
+            done_refs = [w.actor.__ray_terminate__.remote() for w in workers]
+            # Wait for actors to die gracefully.
+            _, not_done = ray.wait(
+                done_refs, num_returns=len(done_refs), timeout=patience_s
+            )
+            if not_done:
+                logger.debug("Graceful termination failed. Falling back to force kill.")
+                # If all actors are not able to die gracefully, then kill them.
+                for worker in workers:
+                    ray.kill(worker.actor)
+
+        remove_placement_group(worker_group_state.placement_group)
+
+        ray.kill(worker_group_state.sync_actor)
+
     def _clear_state(self):
-        self._workers = []
-        self._pg = None
+        self._worker_group_context = None
+        self._worker_group_state = None
         self._world_rank_to_ongoing_poll = {}
-        self._sync_actor = None
 
-    def _assert_workers_started(self):
-        if not self._workers:
-            raise ValueError("Workers not started.")
 
-    def _get_poll_tasks(self) -> List[ObjectRef]:
-        """Get the poll tasks for each worker.
 
-        If there is an ongoing poll task for a worker that did not finish
-        in the timeout on the previous round, return that task instead of
-        queueing up a new one.
+    def poll_status(self, timeout: Optional[float] = None) -> WorkerGroupPollStatus:
+        """Poll the status of all workers in the worker group.
 
-        Spawns a new poll task for the worker if there is no ongoing poll task.
+        Args:
+            timeout: The maximum time to wait for the poll tasks to complete.
         """
-        poll_tasks = []
-        for i, worker in enumerate(self._workers):
-            if i in self._world_rank_to_ongoing_poll:
-                ongoing_poll = self._world_rank_to_ongoing_poll[i]
-                poll_tasks.append(ongoing_poll.task)
-            else:
-                poll_tasks.append(worker.actor.poll_status.remote())
-        return poll_tasks
+        if not self.has_started():
+            return WorkerGroupPollStatus(
+                _state=self._worker_group_state,
+                worker_statuses={},
+            )
+
+        poll_results = self._poll_workers_and_collect_errors(timeout)
+
+        worker_group_poll_status = WorkerGroupPollStatus(
+            worker_statuses=dict(enumerate(poll_results)),
+        )
+
+        for callback in self._callbacks:
+            callback.after_worker_group_poll_status(worker_group_poll_status)
+
+        return worker_group_poll_status
+
+
 
     def _poll_workers_and_collect_errors(
         self, timeout: Optional[float]
@@ -516,6 +597,7 @@ class WorkerGroup:
                 If polling a certain worker hangs or fails, the corresponding
                 WorkerStatus object will include a system error mentioned above.
         """
+        workers = self.get_workers()
         start_time = time_monotonic()
         poll_tasks = self._get_poll_tasks()
         poll_task_to_world_rank = {
@@ -545,7 +627,7 @@ class WorkerGroup:
                 error_msg = (
                     f"A worker health check has been hanging for {elapsed_time_s:.2f} "
                     "seconds. Marking the worker as dead.\n"
-                    f"Worker info: {self._workers[hanging_rank]}"
+                    f"Worker info: {workers[hanging_rank]}"
                 )
                 error = WorkerHealthCheckTimeoutError(error_msg)
 
@@ -564,7 +646,7 @@ class WorkerGroup:
             except Exception as e:
                 error_msg = (
                     "A worker health check failed.\n"
-                    f"Worker info: {self._workers[done_rank]}"
+                    f"Worker info: {workers[done_rank]}"
                 )
                 poll_result = WorkerStatus(
                     running=False,
@@ -580,31 +662,25 @@ class WorkerGroup:
         ]
         return results
 
-    def poll_status(self, timeout: Optional[float] = None) -> WorkerGroupStatus:
-        """Poll the status of all workers in the worker group.
 
-        Args:
-            timeout: The maximum time to wait for the poll tasks to complete.
+    def _get_poll_tasks(self) -> List[ObjectRef]:
+        """Get the poll tasks for each worker.
+
+        If there is an ongoing poll task for a worker that did not finish
+        in the timeout on the previous round, return that task instead of
+        queueing up a new one.
+
+        Spawns a new poll task for the worker if there is no ongoing poll task.
         """
-        if not self._workers:
-            return WorkerGroupStatus(
-                num_workers=0,
-                latest_start_time=self._latest_start_time,
-                worker_statuses={},
-            )
-
-        poll_results = self._poll_workers_and_collect_errors(timeout)
-
-        worker_group_status = WorkerGroupStatus(
-            num_workers=len(self._workers),
-            latest_start_time=self._latest_start_time,
-            worker_statuses=dict(enumerate(poll_results)),
-        )
-
-        for callback in self._callbacks:
-            callback.after_worker_group_poll_status(worker_group_status)
-
-        return worker_group_status
+        workers = self.get_workers()
+        poll_tasks = []
+        for i, worker in enumerate(workers):
+            if i in self._world_rank_to_ongoing_poll:
+                ongoing_poll = self._world_rank_to_ongoing_poll[i]
+                poll_tasks.append(ongoing_poll.task)
+            else:
+                poll_tasks.append(worker.actor.poll_status.remote())
+        return poll_tasks
 
     def execute_async(self, fn: Callable, *fn_args, **fn_kwargs) -> List[ObjectRef]:
         """Execute ``func`` on each worker and return the futures.
@@ -616,12 +692,13 @@ class WorkerGroup:
 
         """
         self._assert_workers_started()
+        workers = self.get_workers()
 
         return [
             worker.actor.execute.options(name=f"execute.{fn.__name__}").remote(
                 fn, *fn_args, **fn_kwargs
             )
-            for worker in self._workers
+            for worker in workers
         ]
 
     def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> List[T]:
@@ -646,15 +723,15 @@ class WorkerGroup:
 
         """
         self._assert_workers_started()
+        workers = self.get_workers()
 
-        if rank >= len(self._workers):
+        if rank >= len(workers):
             raise ValueError(
-                f"The provided {rank=} is "
-                f"not valid for {len(self._workers)} workers."
+                f"The provided {rank=} is " f"not valid for {len(workers)} workers."
             )
 
         return (
-            self._workers[rank]
+            workers[rank]
             .actor.execute.options(name=f"execute.{fn.__name__}")
             .remote(fn, *fn_args, **fn_kwargs)
         )
@@ -672,8 +749,21 @@ class WorkerGroup:
 
         return ray.get(self.execute_single_async(rank, fn, *fn_args, **fn_kwargs))
 
-    def __len__(self) -> int:
-        return len(self._workers)
+    # def get_worker_group_session_id(self) -> Optional[str]:
+    #     if not self._worker_group_context:
+    #         return None
+    #     return self._worker_group_context.session_id
 
     def get_workers(self) -> List[Worker]:
-        return self._workers
+        if not self._worker_group_state:
+            return []
+        return self._worker_group_state.workers
+
+    def get_worker_group_context(self) -> Optional[WorkerGroupContext]:
+        return self._worker_group_context
+
+    def get_worker_group_state(self) -> Optional[WorkerGroupState]:
+        return self._worker_group_state
+    
+    def __len__(self) -> int:
+        return len(self.get_workers())
