@@ -112,7 +112,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         targets=[
             Target(
                 expr="sum(ray_serve_deployment_queued_queries{{{global_filters}}}) by (application, deployment)",
-                legend="{{application, deployment}}",
+                legend="{{application}}#{{deployment}}#{{replica}}",
             ),
         ],
         fill=0,
