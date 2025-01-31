@@ -15,6 +15,7 @@
 # - fault tolerance recovery time if enabled
 # - checkpointing time
 import argparse
+import collections
 import os
 import tempfile
 from typing import Dict
@@ -22,6 +23,7 @@ from typing import Dict
 import torch
 
 import ray.data
+from ray.data._internal.stats import Timer
 import ray.train
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.util import date_str
@@ -53,6 +55,8 @@ class TrainLoopRunner:
             with checkpoint.as_directory() as temp_checkpoint_dir:
                 self.load_checkpoint(temp_checkpoint_dir)
 
+        self._timers = collections.defaultdict(lambda: Timer())
+
     def run(self):
         starting_epoch = self._train_epoch_idx
 
@@ -63,19 +67,23 @@ class TrainLoopRunner:
                 self.validate_and_checkpoint()
 
     def train_epoch(self):
-        self._train_epoch()
+        with self._timers["train_epoch"].timer():
+            self._train_epoch()
 
     def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
             print(f"Training epoch starting @ epoch={self._train_epoch_idx}")
 
-        batch = self.get_next_batch(self.train_dataloader)
+        with self._timers["iter_first_batch"].timer():
+            batch = self.get_next_batch(self.train_dataloader)
 
         # TODO: Handle the case where we restored to a middle of the epoch.
 
         while batch:
             input_batch, labels = batch
-            self.train_step(input_batch, labels)
+
+            with self._timers["train_step"].timer():
+                self.train_step(input_batch, labels)
 
             if (
                 self.benchmark_config.validate_every_n_steps
@@ -84,7 +92,9 @@ class TrainLoopRunner:
             ):
                 self.validate_and_checkpoint()
 
-            batch = self.get_next_batch(self.train_dataloader)
+            with self._timers["iter_batch"].timer():
+                batch = self.get_next_batch(self.train_dataloader)
+
             self._train_batch_idx += 1
 
             if self._train_batch_idx % 50 == 0:
@@ -108,15 +118,18 @@ class TrainLoopRunner:
         self.optimizer.zero_grad()
 
     def validate_and_checkpoint(self):
-        validation_metrics = self.validate()
+        with self._timers["validation_epoch"].timer():
+            validation_metrics = self.validate()
 
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            self.save_checkpoint(temp_checkpoint_dir)
+            with self._timers["save_checkpoint"].timer():
+                self.save_checkpoint(temp_checkpoint_dir)
 
-            self.report_checkpoint(
-                metrics=validation_metrics,
-                checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
-            )
+            with self._timers["report_checkpoint"].timer():
+                self.report_checkpoint(
+                    metrics=validation_metrics,
+                    checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
+                )
 
     def validate(self) -> Dict[str, float]:
         if ray.train.get_context().get_world_rank() == 0:
@@ -162,6 +175,23 @@ class TrainLoopRunner:
         torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
         torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
         torch.save(train_state, os.path.join(local_dir, "train_state.pt"))
+
+    def get_metrics(self) -> Dict[str, float]:
+        metrics = {}
+
+        # Timers
+        for key, timer in self._timers.items():
+            metrics.update({
+                f"{key}-avg": timer.avg(),
+                f"{key}-min": timer.min(),
+                f"{key}-max": timer.max(),
+                f"{key}-total": timer.get(),
+            })
+
+        # Throughput
+        # metrics["training_throughput"] =
+
+        return metrics
 
 
 def train_fn_per_worker(config):
