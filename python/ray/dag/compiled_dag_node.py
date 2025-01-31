@@ -866,6 +866,11 @@ class CompiledDAG:
         self._default_communicator: Optional[Communicator] = default_communicator
         self._default_communicator_id: Optional[str] = None
 
+        # Dict from passed-in communicator to set of type hints that refer to it.
+        self._communicator_to_type_hints: Dict[
+            Communicator,
+            Set["ray.experimental.channel.torch_tensor_type.TorchTensorType"],
+        ] = defaultdict(set)
         # Dict from set of actors to created communicator ID.
         # These communicators are created by Compiled Graph, rather than passed in.
         # Communicators are only created when self._create_default_communicator is True.
@@ -881,11 +886,6 @@ class CompiledDAG:
         self._pending_collective_ops: Set[
             "ray.dag.collective_node._CollectiveOperation"
         ] = set()
-        # Dict from passed-in communicator to set of type hints that refer to it.
-        self._communicator_to_type_hints: Dict[
-            Communicator,
-            Set["ray.experimental.channel.torch_tensor_type.TorchTensorType"],
-        ] = defaultdict(set)
 
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
             buffer_size_bytes=self._buffer_size_bytes,
@@ -1256,15 +1256,16 @@ class CompiledDAG:
             if actors not in self._actors_to_created_communicator_id:
                 self._actors_to_created_communicator_id[actors] = communicator_id
 
+        p2p_communicator_id = None
         if self._pending_p2p_communicator_actors:
-            if (
-                frozenset(self._pending_p2p_communicator_actors)
-                in self._actors_to_created_communicator_id
-            ):
-                p2p_communicator_id = self._actors_to_created_communicator_id[
-                    frozenset(self._pending_p2p_communicator_actors)
-                ]
-            else:
+            for (
+                actors,
+                communicator_id,
+            ) in self._actors_to_created_communicator_id.items():
+                if self._pending_p2p_communicator_actors.issubset(actors):
+                    p2p_communicator_id = communicator_id
+                    break
+            if p2p_communicator_id is None:
                 p2p_communicator_id = _init_communicator(
                     list(self._pending_p2p_communicator_actors),
                     None,
@@ -1286,11 +1287,10 @@ class CompiledDAG:
         if None in actors:
             raise ValueError("Driver cannot participate in the NCCL group.")
         if collective_op:
-            custom_communicator = (
-                dag_node._collective_op.type_hint.get_custom_communicator()
-            )
+            type_hint = dag_node._collective_op.type_hint
         else:
-            custom_communicator = dag_node.type_hint.get_custom_communicator()
+            type_hint = dag_node.type_hint
+        custom_communicator = type_hint.get_custom_communicator()
         communicator = (
             self._get_default_communicator(dag_node)
             if custom_communicator is None
@@ -1303,7 +1303,12 @@ class CompiledDAG:
                 self._pending_p2p_communicator_dag_nodes.add(dag_node)
                 self._pending_p2p_communicator_actors.update(actors)
         else:
-            self._communicator_to_type_hints[communicator].add(dag_node.type_hint)
+            self._communicator_to_type_hints[communicator].add(type_hint)
+            # if isinstance(dag_node.type_hint, ChannelOutputType):
+            #     logger.error(
+            #         "ChannelOutputType is not allowed for tracking communicator usage.",
+            #         stack_info=True,
+            #     )
             if collective_op:
                 if communicator.get_actor_handles() != actors:
                     raise ValueError(

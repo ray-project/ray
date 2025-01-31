@@ -73,7 +73,7 @@ def test_all_reduce_custom_comm_wrong_actors(ray_start_regular):
 )
 def test_comm_all_reduces(ray_start_regular, monkeypatch):
     """
-    Test the same default communicator is used for different all-reduce calls of
+    Test different communicators are used for different all-reduce calls of
     different sets of actors.
     """
     actor_cls = CPUTorchTensorWorker.options(num_cpus=0, num_gpus=1)
@@ -92,9 +92,9 @@ def test_comm_all_reduces(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {
-            (frozenset(workers), None),
+            (frozenset([workers[0]]), None),
+            (frozenset([workers[1]]), None),
         },
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -103,10 +103,10 @@ def test_comm_all_reduces(ray_start_regular, monkeypatch):
 @pytest.mark.parametrize(
     "ray_start_regular", [{"num_cpus": 4, "num_gpus": 4}], indirect=True
 )
-def test_comm_all_reduces2(ray_start_regular, monkeypatch):
+def test_comm_deduplicate_all_reduces(ray_start_regular, monkeypatch):
     """
-    Test the same default communicator is used when all-reduces are called on the
-    same group of actors more than once.
+    Test communicators are deduplicated when all-reduces are called on the same
+    group of actors more than once.
     """
     actor_cls = CPUTorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
@@ -123,7 +123,6 @@ def test_comm_all_reduces2(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), None)},
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -160,7 +159,6 @@ def test_comm_p2p_and_collective(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), None)},
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -178,7 +176,6 @@ def test_comm_p2p_and_collective(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), None)},
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -214,7 +211,6 @@ def test_custom_comm(ray_start_regular, monkeypatch):
             (frozenset(workers), comm),
             (frozenset(workers), None),
         },
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -234,7 +230,6 @@ def test_custom_comm(ray_start_regular, monkeypatch):
             (frozenset(workers), comm),
             (frozenset(workers), None),
         },
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)

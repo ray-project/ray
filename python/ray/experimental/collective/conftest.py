@@ -137,30 +137,6 @@ class MockNcclGroupSet:
         ctx.communicators[group_id].destroy()
         del ctx.communicators[group_id]
 
-    def check_init(
-        self,
-        compiled_dag: "ray.dag.CompiledDAG",
-        actors_and_custom_comms: Set[
-            Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
-        ],
-        default_actors_and_custom_comm: Optional[
-            Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
-        ],
-    ) -> None:
-        assert (
-            set(self.ids_to_actors_and_custom_comms.values()) == actors_and_custom_comms
-        )
-
-        default_communicator_id = compiled_dag._default_communicator_id
-        if default_actors_and_custom_comm is None:
-            assert default_communicator_id is None
-        else:
-            assert default_communicator_id
-            assert (
-                self.ids_to_actors_and_custom_comms[default_communicator_id]
-                == default_actors_and_custom_comm
-            )
-
     def check_teardown(self, nccl_group_ids: List[str]) -> None:
         ctx = ChannelContext.get_current()
         for nccl_group_id in nccl_group_ids:
@@ -209,12 +185,9 @@ def mock_do_destroy_nccl_group(self, group_id: str) -> None:
 def check_nccl_group_init(
     monkeypatch,
     dag: "ray.dag.DAGNode",
-    actors_and_custom_comms: Set[
+    actors_and_initialized_comms: Set[
         Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
     ],
-    default_actors_and_custom_comm: Optional[
-        Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
-    ] = None,
 ) -> "ray.dag.CompiledDAG":
     mock_nccl_group_set = MockNcclGroupSet()
     monkeypatch.setattr(
@@ -227,10 +200,9 @@ def check_nccl_group_init(
     )
 
     compiled_dag = dag.experimental_compile()
-    mock_nccl_group_set.check_init(
-        compiled_dag,
-        actors_and_custom_comms,
-        default_actors_and_custom_comm,
+    assert (
+        set(mock_nccl_group_set.ids_to_actors_and_custom_comms.values())
+        == actors_and_initialized_comms
     )
 
     return compiled_dag, mock_nccl_group_set
