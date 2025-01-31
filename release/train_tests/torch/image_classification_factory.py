@@ -80,7 +80,7 @@ class ImageClassificationFactory(BenchmarkFactory):
         # so just use a subset of the train dataset for now.
         val_ds = (
             ray.data.read_parquet(
-                IMAGENET_PARQUET_SPLIT_S3_DIRS["val"], columns=["image"]
+                IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
             )
             .limit(50000)
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=False))

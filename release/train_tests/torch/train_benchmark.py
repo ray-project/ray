@@ -65,7 +65,7 @@ class TrainLoopRunner:
         for _ in range(starting_epoch, self.benchmark_config.num_epochs):
             self.train_epoch()
 
-            if self.benchmark_config.validate_at_epoch_end:
+            if not self.benchmark_config.skip_validation_at_epoch_end:
                 self.validate_and_checkpoint()
 
     def train_epoch(self):
@@ -219,9 +219,18 @@ def train_fn_per_worker(config):
 def parse_cli_args():
     parser = argparse.ArgumentParser()
     for field, field_info in BenchmarkConfig.model_fields.items():
-        parser.add_argument(
-            f"--{field}", type=field_info.annotation, default=field_info.default
-        )
+        field_type = field_info.annotation
+        assert field_type
+
+        if field_type is bool:
+            assert not field_info.default, "Only supports bool flags that are False by default."
+            parser.add_argument(
+                f"--{field}", action="store_true", default=field_info.default
+            )
+        else:
+            parser.add_argument(
+                f"--{field}", type=field_type, default=field_info.default
+            )
     args = parser.parse_args()
     return BenchmarkConfig(**vars(args))
 
