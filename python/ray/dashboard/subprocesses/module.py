@@ -39,6 +39,7 @@ class SubprocessModuleConfig:
     cluster_id_hex: str
     gcs_address: str
     session_name: str
+    temp_dir: str
     # Logger configs. Will be set up in subprocess entrypoint `run_module`.
     logging_level: str
     logging_format: str
@@ -160,6 +161,10 @@ class SubprocessModule(abc.ABC):
         return self._config.session_name
 
     @property
+    def temp_dir(self):
+        return self._config.temp_dir
+
+    @property
     def log_dir(self):
         return self._config.log_dir
 
@@ -207,9 +212,6 @@ class SubprocessModule(abc.ABC):
 
     @property
     def aiogrpc_gcs_channel(self):
-        # TODO(ryw): once we removed the old gcs stubs, also remove this.
-        if self._config.minimal:
-            return None
         if self._aiogrpc_gcs_channel is None:
             gcs_channel = GcsChannel(gcs_address=self._config.gcs_address, aio=True)
             gcs_channel.connect()

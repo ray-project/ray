@@ -303,6 +303,7 @@ class DashboardHead:
             cluster_id_hex=self.cluster_id_hex,
             gcs_address=self.gcs_address,
             session_name=self.session_name,
+            temp_dir=self.temp_dir,
             logging_level=self.logging_level,
             logging_format=self.logging_format,
             log_dir=self.log_dir,
