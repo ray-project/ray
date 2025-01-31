@@ -7,6 +7,7 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 default_logger = logging.getLogger(__name__)
 
+
 class WrapPlugin(RuntimeEnvPlugin):
     name = "wrap"
 
