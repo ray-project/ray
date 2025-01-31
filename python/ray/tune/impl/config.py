@@ -3,7 +3,10 @@ from dataclasses import dataclass
 from ray.air.config import CheckpointConfig as _CheckpointConfig
 from ray.air.config import FailureConfig as _FailureConfig
 from ray.air.config import RunConfig as _RunConfig
-from ray.train.constants import _v2_migration_warnings_enabled
+from ray.train.constants import (
+    _v2_migration_warnings_enabled,
+    V2_MIGRATION_GUIDE_MESSAGE,
+)
 from ray.train.utils import _copy_doc, _log_deprecation_warning
 
 # NOTE: This is just a pass-through wrapper around `ray.train.RunConfig`
@@ -36,6 +39,7 @@ class RunConfig(_RunConfig):
                 _log_deprecation_warning(
                     "The `CheckpointConfig` class should be imported from `ray.tune` "
                     "when passing it to the Tuner. Please update your imports."
+                    f"{V2_MIGRATION_GUIDE_MESSAGE}"
                 )
 
         if not isinstance(self.failure_config, FailureConfig):
@@ -43,4 +47,5 @@ class RunConfig(_RunConfig):
                 _log_deprecation_warning(
                     "The `FailureConfig` class should be imported from `ray.tune` "
                     "when passing it to the Tuner. Please update your imports."
+                    f"{V2_MIGRATION_GUIDE_MESSAGE}"
                 )
