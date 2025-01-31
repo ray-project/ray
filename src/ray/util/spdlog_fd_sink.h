@@ -45,11 +45,11 @@ class non_owned_fd_sink final : public spdlog::sinks::base_sink<Mutex> {
                  static_cast<ssize_t>(formatted.size()))
         << "Fails to write because " << strerror(errno);
 #elif defined(_WIN32)
-    LPDWORD bytes_written;
+    DWORD bytes_written;
     BOOL success =
-        WriteFile(fd_, formatted.data(), (DWORD)formatted.size(), &bytes_written, NULL);
+        WriteFile(fd_, formatted.data(), (DWORD)formatted.size(), bytes_written, NULL);
     RAY_CHECK(success);
-    RAY_CHECK_EQ((LPDWORD)formatted.size(), bytes_written);
+    RAY_CHECK_EQ((DWORD)formatted.size(), bytes_written);
 #endif
   }
   void flush_() override {
