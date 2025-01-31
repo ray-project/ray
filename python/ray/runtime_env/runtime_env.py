@@ -298,6 +298,7 @@ class RuntimeEnv(dict):
         "docker",
         "worker_process_setup_hook",
         "_nsight",
+        "wrap",
         "mpi",
         "image_uri",
     }
@@ -319,6 +320,7 @@ class RuntimeEnv(dict):
         env_vars: Optional[Dict[str, str]] = None,
         worker_process_setup_hook: Optional[Union[Callable, str]] = None,
         nsight: Optional[Union[str, Dict[str, str]]] = None,
+        wrap: Optional[str] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         mpi: Optional[Dict] = None,
@@ -341,6 +343,8 @@ class RuntimeEnv(dict):
             runtime_env["conda"] = conda
         if nsight is not None:
             runtime_env["_nsight"] = nsight
+        if wrap is not None:
+            runtime_env["wrap"] = wrap
         if container is not None:
             runtime_env["container"] = container
         if env_vars is not None:
@@ -525,6 +529,9 @@ class RuntimeEnv(dict):
 
     def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
         return self.get("_nsight", None)
+
+    def wrap(self) -> Optional[str]:
+        return self.get("wrap", None)
 
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})
