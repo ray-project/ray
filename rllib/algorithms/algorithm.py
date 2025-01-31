@@ -208,10 +208,7 @@ except ImportError:
             all_learners = [
                 {
                     "CPU": _num
-                    * (
-                        (cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0)
-                        + cf.num_aggregator_actors_per_learner
-                    ),
+                    * (cf.num_cpus_per_learner + cf.num_aggregator_actors_per_learner),
                     "GPU": _num * max(0, cf.num_gpus_per_learner),
                 }
             ]
@@ -855,7 +852,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
             agg_cls = ray.remote(
                 num_cpus=1,
-                num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
+                # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
+                # num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
                 max_restarts=-1,
             )(AggregatorActor)
             self._aggregator_actor_manager = FaultTolerantActorManager(
@@ -888,10 +886,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
             self._aggregator_actor_to_learner = {}
             for agg_idx, aggregator_location in aggregator_locations:
+                aggregator_location = aggregator_location.get()
                 for learner_idx, learner_location in learner_locations:
-                    if learner_location.get() == aggregator_location.get():
-                        # Round-robin, in case all Learners are on same device (e.g. for
-                        # CPU learners).
+                    # TODO (sven): Activate full comparison (including device) when Ray
+                    #  has figured out GPU pre-loading.
+                    if learner_location.get()[0] == aggregator_location[0]:
+                        # Round-robin, in case all Learners are on same device/node.
                         learner_locations = learner_locations[1:] + [
                             learner_locations[0]
                         ]

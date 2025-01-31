@@ -27,13 +27,14 @@ from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
+    AGGREGATOR_ACTOR_RESULTS,
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
     LEARNER_GROUP,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     MEAN_NUM_EPISODE_LISTS_RECEIVED,
-    MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED,
+    MEAN_NUM_LEARNER_RESULTS_RECEIVED,
     MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
@@ -609,7 +610,10 @@ class IMPALA(Algorithm):
             )
 
             # Log the average number of sample results (list of episodes) received.
-            self.metrics.log_value(MEAN_NUM_EPISODE_LISTS_RECEIVED, len(episode_refs))
+            self.metrics.log_value(
+                (ENV_RUNNER_RESULTS, MEAN_NUM_EPISODE_LISTS_RECEIVED),
+                len(episode_refs),
+            )
 
         time.sleep(0.01)
 
@@ -620,6 +624,11 @@ class IMPALA(Algorithm):
             data_packages_for_aggregators = self._pre_queue_episode_refs(
                 episode_refs, package_size=self.config.train_batch_size_per_learner
             )
+            self.metrics.log_value(
+                (AGGREGATOR_ACTOR_RESULTS, "mean_num_input_packages"),
+                len(episode_refs),
+            )
+
             ma_batches_refs_remote_results = (
                 self._aggregator_actor_manager.fetch_ready_async_reqs(
                     timeout_seconds=0.0,
@@ -630,6 +639,10 @@ class IMPALA(Algorithm):
             ma_batches_refs = []
             for call_result in ma_batches_refs_remote_results:
                 ma_batches_refs.append((call_result.actor_id, call_result.get()))
+            self.metrics.log_value(
+                (AGGREGATOR_ACTOR_RESULTS, "mean_num_output_batches"),
+                len(ma_batches_refs),
+            )
 
             while data_packages_for_aggregators:
 
@@ -639,17 +652,30 @@ class IMPALA(Algorithm):
                 num_agg = self.config.num_aggregator_actors_per_learner * (
                     self.config.num_learners or 1
                 )
-                packs = data_packages_for_aggregators[:num_agg]
-                self._aggregator_actor_manager.foreach_actor_async(
+                packs, data_packages_for_aggregators = (
+                    data_packages_for_aggregators[:num_agg],
+                    data_packages_for_aggregators[num_agg:],
+                )
+                sent = self._aggregator_actor_manager.foreach_actor_async(
                     func=[functools.partial(_func, p=p) for p in packs],
                     tag="batches",
                 )
-                data_packages_for_aggregators = data_packages_for_aggregators[num_agg:]
+                self.metrics.log_value(
+                    (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_dropped_lifetime"),
+                    self.config.train_batch_size_per_learner * (len(packs) - sent),
+                    reduce="sum",
+                )
 
             # Get n lists of m ObjRef[MABatch] (m=num_learners) to perform n calls to
             # all learner workers with the already GPU-located batches.
             data_packages_for_learner_group = self._pre_queue_batch_refs(
                 ma_batches_refs
+            )
+            self.metrics.log_value(
+                (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_aggregated_lifetime"),
+                self.config.train_batch_size_per_learner
+                * len(data_packages_for_learner_group),
+                reduce="sum",
             )
 
         else:
@@ -686,6 +712,9 @@ class IMPALA(Algorithm):
                     ),
                 }
                 if self.config.num_aggregator_actors_per_learner > 0:
+                    assert len(batch_ref_or_episode_list_ref) == (
+                        self.config.num_learners or 1
+                    )
                     learner_results = self.learner_group.update_from_batch(
                         batch=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
@@ -715,20 +744,17 @@ class IMPALA(Algorithm):
                 if not do_async_updates:
                     learner_results = [learner_results]
 
-                for results_from_n_learners in learner_results:
-                    if not results_from_n_learners[0]:
-                        continue
-                    num_learner_group_results_received += 1
-                    for r in results_from_n_learners:
-                        rl_module_state = r.pop(
-                            "_rl_module_state_after_update", rl_module_state
-                        )
-                    self.metrics.merge_and_log_n_dicts(
-                        stats_dicts=results_from_n_learners,
-                        key=LEARNER_RESULTS,
+                num_learner_group_results_received += len(learner_results)
+                for result_from_1_learner in learner_results:
+                    rl_module_state = result_from_1_learner.pop(
+                        "_rl_module_state_after_update", rl_module_state
                     )
+                self.metrics.merge_and_log_n_dicts(
+                    stats_dicts=learner_results,
+                    key=LEARNER_RESULTS,
+                )
             self.metrics.log_value(
-                key=MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED,
+                key=(LEARNER_GROUP, MEAN_NUM_LEARNER_RESULTS_RECEIVED),
                 value=num_learner_group_results_received,
             )
 

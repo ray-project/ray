@@ -357,7 +357,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_learner = 0
         self.num_cpus_per_learner = 1
         self.num_aggregator_actors_per_learner = 0
-        self.max_requests_in_flight_per_aggregator_actor = 100
+        self.max_requests_in_flight_per_aggregator_actor = 3
         self.local_gpu_idx = 0
         # TODO (sven): This probably works even without any restriction
         #  (allowing for any arbitrary number of requests in-flight). Test with
@@ -2154,13 +2154,13 @@ class AlgorithmConfig(_Config):
                 model requires 2 GPUs: `num_learners=2; num_gpus_per_learner=2`).
             num_cpus_per_learner: Number of CPUs allocated per Learner worker.
                 Only necessary for custom processing pipeline inside each Learner
-                requiring multiple CPU cores. Ignored if `num_learners=0`.
+                requiring multiple CPU cores. If `num_learners=0`, the number of CPUs
+                on the main process is
+                `max(num_cpus_per_learner, num_cpus_for_main_process)`.
             num_gpus_per_learner: Number of GPUs allocated per Learner worker. If
                 `num_learners=0`, any value greater than 0 runs the
                 training on a single GPU on the main process, while a value of 0 runs
-                the training on main process CPUs. If `num_gpus_per_learner` is > 0,
-                then you shouldn't change `num_cpus_per_learner` (from its default
-                value of 1).
+                the training on main process CPUs.
             num_aggregator_actors_per_learner: The number of aggregator actors per
                 Learner (if num_learners=0, one local learner is created). Must be at
                 least 1. Aggregator actors perform the task of a) converting episodes
@@ -4555,20 +4555,7 @@ class AlgorithmConfig(_Config):
 
     def _validate_resources_settings(self):
         """Checks, whether resources related settings make sense."""
-
-        # TODO @Avnishn: This is a short-term work around due to
-        #  https://github.com/ray-project/ray/issues/35409
-        #  Remove this once we are able to specify placement group bundle index in RLlib
-        if self.num_cpus_per_learner > 1 and self.num_gpus_per_learner > 0:
-            self._value_error(
-                "Can't set both `num_cpus_per_learner` > 1 and "
-                " `num_gpus_per_learner` > 0! Either set "
-                "`num_cpus_per_learner` > 1 (and `num_gpus_per_learner`"
-                "=0) OR set `num_gpus_per_learner` > 0 (and leave "
-                "`num_cpus_per_learner` at its default value of 1). "
-                "This is due to issues with placement group fragmentation. See "
-                "https://github.com/ray-project/ray/issues/35409 for more details."
-            )
+        pass
 
     def _validate_multi_agent_settings(self):
         """Checks, whether multi-agent related settings make sense."""

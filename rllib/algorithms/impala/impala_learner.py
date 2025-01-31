@@ -64,9 +64,29 @@ class IMPALALearner(Learner):
             )
         )
 
+        # Create and start the GPU-loader thread. It picks up train-ready batches from
+        # the "GPU-loader queue" and loads them to the GPU, then places the GPU batches
+        # on the "update queue" for the actual RLModule forward pass and loss
+        # computations.
+        self._gpu_loader_in_queue = queue.Queue()
+
         # Default is to have a learner thread.
         if not hasattr(self, "_learner_thread_in_queue"):
             self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
+
+        # Create and start the GPU loader thread(s).
+        if self.config.num_gpus_per_learner > 0:
+            self._gpu_loader_threads = [
+                _GPULoaderThread(
+                    in_queue=self._gpu_loader_in_queue,
+                    out_queue=self._learner_thread_in_queue,
+                    device=self._device,
+                    metrics_logger=self.metrics,
+                )
+                for _ in range(self.config.num_gpu_loader_threads)
+            ]
+            for t in self._gpu_loader_threads:
+                t.start()
 
         # Create and start the Learner thread.
         self._learner_thread = _LearnerThread(
@@ -92,16 +112,11 @@ class IMPALALearner(Learner):
 
         self.before_gradient_based_update(timesteps=timesteps or {})
 
-        if isinstance(self._learner_thread_in_queue, CircularBuffer):
-            ts_dropped = self._learner_thread_in_queue.add(batch)
-            self.metrics.log_value(
-                (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
-                ts_dropped,
-                reduce="sum",
-            )
-        # Enqueue to Learner thread's in-queue.
-        else:
-            _LearnerThread.enqueue(self._learner_thread_in_queue, batch, self.metrics)
+        self._gpu_loader_in_queue.put(batch)
+        self.metrics.log_value(
+            (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
+            self._gpu_loader_in_queue.qsize(),
+        )
 
         return self.metrics.reduce()
 
@@ -136,6 +151,49 @@ class IMPALALearner(Learner):
 ImpalaLearner = IMPALALearner
 
 
+class _GPULoaderThread(threading.Thread):
+    def __init__(
+        self,
+        *,
+        in_queue: queue.Queue,
+        out_queue: deque,
+        device: torch.device,
+        metrics_logger: MetricsLogger,
+    ):
+        super().__init__()
+        self.daemon = True
+
+        self._in_queue = in_queue
+        self._out_queue = out_queue
+        self._ts_dropped = 0
+        self._device = device
+        self.metrics = metrics_logger
+
+    def run(self) -> None:
+        while True:
+            self._step()
+
+    def _step(self) -> None:
+        # Get a new batch from the data (inqueue).
+        with self.metrics.log_time((ALL_MODULES, GPU_LOADER_QUEUE_WAIT_TIMER)):
+            ma_batch_on_cpu = self._in_queue.get()
+
+        # Load the batch onto the GPU device.
+        with self.metrics.log_time((ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)):
+            ma_batch_on_gpu = ma_batch_on_cpu.to_device(self._device, pin_memory=True)
+
+        if isinstance(self._out_queue, CircularBuffer):
+            ts_dropped = self._out_queue.add(ma_batch_on_gpu)
+            self.metrics.log_value(
+                (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
+                ts_dropped,
+                reduce="sum",
+            )
+        else:
+            # Enqueue to Learner thread's in-queue.
+            _LearnerThread.enqueue(self._out_queue, ma_batch_on_gpu, self.metrics)
+
+
 class _LearnerThread(threading.Thread):
     def __init__(
         self,
@@ -166,9 +224,8 @@ class _LearnerThread(threading.Thread):
                 ma_batch_on_gpu = self._in_queue.sample()
             else:
                 # Queue is empty: Sleep a tiny bit to avoid CPU-thrashing.
-                if not self._in_queue:
+                while not self._in_queue:
                     time.sleep(0.001)
-                    return
                 # Consume from the left (oldest batches first).
                 # If we consumed from the right, we would run into the danger of
                 # learning from newer batches (left side) most times, BUT sometimes
