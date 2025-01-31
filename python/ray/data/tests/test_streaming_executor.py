@@ -32,6 +32,7 @@ from ray.data._internal.execution.streaming_executor import (
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
+    Topology,
     _execution_allowed,
     build_streaming_topology,
     process_completed_tasks,
@@ -39,6 +40,9 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.logical.operators.map_operator import MapRows
+from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -646,7 +650,7 @@ def test_time_scheduling():
     assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
 
 
-def test_executor_callbacks():
+def test_execution_callbacks():
     """Test ExecutionCallback."""
 
     class CustomExecutionCallback(ExecutionCallback):
@@ -655,13 +659,13 @@ def test_executor_callbacks():
             self._after_execution_succeeds_called = False
             self._execution_error = None
 
-        def before_execution_starts(self):
+        def before_execution_starts(self, topology: Topology):
             self._before_execution_starts_called = True
 
-        def after_execution_succeeds(self):
+        def after_execution_succeeds(self, topology: Topology):
             self._after_execution_succeeds_called = True
 
-        def after_execution_fails(self, error: Exception):
+        def after_execution_fails(self, topology: Topology, error: Exception):
             self._execution_error = error
 
     # Test the success case.
@@ -718,6 +722,46 @@ def test_executor_callbacks():
     assert not callback._after_execution_succeeds_called
     error = callback._execution_error
     assert isinstance(error, KeyboardInterrupt), error
+
+
+def test_execution_callbacks_topology_arg(tmp_path, restore_data_context):
+    """Test the topology arg in ExecutionCallback."""
+
+    class CustomExecutionCallback(ExecutionCallback):
+        def __init__(self):
+            self._topology = None
+
+        def before_execution_starts(self, topology: Topology):
+            self._topology = topology
+
+        def after_execution_succeeds(self, topology: Topology):
+            self._topology = topology
+
+        def after_execution_fails(self, topology: Topology, error: Exception):
+            self._topology = topology
+
+    ctx = DataContext.get_current()
+    callback = CustomExecutionCallback()
+    add_execution_callback(callback, ctx)
+    ds = ray.data.read_parquet(tmp_path)
+
+    def udf(row):
+        return row
+
+    ds = ds.map(udf)
+
+    ds = ds.write_parquet(tmp_path)
+
+    topology = callback._topology
+    assert topology is not None
+    assert len(topology) == 1
+    physical_op = list(topology.keys())[0]
+    assert isinstance(physical_op, MapOperator)
+    logical_ops = physical_op._logical_operators
+    assert len(logical_ops) == 3
+    assert isinstance(logical_ops[0], Read)
+    assert isinstance(logical_ops[1], MapRows)
+    assert isinstance(logical_ops[2], Write)
 
 
 if __name__ == "__main__":

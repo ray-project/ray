@@ -1,5 +1,6 @@
 from typing import List
 
+from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data.context import DataContext
 
 EXECUTION_CALLBACKS_CONFIG_KEY = "execution_callbacks"
@@ -8,15 +9,15 @@ EXECUTION_CALLBACKS_CONFIG_KEY = "execution_callbacks"
 class ExecutionCallback:
     """Callback interface for execution events."""
 
-    def before_execution_starts(self):
+    def before_execution_starts(self, topology: Topology):
         """Called before the Dataset execution starts."""
         ...
 
-    def after_execution_succeeds(self):
+    def after_execution_succeeds(self, topology: Topology):
         """Called after the Dataset execution succeeds."""
         ...
 
-    def after_execution_fails(self, error: Exception):
+    def after_execution_fails(self, topology: Topology, error: Exception):
         """Called after the Dataset execution fails."""
         ...
 

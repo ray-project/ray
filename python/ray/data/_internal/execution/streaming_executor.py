@@ -143,7 +143,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._get_operator_tags(),
         )
         for callback in get_execution_callbacks(self._data_context):
-            callback.before_execution_starts()
+            callback.before_execution_starts(self._topology)
 
         self.start()
         self._execution_started = True
@@ -222,10 +222,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 state.close_progress_bars()
             if exception is None:
                 for callback in get_execution_callbacks(self._data_context):
-                    callback.after_execution_succeeds()
+                    callback.after_execution_succeeds(self._topology)
             else:
                 for callback in get_execution_callbacks(self._data_context):
-                    callback.after_execution_fails(exception)
+                    callback.after_execution_fails(self._topology, exception)
             self._autoscaler.on_executor_shutdown()
 
     def run(self):
