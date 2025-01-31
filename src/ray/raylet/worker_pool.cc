@@ -253,6 +253,7 @@ void WorkerPool::RemoveWorkerProcess(State &state,
   state.worker_processes.erase(proc_startup_token);
 }
 
+// Intuition is, job id only decides which parameters to use for the executable, reduce a few of them.
 std::pair<std::vector<std::string>, ProcessEnvironment>
 WorkerPool::BuildProcessCommandArgs(const Language &language,
                                     rpc::JobConfig *job_config,
@@ -357,6 +358,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     worker_command_args.push_back("--worker-launch-time-ms=" +
                                   std::to_string(current_sys_time_ms()));
     worker_command_args.push_back("--node-id=" + node_id_.Hex());
+    // worker_command_args.push_back("--runtime-env-hash=" +
+    //                               std::to_string(runtime_env_hash));
     worker_command_args.push_back("--runtime-env-hash=" +
                                   std::to_string(runtime_env_hash));
   } else if (language == Language::CPP) {
@@ -368,8 +371,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
 
   if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
     worker_command_args.push_back("--language=" + Language_Name(language));
-    worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                  serialized_runtime_env_context);
+    // worker_command_args.push_back("--serialized-runtime-env-context=" +
+    //                               serialized_runtime_env_context);
   } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
              worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
     // Check that the arg really is the path to the setup worker before erasing it, to
