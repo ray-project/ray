@@ -138,7 +138,6 @@ class DataOrganizer:
 
         if get_summary:
             node_physical_stats.pop("workers", None)
-            node_stats.pop("workersStats", None)
         else:
             node_stats.pop("coreWorkersStats", None)
         store_stats = node_stats.get("storeStats", {})

@@ -17,6 +17,7 @@ from ray.core.generated import (
     node_manager_pb2_grpc,
     common_pb2,
 )
+from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.modules.reporter import reporter_consts
 from ray.dashboard.modules.node import node_consts
 from ray._private import ray_constants
@@ -76,12 +77,13 @@ class NodeDataIndex:
         self,
         loop: asyncio.AbstractEventLoop,
         executor: concurrent.futures.Executor,
-        gcs_address: str,
+        gcs_aio_client: GcsAioClient,
         module_start_time: float,
     ):
         self.loop = loop
         self.executor = executor
-        self.gcs_address = gcs_address
+        self.gcs_aio_client = gcs_aio_client
+        self.gcs_address = gcs_aio_client.gcs_address
         self.collect_memory_info = False
 
         # Data
@@ -168,7 +170,7 @@ class NodeDataIndex:
                 )
 
                 node_id_hex = key[len(reporter_consts.REPORTER_PREFIX) :]
-                node_id = NodeID(node_id_hex)
+                node_id = NodeID.from_hex(node_id_hex)
                 self.node_physical_stats[node_id] = parsed_data
                 self.update_workers_node_physical_stats_for_node(node_id, parsed_data)
             except Exception:
@@ -373,7 +375,7 @@ class NodeDataIndex:
                 self.node_pid_worker_id[node_id] = {}
             for core_worker_stats in reply.core_workers_stats:
                 self.update_core_worker_stats(node_id, core_worker_stats)
-            reply.core_workers_stats = []
+            del reply.core_workers_stats[:]
             self.node_stats_without_core_worker_stats[node_id] = reply
         except asyncio.CancelledError:
             return

@@ -4,14 +4,15 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-
+from typing import List
+from ray._private.utils import parse_pg_formatted_resources_to_original
 import aiohttp.web
-
+from ray.core.generated import node_manager_pb2
 from ray.dashboard.utils import (
     compose_state_message,
 )
 
-from ray import WorkerID, NodeID
+from ray import WorkerID, NodeID, ActorID
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import (
@@ -19,7 +20,11 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     env_integer,
 )
-from ray.dashboard.modules.node import NodeDataIndex
+from ray.dashboard.modules.node.node_data_index import NodeDataIndex
+from ray.dashboard.modules.node.actor_data_index import (
+    ActorDataIndex,
+    actor_table_data_to_dict,
+)
 from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
@@ -32,7 +37,6 @@ from ray.dashboard.consts import (
     DEFAULT_LANGUAGE,
     DEFAULT_JOB_ID,
 )
-from ray.dashboard.datacenter import DataOrganizer
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
@@ -98,19 +102,24 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             max_workers=RAY_DASHBOARD_NODE_HEAD_TPE_MAX_WORKERS,
             thread_name_prefix="node_head_executor",
         )
-        self._data_index = NodeDataIndex(
+        self._node_data_index = NodeDataIndex(
             loop=get_or_create_event_loop(),
             executor=self._executor,
-            gcs_address=self.gcs_address,
+            gcs_aio_client=self.gcs_aio_client,
             module_start_time=time.time(),
+        )
+        self._actor_data_index = ActorDataIndex(
+            loop=get_or_create_event_loop(),
+            executor=self._executor,
+            gcs_aio_client=self.gcs_aio_client,
         )
 
     def get_internal_states(self):
         return {
-            "head_node_registration_time_s": self._data_index.head_node_registration_time_s,
-            # Contains DEAD nodes! For ALIVE nodes only, use `self._data_index.nodes`.
-            "registered_nodes": len(self._data_index.nodes),
-            "module_lifetime_s": self._data_index.module_lifetime_s,
+            "head_node_registration_time_s": self._node_data_index.head_node_registration_time_s,
+            # Contains DEAD nodes! For ALIVE nodes only, use `self._node_data_index.nodes`.
+            "registered_nodes": len(self._node_data_index.nodes),
+            "module_lifetime_s": self._node_data_index.module_lifetime_s,
         }
 
     async def get_nodes_logical_resources(self) -> dict:
@@ -180,7 +189,10 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
     async def get_all_nodes(self, req) -> aiohttp.web.Response:
         view = req.query.get("view")
         if view == "summary":
-            all_node_summary_task = DataOrganizer.get_all_node_summary()
+
+            all_node_summary_task = get_or_create_event_loop().run_in_executor(
+                self._executor, self.get_all_node_summary
+            )
             nodes_logical_resource_task = self.get_nodes_logical_resources()
 
             all_node_summary, nodes_logical_resources = await asyncio.gather(
@@ -196,7 +208,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         elif view is not None and view.lower() == "hostNameList".lower():
             alive_hostnames = {
                 node_info.node_manager_hostname
-                for node_info in self._data_index.nodes.values()
+                for node_info in self._node_data_index.nodes.values()
                 if node_info.state == gcs_pb2.GcsNodeInfo.ALIVE
             }
             return dashboard_optional_utils.rest_response(
@@ -210,10 +222,11 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             )
 
     def get_worker_by_id(self, node_id: NodeID, worker_id: WorkerID) -> dict:
-        worker_info = self._data_index.workers.get(worker_id, {})
+        # Worker info as used for actor info.
+        worker_info = self._node_data_index.workers.get(worker_id, {})
         if not worker_info:
             return {}
-        node_physical_stats = self._data_index.node_physical_stats.get(node_id, {})
+        node_physical_stats = self._node_data_index.node_physical_stats.get(node_id, {})
 
         result = {}
         core_worker_stats = worker_info.core_worker_stats
@@ -241,109 +254,150 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         result["mem"] = node_physical_stats.get("mem", [])
         return result
 
-    @routes.get("/nodes/{node_id}/workers/{worker_id}")
-    @dashboard_optional_utils.aiohttp_cache
-    async def get_worker(self, req) -> aiohttp.web.Response:
-        node_id_hex = req.match_info.get("node_id")
-        worker_id_hex = req.match_info.get("worker_id")
-        node_id = NodeID(node_id_hex)
-        worker_id = WorkerID(worker_id_hex)
-
-        worker = await self.loop.run_in_executor(
-            self.executor, self.get_worker_by_id, node_id, worker_id
-        )
-
-        return dashboard_optional_utils.rest_response(
-            success=True, message="Worker fetched.", worker=worker
-        )
-
     @routes.get("/nodes/{node_id}")
     @dashboard_optional_utils.aiohttp_cache
     async def get_node(self, req) -> aiohttp.web.Response:
         """
-        Get node details. 3 steps:
-        1. In async, convert node proto to dict.
-        2. Make a HTTP request to ActorHead to get actors on this node.
-        3. In async, add worker info to actors dict.
+        Get node details. It's pretty compute heavy so we do it in executor.
         """
         node_id_hex = req.match_info.get("node_id")
-        node_id = NodeID(node_id_hex)
-        node = await self.loop.run_in_executor(
-            self.executor, self.get_node_by_id, node_id
+        node_id = NodeID.from_hex(node_id_hex)
+        node = await get_or_create_event_loop().run_in_executor(
+            self._executor, self.get_node_by_id, node_id
         )
-        # Add actors by making a request to ActorHead.
-        async with self.http_session.get(
-            f"{self.dashboard_url}/nodes/{node_id_hex}/actors_without_worker_info"
-        ) as resp:
-            if resp.status != 200:
-                # Error fetching actors. Don't add them to the result.
-                logger.error(
-                    f"Error fetching actors. The result will not contain actors for node {node_id}: {resp.text()}"
-                )
-            else:
-                actors = await resp.json()
-                # Add worker info to actors.
-                def add_worker_infos(actors):
-                    for actor in actors:
-                        worker_id_hex = actor["address"]["workerId"]
-                        worker_id = WorkerID(worker_id_hex)
-                        worker = self.get_worker_by_id(node_id, worker_id)
-                        actor["worker"] = worker
-                    return actors
-
-                actors_with_worker_infos = await self.loop.run_in_executor(
-                    self.executor, add_worker_infos, actors
-                )
-                node["actors"] = actors_with_worker_infos
-
         return dashboard_optional_utils.rest_response(
             success=True, message="Node details fetched.", detail=node
         )
 
-    def get_node_by_id(self, node_id: NodeID) -> dict:
-        """
-        Merges all data about a node_id into a single dictionary.
-
-        Note: we don't have "actors" in the result.
-        """
-        node_info = self._data_index.nodes.get(node_id, {})
-        node_physical_stats = self._data_index.node_physical_stats.get(node_id, {})
-        node_stats_without_core_worker_stats = (
-            self._data_index.node_stats_without_core_worker_stats.get(node_id, {})
+    @routes.get("/logical/actors")
+    @dashboard_optional_utils.aiohttp_cache
+    async def get_all_actors(self, req) -> aiohttp.web.Response:
+        actors = await get_or_create_event_loop().run_in_executor(
+            self._executor, self._get_all_actors
+        )
+        return dashboard_optional_utils.rest_response(
+            success=True,
+            message="All actors fetched.",
+            actors=actors,
+            # False to avoid converting Ray resource name to google style.
+            # It's not necessary here because the fields are already
+            # google formatted when protobuf was converted into dict.
+            convert_google_style=False,
         )
 
-        used = node_stats_without_core_worker_stats.store_stats.object_store_bytes_used
+    @routes.get("/logical/actors/{actor_id}")
+    @dashboard_optional_utils.aiohttp_cache
+    async def get_actor(self, req) -> aiohttp.web.Response:
+        actor_id_hex = req.match_info.get("actor_id")
+        actor_id = ActorID(actor_id_hex)
+
+        actor = await get_or_create_event_loop().run_in_executor(
+            self._executor, self.get_actor_by_id, actor_id
+        )
+        return dashboard_optional_utils.rest_response(
+            success=True, message="Actor details fetched.", detail=actor
+        )
+
+    def get_all_node_summary(self) -> List[dict]:
+        result = [
+            self.get_node_summary_by_id(node_id)
+            for node_id in self._node_data_index.nodes.keys()
+        ]
+        return result
+
+    def get_node_summary_by_id(self, node_id: NodeID) -> dict:
+        """
+        Get node summary by node_id.
+
+        - node_info
+        - node_physical_stats: all fields except "workers"
+        - node_stats_without_core_worker_stats
+        """
+        node_info = self._node_data_index.nodes.get(node_id, {})
+        node_physical_stats = {
+            k: v
+            for k, v in self._node_data_index.node_physical_stats.get(
+                node_id, {}
+            ).items()
+            if k != "workers"
+        }
+        node_stats_without_core_worker_stats = (
+            self._node_data_index.node_stats_without_core_worker_stats.get(
+                node_id, node_manager_pb2.GetNodeStatsReply()
+            )
+        )
+
         total = (
             node_stats_without_core_worker_stats.store_stats.object_store_bytes_avail
         )
+        used = node_stats_without_core_worker_stats.store_stats.object_store_bytes_used
         ray_stats = {
             "object_store_used_memory": used,
             "object_store_available_memory": total - used,
         }
 
-        # Copy node physical stats.
-        result = dict(node_physical_stats)
-
-        # Merge data from node_stats.
+        result = node_physical_stats
         result["raylet"] = node_stats_to_dict(node_stats_without_core_worker_stats)
         result["raylet"].update(ray_stats)
-
-        # Merge data from node_info.
         result["raylet"].update(_gcs_node_info_to_dict(node_info))
         death_info = node_info.death_info
         result["raylet"]["stateMessage"] = compose_state_message(
             death_info.reason, death_info.reason_message
         )
+        return result
 
-        # Merge actors.
-        node_info = await DataOrganizer.get_node_info(node_id)
+    def _get_all_actors(self) -> List[dict]:
+        return [
+            self.get_actor_by_id(actor_id)
+            for actor_id in self._actor_data_index.actors.keys()
+        ]
+
+    def get_actor_by_id(self, actor_id: ActorID) -> dict:
+        """
+        Gets a dict about an actor and its worker.
+        Data from:
+        - ActorDataIndex.actors for the actor_id.
+        - NodeDataIndex.workers for the worker_id.
+        - NodeDataIndex.node_physical_stats for gpus on that node.
+        - field "requiredResources" updated.
+        """
+        actor_table_data = self._actor_data_index.actors.get(actor_id, {})
+        actor_dict = actor_table_data_to_dict(actor_table_data)
+        node_id = NodeID.from_hex(actor_dict["address"]["rayletId"])
+        worker_id = WorkerID.from_hex(actor_dict["address"]["workerId"])
+        worker = self.get_worker_by_id(node_id, worker_id)
+        actor_dict.update(worker)
+        required_resources = parse_pg_formatted_resources_to_original(
+            actor_dict["requiredResources"]
+        )
+        actor_dict["requiredResources"] = required_resources
+        return actor_dict
+
+    def get_node_by_id(self, node_id: NodeID) -> dict:
+        """
+        Merges all data about a node_id into a single dictionary.
+
+        - get_node_summary_by_id
+        - workers on that node
+        - actors on that node
+        """
+        result = self.get_node_summary_by_id(node_id)
+
+        # Merge actors. Each actor dict comes from:
+        # 1. ActorDataIndex.actors for the actor_id.
+        # 2. NodeDataIndex.workers for the worker_id.
+        # 3. NodeDataIndex.node_physical_stats for gpus on that node.
+        # 4. field "requiredResources" updated.
+        actor_ids = self._actor_data_index.node_actors.get(node_id, [])
+        # add worker info to each actor dict.
+        result["actors"] = [self.get_actor_by_id(actor_id) for actor_id in actor_ids]
 
         # Merge workers.
         workers = []
-        for worker_id in self._data_index.node_id_pid_worker_id.get(
-            node_id, []
+        for worker_id in self._node_data_index.node_pid_worker_id.get(
+            node_id, {}
         ).values():
-            worker_info = self._data_index.workers.get(worker_id, None)
+            worker_info = self._node_data_index.workers.get(worker_id, None)
             if worker_info is None:
                 continue
             node_physical_stats = worker_info.node_physical_stats_for_worker
@@ -371,8 +425,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         await asyncio.gather(
-            self._update_nodes(),
-            self._update_node_stats(),
+            self._actor_data_index.run(),
+            self._node_data_index.run(),
         )
 
     @staticmethod
