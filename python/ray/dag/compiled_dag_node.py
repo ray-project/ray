@@ -873,7 +873,6 @@ class CompiledDAG:
                     f"got {default_communicator}"
                 )
         self._default_communicator: Optional[Communicator] = default_communicator
-        self._default_communicator_id: Optional[str] = None
 
         # Dict from passed-in communicator to set of type hints that refer to it.
         self._communicator_to_type_hints: Dict[
@@ -1252,8 +1251,6 @@ class CompiledDAG:
             )
             for type_hint in type_hints:
                 type_hint.set_communicator_id(communicator_id)
-            if communicator == self._default_communicator:
-                self._default_communicator_id = communicator_id
 
         # Then, create communicators for collective operations.
         # Reuse an already created communicator for the same set of actors.
@@ -1318,11 +1315,26 @@ class CompiledDAG:
         else:
             type_hint = dag_node.type_hint
         custom_communicator = type_hint.get_custom_communicator()
-        communicator = (
-            self._get_default_communicator(dag_node)
-            if custom_communicator is None
-            else custom_communicator
-        )
+
+        if custom_communicator is None:
+            if self._default_communicator is None:
+                if dag_node._original_type_hint is not None:
+                    assert isinstance(dag_node._original_type_hint, AutoTransportType)
+                    raise ValueError(
+                        f"with_tensor_transport(transport='auto') is used for DAGNode {dag_node}, "
+                        "This requires specifying a default communicator or 'create' for "
+                        "default_communicator when calling experimental_compile()."
+                    )
+                raise ValueError(
+                    f"DAGNode {dag_node} has no custom communicator specified. "
+                    "Please specify a custom communicator for the DAGNode using "
+                    "`with_tensor_transport()`, or specify a communicator or 'create' for "
+                    "default_communicator when calling experimental_compile()."
+                )
+            communicator = self._default_communicator
+        else:
+            communicator = custom_communicator
+
         if communicator is None:
             if collective_op:
                 self._pending_collective_ops.add(dag_node._collective_op)
@@ -1347,35 +1359,6 @@ class CompiledDAG:
                         f"while the P2P operation has actors {actors}."
                     )
             self._communicator_to_type_hints[communicator].add(type_hint)
-
-    def _get_default_communicator(
-        self,
-        dag_node: "ray.dag.DAGNode",
-    ) -> Optional[Communicator]:
-        """
-        Get the default communicator for the DAG node when a custom communicator
-        is not specified.
-
-        Args:
-            dag_node: The DAG node that uses the communicator.
-        Returns:
-            The default communicator for the DAG node.
-        """
-        if not self._create_default_communicator:
-            if dag_node._original_type_hint is not None:
-                assert isinstance(dag_node._original_type_hint, AutoTransportType)
-                raise ValueError(
-                    f"with_tensor_transport(transport='auto') is used for DAGNode {dag_node}, "
-                    "This requires specifying a default communicator or 'create' for "
-                    "default_communicator when calling experimental_compile()."
-                )
-            raise ValueError(
-                f"DAGNode {dag_node} has no custom communicator specified. "
-                "Please specify a custom communicator for the DAGNode using "
-                "`with_tensor_transport()`, or specify a communicator or 'create' for "
-                "default_communicator when calling experimental_compile()."
-            )
-        return self._default_communicator
 
     def _resolve_auto_transport(
         self,

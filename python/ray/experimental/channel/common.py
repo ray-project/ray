@@ -109,8 +109,6 @@ class ChannelOutputType:
         """
         Return the custom NCCL group if one is specified.
         """
-        if hasattr(self, "contains_type") and self.contains_type is not None:
-            return self.contains_type.get_custom_nccl_group()
         return None
 
     def set_communicator_id(self, group_id: str) -> None:
