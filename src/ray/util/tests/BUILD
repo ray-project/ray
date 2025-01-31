@@ -261,3 +261,14 @@ ray_cc_test(
     size = "small",
     tags = ["team:core"],
 )
+
+ray_cc_test(
+    name = "temporary_directory_test",
+    srcs = ["temporary_directory_test.cc"],
+    deps = [
+        "//src/ray/util:temporary_directory",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)

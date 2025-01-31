@@ -297,3 +297,13 @@ ray_cc_library(
         "@com_github_spdlog//:spdlog",
     ],
 )
+
+ray_cc_library(
+    name = "temporary_directory",
+    hdrs = ["temporary_directory.h"],
+    srcs = ["temporary_directory.cc"],
+    deps = [
+        ":util",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
