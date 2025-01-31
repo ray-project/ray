@@ -208,19 +208,19 @@
       run:
         script: >
           python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet
+          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
           --iter-batches numpy
     - __suffix__: pandas
       run:
         script: >
           python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet
+          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
           --iter-batches pandas
     - __suffix__: pyarrow
       run:
         script: >
           python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet
+          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
           --iter-batches pyarrow
 
 - name: to_tf
@@ -353,6 +353,17 @@
     script: >
       python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+
+- name: batch_inference_from_metadata
+  # This benchmark errors because of the issues described in PLAN-383.
+  frequency: manual
+
+  cluster:
+    cluster_compute: autoscaling_hetero_compute.yaml
+
+  run:
+    timeout: 1800
+    script: python batch_inference_benchmark.py
 
 - name: batch_inference_chaos
   stable: False

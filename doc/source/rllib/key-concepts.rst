@@ -1,13 +1,11 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
-
 
 .. _rllib-key-concepts:
 
 Key concepts
 ============
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 To help you get a high-level understanding of how the library works, on this page, you learn about the
 key concepts and general architecture of RLlib.
@@ -38,7 +36,7 @@ AlgorithmConfig and Algorithm
 
 .. tip::
     The following is a quick overview of **RLlib AlgorithmConfigs and Algorithms**.
-    See :ref:`here for a detailed description of the Algorithm class <rllib-algorithms-doc>`.
+    See here for a :ref:`detailed description of the Algorithm class <rllib-algorithms-doc>`.
 
 The RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class serves as a runtime for your RL experiments,
 bringing together all components required for learning an optimal solution to your :ref:`RL environment <rllib-key-concepts-environments>`.
@@ -166,7 +164,7 @@ RLModules
     The following is a quick overview of **RLlib RLModules**.
     See :ref:`here for a detailed description of the RLModule class <rlmodule-guide>`.
 
-`RLModules <rllib-rlmodule.html>`__ are deep-learning framework-specific neural network containers.
+`RLModules <rl-modules.html>`__ are deep-learning framework-specific neural network wrappers.
 RLlib's :ref:`EnvRunners <rllib-key-concepts-env-runners>` use them for computing actions when stepping through the
 :ref:`RL environment <rllib-key-concepts-environments>` and RLlib's :ref:`Learners <rllib-key-concepts-learners>` use
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances for computing losses and gradients before updating them.

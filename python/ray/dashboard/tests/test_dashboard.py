@@ -153,11 +153,11 @@ def test_basic(ray_start_regular):
         namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
     )
     assert dashboard_rpc_address is not None
-    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
-    agent_ports = ray.experimental.internal_kv._internal_kv_get(
+    key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
+    agent_addr = ray.experimental.internal_kv._internal_kv_get(
         key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
-    assert agent_ports is not None
+    assert agent_addr is not None
 
 
 @pytest.mark.skipif(
@@ -383,12 +383,12 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             assert dump_info["result"] is True
             dump_data = dump_info["data"]
             assert len(dump_data["agents"]) == 1
-            node_id, ports = next(iter(dump_data["agents"].items()))
-            ip = ray_start_with_dashboard["node_ip_address"]
-            http_port, grpc_port = ports
+            node_id, (node_ip, http_port, grpc_port) = next(
+                iter(dump_data["agents"].items())
+            )
 
             response = requests.get(
-                f"http://{ip}:{http_port}"
+                f"http://{node_ip}:{http_port}"
                 f"/test/http_get_from_agent?url={quote_plus(target_url)}"
             )
             response.raise_for_status()
@@ -787,7 +787,7 @@ def test_immutable_types():
     d["list"][0] = {str(i): i for i in range(1000)}
     d["dict"] = {str(i): i for i in range(1000)}
     immutable_dict = dashboard_utils.make_immutable(d)
-    assert type(immutable_dict) == dashboard_utils.ImmutableDict
+    assert type(immutable_dict) is dashboard_utils.ImmutableDict
     assert immutable_dict == dashboard_utils.ImmutableDict(d)
     assert immutable_dict == d
     assert dashboard_utils.ImmutableDict(immutable_dict) == immutable_dict
@@ -799,14 +799,14 @@ def test_immutable_types():
     assert "512" in d["dict"]
 
     # Test type conversion
-    assert type(dict(immutable_dict)["list"]) == dashboard_utils.ImmutableList
-    assert type(list(immutable_dict["list"])[0]) == dashboard_utils.ImmutableDict
+    assert type(dict(immutable_dict)["list"]) is dashboard_utils.ImmutableList
+    assert type(list(immutable_dict["list"])[0]) is dashboard_utils.ImmutableDict
 
     # Test json dumps / loads
-    json_str = json.dumps(immutable_dict, cls=dashboard_optional_utils.CustomEncoder)
+    json_str = json.dumps(immutable_dict, cls=dashboard_utils.CustomEncoder)
     deserialized_immutable_dict = json.loads(json_str)
-    assert type(deserialized_immutable_dict) == dict
-    assert type(deserialized_immutable_dict["list"]) == list
+    assert type(deserialized_immutable_dict) is dict
+    assert type(deserialized_immutable_dict["list"]) is list
     assert immutable_dict.mutable() == deserialized_immutable_dict
     dashboard_optional_utils.rest_response(True, "OK", data=immutable_dict)
     dashboard_optional_utils.rest_response(True, "OK", **immutable_dict)
@@ -819,12 +819,12 @@ def test_immutable_types():
 
     # Test get default immutable
     immutable_default_value = immutable_dict.get("not exist list", [1, 2])
-    assert type(immutable_default_value) == dashboard_utils.ImmutableList
+    assert type(immutable_default_value) is dashboard_utils.ImmutableList
 
     # Test recursive immutable
-    assert type(immutable_dict["list"]) == dashboard_utils.ImmutableList
-    assert type(immutable_dict["dict"]) == dashboard_utils.ImmutableDict
-    assert type(immutable_dict["list"][0]) == dashboard_utils.ImmutableDict
+    assert type(immutable_dict["list"]) is dashboard_utils.ImmutableList
+    assert type(immutable_dict["dict"]) is dashboard_utils.ImmutableDict
+    assert type(immutable_dict["list"][0]) is dashboard_utils.ImmutableDict
 
     # Test exception
     with pytest.raises(TypeError):

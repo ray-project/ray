@@ -331,6 +331,12 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # NOTE: While we keep ray[all] for compatibility, you probably
+    # shouldn't use it because it contains too many dependencies
+    # and no deployment needs all of them. Instead you should list
+    # the extras you actually need, see
+    # https://docs.ray.io/en/latest/ray-overview/installation.html#from-wheels
+    #
     # "all" will not include "cpp" anymore. It is a big depedendency
     # that most people do not need.
     #
@@ -539,7 +545,7 @@ def build(build_python, build_java, build_cpp):
     # version of Python to build packages inside the build.sh script. Note
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
-    if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
+    if not os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE"):
         pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
             [
@@ -554,19 +560,20 @@ def build(build_python, build_java, build_cpp):
             env=dict(os.environ, CC="gcc"),
         )
 
-    # runtime env agent dependenceis
-    runtime_env_agent_pip_packages = ["aiohttp"]
-    subprocess.check_call(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "-q",
-            "--target=" + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
-        ]
-        + runtime_env_agent_pip_packages
-    )
+        # runtime env agent dependenceis
+        runtime_env_agent_pip_packages = ["aiohttp"]
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "--target="
+                + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
+            ]
+            + runtime_env_agent_pip_packages
+        )
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:
@@ -794,7 +801,6 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.cli.scripts:cli",
             "serve=ray.serve.scripts:cli",
         ]

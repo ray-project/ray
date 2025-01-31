@@ -29,7 +29,7 @@ def assertDictAlmostEqual(a, b):
         assert k in b, f"Key {k} not found in {b}"
         w = b[k]
 
-        assert type(v) == type(w), f"Type {type(v)} is not {type(w)}"
+        assert type(v) is type(w), f"Type {type(v)} is not {type(w)}"
 
         if isinstance(v, dict):
             assert assertDictAlmostEqual(v, w), f"Subdict {v} != {w}"

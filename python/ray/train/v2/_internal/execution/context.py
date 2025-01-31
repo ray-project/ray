@@ -11,7 +11,7 @@ from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext
-from ray.train.v2._internal.util import _copy_doc, invoke_callbacks_context_managers
+from ray.train.v2._internal.util import _copy_doc, invoke_context_managers
 from ray.train.v2.api.config import RunConfig
 
 if TYPE_CHECKING:
@@ -81,28 +81,45 @@ class TrainContext(TrainRunContext):
 
     @_copy_doc(session.get_metadata)
     def get_metadata(self) -> Dict[str, Any]:
-        raise NotImplementedError
+        from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 
-    @_copy_doc(session.get_experiment_name)
-    def get_experiment_name(self) -> str:
-        # TODO: Resolve run_config.name if it is None
-        return self.run_config.name
+        raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
     @_copy_doc(session.get_trial_name)
     def get_trial_name(self) -> str:
-        raise NotImplementedError
+        from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
+
+        raise DeprecationWarning(
+            _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_name")
+        )
 
     @_copy_doc(session.get_trial_id)
     def get_trial_id(self) -> str:
-        raise NotImplementedError
+        from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
+
+        raise DeprecationWarning(
+            _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_id")
+        )
 
     @_copy_doc(session.get_trial_resources)
     def get_trial_resources(self):
-        raise NotImplementedError
+        from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
+
+        raise DeprecationWarning(
+            _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_resources")
+        )
 
     @_copy_doc(session.get_trial_dir)
     def get_trial_dir(self) -> str:
-        raise NotImplementedError
+        from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
+
+        raise DeprecationWarning(
+            _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_dir")
+        )
+
+    @_copy_doc(session.get_experiment_name)
+    def get_experiment_name(self) -> str:
+        return self.run_config.name
 
     @_copy_doc(session.get_world_size)
     def get_world_size(self) -> int:
@@ -128,6 +145,7 @@ class TrainContext(TrainRunContext):
     def get_storage(self):
         return self.storage_context
 
+    # TODO: Don't allow these private methods to be called from user code.
     def get_result_queue(self):
         return self.execution_context.result_queue
 
@@ -238,10 +256,12 @@ class TrainContext(TrainRunContext):
         would also require the `TrainContextCallback` to be updated as well.
         """
 
-        with invoke_callbacks_context_managers(
-            self.get_context_callbacks(), "on_report"
+        with invoke_context_managers(
+            [
+                callback.on_report
+                for callback in self.execution_context.train_context_callbacks
+            ]
         ):
-
             # Step 1: sync the checkpoint dir name across ranks.
             checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
                 checkpoint_dir_name

@@ -52,6 +52,7 @@ aiohttp==3.9.5
     #   delta-sharing
     #   fsspec
     #   google-auth
+    #   pytest-aiohttp
     #   s3fs
     #   torch-geometric
 aiohttp-cors==0.7.0
@@ -127,6 +128,18 @@ async-generator==1.10
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 async-timeout==4.0.3
     # via redis
+attrs==25.1.0
+    # via
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   aiohttp
+    #   glom
+    #   jschema-to-python
+    #   jsonschema
+    #   jupyter-cache
+    #   open-spiel
+    #   referencing
+    #   sarif-om
+    #   semgrep
 aws-sam-translator==1.81.0
     # via cfn-lint
 aws-xray-sdk==2.12.1
@@ -241,6 +254,8 @@ cffi==1.16.0
     #   pynacl
     #   snowflake-connector-python
     #   soundfile
+cfgv==3.4.0
+    # via pre-commit
 cfn-lint==0.83.3
     # via moto
 charset-normalizer==3.3.2
@@ -474,9 +489,10 @@ feather-format==0.4.1
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 ffmpy==0.3.1
     # via gradio
-filelock==3.13.1
+filelock==3.17.0
     # via
     #   -r /ray/ci/../python/requirements.txt
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   datasets
     #   huggingface-hub
@@ -485,18 +501,6 @@ filelock==3.13.1
     #   torch
     #   transformers
     #   virtualenv
-flake8==3.9.1
-    # via
-    #   -r /ray/ci/../python/requirements/lint-requirements.txt
-    #   flake8-bugbear
-    #   flake8-comprehensions
-    #   flake8-quotes
-flake8-bugbear==21.9.2
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
-flake8-comprehensions==3.10.1
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
-flake8-quotes==2.0.0
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
 flask==2.1.3
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -720,6 +724,8 @@ humanfriendly==10.0
     #   coloredlogs
 hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+identify==2.6.1
+    # via pre-commit
 idna==3.7
     # via
     #   -r /ray/ci/../python/requirements/security-requirements.txt
@@ -782,8 +788,6 @@ isodate==0.6.1
     #   msrest
 isoduration==20.11.0
     # via jsonschema
-isort==5.10.1
-    # via -r /ray/ci/../python/requirements/lint-requirements.txt
 itsdangerous==2.1.2
     # via flask
 jedi==0.19.1
@@ -840,14 +844,14 @@ jsonpointer==2.4
     # via
     #   jsonpatch
     #   jsonschema
-jsonschema==4.17.3
+jsonschema==4.23.0
     # via
     #   -r /ray/ci/../python/requirements.txt
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   altair
     #   aws-sam-translator
     #   cfn-lint
     #   comet-ml
-    #   jsonschema-spec
     #   jupyter-events
     #   jupyterlab-server
     #   nbformat
@@ -855,8 +859,12 @@ jsonschema==4.17.3
     #   openapi-spec-validator
     #   ray
     #   semgrep
-jsonschema-spec==0.1.6
+jsonschema-path==0.3.4
     # via openapi-spec-validator
+jsonschema-specifications==2024.10.1
+    # via
+    #   jsonschema
+    #   openapi-schema-validator
 junit-xml==1.9
     # via cfn-lint
 jupyter-cache==0.6.1
@@ -980,8 +988,6 @@ matplotlib-inline==0.1.6
     # via
     #   ipykernel
     #   ipython
-mccabe==0.6.1
-    # via flake8
 mdit-py-plugins==0.3.5
     # via
     #   jupytext
@@ -1126,6 +1132,8 @@ nevergrad==0.4.3.post7
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 ninja==1.11.1.1
     # via deepspeed
+nodeenv==1.9.1
+    # via pre-commit
 notebook==6.5.7
     # via jupyterlab
 notebook-shim==0.2.3
@@ -1249,9 +1257,11 @@ onnxruntime==1.18.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
 open-spiel==1.4
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
-openapi-schema-validator==0.4.4
-    # via openapi-spec-validator
-openapi-spec-validator==0.5.7
+openapi-schema-validator==0.6.3
+    # via
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   openapi-spec-validator
+openapi-spec-validator==0.7.1
     # via moto
 opencensus==0.11.3
     # via -r /ray/ci/../python/requirements.txt
@@ -1387,7 +1397,7 @@ path==16.14.0
 path-py==12.5.0
     # via pytest-shutil
 pathable==0.4.3
-    # via jsonschema-spec
+    # via jsonschema-path
 pathspec==0.11.2
     # via black
 patsy==0.5.3
@@ -1436,6 +1446,8 @@ portalocker==2.8.2
     # via
     #   azure-cli-telemetry
     #   msal-extensions
+pre-commit==3.5.0
+    # via -r /ray/ci/../python/requirements/lint-requirements.txt
 prometheus-client==0.19.0
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -1536,13 +1548,11 @@ pyasn1-modules==0.3.0
     # via
     #   google-auth
     #   oauth2client
-pycodestyle==2.7.0
-    # via flake8
 pycparser==2.21
     # via cffi
 pycurl==7.45.3
     # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
-pydantic==2.5.0
+pydantic==2.9.2
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -1551,14 +1561,12 @@ pydantic==2.5.0
     #   fastapi
     #   gradio
     #   pyiceberg
-pydantic-core==2.14.1
+pydantic-core==2.23.4
     # via pydantic
 pydot==1.4.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 pydub==0.25.1
     # via gradio
-pyflakes==2.3.1
-    # via flake8
 pygame==2.5.2
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -1624,8 +1632,6 @@ pyro-ppl==1.9.1
     # via botorch
 pyro4==4.82
     # via hpbandster
-pyrsistent==0.20.0
-    # via jsonschema
 pysocks==1.7.1
     # via requests
 pyspark==3.4.1
@@ -1635,6 +1641,7 @@ pyspark==3.4.1
 pytest==7.4.4
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   pytest-aiohttp
     #   pytest-asyncio
     #   pytest-docker-tools
     #   pytest-fixture-config
@@ -1649,6 +1656,8 @@ pytest==7.4.4
     #   pytest-sugar
     #   pytest-timeout
     #   pytest-virtualenv
+pytest-aiohttp==0.3.0
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 pytest-asyncio==0.17.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 pytest-docker-tools==3.1.3
@@ -1735,7 +1744,7 @@ pyyaml==6.0.1
     #   distributed
     #   gradio
     #   huggingface-hub
-    #   jsonschema-spec
+    #   jsonschema-path
     #   jupyter-cache
     #   jupyter-events
     #   jupytext
@@ -1749,6 +1758,7 @@ pyyaml==6.0.1
     #   myst-nb
     #   myst-parser
     #   optuna
+    #   pre-commit
     #   pymars
     #   pytorch-lightning
     #   ray
@@ -1775,6 +1785,11 @@ raydp==1.7.0b20231020.dev0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 redis==4.4.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
+referencing==0.36.2
+    # via
+    #   jsonschema
+    #   jsonschema-path
+    #   jsonschema-specifications
 regex==2024.5.15
     # via
     #   cfn-lint
@@ -1801,7 +1816,7 @@ requests==2.31.0
     #   gradio
     #   gradio-client
     #   huggingface-hub
-    #   jsonschema-spec
+    #   jsonschema-path
     #   jupyterlab-server
     #   kubernetes
     #   mlflow
@@ -1860,6 +1875,10 @@ rich==13.3.2
     #   pyiceberg
     #   semgrep
     #   typer
+rpds-py==0.22.3
+    # via
+    #   jsonschema
+    #   referencing
 rsa==4.7.2
     # via
     #   gcs-oauth2-boto-plugin
@@ -2287,7 +2306,7 @@ types-requests==2.31.0.6
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.8.0
+typing-extensions==4.12.2
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   alembic
@@ -2309,6 +2328,7 @@ typing-extensions==4.8.0
     #   pydantic
     #   pydantic-core
     #   pytorch-lightning
+    #   referencing
     #   semgrep
     #   snowflake-connector-python
     #   sqlalchemy
@@ -2364,10 +2384,11 @@ uvloop==0.19.0
     #   vmc-draas-client-bindings
     #   vsphere-automation-sdk
     # via vsphere-automation-sdk
-virtualenv==20.25.3
+virtualenv==20.29.1
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   pre-commit
     #   pytest-virtualenv
     # via vsphere-automation-sdk
     # via vsphere-automation-sdk

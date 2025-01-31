@@ -71,6 +71,7 @@ ray_cc_test(
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/common:ray_config",
     ],
 )
 
@@ -212,27 +213,51 @@ ray_cc_test(
     tags = ["team:core"],
 )
 
-ray_cc_library(
-    name = "unix_test_utils",
-    hdrs = ["unix_test_utils.h"],
-    srcs = ["unix_test_utils.cc"],
-    deps = [
-        "//src/ray/util",
-        "@boost//:scope_exit",
-    ],
-    testonly = True,
-)
-
 ray_cc_test(
     name = "pipe_logger_test",
     srcs = ["pipe_logger_test.cc"],
     deps = [
-        "//src/ray/util:pipe_logger",
-        ":unix_test_utils",
+        "//src/ray/common/test:testing",
         "//src/ray/util",
+        "//src/ray/util:pipe_logger",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/cleanup",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
+    name = "stream_redirection_utils_test",
+    srcs = ["stream_redirection_utils_test.cc"],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util",
+        "//src/ray/util:stream_redirection_utils",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
-    copts = COPTS,
+    tags = ["team:core"],
+)
+
+ray_cc_test(
+    name = "cmd_line_utils_test",
+    srcs = ["cmd_line_utils_test.cc"],
+    deps = [
+        "//src/ray/util:cmd_line_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
+    name = "temporary_directory_test",
+    srcs = ["temporary_directory_test.cc"],
+    deps = [
+        "//src/ray/util:temporary_directory",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
     tags = ["team:core"],
 )
