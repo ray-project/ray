@@ -132,7 +132,6 @@ def _get_basic_autoscaling_config() -> dict:
         "idle_timeout_minutes": 1.0,
         "initialization_commands": [],
         "max_workers": 508,
-        "max_workers": 508,
         "setup_commands": [],
         "upscaling_speed": 1000,
         "worker_setup_commands": [],
