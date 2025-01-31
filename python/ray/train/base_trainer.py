@@ -26,7 +26,10 @@ from ray.train._internal.storage import (
     _exists_at_fs_path,
     get_fs_and_path,
 )
-from ray.train.constants import _v2_migration_warnings_enabled
+from ray.train.constants import (
+    _v2_migration_warnings_enabled,
+    V2_MIGRATION_GUIDE_MESSAGE,
+)
 from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.utils import _log_deprecation_warning
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -55,15 +58,12 @@ PREPROCESSOR_DEPRECATION_MESSAGE = (
 
 _TRAINER_RESTORE_DEPRECATION_WARNING = (
     "The `restore` and `can_restore` APIs are deprecated and "
-    "will be removed in a future release. "
-    "See this issue for more context: "
-    "https://github.com/ray-project/ray/issues/49454"
+    f"will be removed in a future release. {V2_MIGRATION_GUIDE_MESSAGE}"
 )
 
 _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = (
     "`resume_from_checkpoint` is deprecated and will be removed in an upcoming "
-    "release. See this issue for more context: "
-    "https://github.com/ray-project/ray/issues/49454"
+    f"release. {V2_MIGRATION_GUIDE_MESSAGE}"
 )
 
 
@@ -564,7 +564,7 @@ class BaseTrainer(abc.ABC):
             _log_deprecation_warning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
         # FailureConfig deprecations
-        if self.run_config.failure_config.fail_fast != False:
+        if self.run_config.failure_config.fail_fast:
             _log_deprecation_warning(FAIL_FAST_DEPRECATION_MESSAGE)
 
         # RunConfig deprecations

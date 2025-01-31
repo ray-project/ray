@@ -110,9 +110,6 @@ def test_trainer_deprecated_configs():
             ),
         )
 
-    with pytest.warns(RayDeprecationWarning, match=""):
-        ray.train.SyncConfig()
-
 
 def test_train_context_deprecations(ray_start_4_cpus, tmp_path):
     def train_fn_per_worker(config):

@@ -1,5 +1,5 @@
-Syncing in Tune (train.SyncConfig)
-==================================
+Syncing in Tune
+===============
 
 .. seealso::
 

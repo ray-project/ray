@@ -5,7 +5,12 @@ import ray
 from ray._private.ray_constants import env_bool
 from ray.train import BackendConfig, Checkpoint
 from ray.train._internal.data_config import DataConfig
+from ray.train.base_trainer import (
+    _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
+    _TRAINER_RESTORE_DEPRECATION_WARNING,
+)
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
@@ -64,15 +69,9 @@ class DataParallelTrainer:
         self.data_config = dataset_config or DataConfig()
 
         if resume_from_checkpoint is not None:
-            from ray.train.base_trainer import (
-                _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
-            )
-
             raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
 
         if metadata is not None:
-            from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
-
             raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
     def fit(self) -> Result:
@@ -164,13 +163,9 @@ class DataParallelTrainer:
     @Deprecated
     @classmethod
     def restore(cls, *args, **kwargs):
-        from ray.train.base_trainer import _TRAINER_RESTORE_DEPRECATION_WARNING
-
         raise DeprecationWarning(_TRAINER_RESTORE_DEPRECATION_WARNING)
 
     @Deprecated
     @classmethod
     def can_restore(cls, *args, **kwargs):
-        from ray.train.base_trainer import _TRAINER_RESTORE_DEPRECATION_WARNING
-
         raise DeprecationWarning(_TRAINER_RESTORE_DEPRECATION_WARNING)
