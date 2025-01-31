@@ -21,4 +21,4 @@ prophet==1.1.5
 holidays==0.39
 
 # Google Vizier
-google-vizier-dev[jax]==0.1.22.dev20250131213931; python_version >= "3.10"
+google-vizier[jax]>=0.1.23; python_version >= "3.10"
