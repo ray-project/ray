@@ -1114,7 +1114,9 @@ class CompiledDAG:
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
                     self._track_communicator_usage(
-                        dag_node, {actor_handle}, collective_op=True
+                        dag_node,
+                        dag_node._collective_op.actor_handles,
+                        collective_op=True,
                     )
                     assert not self._overlap_gpu_communication, (
                         "Currently, the overlap_gpu_communication option is not "
@@ -1241,21 +1243,12 @@ class CompiledDAG:
                 raise ValueError(
                     "Communicator creation is not allowed for collective operations."
                 )
-            actors = collective_op.actor_handles
-            if frozenset(actors) in self._actors_to_created_communicator_id:
-                communicator_id = self._actors_to_created_communicator_id[
-                    frozenset(actors)
-                ]
-            else:
-                communicator_id = _init_communicator(
-                    actors,
-                    None,
-                    self._overlap_gpu_communication,
-                )
-                self._actors_to_created_communicator_id[
-                    frozenset(actors)
-                ] = communicator_id
-            collective_op.set_communicator_id(communicator_id)
+            actors = frozenset(collective_op.actor_handles)
+            communicator_id = collective_op.init_communicator(
+                self._actors_to_created_communicator_id.get(actors, None)
+            )
+            if actors not in self._actors_to_created_communicator_id:
+                self._actors_to_created_communicator_id[actors] = communicator_id
 
         if self._pending_p2p_communicator_actors:
             if (
@@ -1286,7 +1279,12 @@ class CompiledDAG:
         """
         if None in actors:
             raise ValueError("Driver cannot participate in the NCCL group.")
-        custom_communicator = dag_node.type_hint.get_custom_communicator()
+        if collective_op:
+            custom_communicator = (
+                dag_node._collective_op.type_hint.get_custom_communicator()
+            )
+        else:
+            custom_communicator = dag_node.type_hint.get_custom_communicator()
         communicator = (
             self._get_default_communicator(dag_node)
             if custom_communicator is None
@@ -1294,7 +1292,7 @@ class CompiledDAG:
         )
         if communicator is None:
             if collective_op:
-                self._pending_collective_ops.add(dag_node)
+                self._pending_collective_ops.add(dag_node._collective_op)
             else:
                 self._pending_p2p_communicator_dag_nodes.add(dag_node)
                 self._pending_p2p_communicator_actors.update(actors)
