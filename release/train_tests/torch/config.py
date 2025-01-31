@@ -22,6 +22,9 @@ class BenchmarkConfig(pydantic.BaseModel):
     # Data
     dataloader_type: DataloaderType = DataloaderType.RAY_DATA
 
+    # Training
+    skip_train_step: bool = False
+
     # Validation
     validate_every_n_steps: int = 0
     skip_validation_at_epoch_end: bool = False
