@@ -2,8 +2,9 @@ import torch
 
 import ray.train
 
-from factory import BenchmarkFactory
 from config import DataloaderType
+from factory import BenchmarkFactory
+from imagenet import get_preprocess_map_fn, IMAGENET_PARQUET_SPLIT_S3_DIRS
 
 
 def mock_dataloader(num_batches: int = 64, batch_size: int = 32):
@@ -42,25 +43,28 @@ class ImageClassificationFactory(BenchmarkFactory):
             raise ValueError(f"Model {self.benchmark_config.model_name} not supported")
 
     def get_train_dataloader(self):
+        batch_size = self.benchmark_config.train_batch_size
         if self.benchmark_config.dataloader_type == DataloaderType.RAY_DATA:
             ds_iterator = self._ray_ds_iterators["train"] = ray.train.get_dataset_shard("train")
-            # TODO: configure this
             return iter(ds_iterator.iter_torch_batches(
-                batch_size=32, local_shuffle_buffer_size=32 * 8, collate_fn=collate_fn
+                batch_size=batch_size,
+                local_shuffle_buffer_size=batch_size * 8,
+                collate_fn=collate_fn,
             ))
         elif self.benchmark_config.dataloader_type == DataloaderType.MOCK:
-            return mock_dataloader(num_batches=64, batch_size=32)
+            return mock_dataloader(num_batches=1024, batch_size=batch_size)
         else:
             raise ValueError(
                 f"Dataloader type {self.benchmark_config.dataloader_type} not supported"
             )
 
     def get_val_dataloader(self):
+        batch_size = self.benchmark_config.validation_batch_size
         if self.benchmark_config.dataloader_type == DataloaderType.RAY_DATA:
             ds_iterator = self._ray_ds_iterators["val"] = ray.train.get_dataset_shard("val")
-            return iter(ds_iterator.iter_torch_batches(batch_size=32, collate_fn=collate_fn))
+            return iter(ds_iterator.iter_torch_batches(batch_size=batch_size, collate_fn=collate_fn))
         elif self.benchmark_config.dataloader_type == DataloaderType.MOCK:
-            return mock_dataloader(num_batches=16, batch_size=32)
+            return mock_dataloader(num_batches=512, batch_size=batch_size)
         else:
             raise ValueError(
                 f"Dataloader type {self.benchmark_config.dataloader_type} not supported"
@@ -69,8 +73,6 @@ class ImageClassificationFactory(BenchmarkFactory):
     def get_ray_datasets(self):
         if self.benchmark_config.dataloader_type != DataloaderType.RAY_DATA:
             return {}
-
-        from imagenet import get_preprocess_map_fn, IMAGENET_PARQUET_SPLIT_S3_DIRS
 
         train_ds = ray.data.read_parquet(
             IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
@@ -106,11 +108,11 @@ class ImageClassificationFactory(BenchmarkFactory):
 
         out = {}
         for ds_key, ds_iterator in self._ray_ds_iterators.items():
-            if ds_key == "val":
-                # TODO: Handle `val` case.
-                break
-
             stats_summary = get_ds_iterator_stats_summary(ds_iterator)
+
+            if not stats_summary.parents:
+                continue
+
             # The split() operator has no metrics, so pull the stats
             # from the final dataset stage.
             ds_output_summary = stats_summary.parents[0]
@@ -123,8 +125,13 @@ class ImageClassificationFactory(BenchmarkFactory):
 
             # TODO: Make this raw data dict easier to access from the iterator.
             # The only way to access this through public API is a string representation.
-            out[ds_key] = {
-                "throughput": ds_throughput,
+            out[f"dataloader/{ds_key}"] = {
+                # Data pipeline throughput:
+                # This is the raw throughput of the data producer before being split
+                # and fed to the training consumers.
+                "producer_throughput": ds_throughput,
+
+                # Training worker (consumer) iterator stats.
                 "iter_stats": {
                     # Prefetch blocks to the training worker.
                     "prefetch_block-avg": iter_stats.wait_time.avg(),

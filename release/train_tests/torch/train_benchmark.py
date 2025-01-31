@@ -17,6 +17,7 @@
 import argparse
 import collections
 import os
+import pprint
 import tempfile
 import time
 from typing import Dict
@@ -73,6 +74,9 @@ class TrainLoopRunner:
             if not self.benchmark_config.skip_validation_at_epoch_end:
                 self.validate_and_checkpoint()
 
+            if ray.train.get_context().get_world_rank() == 0:
+                pprint.pprint(self.get_metrics())
+
     def train_epoch(self):
         with self._timers["train/epoch"].timer():
             self._train_epoch()
@@ -108,14 +112,13 @@ class TrainLoopRunner:
             self._train_batch_idx += 1
 
             if (
-                self.benchmark_config.validate_every_n_steps
+                self.benchmark_config.validate_every_n_steps > 0
                 and self._train_batch_idx % self.benchmark_config.validate_every_n_steps
                 == 0
             ):
                 self.validate_and_checkpoint()
 
-            if self._train_batch_idx % 50 == 0:
-                import pprint
+            if self.benchmark_config.log_metrics_every_n_steps > 0 and self._train_batch_idx % self.benchmark_config.log_metrics_every_n_steps == 0:
                 pprint.pprint(self.get_metrics())
 
             step_start_s = time.perf_counter()
