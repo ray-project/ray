@@ -12,6 +12,7 @@ from packaging.version import Version
 import json
 
 import ray
+import ray.cloudpickle as ray_cloudpickle
 from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray.dashboard.subprocesses.message import (
@@ -347,7 +348,7 @@ async def run_module_inner(
 def run_module(
     child_bound_queue: multiprocessing.Queue,
     parent_bound_queue: multiprocessing.Queue,
-    cls: type[SubprocessModule],
+    serialized_module_cls: bytes,
     config: SubprocessModuleConfig,
     incarnation: int,
     parent_process_pid: int,
@@ -361,7 +362,8 @@ def run_module(
     parent_process_pid: Used to detect if the parent process died every 1s. If it does,
     the module will exit.
     """
-    module_name = cls.__name__
+    module_cls = ray_cloudpickle.loads(serialized_module_cls)
+    module_name = module_cls.__name__
     current_proctitle = setproctitle.getproctitle()
     setproctitle.setproctitle(
         f"ray-dashboard-{module_name}-{incarnation} ({current_proctitle})"
@@ -383,7 +385,7 @@ def run_module(
         run_module_inner(
             child_bound_queue,
             parent_bound_queue,
-            cls,
+            module_cls,
             config,
             incarnation,
             parent_process_pid,

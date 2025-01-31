@@ -205,6 +205,9 @@ class DataOrganizer:
 
     @staticmethod
     async def _get_actor_info(actor):
+        # TODO(ryw): split this into 2 HTTP calls:
+        # - get actor info by actorId from ActorHead (already implemented??)
+        # - get worker info by workerId from NodeHead.
         if actor is None:
             return None
 

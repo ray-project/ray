@@ -7,6 +7,7 @@ import threading
 from dataclasses import dataclass
 from typing import Awaitable, Optional
 
+import ray.cloudpickle as ray_cloudpickle
 from ray.dashboard.optional_deps import aiohttp
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
@@ -138,7 +139,7 @@ class SubprocessModuleHandle:
             args=(
                 self.child_bound_queue,
                 self.parent_bound_queue,
-                self.module_cls,
+                ray_cloudpickle.dumps(self.module_cls),
                 self.config,
                 self.incarnation,
                 os.getpid(),
