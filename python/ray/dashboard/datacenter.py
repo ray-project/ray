@@ -1,5 +1,5 @@
 import logging
-from typing import Any, List, Optional
+from typing import List, Optional
 
 import ray.dashboard.consts as dashboard_consts
 from ray._private.utils import (
@@ -189,41 +189,6 @@ class DataOrganizer:
         ]
 
     @classmethod
-    async def get_agent_infos(
-        cls, target_node_ids: Optional[List[str]] = None
-    ) -> Dict[str, Dict[str, Any]]:
-        """Fetches running Agent (like HTTP/gRPC ports, IP, etc) running on every node
-
-        :param target_node_ids: Target node ids to fetch agent info for. If omitted will
-                                fetch the info for all agents
-        """
-
-        # Return all available agent infos in case no target node-ids were provided
-        target_node_ids = target_node_ids or DataSource.agents.keys()
-
-        missing_node_ids = [
-            node_id for node_id in target_node_ids if node_id not in DataSource.agents
-        ]
-        if missing_node_ids:
-            logger.warning(
-                f"Agent info was not found for {missing_node_ids}"
-                f" (having agent infos for {list(DataSource.agents.keys())})"
-            )
-            return {}
-
-        def _create_agent_info(node_id: str):
-            (node_ip, http_port, grpc_port) = DataSource.agents[node_id]
-
-            return dict(
-                ipAddress=node_ip,
-                httpPort=int(http_port or -1),
-                grpcPort=int(grpc_port or -1),
-                httpAddress=f"{node_ip}:{http_port}",
-            )
-
-        return {node_id: _create_agent_info(node_id) for node_id in target_node_ids}
-
-    @classmethod
     async def get_actor_infos(cls, actor_ids: Optional[List[str]] = None):
         target_actor_table_entries: dict[str, Optional[dict]]
         if actor_ids is not None:
@@ -240,6 +205,9 @@ class DataOrganizer:
 
     @staticmethod
     async def _get_actor_info(actor):
+        # TODO(ryw): split this into 2 HTTP calls:
+        # - get actor info by actorId from ActorHead (already implemented??)
+        # - get worker info by workerId from NodeHead.
         if actor is None:
             return None
 
