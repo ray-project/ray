@@ -106,7 +106,9 @@ class TrainLoopRunner:
             batch_size = len(labels)
             local_throughput = batch_size / step_elapsed
             # TODO: This calculation assumes that all workers have the same throughput.
-            global_throughput = local_throughput * ray.train.get_context().get_world_size()
+            global_throughput = (
+                local_throughput * ray.train.get_context().get_world_size()
+            )
             self._train_throughput.add(global_throughput)
 
             self._train_batch_idx += 1
@@ -118,7 +120,12 @@ class TrainLoopRunner:
             ):
                 self.validate_and_checkpoint()
 
-            if self.benchmark_config.log_metrics_every_n_steps > 0 and self._train_batch_idx % self.benchmark_config.log_metrics_every_n_steps == 0:
+            if (
+                self.benchmark_config.log_metrics_every_n_steps > 0
+                and self._train_batch_idx
+                % self.benchmark_config.log_metrics_every_n_steps
+                == 0
+            ):
                 pprint.pprint(self.get_metrics())
 
             step_start_s = time.perf_counter()
@@ -223,12 +230,14 @@ class TrainLoopRunner:
 
         # Timers
         for key, timer in self._timers.items():
-            metrics.update({
-                f"{key}-avg": timer.avg(),
-                f"{key}-min": timer.min(),
-                f"{key}-max": timer.max(),
-                f"{key}-total": timer.get(),
-            })
+            metrics.update(
+                {
+                    f"{key}-avg": timer.avg(),
+                    f"{key}-min": timer.min(),
+                    f"{key}-max": timer.max(),
+                    f"{key}-total": timer.get(),
+                }
+            )
 
         # Throughput
         metrics["train/global_throughput"] = self._train_throughput.avg()
@@ -253,7 +262,9 @@ def parse_cli_args():
         assert field_type
 
         if field_type is bool:
-            assert not field_info.default, "Only supports bool flags that are False by default."
+            assert (
+                not field_info.default
+            ), "Only supports bool flags that are False by default."
             parser.add_argument(
                 f"--{field}", action="store_true", default=field_info.default
             )
