@@ -2,8 +2,11 @@ import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Optional, Set
+from typing import Optional, Set, List, Tuple
+import os
+import psutil
 
+import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
@@ -14,6 +17,9 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._raylet import GcsClient
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
+from ray._private.utils import get_or_create_event_loop
+from ray._private.async_utils import enable_monitor_loop_lag
+from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import (
     DashboardHeadModule,
@@ -26,6 +32,11 @@ try:
 except ImportError:
     prometheus_client = None
 
+
+# Type alias for SubprocessModuleHandle
+# We can't import SubprocessModuleHandle because it's non-minimal only, and importing it
+# in minimal Ray causes ImportError.
+TypeForSubprocessModuleHandle = object
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +84,11 @@ class DashboardHead:
         node_ip_address: str,
         grpc_port: int,
         log_dir: str,
+        logging_level: int,
+        logging_format: str,
+        logging_filename: str,
+        logging_rotate_bytes: int,
+        logging_rotate_backup_count: int,
         temp_dir: str,
         session_dir: str,
         minimal: bool,
@@ -86,6 +102,11 @@ class DashboardHead:
             http_port_retries: The maximum retry to bind ports for the Http server.
             gcs_address: The GCS address in the {address}:{port} format.
             log_dir: The log directory. E.g., /tmp/session_latest/logs.
+            logging_level: The logging level (e.g. logging.INFO, logging.DEBUG)
+            logging_format: The format string for log messages
+            logging_filename: The name of the log file
+            logging_rotate_bytes: Max size in bytes before rotating log file
+            logging_rotate_backup_count: Number of backup files to keep when rotating
             temp_dir: The temp directory. E.g., /tmp.
             session_dir: The session directory. E.g., tmp/session_latest.
             minimal: Whether or not it will load the minimal modules.
@@ -120,12 +141,19 @@ class DashboardHead:
         self.gcs_address = gcs_address
         self.cluster_id_hex = cluster_id_hex
         self.log_dir = log_dir
+        self.logging_level = logging_level
+        self.logging_format = logging_format
+        self.logging_filename = logging_filename
+        self.logging_rotate_bytes = logging_rotate_bytes
+        self.logging_rotate_backup_count = logging_rotate_backup_count
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.session_name = Path(session_dir).name
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = node_ip_address
+        self.pid = os.getpid()
+        self.dashboard_proc = psutil.Process()
         DataOrganizer.head_node_ip = self.ip
 
         if self.minimal:
@@ -140,7 +168,11 @@ class DashboardHead:
         # be configured to expose APIs.
         self.http_server = None
 
-    async def _configure_http_server(self, modules):
+    async def _configure_http_server(
+        self,
+        dashboard_head_modules: List[DashboardHeadModule],
+        subprocess_module_handles: List[TypeForSubprocessModuleHandle],
+    ):
         from ray.dashboard.http_server_head import HttpServerDashboardHead
 
         self.http_server = HttpServerDashboardHead(
@@ -152,7 +184,7 @@ class DashboardHead:
             self.session_name,
             self.metrics,
         )
-        await self.http_server.run(modules)
+        await self.http_server.run(dashboard_head_modules, subprocess_module_handles)
 
     @property
     def http_session(self):
@@ -176,8 +208,41 @@ class DashboardHead:
         except Exception:
             logger.warning("Failed to check gcs aliveness, will retry", exc_info=True)
 
-    def _load_modules(self, modules_to_load: Optional[Set[str]] = None):
-        """Load dashboard head modules.
+    def _load_modules(
+        self, modules_to_load: Optional[Set[str]] = None
+    ) -> Tuple[List[DashboardHeadModule], List[TypeForSubprocessModuleHandle]]:
+        """
+        If minimal, only load DashboardHeadModule.
+        If non-minimal, load both kinds of modules: DashboardHeadModule, SubprocessModule.
+
+        If modules_to_load is not None, only load the modules in the set.
+        """
+        dashboard_head_modules = self._load_dashboard_head_modules(modules_to_load)
+        subprocess_module_handles = self._load_subprocess_module_handles(
+            modules_to_load
+        )
+
+        all_names = {type(m).__name__ for m in dashboard_head_modules} | {
+            h.module_cls.__name__ for h in subprocess_module_handles
+        }
+        assert len(all_names) == len(dashboard_head_modules) + len(
+            subprocess_module_handles
+        ), "Duplicate module names. A module name can't be a DashboardHeadModule and a SubprocessModule at the same time."
+
+        # Verify modules are loaded as expected.
+        if modules_to_load is not None and all_names != modules_to_load:
+            assert False, (
+                f"Actual loaded modules {all_names}, doesn't match the requested modules "
+                f"to load, {modules_to_load}."
+            )
+
+        self._modules_loaded = True
+        return dashboard_head_modules, subprocess_module_handles
+
+    def _load_dashboard_head_modules(
+        self, modules_to_load: Optional[Set[str]] = None
+    ) -> List[DashboardHeadModule]:
+        """Load `DashboardHeadModule`s.
 
         Args:
             modules: A list of module names to load. By default (None),
@@ -197,30 +262,76 @@ class DashboardHead:
             ip=self.ip,
             http_host=self.http_host,
             http_port=self.http_port,
-            metrics=self.metrics,
         )
 
         # Select modules to load.
-        modules_to_load = modules_to_load or {m.__name__ for m in head_cls_list}
-        logger.info("Modules to load: %s", modules_to_load)
+        if modules_to_load is not None:
+            head_cls_list = [
+                cls for cls in head_cls_list if cls.__name__ in modules_to_load
+            ]
+
+        logger.info(f"DashboardHeadModules to load: {modules_to_load}.")
 
         for cls in head_cls_list:
-            logger.info("Loading %s: %s", DashboardHeadModule.__name__, cls)
-            if cls.__name__ in modules_to_load:
-                c = cls(config)
-                modules.append(c)
+            logger.info(f"Loading {DashboardHeadModule.__name__}: {cls}.")
+            c = cls(config)
+            modules.append(c)
 
-        # Verify modules are loaded as expected.
-        loaded_modules = {type(m).__name__ for m in modules}
-        if loaded_modules != modules_to_load:
-            assert False, (
-                "Actual loaded modules, {}, doesn't match the requested modules "
-                "to load, {}".format(loaded_modules, modules_to_load)
-            )
-
-        self._modules_loaded = True
-        logger.info("Loaded %d modules. %s", len(modules), modules)
+        logger.info(f"Loaded {len(modules)} dashboard head modules: {modules}.")
         return modules
+
+    def _load_subprocess_module_handles(
+        self, modules_to_load: Optional[Set[str]] = None
+    ) -> List[TypeForSubprocessModuleHandle]:
+        """
+        If minimal, return an empty list.
+        If non-minimal, load `SubprocessModule`s by creating Handles to them.
+
+        Args:
+            modules: A list of module names to load. By default (None),
+                it loads all modules.
+        """
+        if self.minimal:
+            logger.info("Subprocess modules not loaded in minimal mode.")
+            return []
+
+        from ray.dashboard.subprocesses.module import (
+            SubprocessModule,
+            SubprocessModuleConfig,
+        )
+        from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
+
+        handles = []
+        subprocess_cls_list = dashboard_utils.get_all_modules(SubprocessModule)
+
+        loop = ray._private.utils.get_or_create_event_loop()
+        config = SubprocessModuleConfig(
+            cluster_id_hex=self.cluster_id_hex,
+            gcs_address=self.gcs_address,
+            session_name=self.session_name,
+            temp_dir=self.temp_dir,
+            session_dir=self.session_dir,
+            logging_level=self.logging_level,
+            logging_format=self.logging_format,
+            log_dir=self.log_dir,
+            logging_filename=self.logging_filename,
+            logging_rotate_bytes=self.logging_rotate_bytes,
+            logging_rotate_backup_count=self.logging_rotate_backup_count,
+        )
+        # Select modules to load.
+        if modules_to_load is not None:
+            subprocess_cls_list = [
+                cls for cls in subprocess_cls_list if cls.__name__ in modules_to_load
+            ]
+
+        for cls in subprocess_cls_list:
+            logger.info(f"Loading {SubprocessModule.__name__}: {cls}.")
+            handle = SubprocessModuleHandle(loop, cls, config)
+            handle.start_module()
+            handles.append(handle)
+
+        logger.info(f"Loaded {len(handles)} subprocess modules: {handles}.")
+        return handles
 
     async def _setup_metrics(self, gcs_aio_client):
         metrics = DashboardPrometheusMetrics()
@@ -256,6 +367,39 @@ class DashboardHead:
 
         return metrics
 
+    @dashboard_utils.async_loop_forever(dashboard_consts.METRICS_RECORD_INTERVAL_S)
+    async def _record_dashboard_metrics(self):
+        labels = {
+            "ip": self.ip,
+            "pid": self.pid,
+            "Version": ray.__version__,
+            "Component": "dashboard",
+            "SessionName": self.session_name,
+        }
+        assert "dashboard" in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
+        self.metrics.metrics_dashboard_cpu.labels(**labels).set(
+            float(self.dashboard_proc.cpu_percent())
+        )
+        self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
+            float(self.dashboard_proc.memory_full_info().uss) / 1.0e6
+        )
+        self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
+            float(self.dashboard_proc.memory_full_info().rss) / 1.0e6
+        )
+
+        loop = get_or_create_event_loop()
+
+        self.metrics.metrics_event_loop_tasks.labels(**labels).set(
+            len(asyncio.all_tasks(loop))
+        )
+
+        # Report the max lag since the last export, if any.
+        if self._event_loop_lag_s_max is not None:
+            self.metrics.metrics_event_loop_lag.labels(**labels).set(
+                float(self._event_loop_lag_s_max)
+            )
+            self._event_loop_lag_s_max = None
+
     async def run(self):
         gcs_address = self.gcs_address
 
@@ -270,6 +414,17 @@ class DashboardHead:
 
         if not self.minimal:
             self.metrics = await self._setup_metrics(self.gcs_aio_client)
+            self._event_loop_lag_s_max: Optional[float] = None
+
+            def on_new_lag(lag_s):
+                # Record the lag. It's exported in `record_dashboard_metrics`
+                self._event_loop_lag_s_max = max(self._event_loop_lag_s_max or 0, lag_s)
+
+            enable_monitor_loop_lag(on_new_lag)
+
+            self.record_dashboard_metrics_task = asyncio.create_task(
+                self._record_dashboard_metrics()
+            )
 
         try:
             assert internal_kv._internal_kv_initialized()
@@ -296,12 +451,16 @@ class DashboardHead:
                 except Exception:
                     logger.exception(f"Error notifying coroutine {co}")
 
-        modules = self._load_modules(self._modules_to_load)
+        dashboard_head_modules, subprocess_module_handles = self._load_modules(
+            self._modules_to_load
+        )
 
         http_host, http_port = self.http_host, self.http_port
         if self.serve_frontend:
             logger.info("Initialize the http server.")
-            await self._configure_http_server(modules)
+            await self._configure_http_server(
+                dashboard_head_modules, subprocess_module_handles
+            )
             http_host, http_port = self.http_server.get_address()
             logger.info(f"http server initialized at {http_host}:{http_port}")
         else:
@@ -341,7 +500,7 @@ class DashboardHead:
             DataOrganizer.purge(),
             DataOrganizer.organize(self._executor),
         ]
-        for m in modules:
+        for m in dashboard_head_modules:
             concurrent_tasks.append(m.run(self.server))
         if self.server:
             concurrent_tasks.append(self.server.wait_for_termination())

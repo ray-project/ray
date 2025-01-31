@@ -43,22 +43,10 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
             assert dump_info["result"] is True
             dump_data = dump_info["data"]
             assert len(dump_data["nodes"]) == 1
-            assert len(dump_data["agents"]) == 1
-
-            response = requests.get(webui_url + "/test/notified_agents")
-            response.raise_for_status()
-            try:
-                notified_agents = response.json()
-            except Exception as ex:
-                logger.info("failed response: %s", response.text)
-                raise ex
-            assert notified_agents["result"] is True
-            notified_agents = notified_agents["data"]
-            assert len(notified_agents) == 1
-            assert notified_agents == dump_data["agents"]
             break
+
         except (AssertionError, requests.exceptions.ConnectionError) as e:
-            logger.info("Retry because of %s", e)
+            logger.exception("Retry")
         finally:
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
@@ -190,10 +178,6 @@ def test_multi_nodes_info(
                 else:
                     assert detail["raylet"]["state"] == "DEAD"
                     assert detail["raylet"].get("objectStoreAvailableMemory", 0) == 0
-            response = requests.get(webui_url + "/test/dump?key=agents")
-            response.raise_for_status()
-            agents = response.json()
-            assert len(agents["data"]["agents"]) == 3
             return True
         except Exception as ex:
             logger.info(ex)
