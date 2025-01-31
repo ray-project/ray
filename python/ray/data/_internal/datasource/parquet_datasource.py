@@ -195,6 +195,7 @@ class ParquetDatasource(Datasource):
                 ray.get_runtime_context().get_node_id(), soft=False
             )
 
+        self.unresolved_path = paths
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
 
         # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
