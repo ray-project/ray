@@ -27,6 +27,12 @@ def collate_fn(batch):
     return batch["image"], batch["label"]
 
 class ImageClassificationFactory(BenchmarkFactory):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Populated if Ray Data is being used.
+        self._ray_ds_iterators = {}
+
     def get_model(self):
         if self.benchmark_config.model_name == "resnet50":
             from torchvision.models import resnet50
@@ -37,7 +43,7 @@ class ImageClassificationFactory(BenchmarkFactory):
 
     def get_train_dataloader(self):
         if self.benchmark_config.dataloader_type == DataloaderType.RAY_DATA:
-            ds_iterator = ray.train.get_dataset_shard("train")
+            ds_iterator = self._ray_ds_iterators["train"] = ray.train.get_dataset_shard("train")
             # TODO: configure this
             return iter(ds_iterator.iter_torch_batches(
                 batch_size=32, local_shuffle_buffer_size=32 * 8, collate_fn=collate_fn
@@ -51,7 +57,7 @@ class ImageClassificationFactory(BenchmarkFactory):
 
     def get_val_dataloader(self):
         if self.benchmark_config.dataloader_type == DataloaderType.RAY_DATA:
-            ds_iterator = ray.train.get_dataset_shard("val")
+            ds_iterator = self._ray_ds_iterators["val"] = ray.train.get_dataset_shard("val")
             return iter(ds_iterator.iter_torch_batches(batch_size=32, collate_fn=collate_fn))
         elif self.benchmark_config.dataloader_type == DataloaderType.MOCK:
             return mock_dataloader(num_batches=16, batch_size=32)
@@ -84,3 +90,93 @@ class ImageClassificationFactory(BenchmarkFactory):
 
     def get_loss_fn(self):
         return torch.nn.CrossEntropyLoss()
+
+    def get_dataloader_metrics(self):
+        if self.benchmark_config.dataloader_type != DataloaderType.RAY_DATA:
+            return {}
+
+        def get_ds_iterator_stats_summary(ds_iterator):
+            stats = ray.get(ds_iterator._coord_actor.stats.remote())
+            summary = stats.to_summary()
+            summary.iter_stats = ds_iterator._iter_stats.to_summary().iter_stats
+            summary.iter_stats.streaming_split_coord_time.add(
+                stats.streaming_split_coordinator_s.get()
+            )
+            return summary
+
+        out = {}
+        for ds_key, ds_iterator in self._ray_ds_iterators.items():
+            if ds_key == "val":
+                # TODO: Handle `val` case.
+                break
+
+            stats_summary = get_ds_iterator_stats_summary(ds_iterator)
+            # The split() operator has no metrics, so pull the stats
+            # from the final dataset stage.
+            ds_output_summary = stats_summary.parents[0]
+            ds_throughput = (
+                ds_output_summary.operators_stats[-1].output_num_rows["sum"]
+                / ds_output_summary.get_total_wall_time()
+            )
+            
+            iter_stats = stats_summary.iter_stats
+
+            # TODO: Make this raw data dict easier to access from the iterator.
+            # The only way to access this through public API is a string representation.
+            out[ds_key] = {
+                "throughput": ds_throughput,
+                "iter_stats": {
+                    # Prefetch blocks to the training worker.
+                    "prefetch_block-avg": iter_stats.wait_time.avg(),
+                    "prefetch_block-min": iter_stats.wait_time.min(),
+                    "prefetch_block-max": iter_stats.wait_time.max(),
+                    "prefetch_block-total": iter_stats.wait_time.get(),
+
+                    # Actually fetch the block to the training worker.
+                    "fetch_block-avg": iter_stats.get_time.avg(),
+                    "fetch_block-min": iter_stats.get_time.min(),
+                    "fetch_block-max": iter_stats.get_time.max(),
+                    "fetch_block-total": iter_stats.get_time.get(),
+
+                    # Convert a block to a batch by taking a view of the block.
+                    # (This may also do some operations to combine chunks of data
+                    # to make a contiguous chunk memory.)
+                    "block_to_batch-avg": iter_stats.next_time.avg(),
+                    "block_to_batch-min": iter_stats.next_time.min(),
+                    "block_to_batch-max": iter_stats.next_time.max(),
+                    "block_to_batch-total": iter_stats.next_time.get(),
+
+                    # Convert the block to the user-specified batch format (ex: numpy/pandas).
+                    "format_batch-avg": iter_stats.format_time.avg(),
+                    "format_batch-min": iter_stats.format_time.min(),
+                    "format_batch-max": iter_stats.format_time.max(),
+                    "format_batch-total": iter_stats.format_time.get(),
+
+                    # UDF or default collate function converting numpy array -> torch.Tensor.
+                    "collate-avg": iter_stats.collate_time.avg(),
+                    "collate-min": iter_stats.collate_time.min(),
+                    "collate-max": iter_stats.collate_time.max(),
+                    "collate-total": iter_stats.collate_time.get(),
+
+                    # Default finalize function moves torch.Tensor to the assigned train worker GPU.
+                    "finalize-avg": iter_stats.finalize_batch_time.avg(),
+                    "finalize-min": iter_stats.finalize_batch_time.min(),
+                    "finalize-max": iter_stats.finalize_batch_time.max(),
+                    "finalize-total": iter_stats.finalize_batch_time.get(),
+
+                    # Training blocked time
+                    "time_spent_blocked-avg": iter_stats.block_time.avg(),
+                    "time_spent_blocked-min": iter_stats.block_time.min(),
+                    "time_spent_blocked-max": iter_stats.block_time.max(),
+                    "time_spent_blocked-total": iter_stats.block_time.get(),
+
+                    # Training time
+                    "time_spent_training-avg": iter_stats.user_time.avg(),
+                    "time_spent_training-min": iter_stats.user_time.min(),
+                    "time_spent_training-max": iter_stats.user_time.max(),
+                    "time_spent_training-total": iter_stats.user_time.get(),        
+                }
+            }
+
+        return out
+

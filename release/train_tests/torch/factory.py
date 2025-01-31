@@ -26,3 +26,6 @@ class BenchmarkFactory:
 
     def get_loss_fn(self):
         raise NotImplementedError
+
+    def get_dataloader_metrics(self) -> Dict:
+        raise NotImplementedError

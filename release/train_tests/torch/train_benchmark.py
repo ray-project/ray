@@ -45,7 +45,7 @@ class TrainLoopRunner:
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
         self._train_batch_idx: int = 0
-        self._train_epoch: int = 0
+        self._train_epoch_idx: int = 0
 
         # Load checkpoint if available.
         checkpoint = ray.train.get_checkpoint()
@@ -54,7 +54,7 @@ class TrainLoopRunner:
                 self.load_checkpoint(temp_checkpoint_dir)
 
     def run(self):
-        starting_epoch = self._train_epoch
+        starting_epoch = self._train_epoch_idx
 
         for _ in range(starting_epoch, self.benchmark_config.num_epochs):
             self.train_epoch()
@@ -63,16 +63,15 @@ class TrainLoopRunner:
                 self.validate_and_checkpoint()
 
     def train_epoch(self):
+        self._train_epoch()
+
+    def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
-            print(f"Training epoch starting @ epoch={self._train_epoch}")
+            print(f"Training epoch starting @ epoch={self._train_epoch_idx}")
 
-        batch = None
+        batch = self.get_next_batch(self.train_dataloader)
 
-        # Catch up to the starting batch index upon restoration.
-        for _ in range(self._train_batch_idx + 1):
-            batch = self.get_next_batch(self.train_dataloader)
-            if not batch:
-                break
+        # TODO: Handle the case where we restored to a middle of the epoch.
 
         while batch:
             input_batch, labels = batch
@@ -88,7 +87,10 @@ class TrainLoopRunner:
             batch = self.get_next_batch(self.train_dataloader)
             self._train_batch_idx += 1
 
-        self._train_epoch += 1
+            if self._train_batch_idx % 50 == 0:
+                print(self.factory.get_dataloader_metrics())
+
+        self._train_epoch_idx += 1
         self._train_batch_idx = 0
 
     def get_next_batch(self, dataloader):
@@ -119,7 +121,7 @@ class TrainLoopRunner:
     def validate(self) -> Dict[str, float]:
         if ray.train.get_context().get_world_rank() == 0:
             print(
-                f"Validation starting @ epoch={self._train_epoch} batch={self._train_batch_idx}"
+                f"Validation starting @ epoch={self._train_epoch_idx} batch={self._train_batch_idx}"
             )
 
         self.model.eval()
@@ -146,7 +148,7 @@ class TrainLoopRunner:
         )
 
         train_state = torch.load(os.path.join(local_dir, "train_state.pt"))
-        self._train_epoch = train_state["epoch"]
+        self._train_epoch_idx = train_state["epoch"]
         self._train_batch_idx = train_state["batch_idx"]
         print(
             f"[Fault Tolerance] Restored to epoch={self._train_epoch}, train_batch_idx={self._train_batch_idx}"
@@ -154,7 +156,7 @@ class TrainLoopRunner:
 
     def save_checkpoint(self, local_dir: str):
         train_state = {
-            "epoch": self._train_epoch,
+            "epoch": self._train_epoch_idx,
             "batch_idx": self._train_batch_idx,
         }
         torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
