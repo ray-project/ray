@@ -44,6 +44,8 @@ TEST(LoggingUtilTest, RedirectStderr) {
   const std::string test_file_path = absl::StrFormat("%s.err", GenerateUUIDV4());
   const std::string log_file_path1 = test_file_path;
   const std::string log_file_path2 = absl::StrFormat("%s.1", test_file_path);
+  log_files.emplace_back(log_file_path1);
+  log_files.emplace_back(log_file_path2);
 
   // Cleanup generated log files at test completion; because loggers are closed at process
   // termination via exit hook, and hooked functions are executed at the reverse order of
