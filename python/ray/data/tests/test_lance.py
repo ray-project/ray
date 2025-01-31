@@ -118,7 +118,9 @@ def test_lance_read_many_files(data_path):
 def test_ray_sink(data_path):
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
 
-    ray.data.range(10).write_lance(lambda x: {"id": x["id"], "str": f"str-{x['id']}"})
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_lance(data_path)
 
     ds = lance.dataset(data_path)
     ds.count_rows() == 10
