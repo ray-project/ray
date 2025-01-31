@@ -7,6 +7,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
+    FrozenSet,
     List,
     Tuple,
     Union,
@@ -797,7 +798,7 @@ class CompiledDAG:
         enable_asyncio: bool = False,
         max_inflight_executions: Optional[int] = None,
         overlap_gpu_communication: Optional[bool] = None,
-        default_communicator: Optional[Union[Communicator, str]] = None,
+        default_communicator: Optional[Union[Communicator, str]] = "create",
     ):
         """
         Args:
@@ -864,6 +865,9 @@ class CompiledDAG:
                 )
         self._default_communicator: Optional[Communicator] = default_communicator
         self._default_communicator_id: Optional[str] = None
+
+        self._provided_communicators: Set[Communicator] = set()
+        self._created_communicators: Set[Communicator] = set()
 
         self._pending_p2p_communicator_actors: Set["ray.actor.ActorHandle"] = set()
         self._pending_p2p_communicator_dag_nodes: Set["ray.dag.DAGNode"] = set()
@@ -1221,12 +1225,9 @@ class CompiledDAG:
         """
         Initialize communicators for the DAG.
         """
-        for communicator, actors in self._communicator_to_actors.items():
-            if None in actors:
-                raise ValueError("Driver cannot participate in the NCCL group.")
-
+        for communicator in self._provided_communicators:
             communicator_id = _init_communicator(
-                list(actors),
+                communicator.get_actor_handles(),
                 communicator,
                 self._overlap_gpu_communication,
             )
@@ -1235,7 +1236,9 @@ class CompiledDAG:
             if communicator == self._default_communicator:
                 self._default_communicator_id = communicator_id
 
-        actors_to_created_communicator_id = Dict[Set["ray.actor.ActorHandle"], str]
+        actors_to_created_communicator_id: Dict[
+            FrozenSet["ray.actor.ActorHandle"], str
+        ] = {}
         for collective_op in self._pending_collective_ops:
             if not self._create_default_communicator:
                 raise ValueError(
@@ -1253,18 +1256,22 @@ class CompiledDAG:
                 actors_to_created_communicator_id[frozenset(actors)] = communicator_id
             collective_op.set_communicator_id(communicator_id)
 
-        if self._pending_p2p_communicator_actors in actors_to_created_communicator_id:
-            p2p_communicator_id = actors_to_created_communicator_id[
+        if self._pending_p2p_communicator_actors:
+            if (
                 frozenset(self._pending_p2p_communicator_actors)
-            ]
-        else:
-            p2p_communicator_id = _init_communicator(
-                list(self._pending_p2p_communicator_actors),
-                None,
-                self._overlap_gpu_communication,
-            )
-        for dag_node in self._pending_p2p_communicator_dag_nodes:
-            dag_node.type_hint.set_communicator_id(p2p_communicator_id)
+                in actors_to_created_communicator_id
+            ):
+                p2p_communicator_id = actors_to_created_communicator_id[
+                    frozenset(self._pending_p2p_communicator_actors)
+                ]
+            else:
+                p2p_communicator_id = _init_communicator(
+                    list(self._pending_p2p_communicator_actors),
+                    None,
+                    self._overlap_gpu_communication,
+                )
+            for dag_node in self._pending_p2p_communicator_dag_nodes:
+                dag_node.type_hint.set_communicator_id(p2p_communicator_id)
 
     def _track_communicator_usage(
         self,
@@ -1276,7 +1283,8 @@ class CompiledDAG:
         If custom_communicator is provided (i.e., not None), use it.
         Otherwise, use the default communicator.
         """
-
+        if None in actors:
+            raise ValueError("Driver cannot participate in the NCCL group.")
         custom_communicator = dag_node.type_hint.get_custom_communicator()
         communicator = (
             self._get_default_communicator(dag_node)
@@ -2992,7 +3000,7 @@ def build_compiled_dag_from_ray_dag(
     enable_asyncio: bool = False,
     max_inflight_executions: Optional[int] = None,
     overlap_gpu_communication: Optional[bool] = None,
-    default_communicator: Optional[Union[Communicator, str]] = None,
+    default_communicator: Optional[Union[Communicator, str]] = "create",
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         submit_timeout,
