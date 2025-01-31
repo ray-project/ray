@@ -589,8 +589,6 @@ class ExecutableTask:
         # # NCCL collective args:
         # args = [CollectiveOp, NCCLChannelWrapper(self.nccl_ch)]
 
-        # Task lambda should take in a Tuple[TaskArgs, Optional[Exception]].
-        # Task can decide whether to re-raise the Exception or try to do something with it.
         # t = ExecutableTask(task, args, stream: Optional[Stream])
 
         # [TODO:P0] This function should have structure like this:
@@ -611,7 +609,24 @@ class ExecutableTask:
 
         # [TODO:P1] Pass the stream to use at ExecutableTask constructor
         # instead of each task needing access to all streams.
-        # [TODO] Move to `self._stream`.
+        # [TODO:P1] Task lambda should take in a Tuple[TaskArgs, Optional[Exception]].
+        # Task can decide whether to re-raise the Exception or do something with it.
+        def exec_method(
+            method,
+            input_exc: Optional[Exception],
+            nccl_input_values: List[Any],
+            *input_values,
+            **resolved_kwargs,
+        ):
+            if input_exc is not None:
+                return
+            else:
+                assert input_values is not None
+                if nccl_input_values is not None:
+                    input_values = tuple(nccl_input_values) + input_values
+                return method(*input_values, **resolved_kwargs)
+
+        # [TODO:P1] Move to `self._stream`.
         if self.requires_nccl_read:
             stream = self._recv_stream
         elif self.requires_nccl_write:
@@ -649,12 +664,13 @@ class ExecutableTask:
                 except Exception as exc:
                     input_values = None
                     input_exc = exc
-                    # [NOTE] overlap_gpu_communication should only be used in two places:
+                    # [TODO:P1] overlap_gpu_communication should only be used
+                    # in two places:
                     # - deciding how many streams to create
                     # - in wrap_and_set_intermediate_future: when deciding whether
                     #   to produce a GPUFuture or a ResolvedFuture
                     self.wrap_and_set_intermediate_future(
-                        exc, wrap_in_gpu_future=overlap_gpu_communication
+                        exc, wrap_in_gpu_future=False
                     )
 
             if self.requires_nccl_write:
@@ -668,15 +684,6 @@ class ExecutableTask:
                     input_values = [exc]
                     input_exc = None
 
-        def exec_method(method, input_exc, nccl_input_values, *input_values, **resolved_kwargs):
-            if input_exc is not None:
-                return
-            else:
-                assert input_values is not None
-                if nccl_input_values is not None:
-                    input_values = tuple(nccl_input_values) + input_values
-                return method(*input_values, **resolved_kwargs)
-
         if self.nccl_op is not None:
             method = self.nccl_op.execute
         else:
@@ -684,7 +691,13 @@ class ExecutableTask:
 
         with stream:
             try:
-                output_val = exec_method(method, input_exc, nccl_input_values, *input_values, **self.resolved_kwargs)
+                output_val = exec_method(
+                    method,
+                    input_exc,
+                    nccl_input_values,
+                    *input_values,
+                    **self.resolved_kwargs,
+                )
             except RayChannelError:
                 return True
             except Exception as exc:
@@ -704,7 +717,7 @@ class ExecutableTask:
         # if self.output_writer is not None:
         if not self.requires_nccl_write:
             # [TODO:P1]
-            # Never wait for GPU output.
+            # Never wait for GPU output. Might need to wait for exception.
             # output_val = self.fetch_intermediate_future(wait_gpu_future=False)
             if (
                 self.requires_nccl_read or self.requires_nccl_collective
