@@ -3918,7 +3918,7 @@ class Dataset:
         self,
         path: str,
         *,
-        schema: Optional[pyarrow.Schema] = None,
+        schema: Optional["pyarrow.Schema"] = None,
         mode: Literal["create", "append", "overwrite"] = "create",
         max_rows_per_file: int = 1024 * 1024,
         data_storage_version: Optional[str] = None,
@@ -3927,6 +3927,15 @@ class Dataset:
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a Lance dataset.
+
+        Examples:
+             .. testcode::
+                import ray
+                import pandas as pd
+
+                docs = [{"title": "Lance data sink test"} for key in range(4)]
+                ds = ray.data.from_pandas(pd.DataFrame(docs))
+                ds.write_lance("/tmp/data/")
 
         Args:
             path: The path to the destination Lance dataset.
@@ -4971,9 +4980,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)

@@ -14,17 +14,18 @@ import pickle
 
 import ray
 from ray.data._internal.util import _check_import
+from ray.data.datasource.datasink import Datasink
+import pyarrow as pa
 
 
 if TYPE_CHECKING:
-    import pyarrow as pa
     import pandas as pd
     from lance.fragment import FragmentMetadata
 
 
 def _pd_to_arrow(
-    df: Union[pa.Table, "pd.DataFrame", Dict], schema: Optional[pa.Schema]
-) -> pa.Table:
+    df: Union["pa.Table", "pd.DataFrame", Dict], schema: Optional[pa.Schema]
+) -> "pa.Table":
     """Convert a pandas DataFrame to pyarrow Table."""
     import pandas as pd
 
@@ -41,16 +42,16 @@ def _pd_to_arrow(
 
 
 def _write_fragment(
-    stream: Iterable[Union[pa.Table, "pd.DataFrame"]],
+    stream: Iterable[Union["pa.Table", "pd.DataFrame"]],
     uri: str,
     *,
-    schema: Optional[pa.Schema] = None,
+    schema: Optional["pa.Schema"] = None,
     max_rows_per_file: int = 1024 * 1024,
     max_bytes_per_file: Optional[int] = None,
     max_rows_per_group: int = 1024,  # Only useful for v1 writer.
     data_storage_version: Optional[str] = None,
     storage_options: Optional[Dict[str, Any]] = None,
-) -> List[Tuple[FragmentMetadata, pa.Schema]]:
+) -> List[Tuple["FragmentMetadata", "pa.Schema"]]:
     import pandas as pd
     from lance.fragment import write_fragments, DEFAULT_MAX_BYTES_PER_FILE
 
@@ -88,7 +89,7 @@ def _write_fragment(
     return [(fragment, schema) for fragment in fragments]
 
 
-class _BaseLanceDatasink(ray.data.Datasink):
+class _BaseLanceDatasink(Datasink):
     """Base class for Lance Datasink."""
 
     def __init__(
