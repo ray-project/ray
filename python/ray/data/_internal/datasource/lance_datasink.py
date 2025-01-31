@@ -12,7 +12,6 @@ from typing import (
 )
 import pickle
 
-import ray
 from ray.data._internal.util import _check_import
 from ray.data.datasource.datasink import Datasink
 import pyarrow as pa
