@@ -228,7 +228,7 @@ class DAGNode(DAGNodeBase):
         enable_asyncio: bool = False,
         _max_inflight_executions: Optional[int] = None,
         _overlap_gpu_communication: Optional[bool] = None,
-        _default_communicator: Optional[Union[Communicator, str]] = None,
+        _default_communicator: Optional[Union[Communicator, str]] = "create",
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 

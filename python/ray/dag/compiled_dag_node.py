@@ -865,6 +865,16 @@ class CompiledDAG:
         self._default_communicator: Optional[Communicator] = default_communicator
         self._default_communicator_id: Optional[str] = None
 
+        self._pending_p2p_communicator_actors: Set["ray.actor.ActorHandle"] = set()
+        self._pending_p2p_communicator_dag_nodes: Set["ray.dag.DAGNode"] = set()
+        self._pending_collective_ops: Set[
+            "ray.dag.collective_node._CollectiveOperation"
+        ] = set()
+        self._communicator_to_type_hints: Dict[
+            Optional[Communicator],
+            Set["ray.experimental.channel.torch_tensor_type.TorchTensorType"],
+        ] = defaultdict(set)
+
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
             buffer_size_bytes=self._buffer_size_bytes,
             # We conservatively set num_shm_buffers to _max_inflight_executions.
@@ -1004,14 +1014,6 @@ class CompiledDAG:
 
         self.input_task_idx, self.output_task_idx = None, None
 
-        communicator_to_actors: Dict[
-            Optional[Communicator], Set["ray.actor.ActorHandle"]
-        ] = defaultdict(set)
-        communicator_to_type_hints: Dict[
-            Optional[Communicator],
-            Set["ray.experimental.channel.torch_tensor_type.TorchTensorType"],
-        ] = defaultdict(set)
-
         input_attributes: Set[str] = set()
         # Find the input node and input attribute nodes in the DAG.
         for idx, task in self.idx_to_task.items():
@@ -1102,17 +1104,13 @@ class CompiledDAG:
 
                 # Collect actors for NCCL P2P methods.
                 if dag_node.type_hint.requires_nccl():
-                    communicator = self._select_communicator(dag_node)
-                    communicator_to_actors[communicator].add(actor_handle)
-                    communicator_to_type_hints[communicator].add(dag_node.type_hint)
+                    communicator = self._track_communicator_usage(
+                        dag_node, actor_handle
+                    )
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
-                    communicator = self._select_communicator(dag_node, collective=True)
-                    communicator_to_actors[communicator].update(
-                        dag_node.collective_op.actor_handles
-                    )
-                    communicator_to_type_hints[communicator].add(
-                        dag_node.collective_op.type_hint
+                    self._track_communicator_usage(
+                        dag_node, actor_handle, collective_op=True
                     )
                     assert not self._overlap_gpu_communication, (
                         "Currently, the overlap_gpu_communication option is not "
@@ -1197,10 +1195,9 @@ class CompiledDAG:
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
 
                 if upstream_task.dag_node.type_hint.requires_nccl():
-                    communicator = self._select_communicator(upstream_task.dag_node)
-                    communicator_to_actors[communicator].add(downstream_actor_handle)
-                    communicator_to_type_hints[communicator].add(
-                        upstream_task.dag_node.type_hint
+                    self._track_communicator_usage(
+                        upstream_task.dag_node,
+                        downstream_actor_handle,
                     )
         # Check that all specified input attributes, e.g., InputNode()["x"],
         # are used in the DAG.
@@ -1208,11 +1205,9 @@ class CompiledDAG:
 
         self._check_leaf_nodes()
 
-        self._resolve_auto_transport(
-            auto_transport_tasks, communicator_to_actors, communicator_to_type_hints
-        )
+        self._resolve_auto_transport(auto_transport_tasks)
 
-        self._init_communicators(communicator_to_actors, communicator_to_type_hints)
+        self._init_communicators()
 
         if direct_input:
             self._input_num_positional_args = 1
@@ -1222,50 +1217,87 @@ class CompiledDAG:
             self._input_num_positional_args = max(input_positional_args) + 1
         self._input_kwargs = tuple(input_kwargs)
 
-    def _init_communicators(
-        self,
-        communicator_to_actors: Dict[
-            Optional[Communicator], Set["ray.actor.ActorHandle"]
-        ],
-        communicator_to_type_hints: Dict[
-            Optional[Communicator],
-            Set["ray.experimental.channel.torch_tensor_type.TorchTensorType"],
-        ],
-    ) -> None:
+    def _init_communicators(self) -> None:
         """
         Initialize communicators for the DAG.
         """
-        for custom_communicator, actors in communicator_to_actors.items():
+        for communicator, actors in self._communicator_to_actors.items():
             if None in actors:
                 raise ValueError("Driver cannot participate in the NCCL group.")
 
             communicator_id = _init_communicator(
                 list(actors),
-                custom_communicator,
+                communicator,
                 self._overlap_gpu_communication,
             )
-            for type_hint in communicator_to_type_hints[custom_communicator]:
+            for type_hint in self._communicator_to_type_hints[communicator]:
                 type_hint.set_communicator_id(communicator_id)
-            if custom_communicator == self._default_communicator:
+            if communicator == self._default_communicator:
                 self._default_communicator_id = communicator_id
 
-    def _select_communicator(
-        self, dag_node: "ray.dag.DAGNode", collective: bool = False
-    ) -> Optional[Communicator]:
+        actors_to_created_communicator_id = Dict[Set["ray.actor.ActorHandle"], str]
+        for collective_op in self._pending_collective_ops:
+            if not self._create_default_communicator:
+                raise ValueError(
+                    "Communicator creation is not allowed for collective operations."
+                )
+            actors = collective_op.actor_handles
+            if frozenset(actors) in actors_to_created_communicator_id:
+                communicator_id = actors_to_created_communicator_id[frozenset(actors)]
+            else:
+                communicator_id = _init_communicator(
+                    actors,
+                    None,
+                    self._overlap_gpu_communication,
+                )
+                actors_to_created_communicator_id[frozenset(actors)] = communicator_id
+            collective_op.set_communicator_id(communicator_id)
+
+        if self._pending_p2p_communicator_actors in actors_to_created_communicator_id:
+            p2p_communicator_id = actors_to_created_communicator_id[
+                frozenset(self._pending_p2p_communicator_actors)
+            ]
+        else:
+            p2p_communicator_id = _init_communicator(
+                list(self._pending_p2p_communicator_actors),
+                None,
+                self._overlap_gpu_communication,
+            )
+        for dag_node in self._pending_p2p_communicator_dag_nodes:
+            dag_node.type_hint.set_communicator_id(p2p_communicator_id)
+
+    def _track_communicator_usage(
+        self,
+        dag_node: "ray.dag.DAGNode",
+        actors: Set["ray.actor.ActorHandle"],
+        collective_op: bool = False,
+    ) -> None:
         """
         If custom_communicator is provided (i.e., not None), use it.
         Otherwise, use the default communicator.
         """
 
-        if collective:
-            custom_communicator = (
-                dag_node.collective_op.type_hint.get_custom_communicator()
-            )
+        custom_communicator = dag_node.type_hint.get_custom_communicator()
+        communicator = (
+            self._get_default_communicator(dag_node)
+            if custom_communicator is None
+            else custom_communicator
+        )
+        if communicator is None:
+            if collective_op:
+                self._pending_collective_ops.add(dag_node)
+            else:
+                self._pending_p2p_communicator_actors.update(actors)
         else:
-            custom_communicator = dag_node.type_hint.get_custom_communicator()
-        if custom_communicator is not None:
-            return custom_communicator
-        return self._get_default_communicator(dag_node)
+            self._communicator_to_type_hints[communicator].update(dag_node.type_hint)
+            if collective_op:
+                if communicator.get_actor_handles() != actors:
+                    raise ValueError(
+                        "Actor sets are different for collective operation and communicator."
+                    )
+            else:
+                if actors not in communicator.get_actor_handles():
+                    raise ValueError("Actor is not in the communicator group.")
 
     def _get_default_communicator(
         self,
@@ -1290,13 +1322,6 @@ class CompiledDAG:
     def _resolve_auto_transport(
         self,
         auto_transport_tasks: Set["CompiledTask"],
-        communicator_to_actors: Dict[
-            Optional[Communicator], Set["ray.actor.ActorHandle"]
-        ],
-        communicator_to_type_hints: Dict[
-            Optional[Communicator],
-            Set["ray.experimental.channel.torch_tensor_type.TorchTensorType"],
-        ],
     ) -> None:
         """
         Resolve the auto transport type hint for the DAG.
@@ -1306,7 +1331,6 @@ class CompiledDAG:
         # This is needed so that the NCCL group can be initialized for these
         # actors that use NCCL.
         for task in auto_transport_tasks:
-            default_communicator = self._get_default_communicator(task.dag_node)
             writer = task.dag_node._get_actor_handle()
             readers = task.downstream_task_idxs.values()
             writer_and_node = (writer, self._get_node_id(writer))
@@ -1322,10 +1346,9 @@ class CompiledDAG:
                 reader_and_node_list,
             )
             if task.dag_node.type_hint.requires_nccl():
-                communicator_to_actors[default_communicator].add(writer)
-                communicator_to_actors[default_communicator].update(readers)
-                communicator_to_type_hints[default_communicator].add(
-                    task.dag_node.type_hint
+                self._track_communicator_usage(
+                    task.dag_node,
+                    set(readers + [writer]),
                 )
 
     def _check_leaf_nodes(self) -> None:
