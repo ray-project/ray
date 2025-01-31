@@ -866,16 +866,22 @@ class CompiledDAG:
         self._default_communicator: Optional[Communicator] = default_communicator
         self._default_communicator_id: Optional[str] = None
 
-        self._provided_communicators: Set[Communicator] = set()
+        # Dict from set of actors to created communicator ID.
+        # These communicators are created by Compiled Graph, rather than passed in.
+        # Communicators are only created when self._create_default_communicator is True.
         self._actors_to_created_communicator_id: Dict[
             FrozenSet["ray.actor.ActorHandle"], str
         ] = {}
 
+        # Set of actors involved in P2P communication but pending creation of communicator.
         self._pending_p2p_communicator_actors: Set["ray.actor.ActorHandle"] = set()
+        # Set of DAG nodes involved in P2P communication but pending creation of communicator.
         self._pending_p2p_communicator_dag_nodes: Set["ray.dag.DAGNode"] = set()
+        # Set of collective operations pending creation of communicator.
         self._pending_collective_ops: Set[
             "ray.dag.collective_node._CollectiveOperation"
         ] = set()
+        # Dict from passed-in communicator to set of type hints that refer to it.
         self._communicator_to_type_hints: Dict[
             Communicator,
             Set["ray.experimental.channel.torch_tensor_type.TorchTensorType"],

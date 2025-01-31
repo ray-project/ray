@@ -226,7 +226,7 @@ def check_nccl_group_init(
         mock_nccl_group_set,
     )
 
-    compiled_dag = dag.experimental_compile(_default_communicator="create")
+    compiled_dag = dag.experimental_compile()
     mock_nccl_group_set.check_init(
         compiled_dag,
         actors_and_custom_comms,

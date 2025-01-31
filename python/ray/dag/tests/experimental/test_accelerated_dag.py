@@ -898,7 +898,7 @@ class TestMultiArgs:
             dag = c.collect_two.bind(branch2, branch1)
             dag.with_tensor_transport()
 
-        compiled_dag = dag.experimental_compile(_default_communicator="create")
+        compiled_dag = dag.experimental_compile()
 
         cpu_tensors = [torch.tensor([0, 0, 0, 0, 0]), torch.tensor([1, 1, 1, 1, 1])]
         ref = compiled_dag.execute(cpu_tensors[0], cpu_tensors[1])
@@ -2851,7 +2851,7 @@ def test_torch_tensor_type(shutdown_only):
                         inp,
                     ).with_tensor_transport(),
                 )
-            self._cdag = dag.experimental_compile(_default_communicator="create")
+            self._cdag = dag.experimental_compile()
 
         def call(self, value):
             return ray.get(self._cdag.execute(value))
