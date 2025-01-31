@@ -13,6 +13,6 @@ Tune Syncing Configuration
 
 .. autosummary::
     :nosignatures:
+    :toctree: doc/
 
-    ray.tune.SyncConfig
-        :noindex:
+    ~ray.tune.SyncConfig
