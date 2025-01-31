@@ -2515,7 +2515,7 @@ class AlgorithmConfig(_Config):
             # Check, whether given `callbacks` is a callable.
             # TODO (sven): Once the old API stack is deprecated, this can also be None
             #  (which should then become the default value for this attribute).
-            if not callable(callbacks_class):
+            if not callable(callbacks_class) and not self.enable_rl_module_and_learner:
                 raise ValueError(
                     "`config.callbacks_class` must be a callable method that "
                     "returns a subclass of DefaultCallbacks, got "
@@ -4273,7 +4273,6 @@ class AlgorithmConfig(_Config):
         # Fill in the missing values from the specs that we already have. By combining
         # PolicySpecs and the default RLModuleSpec.
         for module_id in policy_dict | multi_rl_module_spec.rl_module_specs:
-
             # Remove/skip `learner_only=True` RLModules if `inference_only` is True.
             module_spec = multi_rl_module_spec.rl_module_specs[module_id]
             if inference_only and module_spec.learner_only:
