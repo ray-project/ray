@@ -18,6 +18,7 @@ import argparse
 import collections
 import os
 import tempfile
+import time
 from typing import Dict
 
 import torch
@@ -56,6 +57,7 @@ class TrainLoopRunner:
                 self.load_checkpoint(temp_checkpoint_dir)
 
         self._timers = collections.defaultdict(lambda: Timer())
+        self._training_throughput = Timer()
 
     def run(self):
         starting_epoch = self._train_epoch_idx
@@ -74,6 +76,10 @@ class TrainLoopRunner:
         if ray.train.get_context().get_world_rank() == 0:
             print(f"Training epoch starting @ epoch={self._train_epoch_idx}")
 
+        step_start_s = time.perf_counter()
+
+        # NOTE: Time the first batch separately since it includes the dataset
+        # pipeline warmup time.
         with self._timers["iter_first_batch"].timer():
             batch = self.get_next_batch(self.train_dataloader)
 
@@ -85,6 +91,15 @@ class TrainLoopRunner:
             with self._timers["train_step"].timer():
                 self.train_step(input_batch, labels)
 
+            # Compute global training throughput
+            step_elapsed = time.perf_counter() - step_start_s
+            batch_size = len(labels)
+            local_throughput = batch_size / step_elapsed
+            global_throughput = local_throughput * ray.train.get_context().get_world_size()
+            self._training_throughput.add(global_throughput)
+
+            self._train_batch_idx += 1
+
             if (
                 self.benchmark_config.validate_every_n_steps
                 and self._train_batch_idx % self.benchmark_config.validate_every_n_steps
@@ -92,13 +107,14 @@ class TrainLoopRunner:
             ):
                 self.validate_and_checkpoint()
 
+            if self._train_batch_idx % 50 == 0:
+                import pprint
+                pprint.pprint(self.get_metrics())
+                pprint.pprint(self.factory.get_dataloader_metrics())
+
+            step_start_s = time.perf_counter()
             with self._timers["iter_batch"].timer():
                 batch = self.get_next_batch(self.train_dataloader)
-
-            self._train_batch_idx += 1
-
-            if self._train_batch_idx % 50 == 0:
-                print(self.factory.get_dataloader_metrics())
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
@@ -189,7 +205,7 @@ class TrainLoopRunner:
             })
 
         # Throughput
-        # metrics["training_throughput"] =
+        metrics["global_training_throughput"] = self._training_throughput.avg()
 
         return metrics
 
