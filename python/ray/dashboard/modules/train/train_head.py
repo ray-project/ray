@@ -7,7 +7,6 @@ import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 from ray.dashboard.modules.job.utils import find_jobs_by_job_ids
 from ray.util.annotations import DeveloperAPI
@@ -107,9 +106,15 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
 
             logger.info(f"Getting all actor info from GCS (actor_ids={actor_ids})")
 
-            train_run_actors = await DataOrganizer.get_actor_infos(
-                actor_ids=actor_ids,
-            )
+            # TODO: change this to http request to /logical/actors/{actor_id}s, maybe add a new endpoint for multiple actors
+            # like:
+            # async with self.http_session.get(f"{self.http_host}:{self.http_port}/logical/actors/{actor_id}") as resp:
+            #     train_run_actors[actor_id] = resp.json()
+            #
+            train_run_actors = {}
+            # await self.get_actor_infos(
+            #     actor_ids=actor_ids,
+            # )
 
             for worker_info in train_run.workers:
                 actor = train_run_actors.get(worker_info.actor_id, None)

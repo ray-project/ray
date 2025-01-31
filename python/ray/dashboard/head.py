@@ -15,7 +15,6 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._raylet import GcsClient
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
-from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import (
     DashboardHeadModule,
     DashboardHeadModuleConfig,
@@ -147,7 +146,6 @@ class DashboardHead:
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = node_ip_address
-        DataOrganizer.head_node_ip = self.ip
 
         if self.minimal:
             self.server, self.grpc_port = None, None
@@ -445,8 +443,6 @@ class DashboardHead:
         concurrent_tasks = [
             self._gcs_check_alive(),
             _async_notify(),
-            DataOrganizer.purge(),
-            DataOrganizer.organize(self._executor),
         ]
         for m in dashboard_head_modules:
             concurrent_tasks.append(m.run(self.server))
