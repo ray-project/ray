@@ -5,7 +5,12 @@ import ray
 from ray._private.ray_constants import env_bool
 from ray.train import BackendConfig, Checkpoint
 from ray.train._internal.data_config import DataConfig
+from ray.train.base_trainer import (
+    _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
+    _TRAINER_RESTORE_DEPRECATION_WARNING,
+)
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
@@ -38,20 +43,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
-_TRAINER_RESTORE_DEPRECATION_WARNING = (
-    "The `restore` and `can_restore` APIs are deprecated and "
-    "will be removed in a future release. "
-    "See this issue for more context: "
-    "https://github.com/ray-project/ray/issues/49454"
-)
-
-_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = (
-    "`resume_from_checkpoint` is deprecated and will be removed in an upcoming "
-    "release. See this issue for more context: "
-    "https://github.com/ray-project/ray/issues/49454"
-)
-
-
 @DeveloperAPI
 class DataParallelTrainer:
     def __init__(
@@ -81,8 +72,6 @@ class DataParallelTrainer:
             raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
 
         if metadata is not None:
-            from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
-
             raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
     def fit(self) -> Result:
