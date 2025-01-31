@@ -1763,10 +1763,9 @@ void NodeManager::ProcessWaitRequestMessage(
     // If we don't need to wait for any, return immediately after making the pull
     // requests through AsyncResolveObjects above.
     flatbuffers::FlatBufferBuilder fbb;
-    std::vector<ObjectID> ready;
-    std::vector<ObjectID> remaining;
-    auto wait_reply = protocol::CreateWaitReply(
-        fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
+    auto wait_reply = protocol::CreateWaitReply(fbb,
+                                                to_flatbuf(fbb, std::vector<ObjectID>{}),
+                                                to_flatbuf(fbb, std::vector<ObjectID>{}));
     fbb.Finish(wait_reply);
     const auto status =
         client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
