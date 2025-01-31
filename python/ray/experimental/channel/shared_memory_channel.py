@@ -18,14 +18,6 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_BUFFER_SIZE = int(1e6)  # 100 mB
-# The min buffer size must be large enough to at least fit an instance of the
-# _ResizeChannel class along with any metadata.
-MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
-# For shared memory channels, the default number of buffers per channel to
-# allocate.
-DEFAULT_NUM_SHM_BUFFERS = 1
-
 
 def _create_channel_ref(
     self,
@@ -109,14 +101,21 @@ class SharedMemoryType(ChannelOutputType):
                 that can be passed between tasks in the DAG. The buffers will
                 be automatically resized if larger messages are written to the
                 channel.
-            num_shm_buffers: The number of shared memory buffer per channel.
+            num_shm_buffers: The number of shared memory buffers per channel.
+                Note: In the case of multiple nodes, we only support 1 shared
+                memory buffer.
         """
         super().__init__()
+
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+
         if buffer_size_bytes is None:
-            buffer_size_bytes = DEFAULT_MAX_BUFFER_SIZE
+            buffer_size_bytes = ctx.buffer_size_bytes
         self.buffer_size_bytes = buffer_size_bytes
         if num_shm_buffers is None:
-            num_shm_buffers = DEFAULT_NUM_SHM_BUFFERS
+            num_shm_buffers = 1
         self._num_shm_buffers = num_shm_buffers
 
     def create_channel(
@@ -192,6 +191,9 @@ class Channel(ChannelInterface):
         elif isinstance(typ, int):
             typ = SharedMemoryType(buffer_size_bytes=typ)
 
+        # The min buffer size must be large enough to at least fit an instance of the
+        # _ResizeChannel class along with any metadata.
+        MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
         if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
             raise ValueError(
                 "typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE "
@@ -540,7 +542,8 @@ class BufferedSharedMemoryChannel(ChannelInterface):
     Args:
         writer: The actor that may write to the channel. None signifies the driver.
         reader_and_node_list: A list of tuples, where each tuple contains a reader
-            actor handle and the node ID where the actor is located.
+            actor handle and the node ID where the actor is located. Note that currently
+            we only support this for readers on the same node as the writer.
         num_shm_buffers: Number of shared memory buffers to read/write.
         typ: Type information about the values passed through the channel.
             Either an integer representing the max buffer size in bytes
@@ -653,6 +656,9 @@ class CompositeChannel(ChannelInterface):
         writer: The actor that may write to the channel. None signifies the driver.
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
+        num_shm_buffers: The number of shared memory buffers per channel.
+            Note: In the case of multiple nodes, we only support 1 shared
+            memory buffer.
         driver_actor_id: If this channel is read by a driver and that driver is an
             actual actor, this will be the actor ID of that driver actor.
     """
@@ -699,14 +705,29 @@ class CompositeChannel(ChannelInterface):
             actor_id = self._get_actor_id(self._writer)
             self._channel_dict[actor_id] = local_channel
         # There are some remote readers which are not the same Ray actor as the writer.
-        # Create a shared memory channel for the writer and the remote readers.
-        if len(remote_reader_and_node_list) != 0:
+        # We create a BufferedSharedMemoryChannel for readers on the same node, and
+        # a single Channel for readers on different nodes due to
+        # https://github.com/ray-project/ray/issues/49044
+        (
+            readers_same_node,
+            readers_different_node,
+        ) = utils.split_actors_by_node_locality(
+            utils.get_actor_node(self._writer), remote_reader_and_node_list
+        )
+
+        if len(readers_same_node) != 0:
             remote_channel = BufferedSharedMemoryChannel(
-                self._writer, remote_reader_and_node_list, num_shm_buffers
+                self._writer, readers_same_node, num_shm_buffers
             )
             self._channels.add(remote_channel)
+            for reader, _ in readers_same_node:
+                actor_id = self._get_actor_id(reader)
+                self._channel_dict[actor_id] = remote_channel
 
-            for reader, _ in remote_reader_and_node_list:
+        if len(readers_different_node) != 0:
+            remote_channel = Channel(self._writer, readers_different_node)
+            self._channels.add(remote_channel)
+            for reader, _ in readers_different_node:
                 actor_id = self._get_actor_id(reader)
                 self._channel_dict[actor_id] = remote_channel
 
