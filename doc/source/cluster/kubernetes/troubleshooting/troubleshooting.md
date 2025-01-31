@@ -84,8 +84,8 @@ For more information, please refer to [#951](https://github.com/ray-project/kube
 (rayservice)=
 ## RayService
 
-RayService is a Custom Resource Definition (CRD) designed for Ray Serve. In KubeRay, creating a RayService will first create a RayCluster and then
-create Ray Serve applications once the RayCluster is ready. If the issue pertains to the data plane, specifically your Ray Serve scripts
+RayService is a Custom Resource Definition (CRD) designed for Ray Serve. In KubeRay, creating a RayService creates a RayCluster and then
+creates Ray Serve applications once the RayCluster is ready. If the issue pertains to the data plane, specifically your Ray Serve scripts
 or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challenging. See [rayservice-troubleshooting](kuberay-raysvc-troubleshoot) for more details.
 
 (autoscaler)=
