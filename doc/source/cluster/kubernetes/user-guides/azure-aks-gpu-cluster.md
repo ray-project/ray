@@ -5,6 +5,10 @@
 This guide walks you through the steps to create an Azure AKS cluster with GPU nodes specifically for KubeRay.
 The configuration outlined here can be applied to most KubeRay examples found in the documentation.
 
+You can find the landing page for AKS [here](https://azure.microsoft.com/en-us/services/kubernetes-service/).
+If you have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console. Alternatively, check out the [documentation](https://docs.microsoft.com/en-us/azure/aks/) and [quickstart guides](https://docs.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-portal?tabs=azure-cli).
+To successfully deploy Ray on Kubernetes, you will need to use node pools following the guidance [here](https://docs.microsoft.com/en-us/azure/aks/use-multiple-node-pools).
+
 ## Step 1: Create a Resource Group
 
 To create a resource group in a particular region:
