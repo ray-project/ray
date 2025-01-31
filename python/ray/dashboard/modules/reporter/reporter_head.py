@@ -686,7 +686,7 @@ class ReportHead(SubprocessModule):
         if not agent_addr_json:
             return None
         node_id, http_port, grpc_port = json.loads(agent_addr_json)
-        return node_id, ip, http_port, grpc_port
+        return NodeID.from_hex(node_id), ip, http_port, grpc_port
 
     def _make_stub(
         self, ip_port: str
