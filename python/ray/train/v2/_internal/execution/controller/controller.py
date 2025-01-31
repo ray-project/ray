@@ -150,9 +150,6 @@ class TrainController:
             callbacks=worker_group_callbacks_to_propagate,
         )
         self._state = InitializingState()
-        self._latest_iteration_result: Optional[
-            TrainControllerLoopIterationResult
-        ] = None
 
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
@@ -201,10 +198,7 @@ class TrainController:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
-                next_state=RunningState(
-                    worker_group_status=worker_group_status,
-                    failure_decision=failure_decision,
-                ),
+                next_state=RunningState(),
             )
 
         errors_str = "\n".join(
@@ -224,8 +218,6 @@ class TrainController:
                 worker_failures=worker_group_status.errors
             )
             next_state = RestartingState(
-                worker_group_status=worker_group_status,
-                failure_decision=failure_decision,
                 training_failed_error=training_failed_error,
             )
             return TrainControllerLoopIterationResult(
@@ -244,8 +236,6 @@ class TrainController:
                 worker_failures=worker_group_status.errors
             )
             next_state = ErroredState(
-                worker_group_status=worker_group_status,
-                failure_decision=failure_decision,
                 training_failed_error=training_failed_error,
             )
             return TrainControllerLoopIterationResult(
@@ -371,7 +361,7 @@ class TrainController:
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
-                    next_state=FinishedState(worker_group_status=worker_group_status),
+                    next_state=FinishedState(),
                 )
             if worker_group_status.errors:
                 failure_decision = self._failure_policy.make_decision(
@@ -389,11 +379,10 @@ class TrainController:
 
                 if isinstance(scaling_decision, ResizeDecision):
                     next_state = ResizingState(
-                        worker_group_status=worker_group_status,
                         scaling_decision=scaling_decision,
                     )
                 elif isinstance(scaling_decision, NoopDecision):
-                    next_state = RunningState(worker_group_status=worker_group_status)
+                    next_state = RunningState()
                 else:
                     raise ValueError(f"Unexpected scaling decision: {scaling_decision}")
 
@@ -442,13 +431,12 @@ class TrainController:
             Query the scaling policy for a scaling decision and execute it.
         """
         controller_state = self.get_state()
-        assert controller_state.is_active()
+        assert not controller_state.is_terminal()
 
         if controller_state.needs_new_run_attempt():
             self._generate_run_attempt_id()
 
         result = self._step()
-        self._latest_iteration_result = result
 
         self._set_state(result.next_state)
 
@@ -457,7 +445,7 @@ class TrainController:
         """Run the main control loop. Exits when training is finished or errored."""
         self._start()
 
-        while self.get_state().is_active():
+        while not self.get_state().is_terminal():
             self._run_control_loop_iteration()
 
         self._shutdown()
@@ -496,7 +484,7 @@ class TrainController:
         """Get the final training result from the TrainController."""
 
         controller_state = self.get_state()
-        if controller_state.is_active():
+        if not controller_state.is_terminal():
             raise ValueError(
                 f"Cannot get result when controller is in state {controller_state}"
             )
@@ -504,7 +492,15 @@ class TrainController:
         return self._build_result()
 
     def get_training_failed_error(self) -> Optional[TrainingFailedError]:
-        """Get the training failed error from the latest iteration result."""
-        if self._latest_iteration_result is not None:
-            return self._latest_iteration_result.training_failed_error
+        """Get the training failed error from the controller state.
+
+        Returns:
+            The training failed error if the controller is in an errored state,
+            None otherwise.
+        """
+        controller_state = self.get_state()
+
+        if isinstance(controller_state, ErroredState):
+            return controller_state.training_failed_error
+
         return None
