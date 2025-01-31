@@ -185,7 +185,7 @@ def mock_do_destroy_nccl_group(self, group_id: str) -> None:
 def check_nccl_group_init(
     monkeypatch,
     dag: "ray.dag.DAGNode",
-    actors_and_initialized_comms: Set[
+    actors_and_custom_comms: Set[
         Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
     ],
 ) -> "ray.dag.CompiledDAG":
@@ -202,7 +202,7 @@ def check_nccl_group_init(
     compiled_dag = dag.experimental_compile()
     assert (
         set(mock_nccl_group_set.ids_to_actors_and_custom_comms.values())
-        == actors_and_initialized_comms
+        == actors_and_custom_comms
     )
 
     return compiled_dag, mock_nccl_group_set
@@ -218,9 +218,6 @@ def check_nccl_group_teardown(
         mock_nccl_group_set.mock_destroy_nccl_group,
     )
 
-    if compiled_dag._create_default_communicator:
-        nccl_group_ids = [compiled_dag._default_communicator_id]
-    else:
-        nccl_group_ids = []
+    created_communicator_ids = compiled_dag._actors_to_created_communicator_id.values()
     compiled_dag.teardown()
-    mock_nccl_group_set.check_teardown(nccl_group_ids)
+    mock_nccl_group_set.check_teardown(created_communicator_ids)

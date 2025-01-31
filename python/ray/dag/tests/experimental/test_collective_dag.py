@@ -131,9 +131,9 @@ def test_comm_deduplicate_all_reduces(ray_start_regular, monkeypatch):
 @pytest.mark.parametrize(
     "ray_start_regular", [{"num_cpus": 4, "num_gpus": 4}], indirect=True
 )
-def test_comm_p2p_and_collective(ray_start_regular, monkeypatch):
+def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
     """
-    Test the same default communicator is used when the collective and the P2P are on
+    Test communicators are deduplicated when the collective and the P2P are on
     the same set of actors.
     """
     actor_cls = CPUTorchTensorWorker.options(num_cpus=0, num_gpus=1)
