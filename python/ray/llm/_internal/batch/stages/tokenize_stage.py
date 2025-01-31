@@ -96,10 +96,7 @@ class DetokenizeUDF(StatefulStageUDF):
                 skip_special_tokens=True,
             ),
         ):
-            yield {
-                "generated_tokens": row["generated_tokens"],
-                "generated_text": generated_text,
-            }
+            yield {"generated_text": generated_text}
 
     @property
     def expected_input_keys(self) -> List[str]:
