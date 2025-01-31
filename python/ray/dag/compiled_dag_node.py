@@ -632,55 +632,50 @@ class ExecutableTask:
             except RayChannelError:
                 return True
 
-            try:
-                _process_return_vals(input_data, return_single_output=False)
-                input_data_ready = []
-                with stream:
+            with stream:
+                try:
+                    _process_return_vals(input_data, return_single_output=False)
+                    input_data_ready = []
                     for val in input_data:
                         if isinstance(val, DAGOperationFuture):
                             val = val.wait()
                             if isinstance(val, RayTaskError):
                                 raise val.as_instanceof_cause()
                         input_data_ready.append(val)
-                input_values = []
-                for task_input in self.task_inputs:
-                    input_values.append(task_input.resolve(input_data_ready))
-                input_exc = None
-            except Exception as exc:
-                input_values = None
-                input_exc = exc
-                # [NOTE] overlap_gpu_communication should only be used in two places:
-                # - deciding how many streams to create
-                # - in wrap_and_set_intermediate_future: when deciding whether
-                #   to produce a GPUFuture or a ResolvedFuture
-                self.wrap_and_set_intermediate_future(
-                    exc, wrap_in_gpu_future=overlap_gpu_communication
-                )
+                    input_values = []
+                    for task_input in self.task_inputs:
+                        input_values.append(task_input.resolve(input_data_ready))
+                    input_exc = None
+                except Exception as exc:
+                    input_values = None
+                    input_exc = exc
+                    # [NOTE] overlap_gpu_communication should only be used in two places:
+                    # - deciding how many streams to create
+                    # - in wrap_and_set_intermediate_future: when deciding whether
+                    #   to produce a GPUFuture or a ResolvedFuture
+                    self.wrap_and_set_intermediate_future(
+                        exc, wrap_in_gpu_future=overlap_gpu_communication
+                    )
 
             if self.requires_nccl_write:
+                nccl_input_values = [P2POp.SEND, self.nccl_ch]
                 if input_values is not None:
                     assert len(input_values) == 1
                     tensor = input_values[0]
-                    nccl_input_values = [P2POp.SEND, self.nccl_ch]
                     input_values = [tensor]
                 else:
                     exc = self.fetch_intermediate_future(wait_gpu_future=True)
-                    nccl_input_values = [P2POp.SEND, self.nccl_ch]
                     input_values = [exc]
                     input_exc = None
 
         def exec_method(method, input_exc, nccl_input_values, *input_values, **resolved_kwargs):
-            if input_values is None:
-                assert input_exc is not None
-            if input_exc is None:
-                assert input_values is not None
-
-            if input_exc is not None and self.nccl_op is None:
+            if input_exc is not None:
                 return
-            if self.nccl_op is not None:
-                assert nccl_input_values is not None
-                input_values = tuple(nccl_input_values) + input_values
-            return method(*input_values, **resolved_kwargs)
+            else:
+                assert input_values is not None
+                if nccl_input_values is not None:
+                    input_values = tuple(nccl_input_values) + input_values
+                return method(*input_values, **resolved_kwargs)
 
         if self.nccl_op is not None:
             method = self.nccl_op.execute
@@ -689,11 +684,6 @@ class ExecutableTask:
 
         with stream:
             try:
-                # [TODO:P0] Wrap `method` here:
-                # method_wrapper: (input_values, resolved_kwargs, Optional[Exception])
-                # - throw Exception if non-null
-                # - calls internal method: (*input_values, **resolved_kwargs)
-                # output_val = method(*input_values, **self.resolved_kwargs)
                 output_val = exec_method(method, input_exc, nccl_input_values, *input_values, **self.resolved_kwargs)
             except RayChannelError:
                 return True
@@ -705,21 +695,15 @@ class ExecutableTask:
 
             # [TODO:P1] Change to below.
             # if self.output_writer is not None:
-            if not self.requires_nccl_write:
-                if input_exc is not None:
-                    pass
-                    # self.wrap_and_set_intermediate_future(
-                    #     input_exc, wrap_in_gpu_future=overlap_gpu_communication
-                    # )
-                elif input_values is not None:
-                    self.wrap_and_set_intermediate_future(
-                        output_val, wrap_in_gpu_future=overlap_gpu_communication
-                    )
+            if input_exc is None and not self.requires_nccl_write:
+                self.wrap_and_set_intermediate_future(
+                    output_val, wrap_in_gpu_future=overlap_gpu_communication
+                )
 
         # [TODO:P1] Change to below.
         # if self.output_writer is not None:
         if not self.requires_nccl_write:
-            # [TODO:P0]
+            # [TODO:P1]
             # Never wait for GPU output.
             # output_val = self.fetch_intermediate_future(wait_gpu_future=False)
             if (
