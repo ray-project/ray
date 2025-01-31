@@ -877,7 +877,7 @@ class CompiledDAG:
             "ray.dag.collective_node._CollectiveOperation"
         ] = set()
         self._communicator_to_type_hints: Dict[
-            Optional[Communicator],
+            Communicator,
             Set["ray.experimental.channel.torch_tensor_type.TorchTensorType"],
         ] = defaultdict(set)
 
@@ -1110,13 +1110,11 @@ class CompiledDAG:
 
                 # Collect actors for NCCL P2P methods.
                 if dag_node.type_hint.requires_nccl():
-                    communicator = self._track_communicator_usage(
-                        dag_node, actor_handle
-                    )
+                    self._track_communicator_usage(dag_node, {actor_handle})
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
                     self._track_communicator_usage(
-                        dag_node, actor_handle, collective_op=True
+                        dag_node, {actor_handle}, collective_op=True
                     )
                     assert not self._overlap_gpu_communication, (
                         "Currently, the overlap_gpu_communication option is not "
@@ -1203,7 +1201,7 @@ class CompiledDAG:
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     self._track_communicator_usage(
                         upstream_task.dag_node,
-                        downstream_actor_handle,
+                        {downstream_actor_handle},
                     )
         # Check that all specified input attributes, e.g., InputNode()["x"],
         # are used in the DAG.
@@ -1227,13 +1225,13 @@ class CompiledDAG:
         """
         Initialize communicators for the DAG.
         """
-        for communicator in self._provided_communicators:
+        for communicator, type_hints in self._communicator_to_type_hints.items():
             communicator_id = _init_communicator(
                 communicator.get_actor_handles(),
                 communicator,
                 self._overlap_gpu_communication,
             )
-            for type_hint in self._communicator_to_type_hints[communicator]:
+            for type_hint in type_hints:
                 type_hint.set_communicator_id(communicator_id)
             if communicator == self._default_communicator:
                 self._default_communicator_id = communicator_id
@@ -1298,16 +1296,17 @@ class CompiledDAG:
             if collective_op:
                 self._pending_collective_ops.add(dag_node)
             else:
+                self._pending_p2p_communicator_dag_nodes.add(dag_node)
                 self._pending_p2p_communicator_actors.update(actors)
         else:
-            self._communicator_to_type_hints[communicator].update(dag_node.type_hint)
+            self._communicator_to_type_hints[communicator].add(dag_node.type_hint)
             if collective_op:
                 if communicator.get_actor_handles() != actors:
                     raise ValueError(
                         "Actor sets are different for collective operation and communicator."
                     )
             else:
-                if actors not in communicator.get_actor_handles():
+                if not actors.issubset(communicator.get_actor_handles()):
                     raise ValueError("Actor is not in the communicator group.")
 
     def _get_default_communicator(
@@ -1359,7 +1358,7 @@ class CompiledDAG:
             if task.dag_node.type_hint.requires_nccl():
                 self._track_communicator_usage(
                     task.dag_node,
-                    set(readers + [writer]),
+                    set(readers).union({writer}),
                 )
 
     def _check_leaf_nodes(self) -> None:
@@ -2057,7 +2056,7 @@ class CompiledDAG:
 
                     for (
                         communicator_id
-                    ) in self._actors_to_created_communicator_id.values():
+                    ) in outer._actors_to_created_communicator_id.values():
                         _destroy_communicator(communicator_id)
 
                     logger.info("Waiting for worker tasks to exit")
