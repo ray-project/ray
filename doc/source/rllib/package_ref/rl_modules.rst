@@ -21,6 +21,12 @@ Single RLModuleSpec
 
     RLModuleSpec
     RLModuleSpec.build
+    RLModuleSpec.module_class
+    RLModuleSpec.observation_space
+    RLModuleSpec.action_space
+    RLModuleSpec.inference_only
+    RLModuleSpec.learner_only
+    RLModuleSpec.model_config
 
 MultiRLModuleSpec
 +++++++++++++++++
@@ -33,6 +39,25 @@ MultiRLModuleSpec
 
     MultiRLModuleSpec
     MultiRLModuleSpec.build
+
+.. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.multi_rl_module_class
+    :no-index:
+
+.. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.observation_space
+    :no-index:
+
+.. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.action_space
+    :no-index:
+
+.. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.inference_only
+    :no-index:
+
+.. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.model_config
+    :no-index:
+
+.. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.rl_module_specs
+    :no-index:
+
 
 DefaultModelConfig
 ++++++++++++++++++
@@ -152,3 +177,47 @@ Saving and restoring
     ~MultiRLModule.from_checkpoint
     ~MultiRLModule.get_state
     ~MultiRLModule.set_state
+
+
+Additional RLModule APIs
+------------------------
+
+.. currentmodule:: ray.rllib.core.rl_module.apis
+
+InferenceOnlyAPI
+++++++++++++++++
+
+.. autoclass:: ray.rllib.core.rl_module.apis.inference_only_api.InferenceOnlyAPI
+
+    .. automethod:: get_non_inference_attributes
+
+QNetAPI
++++++++
+
+.. autoclass:: ray.rllib.core.rl_module.apis.q_net_api.QNetAPI
+
+    .. automethod:: compute_q_values
+    .. automethod:: compute_advantage_distribution
+
+SelfSupervisedLossAPI
++++++++++++++++++++++
+
+.. autoclass:: ray.rllib.core.rl_module.apis.self_supervised_loss_api.SelfSupervisedLossAPI
+
+    .. automethod:: compute_self_supervised_loss
+
+TargetNetworkAPI
+++++++++++++++++
+
+.. autoclass:: ray.rllib.core.rl_module.apis.target_network_api.TargetNetworkAPI
+
+    .. automethod:: make_target_networks
+    .. automethod:: get_target_network_pairs
+    .. automethod:: forward_target
+
+ValueFunctionAPI
+++++++++++++++++
+
+.. autoclass:: ray.rllib.core.rl_module.apis.value_function_api.ValueFunctionAPI
+
+    .. automethod:: compute_values

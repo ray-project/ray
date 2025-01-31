@@ -9,7 +9,7 @@ from ray.train.v2._internal.execution.worker_group import WorkerGroupStatus
 
 class FixedScalingPolicy(ScalingPolicy):
     def make_decision_for_non_running_worker_group(
-        self, worker_group_status: WorkerGroupStatus
+        self,
     ) -> ScalingDecision:
         return ResizeDecision(
             num_workers=self.scaling_config.num_workers,
