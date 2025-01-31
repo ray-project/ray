@@ -4,10 +4,12 @@ import aiohttp
 import asyncio
 import base64
 import logging
+import importlib
 from urllib.parse import urlparse
 from pathlib import Path
 from io import BytesIO
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     AsyncIterator,
@@ -18,15 +20,18 @@ from typing import (
     Mapping,
 )
 
-from PIL import Image
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
 
+# TODO: Remove the guard once Pillow is added into the dependencies.
+if TYPE_CHECKING:
+    from PIL import Image
+
 logger = logging.getLogger(__name__)
 
-_ImageType = Union[str, Image.Image]
+_ImageType = Union[str, "Image.Image"]
 
 
 class HTTPConnection:
@@ -189,6 +194,7 @@ class ImageProcessor:
     """Download and load images."""
 
     def __init__(self):
+        self.Image = importlib.import_module("PIL.Image")
         self.http_connection = HTTPConnection()
 
     async def download_image_from_url(self, image_url: str) -> Optional[bytes]:
@@ -225,7 +231,7 @@ class ImageProcessor:
 
     async def fetch_images(
         self, image_urls: List[str], *, image_mode: Optional[str] = None
-    ) -> List[Image.Image]:
+    ) -> List["Image.Image"]:
         """
         Adapted from vllm.multimodal.utils.fetch_image.
         Load a PIL image from a HTTP or base64 data URL.
@@ -239,7 +245,7 @@ class ImageProcessor:
         """
 
         def _load_image_from_bytes(b: bytes):
-            image = Image.open(BytesIO(b))
+            image = self.Image.open(BytesIO(b))
             image.load()
             return image
 
@@ -276,7 +282,7 @@ class ImageProcessor:
             images = [image.convert(image_mode) for image in images]
         return images
 
-    async def process(self, images: List[_ImageType]) -> List[Image.Image]:
+    async def process(self, images: List[_ImageType]) -> List["Image.Image"]:
         """Load and resize an image for the model.
         Args:
             image: A list of images.
@@ -292,7 +298,7 @@ class ImageProcessor:
         if not all(isinstance(img, image_type) for img in images):
             raise ValueError(f"All images must be of the same type, got {image_type=}")
 
-        if not issubclass(image_type, Image.Image):
+        if not issubclass(image_type, self.Image.Image):
             images = await self.fetch_images(images)
         return images
 
@@ -300,10 +306,10 @@ class ImageProcessor:
 class PrepareImageUDF(StatefulStageUDF):
     def __init__(self, data_column: str):
         super().__init__(data_column)
+        self.Image = importlib.import_module("PIL.Image")
         self.image_processor = ImageProcessor()
 
-    @staticmethod
-    def extract_image_info(messages: List[Dict]) -> List[_ImageType]:
+    def extract_image_info(self, messages: List[Dict]) -> List[_ImageType]:
         """Extract vision information such as image and video from chat messages.
 
         Args:
@@ -321,7 +327,9 @@ class PrepareImageUDF(StatefulStageUDF):
                 if content["type"] not in ("image", "image_url"):
                     continue
                 image = content[content["type"]]
-                if not isinstance(image, str) and not isinstance(image, Image.Image):
+                if not isinstance(image, str) and not isinstance(
+                    image, self.Image.Image
+                ):
                     raise ValueError(f"Cannot handle image type {type(image)}")
                 image_info.append(image)
         return image_info
