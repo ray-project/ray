@@ -41,7 +41,8 @@ class non_owned_fd_sink final : public spdlog::sinks::base_sink<Mutex> {
     spdlog::sinks::base_sink<Mutex>::formatter_->format(msg, formatted);
 
 #if defined(__APPLE__) || defined(__linux__)
-    RAY_CHECK_EQ(write(fd_, formatted.data(), formatted.size()), formatted.size())
+    RAY_CHECK_EQ(write(fd_, formatted.data(), formatted.size()),
+                 static_cast<ssize_t>(formatted.size()))
         << "Fails to write because " << strerror(errno);
 #elif defined(_WIN32)
     LPDWORD bytes_written;
