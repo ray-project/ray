@@ -262,6 +262,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                     const int runtime_env_hash,
                                     const std::string &serialized_runtime_env_context,
                                     const WorkerPool::State &state) const {
+  return std::make_pair{std::vector<std::string>{}, ProcessEnvironment{}};
+
   std::vector<std::string> options;
 
   // Append Ray-defined per-job options here
