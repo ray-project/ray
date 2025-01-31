@@ -1,5 +1,5 @@
 import pathlib
-from collections import defaultdict, Counter
+from collections import defaultdict
 import copy
 from functools import partial
 import itertools
