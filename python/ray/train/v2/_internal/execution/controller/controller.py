@@ -504,4 +504,3 @@ class TrainController:
             return controller_state.training_failed_error
 
         return None
-
