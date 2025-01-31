@@ -251,12 +251,17 @@ class DAGNode(DAGNodeBase):
                 communication and computation can be overlapped, which can improve
                 the performance of the DAG execution. If None, the default value
                 will be used.
-            _default_communicator: The default communicator to use to transport tensors
+            _default_communicator: The default communicator to use to transfer
+                tensors. For p2p operations, this is the default communicator to use
                 for nodes annotated with `with_tensor_transport()` and when shared memory
                 is not the desired option (e.g., when transport="nccl", or when
                 transport="auto" for communication between two different GPUs).
                 If it is "create", a default communicator is created when needed.
                 If None, an error will be thrown. All other values are invalid.
+                For collective operations, this is the default communicator to use
+                when a custom communicator is not specified. If it is "create", a communicator
+                is created for each collective operation and initialized on the involved actors,
+                or an already created communicator is reused if the set of actors is the same.
 
         Returns:
             A compiled DAG.

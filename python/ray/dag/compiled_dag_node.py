@@ -823,12 +823,18 @@ class CompiledDAG:
                 communication and computation can be overlapped, which can improve
                 the performance of the DAG execution. If None, the default value
                 will be used.
-            default_communicator: The default communicator to use to transport tensors
+            default_communicator: The default communicator to use to transfer
+                tensors. For p2p operations, this is the default communicator to use
                 for nodes annotated with `with_tensor_transport()` and when shared memory
                 is not the desired option (e.g., when transport="nccl", or when
                 transport="auto" for communication between two different GPUs).
                 If it is "create", a default communicator is created when needed.
                 If None, an error will be thrown. All other values are invalid.
+                For collective operations, this is the default communicator to use
+                when a custom communicator is not specified. If it is "create", a
+                communicator is created for each collective operation and initialized
+                on the involved actors, or an already created communicator is reused
+                if the set of actors is the same.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -1233,6 +1239,8 @@ class CompiledDAG:
         """
         Initialize communicators for the DAG.
         """
+
+        # First, initialize communicators that are passed in by the user.
         for communicator, type_hints in self._communicator_to_type_hints.items():
             communicator_id = _init_communicator(
                 communicator.get_actor_handles(),
@@ -1244,6 +1252,8 @@ class CompiledDAG:
             if communicator == self._default_communicator:
                 self._default_communicator_id = communicator_id
 
+        # Then, create communicators for collective operations.
+        # Reuse an already created communicator for the same set of actors.
         for collective_op in self._pending_collective_ops:
             if not self._create_default_communicator:
                 raise ValueError(
@@ -1256,6 +1266,9 @@ class CompiledDAG:
             if actors not in self._actors_to_created_communicator_id:
                 self._actors_to_created_communicator_id[actors] = communicator_id
 
+        # Finally, create a communicator for P2P operations.
+        # Reuse an already created collective op communicator when p2p actors
+        # are a subset of the actors in the collective op communicator.
         p2p_communicator_id = None
         if self._pending_p2p_communicator_actors:
             for (
@@ -1281,8 +1294,19 @@ class CompiledDAG:
         collective_op: bool = False,
     ) -> None:
         """
-        If custom_communicator is provided (i.e., not None), use it.
-        Otherwise, use the default communicator.
+        Track the usage of a communicator.
+
+        This method first determines the communicator to use: if a custom
+        communicator is specified, use it; if not and a default communicator
+        is available, use it; otherwise, it records necessary information to
+        create a new communicator later.
+
+        This method also performs validation checks on the passed-in communicator.
+
+        Args:
+            dag_node: The DAG node that uses the communicator.
+            actors: The set of actors that use the communicator.
+            collective_op: Whether the communicator is used for a collective operation.
         """
         if None in actors:
             raise ValueError("Driver cannot participate in the NCCL group.")
@@ -1303,30 +1327,42 @@ class CompiledDAG:
                 self._pending_p2p_communicator_dag_nodes.add(dag_node)
                 self._pending_p2p_communicator_actors.update(actors)
         else:
-            self._communicator_to_type_hints[communicator].add(type_hint)
-            # if isinstance(dag_node.type_hint, ChannelOutputType):
-            #     logger.error(
-            #         "ChannelOutputType is not allowed for tracking communicator usage.",
-            #         stack_info=True,
-            #     )
             if collective_op:
                 if communicator.get_actor_handles() != actors:
                     raise ValueError(
-                        "Actor sets are different for collective operation and communicator."
+                        "The passed-in communicator must have the same set "
+                        "of actors as the collective operation. "
+                        f"The passed-in communicator has actors {communicator.get_actor_handles()} "
+                        f"while the collective operation has actors {actors}."
                     )
             else:
                 if not actors.issubset(communicator.get_actor_handles()):
-                    raise ValueError("Actor is not in the communicator group.")
+                    raise ValueError(
+                        "The passed-in communicator must include all of the actors "
+                        "used in the P2P operation. "
+                        f"The passed-in communicator has actors {communicator.get_actor_handles()} "
+                        f"while the P2P operation has actors {actors}."
+                    )
+            self._communicator_to_type_hints[communicator].add(type_hint)
 
     def _get_default_communicator(
         self,
         dag_node: "ray.dag.DAGNode",
     ) -> Optional[Communicator]:
+        """
+        Get the default communicator for the DAG node when a custom communicator
+        is not specified.
+
+        Args:
+            dag_node: The DAG node that uses the communicator.
+        Returns:
+            The default communicator for the DAG node.
+        """
         if not self._create_default_communicator:
             if dag_node._original_type_hint is not None:
                 assert isinstance(dag_node._original_type_hint, AutoTransportType)
                 raise ValueError(
-                    f"AutoTransportType is used for DAGNode {dag_node}, "
+                    f"with_tensor_transport(transport='auto') is used for DAGNode {dag_node}, "
                     "This requires specifying a default communicator or 'create' for "
                     "default_communicator when calling experimental_compile()."
                 )
