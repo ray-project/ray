@@ -900,6 +900,50 @@ def test_torch_tensor_exceptions2(
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_explicit_communicator(ray_start_regular):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = dag.with_tensor_transport(transport="nccl")
+        dag = receiver.recv.bind(dag)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Please specify a custom communicator for the DAGNode using "
+            "`with_tensor_transport\(\)`, or specify a communicator or 'create' for "
+            "_default_communicator when calling experimental_compile()."
+        ),
+    ):
+        dag.experimental_compile(_default_communicator=None)
+
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = dag.with_tensor_transport(transport="auto")
+        dag = receiver.recv.bind(dag)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "This requires specifying a default communicator or 'create' for "
+            "_default_communicator when calling experimental_compile()."
+        ),
+    ):
+        dag.experimental_compile(_default_communicator=None)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce(ray_start_regular):
     """
     Test basic all-reduce.

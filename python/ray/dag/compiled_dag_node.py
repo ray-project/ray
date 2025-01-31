@@ -1323,13 +1323,13 @@ class CompiledDAG:
                     raise ValueError(
                         f"with_tensor_transport(transport='auto') is used for DAGNode {dag_node}, "
                         "This requires specifying a default communicator or 'create' for "
-                        "default_communicator when calling experimental_compile()."
+                        "_default_communicator when calling experimental_compile()."
                     )
                 raise ValueError(
                     f"DAGNode {dag_node} has no custom communicator specified. "
                     "Please specify a custom communicator for the DAGNode using "
                     "`with_tensor_transport()`, or specify a communicator or 'create' for "
-                    "default_communicator when calling experimental_compile()."
+                    "_default_communicator when calling experimental_compile()."
                 )
             communicator = self._default_communicator
         else:
