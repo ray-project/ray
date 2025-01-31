@@ -16,7 +16,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         targets=[
             Target(
                 expr="sum(ray_serve_deployment_replica_healthy{{{global_filters}}}) by (application, deployment)",
-                legend="{{application, deployment}}",
+                legend="{{application}}#{{deployment}}#{{replica}}",
             ),
         ],
         grid_pos=GridPos(0, 0, 8, 8),
