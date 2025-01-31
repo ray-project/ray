@@ -114,6 +114,11 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             max_workers=1, thread_name_prefix="actor_head_executor"
         )
 
+        # DO NOT SUBMIT
+        # TODO(ryw): move this to a actor_data_index.py
+        # Now: node_id_hex -> actor_id_hex -> actor_table_data_dict
+        self.node_actors_without_worker_info = {}
+
     async def _update_actors(self):
         """
         Processes actor info. First gets all actors from GCS, then subscribes to
@@ -149,6 +154,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
 
                 # Update node's actor info
                 DataSource.node_actors.reset(node_actors)
+                self.node_actors_without_worker_info = node_actors
 
                 logger.info("Received %d actor info from GCS.", len(actor_dicts))
 
@@ -258,6 +264,17 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 await asyncio.sleep(ACTOR_CLEANUP_FREQUENCY)
             except Exception:
                 logger.exception("Error cleaning up actor info from GCS.")
+
+    @routes.get("/nodes/{node_id}/actors_without_worker_info")
+    async def get_actors_without_worker_info(self, req) -> aiohttp.web.Response:
+        """
+        Returns {actor_id_hex: actor_table_data}
+        """
+        node_id_hex = req.match_info.get("node_id")
+        actors = self.node_actors_without_worker_info.get(node_id_hex, {})
+        return dashboard_optional_utils.rest_response(
+            success=True, message="Actors fetched.", actors=actors
+        )
 
     @routes.get("/logical/actors")
     @dashboard_optional_utils.aiohttp_cache
