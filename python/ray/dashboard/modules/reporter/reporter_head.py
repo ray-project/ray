@@ -8,7 +8,8 @@ import aiohttp.web
 
 from ray import NodeID
 import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
+from ray.dashboard.subprocesses.module import SubprocessModule
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
@@ -30,7 +31,6 @@ from ray.util.state.common import ListApiOptions
 from ray.util.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 EMOJI_WARNING = "&#x26A0;&#xFE0F;"
 WARNING_FOR_MULTI_TASK_IN_A_WORKER = (
@@ -54,9 +54,9 @@ RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS = env_integer(
 )
 
 
-class ReportHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+class ReportHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._ray_config = None
         # TODO(fyrestone): Avoid using ray.state in dashboard, it's not
         # asynchronous and will lead to low performance. ray disconnect()
@@ -75,13 +75,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # the cluster's lifetime.
         self.cluster_metadata = None
 
-    @routes.get("/api/v0/cluster_metadata")
+    @SubprocessRouteTable.get("/api/v0/cluster_metadata")
     async def get_cluster_metadata(self, req):
         return dashboard_optional_utils.rest_response(
             success=True, message="", **self.cluster_metadata
         )
 
-    @routes.get("/api/cluster_status")
+    @SubprocessRouteTable.get("/api/cluster_status")
     async def get_cluster_status(self, req):
         """Returns status information about the cluster.
 
@@ -209,7 +209,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         return pid, worker_id
 
-    @routes.get("/task/traceback")
+    @SubprocessRouteTable.get("/task/traceback")
     async def get_task_traceback(self, req) -> aiohttp.web.Response:
         """
         Retrieves the traceback information for a specific task.
@@ -309,7 +309,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             else reply.output
         )
 
-    @routes.get("/task/cpu_profile")
+    @SubprocessRouteTable.get("/task/cpu_profile")
     async def get_task_cpu_profile(self, req) -> aiohttp.web.Response:
         """
         Retrieves the CPU profile for a specific task.
@@ -412,7 +412,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             headers={"Content-Type": "text/html"},
         )
 
-    @routes.get("/worker/traceback")
+    @SubprocessRouteTable.get("/worker/traceback")
     async def get_traceback(self, req) -> aiohttp.web.Response:
         """
         Params:
@@ -449,7 +449,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         else:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
-    @routes.get("/worker/cpu_profile")
+    @SubprocessRouteTable.get("/worker/cpu_profile")
     async def cpu_profile(self, req) -> aiohttp.web.Response:
         """
         Params:
@@ -502,7 +502,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         else:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
-    @routes.get("/memory_profile")
+    @SubprocessRouteTable.get("/memory_profile")
     async def memory_profile(self, req) -> aiohttp.web.Response:
         """
         Retrieves the memory profile for a specific worker or task.
@@ -695,7 +695,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         channel = init_grpc_channel(ip_port, options=options, asynchronous=True)
         return reporter_pb2_grpc.ReporterServiceStub(channel)
 
-    async def run(self, server):
+    async def init(self):
         self._state_api_data_source_client = StateDataSourceClient(
             self.aiogrpc_gcs_channel, self.gcs_aio_client
         )
@@ -717,7 +717,3 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             namespace=KV_NAMESPACE_CLUSTER,
         )
         self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
-
-    @staticmethod
-    def is_minimal_module():
-        return False
