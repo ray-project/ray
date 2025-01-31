@@ -105,7 +105,7 @@ def _start_controller(
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
         enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
     ).remote(
-        http_config=http_options,
+        http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=global_logging_config,
     )
