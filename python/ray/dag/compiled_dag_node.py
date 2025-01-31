@@ -621,8 +621,10 @@ class ExecutableTask:
         else:
             stream = nullcontext()
 
+        nccl_input_values = None
         if self.requires_nccl_read:
-            input_values = [P2POp.RECV, self.nccl_ch]
+            nccl_input_values = [P2POp.RECV, self.nccl_ch]
+            input_values = []
             input_exc = None
         else:
             try:
@@ -659,16 +661,25 @@ class ExecutableTask:
                 if input_values is not None:
                     assert len(input_values) == 1
                     tensor = input_values[0]
-                    input_values = [P2POp.SEND, self.nccl_ch, tensor]
+                    nccl_input_values = [P2POp.SEND, self.nccl_ch]
+                    input_values = [tensor]
                 else:
                     exc = self.fetch_intermediate_future(wait_gpu_future=True)
-                    input_values = [P2POp.SEND, self.nccl_ch, exc]
+                    nccl_input_values = [P2POp.SEND, self.nccl_ch]
+                    input_values = [exc]
                     input_exc = None
 
-        def exec_method(method, input_exc, *input_values, **resolved_kwargs):
+        def exec_method(method, input_exc, nccl_input_values, *input_values, **resolved_kwargs):
             if input_values is None:
                 assert input_exc is not None
+            if input_exc is None:
+                assert input_values is not None
+
+            if input_exc is not None and self.nccl_op is None:
                 return
+            if self.nccl_op is not None:
+                assert nccl_input_values is not None
+                input_values = tuple(nccl_input_values) + input_values
             return method(*input_values, **resolved_kwargs)
 
         if self.nccl_op is not None:
@@ -683,7 +694,7 @@ class ExecutableTask:
                 # - throw Exception if non-null
                 # - calls internal method: (*input_values, **resolved_kwargs)
                 # output_val = method(*input_values, **self.resolved_kwargs)
-                output_val = exec_method(method, input_exc, *input_values, **self.resolved_kwargs)
+                output_val = exec_method(method, input_exc, nccl_input_values, *input_values, **self.resolved_kwargs)
             except RayChannelError:
                 return True
             except Exception as exc:
