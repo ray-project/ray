@@ -867,7 +867,9 @@ class CompiledDAG:
         self._default_communicator_id: Optional[str] = None
 
         self._provided_communicators: Set[Communicator] = set()
-        self._created_communicators: Set[Communicator] = set()
+        self._actors_to_created_communicator_id: Dict[
+            FrozenSet["ray.actor.ActorHandle"], str
+        ] = {}
 
         self._pending_p2p_communicator_actors: Set["ray.actor.ActorHandle"] = set()
         self._pending_p2p_communicator_dag_nodes: Set["ray.dag.DAGNode"] = set()
@@ -1236,32 +1238,33 @@ class CompiledDAG:
             if communicator == self._default_communicator:
                 self._default_communicator_id = communicator_id
 
-        actors_to_created_communicator_id: Dict[
-            FrozenSet["ray.actor.ActorHandle"], str
-        ] = {}
         for collective_op in self._pending_collective_ops:
             if not self._create_default_communicator:
                 raise ValueError(
                     "Communicator creation is not allowed for collective operations."
                 )
             actors = collective_op.actor_handles
-            if frozenset(actors) in actors_to_created_communicator_id:
-                communicator_id = actors_to_created_communicator_id[frozenset(actors)]
+            if frozenset(actors) in self._actors_to_created_communicator_id:
+                communicator_id = self._actors_to_created_communicator_id[
+                    frozenset(actors)
+                ]
             else:
                 communicator_id = _init_communicator(
                     actors,
                     None,
                     self._overlap_gpu_communication,
                 )
-                actors_to_created_communicator_id[frozenset(actors)] = communicator_id
+                self._actors_to_created_communicator_id[
+                    frozenset(actors)
+                ] = communicator_id
             collective_op.set_communicator_id(communicator_id)
 
         if self._pending_p2p_communicator_actors:
             if (
                 frozenset(self._pending_p2p_communicator_actors)
-                in actors_to_created_communicator_id
+                in self._actors_to_created_communicator_id
             ):
-                p2p_communicator_id = actors_to_created_communicator_id[
+                p2p_communicator_id = self._actors_to_created_communicator_id[
                     frozenset(self._pending_p2p_communicator_actors)
                 ]
             else:
@@ -2052,7 +2055,10 @@ class CompiledDAG:
                             logger.exception("Error cancelling worker task")
                             pass
 
-                    _destroy_communicator(outer._default_communicator_id)
+                    for (
+                        communicator_id
+                    ) in self._actors_to_created_communicator_id.values():
+                        _destroy_communicator(communicator_id)
 
                     logger.info("Waiting for worker tasks to exit")
                     self.wait_teardown(kill_actors=kill_actors)
