@@ -32,6 +32,9 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
     Upscale decisions are optional and are made when workers are healthy.
     """
 
+    # TODO: Restructure these APIs to consider different TrainControllerStates
+    # instead of just running and non-running worker groups.
+
     def __init__(self, scaling_config: ScalingConfig):
         self.scaling_config = scaling_config
 

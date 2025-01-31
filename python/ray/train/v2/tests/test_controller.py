@@ -163,8 +163,6 @@ def test_resize():
     )
     worker_group = controller.get_worker_group()
 
-    controller._checkpoint_handler = MagicMock()
-
     decisions = [
         NoopDecision(),
         ResizeDecision(num_workers=2, resources_per_worker={}),
@@ -231,8 +229,6 @@ def test_failure_handling():
     )
     worker_group = controller.get_worker_group()
 
-    controller._checkpoint_handler = MagicMock()
-
     assert isinstance(controller.get_state(), InitializingState)
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})
@@ -275,7 +271,6 @@ def test_worker_group_start_failure(error_type):
         scaling_policy=scaling_policy,
         failure_policy=failure_policy,
     )
-    controller._checkpoint_handler = MagicMock()
 
     worker_group: DummyWorkerGroup = controller.get_worker_group()
     worker_group.set_start_failure(error_type)
@@ -378,7 +373,6 @@ def test_controller_callback():
         failure_policy=failure_policy,
         callbacks=[callback],
     )
-    controller._checkpoint_handler = MagicMock()
     worker_group = controller.get_worker_group()
 
     controller._start()
