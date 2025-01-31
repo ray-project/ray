@@ -1,13 +1,11 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
-
 
 .. _rllib-checkpoints-docs:
 
 Checkpointing
 =============
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 RLlib offers a powerful checkpointing system for all its major classes, allowing you to save the
 states of :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instances and their subcomponents
@@ -37,7 +35,7 @@ For example, you can deploy a previously trained :py:class:`~ray.rllib.core.rl_m
 any of the other RLlib components, into production.
 
 .. figure:: images/checkpointing/from_checkpoint.svg
-    :width: 500
+    :width: 750
     :align: left
 
     **Creating a new instance directly from a checkpoint**: Use the ``classmethod``

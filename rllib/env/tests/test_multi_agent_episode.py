@@ -294,7 +294,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             check(len(episode.agent_episodes[agent_id].actions), 0)
             check(len(episode.agent_episodes[agent_id].rewards), 0)
             check(episode.agent_episodes[agent_id].is_truncated, False)
-            check(episode.agent_episodes[agent_id].is_finalized, False)
+            check(episode.agent_episodes[agent_id].is_numpy, False)
         check(episode.agent_episodes["agent_5"].is_terminated, True)
         check(
             episode.env_t_to_agent_t["agent_5"].data,
@@ -3498,10 +3498,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # In the other case we need at least the last observations for the next
         # actions.
         else:
-            obs = {
-                agent_id: agent_obs
-                for agent_id, agent_obs in episode.get_observations(-1).items()
-            }
+            obs = dict(episode.get_observations(-1))
 
         # Sample `size` many records.
         done_agents = {aid for aid, t in episode.get_terminateds().items() if t}

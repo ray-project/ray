@@ -24,12 +24,10 @@ from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentScheduler,
 )
-from ray.serve._private.grpc_util import gRPCServer
+from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.replica_scheduler import (
-    ActorReplicaWrapper,
-    PowerOfTwoChoicesReplicaScheduler,
-)
+from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
+from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 from ray.serve._private.router import Router, SingletonThreadRouter
 from ray.serve._private.utils import (
     generate_request_id,
@@ -95,7 +93,7 @@ def create_init_handle_options(**kwargs):
 
 
 def get_request_metadata(init_options, handle_options):
-    _request_context = ray.serve.context._serve_request_context.get()
+    _request_context = ray.serve.context._get_serve_request_context()
 
     request_protocol = RequestProtocol.UNDEFINED
     if init_options and init_options._source == DeploymentHandleSource.PROXY:
@@ -168,7 +166,7 @@ def create_router(
         use_replica_queue_len_cache=(
             not is_inside_ray_client_context and RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
         ),
-        create_replica_wrapper_func=lambda r: ActorReplicaWrapper(r),
+        create_replica_wrapper_func=lambda r: RunningReplica(r),
     )
 
     return SingletonThreadRouter(
@@ -187,8 +185,8 @@ def create_router(
     )
 
 
-def add_grpc_address(grpc_server: gRPCServer, server_address: str):
-    """Helper function to add a address to gRPC server."""
+def add_grpc_address(grpc_server: gRPCGenericServer, server_address: str):
+    """Helper function to add an address to a gRPC server."""
     grpc_server.add_insecure_port(server_address)
 
 

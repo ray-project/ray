@@ -64,7 +64,7 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllPlacementGroupReply,
     GetAllWorkerInfoReply,
 )
-from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetObjectsInfoReply
+from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
 from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
 from ray.core.generated.runtime_env_common_pb2 import (
@@ -1621,9 +1621,6 @@ async def test_state_data_source_client(ray_start_cluster):
     """
     Test tasks
     """
-    with pytest.raises(ValueError):
-        # Since we didn't register this node id, it should raise an exception.
-        result = await client.get_task_info("1234")
 
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
@@ -1632,9 +1629,6 @@ async def test_state_data_source_client(ray_start_cluster):
         port = int(node["NodeManagerPort"])
         runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
         client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
-        result = await client.get_task_info(node_id)
-        assert isinstance(result, GetTasksInfoReply)
-
     assert len(client.get_all_registered_raylet_ids()) == 2
 
     """
@@ -1663,18 +1657,16 @@ async def test_state_data_source_client(ray_start_cluster):
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
         node_id = node["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
+        key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
 
-        def get_port():
+        def get_addr():
             return ray.experimental.internal_kv._internal_kv_get(
                 key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
             )
 
-        wait_for_condition(lambda: get_port() is not None)
-        # The second index is the gRPC port
-        port = json.loads(get_port())[1]
-        ip = node["NodeManagerAddress"]
-        client.register_agent_client(node_id, ip, port)
+        wait_for_condition(lambda: get_addr() is not None)
+        ip, http_port, grpc_port = json.loads(get_addr())
+        client.register_agent_client(node_id, ip, grpc_port)
         result = await client.get_runtime_envs_info(node_id)
         assert isinstance(result, GetRuntimeEnvsInfoReply)
 
@@ -1791,38 +1783,6 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
         port = int(node["NodeManagerPort"])
         runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
         client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
-
-    """
-    Test tasks
-    """
-
-    @ray.remote
-    def long_running():
-        import time
-
-        time.sleep(300)
-
-    @ray.remote
-    def f():
-        ray.get([long_running.remote() for _ in range(2)])
-
-    # Driver: 2 * f
-    # Each worker: 2 * long_running
-    # -> 2 * f + 4 * long_running
-
-    refs = [f.remote() for _ in range(2)]  # noqa
-
-    async def verify():
-        result = await client.get_task_info(node_id, limit=2)
-        assert result.total == 6
-        assert len(result.owned_task_info_entries) == 2
-        return True
-
-    await async_wait_for_condition_async_predicate(verify)
-    for ref in refs:
-        ray.cancel(ref, force=True, recursive=True)
-    del refs
-
     """
     Test objects
     """
@@ -1843,8 +1803,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
         # 4 refs (driver)
         # 4 pinned in memory for each task
         # 40 for 4 tasks * 10 objects each
-        # 1 from the previous test (refs) is for some reasons not GC'ed. (driver)
-        assert result.total == 53
+        assert result.total == 52
         # Only 1 core worker stat is returned because data is truncated.
         assert len(result.core_workers_stats) == 1
 
@@ -1854,7 +1813,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
             assert (
                 WorkerType.DESCRIPTOR.values_by_number[c.worker_type].name == "DRIVER"
             )
-            assert c.objects_total == 9
+            assert c.objects_total == 8
             assert len(c.object_refs) == 2
         return True
 
@@ -1868,18 +1827,16 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     """
     for node in ray.nodes():
         node_id = node["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
+        key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
 
-        def get_port():
+        def get_addr():
             return ray.experimental.internal_kv._internal_kv_get(
                 key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
             )
 
-        wait_for_condition(lambda: get_port() is not None)
-        # The second index is the gRPC port
-        port = json.loads(get_port())[1]
-        ip = node["NodeManagerAddress"]
-        client.register_agent_client(node_id, ip, port)
+        wait_for_condition(lambda: get_addr() is not None)
+        ip, http_port, grpc_port = json.loads(get_addr())
+        client.register_agent_client(node_id, ip, grpc_port)
 
     @ray.remote
     class Actor:

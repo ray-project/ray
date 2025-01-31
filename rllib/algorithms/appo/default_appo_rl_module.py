@@ -2,11 +2,13 @@ import abc
 from typing import Any, Dict, List, Tuple
 
 from ray.rllib.algorithms.ppo.default_ppo_rl_module import DefaultPPORLModule
-from ray.rllib.algorithms.appo.appo import OLD_ACTION_DIST_LOGITS_KEY
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import ACTOR
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
-from ray.rllib.core.rl_module.apis import TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import (
+    TARGET_NETWORK_ACTION_DIST_INPUTS,
+    TargetNetworkAPI,
+)
 from ray.rllib.utils.typing import NetworkType
 
 from ray.rllib.utils.annotations import (
@@ -43,7 +45,7 @@ class DefaultAPPORLModule(DefaultPPORLModule, TargetNetworkAPI, abc.ABC):
     def forward_target(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         old_pi_inputs_encoded = self._old_encoder(batch)[ENCODER_OUT][ACTOR]
         old_action_dist_logits = self._old_pi(old_pi_inputs_encoded)
-        return {OLD_ACTION_DIST_LOGITS_KEY: old_action_dist_logits}
+        return {TARGET_NETWORK_ACTION_DIST_INPUTS: old_action_dist_logits}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(DefaultPPORLModule)

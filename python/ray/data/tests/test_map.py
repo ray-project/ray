@@ -1442,7 +1442,7 @@ def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
     block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
 
     assert len(block_refs) == 1
-    assert type(ray.get(block_refs[0])) == pd.DataFrame
+    assert type(ray.get(block_refs[0])) is pd.DataFrame
 
 
 def test_map_with_objects_and_tensors(ray_start_regular_shared):
@@ -1498,6 +1498,31 @@ def test_random_sample_checks(ray_start_regular_shared):
     with pytest.raises(ValueError):
         # Cannot sample fraction > 1
         ray.data.range(1).random_sample(10)
+
+
+def test_actor_udf_cleanup(ray_start_regular_shared, tmp_path):
+    """Test that for the actor map operator, the UDF object is deleted properly."""
+    test_file = tmp_path / "test.txt"
+
+    # Simulate the case that the UDF depends on some external resources that
+    # need to be cleaned up.
+    class StatefulUDF:
+        def __init__(self):
+            with open(test_file, "w") as f:
+                f.write("test")
+
+        def __call__(self, row):
+            return row
+
+        def __del__(self):
+            # Delete the file when the UDF is deleted.
+            os.remove(test_file)
+
+    ds = ray.data.range(10)
+    ds = ds.map(StatefulUDF, concurrency=1)
+    assert sorted(extract_values("id", ds.take_all())) == list(range(10))
+
+    wait_for_condition(lambda: not os.path.exists(test_file))
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These

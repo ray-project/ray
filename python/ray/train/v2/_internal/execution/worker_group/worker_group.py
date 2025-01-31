@@ -44,7 +44,7 @@ from ray.train.v2._internal.execution.worker_group.worker import (
 )
 from ray.train.v2._internal.util import (
     bundle_to_remote_args,
-    invoke_callbacks_context_managers,
+    invoke_context_managers,
     ray_get_safe,
     time_monotonic,
 )
@@ -232,8 +232,8 @@ class WorkerGroup:
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
         # The current execution order is as follows:`on_worker_group_start` callbacks
         # are triggered before the `after_worker_group_start` callbacks.
-        with invoke_callbacks_context_managers(
-            self._callbacks, "on_worker_group_start"
+        with invoke_context_managers(
+            [callback.on_worker_group_start for callback in self._callbacks]
         ):
             if self._workers:
                 raise ValueError("Workers already started.")
@@ -422,8 +422,8 @@ class WorkerGroup:
                 this is less than or equal to 0, immediately force kill all
                 workers.
         """
-        with invoke_callbacks_context_managers(
-            self._callbacks, "on_worker_group_shutdown"
+        with invoke_context_managers(
+            [callback.on_worker_group_shutdown for callback in self._callbacks]
         ):
             if self._workers:
                 for callback in self._callbacks:
@@ -440,7 +440,9 @@ class WorkerGroup:
             else:
                 done_refs = [w.actor.__ray_terminate__.remote() for w in self._workers]
                 # Wait for actors to die gracefully.
-                _, not_done = ray.wait(done_refs, timeout=patience_s)
+                _, not_done = ray.wait(
+                    done_refs, num_returns=len(done_refs), timeout=patience_s
+                )
                 if not_done:
                     logger.debug(
                         "Graceful termination failed. Falling back to force kill."
@@ -449,11 +451,11 @@ class WorkerGroup:
                     for worker in self._workers:
                         ray.kill(worker.actor)
 
-            if self._pg:
-                remove_placement_group(self._pg)
-
             if self._sync_actor:
                 ray.kill(self._sync_actor)
+
+            if self._pg:
+                remove_placement_group(self._pg)
 
             self._clear_state()
 
@@ -596,10 +598,7 @@ class WorkerGroup:
         worker_group_status = WorkerGroupStatus(
             num_workers=len(self._workers),
             latest_start_time=self._latest_start_time,
-            worker_statuses={
-                world_rank: worker_status
-                for world_rank, worker_status in enumerate(poll_results)
-            },
+            worker_statuses=dict(enumerate(poll_results)),
         )
 
         for callback in self._callbacks:

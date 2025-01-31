@@ -3,6 +3,8 @@ exclude: |
     python/ray/core/generated/|
     python/ray/serve/generated/|
     python/ray/cloudpickle/|
+    python/ray/dashboard/client/public/|
+    python/ray/tests/test_cli_patterns|
     python/ray/_private/runtime_env/_clonevirtualenv.py|
     doc/external/|
     doc/source/
@@ -135,7 +137,7 @@ repos:
 
   - repo: local
     hooks:
-      - id: check_cpp_files_inclusion
+      - id: check-cpp-files-inclusion
         name: Check ray core C++ files inclusion violations
         entry: ci/lint/check_cpp_files_inclusion.py
         language: python

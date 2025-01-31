@@ -528,12 +528,11 @@ class TorchMultiDistribution(Distribution):
         self,
         child_distribution_struct: Union[Tuple, List, Dict],
     ):
-        """Initializes a TorchMultiActionDistribution object.
+        """Initializes a TorchMultiDistribution object.
 
         Args:
-            child_distribution_struct: Any struct
-                that contains the child distribution classes to use to
-                instantiate the child distributions from `logits`.
+            child_distribution_struct: A complex struct that contains the child
+                distribution instances that make up this multi-distribution.
         """
         super().__init__()
         self._original_struct = child_distribution_struct
@@ -634,7 +633,6 @@ class TorchMultiDistribution(Distribution):
         logits: "torch.Tensor",
         child_distribution_cls_struct: Union[Dict, Iterable],
         input_lens: Union[Dict, List[int]],
-        space: gym.Space,
         **kwargs,
     ) -> "TorchMultiDistribution":
         """Creates this Distribution from logits (and additional arguments).
@@ -651,11 +649,10 @@ class TorchMultiDistribution(Distribution):
             input_lens: A list or dict of integers that indicate the length of each
                 logit. If this is given as a dict, the structure should match the
                 structure of child_distribution_cls_struct.
-            space: The possibly nested output space.
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            A TorchMultiActionDistribution object.
+            A TorchMultiDistribution object.
         """
         logit_lens = tree.flatten(input_lens)
         child_distribution_cls_list = tree.flatten(child_distribution_cls_struct)

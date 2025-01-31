@@ -82,15 +82,16 @@ class TestOfflineData(unittest.TestCase):
         self.assertIsInstance(algo.offline_data.learner_handles[0], Learner)
 
         # Now sample a batch from the data and ensure it is a `MultiAgentBatch`.
-        batch = algo.offline_data.sample(10)
+        batch = algo.offline_data.sample(10, num_shards=0, return_iterator=False)
         self.assertIsInstance(batch, MultiAgentBatch)
         self.assertEqual(batch.env_steps(), 10)
 
         # Now return an iterator.
-        iter = algo.offline_data.sample(num_samples=10, return_iterator=True)
-        from ray.data.iterator import _IterableFromIterator
+        iter = algo.offline_data.sample(
+            num_samples=10, num_shards=0, return_iterator=True
+        )
 
-        self.assertIsInstance(iter, _IterableFromIterator)
+        self.assertIsInstance(iter[0], ray.data.DataIterator)
         # Tear down.
         algo.stop()
 

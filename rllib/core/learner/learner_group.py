@@ -414,9 +414,15 @@ class LearnerGroup(Checkpointable):
                     " local mode! Try setting `config.num_learners > 0`."
                 )
 
-            if isinstance(batch, list) and isinstance(batch[0], ray.ObjectRef):
+            if isinstance(batch, list):
+                # Ensure we are not in a multi-learner setting.
                 assert len(batch) == 1
-                batch = ray.get(batch[0])
+                # If we have `ObjectRef`s, get the respective objects.
+                if isinstance(batch[0], ray.ObjectRef):
+                    batch = ray.get(batch[0])
+                # If we have a `DataIterator`, get the iterator.
+                elif isinstance(batch[0], ray.data.DataIterator):
+                    batch = batch[0]
 
             results = [
                 _learner_update(
@@ -857,7 +863,7 @@ class LearnerGroup(Checkpointable):
         remote_actor_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
         **kwargs,
     ) -> RemoteCallResults:
         """Calls the given function on each Learner L with the args: (L, \*\*kwargs).
