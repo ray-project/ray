@@ -207,9 +207,6 @@ class SubprocessModule(abc.ABC):
 
     @property
     def aiogrpc_gcs_channel(self):
-        # TODO(ryw): once we removed the old gcs stubs, also remove this.
-        if self._config.minimal:
-            return None
         if self._aiogrpc_gcs_channel is None:
             gcs_channel = GcsChannel(gcs_address=self._config.gcs_address, aio=True)
             gcs_channel.connect()
