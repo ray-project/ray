@@ -4,18 +4,23 @@
 absl-py==1.4.0
     # via
     #   array-record
+    #   chex
     #   dm-control
     #   dm-env
     #   etils
+    #   google-vizier
     #   labmaze
     #   ml-collections
     #   mujoco
     #   open-spiel
+    #   optax
+    #   orbax-checkpoint
     #   tensorboard
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tensorflow-probability
+    #   tfp-nightly
 accelerate==0.28.0
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 adagio==0.2.4
@@ -133,6 +138,7 @@ attrs==25.1.0
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aiohttp
     #   glom
+    #   google-vizier
     #   jschema-to-python
     #   jsonschema
     #   jupyter-cache
@@ -262,6 +268,10 @@ charset-normalizer==3.3.2
     # via
     #   requests
     #   snowflake-connector-python
+chex==0.1.88
+    # via
+    #   google-vizier
+    #   optax
 clang-format==12.0.1
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 click==8.1.7
@@ -299,6 +309,7 @@ cloudpickle==2.2.0
     #   pymars
     #   statsforecast
     #   tensorflow-probability
+    #   tfp-nightly
 cma==3.2.2
     # via nevergrad
 cmdstanpy==1.2.0
@@ -384,6 +395,7 @@ decorator==5.1.1
     #   moviepy
     #   paramz
     #   tensorflow-probability
+    #   tfp-nightly
 decord==0.6.0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 deepspeed==0.12.3
@@ -419,6 +431,7 @@ dm-tree==0.1.8
     #   dm-env
     #   tensorflow-datasets
     #   tensorflow-probability
+    #   tfp-nightly
 dnspython==2.4.2
     # via pymongo
 docker==6.1.3
@@ -447,6 +460,8 @@ entrypoints==0.4
     #   jupyter-client
     #   mlflow
     #   nbconvert
+equinox==0.11.7
+    # via google-vizier
 et-xmlfile==1.1.0
     # via openpyxl
 etils==1.5.2 ; python_version < "3.12"
@@ -454,6 +469,8 @@ etils==1.5.2 ; python_version < "3.12"
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   array-record
     #   mujoco
+    #   optax
+    #   orbax-checkpoint
     #   tensorflow-datasets
 evaluate==0.4.3
     # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
@@ -516,6 +533,8 @@ flatbuffers==23.5.26
     #   onnxruntime
     #   tensorflow
     #   tf2onnx
+flax==0.10.2
+    # via google-vizier
 fonttools==4.45.1
     # via matplotlib
 fqdn==1.5.1
@@ -557,6 +576,7 @@ gast==0.4.0
     # via
     #   tensorflow
     #   tensorflow-probability
+    #   tfp-nightly
 gcs-oauth2-boto-plugin==3.0
     # via gsutil
 gitdb==4.0.11
@@ -626,9 +646,12 @@ google-resumable-media==2.6.0
     # via
     #   google-cloud-bigquery
     #   google-cloud-storage
+google-vizier==0.1.23 ; python_version >= "3.10"
+    # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
 googleapis-common-protos==1.61.0
     # via
     #   google-api-core
+    #   google-vizier
     #   grpcio-status
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorflow-metadata
@@ -652,6 +675,7 @@ grpcio==1.66.2 ; sys_platform != "darwin"
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   google-api-core
     #   google-cloud-bigquery
+    #   google-vizier
     #   grpcio-status
     #   grpcio-tools
     #   mlagents-envs
@@ -660,6 +684,10 @@ grpcio==1.66.2 ; sys_platform != "darwin"
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
+grpcio-status==1.48.2
+    # via google-api-core
+grpcio-tools==1.48.2
+    # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
 gsutil==5.27
     # via -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
@@ -722,6 +750,8 @@ humanfriendly==10.0
     # via
     #   azure-cli-core
     #   coloredlogs
+humanize==4.11.0
+    # via orbax-checkpoint
 hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 identify==2.6.1
@@ -790,6 +820,30 @@ isoduration==20.11.0
     # via jsonschema
 itsdangerous==2.1.2
     # via flask
+jax==0.4.34
+    # via
+    #   chex
+    #   equinox
+    #   flax
+    #   google-vizier
+    #   jaxopt
+    #   optax
+    #   orbax-checkpoint
+    #   tfp-nightly
+jaxlib==0.4.34
+    # via
+    #   chex
+    #   google-vizier
+    #   jax
+    #   jaxopt
+    #   optax
+    #   tfp-nightly
+jaxopt==0.8.3
+    # via google-vizier
+jaxtyping==0.2.37
+    # via
+    #   equinox
+    #   google-vizier
 jedi==0.19.1
     # via ipython
 jinja2==3.1.2
@@ -1007,7 +1061,11 @@ mistune==0.8.4
 ml-collections==0.1.1
     # via open-spiel
 ml-dtypes==0.3.2
-    # via tensorflow
+    # via
+    #   jax
+    #   jaxlib
+    #   tensorflow
+    #   tensorstore
 mlagents-envs==0.28.0
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 mlflow==2.9.2
@@ -1048,7 +1106,9 @@ msgpack==1.0.7
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
     #   distributed
+    #   flax
     #   msgpack-numpy
+    #   orbax-checkpoint
     #   ray
 msgpack-numpy==0.4.8
     # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
@@ -1118,6 +1178,7 @@ nest-asyncio==1.5.8
     #   nbclassic
     #   nbclient
     #   notebook
+    #   orbax-checkpoint
 netifaces==0.11.0
     # via
     #   hpbandster
@@ -1160,6 +1221,7 @@ numpy==1.26.4
     #   altair
     #   bayesian-optimization
     #   bokeh
+    #   chex
     #   cma
     #   cmdstanpy
     #   configspace
@@ -1173,6 +1235,8 @@ numpy==1.26.4
     #   dm-env
     #   etils
     #   evaluate
+    #   flax
+    #   google-vizier
     #   gpy
     #   gradio
     #   gymnasium
@@ -1180,6 +1244,9 @@ numpy==1.26.4
     #   hpbandster
     #   hyperopt
     #   imageio
+    #   jax
+    #   jaxlib
+    #   jaxopt
     #   labmaze
     #   lightgbm
     #   matplotlib
@@ -1201,7 +1268,9 @@ numpy==1.26.4
     #   open-spiel
     #   opencv-python-headless
     #   opt-einsum
+    #   optax
     #   optuna
+    #   orbax-checkpoint
     #   pandas
     #   paramz
     #   patsy
@@ -1226,7 +1295,9 @@ numpy==1.26.4
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-probability
+    #   tensorstore
     #   tf2onnx
+    #   tfp-nightly
     #   tifffile
     #   tinyscaler
     #   torch-geometric
@@ -1303,10 +1374,17 @@ opentelemetry-semantic-conventions==0.20b0
     # via opentelemetry-sdk
 opt-einsum==3.3.0
     # via
+    #   jax
     #   pyro-ppl
     #   tensorflow
+optax==0.2.4
+    # via
+    #   flax
+    #   google-vizier
 optuna==4.1.0
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
+orbax-checkpoint==0.11.1
+    # via flax
 orjson==3.9.10
     # via gradio
 ormsgpack==1.7.0
@@ -1446,6 +1524,8 @@ portalocker==2.8.2
     # via
     #   azure-cli-telemetry
     #   msal-extensions
+portpicker==1.6.0
+    # via google-vizier
 pre-commit==3.5.0
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 prometheus-client==0.19.0
@@ -1471,6 +1551,7 @@ protobuf==3.20.3
     #   google-api-core
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
+    #   google-vizier
     #   googleapis-common-protos
     #   grpcio-status
     #   grpcio-tools
@@ -1480,6 +1561,7 @@ protobuf==3.20.3
     #   onnxruntime
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-proto
+    #   orbax-checkpoint
     #   proto-plus
     #   ray
     #   raydp
@@ -1502,6 +1584,7 @@ psutil==5.9.6
     #   distributed
     #   ipykernel
     #   modin
+    #   portpicker
     #   pymars
     #   raydp
     #   tensorflow-datasets
@@ -1742,6 +1825,7 @@ pyyaml==6.0.1
     #   dask
     #   datasets
     #   distributed
+    #   flax
     #   gradio
     #   huggingface-hub
     #   jsonschema-path
@@ -1758,6 +1842,7 @@ pyyaml==6.0.1
     #   myst-nb
     #   myst-parser
     #   optuna
+    #   orbax-checkpoint
     #   pre-commit
     #   pymars
     #   pytorch-lightning
@@ -1871,6 +1956,7 @@ rich==13.3.2
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
     #   comet-ml
+    #   flax
     #   memray
     #   pyiceberg
     #   semgrep
@@ -1926,6 +2012,9 @@ scipy==1.11.4
     #   gpy
     #   hpbandster
     #   hyperopt
+    #   jax
+    #   jaxlib
+    #   jaxopt
     #   lightgbm
     #   linear-operator
     #   medpy
@@ -1977,7 +2066,9 @@ shortuuid==1.0.1
 simpleitk==2.3.1
     # via medpy
 simplejson==3.19.2
-    # via comet-ml
+    # via
+    #   comet-ml
+    #   orbax-checkpoint
 six==1.16.0
     # via
     #   asttokens
@@ -2016,6 +2107,7 @@ six==1.16.0
     #   tensorflow
     #   tensorflow-probability
     #   tf2onnx
+    #   tfp-nightly
     #   triad
     #   vapi-runtime
 smart-open==6.2.0
@@ -2063,6 +2155,7 @@ sqlalchemy==2.0.32
     # via
     #   aim
     #   alembic
+    #   google-vizier
     #   jupyter-cache
     #   mlflow
     #   optuna
@@ -2141,6 +2234,10 @@ tensorflow-metadata==1.14.0
     # via tensorflow-datasets
 tensorflow-probability==0.23.0 ; python_version < "3.12"
     # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+tensorstore==0.1.71
+    # via
+    #   flax
+    #   orbax-checkpoint
 termcolor==2.4.0
     # via
     #   pytest-shutil
@@ -2156,6 +2253,8 @@ testfixtures==7.0.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 tf2onnx==1.15.1 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
+tfp-nightly==0.26.0.dev20250131
+    # via google-vizier
 threadpoolctl==3.1.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -2183,6 +2282,7 @@ tomlkit==0.13.0
 toolz==0.12.1
     # via
     #   altair
+    #   chex
     #   dask
     #   distributed
     #   partd
@@ -2293,7 +2393,9 @@ triad==0.9.8
 trustme==0.9.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 typeguard==2.13.3
-    # via ax-platform
+    # via
+    #   ax-platform
+    #   google-vizier
 typer==0.12.3
     # via -r /ray/ci/../python/requirements.txt
 types-pycurl==7.45.3.20240421
@@ -2314,9 +2416,12 @@ typing-extensions==4.12.2
     #   azure-core
     #   azure-identity
     #   bokeh
+    #   chex
     #   configspace
+    #   equinox
     #   etils
     #   fastapi
+    #   flax
     #   gradio
     #   gradio-client
     #   gymnasium
@@ -2325,6 +2430,7 @@ typing-extensions==4.12.2
     #   mypy
     #   myst-nb
     #   nevergrad
+    #   orbax-checkpoint
     #   pydantic
     #   pydantic-core
     #   pytorch-lightning
@@ -2394,6 +2500,8 @@ virtualenv==20.29.1
     # via vsphere-automation-sdk
 vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
+wadler-lindig==0.1.3
+    # via jaxtyping
 wandb==0.17.0
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 watchfiles==0.19.0
