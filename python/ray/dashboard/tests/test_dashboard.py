@@ -381,11 +381,15 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
                 logger.info("failed response: %s", response.text)
                 raise ex
             assert dump_info["result"] is True
-            dump_data = dump_info["data"]
-            assert len(dump_data["agents"]) == 1
-            node_id, (node_ip, http_port, grpc_port) = next(
-                iter(dump_data["agents"].items())
+
+            # Get agent ip and http port
+            node_id_hex = ray_start_with_dashboard["node_id"]
+            agent_addr = ray.experimental.internal_kv._internal_kv_get(
+                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id_hex}",
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             )
+            assert agent_addr is not None
+            node_ip, http_port, _ = json.loads(agent_addr)
 
             response = requests.get(
                 f"http://{node_ip}:{http_port}"
