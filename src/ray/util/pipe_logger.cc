@@ -24,11 +24,11 @@
 #include <thread>
 
 #include "absl/strings/str_split.h"
+#include "ray/util/spdlog_fd_sink.h"
 #include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
-#include "ray/util/spdlog_fd_sink.h"
 
 namespace ray {
 
@@ -43,7 +43,6 @@ struct StreamDumper {
 // Start two threads:
 // 1. A reader thread which continuously reads from [pipe_stream] until close;
 // 2. A dumper thread which writes content to sink via [write_func].
-template <typename WriteFunc, typename FlushFunc>
 void StartStreamDump(
     std::shared_ptr<boost::iostreams::stream<boost::iostreams::file_descriptor_source>>
         pipe_instream,
@@ -61,11 +60,6 @@ void StartStreamDump(
 
     // Exit at pipe read EOF.
     while (std::getline(*pipe_instream, newline)) {
-      // Backfill newliner for current segment.
-      if (!pipe_instream->eof()) {
-        newline += '\n';
-      }
-
       absl::MutexLock lock(&stream_dumper->mu);
       stream_dumper->content.emplace_back(std::move(newline));
     }
@@ -105,7 +99,7 @@ void StartStreamDump(
       }
 
       // Perform IO operation out of critical section.
-      write_func(std::move(curline));
+      logger->log(spdlog::level::info, std::move(curline));
     }
   }).detach();
 }
@@ -113,6 +107,10 @@ void StartStreamDump(
 // Create a spdlog logger with all sinks specified by the given option.
 std::shared_ptr<spdlog::logger> CreateLogger(
     const StreamRedirectionOption &stream_redirect_opt) {
+  // TODO(hjiang): Could optimize to reduce heap allocation.
+  std::vector<spdlog::sink_ptr> sinks;
+
+  // Setup file sink.
   spdlog::sink_ptr file_sink = nullptr;
   if (stream_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max()) {
     file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
@@ -124,75 +122,22 @@ std::shared_ptr<spdlog::logger> CreateLogger(
         stream_redirect_opt.file_path);
   }
   file_sink->set_level(spdlog::level::info);
-  auto logger = std::make_shared<spdlog::logger>(
-      /*name=*/absl::StrFormat("pipe-logger-%s", stream_redirect_opt.file_path),
-      std::move(file_sink));
-  logger->set_level(spdlog::level::info);
-  logger->set_pattern("%v");  // Only message string is logged.
-  return logger;
-}
+  sinks.emplace_back(std::move(file_sink));
 
-// Pipe streamer is only used in certain cases:
-// 1. Log roration is requested;
-// 2. Multiple sinks are involved.
-bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
-  const bool need_rotation =
-      stream_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max();
-  return need_rotation || stream_redirect_opt.tee_to_stdout ||
-         stream_redirect_opt.tee_to_stderr;
-}
-
-RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
-  boost::iostreams::file_descriptor_sink sink{file_path, std::ios_base::out};
-  auto handle = sink.handle();
-  
-
-  return RedirectionFileHandle{
-      handle, std::move(ostream), std::move(flush_fn), std::move(close_fn)};
-}
-}  // namespace
-
-RedirectionFileHandle CreateRedirectionFileHandle(
-    const StreamRedirectionOption &stream_redirect_opt) {
-  // Case-1: only redirection, but not rotation and tee involved.
-  const bool should_use_pipe_stream = ShouldUsePipeStream(stream_redirect_opt);
-  if (!should_use_pipe_stream) {
-    return OpenFileForRedirection(stream_redirect_opt.file_path);
-  }
-
-  // Case-2: redirection with rotation, or tee is involved.
-  //
-  // Used to synchronize on asynchronous stream logging.
-  // Shared pointer is used here to workaround the known limitation `std::function`
-  // requires captured to be copy constructible.
-  auto promise = std::make_shared<std::promise<void>>();
-  // Invoked after flush and close finished.
-  auto on_close_completion = [promise = promise]() { promise->set_value(); };
-
-  std::vector<spdlog::sink_ptr> sinks;
-
+  // Setup fd sink for stdout and stderr.
 #if defined(__APPLE__) || defined(__linux__)
   if (stream_redirect_opt.tee_to_stdout) {
     int duped_stdout_fd = dup(STDOUT_FILENO);
     RAY_CHECK_NE(duped_stdout_fd, -1) << "Fails to duplicate stdout: " << strerror(errno);
-    auto stdout_sink = std::make_shared<non_owned_fd_sink>(duped_stdout_fd);
+    auto stdout_sink = std::make_shared<non_owned_fd_sink_st>(duped_stdout_fd);
     sinks.emplace_back(std::move(stdout_sink));
   }
   if (stream_redirect_opt.tee_to_stderr) {
     int duped_stderr_fd = dup(STDERR_FILENO);
     RAY_CHECK_NE(duped_stderr_fd, -1) << "Fails to duplicate stderr: " << strerror(errno);
-    auto stderr_sink = std::make_shared<non_owned_fd_sink>(duped_stderr_fd);
+    auto stderr_sink = std::make_shared<non_owned_fd_sink_st>(duped_stderr_fd);
     sinks.emplace_back(std::move(stderr_sink));
   }
-
-  int pipefd[2] = {0};
-  RAY_CHECK_EQ(pipe(pipefd), 0);
-  int read_handle = pipefd[0];
-  int write_handle = pipefd[1];
-  boost::iostreams::file_descriptor_source pipe_read_source{
-      read_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
-  boost::iostreams::file_descriptor_sink pipe_write_sink{
-      write_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
 
 #elif defined(_WIN32)
   if (stream_redirect_opt.tee_to_stdout) {
@@ -221,19 +166,80 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     auto stderr_sink = std::make_shared<non_owned_fd_sink>(duped_stderr_fd);
     sinks.emplace_back(std::move(stderr_sink));
   }
+#endif
 
+  auto logger = std::make_shared<spdlog::logger>(
+      /*name=*/absl::StrFormat("pipe-logger-%s", stream_redirect_opt.file_path),
+      std::make_move_iterator(sinks.begin()),
+      std::make_move_iterator(sinks.end()));
+  logger->set_level(spdlog::level::info);
+  logger->set_pattern("%v");  // Only message string is logged.
+  return logger;
+}
+
+// Pipe streamer is only used in certain cases:
+// 1. Log roration is requested;
+// 2. Multiple sinks are involved.
+bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
+  const bool need_rotation =
+      stream_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max();
+  return need_rotation || stream_redirect_opt.tee_to_stdout ||
+         stream_redirect_opt.tee_to_stderr;
+}
+
+RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
+  boost::iostreams::file_descriptor_sink fd_sink{file_path, std::ios_base::out};
+  auto handle = fd_sink.handle();
+  auto ostream =
+      std::make_shared<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
+          std::move(fd_sink));
+
+  auto logger_sink = std::make_shared<non_owned_fd_sink_st>(handle);
+  auto logger = std::make_shared<spdlog::logger>(
+      /*name=*/absl::StrFormat("pipe-logger-%s", file_path), std::move(logger_sink));
+  logger->set_level(spdlog::level::info);
+  logger->set_pattern("%v");  // Only message string is logged.
+
+  // Lifecycle for the file handle is bound at [ostream] thus [close_fn].
+  auto close_fn = [ostream = std::move(ostream)]() { ostream->close(); };
+
+  return RedirectionFileHandle{handle, std::move(logger), std::move(close_fn)};
+}
+}  // namespace
+
+RedirectionFileHandle CreateRedirectionFileHandle(
+    const StreamRedirectionOption &stream_redirect_opt) {
+  // Case-1: only redirection, but not rotation and tee involved.
+  const bool should_use_pipe_stream = ShouldUsePipeStream(stream_redirect_opt);
+  if (!should_use_pipe_stream) {
+    return OpenFileForRedirection(stream_redirect_opt.file_path);
+  }
+
+  // Case-2: redirection with rotation, or tee is involved.
+  //
+  // Used to synchronize on asynchronous stream logging.
+  // Shared pointer is used here to workaround the known limitation `std::function`
+  // requires captured to be copy constructible.
+  auto promise = std::make_shared<std::promise<void>>();
+  // Invoked after flush and close finished.
+  auto on_close_completion = [promise = promise]() { promise->set_value(); };
+
+#if defined(__APPLE__) || defined(__linux__)
+  int pipefd[2] = {0};
+  RAY_CHECK_EQ(pipe(pipefd), 0);
+  int read_handle = pipefd[0];
+  int write_handle = pipefd[1];
+#elif defined(_WIN32)
   HANDLE read_handle = nullptr;
   HANDLE write_handle = nullptr;
   SECURITY_ATTRIBUTES sa = {sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
   RAY_CHECK(CreatePipe(&read_handle, &write_handle, &sa, 0)) << "Fails to create pipe";
-  boost::iostreams::file_descriptor_source pipe_read_source{
-      read_handle,
-      /*file_descriptor_flags=*/boost::iostreams::close_handle};
-  boost::iostreams::file_descriptor_sink pipe_write_sink{
-      write_handle,
-      /*file_descriptor_flags=*/boost::iostreams::close_handle};
-
 #endif
+
+  boost::iostreams::file_descriptor_source pipe_read_source{
+      read_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
+  boost::iostreams::file_descriptor_sink pipe_write_sink{
+      write_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
 
   auto pipe_instream = std::make_shared<
       boost::iostreams::stream<boost::iostreams::file_descriptor_source>>(
@@ -249,12 +255,10 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   };
 
   auto logger = CreateLogger(stream_redirect_opt);
-  StartStreamDump(std::move(pipe_instream),
-                  std::move(logger),
-                  std::move(on_close_completion));
+  StartStreamDump(std::move(pipe_instream), logger, std::move(on_close_completion));
 
   RedirectionFileHandle redirection_file_handle{
-      write_handle, std::move(pipe_ostream), std::move(flush_fn), std::move(close_fn)};
+      write_handle, logger, std::move(close_fn)};
 
   return redirection_file_handle;
 }

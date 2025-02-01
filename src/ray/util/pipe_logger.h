@@ -53,10 +53,9 @@ class RedirectionFileHandle {
 
   // @param termination_synchronizer is used to block wait until destruction operation
   // finishes.
-  RedirectionFileHandle(
-      MEMFD_TYPE_NON_UNIQUE write_handle,
-      std::shared_ptr<spdlog::logger> logger,
-      std::function<void()> close_fn)
+  RedirectionFileHandle(MEMFD_TYPE_NON_UNIQUE write_handle,
+                        std::shared_ptr<spdlog::logger> logger,
+                        std::function<void()> close_fn)
       : write_handle_(write_handle),
         logger_(std::move(logger)),
         close_fn_(std::move(close_fn)) {}
@@ -96,14 +95,22 @@ class RedirectionFileHandle {
   // TODO(hjiang): Current method only flushes whatever we send to logger, but not those
   // in the pipe; a better approach is flush pipe, send FLUSH indicator and block wait
   // until logger sync over.
-  void Flush() {
-    logger_->flush();
-  }
+  void Flush() { logger_->flush(); }
 
   MEMFD_TYPE_NON_UNIQUE GetWriteHandle() const { return write_handle_; }
 
   // Write the given data into redirection handle; currently only for testing usage.
-  void CompleteWrite(const char *data, size_t len) { pipe_ostream_->write(data, len); }
+  //
+  // TODO(hjiang): Use platform compatible API, see
+  // https://github.com/ray-project/ray/pull/50170
+  void CompleteWrite(const char *data, size_t len) {
+#if defined(__APPLE__) || defined(__linux__)
+    (void)write(write_handle_, data, len);
+#elif defined(_WIN32)
+    DWORD bytes_written;
+    (void)WriteFile(fd, data, (DWORD)len, &bytes_written, NULL);
+#endif
+  }
 
  private:
   MEMFD_TYPE_NON_UNIQUE write_handle_;
