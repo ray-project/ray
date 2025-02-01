@@ -31,6 +31,8 @@
 
 #pragma once
 
+#include "ray/common/status.h"
+
 // Workaround for multithreading on XCode 9, see
 // https://issues.apache.org/jira/browse/ARROW-1622 and
 // https://github.com/tensorflow/tensorflow/issues/13220#issuecomment-331579775
@@ -72,3 +74,16 @@ mach_port_t pthread_mach_thread_np(pthread_t);
 // since fd values can get re-used by the operating system.
 #define MEMFD_TYPE std::pair<MEMFD_TYPE_NON_UNIQUE, int64_t>
 #define INVALID_UNIQUE_FD_ID 0
+
+namespace ray {
+// Write the whole content into file descriptor, if any error happens, or actual written
+// content is less than expected, IO error status will be returned.
+Status CompleteWrite(MEMFD_TYPE_NON_UNIQUE fd, const char *data, size_t len);
+// Flush the given file descriptor, if any error happens, error message is logged and
+// process exits directly.
+// Reference to fsyncgate: https://wiki.postgresql.org/wiki/Fsync_Errors
+void Flush(MEMFD_TYPE_NON_UNIQUE fd);
+// Close the given file descriptor, if any error happens, IO error status will be
+// returned.
+Status Close(MEMFD_TYPE_NON_UNIQUE fd);
+}  // namespace ray
