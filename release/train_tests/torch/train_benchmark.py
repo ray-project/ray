@@ -83,7 +83,7 @@ class TrainLoopRunner:
 
     def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
-            print(f"Training epoch starting @ epoch={self._train_epoch_idx}")
+            print(f"Training starting @ epoch={self._train_epoch_idx}")
 
         step_start_s = time.perf_counter()
 
@@ -173,7 +173,7 @@ class TrainLoopRunner:
 
         validation_epoch_start = time.perf_counter()
 
-        total_loss = torch.zeros(1)
+        total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
         num_rows = 0
 
         with self._timers["validation/iter_first_batch"].timer():
@@ -194,7 +194,7 @@ class TrainLoopRunner:
 
         validation_epoch_s = time.perf_counter() - validation_epoch_start
         local_throughput = num_rows / validation_epoch_s
-        global_throughput = local_throughput * ray.train.get_context().get_world_rank()
+        global_throughput = local_throughput * ray.train.get_context().get_world_size()
         self._validation_throughput.add(global_throughput)
 
         return {"validation/loss": total_loss.item() / num_rows}
