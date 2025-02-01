@@ -515,7 +515,8 @@ class FaultTolerantActorManager:
                 for i in range(len(func))
             ]
             # Update our round-robin pointer.
-            self._current_actor_id += len(func) % self.num_actors()
+            self._current_actor_id += len(func)
+            self._current_actor_id %= self.num_actors()
 
         if healthy_only:
             func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
@@ -677,33 +678,36 @@ class FaultTolerantActorManager:
         """
         # Collect recently restored actors (from `self._fetch_result` calls other than
         # the one triggered here via the `ping`).
-        restored_actors = list(self._restored_actors)
-        self._restored_actors.clear()
+        already_restored_actors = list(self._restored_actors)
 
-        # Probe all unhealthy actors via a simple `ping()`.
+        # Which actors are currently marked unhealthy?
         unhealthy_actor_ids = [
             actor_id
             for actor_id in self.actor_ids()
             if not self.is_actor_healthy(actor_id)
         ]
-        # No unhealthy actors currently -> Return recently restored ones.
-        if not unhealthy_actor_ids:
-            return restored_actors
-
         # Some unhealthy actors -> `ping()` all of them to trigger a new fetch and
-        # capture all restored ones.
-        remote_results = self.foreach_actor(
-            func=lambda actor: actor.ping(),
-            remote_actor_ids=unhealthy_actor_ids,
-            healthy_only=False,  # We specifically want to ping unhealthy actors.
-            timeout_seconds=timeout_seconds,
-            mark_healthy=mark_healthy,
-        )
+        # gather the just restored ones (b/c of a successful `ping` response).
+        just_restored_actors = []
+        if unhealthy_actor_ids:
+            remote_results = self.foreach_actor(
+                func=lambda actor: actor.ping(),
+                remote_actor_ids=unhealthy_actor_ids,
+                healthy_only=False,  # We specifically want to ping unhealthy actors.
+                timeout_seconds=timeout_seconds,
+                return_obj_refs=False,
+                mark_healthy=mark_healthy,
+            )
+            just_restored_actors = [
+               result.actor_id for result in remote_results if result.ok
+            ]
 
-        # Return previously restored actors AND actors restored via the `ping()` call.
-        return restored_actors + [
-            result.actor_id for result in remote_results if result.ok
-        ]
+        # Clear out previously restored actors (b/c of other successful request
+        # responses, outside of this method).
+        self._restored_actors.clear()
+
+        # Return all restored actors (previously and just).
+        return already_restored_actors + just_restored_actors
 
     def _call_actors(
         self,
