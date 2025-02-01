@@ -212,7 +212,7 @@ class StateDataSourceClient:
     def get_all_registered_runtime_env_agent_ids(self) -> List[str]:
         return self._runtime_env_agent_addresses.keys()
 
-    async def get_log_service_stub(self, node_id: NodeID) -> LogServiceStub:
+    async def get_log_service_stub(self, node_id: NodeID) -> Optional[LogServiceStub]:
         """Returns None if the agent on the node is not registered in Internal KV."""
         agent_addr = await self._gcs_aio_client.internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
