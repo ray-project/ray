@@ -342,18 +342,30 @@ class PrepareImageUDF(StatefulStageUDF):
         flat_all_image_info = [img for imgs in all_image_info for img in imgs]
         flat_all_images = await self.image_processor.process(flat_all_image_info)
 
-        idx = 0
+        # TODO: We now use asyncio.gather to process all images in this batch,
+        # so the outputs here must be in order. However, it is more efficient
+        # to support out-of-order outputs so that we won't be blocked by slow
+        # downloaded images.
+        img_start_idx = 0
+        idx_in_batch = 0
         for image_info_per_req in all_image_info:
             num_images_in_req = len(image_info_per_req)
+            ret = {self.idx_in_batch_column: idx_in_batch}
             if num_images_in_req == 0:
-                yield {}
+                yield ret
             else:
-                images = flat_all_images[idx : idx + num_images_in_req]
-                yield {
-                    "image": images,
-                    "image_sizes": [(img.width, img.height) for img in images],
-                }
-                idx += num_images_in_req
+                images = flat_all_images[
+                    img_start_idx : img_start_idx + num_images_in_req
+                ]
+                ret.update(
+                    {
+                        "image": images,
+                        "image_sizes": [(img.width, img.height) for img in images],
+                    }
+                )
+                yield ret
+                img_start_idx += num_images_in_req
+                idx_in_batch += 1
 
     @property
     def expected_input_keys(self) -> List[str]:

@@ -175,6 +175,7 @@ class StatefulStageUDF:
             is_outputed[idx_in_batch] = True
 
             # Add stage outputs to the data column of the row.
+            inputs[idx_in_batch].pop(self.idx_in_batch_column)
             inputs[idx_in_batch].update(output)
             yield {self.data_column: [inputs[idx_in_batch]]}
 
