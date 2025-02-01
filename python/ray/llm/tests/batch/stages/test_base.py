@@ -40,11 +40,26 @@ def test_wrap_postprocess():
 
 class TestStatefulStageUDF:
     class SimpleUDF(StatefulStageUDF):
+        def __init__(
+            self,
+            data_column: str,
+            udf_output_missing_idx_in_batch_column: bool = False,
+        ):
+            super().__init__(data_column)
+            self.udf_output_missing_idx_in_batch_column = (
+                udf_output_missing_idx_in_batch_column
+            )
+
         async def udf(
             self, rows: list[Dict[str, Any]]
         ) -> AsyncIterator[Dict[str, Any]]:
-            for row in rows:
-                yield {"processed": row["value"] * 2}
+
+            # Intentionally output in a reversed order to test OOO.
+            for row in rows[::-1]:
+                ret = {"processed": row["value"] * 2}
+                if not self.udf_output_missing_idx_in_batch_column:
+                    ret[self.idx_in_batch_column] = row[self.idx_in_batch_column]
+                yield ret
 
         @property
         def expected_input_keys(self) -> List[str]:
@@ -55,7 +70,7 @@ class TestStatefulStageUDF:
         udf = self.SimpleUDF(data_column="__data")
 
         batch = {
-            "__data": [{"value": 1, "extra": "a"}, {"value": 2, "extra": "b"}],
+            "__data": [{"value": 1, "extra": 10}, {"value": 2, "extra": 20}],
         }
 
         results = []
@@ -63,12 +78,12 @@ class TestStatefulStageUDF:
             results.append(result)
 
         assert len(results) == 2
-        assert results[0] == {
-            "__data": [{"processed": 2, "value": 1, "extra": "a"}],
-        }
-        assert results[1] == {
-            "__data": [{"processed": 4, "value": 2, "extra": "b"}],
-        }
+        for result in results:
+            data = result["__data"][0]
+            val = data["value"]
+            assert data["processed"] == val * 2
+            assert data["extra"] == 10 * val
+            assert data["value"] == val
 
     @pytest.mark.asyncio
     async def test_missing_data_column(self):
@@ -85,6 +100,19 @@ class TestStatefulStageUDF:
         udf = self.SimpleUDF(data_column="__data")
 
         batch = {"__data": [{"wrong_key": 1}]}
+
+        with pytest.raises(ValueError):
+            async for _ in udf(batch):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_missing_idx_in_batch_column(self):
+        udf = self.SimpleUDF(
+            data_column="__data",
+            udf_output_missing_idx_in_batch_column=True,
+        )
+
+        batch = {"__data": [{"value": 1}]}
 
         with pytest.raises(ValueError):
             async for _ in udf(batch):

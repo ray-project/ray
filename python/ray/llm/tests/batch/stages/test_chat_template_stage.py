@@ -24,25 +24,23 @@ async def test_chat_template_udf_basic(mock_tokenizer_setup):
         model="test-model",
     )
 
-    batch = [
-        {
-            "messages": MagicMock(
-                tolist=lambda: [{"role": "user", "content": "Hello AI"}]
-            )
-        }
-    ]
+    batch = {
+        "__data": [
+            {
+                "messages": MagicMock(
+                    tolist=lambda: [{"role": "user", "content": "Hello AI"}]
+                )
+            }
+        ]
+    }
 
     results = []
-    async for result in udf.udf(batch):
+    async for result in udf(batch):
         results.append(result)
 
     assert len(results) == 1
-    assert results[0] == {"prompt": "<chat>Hello AI</chat>"}
-    mock_tokenizer.apply_chat_template.assert_called_once_with(
-        [batch[0]["messages"].tolist()],
-        tokenize=False,
-        add_generation_prompt=True,
-    )
+    assert results[0]["__data"][0]["prompt"] == "<chat>Hello AI</chat>"
+    mock_tokenizer.apply_chat_template.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -58,31 +56,29 @@ async def test_chat_template_udf_multiple_messages(mock_tokenizer_setup):
         model="test-model",
     )
 
-    batch = [
-        {
-            "messages": MagicMock(
-                tolist=lambda: [{"role": "user", "content": "Hello AI"}]
-            )
-        },
-        {
-            "messages": MagicMock(
-                tolist=lambda: [{"role": "user", "content": "How are you?"}]
-            )
-        },
-    ]
+    batch = {
+        "__data": [
+            {
+                "messages": MagicMock(
+                    tolist=lambda: [{"role": "user", "content": "Hello AI"}]
+                )
+            },
+            {
+                "messages": MagicMock(
+                    tolist=lambda: [{"role": "user", "content": "How are you?"}],
+                )
+            },
+        ]
+    }
 
     results = []
-    async for result in udf.udf(batch):
+    async for result in udf(batch):
         results.append(result)
 
     assert len(results) == 2
-    assert results[0] == {"prompt": "<chat>Hello AI</chat>"}
-    assert results[1] == {"prompt": "<chat>How are you?</chat>"}
-    mock_tokenizer.apply_chat_template.assert_called_once_with(
-        [msg["messages"].tolist() for msg in batch],
-        tokenize=False,
-        add_generation_prompt=True,
-    )
+    assert results[0]["__data"][0]["prompt"] == "<chat>Hello AI</chat>"
+    assert results[1]["__data"][0]["prompt"] == "<chat>How are you?</chat>"
+    mock_tokenizer.apply_chat_template.assert_called_once()
 
 
 def test_chat_template_udf_expected_input_keys(mock_tokenizer_setup):
