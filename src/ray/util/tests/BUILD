@@ -259,6 +259,17 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "spdlog_fd_sink_test",
+    srcs = ["spdlog_fd_sink_test.cc"],
+    deps = [
+        "//src/ray/util:spdlog_fd_sink",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
     name = "temporary_directory_test",
     srcs = ["temporary_directory_test.cc"],
     deps = [
