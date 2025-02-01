@@ -32,7 +32,7 @@ def _pd_to_arrow(
         return pa.Table.from_pydict(df, schema=schema)
     elif isinstance(df, pd.DataFrame):
         tbl = pa.Table.from_pandas(df, schema=schema)
-        tbl.schema = tbl.schema.remove_metadata()
+        tbl = tbl.replace_schema_metadata()
         return tbl
     elif isinstance(df, pa.Table):
         if schema is not None:
