@@ -1665,8 +1665,6 @@ async def test_state_data_source_client(ray_start_cluster):
             )
 
         wait_for_condition(lambda: get_addr() is not None)
-        ip, http_port, grpc_port = json.loads(get_addr())
-        client.register_agent_client(node_id, ip, grpc_port)
         result = await client.get_runtime_envs_info(node_id)
         assert isinstance(result, GetRuntimeEnvsInfoReply)
 
@@ -1835,8 +1833,6 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
             )
 
         wait_for_condition(lambda: get_addr() is not None)
-        ip, http_port, grpc_port = json.loads(get_addr())
-        client.register_agent_client(node_id, ip, grpc_port)
 
     @ray.remote
     class Actor:
