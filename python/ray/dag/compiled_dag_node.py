@@ -1930,7 +1930,7 @@ class CompiledDAG:
         Returns:
             True if a deadlock is detected; otherwise, False.
         """
-        logger.warning("Deadlock detection has not been implemented yet.")
+        logger.debug("Deadlock detection has not been implemented yet.")
         return False
 
     def _monitor_failures(self):
