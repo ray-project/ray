@@ -55,17 +55,11 @@ class RedirectionFileHandle {
   // finishes.
   RedirectionFileHandle(
       MEMFD_TYPE_NON_UNIQUE write_handle,
-      std::shared_ptr<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>
-          pipe_ostream,
-      std::function<void()> flush_fn,
+      std::shared_ptr<spdlog::logger> logger,
       std::function<void()> close_fn)
       : write_handle_(write_handle),
-        pipe_ostream_(std::move(pipe_ostream)),
-        flush_fn_(std::move(flush_fn)),
-        close_fn_(std::move(close_fn)) {
-    RAY_CHECK(flush_fn_);
-    RAY_CHECK(close_fn_);
-  }
+        logger_(std::move(logger)),
+        close_fn_(std::move(close_fn)) {}
   RedirectionFileHandle(const RedirectionFileHandle &) = delete;
   RedirectionFileHandle &operator=(const RedirectionFileHandle &) = delete;
   ~RedirectionFileHandle() = default;
@@ -73,8 +67,7 @@ class RedirectionFileHandle {
   RedirectionFileHandle(RedirectionFileHandle &&rhs) {
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = INVALID_FD;
-    pipe_ostream_ = std::move(rhs.pipe_ostream_);
-    flush_fn_ = std::move(rhs.flush_fn_);
+    logger_ = std::move(rhs.logger_);
     close_fn_ = std::move(rhs.close_fn_);
   }
   RedirectionFileHandle &operator=(RedirectionFileHandle &&rhs) {
@@ -83,18 +76,17 @@ class RedirectionFileHandle {
     }
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = INVALID_FD;
-    pipe_ostream_ = std::move(rhs.pipe_ostream_);
-    flush_fn_ = std::move(rhs.flush_fn_);
+    logger_ = std::move(rhs.logger_);
     close_fn_ = std::move(rhs.close_fn_);
     return *this;
   }
   void Close() {
     if (write_handle_ != INVALID_FD) {
       close_fn_();
-      write_handle_ = INVALID_FD;
 
-      // Unset flush and close functor to close logger and underlying file handle.
-      flush_fn_ = nullptr;
+      // Destruct all resources.
+      write_handle_ = INVALID_FD;
+      logger_ = nullptr;
       close_fn_ = nullptr;
     }
   }
@@ -105,8 +97,7 @@ class RedirectionFileHandle {
   // in the pipe; a better approach is flush pipe, send FLUSH indicator and block wait
   // until logger sync over.
   void Flush() {
-    RAY_CHECK(flush_fn_);
-    flush_fn_();
+    logger_->flush();
   }
 
   MEMFD_TYPE_NON_UNIQUE GetWriteHandle() const { return write_handle_; }
@@ -117,14 +108,8 @@ class RedirectionFileHandle {
  private:
   MEMFD_TYPE_NON_UNIQUE write_handle_;
 
-  // A high-level wrapper for [write_handle_].
-  std::shared_ptr<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>
-      pipe_ostream_;
+  std::shared_ptr<spdlog::logger> logger_;
 
-  // Used to flush log message.
-  std::function<void()> flush_fn_;
-
-  // Used to close write handle, and block until destruction completes
   std::function<void()> close_fn_;
 };
 

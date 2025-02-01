@@ -28,6 +28,7 @@
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
+#include "ray/util/spdlog_fd_sink.h"
 
 namespace ray {
 
@@ -39,15 +40,6 @@ struct StreamDumper {
   std::deque<std::string> content ABSL_GUARDED_BY(mu);
 };
 
-// Used to write to dup-ed stdout and stderr; use shared pointer to make it copy
-// constructible.
-struct StdOstream {
-  std::shared_ptr<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>
-      stdout_ostream;
-  std::shared_ptr<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>
-      stderr_ostream;
-};
-
 // Start two threads:
 // 1. A reader thread which continuously reads from [pipe_stream] until close;
 // 2. A dumper thread which writes content to sink via [write_func].
@@ -55,8 +47,7 @@ template <typename WriteFunc, typename FlushFunc>
 void StartStreamDump(
     std::shared_ptr<boost::iostreams::stream<boost::iostreams::file_descriptor_source>>
         pipe_instream,
-    WriteFunc write_func,
-    FlushFunc flush_func,
+    std::shared_ptr<spdlog::logger> logger,
     std::function<void()> on_close_completion) {
   auto stream_dumper = std::make_shared<StreamDumper>();
 
@@ -87,8 +78,7 @@ void StartStreamDump(
   }).detach();
 
   std::thread([stream_dumper = stream_dumper,
-               write_func = std::move(write_func),
-               flush_func = std::move(flush_func),
+               logger = std::move(logger),
                on_close_completion = std::move(on_close_completion)]() {
     SetThreadName("PipeDumpThd");
 
@@ -108,7 +98,7 @@ void StartStreamDump(
           curline = std::move(stream_dumper->content.front());
           stream_dumper->content.pop_front();
         } else if (stream_dumper->stopped) {
-          flush_func();
+          logger->flush();
           on_close_completion();
           return;
         }
@@ -123,7 +113,6 @@ void StartStreamDump(
 // Create a spdlog logger with all sinks specified by the given option.
 std::shared_ptr<spdlog::logger> CreateLogger(
     const StreamRedirectionOption &stream_redirect_opt) {
-  std::vector<spdlog::sink_ptr> logging_sinks;
   spdlog::sink_ptr file_sink = nullptr;
   if (stream_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max()) {
     file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
@@ -156,23 +145,8 @@ bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
 RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
   boost::iostreams::file_descriptor_sink sink{file_path, std::ios_base::out};
   auto handle = sink.handle();
-  auto ostream =
-      std::make_shared<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
-          std::move(sink));
-  auto flush_fn = [ostream, handle]() {
-    // Flush stream internal buffer to fd.
-    ostream->flush();
-// Flush file handle.
-#if defined(__APPLE__) || defined(__linux__)
-    RAY_CHECK_EQ(fdatasync(handle), 0);
-#elif defined(_WIN32)
-    RAY_CHECK(FlushFileBuffers(handle));
-#endif
-  };
-  auto close_fn = [flush_fn, ostream]() {
-    flush_fn();
-    ostream->close();
-  };
+  
+
   return RedirectionFileHandle{
       handle, std::move(ostream), std::move(flush_fn), std::move(close_fn)};
 }
@@ -195,28 +169,20 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   // Invoked after flush and close finished.
   auto on_close_completion = [promise = promise]() { promise->set_value(); };
 
-  StdOstream std_ostream{};
+  std::vector<spdlog::sink_ptr> sinks;
 
 #if defined(__APPLE__) || defined(__linux__)
   if (stream_redirect_opt.tee_to_stdout) {
     int duped_stdout_fd = dup(STDOUT_FILENO);
     RAY_CHECK_NE(duped_stdout_fd, -1) << "Fails to duplicate stdout: " << strerror(errno);
-
-    boost::iostreams::file_descriptor_sink sink{
-        duped_stdout_fd, /*file_descriptor_flags=*/boost::iostreams::close_handle};
-    std_ostream.stdout_ostream = std::make_shared<
-        boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
-        std::move(sink));
+    auto stdout_sink = std::make_shared<non_owned_fd_sink>(duped_stdout_fd);
+    sinks.emplace_back(std::move(stdout_sink));
   }
   if (stream_redirect_opt.tee_to_stderr) {
     int duped_stderr_fd = dup(STDERR_FILENO);
     RAY_CHECK_NE(duped_stderr_fd, -1) << "Fails to duplicate stderr: " << strerror(errno);
-
-    boost::iostreams::file_descriptor_sink sink{
-        duped_stderr_fd, /*file_descriptor_flags=*/boost::iostreams::close_handle};
-    std_ostream.stderr_ostream = std::make_shared<
-        boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
-        std::move(sink));
+    auto stderr_sink = std::make_shared<non_owned_fd_sink>(duped_stderr_fd);
+    sinks.emplace_back(std::move(stderr_sink));
   }
 
   int pipefd[2] = {0};
@@ -239,12 +205,8 @@ RedirectionFileHandle CreateRedirectionFileHandle(
                                   FALSE,
                                   DUPLICATE_SAME_ACCESS);
     RAY_CHECK(result) << "Fails to duplicate stdout handle";
-
-    boost::iostreams::file_descriptor_sink sink{
-        duped_stdout_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
-    std_ostream.stdout_ostream = std::make_shared<
-        boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
-        std::move(sink));
+    auto stderr_sink = std::make_shared<non_owned_fd_sink>(duped_stderr_fd);
+    sinks.emplace_back(std::move(stderr_sink));
   }
   if (stream_redirect_opt.tee_to_stderr) {
     HANDLE duped_stderr_handle;
@@ -256,12 +218,8 @@ RedirectionFileHandle CreateRedirectionFileHandle(
                                   FALSE,
                                   DUPLICATE_SAME_ACCESS);
     RAY_CHECK(result) << "Fails to duplicate stderr handle";
-
-    boost::iostreams::file_descriptor_sink sink{
-        duped_stderr_handle, /*file_descriptor_flags=*/boost::iostreams::close_handle};
-    std_ostream.stderr_ostream = std::make_shared<
-        boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
-        std::move(sink));
+    auto stderr_sink = std::make_shared<non_owned_fd_sink>(duped_stderr_fd);
+    sinks.emplace_back(std::move(stderr_sink));
   }
 
   HANDLE read_handle = nullptr;
@@ -291,47 +249,8 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   };
 
   auto logger = CreateLogger(stream_redirect_opt);
-
-  // [content] is exactly what application writes to pipe, including the trailing
-  // newliner, if any.
-  auto write_fn = [logger,
-                   stream_redirect_opt = stream_redirect_opt,
-                   std_ostream = std_ostream](std::string content) {
-    if (stream_redirect_opt.tee_to_stdout) {
-      std_ostream.stdout_ostream->write(content.data(), content.length());
-      RAY_CHECK(std_ostream.stdout_ostream->good());
-    }
-    if (stream_redirect_opt.tee_to_stderr) {
-      std_ostream.stderr_ostream->write(content.data(), content.length());
-      RAY_CHECK(std_ostream.stderr_ostream->good());
-    }
-    if (logger != nullptr) {
-      // spdlog adds newliner for every content, no need to maintan the application-passed
-      // one.
-      if (!content.empty() && content.back() == '\n') {
-        content.pop_back();
-      }
-      logger->log(spdlog::level::info, content);
-    }
-  };
-  auto flush_fn =
-      [logger, stream_redirect_opt = stream_redirect_opt, std_ostream = std_ostream]() {
-        if (logger != nullptr) {
-          logger->flush();
-        }
-        if (stream_redirect_opt.tee_to_stdout) {
-          std_ostream.stdout_ostream->flush();
-          RAY_CHECK(std_ostream.stdout_ostream->good());
-        }
-        if (stream_redirect_opt.tee_to_stderr) {
-          std_ostream.stderr_ostream->flush();
-          RAY_CHECK(std_ostream.stderr_ostream->good());
-        }
-      };
-
   StartStreamDump(std::move(pipe_instream),
-                  std::move(write_fn),
-                  flush_fn,
+                  std::move(logger),
                   std::move(on_close_completion));
 
   RedirectionFileHandle redirection_file_handle{
