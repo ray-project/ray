@@ -268,6 +268,7 @@ ray_cc_test(
     deps = [
         "//src/ray/util:compat",
         "//src/ray/util:temporary_directory",
+        "@com_google_absl//absl/cleanup",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",

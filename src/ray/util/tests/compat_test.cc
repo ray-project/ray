@@ -18,9 +18,11 @@
 
 #include <string_view>
 
+#include "absl/cleanup/cleanup.h"
 #include "ray/common/status_or.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/temporary_directory.h"
+#include "ray/util/util.h"
 
 #if defined(__APPLE__) || defined(__linux__)
 #include <fcntl.h>
@@ -54,18 +56,20 @@ TEST(CompatTest, WriteTest) {
 }
 #elif defined(_WIN32)
 TEST(CompatTest, WriteTest) {
-  ScopedTemporaryDirectory temp_dir;
-  const auto file = temp_dir.GetDirectory() / "file";
-  const std::string file_path_str = file.native();
-  HANDLE handle = CreateFile(file_path_str.data(),  // File path
-                             GENERIC_WRITE,         // Open for writing
-                             0,                     // No sharing
-                             NULL,                  // Default security
+  const std::string test_file_path = absl::StrFormat("%s.out", GenerateUUIDV4());
+
+  HANDLE handle = CreateFile(test_file_path.data(),  // File path
+                             GENERIC_WRITE,          // Open for writing
+                             0,                      // No sharing
+                             NULL,                   // Default security
                              CREATE_ALWAYS,  // Create new file (overwrite if exists)
                              FILE_ATTRIBUTE_NORMAL,  // Normal file attributes
                              NULL                    // No template
   );
   ASSERT_NE(handle, INVALID_HANDLE_VALUE);
+  absl::Cleanup cleanup_test_file = [&test_file_path]() {
+    EXPECT_TRUE(std::filesystem::remove(test_file_path));
+  };
 
   RAY_CHECK_OK(CompleteWrite(handle, kContent.data(), kContent.length()));
   Flush(handle);
