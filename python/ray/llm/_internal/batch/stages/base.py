@@ -1,4 +1,4 @@
-"""TBA"""
+"""The base class for all stages."""
 import logging
 from typing import Any, Dict, AsyncIterator, List, Callable
 
