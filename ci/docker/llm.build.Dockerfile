@@ -15,6 +15,6 @@ RUN <<EOF
 set -ex
 
 # TODO(comaniac): add other test dependencies here.
-pip install -c python/requirements_compiled.txt pytest aiohttp
+pip install -c python/requirements_compiled.txt pytest aiohttp pillow
 
 EOF
