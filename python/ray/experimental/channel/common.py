@@ -421,6 +421,12 @@ class SynchronousReader(ReaderInterface):
     def release_channel_buffers(self, timeout: Optional[float] = None) -> None:
         for c in self._input_channels:
             start_time = time.monotonic()
+            assert hasattr(
+                c, "release_buffer"
+            ), "release_buffer() is only supported for shared memory channel "
+            "(e.g., Channel, BufferedSharedMemoryChannel, CompositeChannel) "
+            "between the last actor and the driver, but got a channel of type "
+            f"{type(c)}."
             c.release_buffer(timeout)
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
