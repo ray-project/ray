@@ -272,6 +272,7 @@ ray_cc_library(
         ":stream_redirection_options",
         ":thread_utils",
         ":util",
+        "@boost//:iostreams",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/strings",
     ],
@@ -285,6 +286,16 @@ ray_cc_library(
         ":pipe_logger",
         ":stream_redirection_options",
         ":util",
+    ],
+)
+
+ray_cc_library(
+    name = "spdlog_fd_sink",
+    hdrs = ["spdlog_fd_sink.h"],
+    deps = [
+        ":compat",
+        ":util",
+        "@com_github_spdlog//:spdlog",
     ],
 )
 

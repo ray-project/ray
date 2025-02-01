@@ -237,7 +237,14 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
-    tags = ["team:core"],
+    tags = [
+        "team:core",
+        # TSAN fails to understand synchroization logic, from the stacktrace, it shows we flush
+        # ostream concurrently at pipe dumper thread and main thread, which we have ordered
+        # properly. Disable the complete test suite here since it always contains exactly one test
+        # case.
+        "no_tsan",
+    ],
 )
 
 ray_cc_test(
@@ -245,6 +252,17 @@ ray_cc_test(
     srcs = ["cmd_line_utils_test.cc"],
     deps = [
         "//src/ray/util:cmd_line_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
+    name = "spdlog_fd_sink_test",
+    srcs = ["spdlog_fd_sink_test.cc"],
+    deps = [
+        "//src/ray/util:spdlog_fd_sink",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
