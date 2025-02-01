@@ -302,6 +302,95 @@ For details, head to the :ref:`API Reference <runtime-environments-api-ref>`.
 
   ``conda`` environments must have the same Python version as the Ray cluster.  Do not list ``ray`` in the ``conda`` dependencies, as it will be automatically installed.
 
+Using ``uv`` for package management
+"""""""""""""""""""""""""""""""""""
+
+The most convenient way to use `uv` for package management in runtime environments is to
+use `uv scripts <https://docs.astral.sh/uv/guides/scripts/>`_ because it ensures that the dependencies
+for your driver and worker are in sync and also supports advanced features like full `pyproject.toml`
+support as well as package locking with `uv lock`.
+
+To test this out, consider a similar example as above where your Ray application depends on the `requests` package.
+Store the following script in a file called `test.py`:
+
+.. testcode::
+  :hide:
+
+  import ray
+  ray.shutdown()
+
+.. testcode::
+
+  import ray
+  import requests
+
+  # This example runs on a local machine, but you can also do
+  # ray.init(address=..., runtime_env=...) to connect to a cluster.
+  ray.init(runtime_env={"wrap": "uv run --with requests "})
+
+  @ray.remote
+  def reqs():
+      return requests.get("https://www.ray.io/").status_code
+
+  print(ray.get(reqs.remote()))
+
+.. testoutput::
+
+  200
+
+The runtime environment will make sure each Ray worker runs in an environment where
+`requests` is installed. You can then run the script with `uv run --with requests test.py`.
+
+The recommended way to use `uv run` is with a `pyproject.toml`, because you won't
+need to repeat the arguments to `uv run` in both the driver and the runtime environment.
+Create a file `pyproject.toml` like this:
+
+```
+[project]
+
+name = "test"
+
+version = "0.1"
+
+dependencies = [
+   "rich",
+   "requests",
+   "ray",
+]
+```
+
+And then use a `test.py` like the following:
+
+.. testcode::
+  :skipif: True
+
+  import ray
+  import requests
+  from rich.progress import track
+
+  ray.init(runtime_env={"working_dir": ".", "wrap": "uv run "})
+
+  @ray.remote
+  def reqs(section):
+      return requests.get("https://www.ray.io/" + section).status_code
+
+  sections = [
+    "en/latest/ray-overview/",
+    "en/latest/ray-core/",
+    "en/latest/data/",
+    "en/latest/train/",
+    "en/latest/serve/",
+    "en/latest/tune/",
+    "en/latest/rllib/",
+  ]
+  results = [req.remote(section) for section in sections]
+  for result in track(results, description="Ray docs:"):
+      ray.get(result)
+
+
+and run the driver script with `uv run test.py`.
+
+
 Library Development
 """""""""""""""""""
 
