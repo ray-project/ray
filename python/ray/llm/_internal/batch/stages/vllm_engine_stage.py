@@ -40,6 +40,8 @@ class vLLMEngineWrapper:
 
         # The request ID for the LLM engine (unique per replica).
         request_id: int
+        # The index of the request in the batch.
+        idx_in_batch: int
         # The full prompt string (with chat template applied if any).
         prompt: str
         # The images inputs for the multimodal model.
@@ -53,11 +55,13 @@ class vLLMEngineWrapper:
     def __init__(
         self,
         *args,
+        idx_in_batch_column: str,
         max_pending_requests: int = -1,
         runtime_env: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
         self.request_id = 0
+        self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.get("task", "generate")
 
         # Setup os.environ before importing vLLM to make sure the environment
@@ -129,6 +133,7 @@ class vLLMEngineWrapper:
 
         request = self.LLMRequest(
             request_id=self.request_id,
+            idx_in_batch=row[self.idx_in_batch_column],
             prompt=prompt,
             prompt_token_ids=tokenized_prompt,
             images=image,
@@ -329,6 +334,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         # Create an LLM engine.
         self.llm = vLLMEngineWrapper(
             model=self.model,
+            idx_in_batch_column=self.idx_in_batch_column,
             disable_log_stats=False,
             max_pending_requests=self.max_pending_requests,
             runtime_env=self.runtime_env,
@@ -417,6 +423,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             yield {
                 **output,
                 "request_id": request.request_id,
+                self.idx_in_batch_column: request.idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
                 "time_taken_llm": time_taken,
                 "params": str(request.params),
