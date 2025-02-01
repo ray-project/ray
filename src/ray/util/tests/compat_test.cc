@@ -53,23 +53,17 @@ TEST(CompatTest, WriteTest) {
   EXPECT_EQ(content, kContent);
 }
 #elif defined(_WIN32)
-
-std::string ConvertWstringToString(const std::wstring &wstr) {
-  std::wstring_convert<std::codecvt_utf8<wchar_t> > converter;
-  return converter.to_bytes(wstr);
-}
-
 TEST(CompatTest, WriteTest) {
   ScopedTemporaryDirectory temp_dir;
   const auto file = temp_dir.GetDirectory() / "file";
-  const std::wstring file_path_str = file.native();
-  HANDLE handle = CreateFileW(file_path_str.c_str(),  // File path
-                              GENERIC_WRITE,          // Open for writing
-                              0,                      // No sharing
-                              NULL,                   // Default security
-                              CREATE_ALWAYS,  // Create new file (overwrite if exists)
-                              FILE_ATTRIBUTE_NORMAL,  // Normal file attributes
-                              NULL                    // No template
+  const std::string file_path_str = file.native();
+  HANDLE handle = CreateFile(file_path_str.data(),  // File path
+                             GENERIC_WRITE,         // Open for writing
+                             0,                     // No sharing
+                             NULL,                  // Default security
+                             CREATE_ALWAYS,  // Create new file (overwrite if exists)
+                             FILE_ATTRIBUTE_NORMAL,  // Normal file attributes
+                             NULL                    // No template
   );
   ASSERT_NE(handle, INVALID_HANDLE_VALUE);
 
@@ -77,8 +71,7 @@ TEST(CompatTest, WriteTest) {
   Flush(handle);
   RAY_CHECK_OK(Close(handle));
 
-  RAY_ASSIGN_OR_CHECK(const auto content,
-                      ReadEntireFile(ConvertWstringToString(file_path_str)));
+  RAY_ASSIGN_OR_CHECK(const auto content, ReadEntireFile(file_path_str));
   EXPECT_EQ(content, kContent);
 }
 #endif
