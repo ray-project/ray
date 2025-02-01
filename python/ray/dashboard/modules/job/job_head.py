@@ -175,7 +175,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # {node_id: JobAgentSubmissionClient}
         self._agents: Dict[NodeID, JobAgentSubmissionClient] = dict()
 
-    async def get_target_agent(self) -> Optional[JobAgentSubmissionClient]:
+    async def get_target_agent(self) -> JobAgentSubmissionClient:
         if RAY_JOB_AGENT_USE_HEAD_NODE_ONLY:
             return await self._get_head_node_agent()
 
