@@ -8,8 +8,9 @@ from typing import AsyncIterable, Optional
 import aiohttp.web
 from aiohttp.web import Response
 
-import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
+import ray
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
+from ray.dashboard.subprocesses.module import SubprocessModule
 from ray import ActorID
 from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -19,7 +20,6 @@ from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME,
 )
-from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.state_api_utils import (
@@ -28,13 +28,12 @@ from ray.dashboard.state_api_utils import (
     handle_summary_api,
     options_from_req,
 )
-from ray.dashboard.utils import Change, RateLimitedModule
+from ray.dashboard.utils import RateLimitedModule
 from ray.util.state.common import DEFAULT_LOG_LIMIT, DEFAULT_RPC_TIMEOUT, GetLogOptions
 from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 # NOTE: Executor in this head is intentionally constrained to just 1 thread by
 #       default to limit its concurrency, therefore reducing potential for
@@ -44,19 +43,16 @@ RAY_DASHBOARD_STATE_HEAD_TPE_MAX_WORKERS = env_integer(
 )
 
 
-class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
+class StateHead(SubprocessModule, RateLimitedModule):
     """Module to obtain state information from the Ray cluster.
 
     It is responsible for state observability APIs such as
     ray.list_actors(), ray.get_actor(), ray.summary_actors().
     """
 
-    def __init__(
-        self,
-        config: dashboard_utils.DashboardHeadModuleConfig,
-    ):
+    def __init__(self, *args, **kwargs):
         """Initialize for handling RESTful requests from State API Client"""
-        dashboard_utils.DashboardHeadModule.__init__(self, config)
+        SubprocessModule.__init__(self, *args, **kwargs)
         # We don't allow users to configure too high a rate limit
         RateLimitedModule.__init__(
             self,
@@ -74,8 +70,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             thread_name_prefix="state_head_executor",
         )
 
-        DataSource.nodes.signal.append(self._update_raylet_stubs)
-        DataSource.agents.signal.append(self._update_agent_stubs)
+        # To init gcs_client in internal_kv for record_extra_usage_tag.
+        _ = self.gcs_client
+        assert ray.experimental.internal_kv._internal_kv_initialized()
 
     async def limit_handler_(self):
         return do_reply(
@@ -90,56 +87,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             result=None,
         )
 
-    async def _update_raylet_stubs(self, change: Change):
-        """Callback that's called when a new raylet is added to Datasource.
-
-        Datasource is a api-server-specific module that's updated whenever
-        api server adds/removes a new node.
-
-        Args:
-            change: The change object. Whenever a new node is added
-                or removed, this callback is invoked.
-                When new node is added: information is in `change.new`.
-                When a node is removed: information is in `change.old`.
-                When a node id is overwritten by a new node with the same node id:
-                    `change.old` contains the old node info, and
-                    `change.new` contains the new node info.
-        """
-        if change.old:
-            # When a node is deleted from the DataSource or it is overwritten.
-            node_id, node_info = change.old
-            self._state_api_data_source_client.unregister_raylet_client(node_id)
-        if change.new:
-            # When a new node information is written to DataSource.
-            node_id, node_info = change.new
-            self._state_api_data_source_client.register_raylet_client(
-                node_id,
-                node_info["nodeManagerAddress"],
-                int(node_info["nodeManagerPort"]),
-                int(node_info["runtimeEnvAgentPort"]),
-            )
-
-    async def _update_agent_stubs(self, change: Change):
-        """Callback that's called when a new agent is added to Datasource."""
-        if change.old:
-            node_id, _ = change.old
-            self._state_api_data_source_client.unregister_agent_client(node_id)
-        if change.new:
-            # When a new node information is written to DataSource.
-            node_id, (node_ip, http_port, grpc_port) = change.new
-            self._state_api_data_source_client.register_agent_client(
-                node_id,
-                node_ip,
-                grpc_port,
-            )
-
-    @routes.get("/api/v0/actors")
+    @SubprocessRouteTable.get("/api/v0/actors")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_actors(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_ACTORS, "1")
         return await handle_list_api(self._state_api.list_actors, req)
 
-    @routes.get("/api/v0/jobs")
+    @SubprocessRouteTable.get("/api/v0/jobs")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_jobs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_JOBS, "1")
@@ -153,13 +107,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         except DataSourceUnavailable as e:
             return do_reply(success=False, error_message=str(e), result=None)
 
-    @routes.get("/api/v0/nodes")
+    @SubprocessRouteTable.get("/api/v0/nodes")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_nodes(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_NODES, "1")
         return await handle_list_api(self._state_api.list_nodes, req)
 
-    @routes.get("/api/v0/placement_groups")
+    @SubprocessRouteTable.get("/api/v0/placement_groups")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_placement_groups(
         self, req: aiohttp.web.Request
@@ -167,31 +121,31 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_PLACEMENT_GROUPS, "1")
         return await handle_list_api(self._state_api.list_placement_groups, req)
 
-    @routes.get("/api/v0/workers")
+    @SubprocessRouteTable.get("/api/v0/workers")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_workers(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_WORKERS, "1")
         return await handle_list_api(self._state_api.list_workers, req)
 
-    @routes.get("/api/v0/tasks")
+    @SubprocessRouteTable.get("/api/v0/tasks")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_tasks(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_TASKS, "1")
         return await handle_list_api(self._state_api.list_tasks, req)
 
-    @routes.get("/api/v0/objects")
+    @SubprocessRouteTable.get("/api/v0/objects")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_OBJECTS, "1")
         return await handle_list_api(self._state_api.list_objects, req)
 
-    @routes.get("/api/v0/runtime_envs")
+    @SubprocessRouteTable.get("/api/v0/runtime_envs")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS, "1")
         return await handle_list_api(self._state_api.list_runtime_envs, req)
 
-    @routes.get("/api/v0/logs")
+    @SubprocessRouteTable.get("/api/v0/logs")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         """Return a list of log files on a given node id.
@@ -214,8 +168,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 ),
                 result=None,
             )
-
-        node_id = node_id or self._log_api.ip_to_node_id(node_ip)
+        if not node_id:
+            node_id = await self._log_api.ip_to_node_id(node_ip)
         if not node_id:
             return do_reply(
                 success=False,
@@ -238,7 +192,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
 
         return do_reply(success=True, error_message="", result=result)
 
-    @routes.get("/api/v0/logs/{media_type}")
+    @SubprocessRouteTable.get("/api/v0/logs/{media_type}")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def get_logs(self, req: aiohttp.web.Request):
         """
@@ -333,25 +287,25 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         await response.write_eof()
         return response
 
-    @routes.get("/api/v0/tasks/summarize")
+    @SubprocessRouteTable.get("/api/v0/tasks/summarize")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def summarize_tasks(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_SUMMARIZE_TASKS, "1")
         return await handle_summary_api(self._state_api.summarize_tasks, req)
 
-    @routes.get("/api/v0/actors/summarize")
+    @SubprocessRouteTable.get("/api/v0/actors/summarize")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def summarize_actors(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_SUMMARIZE_ACTORS, "1")
         return await handle_summary_api(self._state_api.summarize_actors, req)
 
-    @routes.get("/api/v0/objects/summarize")
+    @SubprocessRouteTable.get("/api/v0/objects/summarize")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def summarize_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_SUMMARIZE_OBJECTS, "1")
         return await handle_summary_api(self._state_api.summarize_objects, req)
 
-    @routes.get("/api/v0/tasks/timeline")
+    @SubprocessRouteTable.get("/api/v0/tasks/timeline")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def tasks_timeline(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         job_id = req.query.get("job_id")
@@ -368,7 +322,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             headers = None
         return Response(text=result, content_type="application/json", headers=headers)
 
-    @routes.get("/api/v0/delay/{delay_s}")
+    @SubprocessRouteTable.get("/api/v0/delay/{delay_s}")
     async def delayed_response(self, req: aiohttp.web.Request):
         """Testing only. Response after a specified delay."""
         delay = int(req.match_info.get("delay_s", 10))
@@ -380,7 +334,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             partial_failure_warning=None,
         )
 
-    async def run(self, server):
+    async def init(self):
         gcs_channel = self.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
             gcs_channel, self.gcs_aio_client
@@ -390,7 +344,3 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             self._executor,
         )
         self._log_api = LogsManager(self._state_api_data_source_client)
-
-    @staticmethod
-    def is_minimal_module():
-        return False
