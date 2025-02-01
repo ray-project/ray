@@ -36,13 +36,14 @@ MAX_CHUNK_CHAR_LENGTH = 20000
 
 async def get_head_node_id(gcs_aio_client: GcsAioClient) -> Optional[str]:
     """Fetches Head node id persisted in GCS"""
-    head_node_id_bytes = await gcs_aio_client.internal_kv_get(
+    head_node_id_hex_bytes = await gcs_aio_client.internal_kv_get(
         ray_constants.KV_HEAD_NODE_ID_KEY,
         namespace=ray_constants.KV_NAMESPACE_JOB,
         timeout=30,
     )
-
-    return head_node_id_bytes.decode() if head_node_id_bytes is not None else None
+    if head_node_id_hex_bytes is None:
+        return None
+    return head_node_id_hex_bytes.decode()
 
 
 def strip_keys_with_value_none(d: Dict[str, Any]) -> Dict[str, Any]:
