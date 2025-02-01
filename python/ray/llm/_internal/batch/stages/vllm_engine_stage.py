@@ -409,7 +409,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
         tasks = [asyncio.create_task(self.llm.generate_async(row)) for row in batch]
 
-        idx = 0
         time_taken = -1.0
         for resp in asyncio.as_completed(tasks):
             request, output = await resp
@@ -419,11 +418,9 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 **output,
                 "request_id": request.request_id,
                 "batch_uuid": batch_uuid.hex,
-                "index_in_batch": idx,
                 "time_taken_llm": time_taken,
                 "params": str(request.params),
             }
-            idx += 1
 
         # TODO: Add metrics to the UDf wrapper so that we don't need
         # timer in UDFs anymore.
