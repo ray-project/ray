@@ -741,8 +741,6 @@ class IMPALA(Algorithm):
                     1,
                     reduce="sum",
                 )
-                if not do_async_updates:
-                    learner_results = [learner_results]
 
                 num_learner_group_results_received += len(learner_results)
                 for result_from_1_learner in learner_results:
