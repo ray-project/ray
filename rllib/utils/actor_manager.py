@@ -699,7 +699,7 @@ class FaultTolerantActorManager:
                 mark_healthy=mark_healthy,
             )
             just_restored_actors = [
-               result.actor_id for result in remote_results if result.ok
+                result.actor_id for result in remote_results if result.ok
             ]
 
         # Clear out previously restored actors (b/c of other successful request
