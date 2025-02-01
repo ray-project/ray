@@ -204,7 +204,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 return await self._pick_random_agent_once()
             except Exception:
                 logger.exception(
-                    f"Failed to fetch all agent infos, retrying in {TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS} seconds..."
+                    f"Failed to pick a random agent, retrying in {TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS} seconds..."
                 )
                 await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
 
