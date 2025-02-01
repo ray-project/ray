@@ -4,9 +4,7 @@ import gymnasium as gym
 from typing import Any, Dict, Optional
 from ray.rllib.core.columns import Columns
 from ray.rllib.utils.annotations import override
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 
@@ -40,7 +38,6 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
         Columns.NEXT_MOG_COMPONENTS = "next_mog_components"
         Columns.MOG_COMPONENTS = "mog_components"
         Columns.VF_OUT = "vf_out"
-        self.inference_only = False
 
     def setup(self):
         input_dim = self.observation_space.shape[0]
@@ -63,12 +60,16 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
         self.policy = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.LeakyReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LeakyReLU(),
             nn.Linear(hidden_dim, output_dim),
             nn.Tanh(),
         )
 
         self.mog_critic = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.LeakyReLU(),
             nn.Linear(hidden_dim, self.num_gaussians * 3),
         )
@@ -129,11 +130,6 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
 
     @override(RLModule)
     def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        if self.inference_only:
-            raise RuntimeError(
-                "Trying to train a module that is not a learner module. Set the "
-                "flag `inference_only=False` when building the module."
-            )
         obs = batch[Columns.OBS]
         if "new_obs" not in batch:
             next_obs = obs
