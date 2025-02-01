@@ -221,6 +221,7 @@ Lance
    :toctree: doc/
 
    read_lance
+   write_lance
 
 ClickHouse
 ----------
