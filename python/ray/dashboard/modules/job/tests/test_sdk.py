@@ -7,17 +7,23 @@ from typing import Dict, Optional, Tuple
 from unittest.mock import Mock, patch
 
 import pytest
-import requests
 
 import ray
 import ray.experimental.internal_kv as kv
-from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
+from ray._private.ray_constants import (
+    DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
+    KV_NAMESPACE_DASHBOARD,
+)
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
     wait_until_server_available,
 )
-from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
+from ray.dashboard.consts import (
+    RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
+    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    GCS_RPC_TIMEOUT_SECONDS,
+)
 from ray.dashboard.modules.dashboard_sdk import (
     DEFAULT_DASHBOARD_ADDRESS,
     ClusterInfo,
@@ -28,7 +34,7 @@ from ray.dashboard.modules.job.sdk import JobStatus, JobSubmissionClient
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.tests.conftest import _ray_start
 from ray.util.state import list_nodes
-
+from ray._raylet import GcsClient
 import psutil
 
 
@@ -165,12 +171,13 @@ def mock_candidate_number():
     os.environ.pop("CANDIDATE_AGENT_NUMBER", None)
 
 
-def get_register_agents_number(webui_url):
-    response = requests.get(webui_url + "/internal/node_module")
-    response.raise_for_status()
-    result = response.json()
-    data = result["data"]
-    return data["registeredAgents"]
+def get_register_agents_number(gcs_client):
+    keys = gcs_client.internal_kv_keys(
+        prefix=DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+        namespace=KV_NAMESPACE_DASHBOARD,
+        timeout=GCS_RPC_TIMEOUT_SECONDS,
+    )
+    return len(keys)
 
 
 @pytest.mark.parametrize(
@@ -195,6 +202,7 @@ def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
     webui_url = cluster.webui_url
     webui_url = format_web_url(webui_url)
     client = JobSubmissionClient(webui_url)
+    gcs_client = GcsClient(address=cluster.gcs_address)
 
     def submit_job_and_wait_finish():
         submission_id = client.submit_job(entrypoint="echo hello")
@@ -206,7 +214,7 @@ def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
     head_http_port = DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
     worker_1_http_port = 52366
     cluster.add_node(dashboard_agent_listen_port=worker_1_http_port)
-    wait_for_condition(lambda: get_register_agents_number(webui_url) == 2, timeout=20)
+    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 2, timeout=20)
     assert len(cluster.worker_nodes) == 1
     node_try_to_kill = list(cluster.worker_nodes)[0]
 
@@ -250,7 +258,7 @@ def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
 
     worker_2_http_port = 52367
     cluster.add_node(dashboard_agent_listen_port=worker_2_http_port)
-    wait_for_condition(lambda: get_register_agents_number(webui_url) == 3, timeout=20)
+    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 3, timeout=20)
 
     # The third `JobAgent` will not be called here.
     submit_job_and_wait_finish()
@@ -281,7 +289,7 @@ def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
     node_try_to_kill.kill_raylet()
 
     # make sure the head updates the info of the dead node.
-    wait_for_condition(lambda: get_register_agents_number(webui_url) == 2, timeout=20)
+    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 2, timeout=20)
 
     # Make sure the third JobAgent will be called here.
     wait_for_condition(
@@ -324,6 +332,7 @@ def test_jobs_run_on_head_by_default_E2E(ray_start_cluster_head_with_env_vars):
     webui_url = cluster.webui_url
     webui_url = format_web_url(webui_url)
     client = JobSubmissionClient(webui_url)
+    gcs_client = GcsClient(address=cluster.gcs_address)
 
     def _check_nodes(num_nodes):
         try:
@@ -334,7 +343,7 @@ def test_jobs_run_on_head_by_default_E2E(ray_start_cluster_head_with_env_vars):
             return False
 
     wait_for_condition(lambda: _check_nodes(num_nodes=3), timeout=15)
-    wait_for_condition(lambda: get_register_agents_number(webui_url) == 3, timeout=20)
+    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 3, timeout=20)
 
     # Submit 20 simple jobs.
     for i in range(20):

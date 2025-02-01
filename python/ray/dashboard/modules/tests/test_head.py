@@ -20,16 +20,6 @@ routes = dashboard_optional_utils.DashboardHeadRouteTable
 class TestHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
         super().__init__(config)
-        self._notified_agents = {}
-        DataSource.agents.signal.append(self._update_notified_agents)
-
-    async def _update_notified_agents(self, change):
-        if change.old:
-            node_id, _ = change.old
-            self._notified_agents.pop(node_id)
-        if change.new:
-            node_id, (node_ip, http_port, grpc_port) = change.new
-            self._notified_agents[node_id] = (node_ip, http_port, grpc_port)
 
     @staticmethod
     def is_minimal_module():
@@ -72,14 +62,6 @@ class TestHead(dashboard_utils.DashboardHeadModule):
                 message=f"Fetch {key} from datacenter success.",
                 **{key: data},
             )
-
-    @routes.get("/test/notified_agents")
-    async def get_notified_agents(self, req) -> aiohttp.web.Response:
-        return dashboard_optional_utils.rest_response(
-            success=True,
-            message="Fetch notified agents success.",
-            **self._notified_agents,
-        )
 
     @routes.get("/test/http_get")
     async def get_url(self, req) -> aiohttp.web.Response:
