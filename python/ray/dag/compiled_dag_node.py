@@ -1317,7 +1317,10 @@ class CompiledDAG:
         custom_communicator = type_hint.get_custom_communicator()
 
         if custom_communicator is None:
-            if self._default_communicator is None:
+            if (
+                self._default_communicator is None
+                and not self._create_default_communicator
+            ):
                 if dag_node._original_type_hint is not None:
                     assert isinstance(dag_node._original_type_hint, AutoTransportType)
                     raise ValueError(
