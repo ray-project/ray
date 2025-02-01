@@ -293,6 +293,13 @@ def add_rllib_example_script_args(
         "value.",
     )
     parser.add_argument(
+        "--num-cpus-per-learner",
+        type=float,
+        default=None,
+        help="The number of CPUs per Learner to use. If `None`, use the algorithm's "
+        "default value.",
+    )
+    parser.add_argument(
         "--num-gpus-per-learner",
         type=float,
         default=None,
@@ -1148,7 +1155,9 @@ def run_rllib_example_script_experiment(
                 if num_gpus_available >= num_gpus_needed_if_available:
                     config.learners(num_gpus_per_learner=1)
                 else:
-                    config.learners(num_gpus_per_learner=0, num_cpus_per_learner=1)
+                    config.learners(num_gpus_per_learner=0)
+            if args.num_cpus_per_learner is not None:
+                config.learners(num_cpus_per_learner=args.num_cpus_per_learner)
 
             # User hard-requires n GPUs, but they are not available -> Error.
             elif num_gpus_available < num_gpus_requested:

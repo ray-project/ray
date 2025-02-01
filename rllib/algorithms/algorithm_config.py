@@ -355,7 +355,7 @@ class AlgorithmConfig(_Config):
         # `self.learners()`
         self.num_learners = 0
         self.num_gpus_per_learner = 0
-        self.num_cpus_per_learner = 1
+        self.num_cpus_per_learner = "auto"
         self.num_aggregator_actors_per_learner = 0
         self.max_requests_in_flight_per_aggregator_actor = 3
         self.local_gpu_idx = 0
@@ -2135,7 +2135,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         num_learners: Optional[int] = NotProvided,
-        num_cpus_per_learner: Optional[Union[float, int]] = NotProvided,
+        num_cpus_per_learner: Optional[Union[str, float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
         num_aggregator_actors_per_learner: Optional[int] = NotProvided,
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
@@ -2153,9 +2153,11 @@ class AlgorithmConfig(_Config):
                 1 GPU: `num_learners=4; num_gpus_per_learner=1` OR 4 GPUs total and
                 model requires 2 GPUs: `num_learners=2; num_gpus_per_learner=2`).
             num_cpus_per_learner: Number of CPUs allocated per Learner worker.
+                If "auto" (default), use 1 if `num_gpus_per_learner=0`, otherwise 0.
                 Only necessary for custom processing pipeline inside each Learner
-                requiring multiple CPU cores. If `num_learners=0`, the number of CPUs
-                on the main process is
+                requiring multiple CPU cores.
+                If `num_learners=0`, RLlib creates only one local Learner instance and
+                the number of CPUs on the main process is
                 `max(num_cpus_per_learner, num_cpus_for_main_process)`.
             num_gpus_per_learner: Number of GPUs allocated per Learner worker. If
                 `num_learners=0`, any value greater than 0 runs the

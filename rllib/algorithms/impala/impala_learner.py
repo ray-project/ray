@@ -161,7 +161,7 @@ class _GPULoaderThread(threading.Thread):
         device: torch.device,
         metrics_logger: MetricsLogger,
     ):
-        super().__init__()
+        super().__init__(name="_GPULoaderThread")
         self.daemon = True
 
         self._in_queue = in_queue
@@ -203,7 +203,7 @@ class _LearnerThread(threading.Thread):
         in_queue: deque,
         metrics_logger,
     ):
-        super().__init__()
+        super().__init__(name="_LearnerThread")
         self.daemon = True
         self.metrics: MetricsLogger = metrics_logger
         self.stopped = False

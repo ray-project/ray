@@ -133,7 +133,13 @@ class LearnerGroup(Checkpointable):
         else:
             backend_config = _get_backend_config(learner_class)
 
-            num_cpus_per_learner = self.config.num_cpus_per_learner
+            num_cpus_per_learner = (
+                self.config.num_cpus_per_learner
+                if self.config.num_cpus_per_learner != "auto"
+                else 1
+                if self.config.num_gpus_per_learner == 0
+                else 0
+            )
             num_gpus_per_learner = max(
                 0,
                 self.config.num_gpus_per_learner

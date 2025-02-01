@@ -192,24 +192,32 @@ except ImportError:
     class AlgorithmBase:
         @staticmethod
         def _get_learner_bundles(
-            cf: AlgorithmConfig,
+            config: AlgorithmConfig,
         ) -> List[Dict[str, Union[float, int]]]:
             """Selects the right resource bundles for learner workers based off of cf.
 
             Args:
-                cf: The AlgorithmConfig instance to extract bundle-information from.
+                config: The AlgorithmConfig instance to extract bundle-information from.
 
             Returns:
                 A list of resource bundles for the learner workers.
             """
-            assert cf.num_learners > 0
+            _num = config.num_learners
+            assert _num > 0
 
-            _num = cf.num_learners
+            num_cpus_per_learner = (
+                config.num_cpus_per_learner
+                if config.num_cpus_per_learner != "auto"
+                else 1
+                if config.num_gpus_per_learner == 0
+                else 0
+            )
+
             all_learners = [
                 {
                     "CPU": _num
-                    * (cf.num_cpus_per_learner + cf.num_aggregator_actors_per_learner),
-                    "GPU": _num * max(0, cf.num_gpus_per_learner),
+                    * (num_cpus_per_learner + config.num_aggregator_actors_per_learner),
+                    "GPU": _num * config.num_gpus_per_learner,
                 }
             ]
 
@@ -2733,10 +2741,17 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if cf.enable_rl_module_and_learner:
             # Training is done on local Learner.
             if cf.num_learners == 0:
+                num_cpus_per_learner = (
+                    cf.num_cpus_per_learner
+                    if cf.num_cpus_per_learner != "auto"
+                    else 1
+                    if cf.num_gpus_per_learner == 0
+                    else 0
+                )
                 driver = {
                     # Sampling and training is not done concurrently when local is
                     # used, so pick the max.
-                    "CPU": max(cf.num_cpus_per_learner, cf.num_cpus_for_main_process),
+                    "CPU": max(num_cpus_per_learner, cf.num_cpus_for_main_process),
                     "GPU": cf.num_gpus_per_learner,
                 }
             # Training is done on n remote Learners.
