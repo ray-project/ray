@@ -118,7 +118,7 @@ ray_cc_library(
         "src/ray/rpc/rpc_chaos.cc",
         "src/ray/rpc/server_call.cc",
     ],
-    hdrs = glob([
+    hdrs = [
         "src/ray/rpc/rpc_chaos.h",
         "src/ray/rpc/client_call.h",
         "src/ray/rpc/common.h",
@@ -128,8 +128,9 @@ ray_cc_library(
         "src/ray/rpc/metrics_agent_client.h",
         "src/ray/rpc/server_call.h",
         "src/ray/rpc/grpc_util.h",
-        "src/ray/raylet_client/*.h",
-    ]),
+        "src/ray/raylet_client/raylet_client.h",
+        "src/ray/raylet_client/raylet_connection.h",
+    ],
     deps = [
         ":stats_metric",
         "//src/ray/common:asio",
@@ -155,12 +156,12 @@ cc_grpc_library(
 # Node manager server and client.
 ray_cc_library(
     name = "node_manager_rpc",
-    srcs = glob([
-        "src/ray/rpc/node_manager/*.cc",
-    ]),
-    hdrs = glob([
-        "src/ray/rpc/node_manager/*.h",
-    ]),
+    srcs = ["src/ray/rpc/node_manager/node_manager_client_pool.cc"],
+    hdrs = [
+        "src/ray/rpc/node_manager/node_manager_client_pool.h",
+        "src/ray/rpc/node_manager/node_manager_client.h",
+        "src/ray/rpc/node_manager/node_manager_server.h",
+    ],
     deps = [
         ":grpc_common_lib",
         ":node_manager_cc_grpc",
@@ -267,9 +268,7 @@ cc_grpc_library(
 # Metrics Agent client.
 ray_cc_library(
     name = "reporter_rpc",
-    hdrs = glob([
-        "src/ray/rpc/metrics_agent_client.h",
-    ]),
+    hdrs = ["src/ray/rpc/metrics_agent_client.h"],
     deps = [
         ":grpc_common_lib",
         ":reporter_cc_grpc",
@@ -560,12 +559,14 @@ ray_cc_binary(
 # Ray native pubsub module.
 ray_cc_library(
     name = "pubsub_lib",
-    srcs = glob([
-        "src/ray/pubsub/*.cc",
-    ]),
-    hdrs = glob([
-        "src/ray/pubsub/*.h",
-    ]),
+    srcs = [
+        "src/ray/pubsub/publisher.cc",
+        "src/ray/pubsub/subscriber.cc",
+    ],
+    hdrs = [
+        "src/ray/pubsub/publisher.h",
+        "src/ray/pubsub/subscriber.h",
+    ],
     deps = [
         ":pubsub_rpc",
         "@boost//:any",
@@ -735,12 +736,14 @@ ray_cc_library(
 
 ray_cc_library(
     name = "raylet_client_lib",
-    srcs = glob([
-        "src/ray/raylet_client/*.cc",
-    ]),
-    hdrs = glob([
-        "src/ray/raylet_client/*.h",
-    ]),
+    srcs = [
+        "src/ray/raylet_client/raylet_client.cc",
+        "src/ray/raylet_client/raylet_connection.cc",
+    ],
+    hdrs = [
+        "src/ray/raylet_client/raylet_client.h",
+        "src/ray/raylet_client/raylet_connection.h",
+    ],
     linkopts = select({
         "@platforms//os:windows": [
         ],
@@ -803,14 +806,8 @@ ray_cc_library(
 # symbols export.
 ray_cc_library(
     name = "exported_internal",
-    srcs =
-        [
-            "src/ray/internal/internal.cc",
-        ],
-    hdrs =
-        [
-            "src/ray/internal/internal.h",
-        ],
+    srcs = ["src/ray/internal/internal.cc"],
+    hdrs = ["src/ray/internal/internal.h"],
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
@@ -1838,16 +1835,8 @@ ray_cc_test(
 
 ray_cc_library(
     name = "gcs_table_storage_lib",
-    srcs = glob(
-        [
-            "src/ray/gcs/gcs_server/gcs_table_storage.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/gcs/gcs_server/gcs_table_storage.h",
-        ],
-    ),
+    srcs = ["src/ray/gcs/gcs_server/gcs_table_storage.cc"],
+    hdrs = ["src/ray/gcs/gcs_server/gcs_table_storage.h"],
     deps = [
         ":gcs",
         ":gcs_in_memory_store_client",
@@ -1978,16 +1967,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "global_state_accessor_lib",
-    srcs = glob(
-        [
-            "src/ray/gcs/gcs_client/global_state_accessor.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/gcs/gcs_client/global_state_accessor.h",
-        ],
-    ),
+    srcs = ["src/ray/gcs/gcs_client/global_state_accessor.cc"],
+    hdrs = ["src/ray/gcs/gcs_client/global_state_accessor.h"],
     deps = [
         ":gcs_client_lib",
     ],
