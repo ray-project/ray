@@ -328,18 +328,9 @@ def _build_dag_node_operation_graph(
         for i, node in enumerate(op_nodes):
             assert node.task_idx not in idx_to_op_node
             idx_to_op_node[node.task_idx] = node
-            if i > 0:
+            # Skip the control edge into a NCCL operation node.
+            if i > 0 and not node.requires_nccl_op:
                 prev_node = op_nodes[i - 1]
-                if prev_node.requires_nccl_read or node.requires_nccl_write:
-                    # Skip the control edges `ClassMethodNode` -> `P2PSendNode` and
-                    # `P2PRecvNode` -> `ClassMethodNode`.
-                    continue
-                if prev_node.requires_nccl_write and node.requires_nccl_read:
-                    # Skip the control edge `P2PSendNode` -> `P2PRecvNode`.
-                    continue
-                if node.requires_nccl_collective:
-                    # Skip the control edge `ClassMethodNode` -> `CollectiveOutputNode`.
-                    continue
                 _add_edge(prev_node, node, control_dependency=True)
 
     # Add data dependency edges from an upstream task to its downstream tasks.
