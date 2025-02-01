@@ -47,7 +47,7 @@ class non_owned_fd_sink final : public spdlog::sinks::base_sink<Mutex> {
 #elif defined(_WIN32)
     DWORD bytes_written;
     BOOL success =
-        WriteFile(fd_, formatted.data(), (DWORD)formatted.size(), bytes_written, NULL);
+        WriteFile(fd_, formatted.data(), (DWORD)formatted.size(), &bytes_written, NULL);
     RAY_CHECK(success);
     RAY_CHECK_EQ((DWORD)formatted.size(), bytes_written);
 #endif
