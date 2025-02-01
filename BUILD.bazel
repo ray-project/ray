@@ -386,6 +386,7 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
         "//src/ray/util:compat",
+        "//src/ray/util:counter_map",
         "@msgpack",
     ],
 )
@@ -537,7 +538,10 @@ ray_cc_library(
         ":scheduler",
         ":worker_rpc",
         "//src/ray/protobuf:agent_manager_cc_proto",
+        "//src/ray/util:counter_map",
         "//src/ray/util:thread_checker",
+        "//src/ray/util:throttler",
+        "//src/ray/util:type_traits",
         "@boost//:bimap",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
@@ -718,6 +722,7 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:throttler",
         "@boost//:asio",
         "@boost//:beast",
         "@boost//:system",
@@ -1972,6 +1977,7 @@ ray_cc_library(
         ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
+        "//src/ray/util:sequencer",
         "//src/ray/protobuf:usage_cc_proto",
     ],
 )
@@ -2209,6 +2215,7 @@ ray_cc_library(
         ":ray_common",
         ":stats_lib",
         "//src/ray/util",
+        "//src/ray/util:exponential_backoff",
         "@boost//:asio",
     ],
 )
@@ -2224,7 +2231,7 @@ ray_cc_library(
         "src/ray/gcs/store_client/store_client.h",
     ],
     deps = [
-        "redis_client",
+        ":redis_client",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
     ],
@@ -2370,6 +2377,7 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:exponential_backoff",
         "@boost//:asio",
     ],
 )
@@ -2510,6 +2518,7 @@ pyx_library(
         "//:stats_lib",
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:memory",
     ],
 )
 
