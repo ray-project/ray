@@ -372,6 +372,7 @@ def _build_dag_node_operation_graph(
                             idx_to_op_node[consumer_idx],
                             "shm",
                         )
+                continue
             downstream_op_node = idx_to_op_node[downstream_task_idx]
             if op_node.requires_nccl_write:
                 assert downstream_op_node.requires_nccl_read

@@ -184,3 +184,6 @@ class CPUCommunicator(Communicator):
 
     def send_stream(self):
         raise NotImplementedError
+
+    def collective_stream(self):
+        raise NotImplementedError

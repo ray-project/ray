@@ -26,7 +26,6 @@ from ray.experimental.channel.auto_transport_type import (
 )
 import ray.exceptions
 from ray.dag.constants import (
-    RAY_ADAG_VISUALIZE_SCHEDULE,
     PARENT_CLASS_NODE_KEY,
     P2P_OPERATION_KEY,
     BIND_INDEX_KEY,
@@ -271,9 +270,7 @@ def do_profile_tasks(
             for operation in schedule:
                 start_t = time.perf_counter()
                 task = tasks[operation.exec_task_idx]
-                done = task.exec_operation(
-                    self, overlap_gpu_communication
-                )
+                done = task.exec_operation(self, overlap_gpu_communication)
                 end_t = time.perf_counter()
 
                 self.__ray_cgraph_events.append(
@@ -613,7 +610,7 @@ class ExecutableTask:
             from ray.dag.collective_node import _CollectiveOperation
 
             assert isinstance(self.nccl_op, _CollectiveOperation)
-            self._collective_stream = self.nccl_op.get_nccl_group().collective_stream
+            self._collective_stream = self.nccl_op.get_communicator().collective_stream
 
     def wrap_and_set_intermediate_future(
         self, val: Any, wrap_in_gpu_future: bool
@@ -746,9 +743,13 @@ class ExecutableTask:
                     if (
                         self.requires_nccl_read or self.requires_nccl_collective
                     ) and overlap_gpu_communication:
-                        output_val = self.fetch_intermediate_future(wait_gpu_future=False)
+                        output_val = self.fetch_intermediate_future(
+                            wait_gpu_future=False
+                        )
                     else:
-                        output_val = self.fetch_intermediate_future(wait_gpu_future=True)
+                        output_val = self.fetch_intermediate_future(
+                            wait_gpu_future=True
+                        )
                     try:
                         self.output_writer.write(output_val)
                     except RayChannelError:
@@ -1019,7 +1020,7 @@ class CompiledDAG:
             raise ValueError(
                 "NCCL P2P operation is only supported with ClassMethodNode"
             )
-        elif node.is_adag_output_node:
+        elif node.is_cgraph_output_node:
             raise ValueError(
                 "Outputs cannot be transferred via NCCL because the driver "
                 "cannot participate in the NCCL group"
@@ -1035,8 +1036,10 @@ class CompiledDAG:
                 BIND_INDEX_KEY: node._get_bind_index(),
             },
         )
-        send_node.with_type_hint(node.type_hint)
-        node.with_type_hint(ChannelOutputType())
+        send_node._type_hint = node.type_hint
+        send_node._original_type_hint = node._original_type_hint
+        node._type_hint = ChannelOutputType()
+        node._original_type_hint = None
         node_to_p2p_send_node[node] = send_node
         self._add_node(send_node)
 
