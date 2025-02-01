@@ -105,10 +105,11 @@ class RedirectionFileHandle {
   // https://github.com/ray-project/ray/pull/50170
   void CompleteWrite(const char *data, size_t len) {
 #if defined(__APPLE__) || defined(__linux__)
-    (void)write(write_handle_, data, len);
+    [[maybe_unused]] auto x = write(write_handle_, data, len);
 #elif defined(_WIN32)
     DWORD bytes_written;
-    (void)WriteFile(fd, data, (DWORD)len, &bytes_written, NULL);
+    [[maybe_unused]] auto x =
+        WriteFile(write_handle_, data, (DWORD)len, &bytes_written, NULL);
 #endif
   }
 
