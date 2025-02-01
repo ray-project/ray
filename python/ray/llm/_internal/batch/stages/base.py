@@ -73,6 +73,10 @@ class StatefulStageUDF:
         column for the next stage.
     """
 
+    # The internal column name for the index of the row in the batch.
+    # This is used to align the output of the UDF with the input batch.
+    idx_in_batch_column: str = "__idx_in_batch"
+
     def __init__(self, data_column: str):
         self.data_column = data_column
 
@@ -143,6 +147,10 @@ class StatefulStageUDF:
             inputs = inputs.tolist()
         self.validate_inputs(inputs)
 
+        # Assign the index of the row in the batch to the idx_in_batch_column.
+        for idx, row in enumerate(inputs):
+            row[self.idx_in_batch_column] = idx
+
         # Always stream the outputs one by one to better overlapping
         # batches. For example, when the output batch size is 64, Ray Data
         # will collect 64 outputs, and 1) send the batch of 64 to the next stage,
@@ -151,12 +159,28 @@ class StatefulStageUDF:
         # for 2 batches (63 + 63 > 64) to continue proceeding. On the other hand,
         # if we stream outputs one-by-one, Ray Data can form a batch of 64 before
         # the second batch is done.
-        idx = 0
+        is_outputed = [False] * len(inputs)
         async for output in self.udf(inputs):
+            if self.idx_in_batch_column not in output:
+                raise ValueError(
+                    "The output of the UDF must contain the column "
+                    f"{self.idx_in_batch_column}."
+                )
+            idx_in_batch = output.pop(self.idx_in_batch_column)
+            if is_outputed[idx_in_batch]:
+                raise ValueError(
+                    f"The row {idx_in_batch} is outputed twice. "
+                    "This is likely due to the UDF is not one-to-one."
+                )
+            is_outputed[idx_in_batch] = True
+
             # Add stage outputs to the data column of the row.
-            inputs[idx].update(output)
-            yield {self.data_column: [inputs[idx]]}
-            idx += 1
+            inputs[idx_in_batch].update(output)
+            yield {self.data_column: [inputs[idx_in_batch]]}
+
+        if not all(is_outputed):
+            missing_rows = [i for i, o in enumerate(is_outputed) if not o]
+            raise ValueError(f"The rows {missing_rows} are not outputed.")
 
     def validate_inputs(self, inputs: List[Dict[str, Any]]):
         """Validate the inputs to make sure the required keys are present.
@@ -167,11 +191,18 @@ class StatefulStageUDF:
         Raises:
             ValueError: If the required keys are not found.
         """
+        input_keys = set(inputs[0].keys())
+
+        if self.idx_in_batch_column in input_keys:
+            raise ValueError(
+                f"The input column {self.idx_in_batch_column} is reserved "
+                "for internal use."
+            )
+
         expected_input_keys = self.expected_input_keys
         if not expected_input_keys:
             return
 
-        input_keys = set(inputs[0].keys())
         missing_required = set(expected_input_keys) - input_keys
         if missing_required:
             raise ValueError(

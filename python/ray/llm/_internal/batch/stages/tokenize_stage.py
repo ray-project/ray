@@ -41,7 +41,10 @@ class TokenizeUDF(StatefulStageUDF):
             batch,
             self.tokenizer([row["prompt"] for row in batch])["input_ids"],
         ):
-            yield {"tokenized_prompt": prompt_token_ids}
+            yield {
+                self.idx_in_batch_column: row[self.idx_in_batch_column],
+                "tokenized_prompt": prompt_token_ids,
+            }
 
     @property
     def expected_input_keys(self) -> List[str]:
@@ -96,7 +99,10 @@ class DetokenizeUDF(StatefulStageUDF):
                 skip_special_tokens=True,
             ),
         ):
-            yield {"generated_text": generated_text}
+            yield {
+                self.idx_in_batch_column: row[self.idx_in_batch_column],
+                "generated_text": generated_text,
+            }
 
     @property
     def expected_input_keys(self) -> List[str]:
