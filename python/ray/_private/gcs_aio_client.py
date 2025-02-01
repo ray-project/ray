@@ -46,3 +46,7 @@ class GcsAioClient:
         self.get_all_node_info = self.inner.async_get_all_node_info
         self.kill_actor = self.inner.async_kill_actor
         self.get_cluster_status = self.inner.async_get_cluster_status
+
+    @property
+    def gcs_address(self):
+        return self.inner.address

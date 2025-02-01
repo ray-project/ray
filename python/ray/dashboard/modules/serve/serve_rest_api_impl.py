@@ -14,14 +14,15 @@ import dataclasses
 import json
 import logging
 from functools import wraps
-from typing import Union
+from typing import Union, Type
 
 import aiohttp
 from aiohttp.web import Request, Response
 
 import ray
+from ray.dashboard.routes import BaseRouteTable
+from ray.dashboard.subprocesses.module import SubprocessModule
 import ray.dashboard.optional_utils as optional_utils
-import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.pydantic_compat import ValidationError
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
@@ -63,29 +64,29 @@ def validate_endpoint(log_deprecation_warning: bool):
 
 def create_serve_rest_api(
     dashboard_module_superclass: Union[
-        dashboard_utils.DashboardHeadModule, dashboard_utils.DashboardAgentModule
+        SubprocessModule, dashboard_utils.DashboardAgentModule
     ],
-    dashboard_route_table: Union[
-        dashboard_optional_utils.DashboardHeadRouteTable,
-        dashboard_optional_utils.DashboardAgentRouteTable,
-    ],
+    dashboard_route_table: Type[BaseRouteTable],
     log_deprecation_warning: bool = False,
 ):
     # NOTE (shrekris-anyscale): This class uses delayed imports for all
     # Ray Serve-related modules. That way, users can use the Ray dashboard agent for
     # non-Serve purposes without downloading Serve dependencies.
     class ServeRestApiImpl(dashboard_module_superclass):
-        def __init__(
-            self,
-            dashboard_config_or_agent: Union[
-                dashboard_utils.DashboardHeadModuleConfig,
-                dashboard_utils.DashboardAgentModule,
-            ],
-        ):
-            # dashboard_config_or_agent is a bit awkward because it's either a Config
-            # for a HeadModule, or an AgentModule itself. Good news is that both have a
-            # session_name.
-            super().__init__(dashboard_config_or_agent)
+        @classmethod
+        def __reduce__(cls):
+            """Pickling method for the dynamically created class for multiprocessing"""
+            return (
+                create_serve_rest_api,
+                (
+                    dashboard_module_superclass,
+                    dashboard_route_table,
+                    log_deprecation_warning,
+                ),
+            )
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
             self._controller = None
             self._controller_lock = asyncio.Lock()
 
@@ -258,11 +259,17 @@ def create_serve_rest_api(
 
                 return self._controller
 
+        # for agent module
         async def run(self, server):
             pass
 
+        # for agent module
         @staticmethod
         def is_minimal_module():
             return False
+
+        # for subprocess module
+        async def init(self):
+            pass
 
     return ServeRestApiImpl
