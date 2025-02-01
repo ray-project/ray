@@ -19,7 +19,6 @@
 #include <mutex>
 #include <vector>
 
-#include "ray/util/compat.h"
 #include "ray/util/pipe_logger.h"
 #include "ray/util/util.h"
 
@@ -44,13 +43,13 @@ int GetStderrHandle() { return _fileno(stderr); }
 // absl::InlinedVector.
 //
 // Maps from original stream file handle (i.e. stdout/stderr) to its stream redirector.
-absl::flat_hash_map<int, RedirectionFileHandle> redirection_file_handles;
+absl::flat_hash_map<int, RedirectionFileHandle> redirection_file_handles_map;
 
 // Block synchronize on stream redirection related completion, should be call **EXACTLY
 // ONCE** at program termination.
 std::once_flag stream_exit_once_flag;
 void SyncOnStreamRedirection() {
-  for (auto &[_, handle] : redirection_file_handles) {
+  for (auto &[_, handle] : redirection_file_handles_map) {
     handle.Close();
   }
 }
@@ -75,18 +74,49 @@ void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
 #endif
 
   const bool is_new =
-      redirection_file_handles.emplace(stream_fd, std::move(handle)).second;
+      redirection_file_handles_map.emplace(stream_fd, std::move(handle)).second;
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
 }
 
 void FlushOnRedirectedStream(int stream_fd) {
-  auto iter = redirection_file_handles.find(stream_fd);
-  RAY_CHECK(iter != redirection_file_handles.end())
+  auto iter = redirection_file_handles_map.find(stream_fd);
+  RAY_CHECK(iter != redirection_file_handles_map.end())
       << "Stream with file descriptor " << stream_fd << " is not registered.";
   iter->second.Flush();
 }
 
+// Redirection handles to flush at process termination.
+// Different from [redirection_file_handles_map], these two data structures are setup by two functions.
+std::vector<RedirectionFileHandle> redirection_handles_to_flush;
+
+std::once_flag redirection_handle_flush_once_flag;
+void FlushOnRedirectionHandles() {
+  for (auto& handle : redirection_handles_to_flush) {
+    handle.Close();
+  }
+  redirection_handles_to_flush.clear();
+}
+
 }  // namespace
+
+int GetFdForStreamRedirection(const StreamRedirectionOption& opt) {
+  std::call_once(redirection_handle_flush_once_flag, []() {
+    RAY_CHECK_EQ(std::atexit(FlushOnRedirectionHandles), 0)
+        << "Fails to register stream redirection termination hook.";
+  });
+
+  RedirectionFileHandle redirection_handle = CreateRedirectionFileHandle(opt);
+  MEMFD_TYPE_NON_UNIQUE handle = redirection_handle.GetWriteHandle();
+  redirection_handles_to_flush.emplace_back(std::move(redirection_handle));
+
+  #if defined(__APPLE__) || defined(__linux__)
+  int fd = handle;
+  #elif defined(_WIN32)
+  int fd = _open_osfhandle((intptr_t)handle, _O_WRONLY);
+  #endif
+
+  return fd;
+}
 
 void RedirectStdout(const StreamRedirectionOption &opt) {
   RedirectStream(GetStdoutHandle(), opt);

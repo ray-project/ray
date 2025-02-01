@@ -795,3 +795,14 @@ py_test_module_list(
     "spark/discover_4_gpu.sh"
   ],
 )
+
+py_test_module_list(
+  files = [
+    "test_redirection.py",
+  ],
+  size = "small",
+  deps = [
+    ":conftest",
+    "//:cp_raylet_so",
+  ],
+)

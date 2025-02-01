@@ -15,6 +15,7 @@
 // This file contains a few logging related util functions.
 
 #include "ray/util/stream_redirection_options.h"
+#include "ray/util/compat.h"
 
 namespace ray {
 
@@ -28,6 +29,10 @@ namespace ray {
 // TODO(hjiang): Implement full-featured redirection for windows.
 void RedirectStdout(const StreamRedirectionOption &opt);
 void RedirectStderr(const StreamRedirectionOption &opt);
+
+// Util function to setup pipe with possible log rotation and tee underlying, based on the redirection option.
+// Return file handle for redirection usage, which is flushed at process termination.
+int GetFdForStreamRedirection(const StreamRedirectionOption& opt);
 
 // Flush on redirected stream synchronously.
 //

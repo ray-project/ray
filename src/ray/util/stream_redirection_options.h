@@ -16,6 +16,7 @@
 
 #include <limits>
 #include <string>
+#include <utility>
 
 namespace ray {
 
@@ -25,6 +26,20 @@ namespace ray {
 // For example, if redirection file set and `tee_to_stdout` both set to true, the stream
 // content is written to both sinks.
 struct StreamRedirectionOption {
+  StreamRedirectionOption() = default;
+
+  // Expose constructor for cython usage.
+  StreamRedirectionOption(std::string file_path_p,
+                          size_t rotation_max_size_p,
+                          size_t rotation_max_file_count_p,
+                          bool tee_to_stdout_p,
+                          bool tee_to_stderr_p)
+      : file_path(std::move(file_path_p)),
+        rotation_max_size(rotation_max_size_p),
+        rotation_max_file_count(rotation_max_file_count_p),
+        tee_to_stdout(tee_to_stdout_p),
+        tee_to_stderr(tee_to_stderr_p) {}
+
   // Redirected file path on local filesystem.
   std::string file_path;
   // Max number of bytes in a rotated file.
