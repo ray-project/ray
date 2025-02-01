@@ -221,7 +221,7 @@ Lance
    :toctree: doc/
 
    read_lance
-   write_lance
+   Dataset.write_lance
 
 ClickHouse
 ----------
