@@ -63,6 +63,10 @@ def _write_fragment(
             schema = tbl.schema.remove_metadata()
         else:
             schema = first.schema
+        if len(schema.names) == 0:
+            # Empty table.
+            schema = None
+
         stream = chain([first], stream)
 
     def record_batch_converter():
