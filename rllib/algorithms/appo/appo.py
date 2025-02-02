@@ -33,7 +33,6 @@ logger = logging.getLogger(__name__)
 LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
 LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
 OLD_ACTION_DIST_KEY = "old_action_dist"
-OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
 
 
 class APPOConfig(IMPALAConfig):
@@ -277,7 +276,7 @@ class APPOConfig(IMPALAConfig):
         # On new API stack, circular buffer should be used, not `minibatch_buffer_size`.
         if self.enable_rl_module_and_learner:
             if self.minibatch_buffer_size != 1 or self.replay_proportion != 0.0:
-                raise ValueError(
+                self._value_error(
                     "`minibatch_buffer_size/replay_proportion` not valid on new API "
                     "stack with APPO! "
                     "Use `circular_buffer_num_batches` for the number of train batches "
@@ -286,7 +285,7 @@ class APPOConfig(IMPALAConfig):
                     "`circular_buffer_iterations_per_batch`."
                 )
             if self.num_multi_gpu_tower_stacks != 1:
-                raise ValueError(
+                self._value_error(
                     "`num_multi_gpu_tower_stacks` not supported on new API stack with "
                     "APPO! In order to train on multi-GPU, use "
                     "`config.learners(num_learners=[number of GPUs], "
@@ -296,7 +295,7 @@ class APPOConfig(IMPALAConfig):
                     "1-8)."
                 )
             if self.learner_queue_size != 16:
-                raise ValueError(
+                self._value_error(
                     "`learner_queue_size` not supported on new API stack with "
                     "APPO! In order set the size of the circular buffer (which acts as "
                     "a 'learner queue'), use "
@@ -330,19 +329,13 @@ class APPOConfig(IMPALAConfig):
             from ray.rllib.algorithms.appo.torch.appo_torch_rl_module import (
                 APPOTorchRLModule as RLModule,
             )
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import (
-                APPOTfRLModule as RLModule,
-            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
                 "Use either 'torch' or 'tf2'."
             )
 
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-
-        return RLModuleSpec(module_class=RLModule, catalog_class=PPOCatalog)
+        return RLModuleSpec(module_class=RLModule)
 
     @property
     @override(AlgorithmConfig)

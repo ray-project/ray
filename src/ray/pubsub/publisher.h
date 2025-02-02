@@ -45,13 +45,14 @@ class SubscriberState;
 /// State for an entity / topic in a pub/sub channel.
 class EntityState {
  public:
+  /// \param max_buffered_bytes set to -1 to disable buffering.
   EntityState(int64_t max_message_size_bytes, int64_t max_buffered_bytes)
       : max_message_size_bytes_(max_message_size_bytes),
         max_buffered_bytes_(max_buffered_bytes) {}
 
   /// Publishes the message to subscribers of the entity.
   /// Returns true if there are subscribers, returns false otherwise.
-  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message);
+  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message, size_t msg_size);
 
   /// Manages the set of subscribers of this entity.
   bool AddSubscriber(SubscriberState *subscriber);
@@ -60,7 +61,7 @@ class EntityState {
   /// Gets the current set of subscribers, keyed by subscriber IDs.
   const absl::flat_hash_map<SubscriberID, SubscriberState *> &Subscribers() const;
 
-  int64_t GetNumBufferedBytes() const { return total_size_; }
+  size_t GetNumBufferedBytes() const { return total_size_; }
 
  protected:
   // Subscribers of this entity.
@@ -73,17 +74,17 @@ class EntityState {
   // the message in buffer.
   std::queue<std::weak_ptr<rpc::PubMessage>> pending_messages_;
   // Size of each inflight message.
-  std::queue<int64_t> message_sizes_;
+  std::queue<size_t> message_sizes_;
   // Protobuf messages fail to serialize if 2GB or larger. Cap published
   // message batches to this size to ensure that we can publish each message
   // batch. Individual messages larger than this limit will also be dropped.
   // TODO(swang): Pubsub clients should also ensure that they don't try to
   // publish messages larger than this.
-  const int64_t max_message_size_bytes_;
+  const size_t max_message_size_bytes_;
   // Set to -1 to disable buffering.
   const int64_t max_buffered_bytes_;
   // Total size of inflight messages.
-  int64_t total_size_ = 0;
+  size_t total_size_ = 0;
 };
 
 /// Per-channel two-way index for subscribers and the keys they subscribe to.
@@ -99,7 +100,7 @@ class SubscriptionIndex {
   /// Publishes the message to relevant subscribers.
   /// Returns true if there are subscribers listening on the entity key of the message,
   /// returns false otherwise.
-  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message);
+  bool Publish(std::shared_ptr<rpc::PubMessage> pub_message, size_t msg_size);
 
   /// Adds a new subscriber and the key it subscribes to.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
@@ -306,12 +307,12 @@ class Publisher : public PublisherInterface {
   /// Check out CheckDeadSubscribers for more details.
   /// \param publish_batch_size The batch size of published messages.
   Publisher(const std::vector<rpc::ChannelType> &channels,
-            PeriodicalRunner *const periodical_runner,
+            PeriodicalRunner &periodical_runner,
             std::function<double()> get_time_ms,
             const uint64_t subscriber_timeout_ms,
             int64_t publish_batch_size,
             PublisherID publisher_id = NodeID::FromRandom())
-      : periodical_runner_(periodical_runner),
+      : periodical_runner_(&periodical_runner),
         get_time_ms_(std::move(get_time_ms)),
         subscriber_timeout_ms_(subscriber_timeout_ms),
         publish_batch_size_(publish_batch_size),
@@ -435,6 +436,8 @@ class Publisher : public PublisherInterface {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Periodic runner to invoke CheckDeadSubscribers.
+  // The pointer must outlive the Publisher.
+  // Nonnull in production, may be nullptr in tests.
   PeriodicalRunner *periodical_runner_;
 
   /// Callback to get the current time.

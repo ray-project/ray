@@ -631,9 +631,13 @@ Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
 }
 
 Status NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback,
-                                     int64_t timeout_ms) {
+                                     int64_t timeout_ms,
+                                     std::optional<NodeID> node_id) {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
+  if (node_id) {
+    request.mutable_filters()->set_node_id(node_id->Binary());
+  }
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
       request,
       [callback](const Status &status, rpc::GetAllNodeInfoReply &&reply) {
@@ -707,6 +711,16 @@ Status NodeInfoAccessor::GetAllNoCache(int64_t timeout_ms,
       client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply, timeout_ms));
   nodes = VectorFromProtobuf(std::move(*reply.mutable_node_info_list()));
   return Status::OK();
+}
+
+StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCacheWithFilters(
+    int64_t timeout_ms, rpc::GetAllNodeInfoRequest_Filters filters) {
+  rpc::GetAllNodeInfoRequest request;
+  *request.mutable_filters() = std::move(filters);
+  rpc::GetAllNodeInfoReply reply;
+  RAY_RETURN_NOT_OK(
+      client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply, timeout_ms));
+  return VectorFromProtobuf(std::move(*reply.mutable_node_info_list()));
 }
 
 Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addresses,
@@ -1202,12 +1216,13 @@ Status InternalKVAccessor::AsyncInternalKVMultiGet(
   return Status::OK();
 }
 
-Status InternalKVAccessor::AsyncInternalKVPut(const std::string &ns,
-                                              const std::string &key,
-                                              const std::string &value,
-                                              bool overwrite,
-                                              const int64_t timeout_ms,
-                                              const OptionalItemCallback<int> &callback) {
+Status InternalKVAccessor::AsyncInternalKVPut(
+    const std::string &ns,
+    const std::string &key,
+    const std::string &value,
+    bool overwrite,
+    const int64_t timeout_ms,
+    const OptionalItemCallback<bool> &callback) {
   rpc::InternalKVPutRequest req;
   req.set_namespace_(ns);
   req.set_key(key);
@@ -1216,7 +1231,7 @@ Status InternalKVAccessor::AsyncInternalKVPut(const std::string &ns,
   client_impl_->GetGcsRpcClient().InternalKVPut(
       req,
       [callback](const Status &status, rpc::InternalKVPutReply &&reply) {
-        callback(status, reply.added_num());
+        callback(status, reply.added());
       },
       timeout_ms);
   return Status::OK();
@@ -1291,8 +1306,8 @@ Status InternalKVAccessor::Put(const std::string &ns,
       value,
       overwrite,
       timeout_ms,
-      [&ret_promise, &added](Status status, std::optional<int> added_num) {
-        added = static_cast<bool>(added_num.value_or(0));
+      [&ret_promise, &added](Status status, std::optional<bool> was_added) {
+        added = was_added.value_or(false);
         ret_promise.set_value(status);
       }));
   return ret_promise.get_future().get();
@@ -1440,7 +1455,7 @@ Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
     auto count = count_array[i];
 
     auto new_resource_requests_by_count =
-        request.mutable_cluster_resource_constraint()->add_min_bundles();
+        request.mutable_cluster_resource_constraint()->add_resource_requests();
 
     new_resource_requests_by_count->mutable_request()->mutable_resources_bundle()->insert(
         bundle.begin(), bundle.end());
@@ -1479,6 +1494,26 @@ Status AutoscalerStateAccessor::GetClusterStatus(int64_t timeout_ms,
   return Status::OK();
 }
 
+Status AutoscalerStateAccessor::AsyncGetClusterStatus(
+    int64_t timeout_ms,
+    const OptionalItemCallback<rpc::autoscaler::GetClusterStatusReply> &callback) {
+  rpc::autoscaler::GetClusterStatusRequest request;
+  rpc::autoscaler::GetClusterStatusRequest reply;
+
+  client_impl_->GetGcsRpcClient().GetClusterStatus(
+      request,
+      [callback](const Status &status, rpc::autoscaler::GetClusterStatusReply &&reply) {
+        if (!status.ok()) {
+          callback(status, std::nullopt);
+          return;
+        }
+        callback(Status::OK(), std::move(reply));
+      },
+      timeout_ms);
+
+  return Status::OK();
+}
+
 Status AutoscalerStateAccessor::ReportAutoscalingState(
     int64_t timeout_ms, const std::string &serialized_state) {
   rpc::autoscaler::ReportAutoscalingStateRequest request;
@@ -1488,6 +1523,18 @@ Status AutoscalerStateAccessor::ReportAutoscalingState(
     return Status::IOError("Failed to parse ReportAutoscalingState");
   }
   return client_impl_->GetGcsRpcClient().SyncReportAutoscalingState(
+      request, &reply, timeout_ms);
+}
+
+Status AutoscalerStateAccessor::ReportClusterConfig(
+    int64_t timeout_ms, const std::string &serialized_cluster_config) {
+  rpc::autoscaler::ReportClusterConfigRequest request;
+  rpc::autoscaler::ReportClusterConfigReply reply;
+
+  if (!request.mutable_cluster_config()->ParseFromString(serialized_cluster_config)) {
+    return Status::IOError("Failed to parse ClusterConfig");
+  }
+  return client_impl_->GetGcsRpcClient().SyncReportClusterConfig(
       request, &reply, timeout_ms);
 }
 

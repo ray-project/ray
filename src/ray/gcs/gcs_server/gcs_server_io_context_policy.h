@@ -22,6 +22,7 @@
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/util/array.h"
+#include "ray/util/type_traits.h"
 
 namespace ray {
 namespace gcs {
@@ -40,10 +41,13 @@ struct GcsServerIOContextPolicy {
       return IndexOf("pubsub_io_context");
     } else if constexpr (std::is_same_v<T, syncer::RaySyncer>) {
       return IndexOf("ray_syncer_io_context");
+    } else if constexpr (std::is_same_v<T, GcsInternalKVManager>) {
+      // default io context
+      return -1;
     } else {
       // Due to if-constexpr limitations, this have to be in an else block.
-      // Using this tuple_size_v to put T into compile error message.
-      static_assert(std::tuple_size_v<std::tuple<T>> == 0, "unknown type");
+      // Using this template to put T into compile error message.
+      static_assert(AlwaysFalse<T>, "unknown type");
     }
   }
 

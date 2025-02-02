@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -23,4 +22,3 @@ enum AgentRpcStatus {
   // Failed.
   AGENT_RPC_STATUS_FAILED = 1;
 }
-

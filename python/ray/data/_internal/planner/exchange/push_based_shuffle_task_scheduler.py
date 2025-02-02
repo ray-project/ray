@@ -13,7 +13,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import convert_bytes_to_human_readable_str
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata, to_stats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -643,10 +643,11 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                     owns_blocks=input_owned,
                 )
             )
+
         stats = {
-            "map": map_stage_metadata,
-            "merge": merge_stage_metadata,
-            "reduce": reduce_stage_metadata,
+            "map": to_stats(map_stage_metadata),
+            "merge": to_stats(merge_stage_metadata),
+            "reduce": to_stats(reduce_stage_metadata),
         }
 
         return (output, stats)

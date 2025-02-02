@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
     from pyiceberg.expressions import BooleanExpression
     from pyiceberg.io import FileIO
-    from pyiceberg.manifest import DataFile, DataFileContent
+    from pyiceberg.manifest import DataFile
     from pyiceberg.schema import Schema
     from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
@@ -181,6 +181,7 @@ class IcebergDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         from pyiceberg.io import pyarrow as pyi_pa_io
+        from pyiceberg.manifest import DataFileContent
 
         # Get the PyIceberg scan
         data_scan = self._get_data_scan()

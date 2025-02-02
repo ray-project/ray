@@ -58,35 +58,56 @@ struct ClusterResourceManagerTest : public ::testing::Test {
   std::unique_ptr<ClusterResourceManager> manager;
 };
 
-TEST_F(ClusterResourceManagerTest, HasSufficientResourceTest) {
-  ASSERT_FALSE(manager->HasSufficientResource(
+TEST_F(ClusterResourceManagerTest, HasFeasibleResourcesTest) {
+  ASSERT_FALSE(manager->HasFeasibleResources(node3, {}));
+  ASSERT_FALSE(manager->HasFeasibleResources(
+      node0,
+      ResourceMapToResourceRequest({{"GPU", 1}},
+                                   /*requires_object_store_memory=*/false)));
+  ASSERT_TRUE(manager->HasFeasibleResources(
+      node0,
+      ResourceMapToResourceRequest({{"CPU", 1}},
+                                   /*requires_object_store_memory=*/false)));
+  manager->SubtractNodeAvailableResources(
+      node0,
+      ResourceMapToResourceRequest({{"CPU", 1}},
+                                   /*requires_object_store_memory=*/false));
+  // node0 has no available CPU resource but it's still feasible.
+  ASSERT_TRUE(manager->HasFeasibleResources(
+      node0,
+      ResourceMapToResourceRequest({{"CPU", 1}},
+                                   /*requires_object_store_memory=*/false)));
+}
+
+TEST_F(ClusterResourceManagerTest, HasAvailableResourcesTest) {
+  ASSERT_FALSE(manager->HasAvailableResources(
       node3, {}, /*ignore_object_store_memory_requirement*/ false));
-  ASSERT_TRUE(manager->HasSufficientResource(
+  ASSERT_TRUE(manager->HasAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/true),
       /*ignore_object_store_memory_requirement*/ false));
-  ASSERT_FALSE(manager->HasSufficientResource(
+  ASSERT_FALSE(manager->HasAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CUSTOM", 1}},
                                    /*requires_object_store_memory=*/true),
       /*ignore_object_store_memory_requirement*/ false));
-  ASSERT_TRUE(manager->HasSufficientResource(
+  ASSERT_TRUE(manager->HasAvailableResources(
       node1,
       ResourceMapToResourceRequest({{"CUSTOM", 1}},
                                    /*requires_object_store_memory=*/true),
       /*ignore_object_store_memory_requirement*/ false));
-  ASSERT_TRUE(manager->HasSufficientResource(
+  ASSERT_TRUE(manager->HasAvailableResources(
       node2,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false),
       /*ignore_object_store_memory_requirement*/ false));
-  ASSERT_FALSE(manager->HasSufficientResource(
+  ASSERT_FALSE(manager->HasAvailableResources(
       node2,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/true),
       /*ignore_object_store_memory_requirement*/ false));
-  ASSERT_TRUE(manager->HasSufficientResource(
+  ASSERT_TRUE(manager->HasAvailableResources(
       node2,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/true),

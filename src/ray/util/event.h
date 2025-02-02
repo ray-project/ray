@@ -29,7 +29,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "nlohmann/json.hpp"
 #include "ray/util/logging.h"
-#include "ray/util/util.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
@@ -342,6 +341,11 @@ class RayExportEvent {
  private:
   ExportEventDataPtr event_data_ptr_;
 };
+
+bool IsExportAPIEnabledSourceType(
+    std::string source_type,
+    bool enable_export_api_write_global,
+    std::vector<std::string> enable_export_api_write_config_str);
 
 /// Ray Event initialization.
 ///
