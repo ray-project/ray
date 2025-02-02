@@ -217,6 +217,7 @@ ray_cc_test(
     name = "pipe_logger_test",
     srcs = ["pipe_logger_test.cc"],
     deps = [
+        "//src/ray/util:temporary_directory",
         "//src/ray/common/test:testing",
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
