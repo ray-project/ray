@@ -305,45 +305,15 @@ For details, head to the :ref:`API Reference <runtime-environments-api-ref>`.
 Using ``uv`` for package management
 """""""""""""""""""""""""""""""""""
 
-The most convenient way to use `uv` for package management in runtime environments is to
-use `uv scripts <https://docs.astral.sh/uv/guides/scripts/>`_ because it ensures that the dependencies
-for your driver and worker are in sync and also supports advanced features like full `pyproject.toml`
-support as well as package locking with `uv lock`.
+The recommended approach for package management with `uv` in runtime environments is through `uv run`.
 
-To test this out, consider a similar example as above where your Ray application depends on the `requests` package.
-Store the following script in a file called `test.py`:
+This method offers several key advantages:
+First, it keeps dependencies synchronized between your driver and Ray workers.
+Additionally, it provides full support for `pyproject.toml` including editable
+packages. It also allows you to lock package versions using `uv lock`.
+For more details, you can refer to the `UV scripts documentation <https://docs.astral.sh/uv/guides/scripts/>`_.
 
-.. testcode::
-  :hide:
-
-  import ray
-  ray.shutdown()
-
-.. testcode::
-
-  import ray
-  import requests
-
-  # This example runs on a local machine, but you can also do
-  # ray.init(address=..., runtime_env=...) to connect to a cluster.
-  ray.init(runtime_env={"py_executable": "uv run --with requests"})
-
-  @ray.remote
-  def reqs():
-      return requests.get("https://www.ray.io/").status_code
-
-  print(ray.get(reqs.remote()))
-
-.. testoutput::
-
-  200
-
-The runtime environment will make sure each Ray worker runs in an environment where
-`requests` is installed. You can then run the script with `uv run --with requests test.py`.
-
-The recommended way to use `uv run` is with a `pyproject.toml`, because you won't
-need to repeat the arguments to `uv run` in both the driver and the runtime environment.
-Create a file `pyproject.toml` like this:
+Create a file `pyproject.toml` in your working directory like this:
 
 .. code-block:: toml
 
@@ -354,39 +324,36 @@ Create a file `pyproject.toml` like this:
   version = "0.1"
 
   dependencies = [
-    "rich",
-    "requests",
+    "emoji",
     "ray",
   ]
 
 
-And then use a `test.py` like the following:
+And then a `test.py` like this:
 
 .. testcode::
   :skipif: True
 
   import ray
-  import requests
-  from rich.progress import track
 
   ray.init(runtime_env={"working_dir": ".", "py_executable": "uv run"})
 
   @ray.remote
-  def reqs(section):
-      return requests.get("https://www.ray.io/" + section).status_code
+  def message(entity):
+      import emoji
+      return emoji.emojize(entity + " rocks :thumbs_up:")
 
-  sections = [
-    "en/latest/ray-overview/",
-    "en/latest/ray-core/",
-    "en/latest/data/",
-    "en/latest/train/",
-    "en/latest/serve/",
-    "en/latest/tune/",
-    "en/latest/rllib/",
+  entities = [
+    "Ray",
+    "Ray Serve",
+    "Ray Data",
+    "Ray Train",
+    "Ray Rllib",
+    "Ray Tune",
   ]
-  results = [req.remote(section) for section in sections]
-  for result in track(results, description="Ray docs:"):
-      ray.get(result)
+  results = [req.remote(entity) for entity in entities]
+  for result in results:
+      print(ray.get(result))
 
 
 and run the driver script with `uv run test.py`.
@@ -395,6 +362,10 @@ This workflow also supports editable packages, you can e.g. use
 `uv add --editable ./path/to/package` where `./path/to/package`
 must be inside your `working_dir` so it is available to all
 workers.
+
+Instead of the `pyproject.toml` file, you can also use a `requirements.txt`
+file and use `uv run --with-requirements requirements.txt` for your `py_executable`
+or use the `--with` flag to specify individual requirements.
 
 
 Library Development
@@ -475,7 +446,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   Note: For option (1), if the local directory contains a ``.gitignore`` file, the files and paths specified there are not uploaded to the cluster.  You can disable this by setting the environment variable `RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1` on the machine doing the uploading.
 
-- ``py_executable`` (str): The executable used for running the Ray workers. It can include arguments as well. The executable can be
+- ``py_executable`` (str): Specifies the executable used for running the Ray workers. It can include arguments as well. The executable can be
   located in the `working_dir`. This runtime environment is useful to run workers in a custom debugger or profiler as well as to run workers
   in an environment set up by a package manager like `UV`.
 
