@@ -19,9 +19,10 @@ class _P2POperation(_NcclOperation):
     def __init__(self):
         super().__init__()
 
-    def execute(
-        self, op: P2POp, ch: ChannelInterface, data: Optional["torch.Tensor"] = None
-    ) -> Any:
+        self.send_ch: Optional[ChannelInterface] = None
+        self.recv_ch: Optional[ChannelInterface] = None
+
+    def execute(self, op: P2POp, data: Optional["torch.Tensor"] = None) -> Any:
         """
         Execute the NCCL P2P operation. If it is a NCCL send, write the data to the
         output channel. If it is a NCCL recv, read the data from the input channel.
@@ -37,10 +38,12 @@ class _P2POperation(_NcclOperation):
             received data.
         """
         if op == P2POp.SEND:
+            assert self.send_ch is not None
             assert data is not None
-            ch.write(data)
+            self.send_ch.write(data)
         elif op == P2POp.RECV:
-            return ch.read()
+            assert self.recv_ch is not None
+            return self.recv_ch.read()
 
 
 class _P2PNode(ClassMethodNode):

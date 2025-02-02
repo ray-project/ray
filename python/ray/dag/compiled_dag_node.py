@@ -369,6 +369,8 @@ class ExecutableTask:
                 do not support binding kwargs to other DAG nodes, so the values
                 of the dictionary cannot be Channels.
         """
+        from ray.dag.p2p_node import _P2POperation
+
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
         self.output_channels = task.output_channels
@@ -429,13 +431,16 @@ class ExecutableTask:
         )
 
         # The NCCL channel for the NCCL P2P operation.
-        self.nccl_ch: Optional[ChannelInterface] = None
         if self.requires_nccl_read:
             assert len(self.input_channels) == 1
-            self.nccl_ch = self.input_channels[0]
+            nccl_ch = self.input_channels[0]
+            assert isinstance(self.nccl_op, _P2POperation)
+            self.nccl_op.recv_ch = nccl_ch
         elif self.requires_nccl_write:
             assert len(self.output_channels) == 1
-            self.nccl_ch = self.output_channels[0]
+            nccl_ch = self.output_channels[0]
+            assert isinstance(self.nccl_op, _P2POperation)
+            self.nccl_op.send_ch = nccl_ch
 
         # The intermediate future for a read or compute operation,
         # and `wait()` must be called to get the actual result of the operation.
@@ -638,7 +643,7 @@ class ExecutableTask:
 
         nccl_input_values = None
         if self.requires_nccl_read:
-            nccl_input_values = [P2POp.RECV, self.nccl_ch]
+            nccl_input_values = [P2POp.RECV]
             input_values = []
             input_exc = None
         else:
@@ -669,12 +674,10 @@ class ExecutableTask:
                     # - deciding how many streams to create
                     # - in wrap_and_set_intermediate_future: when deciding whether
                     #   to produce a GPUFuture or a ResolvedFuture
-                    self.wrap_and_set_intermediate_future(
-                        exc, wrap_in_gpu_future=False
-                    )
+                    self.wrap_and_set_intermediate_future(exc, wrap_in_gpu_future=False)
 
             if self.requires_nccl_write:
-                nccl_input_values = [P2POp.SEND, self.nccl_ch]
+                nccl_input_values = [P2POp.SEND]
                 if input_values is not None:
                     assert len(input_values) == 1
                     tensor = input_values[0]

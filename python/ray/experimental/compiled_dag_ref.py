@@ -13,8 +13,6 @@ def _process_return_vals(return_vals: List[Any], return_single_output: bool):
     the original DAG did not have a MultiOutputNode, so the DAG caller expects
     a single return value instead of a list.
     """
-    from ray.dag.dag_operation_future import DAGOperationFuture
-
     # Check for exceptions.
     if isinstance(return_vals, Exception):
         raise return_vals
