@@ -4,7 +4,7 @@ import inspect
 import queue
 from threading import Thread
 from types import GeneratorType
-from typing import Any, Callable, Iterable, Iterator, List, Optional, Generator
+from typing import Any, Callable, Iterable, Iterator, List, Optional
 
 import numpy as np
 import pandas as pd
