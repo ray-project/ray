@@ -345,19 +345,20 @@ The recommended way to use `uv run` is with a `pyproject.toml`, because you won'
 need to repeat the arguments to `uv run` in both the driver and the runtime environment.
 Create a file `pyproject.toml` like this:
 
-```
-[project]
+.. code-block:: toml
 
-name = "test"
+  [project]
 
-version = "0.1"
+  name = "test"
 
-dependencies = [
-   "rich",
-   "requests",
-   "ray",
-]
-```
+  version = "0.1"
+
+  dependencies = [
+    "rich",
+    "requests",
+    "ray",
+  ]
+
 
 And then use a `test.py` like the following:
 
