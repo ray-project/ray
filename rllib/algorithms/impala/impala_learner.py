@@ -92,16 +92,25 @@ class IMPALALearner(Learner):
 
         self.before_gradient_based_update(timesteps=timesteps or {})
 
-        if isinstance(self._learner_thread_in_queue, CircularBuffer):
-            ts_dropped = self._learner_thread_in_queue.add(batch)
+        if self.config.num_gpus_per_learner > 0:
+            self._gpu_loader_in_queue.put(batch)
             self.metrics.log_value(
-                (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
-                ts_dropped,
-                reduce="sum",
+                (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
+                self._gpu_loader_in_queue.qsize(),
             )
-        # Enqueue to Learner thread's in-queue.
         else:
-            _LearnerThread.enqueue(self._learner_thread_in_queue, batch, self.metrics)
+            if isinstance(self._learner_thread_in_queue, CircularBuffer):
+                ts_dropped = self._learner_thread_in_queue.add(batch)
+                self.metrics.log_value(
+                    (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
+                    ts_dropped,
+                    reduce="sum",
+                )
+            else:
+                # Enqueue to Learner thread's in-queue.
+                _LearnerThread.enqueue(
+                    self._learner_thread_in_queue, batch, self.metrics
+                )
 
         return self.metrics.reduce()
 
