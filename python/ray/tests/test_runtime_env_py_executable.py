@@ -34,7 +34,7 @@ def test_simple_py_executable(shutdown_only):
 def test_py_executable_with_working_dir(shutdown_only, tmp_working_dir):
     tmp_dir = tmp_working_dir
 
-    runtime_env = {"working_dir": tmp_dir, "py_executable": "bash start.sh "}
+    runtime_env = {"working_dir": tmp_dir, "py_executable": "bash start.sh"}
     ray.init(runtime_env=runtime_env)
 
     @ray.remote

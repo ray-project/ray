@@ -326,7 +326,7 @@ Store the following script in a file called `test.py`:
 
   # This example runs on a local machine, but you can also do
   # ray.init(address=..., runtime_env=...) to connect to a cluster.
-  ray.init(runtime_env={"py_executable": "uv run --with requests "})
+  ray.init(runtime_env={"py_executable": "uv run --with requests"})
 
   @ray.remote
   def reqs():
@@ -369,7 +369,7 @@ And then use a `test.py` like the following:
   import requests
   from rich.progress import track
 
-  ray.init(runtime_env={"working_dir": ".", "py_executable": "uv run "})
+  ray.init(runtime_env={"working_dir": ".", "py_executable": "uv run"})
 
   @ray.remote
   def reqs(section):
