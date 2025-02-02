@@ -1,6 +1,7 @@
 import gzip
 import json
 import os
+import requests
 import shutil
 from functools import partial
 
@@ -18,6 +19,9 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     PartitionStyle,
     PathPartitionFilter,
+)
+from ray.data.datasource.file_based_datasource import (
+    FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
 )
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
@@ -688,6 +692,39 @@ def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
     assert (
         retrieved_data == data[0]
     ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
+
+
+def test_json_with_http_path():
+    def is_url_accessible(url: str) -> bool:
+        """Check if a URL is accessible."""
+        try:
+            response = requests.head(
+                url, timeout=5
+            )  # Use HEAD request to check connectivity
+            return response.status_code == 200
+        except requests.RequestException:
+            return False
+
+    # List of URLs to check
+    data_urls = [
+        (
+            f"https://data.commoncrawl.org/contrib/datacomp/DCLM-pool/"
+            f"crawl=CC-MAIN-2022-49/1669446711712.26/CC-MAIN-20221210042021"
+            f"-20221210072021-000{i:02}.jsonl.gz"
+        )
+        for i in range(FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD)
+    ]
+
+    # Check if at least one URL is accessible
+    if not any(is_url_accessible(url) for url in data_urls):
+        pytest.skip("HTTP links are not accessible, skipping test.")
+
+    # Test logic
+    ds = ray.data.read_json(data_urls, include_paths=True)
+    ds = ds.select_columns(["path"])
+    df = ds.to_pandas().drop_duplicates()
+
+    assert len(df) == FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
 
 
 if __name__ == "__main__":
