@@ -75,7 +75,7 @@ TEST(CompatTest, WriteTest) {
   Flush(handle);
   RAY_CHECK_OK(Close(handle));
 
-  RAY_ASSIGN_OR_CHECK(const auto content, ReadEntireFile(file_path_str));
+  RAY_ASSIGN_OR_CHECK(const auto content, ReadEntireFile(test_file_path));
   EXPECT_EQ(content, kContent);
 }
 #endif
