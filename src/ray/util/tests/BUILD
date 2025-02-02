@@ -217,6 +217,7 @@ ray_cc_test(
     name = "pipe_logger_test",
     srcs = ["pipe_logger_test.cc"],
     deps = [
+        "//src/ray/util:temporary_directory",
         "//src/ray/common/test:testing",
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
@@ -252,6 +253,17 @@ ray_cc_test(
     srcs = ["cmd_line_utils_test.cc"],
     deps = [
         "//src/ray/util:cmd_line_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
+    name = "spdlog_fd_sink_test",
+    srcs = ["spdlog_fd_sink_test.cc"],
+    deps = [
+        "//src/ray/util:spdlog_fd_sink",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
