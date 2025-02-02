@@ -475,6 +475,12 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   Note: For option (1), if the local directory contains a ``.gitignore`` file, the files and paths specified there are not uploaded to the cluster.  You can disable this by setting the environment variable `RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1` on the machine doing the uploading.
 
+- ``py_executable`` (str): The executable used for running the Ray workers. It can include arguments as well. The executable can be
+  located in the `working_dir`. This runtime environment is useful to run workers in a custom debugger or profiler as well as to run workers
+  in an environment set up by a package manager like `UV`.
+
+  Note: ``py_executable`` is new functionality and currently experimental. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
+
 - ``excludes`` (List[str]): When used with ``working_dir`` or ``py_modules``, specifies a list of files or paths to exclude from being uploaded to the cluster.
   This field uses the pattern-matching syntax used by ``.gitignore`` files: see `<https://git-scm.com/docs/gitignore>`_ for details.
   Note: In accordance with ``.gitignore`` syntax, if there is a separator (``/``) at the beginning or middle (or both) of the pattern, then the pattern is interpreted relative to the level of the ``working_dir``.
