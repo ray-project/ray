@@ -12,7 +12,6 @@ from ray.util.state.common import (
     GetLogOptions,
     protobuf_to_task_state_dict,
 )
-from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient
 
 if BaseModel is None:
@@ -74,9 +73,8 @@ class LogsManager:
             Dictionary of {component_name -> list of log files}
 
         Raises:
-            DataSourceUnavailable: If a source is unresponsive.
+            ValueError: If a source is unresponsive.
         """
-        self._verify_node_registered(node_id)
         reply = await self.client.list_logs(node_id, glob_filter, timeout=timeout)
         return self._categorize_log_files(reply.log_files)
 
@@ -125,18 +123,6 @@ class LogsManager:
 
         async for streamed_log in stream:
             yield streamed_log.data
-
-    def _verify_node_registered(self, node_id: str):
-        if node_id not in self.client.get_all_registered_log_agent_ids():
-            raise DataSourceUnavailable(
-                f"Given node id {node_id} is not available. "
-                "It's either the node is dead, or it is not registered. "
-                "Use `ray list nodes` "
-                "to see the node status. If the node is registered, "
-                "it is highly likely "
-                "a transient issue. Try again."
-            )
-        assert node_id is not None
 
     async def _resolve_job_filename(self, sub_job_id: str) -> Tuple[str, str]:
         """Return the log file name and node id for a given job submission id.
@@ -249,7 +235,6 @@ class LogsManager:
                 "Actor is not scheduled yet."
             )
         node_id = NodeID(node_id_binary)
-        self._verify_node_registered(node_id.hex())
         log_filename = await self._resolve_worker_file(
             node_id_hex=node_id.hex(),
             worker_id_hex=worker_id.hex(),
@@ -415,7 +400,6 @@ class LogsManager:
                     "Node id needs to be specified for resolving"
                     f" filenames of pid {pid}"
                 )
-            self._verify_node_registered(node_id)
             log_filename = await self._resolve_worker_file(
                 node_id_hex=node_id,
                 worker_id_hex=None,
