@@ -55,12 +55,10 @@ from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import (
     LearningRateOrSchedule,
-    PartialAlgorithmConfigDict,
     PolicyID,
     ResultDict,
     SampleBatchType,
 )
-from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 logger = logging.getLogger(__name__)
