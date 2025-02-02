@@ -292,7 +292,7 @@ def convert_to_torch_tensor(
         if pin_memory and torch.cuda.is_available():
             tensor.pin_memory()
 
-        return tensor if device is None else tensor.to(device)
+        return tensor if device is None else tensor.to(device, non_blocking=True)
 
     return tree.map_structure(mapping, x)
 
