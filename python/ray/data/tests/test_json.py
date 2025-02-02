@@ -19,6 +19,9 @@ from ray.data.datasource import (
     PartitionStyle,
     PathPartitionFilter,
 )
+from ray.data.datasource.file_based_datasource import (
+    FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+)
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
@@ -688,6 +691,24 @@ def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
     assert (
         retrieved_data == data[0]
     ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
+
+
+@pytest.skip(reason="url fetching is not supported in CI")
+def test_json_with_http_path():
+    data_urls = [
+        (
+            f"https://data.commoncrawl.org/contrib/datacomp/DCLM-pool/"
+            f"crawl=CC-MAIN-2022-49/1669446711712.26/CC-MAIN-20221210042021"
+            f"-20221210072021-000{i:02}.jsonl.gz"
+        )
+        for i in range(FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD)
+    ]
+
+    ds = ray.data.read_json(data_urls, include_paths=True)
+    ds = ds.select_columns(["path"])
+    df = ds.to_pandas().drop_duplicates()
+
+    assert len(df) == FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
 
 
 if __name__ == "__main__":
