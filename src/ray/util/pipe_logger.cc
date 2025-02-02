@@ -150,7 +150,7 @@ std::shared_ptr<spdlog::logger> CreateLogger(
                                   FALSE,
                                   DUPLICATE_SAME_ACCESS);
     RAY_CHECK(result) << "Fails to duplicate stdout handle";
-    auto stdout_sink = std::make_shared<non_owned_fd_sink>(duped_stdout_handle);
+    auto stdout_sink = std::make_shared<non_owned_fd_sink_st>(duped_stdout_handle);
     sinks.emplace_back(std::move(stdout_sink));
   }
   if (stream_redirect_opt.tee_to_stderr) {
@@ -163,7 +163,7 @@ std::shared_ptr<spdlog::logger> CreateLogger(
                                   FALSE,
                                   DUPLICATE_SAME_ACCESS);
     RAY_CHECK(result) << "Fails to duplicate stderr handle";
-    auto stderr_sink = std::make_shared<non_owned_fd_sink>(duped_stderr_handle);
+    auto stderr_sink = std::make_shared<non_owned_fd_sink_st>(duped_stderr_handle);
     sinks.emplace_back(std::move(stderr_sink));
   }
 #endif
