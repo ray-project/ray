@@ -348,7 +348,7 @@ And then a `test.py` like this:
     "Ray Serve",
     "Ray Data",
     "Ray Train",
-    "Ray Rllib",
+    "Ray RLlib",
     "Ray Tune",
   ]
   results = [req.remote(entity) for entity in entities]
