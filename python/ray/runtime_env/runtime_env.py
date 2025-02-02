@@ -279,6 +279,7 @@ class RuntimeEnv(dict):
 
     known_fields: Set[str] = {
         "py_modules",
+        "py_executable",
         "java_jars",
         "working_dir",
         "conda",
@@ -298,7 +299,6 @@ class RuntimeEnv(dict):
         "docker",
         "worker_process_setup_hook",
         "_nsight",
-        "wrap",
         "mpi",
         "image_uri",
     }
@@ -313,6 +313,7 @@ class RuntimeEnv(dict):
         self,
         *,
         py_modules: Optional[List[str]] = None,
+        py_executable: Optional[str] = None,
         working_dir: Optional[str] = None,
         pip: Optional[List[str]] = None,
         conda: Optional[Union[Dict[str, str], str]] = None,
@@ -320,7 +321,6 @@ class RuntimeEnv(dict):
         env_vars: Optional[Dict[str, str]] = None,
         worker_process_setup_hook: Optional[Union[Callable, str]] = None,
         nsight: Optional[Union[str, Dict[str, str]]] = None,
-        wrap: Optional[str] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         mpi: Optional[Dict] = None,
@@ -333,6 +333,8 @@ class RuntimeEnv(dict):
         runtime_env = kwargs
         if py_modules is not None:
             runtime_env["py_modules"] = py_modules
+        if py_executable is not None:
+            runtime_env["py_executable"] = py_executable
         if working_dir is not None:
             runtime_env["working_dir"] = working_dir
         if pip is not None:
@@ -343,8 +345,6 @@ class RuntimeEnv(dict):
             runtime_env["conda"] = conda
         if nsight is not None:
             runtime_env["_nsight"] = nsight
-        if wrap is not None:
-            runtime_env["wrap"] = wrap
         if container is not None:
             runtime_env["container"] = container
         if env_vars is not None:
@@ -519,6 +519,9 @@ class RuntimeEnv(dict):
             return list(self["py_modules"])
         return []
 
+    def py_executable(self) -> Optional[str]:
+        return self.get("py_executable", None)
+
     def java_jars(self) -> List[str]:
         if "java_jars" in self:
             return list(self["java_jars"])
@@ -529,9 +532,6 @@ class RuntimeEnv(dict):
 
     def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
         return self.get("_nsight", None)
-
-    def wrap(self) -> Optional[str]:
-        return self.get("wrap", None)
 
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})

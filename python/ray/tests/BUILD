@@ -187,7 +187,7 @@ py_test_module_list(
     "test_runtime_env_plugin.py",
     "test_runtime_env_setup_func.py",
     "test_runtime_env_strong_type.py",
-    "test_runtime_env_wrap.py",
+    "test_runtime_env_py_executable.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
     "test_shuffle.py",

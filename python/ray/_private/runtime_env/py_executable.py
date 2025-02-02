@@ -8,8 +8,8 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 default_logger = logging.getLogger(__name__)
 
 
-class WrapPlugin(RuntimeEnvPlugin):
-    name = "wrap"
+class PyExecutablePlugin(RuntimeEnvPlugin):
+    name = "py_executable"
 
     def __init__(self):
         pass
@@ -30,5 +30,5 @@ class WrapPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
-        logger.info("Running wrap plugin")
-        context.py_executable = runtime_env.wrap()
+        logger.info("Running py_executable plugin")
+        context.py_executable = runtime_env.py_executable()
