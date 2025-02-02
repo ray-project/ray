@@ -42,3 +42,10 @@ def test_wrap_with_working_dir(shutdown_only, tmp_working_dir):
         return "hello"
 
     assert ray.get(f.remote()) == "hello"
+
+
+if __name__ == "__main__":
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
