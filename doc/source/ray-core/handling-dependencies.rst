@@ -390,6 +390,11 @@ And then use a `test.py` like the following:
 
 and run the driver script with `uv run test.py`.
 
+This workflow also supports editable packages, you can e.g. use
+`uv add --editable ./path/to/package` where `./path/to/package`
+must be inside your `working_dir` so it is available to all
+workers.
+
 
 Library Development
 """""""""""""""""""
