@@ -143,7 +143,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
-        "//src/ray/util:sequence",
+        "//src/ray/util:sequencer",
         "@com_google_googletest//:gtest_main",
     ],
 )
