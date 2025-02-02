@@ -37,7 +37,7 @@ class GcsInitData {
   /// Load all required metadata from the store into memory at once asynchronously.
   ///
   /// \param on_done The callback when all metadatas are loaded successfully.
-  void AsyncLoad(const EmptyCallback &on_done);
+  void AsyncLoad(Postable<void()> on_done);
 
   /// Get job metadata.
   const absl::flat_hash_map<JobID, rpc::JobTableData> &Jobs() const {
@@ -68,24 +68,24 @@ class GcsInitData {
   /// Load job metadata from the store into memory asynchronously.
   ///
   /// \param on_done The callback when job metadata is loaded successfully.
-  void AsyncLoadJobTableData(const EmptyCallback &on_done);
+  void AsyncLoadJobTableData(Postable<void()> on_done);
 
   /// Load node metadata from the store into memory asynchronously.
   ///
   /// \param on_done The callback when node metadata is loaded successfully.
-  void AsyncLoadNodeTableData(const EmptyCallback &on_done);
+  void AsyncLoadNodeTableData(Postable<void()> on_done);
 
   /// Load placement group metadata from the store into memory asynchronously.
   ///
   /// \param on_done The callback when placement group metadata is loaded successfully.
-  void AsyncLoadPlacementGroupTableData(const EmptyCallback &on_done);
+  void AsyncLoadPlacementGroupTableData(Postable<void()> on_done);
 
   /// Load actor metadata from the store into memory asynchronously.
   ///
   /// \param on_done The callback when actor metadata is loaded successfully.
-  void AsyncLoadActorTableData(const EmptyCallback &on_done);
+  void AsyncLoadActorTableData(Postable<void()> on_done);
 
-  void AsyncLoadActorTaskSpecTableData(const EmptyCallback &on_done);
+  void AsyncLoadActorTaskSpecTableData(Postable<void()> on_done);
 
  protected:
   /// The gcs table storage.

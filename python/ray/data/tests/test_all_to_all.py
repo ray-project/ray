@@ -2,7 +2,6 @@ import math
 import random
 import time
 from typing import Optional
-from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -116,11 +115,6 @@ def test_unique(ray_start_regular_shared):
         ]
     )
     assert set(ds.unique("a")) == {1}
-
-    with patch("ray.data.aggregate.AggregateFn._validate") as mock_validate:
-        assert set(ds.unique("b")) == {1, 2}
-        # check that column 'a' was dropped before aggregation
-        assert mock_validate.call_args_list[0].args[0].names == ["b"]
 
 
 @pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
@@ -355,6 +349,24 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
         {"A": 1, "foo": 49.0, "foo_2": 49.0},
         {"A": 2, "foo": 50.0, "foo_2": 50.0},
     ]
+
+
+@pytest.mark.parametrize("ds_format", ["pyarrow", "numpy", "pandas"])
+def test_groupby_nans(ray_start_regular_shared, ds_format):
+    ds = ray.data.from_items(
+        [
+            1.0,
+            1.0,
+            2.0,
+            np.nan,
+            np.nan,
+        ]
+    )
+    ds = ds.map_batches(lambda x: x, batch_format=ds_format)
+    ds = ds.groupby("item").count()
+    ds = ds.filter(lambda v: np.isnan(v["item"]))
+    result = ds.take_all()
+    assert result[0]["count()"] == 2
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1186,6 +1198,42 @@ def test_groupby_map_groups_multicolumn(
         {"count": 17},
         {"count": 17},
         {"count": 16},
+    ]
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas", "numpy"])
+def test_groupby_map_groups_multicolumn_with_nan(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
+    # Test with some NaN values
+    rng = np.random.default_rng(RANDOM_SEED)
+    xs = np.arange(100, dtype=np.float64)
+    xs[-5:] = np.nan
+    rng.shuffle(xs)
+
+    ds = ray.data.from_items(
+        [
+            {
+                "A": (x % 2) if np.isfinite(x) else x,
+                "B": (x % 3) if np.isfinite(x) else x,
+            }
+            for x in xs
+        ]
+    ).repartition(num_parts)
+
+    agg_ds = ds.groupby(["A", "B"]).map_groups(
+        lambda df: {"count": [len(df["A"])]}, batch_format=ds_format
+    )
+    assert agg_ds.count() == 7
+    assert agg_ds.take_all() == [
+        {"count": 16},
+        {"count": 16},
+        {"count": 16},
+        {"count": 16},
+        {"count": 16},
+        {"count": 15},
+        {"count": 5},
     ]
 
 

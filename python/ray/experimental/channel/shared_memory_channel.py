@@ -7,22 +7,16 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import ray
 import ray.exceptions
 from ray._raylet import SerializedObject
+from ray.experimental.channel import utils
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
+from ray.experimental.channel.utils import get_self_actor
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-
-DEFAULT_MAX_BUFFER_SIZE = int(1e6)  # 100 mB
-# The min buffer size must be large enough to at least fit an instance of the
-# _ResizeChannel class along with any metadata.
-MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
-# For shared memory channels, the default number of buffers per channel to
-# allocate.
-DEFAULT_NUM_SHM_BUFFERS = 1
 
 
 def _create_channel_ref(
@@ -41,9 +35,10 @@ def _create_channel_ref(
     readers' buffers.
 
     Args:
-        buffer_size_bytes: The number of bytes to allocate for the object data and
-            metadata. Writes to the channel must produce serialized data and
-            metadata less than or equal to this value.
+        buffer_size_bytes: The initial buffer size in bytes for messages
+            that can be passed between tasks in the DAG. The buffers will
+            be automatically resized if larger messages are written to the
+            channel.
     Returns:
         Channel: A wrapper around ray.ObjectRef.
     """
@@ -65,18 +60,7 @@ def _create_channel_ref(
     return object_ref
 
 
-def _get_self_actor() -> Optional["ray.actor.ActorHandle"]:
-    """
-    Get the current actor handle in this worker.
-    If this is called in a driver process, it will return None.
-    """
-    try:
-        return ray.get_runtime_context().current_actor
-    except RuntimeError:
-        return None
-
-
-# aDAG maintains 1 reader object reference (also called buffer) per node.
+# Compiled Graph maintains 1 reader object reference (also called buffer) per node.
 # reader_ref: The object reference.
 # ref_owner_actor_id: The actor who created the object reference.
 # num_readers: The number of reader actors who reads this object reference.
@@ -113,17 +97,25 @@ class SharedMemoryType(ChannelOutputType):
     ):
         """
         Args:
-            buffer_size_bytes: The number of bytes to allocate for the object data and
-                metadata. Writes to the channel must produce serialized data and
-                metadata less than or equal to this value.
-            num_shm_buffers: The number of shared memory buffer per channel.
+            buffer_size_bytes: The initial buffer size in bytes for messages
+                that can be passed between tasks in the DAG. The buffers will
+                be automatically resized if larger messages are written to the
+                channel.
+            num_shm_buffers: The number of shared memory buffers per channel.
+                Note: In the case of multiple nodes, we only support 1 shared
+                memory buffer.
         """
         super().__init__()
+
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+
         if buffer_size_bytes is None:
-            buffer_size_bytes = DEFAULT_MAX_BUFFER_SIZE
+            buffer_size_bytes = ctx.buffer_size_bytes
         self.buffer_size_bytes = buffer_size_bytes
         if num_shm_buffers is None:
-            num_shm_buffers = DEFAULT_NUM_SHM_BUFFERS
+            num_shm_buffers = 1
         self._num_shm_buffers = num_shm_buffers
 
     def create_channel(
@@ -199,6 +191,9 @@ class Channel(ChannelInterface):
         elif isinstance(typ, int):
             typ = SharedMemoryType(buffer_size_bytes=typ)
 
+        # The min buffer size must be large enough to at least fit an instance of the
+        # _ResizeChannel class along with any metadata.
+        MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
         if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
             raise ValueError(
                 "typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE "
@@ -235,7 +230,7 @@ class Channel(ChannelInterface):
             # actor, so we shouldn't need to include `writer` in the
             # constructor args. Either support Channels being constructed by
             # someone other than the writer or remove it from the args.
-            self_actor = _get_self_actor()
+            self_actor = get_self_actor()
             assert writer == self_actor
 
             self._writer_node_id = (
@@ -503,6 +498,18 @@ class Channel(ChannelInterface):
 
         return ret
 
+    def release_buffer(self, timeout: Optional[float] = None) -> None:
+        assert (
+            timeout is None or timeout >= 0 or timeout == -1
+        ), "Timeout must be non-negative or -1."
+        self.ensure_registered_as_reader()
+        self._worker.get_objects(
+            [self._local_reader_ref],
+            timeout=timeout,
+            return_exceptions=True,
+            skip_deserialization=True,
+        )
+
     def close(self) -> None:
         """
         Close this channel by setting the error bit on both the writer_ref and the
@@ -535,7 +542,8 @@ class BufferedSharedMemoryChannel(ChannelInterface):
     Args:
         writer: The actor that may write to the channel. None signifies the driver.
         reader_and_node_list: A list of tuples, where each tuple contains a reader
-            actor handle and the node ID where the actor is located.
+            actor handle and the node ID where the actor is located. Note that currently
+            we only support this for readers on the same node as the writer.
         num_shm_buffers: Number of shared memory buffers to read/write.
         typ: Type information about the values passed through the channel.
             Either an integer representing the max buffer size in bytes
@@ -583,6 +591,7 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         available to write. If a buffer is not available within timeout, it raises
         RayChannelTimeoutError.
         """
+        self.ensure_registered_as_writer()
         # A single channel is not supposed to read and write at the same time.
         assert self._next_read_index == 0
         self._buffers[self._next_write_index].write(value, timeout)
@@ -597,12 +606,28 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         available to read. If a buffer is not available within timeout, it raises
         RayChannelTimeoutError.
         """
+        self.ensure_registered_as_reader()
         # A single channel is not supposed to read and write at the same time.
         assert self._next_write_index == 0
         output = self._buffers[self._next_read_index].read(timeout)
         self._next_read_index += 1
         self._next_read_index %= self._num_shm_buffers
         return output
+
+    def release_buffer(self, timeout: Optional[float] = None):
+        """Release the native buffer of the channel to allow the buffer to be reused for
+        future data.
+
+        If the next buffer is available, it returns immediately. If the next
+        buffer is not written by an upstream producer, it blocks until a buffer is
+        available to be released. If a buffer is not available within timeout, it raises
+        RayChannelTimeoutError.
+        """
+        # A single channel is not supposed to read and write at the same time.
+        assert self._next_write_index == 0
+        self._buffers[self._next_read_index].release_buffer(timeout)
+        self._next_read_index += 1
+        self._next_read_index %= self._num_shm_buffers
 
     def close(self) -> None:
         for buffer in self._buffers:
@@ -631,6 +656,9 @@ class CompositeChannel(ChannelInterface):
         writer: The actor that may write to the channel. None signifies the driver.
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
+        num_shm_buffers: The number of shared memory buffers per channel.
+            Note: In the case of multiple nodes, we only support 1 shared
+            memory buffer.
         driver_actor_id: If this channel is read by a driver and that driver is an
             actual actor, this will be the actor ID of that driver actor.
     """
@@ -661,15 +689,13 @@ class CompositeChannel(ChannelInterface):
             # We don't need to create channels again.
             return
 
-        remote_reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
-        for reader, node in self._reader_and_node_list:
-            if reader != self._writer:
-                remote_reader_and_node_list.append((reader, node))
+        (
+            remote_reader_and_node_list,
+            local_reader_and_node_list,
+        ) = utils.split_readers_by_locality(self._writer, self._reader_and_node_list)
         # There are some local readers which are the same worker process as the writer.
         # Create a local channel for the writer and the local readers.
-        num_local_readers = len(self._reader_and_node_list) - len(
-            remote_reader_and_node_list
-        )
+        num_local_readers = len(local_reader_and_node_list)
         if num_local_readers > 0:
             # Use num_readers = 1 when creating the local channel,
             # because we have channel cache to support reading
@@ -679,14 +705,29 @@ class CompositeChannel(ChannelInterface):
             actor_id = self._get_actor_id(self._writer)
             self._channel_dict[actor_id] = local_channel
         # There are some remote readers which are not the same Ray actor as the writer.
-        # Create a shared memory channel for the writer and the remote readers.
-        if len(remote_reader_and_node_list) != 0:
+        # We create a BufferedSharedMemoryChannel for readers on the same node, and
+        # a single Channel for readers on different nodes due to
+        # https://github.com/ray-project/ray/issues/49044
+        (
+            readers_same_node,
+            readers_different_node,
+        ) = utils.split_actors_by_node_locality(
+            utils.get_actor_node(self._writer), remote_reader_and_node_list
+        )
+
+        if len(readers_same_node) != 0:
             remote_channel = BufferedSharedMemoryChannel(
-                self._writer, remote_reader_and_node_list, num_shm_buffers
+                self._writer, readers_same_node, num_shm_buffers
             )
             self._channels.add(remote_channel)
+            for reader, _ in readers_same_node:
+                actor_id = self._get_actor_id(reader)
+                self._channel_dict[actor_id] = remote_channel
 
-            for reader, _ in remote_reader_and_node_list:
+        if len(readers_different_node) != 0:
+            remote_channel = Channel(self._writer, readers_different_node)
+            self._channels.add(remote_channel)
+            for reader, _ in readers_different_node:
                 actor_id = self._get_actor_id(reader)
                 self._channel_dict[actor_id] = remote_channel
 
@@ -732,16 +773,23 @@ class CompositeChannel(ChannelInterface):
 
     def read(self, timeout: Optional[float] = None) -> Any:
         self.ensure_registered_as_reader()
+        return self._channel_dict[self._resolve_actor_id()].read(timeout)
+
+    def release_buffer(self, timeout: Optional[float] = None):
+        self.ensure_registered_as_reader()
+        self._channel_dict[self._resolve_actor_id()].release_buffer(timeout)
+
+    def _resolve_actor_id(self) -> str:
         actor_id = ray.get_runtime_context().get_actor_id()
-        # if actor_id is None, read was called by the driver
-        # if the driver is an actor, driver_actor_id will be set to that actor id
+        # If actor_id is None, read was called by the driver
+        # If the driver is an actor, driver_actor_id will be set to that actor id
         if actor_id is None or actor_id == self._driver_actor_id:
             # Use the actor ID of the DAGDriverProxyActor.
             # The proxy actor is always the first actor in the reader_and_node_list.
             assert len(self._reader_and_node_list) >= 1
             driver_proxy_actor = self._reader_and_node_list[0][0]
             actor_id = self._get_actor_id(driver_proxy_actor)
-        return self._channel_dict[actor_id].read(timeout)
+        return actor_id
 
     def close(self) -> None:
         for channel in self._channels:

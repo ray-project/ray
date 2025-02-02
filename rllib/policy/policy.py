@@ -232,20 +232,20 @@ class Policy(metaclass=ABCMeta):
         self.framework = self.config.get("framework")
 
         # Create the callbacks object to use for handling custom callbacks.
-        from ray.rllib.algorithms.callbacks import DefaultCallbacks
+        from ray.rllib.callbacks.callbacks import RLlibCallback
 
         callbacks = self.config.get("callbacks")
-        if isinstance(callbacks, DefaultCallbacks):
+        if isinstance(callbacks, RLlibCallback):
             self.callbacks = callbacks()
         elif isinstance(callbacks, (str, type)):
             try:
-                self.callbacks: "DefaultCallbacks" = deserialize_type(
+                self.callbacks: "RLlibCallback" = deserialize_type(
                     self.config.get("callbacks")
                 )()
             except Exception:
                 pass  # TEST
         else:
-            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
+            self.callbacks: "RLlibCallback" = RLlibCallback()
 
         # The global timestep, broadcast down from time to time from the
         # local worker to all remote workers.

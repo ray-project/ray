@@ -19,7 +19,7 @@
 
 using boost::asio::ip::tcp;
 
-bool CheckFree(int port) {
+bool CheckPortFree(int port) {
   instrumented_io_context io_service;
   tcp::socket socket(io_service);
   socket.open(boost::asio::ip::tcp::v4());

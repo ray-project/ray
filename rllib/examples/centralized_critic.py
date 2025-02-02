@@ -35,7 +35,7 @@ from ray.rllib.algorithms.ppo.ppo_tf_policy import (
 )
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
-from ray.rllib.examples.envs.classes.two_step_game import TwoStepGame
+from ray.rllib.examples.envs.classes.multi_agent.two_step_game import TwoStepGame
 from ray.rllib.examples._old_api_stack.models.centralized_critic_models import (
     CentralizedCriticModel,
     TorchCentralizedCriticModel,

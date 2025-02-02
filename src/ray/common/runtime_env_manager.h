@@ -69,7 +69,5 @@ class RuntimeEnvManager {
   absl::flat_hash_map<std::string, int64_t> uri_reference_;
   /// A map between hex_id and URI.
   absl::flat_hash_map<std::string, std::vector<std::string>> id_to_uris_;
-  /// A set of unused URIs
-  std::unordered_set<std::string> unused_uris_;
 };
 }  // namespace ray

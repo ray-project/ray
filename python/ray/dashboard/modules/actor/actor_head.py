@@ -73,6 +73,7 @@ def actor_table_data_to_dict(message):
         "endTime",
         "reprName",
         "placementGroupId",
+        "callSite",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
@@ -98,11 +99,10 @@ def actor_table_data_to_dict(message):
 
 
 class ActorHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
 
         self._gcs_actor_channel_subscriber = None
-        self.gcs_aio_client = dashboard_head.gcs_aio_client
         # A queue of dead actors in order of when they died
         self.destroyed_actors_queue = deque()
 
@@ -126,7 +126,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         # and the subscription is not missed.
         #
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-        gcs_addr = self._dashboard_head.gcs_address
+        gcs_addr = self.gcs_address
         actor_channel_subscriber = GcsAioActorSubscriber(address=gcs_addr)
         await actor_channel_subscriber.subscribe()
 

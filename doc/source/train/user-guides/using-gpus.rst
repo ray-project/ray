@@ -228,21 +228,6 @@ an actor for the :class:`Trainer <ray.train.trainer.BaseTrainer>` object when
 you call :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>`.
 
 This object often only manages lightweight communication between the training workers.
-You can still specify its resources, which can be useful if you implemented your own
-Trainer that does heavier processing.
-
-.. testcode::
-
-    from ray.train import ScalingConfig
-
-    scaling_config = ScalingConfig(
-        num_workers=8,
-        trainer_resources={
-            "CPU": 4,
-            "GPU": 1,
-        }
-    )
-
 Per default, a trainer uses 1 CPU. If you have a cluster with 8 CPUs and want
 to start 4 training workers a 2 CPUs, this will not work, as the total number
 of required CPUs will be 9 (4 * 2 + 1). In that case, you can specify the trainer

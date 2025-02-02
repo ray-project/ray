@@ -21,6 +21,7 @@ from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
+    RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
     call_with_retry,
@@ -30,6 +31,7 @@ from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
+from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
     _handle_read_os_error,
@@ -195,6 +197,9 @@ class ParquetDatasource(Datasource):
             )
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        filesystem = RetryingPyFileSystem.wrap(
+            filesystem, context=DataContext.get_current()
+        )
 
         # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
         # files. To avoid this, we expand the input paths with the default metadata
@@ -306,6 +311,8 @@ class ParquetDatasource(Datasource):
         self._partitioning = partitioning
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
+        elif isinstance(shuffle, FileShuffleConfig):
+            self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
 
         sample_infos = sample_fragments(
             self._pq_fragments,
@@ -579,7 +586,9 @@ def estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
 
 def estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> int:
     def compute_batch_size_rows(sample_info: _SampleInfo) -> int:
-        if sample_info.actual_bytes_per_row is None:
+        # 'actual_bytes_per_row' is None if the sampled file was empty and 0 if the data
+        # was all null.
+        if not sample_info.actual_bytes_per_row:
             return PARQUET_READER_ROW_BATCH_SIZE
         else:
             max_parquet_reader_row_batch_size_bytes = (
@@ -654,7 +663,7 @@ def sample_fragments(
 
     sample_fragment = cached_remote_fn(_sample_fragment)
     futures = []
-    scheduling = local_scheduling or "SPREAD"
+    scheduling = local_scheduling or DataContext.get_current().scheduling_strategy
     for sample in file_samples:
         # Sample the first rows batch in i-th file.
         # Use SPREAD scheduling strategy to avoid packing many sampling tasks on

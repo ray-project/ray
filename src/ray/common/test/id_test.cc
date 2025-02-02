@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gtest/gtest.h"
+#include <gtest/gtest.h>
+
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/task/task_spec.h"
 
@@ -135,6 +137,20 @@ TEST(HashTest, TestNilHash) {
   ObjectID id2 = ObjectID::FromBinary(ObjectID::FromRandom().Binary());
   ASSERT_NE(nil_hash, id2.Hash());
   ASSERT_NE(id1.Hash(), id2.Hash());
+}
+
+TEST(HashTest, TestIdHash) {
+  absl::flat_hash_set<ObjectID> oids;
+  ObjectID cur_oid = ObjectID::FromRandom();
+  oids.emplace(cur_oid);
+
+  // Lookup with the same id shows exists.
+  EXPECT_TRUE(oids.contains(cur_oid));
+  // Lookup with constant reference shows exists.
+  EXPECT_TRUE(oids.contains(static_cast<const ObjectID &>(cur_oid)));
+  // Insert with rvalue reference show exists.
+  auto [_, is_new] = oids.emplace(std::move(cur_oid));
+  EXPECT_FALSE(is_new);
 }
 
 TEST(PlacementGroupIDTest, TestPlacementGroup) {

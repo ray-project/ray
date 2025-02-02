@@ -57,7 +57,7 @@ def test_sort_multiple_keys_produces_equally_sized_blocks(ray_start_regular):
         [{"a": i, "b": j} for i in range(2) for j in range(5)], override_num_blocks=5
     )
 
-    ds_sorted = ds.sort(["a", "b"])
+    ds_sorted = ds.sort(["a", "b"], descending=[False, True])
 
     num_rows_per_block = [
         bundle.num_rows() for bundle in ds_sorted.iter_internal_ref_bundles()
@@ -228,8 +228,14 @@ def test_sort_with_multiple_keys(ray_start_regular, descending, batch_format):
         batch_format=batch_format,
         batch_size=None,
     )
-    df.sort_values(["a", "b", "c"], inplace=True, ascending=not descending)
-    sorted_ds = ds.repartition(num_blocks).sort(["a", "b", "c"], descending=descending)
+    df.sort_values(
+        ["a", "b", "c"],
+        inplace=True,
+        ascending=[not descending, descending, not descending],
+    )
+    sorted_ds = ds.repartition(num_blocks).sort(
+        ["a", "b", "c"], descending=[descending, not descending, descending]
+    )
 
     # Number of blocks is preserved
     assert len(sorted_ds._block_num_rows()) == num_blocks

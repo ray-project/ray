@@ -16,6 +16,8 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
@@ -32,10 +34,10 @@ namespace core {
 /// by raylet.
 class ActorManager {
  public:
-  explicit ActorManager(std::shared_ptr<gcs::GcsClient> gcs_client,
-                        ActorTaskSubmitterInterface &actor_task_submitter,
-                        std::shared_ptr<ReferenceCounterInterface> reference_counter)
-      : gcs_client_(gcs_client),
+  ActorManager(std::shared_ptr<gcs::GcsClient> gcs_client,
+               ActorTaskSubmitterInterface &actor_task_submitter,
+               ReferenceCounterInterface &reference_counter)
+      : gcs_client_(std::move(gcs_client)),
         actor_task_submitter_(actor_task_submitter),
         reference_counter_(reference_counter) {}
 
@@ -182,7 +184,7 @@ class ActorManager {
   /// throw an exception.
   ///
   /// \param actor_handle The actor handle that will be marked as invalidate.
-  void MarkActorKilledOrOutOfScope(std::shared_ptr<ActorHandle> actor_handle);
+  void MarkActorKilledOrOutOfScope(const std::shared_ptr<ActorHandle> &actor_handle);
 
   /// Check if actor is valid.
   bool IsActorKilledOrOutOfScope(const ActorID &actor_id) const;
@@ -195,7 +197,7 @@ class ActorManager {
 
   /// Used to keep track of actor handle reference counts.
   /// All actor handle related ref counting logic should be included here.
-  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
+  ReferenceCounterInterface &reference_counter_;
 
   mutable absl::Mutex mutex_;
 

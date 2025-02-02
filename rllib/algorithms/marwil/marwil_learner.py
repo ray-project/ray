@@ -1,5 +1,6 @@
 from typing import Dict, Optional
 
+from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
@@ -41,3 +42,10 @@ class MARWILLearner(Learner):
         )
         # In case of BC (beta==0.0 and this property never being used),
         self.moving_avg_sqd_adv_norms_per_module.pop(module_id, None)
+
+    @classmethod
+    @override(Learner)
+    def rl_module_required_apis(cls) -> list[type]:
+        # In order for a PPOLearner to update an RLModule, it must implement the
+        # following APIs:
+        return [ValueFunctionAPI]

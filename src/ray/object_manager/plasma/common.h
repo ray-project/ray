@@ -26,9 +26,9 @@
 
 #include "ray/common/id.h"
 #include "ray/object_manager/common.h"
-#include "ray/object_manager/plasma/compat.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
+#include "ray/util/compat.h"
 #include "ray/util/macros.h"
 
 namespace plasma {

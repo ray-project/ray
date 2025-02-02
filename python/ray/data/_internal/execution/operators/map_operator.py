@@ -45,7 +45,14 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
 )
 from ray.data._internal.stats import StatsDict
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    BlockStats,
+    to_stats,
+)
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -88,7 +95,7 @@ class MapOperator(OneToOneOperator, ABC):
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: _OutputQueue = None
         # Output metadata, added to on get_next().
-        self._output_metadata: List[BlockMetadata] = []
+        self._output_blocks_stats: List[BlockStats] = []
         # All active `DataOpTask`s.
         self._data_tasks: Dict[int, DataOpTask] = {}
         self._next_data_task_idx = 0
@@ -103,6 +110,25 @@ class MapOperator(OneToOneOperator, ABC):
         # too-large blocks, which may reduce parallelism for
         # the subsequent operator.
         self._additional_split_factor = None
+        # Callback functions that generate additional task kwargs
+        # for the map task.
+        self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
+
+    def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
+        """Add a callback function that generates additional kwargs for the map tasks.
+        In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
+        """
+        self._map_task_kwargs_fns.append(map_task_kwargs_fn)
+
+    def get_map_task_kwargs(self) -> Dict[str, Any]:
+        """Get the kwargs for the map task.
+        Subclasses should pass the returned kwargs to the map tasks.
+        In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
+        """
+        kwargs = {}
+        for fn in self._map_task_kwargs_fns:
+            kwargs.update(fn())
+        return kwargs
 
     def get_additional_split_factor(self) -> int:
         if self._additional_split_factor is None:
@@ -161,7 +187,7 @@ class MapOperator(OneToOneOperator, ABC):
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Customize the ray remote args for this op's tasks.
+            ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
         """
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
@@ -409,7 +435,7 @@ class MapOperator(OneToOneOperator, ABC):
         assert self._started
         bundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
-        self._output_metadata.extend(bundle.metadata)
+        self._output_blocks_stats.extend(to_stats(bundle.metadata))
         return bundle
 
     @abstractmethod
@@ -420,7 +446,7 @@ class MapOperator(OneToOneOperator, ABC):
         return {"ray_remote_args": dict(sorted(self._remote_args_for_metrics.items()))}
 
     def get_stats(self) -> StatsDict:
-        return {self._name: self._output_metadata}
+        return {self._name: self._output_blocks_stats}
 
     def get_map_transformer(self) -> MapTransformer:
         return self._map_transformer
@@ -468,6 +494,7 @@ def _map_task(
     data_context: DataContext,
     ctx: TaskContext,
     *blocks: Block,
+    **kwargs: Dict[str, Any],
 ) -> Iterator[Union[Block, List[BlockMetadata]]]:
     """Remote function for a single operator task.
 
@@ -481,6 +508,7 @@ def _map_task(
         as the last generator return.
     """
     DataContext._set_current(data_context)
+    ctx.kwargs.update(kwargs)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
