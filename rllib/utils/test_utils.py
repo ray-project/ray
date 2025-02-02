@@ -1156,9 +1156,6 @@ def run_rllib_example_script_experiment(
                     config.learners(num_gpus_per_learner=1)
                 else:
                     config.learners(num_gpus_per_learner=0)
-            if args.num_cpus_per_learner is not None:
-                config.learners(num_cpus_per_learner=args.num_cpus_per_learner)
-
             # User hard-requires n GPUs, but they are not available -> Error.
             elif num_gpus_available < num_gpus_requested:
                 raise ValueError(
@@ -1172,6 +1169,10 @@ def run_rllib_example_script_experiment(
             # All required GPUs are available -> Use them.
             else:
                 config.learners(num_gpus_per_learner=args.num_gpus_per_learner)
+
+            # Set CPUs per Learner.
+            if args.num_cpus_per_learner is not None:
+                config.learners(num_cpus_per_learner=args.num_cpus_per_learner)
 
         # Old stack (override only if arg was provided by user).
         elif args.num_gpus is not None:
