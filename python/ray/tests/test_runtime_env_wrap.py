@@ -26,7 +26,6 @@ def test_simple_wrap(shutdown_only):
 
     @ray.remote
     def f():
-        import os
         return os.environ["RAY_TEST_WRAP_ENV_EXAMPLE"]
 
     assert ray.get(f.remote()) == "1"
