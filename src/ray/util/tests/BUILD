@@ -6,6 +6,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:array",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -53,6 +54,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -67,11 +69,12 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:event",
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
-        "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/common:ray_config",
     ],
 )
 
@@ -82,6 +85,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:exponential_backoff",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -127,6 +131,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_common",
+        "//src/ray/util:sample",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -138,6 +143,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:sequence",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -160,6 +166,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:throttler",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
