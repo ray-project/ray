@@ -2,7 +2,7 @@ import re
 import threading
 
 from subprocess import CalledProcessError
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from ray.autoscaler.node_provider import NodeProvider
 
 

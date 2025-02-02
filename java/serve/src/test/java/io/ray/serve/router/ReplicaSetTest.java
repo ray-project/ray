@@ -9,8 +9,8 @@ import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
-import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
+import io.ray.serve.generated.DeploymentTargetInfo;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.replica.ReplicaContext;
@@ -29,7 +29,7 @@ public class ReplicaSetTest {
     try {
       BaseServeTest.initRay();
       ReplicaSet replicaSet = new ReplicaSet(deploymentName);
-      ActorNameList.Builder builder = ActorNameList.newBuilder();
+      DeploymentTargetInfo.Builder builder = DeploymentTargetInfo.newBuilder();
 
       replicaSet.updateWorkerReplicas(builder.build());
       Map<String, Set<ObjectRef<Object>>> inFlightQueries = replicaSet.getInFlightQueries();
@@ -78,8 +78,8 @@ public class ReplicaSetTest {
 
       // ReplicaSet
       ReplicaSet replicaSet = new ReplicaSet(deploymentName);
-      ActorNameList.Builder builder = ActorNameList.newBuilder();
-      builder.addNames(actorName);
+      DeploymentTargetInfo.Builder builder = DeploymentTargetInfo.newBuilder();
+      builder.addReplicaNames(actorName).setIsAvailable(true);
       replicaSet.updateWorkerReplicas(builder.build());
 
       // assign

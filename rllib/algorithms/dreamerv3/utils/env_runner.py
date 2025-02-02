@@ -409,8 +409,8 @@ class DreamerV3EnvRunner(EnvRunner):
 
             eps += 1
 
-            # Then finalize (numpy'ize) the episode.
-            done_episodes_to_return.append(episodes[env_index].finalize())
+            # Then numpy'ize the episode.
+            done_episodes_to_return.append(episodes[env_index].to_numpy())
 
             # Also early-out if we reach the number of episodes within this
             # for-loop.
@@ -447,8 +447,8 @@ class DreamerV3EnvRunner(EnvRunner):
                     continue
                 episode.validate()
                 self._ongoing_episodes_for_metrics[episode.id_].append(episode)
-                # Return finalized (numpy'ized) Episodes.
-                ongoing_episodes_to_return.append(episode.finalize())
+                # Return numpy'ized Episodes.
+                ongoing_episodes_to_return.append(episode.to_numpy())
 
             # Continue collecting into the cut Episode chunks.
             self._episodes = ongoing_episodes_continuations

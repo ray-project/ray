@@ -6,7 +6,7 @@ from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
     ReplicaQueueLengthCache,
 )
-from ray.serve._private.replica_scheduler.replica_wrapper import ReplicaWrapper
+from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 
 
 class ReplicaScheduler(ABC):
@@ -15,17 +15,17 @@ class ReplicaScheduler(ABC):
     @abstractmethod
     async def choose_replica_for_request(
         self, pending_request: PendingRequest, *, is_retry: bool = False
-    ) -> ReplicaWrapper:
+    ) -> RunningReplica:
         pass
 
     @abstractmethod
     def create_replica_wrapper(
         self, replica_info: RunningReplicaInfo
-    ) -> ReplicaWrapper:
+    ) -> RunningReplica:
         pass
 
     @abstractmethod
-    def update_replicas(self, replicas: List[ReplicaWrapper]):
+    def update_replicas(self, replicas: List[RunningReplica]):
         pass
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
@@ -49,5 +49,5 @@ class ReplicaScheduler(ABC):
 
     @property
     @abstractmethod
-    def curr_replicas(self) -> Dict[ReplicaID, ReplicaWrapper]:
+    def curr_replicas(self) -> Dict[ReplicaID, RunningReplica]:
         pass

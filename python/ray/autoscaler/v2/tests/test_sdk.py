@@ -61,12 +61,12 @@ def assert_cluster_resource_constraints(
     # We only have 1 constraint for now.
     assert len(state.cluster_resource_constraints) == 1
 
-    min_bundles = state.cluster_resource_constraints[0].min_bundles
-    assert len(min_bundles) == len(expected_bundles) == len(expected_count)
+    resource_requests = state.cluster_resource_constraints[0].resource_requests
+    assert len(resource_requests) == len(expected_bundles) == len(expected_count)
 
     # Sort all the bundles by bundle's resource names
-    min_bundles = sorted(
-        min_bundles,
+    resource_requests = sorted(
+        resource_requests,
         key=lambda bundle_by_count: "".join(
             bundle_by_count.request.resources_bundle.keys()
         ),
@@ -76,7 +76,7 @@ def assert_cluster_resource_constraints(
         expected, key=lambda bundle_count: "".join(bundle_count[0].keys())
     )
 
-    for actual_bundle_count, expected_bundle_count in zip(min_bundles, expected):
+    for actual_bundle_count, expected_bundle_count in zip(resource_requests, expected):
         assert (
             dict(actual_bundle_count.request.resources_bundle)
             == expected_bundle_count[0]

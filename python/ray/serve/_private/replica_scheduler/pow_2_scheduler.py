@@ -38,7 +38,7 @@ from ray.serve._private.replica_scheduler.common import (
     ReplicaQueueLengthCache,
 )
 from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
-from ray.serve._private.replica_scheduler.replica_wrapper import ReplicaWrapper
+from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -101,7 +101,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         use_replica_queue_len_cache: bool = False,
         get_curr_time_s: Optional[Callable[[], float]] = None,
         create_replica_wrapper_func: Optional[
-            Callable[[RunningReplicaInfo], ReplicaWrapper]
+            Callable[[RunningReplicaInfo], RunningReplica]
         ] = None,
     ):
         self._deployment_id = deployment_id
@@ -117,7 +117,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
         self._replica_id_set: Set[ReplicaID] = set()
-        self._replicas: Dict[ReplicaID, ReplicaWrapper] = {}
+        self._replicas: Dict[ReplicaID, RunningReplica] = {}
         self._replica_queue_len_cache = ReplicaQueueLengthCache(
             get_curr_time_s=get_curr_time_s,
         )
@@ -236,7 +236,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         return min(self.num_pending_requests, self.max_num_scheduling_tasks)
 
     @property
-    def curr_replicas(self) -> Dict[ReplicaID, ReplicaWrapper]:
+    def curr_replicas(self) -> Dict[ReplicaID, RunningReplica]:
         return self._replicas
 
     @property
@@ -249,7 +249,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     def create_replica_wrapper(
         self, replica_info: RunningReplicaInfo
-    ) -> ReplicaWrapper:
+    ) -> RunningReplica:
         return self._create_replica_wrapper_func(replica_info)
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
@@ -272,7 +272,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 replica_id, queue_len_info.num_ongoing_requests
             )
 
-    def update_replicas(self, replicas: List[ReplicaWrapper]):
+    def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for scheduling.
 
         When the set of replicas changes, we may spawn additional scheduling tasks
@@ -515,9 +515,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     async def _probe_queue_lens(
         self,
-        replicas: List[ReplicaWrapper],
+        replicas: List[RunningReplica],
         backoff_index: int,
-    ) -> List[Tuple[ReplicaWrapper, Optional[int]]]:
+    ) -> List[Tuple[RunningReplica, Optional[int]]]:
         """Actively probe the queue length from each of the replicas.
 
         Sends an RPC to each replica to fetch its queue length, with a response deadline
@@ -531,7 +531,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         This method also updates the local cache of replica queue lengths according to
         the responses.
         """
-        result: List[Tuple[ReplicaWrapper, int]] = []
+        result: List[Tuple[RunningReplica, int]] = []
         if len(replicas) == 0:
             return result
 
@@ -618,9 +618,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     async def select_from_candidate_replicas(
         self,
-        candidates: List[ReplicaWrapper],
+        candidates: List[RunningReplica],
         backoff_index: int,
-    ) -> Optional[ReplicaWrapper]:
+    ) -> Optional[RunningReplica]:
         """Chooses the best replica from the list of candidates.
 
         If none of the replicas can be scheduled, returns `None`.
@@ -633,7 +633,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         lowest_queue_len = math.inf
         chosen_replica_id: Optional[str] = None
-        not_in_cache: List[ReplicaWrapper] = []
+        not_in_cache: List[RunningReplica] = []
         if self._use_replica_queue_len_cache:
             # Populate available queue lens from the cache.
             for r in candidates:
@@ -693,7 +693,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     def fulfill_next_pending_request(
         self,
-        replica: ReplicaWrapper,
+        replica: RunningReplica,
         request_metadata: Optional[RequestMetadata] = None,
     ):
         """Assign the replica to the next pending request in FIFO order.
@@ -812,7 +812,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     async def choose_replica_for_request(
         self, pending_request: PendingRequest, *, is_retry: bool = False
-    ) -> ReplicaWrapper:
+    ) -> RunningReplica:
         """Chooses a replica to send the provided request to.
 
         By default, requests are scheduled in FIFO order, so this places a future on the

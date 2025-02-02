@@ -1,6 +1,7 @@
 from typing import Iterator
 from unittest import mock
 
+import pandas as pd
 import pyarrow as pa
 import pytest
 from google.api_core import exceptions, operation
@@ -11,9 +12,9 @@ from google.cloud.bigquery_storage_v1.types import stream as gcbqs_stream
 import ray
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.planner.plan_write_op import generate_collect_write_stats_fn
 from ray.data.block import Block
-from ray.data.datasource.datasink import WriteResult
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -23,7 +24,6 @@ _TEST_BQ_DATASET_ID = "mockdataset"
 _TEST_BQ_TABLE_ID = "mocktable"
 _TEST_BQ_DATASET = _TEST_BQ_DATASET_ID + "." + _TEST_BQ_TABLE_ID
 _TEST_BQ_TEMP_DESTINATION = _TEST_GCP_PROJECT_ID + ".tempdataset.temptable"
-_TEST_DISPLAY_NAME = "display_name"
 
 
 @pytest.fixture(autouse=True)
@@ -202,7 +202,7 @@ class TestWriteBigQuery:
     """Tests for BigQuery Write."""
 
     def _extract_write_result(self, stats: Iterator[Block]):
-        return dict(next(stats).iloc[0])["write_result"]
+        return dict(next(stats).iloc[0])
 
     def test_write(self, ray_get_mock):
         bq_datasink = BigQueryDatasink(
@@ -211,15 +211,24 @@ class TestWriteBigQuery:
         )
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
+        ctx = TaskContext(1)
         bq_datasink.write(
             blocks=[block],
-            ctx=None,
+            ctx=ctx,
         )
 
         collect_stats_fn = generate_collect_write_stats_fn()
-        stats = collect_stats_fn([block], None)
-        write_result = self._extract_write_result(stats)
-        assert write_result == WriteResult(num_rows=4, size_bytes=32)
+        stats = collect_stats_fn([block], ctx)
+        pd.testing.assert_frame_equal(
+            next(stats),
+            pd.DataFrame(
+                {
+                    "num_rows": [4],
+                    "size_bytes": [32],
+                    "write_return": [None],
+                }
+            ),
+        )
 
     def test_write_dataset_exists(self, ray_get_mock):
         bq_datasink = BigQueryDatasink(
@@ -228,14 +237,23 @@ class TestWriteBigQuery:
         )
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
+        ctx = TaskContext(1)
         bq_datasink.write(
             blocks=[block],
-            ctx=None,
+            ctx=ctx,
         )
         collect_stats_fn = generate_collect_write_stats_fn()
-        stats = collect_stats_fn([block], None)
-        write_result = self._extract_write_result(stats)
-        assert write_result == WriteResult(num_rows=4, size_bytes=32)
+        stats = collect_stats_fn([block], ctx)
+        pd.testing.assert_frame_equal(
+            next(stats),
+            pd.DataFrame(
+                {
+                    "num_rows": [4],
+                    "size_bytes": [32],
+                    "write_return": [None],
+                }
+            ),
+        )
 
 
 if __name__ == "__main__":

@@ -420,7 +420,7 @@ class ExecutionPlan:
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
         metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-        executor = StreamingExecutor(copy.deepcopy(ctx.execution_options), metrics_tag)
+        executor = StreamingExecutor(ctx, metrics_tag)
         bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
@@ -492,7 +492,7 @@ class ExecutionPlan:
 
                 metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
                 executor = StreamingExecutor(
-                    copy.deepcopy(context.execution_options),
+                    context,
                     metrics_tag,
                 )
                 blocks = execute_to_legacy_block_list(

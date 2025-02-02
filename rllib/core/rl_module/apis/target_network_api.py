@@ -2,8 +2,13 @@ import abc
 from typing import Any, Dict, List, Tuple
 
 from ray.rllib.utils.typing import NetworkType
+from ray.util.annotations import PublicAPI
 
 
+TARGET_NETWORK_ACTION_DIST_INPUTS = "target_network_action_dist_inputs"
+
+
+@PublicAPI(stability="alpha")
 class TargetNetworkAPI(abc.ABC):
     """An API to be implemented by RLModules for handling target networks.
 
@@ -18,9 +23,9 @@ class TargetNetworkAPI(abc.ABC):
     def make_target_networks(self) -> None:
         """Creates the required target nets for this RLModule.
 
-        You should use the convenience
-        `ray.rllib.core.learner.utils.make_target_network()` utility and pass in
-        an already existing, corresponding "main" net (for which you need a target net).
+        Use the convenience `ray.rllib.core.learner.utils.make_target_network()` utility
+        when implementing this method. Pass in an already existing, corresponding "main"
+        net (for which you need a target net).
         This function already takes care of initialization (from the "main" net).
         """
 

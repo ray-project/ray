@@ -108,8 +108,13 @@ class ClusterManager(abc.ABC):
             return cluster_compute
 
         cluster_compute = cluster_compute.copy()
-        aws = cluster_compute.get("aws", {})
-        cluster_compute["aws"] = add_tags_to_aws_config(
+        if "aws" in cluster_compute:
+            raise ValueError(
+                "aws field is invalid in compute config, "
+                "use advanced_configurations_json instead"
+            )
+        aws = cluster_compute.get("advanced_configurations_json", {})
+        cluster_compute["advanced_configurations_json"] = add_tags_to_aws_config(
             aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
         )
         return cluster_compute

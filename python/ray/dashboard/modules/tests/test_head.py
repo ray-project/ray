@@ -18,18 +18,8 @@ routes = dashboard_optional_utils.DashboardHeadRouteTable
     enable=env_bool(test_consts.TEST_MODULE_ENVIRONMENT_KEY, False)
 )
 class TestHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
-        self._notified_agents = {}
-        DataSource.agents.signal.append(self._update_notified_agents)
-
-    async def _update_notified_agents(self, change):
-        if change.old:
-            ip, port = change.old
-            self._notified_agents.pop(ip)
-        if change.new:
-            ip, ports = change.new
-            self._notified_agents[ip] = ports
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
 
     @staticmethod
     def is_minimal_module():
@@ -73,18 +63,10 @@ class TestHead(dashboard_utils.DashboardHeadModule):
                 **{key: data},
             )
 
-    @routes.get("/test/notified_agents")
-    async def get_notified_agents(self, req) -> aiohttp.web.Response:
-        return dashboard_optional_utils.rest_response(
-            success=True,
-            message="Fetch notified agents success.",
-            **self._notified_agents,
-        )
-
     @routes.get("/test/http_get")
     async def get_url(self, req) -> aiohttp.web.Response:
         url = req.query.get("url")
-        result = await test_utils.http_get(self._dashboard_head.http_session, url)
+        result = await test_utils.http_get(self.http_session, url)
         return aiohttp.web.json_response(result)
 
     @routes.get("/test/aiohttp_cache/{sub_path}")

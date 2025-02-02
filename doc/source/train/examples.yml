@@ -119,7 +119,17 @@ examples:
     contributor: community
     link: examples/intel_gaudi/llama_pretrain
 
-  - title: Fine-tune a Llama-2 text generation models with DeepSpeed and Hugging Face Accelerate
+  - title: Fine-tune Llama3.1 with AWS Trainium
+    frameworks:
+      - pytorch
+      - aws neuron
+    skill_level: advanced
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/aws-trainium/llama3
+  - title: Fine-tune a Llama-2 text generation model with DeepSpeed and Hugging Face Accelerate
     frameworks:
       - accelerate
       - deepspeed

@@ -15,8 +15,10 @@
 #pragma once
 
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -29,12 +31,13 @@ class GcsResourceManager;
 
 class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
  public:
-  GcsAutoscalerStateManager(
-      const std::string &session_name,
-      GcsNodeManager &gcs_node_manager,
-      GcsActorManager &gcs_actor_manager,
-      const GcsPlacementGroupManager &gcs_placement_group_manager,
-      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
+  GcsAutoscalerStateManager(std::string session_name,
+                            GcsNodeManager &gcs_node_manager,
+                            GcsActorManager &gcs_actor_manager,
+                            const GcsPlacementGroupManager &gcs_placement_group_manager,
+                            rpc::NodeManagerClientPool &raylet_client_pool,
+                            InternalKVInterface &kv,
+                            instrumented_io_context &io_context);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -59,7 +62,11 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
                        rpc::autoscaler::DrainNodeReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
-  void UpdateResourceLoadAndUsage(const rpc::ResourcesData &data);
+  void HandleReportClusterConfig(rpc::autoscaler::ReportClusterConfigRequest request,
+                                 rpc::autoscaler::ReportClusterConfigReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
+  void UpdateResourceLoadAndUsage(rpc::ResourcesData data);
 
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
 
@@ -78,7 +85,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
  private:
   /// \brief Get the aggregated resource load from all nodes.
-  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+  absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
   GetAggregatedResourceLoad() const;
 
   /// \brief Internal method for populating the rpc::ClusterResourceState
@@ -140,7 +147,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   void GetClusterResourceConstraints(rpc::autoscaler::ClusterResourceState *state);
 
   // Ray cluster session name.
-  const std::string session_name_ = "";
+  const std::string session_name_;
 
   /// Gcs node manager that provides node status information.
   GcsNodeManager &gcs_node_manager_;
@@ -152,7 +159,11 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   const GcsPlacementGroupManager &gcs_placement_group_manager_;
 
   /// Raylet client pool.
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  rpc::NodeManagerClientPool &raylet_client_pool_;
+
+  // Handler for internal KV
+  InternalKVInterface &kv_;
+  instrumented_io_context &io_context_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.
@@ -171,11 +182,11 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   /// The most recent cluster resource constraints requested.
   /// This is requested through autoscaler SDK from request_resources().
-  absl::optional<rpc::autoscaler::ClusterResourceConstraint>
-      cluster_resource_constraint_ = absl::nullopt;
+  std::optional<rpc::autoscaler::ClusterResourceConstraint> cluster_resource_constraint_ =
+      std::nullopt;
 
   /// Cached autoscaling state.
-  absl::optional<rpc::autoscaler::AutoscalingState> autoscaling_state_ = absl::nullopt;
+  std::optional<rpc::autoscaler::AutoscalingState> autoscaling_state_ = std::nullopt;
 
   /// Resource load and usage of all nodes.
   /// Note: This is similar to the data structure in `gcs_resource_manager`
@@ -184,6 +195,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   /// The absl::Time in the pair is the last time the item was updated.
   absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
       node_resource_info_;
+
+  ThreadChecker thread_checker_;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
 };

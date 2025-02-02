@@ -22,6 +22,9 @@
 // Macro definition format: RAY_INTERNAL_FLAG(type, name, default_value).
 // NOTE: This file should NOT be included in any file other than ray_config.h.
 
+// WARNING: if you update this file, please also update RAY_INTERNAL_FLAGS in
+// ray_constants.py.
+
 /// Ray Job ID.
 RAY_INTERNAL_FLAG(std::string, JOB_ID, "")
 

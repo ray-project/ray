@@ -72,7 +72,7 @@ class _FrameStacking(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # Learner connector pipeline. Episodes have been finalized/numpy'ized.
+        # Learner connector pipeline. Episodes have been numpy'ized.
         if self._as_learner_connector:
             for sa_episode in self.single_agent_episode_iterator(
                 episodes, agents_that_stepped_only=False
@@ -113,7 +113,7 @@ class _FrameStacking(ConnectorV2):
         # Env-to-module pipeline. Episodes still operate on lists.
         else:
             for sa_episode in self.single_agent_episode_iterator(episodes):
-                assert not sa_episode.is_finalized
+                assert not sa_episode.is_numpy
                 # Get the list of observations to stack.
                 obs_stack = sa_episode.get_observations(
                     indices=slice(-self.num_frames, None),

@@ -181,15 +181,15 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
-rpc::RuntimeEnvInfo TaskSpecification::RuntimeEnvInfo() const {
+const rpc::RuntimeEnvInfo &TaskSpecification::RuntimeEnvInfo() const {
   return message_->runtime_env_info();
 }
 
-std::string TaskSpecification::SerializedRuntimeEnv() const {
+const std::string &TaskSpecification::SerializedRuntimeEnv() const {
   return message_->runtime_env_info().serialized_runtime_env();
 }
 
-rpc::RuntimeEnvConfig TaskSpecification::RuntimeEnvConfig() const {
+const rpc::RuntimeEnvConfig &TaskSpecification::RuntimeEnvConfig() const {
   return message_->runtime_env_info().runtime_env_config();
 }
 
@@ -208,7 +208,7 @@ int TaskSpecification::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
   if (!IsActorTask()) {
     // Actor task doesn't have scheudling id, so we don't need to check this.
-    RAY_CHECK(sched_cls_id_ > 0);
+    RAY_CHECK_GT(sched_cls_id_, 0);
   }
   return sched_cls_id_;
 }

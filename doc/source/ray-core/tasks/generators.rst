@@ -92,7 +92,7 @@ If the task was called with ``num_returns="dynamic"``, the exception will be sto
 Note that there is currently a known bug where exceptions will not be propagated for generators that yield more values than expected. This can occur in two cases:
 
 1. When ``num_returns`` is set by the caller, but the generator task returns more than this value.
-2. When a generator task with ``num_returns="dynamic"`` is :ref:`re-executed <task-retries>`, and the re-executed task yields more values than the original execution. Note that in general, Ray does not guarantee correctness for task re-execution if the task is nondeterministic, and it is recommended to set ``@ray.remote(num_retries=0)`` for such tasks.
+2. When a generator task with ``num_returns="dynamic"`` is :ref:`re-executed <task-retries>`, and the re-executed task yields more values than the original execution. Note that in general, Ray does not guarantee correctness for task re-execution if the task is nondeterministic, and it is recommended to set ``@ray.remote(max_retries=0)`` for such tasks.
 
 .. literalinclude:: ../doc_code/generator.py
     :language: python

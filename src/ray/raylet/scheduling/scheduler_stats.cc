@@ -173,7 +173,7 @@ std::string SchedulerStats::ComputeAndReportDebugStr() {
   buffer << "num_tasks_waiting_for_workers: " << num_tasks_waiting_for_workers_ << "\n";
   buffer << "num_cancelled_tasks: " << num_cancelled_tasks_ << "\n";
   buffer << "cluster_resource_scheduler state: "
-         << cluster_task_manager_.cluster_resource_scheduler_->DebugString() << "\n";
+         << cluster_task_manager_.cluster_resource_scheduler_.DebugString() << "\n";
   local_task_manager_.DebugStr(buffer);
 
   buffer << "==================================================\n";

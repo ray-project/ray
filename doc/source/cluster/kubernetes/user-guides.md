@@ -15,7 +15,8 @@ user-guides/config
 user-guides/configuring-autoscaling
 user-guides/kuberay-gcs-ft
 user-guides/gke-gcs-bucket
-user-guides/logging
+user-guides/persist-kuberay-custom-resource-logs
+user-guides/persist-kuberay-operator-logs
 user-guides/gpu
 user-guides/tpu
 user-guides/rayserve-dev-doc
@@ -25,6 +26,8 @@ user-guides/helm-chart-rbac
 user-guides/tls
 user-guides/k8s-autoscaler
 user-guides/static-ray-cluster-without-kuberay
+user-guides/kubectl-plugin
+user-guides/kuberay-auth
 ```
 
 
@@ -44,7 +47,8 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-gpu`
 * {ref}`kuberay-tpu`
 * {ref}`kuberay-gcs-ft`
-* {ref}`kuberay-logging`
+* {ref}`persist-kuberay-custom-resource-logs`
+* {ref}`persist-kuberay-operator-logs`
 * {ref}`kuberay-dev-serve`
 * {ref}`kuberay-pod-command`
 * {ref}`kuberay-pod-security`
@@ -53,3 +57,5 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-gke-bucket`
 * {ref}`ray-k8s-autoscaler-comparison`
 * {ref}`deploy-a-static-ray-cluster-without-kuberay`
+* {ref}`kubectl-plugin`
+* {ref}`kuberay-auth`

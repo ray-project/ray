@@ -1,48 +1,46 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
-
 
 .. _env-reference-docs:
 
 Environments
 ============
 
-Any environment type provided by you to RLlib (e.g. a user-defined `gym.Env <https://github.com/openai/gym>`_ class),
-is converted internally into the :py:class:`~ray.rllib.env.base_env.BaseEnv` API, whose main methods are ``poll()`` and ``send_actions()``:
+.. include:: /_includes/rllib/new_api_stack.rst
 
-.. https://docs.google.com/drawings/d/1NtbVk-Mo89liTRx-sHu_7fqi3Kn7Hjdf3i6jIMbxGlY/edit
-.. image:: ../images/env_classes_overview.svg
+RLlib mainly supports the `Farama gymnasium API <https://gymnasium.farama.org/>`__ for
+single-agent environments, and RLlib's own :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`
+API for multi-agent setups.
+
+Env Vectorization
+-----------------
+
+For single-agent setups, RLlib automatically vectorizes your provided
+`gymnasium.Env <https://gymnasium.farama.org/_modules/gymnasium/core/#Env>`__ using
+gymnasium's own `vectorization feature <https://gymnasium.farama.org/api/vector/>`__.
+
+Use the `config.env_runners(num_envs_per_env_runner=..)` setting to vectorize your env
+beyond 1 env copy.
+
+.. note::
+
+    Unlike single-agent environments, multi-agent setups aren't vectorizable yet.
+    The Ray team is working on a solution for this restriction by using
+    the `gymnasium >= 1.x` custom vectorization feature.
 
 
-The :py:class:`~ray.rllib.env.base_env.BaseEnv` API allows RLlib to support:
+External Envs
+-------------
 
-1) Vectorization of sub-environments (i.e. individual `gym.Env <https://github.com/openai/gym>`_ instances, stacked to form a vector of envs) in order to batch the action computing model forward passes.
-2) External simulators requiring async execution (e.g. envs that run on separate machines and independently request actions from a policy server).
-3) Stepping through the individual sub-environments in parallel via pre-converting them into separate `@ray.remote` actors.
-4) Multi-agent RL via dicts mapping agent IDs to observations/rewards/etc..
+.. note::
 
-For example, if you provide a custom `gym.Env <https://github.com/openai/gym>`_ class to RLlib, auto-conversion to :py:class:`~ray.rllib.env.base_env.BaseEnv` goes as follows:
+    External Env support is under development on the new API stack. The recommended
+    way to implement your own external env connection logic, for example through TCP or
+    shared memory, is to write your own :py:class:`~ray.rllib.env.env_runner.EnvRunner`
+    subclass.
 
-- User provides a `gym.Env <https://github.com/openai/gym>`_ -> :py:class:`~ray.rllib.env.vector_env._VectorizedGymEnv` (is-a :py:class:`~ray.rllib.env.vector_env.VectorEnv`) -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
-
-Here is a simple example:
-
-.. literalinclude:: ../doc_code/custom_gym_env.py
-   :language: python
-
-..   start-after: __rllib-custom-gym-env-begin__
-..   end-before: __rllib-custom-gym-env-end__
-
-However, you may also conveniently sub-class any of the other supported RLlib-specific
-environment types. The automated paths from those env types (or callables returning instances of those types) to
-an RLlib :py:class:`~ray.rllib.env.base_env.BaseEnv` is as follows:
-
-- User provides a custom :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` (is-a `gym.Env <https://github.com/openai/gym>`_) -> :py:class:`~ray.rllib.env.vector_env.VectorEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
-- User uses a policy client (via an external simulator) -> :py:class:`~ray.rllib.env.external_env.ExternalEnv` | :py:class:`~ray.rllib.env.external_multi_agent_env.ExternalMultiAgentEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
-- User provides a custom :py:class:`~ray.rllib.env.vector_env.VectorEnv` -> :py:class:`~ray.rllib.env.base_env.BaseEnv`
-- User provides a custom :py:class:`~ray.rllib.env.base_env.BaseEnv` -> do nothing
+See this an end-to-end example of an `external CartPole (client) env <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__
+connecting to RLlib through a custom, TCP-capable
+:py:class:`~ray.rllib.env.env_runner.EnvRunner` server.
 
 
 Environment API Reference
@@ -51,8 +49,10 @@ Environment API Reference
 .. toctree::
    :maxdepth: 1
 
-   env/base_env.rst
-   env/multi_agent_env.rst
-   env/vector_env.rst
-   env/external_env.rst
+   env/env_runner.rst
+   env/single_agent_env_runner.rst
    env/single_agent_episode.rst
+   env/multi_agent_env.rst
+   env/multi_agent_env_runner.rst
+   env/multi_agent_episode.rst
+   env/utils.rst

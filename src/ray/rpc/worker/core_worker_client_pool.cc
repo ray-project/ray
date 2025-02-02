@@ -17,7 +17,7 @@
 namespace ray {
 namespace rpc {
 
-shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
+std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
     const Address &addr_proto) {
   RAY_CHECK_NE(addr_proto.worker_id(), "");
   absl::MutexLock lock(&mu_);
@@ -31,7 +31,7 @@ shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
     entry = *it->second;
     client_list_.erase(it->second);
   } else {
-    entry = CoreWorkerClientEntry(id, client_factory_(addr_proto));
+    entry = CoreWorkerClientEntry(id, core_worker_client_factory_(addr_proto));
   }
   client_list_.emplace_front(entry);
   client_map_[id] = client_list_.begin();
@@ -45,7 +45,7 @@ void CoreWorkerClientPool::RemoveIdleClients() {
   while (!client_list_.empty()) {
     auto id = client_list_.back().worker_id;
     // The last client in the list is the least recent accessed client.
-    if (client_list_.back().core_worker_client->IsChannelIdleAfterRPCs()) {
+    if (client_list_.back().core_worker_client->IsIdleAfterRPCs()) {
       client_map_.erase(id);
       client_list_.pop_back();
       RAY_LOG(DEBUG) << "Remove idle client to worker " << id

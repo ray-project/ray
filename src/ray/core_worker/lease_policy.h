@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -25,7 +27,7 @@ namespace ray {
 namespace core {
 
 struct LocalityData {
-  uint64_t object_size;
+  uint64_t object_size{};
   absl::flat_hash_set<NodeID> nodes_containing_object;
 };
 
@@ -35,7 +37,7 @@ class LocalityDataProviderInterface {
   virtual absl::optional<LocalityData> GetLocalityData(
       const ObjectID &object_id) const = 0;
 
-  virtual ~LocalityDataProviderInterface() {}
+  virtual ~LocalityDataProviderInterface() = default;
 };
 
 /// Interface for mocking the lease policy.
@@ -45,7 +47,7 @@ class LeasePolicyInterface {
   virtual std::pair<rpc::Address, bool> GetBestNodeForTask(
       const TaskSpecification &spec) = 0;
 
-  virtual ~LeasePolicyInterface() {}
+  virtual ~LeasePolicyInterface() = default;
 };
 
 using NodeAddrFactory =
@@ -55,15 +57,14 @@ using NodeAddrFactory =
 /// picking a worker node for a lease request. This class is not thread-safe.
 class LocalityAwareLeasePolicy : public LeasePolicyInterface {
  public:
-  LocalityAwareLeasePolicy(
-      std::shared_ptr<LocalityDataProviderInterface> locality_data_provider,
-      NodeAddrFactory node_addr_factory,
-      const rpc::Address fallback_rpc_address)
+  LocalityAwareLeasePolicy(LocalityDataProviderInterface &locality_data_provider,
+                           NodeAddrFactory node_addr_factory,
+                           rpc::Address fallback_rpc_address)
       : locality_data_provider_(locality_data_provider),
-        node_addr_factory_(node_addr_factory),
-        fallback_rpc_address_(fallback_rpc_address) {}
+        node_addr_factory_(std::move(node_addr_factory)),
+        fallback_rpc_address_(std::move(fallback_rpc_address)) {}
 
-  ~LocalityAwareLeasePolicy() {}
+  ~LocalityAwareLeasePolicy() override = default;
 
   /// Get the address of the best worker node for a lease request for the provided task.
   std::pair<rpc::Address, bool> GetBestNodeForTask(
@@ -74,23 +75,23 @@ class LocalityAwareLeasePolicy : public LeasePolicyInterface {
   absl::optional<NodeID> GetBestNodeIdForTask(const TaskSpecification &spec);
 
   /// Provider of locality data that will be used in choosing the best lessor.
-  std::shared_ptr<LocalityDataProviderInterface> locality_data_provider_;
+  LocalityDataProviderInterface &locality_data_provider_;
 
   /// Factory for building node RPC addresses given a NodeID.
   NodeAddrFactory node_addr_factory_;
 
   /// RPC address of fallback node (usually the local node).
-  const rpc::Address fallback_rpc_address_;
+  rpc::Address fallback_rpc_address_;
 };
 
 /// Class used by the core worker to implement a local-only lease policy for picking
 /// a worker node for a lease request. This class is not thread-safe.
 class LocalLeasePolicy : public LeasePolicyInterface {
  public:
-  LocalLeasePolicy(const rpc::Address local_node_rpc_address)
-      : local_node_rpc_address_(local_node_rpc_address) {}
+  explicit LocalLeasePolicy(rpc::Address local_node_rpc_address)
+      : local_node_rpc_address_(std::move(local_node_rpc_address)) {}
 
-  ~LocalLeasePolicy() {}
+  ~LocalLeasePolicy() override = default;
 
   /// Get the address of the local node for a lease request for the provided task.
   std::pair<rpc::Address, bool> GetBestNodeForTask(
@@ -98,7 +99,7 @@ class LocalLeasePolicy : public LeasePolicyInterface {
 
  private:
   /// RPC address of the local node.
-  const rpc::Address local_node_rpc_address_;
+  rpc::Address local_node_rpc_address_;
 };
 
 }  // namespace core

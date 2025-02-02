@@ -34,9 +34,8 @@
 namespace ray {
 namespace core {
 
-typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
-                                                            int port)>
-    LeaseClientFactoryFn;
+using LeaseClientFactoryFn =
+    std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &, int)>;
 
 // The task queues are keyed on resource shape & function descriptor
 // (encapsulated in SchedulingClass) to defer resource allocation decisions to the raylet
@@ -49,7 +48,7 @@ typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &i
 // be aware of the actor and is not able to manage it.  It is also keyed on
 // RuntimeEnvHash, because a worker can only run a task if the worker's RuntimeEnvHash
 // matches the RuntimeEnvHash required by the task spec.
-typedef int RuntimeEnvHash;
+using RuntimeEnvHash = int;
 using SchedulingKey =
     std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID, RuntimeEnvHash>;
 
@@ -64,7 +63,7 @@ class LeaseRequestRateLimiter {
 // Lease request rate-limiter with fixed number.
 class StaticLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
  public:
-  StaticLeaseRequestRateLimiter(size_t limit) : kLimit(limit) {}
+  explicit StaticLeaseRequestRateLimiter(size_t limit) : kLimit(limit) {}
   size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override { return kLimit; }
 
  private:
@@ -79,9 +78,9 @@ class NormalTaskSubmitter {
       std::shared_ptr<WorkerLeaseInterface> lease_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       LeaseClientFactoryFn lease_client_factory,
-      std::shared_ptr<LeasePolicyInterface> lease_policy,
+      std::unique_ptr<LeasePolicyInterface> lease_policy,
       std::shared_ptr<CoreWorkerMemoryStore> store,
-      std::shared_ptr<TaskFinisherInterface> task_finisher,
+      TaskFinisherInterface &task_finisher,
       NodeID local_raylet_id,
       WorkerType worker_type,
       int64_t lease_timeout_ms,
@@ -89,11 +88,11 @@ class NormalTaskSubmitter {
       const JobID &job_id,
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
-      : rpc_address_(rpc_address),
+      : rpc_address_(std::move(rpc_address)),
         local_lease_client_(lease_client),
         lease_client_factory_(lease_client_factory),
         lease_policy_(std::move(lease_policy)),
-        resolver_(*store, *task_finisher, *actor_creator),
+        resolver_(*store, task_finisher, *actor_creator),
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
@@ -221,7 +220,7 @@ class NormalTaskSubmitter {
   void PushNormalTask(const rpc::Address &addr,
                       std::shared_ptr<rpc::CoreWorkerClientInterface> client,
                       const SchedulingKey &task_queue_key,
-                      const TaskSpecification &task_spec,
+                      TaskSpecification task_spec,
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
 
@@ -249,13 +248,13 @@ class NormalTaskSubmitter {
 
   /// Provider of worker leasing decisions for the first lease request (not on
   /// spillback).
-  std::shared_ptr<LeasePolicyInterface> lease_policy_;
+  std::unique_ptr<LeasePolicyInterface> lease_policy_;
 
   /// Resolve local and remote dependencies;
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.
-  std::shared_ptr<TaskFinisherInterface> task_finisher_;
+  TaskFinisherInterface &task_finisher_;
 
   /// The timeout for worker leases; after this duration, workers will be returned
   /// to the raylet.

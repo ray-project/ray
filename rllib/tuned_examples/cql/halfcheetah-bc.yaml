@@ -48,4 +48,3 @@ halfcheetah_bc:
         lagrangian: False
         evaluation_config:
             input: sampler
-

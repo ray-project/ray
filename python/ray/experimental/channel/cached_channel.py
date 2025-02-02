@@ -58,7 +58,8 @@ class CachedChannel(ChannelInterface):
         )
 
     def write(self, value: Any, timeout: Optional[float] = None):
-        # TODO: beter organize the imports
+        self.ensure_registered_as_writer()
+        # TODO: better organize the imports
         from ray.experimental.channel import ChannelContext
 
         if self._inner_channel is not None:
@@ -74,7 +75,8 @@ class CachedChannel(ChannelInterface):
         ctx.set_data(self._channel_id, value, self._num_reads)
 
     def read(self, timeout: Optional[float] = None) -> Any:
-        # TODO: beter organize the imports
+        self.ensure_registered_as_reader()
+        # TODO: better organize the imports
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
@@ -87,7 +89,7 @@ class CachedChannel(ChannelInterface):
         ), "Cannot read from the serialization context while inner channel is None."
         value = self._inner_channel.read(timeout)
         ctx.set_data(self._channel_id, value, self._num_reads)
-        # NOTE: Currently we make a contract with aDAG users that the
+        # NOTE: Currently we make a contract with Compiled Graph users that the
         # channel results should not be mutated by the actor methods.
         # When the user needs to modify the channel results, they should
         # make a copy of the channel results and modify the copy.

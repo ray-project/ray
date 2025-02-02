@@ -6,7 +6,6 @@ from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type
 
-import ray.train
 from ray.air._internal.util import RunnerThread, StartTraceback
 from ray.air.constants import _ERROR_FETCH_TIMEOUT
 from ray.train._internal.checkpoint_manager import _TrainingResult
@@ -17,6 +16,7 @@ from ray.train._internal.session import (
     init_session,
     shutdown_session,
 )
+from ray.train.v2._internal.constants import RUN_CONTROLLER_AS_ACTOR_ENV_VAR
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.result import DEFAULT_METRIC, RESULT_DUPLICATE, SHOULD_CHECKPOINT
 from ray.tune.trainable.trainable import Trainable
@@ -64,6 +64,17 @@ class FunctionTrainable(Trainable):
             checkpoint=None,
         )
         self._last_training_result: Optional[_TrainingResult] = None
+
+        # NOTE: This environment variable is used to disable the
+        # spawning a new actor for Ray Train drivers being launched
+        # within Tune functions.
+        # There are 2 reasons for this:
+        # 1. Ray Tune already spawns an actor, so we can run the Ray Train
+        #    driver directly in the same actor.
+        # 2. This allows `ray.tune.report` to be called within Ray Train driver
+        #    callbacks, since it needs to be called on the same process as the
+        #    Tune FunctionTrainable actor.
+        os.environ[RUN_CONTROLLER_AS_ACTOR_ENV_VAR] = "0"
 
     def _trainable_func(self, config: Dict[str, Any]):
         """Subclasses can override this to set the trainable func."""
@@ -232,9 +243,9 @@ def wrap_function(
                 if not output:
                     return
                 elif isinstance(output, dict):
-                    ray.train.report(output)
+                    get_session().report(output)
                 elif isinstance(output, Number):
-                    ray.train.report({DEFAULT_METRIC: output})
+                    get_session().report({DEFAULT_METRIC: output})
                 else:
                     raise ValueError(
                         "Invalid return or yield value. Either return/yield "
@@ -253,7 +264,7 @@ def wrap_function(
             # If train_func returns, we need to notify the main event loop
             # of the last result while avoiding double logging. This is done
             # with the keyword RESULT_DUPLICATE -- see tune/tune_controller.py.
-            ray.train.report({RESULT_DUPLICATE: True})
+            get_session().report({RESULT_DUPLICATE: True})
             return output
 
         @classmethod

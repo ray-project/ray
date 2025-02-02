@@ -101,6 +101,7 @@ parameters in the `@serve.deployment` decorator. The example configures a few co
 * `ray_actor_options`: a dictionary containing configuration options for each replica.
     * `num_cpus`: a float representing the logical number of CPUs each replica should reserve. You can make this a fraction to pack multiple replicas together on a machine with fewer CPUs than replicas.
     * `num_gpus`: a float representing the logical number of GPUs each replica should reserve. You can make this a fraction to pack multiple replicas together on a machine with fewer GPUs than replicas.
+    * `resources`: a dictionary containing other resource requirements for the replicate, such as non-GPU accelerators like HPUs or TPUs.
 
 All these parameters are optional, so feel free to omit them:
 

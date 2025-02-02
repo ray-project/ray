@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI
 
 
@@ -85,4 +86,9 @@ class AutoscalingActorPool(ABC):
         Returns:
             The number of actors actually removed.
         """
+        ...
+
+    @abstractmethod
+    def per_actor_resource_usage(self) -> ExecutionResources:
+        """Per actor resource usage."""
         ...

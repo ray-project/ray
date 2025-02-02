@@ -16,6 +16,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.data.context import DataContext
 
 
 class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
@@ -39,14 +40,16 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 
     def test_basic(self):
         concurrency = 16
-        input_op = InputDataBuffer(input_data=[MagicMock()])
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
         map_op_no_concurrency = TaskPoolMapOperator(
             map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
             input_op=input_op,
             target_max_block_size=None,
         )
         map_op = TaskPoolMapOperator(
             map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
             input_op=map_op_no_concurrency,
             target_max_block_size=None,
             concurrency=concurrency,

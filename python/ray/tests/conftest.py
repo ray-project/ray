@@ -1,6 +1,7 @@
 """
 This file defines the common pytest fixtures used in current directory.
 """
+
 import json
 import logging
 import os
@@ -13,7 +14,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import gettempdir
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from unittest import mock
 import psutil
 import pytest
@@ -21,7 +22,7 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
-from ray._private.runtime_env.pip import PipProcessor
+from ray._private.runtime_env import virtualenv_utils
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 
 from ray._private.test_utils import (
@@ -34,6 +35,8 @@ from ray._private.test_utils import (
     redis_replicas,
     get_redis_cli,
     start_redis_instance,
+    start_redis_sentinel_instance,
+    redis_sentinel_replicas,
     find_available_port,
     wait_for_condition,
     find_free_port,
@@ -41,6 +44,9 @@ from ray._private.test_utils import (
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
+# TODO (mengjin) Improve the logging in the conftest files so that the logger can log
+# information in stdout as well as stderr and replace the print statements in the test
+# files
 logger = logging.getLogger(__name__)
 
 START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
@@ -54,7 +60,9 @@ def pre_envs(monkeypatch):
     yield
 
 
-def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
+def wait_for_redis_to_start(
+    redis_ip_address: str, redis_port: bool, password=None, username=None
+):
     """Wait for a Redis server to be available.
 
     This is accomplished by creating a Redis client and sending a random
@@ -63,7 +71,8 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
     Args:
         redis_ip_address: The IP address of the redis server.
         redis_port: The port of the redis server.
-        password: The password of the redis server.
+        username: The username of the Redis server.
+        password: The password of the Redis server.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
@@ -71,7 +80,7 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
     import redis
 
     redis_client = redis.StrictRedis(
-        host=redis_ip_address, port=redis_port, password=password
+        host=redis_ip_address, port=redis_port, username=username, password=password
     )
     # Wait for the Redis server to start.
     num_retries = START_REDIS_WAIT_RETRIES
@@ -171,6 +180,49 @@ def is_process_listen_to_port(pid, port):
     return False
 
 
+def find_user_process_by_port_and_status(
+    port: int, statuses_to_check: Optional[list[str]]
+):
+    """
+    Test helper function to find the processes that have a connection to a provided
+    port and with statuses in the provided list.
+
+    Args:
+        port: The port to check.
+        statuses_to_check: The list of statuses to check. If None, the function will not
+            check the status of the connection.
+
+    Returns:
+        The first process that have a connection
+    """
+    # Here the function finds all the processes and checks if each of them is with the
+    # provided port and status. This is inefficient comparing to leveraging
+    # psutil.net_connections to directly filter the processes by port. However, the
+    # method is chosen because the net_connections method will need root access to run
+    # on macOS: https://psutil.readthedocs.io/en/latest/#psutil.net_connections.
+    # Therefore, the current solution is chosen to make the function work for all
+    processes = []
+    for pid in psutil.pids():
+        process = psutil.Process(pid)
+        try:
+            conns = process.connections()
+            for conn in conns:
+                if conn.laddr.port == port:
+                    if statuses_to_check is None or conn.status in statuses_to_check:
+                        processes.append(process)
+        except (psutil.AccessDenied, psutil.ZombieProcess, psutil.NoSuchProcess):
+            continue
+
+    if not processes:
+        print(
+            f"Failed to find processes that have connections to the port {port} and "
+            f"with connection status in {statuses_to_check}.  It could "
+            "be because the process needs higher privilege to access its "
+            "information or the port is not listened by any processes."
+        )
+    return processes
+
+
 def redis_alive(port, enable_tls):
     try:
         # If there is no redis libs installed, skip the check.
@@ -201,15 +253,38 @@ def redis_alive(port, enable_tls):
     return False
 
 
+def start_redis_with_sentinel(db_dir):
+    temp_dir = ray._private.utils.get_ray_temp_dir()
+
+    redis_ports = find_available_port(49159, 55535, redis_sentinel_replicas() + 1)
+    sentinel_port = redis_ports[0]
+    master_port = redis_ports[1]
+    redis_processes = [
+        start_redis_instance(temp_dir, p, listen_to_localhost_only=True, db_dir=db_dir)[
+            1
+        ]
+        for p in redis_ports[1:]
+    ]
+
+    # ensure all redis servers are up
+    for port in redis_ports[1:]:
+        wait_for_condition(redis_alive, 3, 100, port=port, enable_tls=False)
+
+    # setup replicas of the master
+    for port in redis_ports[2:]:
+        redis_cli = get_redis_cli(port, False)
+        redis_cli.replicaof("127.0.0.1", master_port)
+        sentinel_process = start_redis_sentinel_instance(
+            temp_dir, sentinel_port, master_port
+        )
+        address_str = f"127.0.0.1:{sentinel_port}"
+        return address_str, redis_processes + [sentinel_process]
+
+
 def start_redis(db_dir):
     retry_num = 0
     while True:
         is_need_restart = False
-        # Setup external Redis and env var for initialization.
-        redis_ports = find_available_port(49159, 55535, redis_replicas() * 2)
-        redis_ports = list(
-            zip(redis_ports[0 : redis_replicas()], redis_ports[redis_replicas() :])
-        )
         processes = []
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ
         leader_port = None
@@ -218,22 +293,50 @@ def start_redis(db_dir):
         while len(redis_ports) != redis_replicas():
             temp_dir = ray._private.utils.get_ray_temp_dir()
             port, free_port = find_available_port(49159, 55535, 2)
-            node_id, proc = start_redis_instance(
-                temp_dir,
-                port,
-                enable_tls=enable_tls,
-                replica_of=leader_port,
-                leader_id=leader_id,
-                db_dir=db_dir,
-                free_port=free_port,
-            )
             try:
+                node_id = None
+                proc = None
+                node_id, proc = start_redis_instance(
+                    temp_dir,
+                    port,
+                    enable_tls=enable_tls,
+                    replica_of=leader_port,
+                    leader_id=leader_id,
+                    db_dir=db_dir,
+                    free_port=free_port,
+                )
                 wait_for_condition(
                     redis_alive, 3, 100, port=port, enable_tls=enable_tls
                 )
             except Exception as e:
-                print(e)
+                print(f"Fails to start redis on port {port} with exception {e}")
+                if (
+                    proc is not None
+                    and proc.process is not None
+                    and proc.process.poll() is None
+                ):
+                    proc.process.kill()
+
+                # TODO (mengjin) Here we added more debug logs here to help further
+                # troubleshoot the potential race condition where the available port
+                # we found above is taken by another process and the Redis server
+                # cannot be started. Here we won't fail the test but we can check the
+                # output log of the test to further investigate the issue if needed.
+                if "Redis process exited unexpectedly" in str(e):
+                    # Output the process that listens to the port
+                    processes = find_user_process_by_port_and_status(
+                        port, [psutil.CONN_LISTEN]
+                    )
+
+                    for process in processes:
+                        print(
+                            f"Another process({process.pid}) with command"
+                            f"\"{' '.join(process.args)}\" is listening on the port"
+                            f"{port}"
+                        )
+
                 continue
+
             redis_ports.append(port)
             if leader_port is None:
                 leader_port = port
@@ -289,10 +392,14 @@ def kill_all_redis_server():
 
 
 @contextmanager
-def _setup_redis(request):
+def _setup_redis(request, with_sentinel=False):
     with tempfile.TemporaryDirectory() as tmpdirname:
         kill_all_redis_server()
-        address_str, processes = start_redis(tmpdirname)
+        address_str, processes = (
+            start_redis_with_sentinel(tmpdirname)
+            if with_sentinel
+            else start_redis(tmpdirname)
+        )
         old_addr = os.environ.get("RAY_REDIS_ADDRESS")
         os.environ["RAY_REDIS_ADDRESS"] = address_str
         import uuid
@@ -329,6 +436,12 @@ def maybe_external_redis(request):
 @pytest.fixture
 def external_redis(request):
     with _setup_redis(request):
+        yield
+
+
+@pytest.fixture
+def external_redis_with_sentinel(request):
+    with _setup_redis(request, True):
         yield
 
 
@@ -530,6 +643,15 @@ def ray_start_cluster_head(request, maybe_external_redis):
 # before ray_start_cluster_head.
 @pytest.fixture
 def ray_start_cluster_head_with_external_redis(request, external_redis):
+    param = getattr(request, "param", {})
+    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+        yield res
+
+
+@pytest.fixture
+def ray_start_cluster_head_with_external_redis_sentinel(
+    request, external_redis_with_sentinel
+):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
         yield res
@@ -980,7 +1102,7 @@ def cloned_virtualenv():
     # aviod import `pytest_virtualenv` in test case `Minimal install`
     from pytest_virtualenv import VirtualEnv
 
-    if PipProcessor._is_in_virtualenv():
+    if virtualenv_utils.is_in_virtualenv():
         raise RuntimeError("Forbid the use of this fixture in virtualenv")
 
     venv = VirtualEnv(

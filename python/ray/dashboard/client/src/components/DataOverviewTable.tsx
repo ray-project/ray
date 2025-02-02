@@ -193,7 +193,7 @@ const DataRow = ({
       </TableCell>
       <TableCell align="left">
         {isDatasetRow && datasetMetrics.dataset}
-        {isOperatorRow && operatorMetrics.operator}
+        {isOperatorRow && operatorMetrics.name}
       </TableCell>
       <TableCell align="right" style={{ width: 200 }}>
         <TaskProgressBar

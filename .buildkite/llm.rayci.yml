@@ -1,0 +1,17 @@
+group: llm tests
+depends_on:
+  - forge
+  - oss-ci-base_ml
+steps:
+  - name: llmbuild
+    wanda: ci/docker/llm.build.wanda.yaml
+  
+  - label: "llm tests"
+    key: "llm-tests"
+    tags:
+      - python
+      - llm
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... llm
+    depends_on: llmbuild

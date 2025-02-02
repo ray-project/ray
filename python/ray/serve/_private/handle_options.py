@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
 
 import ray
-from ray.serve._private.common import DeploymentHandleSource, RequestProtocol
+from ray.serve._private.common import DeploymentHandleSource
 from ray.serve._private.utils import DEFAULT
 
 
@@ -52,9 +52,15 @@ class DynamicHandleOptionsBase(ABC):
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
-    _request_protocol: str = RequestProtocol.UNDEFINED
 
+    @abstractmethod
     def copy_and_update(self, **kwargs) -> "DynamicHandleOptionsBase":
+        pass
+
+
+@dataclass(frozen=True)
+class DynamicHandleOptions(DynamicHandleOptionsBase):
+    def copy_and_update(self, **kwargs) -> "DynamicHandleOptions":
         new_kwargs = {}
 
         for f in fields(self):
@@ -64,8 +70,3 @@ class DynamicHandleOptionsBase(ABC):
                 new_kwargs[f.name] = kwargs[f.name]
 
         return DynamicHandleOptions(**new_kwargs)
-
-
-@dataclass(frozen=True)
-class DynamicHandleOptions(DynamicHandleOptionsBase):
-    pass

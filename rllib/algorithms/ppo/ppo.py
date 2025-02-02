@@ -24,7 +24,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -32,13 +32,8 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_ENV_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED_LIFETIME,
-    NUM_EPISODES,
-    NUM_EPISODES_LIFETIME,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
     TIMERS,
@@ -70,11 +65,6 @@ class PPOConfig(AlgorithmConfig):
         from ray.rllib.algorithms.ppo import PPOConfig
 
         config = PPOConfig()
-        # Activate new API stack.
-        config.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         config.environment("CartPole-v1")
         config.env_runners(num_env_runners=1)
         config.training(
@@ -93,11 +83,6 @@ class PPOConfig(AlgorithmConfig):
 
         config = (
             PPOConfig()
-            # Activate new API stack.
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             # Set the config object's env.
             .environment(env="CartPole-v1")
             # Update the config object's training parameters.
@@ -120,11 +105,20 @@ class PPOConfig(AlgorithmConfig):
 
     def __init__(self, algo_class=None):
         """Initializes a PPOConfig instance."""
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
+
         super().__init__(algo_class=algo_class or PPO)
 
         # fmt: off
         # __sphinx_doc_begin__
-        self.lr_schedule = None
         self.lr = 5e-5
         self.rollout_fragment_length = "auto"
         self.train_batch_size = 4000
@@ -141,45 +135,31 @@ class PPOConfig(AlgorithmConfig):
         self.kl_target = 0.01
         self.vf_loss_coeff = 1.0
         self.entropy_coeff = 0.0
-        self.entropy_coeff_schedule = None
         self.clip_param = 0.3
         self.vf_clip_param = 10.0
         self.grad_clip = None
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_env_runners = 2
-        self.model["vf_share_layers"] = False
         # __sphinx_doc_end__
         # fmt: on
+
+        self.model["vf_share_layers"] = False  # @OldAPIStack
+        self.entropy_coeff_schedule = None  # @OldAPIStack
+        self.lr_schedule = None  # @OldAPIStack
 
         # Deprecated keys.
         self.sgd_minibatch_size = DEPRECATED_VALUE
         self.vf_share_layers = DEPRECATED_VALUE
 
-        self.exploration_config = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": "StochasticSampling",
-            # Add constructor kwargs here (if any).
-        }
-
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule,
+            from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+                DefaultPPOTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=PPOTorchRLModule, catalog_class=PPOCatalog)
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
-
-            return RLModuleSpec(module_class=PPOTfRLModule, catalog_class=PPOCatalog)
+            return RLModuleSpec(module_class=DefaultPPOTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -319,7 +299,7 @@ class PPOConfig(AlgorithmConfig):
             not self.enable_rl_module_and_learner
             and self.minibatch_size > self.train_batch_size
         ):
-            raise ValueError(
+            self._value_error(
                 f"`minibatch_size` ({self.minibatch_size}) must be <= "
                 f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
                 f" will be split into {self.minibatch_size} chunks, each of which "
@@ -330,7 +310,7 @@ class PPOConfig(AlgorithmConfig):
             mbs = self.minibatch_size
             tbs = self.train_batch_size_per_learner or self.train_batch_size
             if isinstance(mbs, int) and isinstance(tbs, int) and mbs > tbs:
-                raise ValueError(
+                self._value_error(
                     f"`minibatch_size` ({mbs}) must be <= "
                     f"`train_batch_size_per_learner` ({tbs}). In PPO, the train batch"
                     f" will be split into {mbs} chunks, each of which is iterated over "
@@ -346,17 +326,23 @@ class PPOConfig(AlgorithmConfig):
             and self.batch_mode == "truncate_episodes"
             and not self.use_gae
         ):
-            raise ValueError(
+            self._value_error(
                 "Episode truncation is not supported without a value "
                 "function (to estimate the return at the end of the truncated"
                 " trajectory). Consider setting "
                 "batch_mode=complete_episodes."
             )
 
-        # Entropy coeff schedule checking.
+        # New API stack checks.
         if self.enable_rl_module_and_learner:
+            # `lr_schedule` checking.
+            if self.lr_schedule is not None:
+                self._value_error(
+                    "`lr_schedule` is deprecated and must be None! Use the "
+                    "`lr` setting to setup a schedule."
+                )
             if self.entropy_coeff_schedule is not None:
-                raise ValueError(
+                self._value_error(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
                     "`entropy_coeff` setting to setup a schedule."
                 )
@@ -366,7 +352,7 @@ class PPOConfig(AlgorithmConfig):
                 description="entropy coefficient",
             )
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
-            raise ValueError("`entropy_coeff` must be >= 0.0")
+            self._value_error("`entropy_coeff` must be >= 0.0")
 
     @property
     @override(AlgorithmConfig)
@@ -400,16 +386,11 @@ class PPO(Algorithm):
             return PPOTF2Policy
 
     @override(Algorithm)
-    def training_step(self):
-        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_new_api_stack()
-        # Old API stack (Policy, RolloutWorker, Connector, maybe RLModule,
-        # maybe Learner).
-        else:
+    def training_step(self) -> None:
+        # Old API stack (Policy, RolloutWorker, Connector).
+        if not self.config.enable_env_runner_and_connector_v2:
             return self._training_step_old_api_stack()
 
-    def _training_step_new_api_stack(self) -> ResultDict:
         # Collect batches from sample workers until we have a full batch.
         with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             # Sample in parallel from the workers.
@@ -435,26 +416,11 @@ class PPO(Algorithm):
                 )
             # Return early if all our workers failed.
             if not episodes:
-                return {}
+                return
 
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.merge_and_log_n_dicts(
                 env_runner_results, key=ENV_RUNNER_RESULTS
-            )
-            # Log lifetime counts for env- and agent steps.
-            self.metrics.log_dict(
-                {
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED)
-                    ),
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
-                    ),
-                    NUM_EPISODES_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_EPISODES)
-                    ),
-                },
-                reduce="sum",
             )
 
         # Perform a learner update step on the collected episodes.
@@ -463,7 +429,9 @@ class PPO(Algorithm):
                 episodes=episodes,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        self.metrics.peek(
+                            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        )
                     ),
                 },
                 num_epochs=self.config.num_epochs,
@@ -471,17 +439,6 @@ class PPO(Algorithm):
                 shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
             )
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                        (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
-                    ),
-                    # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                    #    (LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED)
-                    # ),
-                },
-                reduce="sum",
-            )
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
@@ -495,19 +452,14 @@ class PPO(Algorithm):
             #  as it might be a very large set (100s of Modules) vs a smaller Modules
             #  set that's present in the current train batch.
             modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
-            # if self.env_runner_group.num_remote_workers() > 0:
             self.env_runner_group.sync_weights(
                 # Sync weights from learner_group to all EnvRunners.
                 from_worker_or_learner_group=self.learner_group,
                 policies=modules_to_update,
                 inference_only=True,
             )
-            # else:
-            #    weights = self.learner_group.get_weights(inference_only=True)
-            #    self.env_runner.set_weights(weights)
 
-        return self.metrics.reduce()
-
+    @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:
         # Collect batches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:

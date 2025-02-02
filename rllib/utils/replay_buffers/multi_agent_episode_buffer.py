@@ -75,7 +75,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         for i in range(num_timesteps):
             # If terminated we create a new episode.
             if eps.is_done:
-                episodes.append(eps.finalize())
+                episodes.append(eps.to_numpy())
                 eps = MultiAgentEpisode()
                 terminateds = {aid: False for aid in agent_ids}
                 truncateds = {aid: False for aid in agent_ids}

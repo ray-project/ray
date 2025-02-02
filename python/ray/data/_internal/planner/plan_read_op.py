@@ -18,6 +18,7 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.util import _warn_on_high_parallelism
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import ReadTask
 from ray.experimental.locations import get_local_object_locations
 from ray.util.debug import log_once
@@ -56,7 +57,9 @@ def cleaned_metadata(read_task: ReadTask, read_task_ref) -> BlockMetadata:
 
 
 def plan_read_op(
-    op: Read, physical_children: List[PhysicalOperator]
+    op: Read,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
 ) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for Read.
 
@@ -94,6 +97,7 @@ def plan_read_op(
         return ret
 
     inputs = InputDataBuffer(
+        data_context,
         input_data_factory=get_input_data,
     )
 
@@ -112,6 +116,7 @@ def plan_read_op(
     return MapOperator.create(
         map_transformer,
         inputs,
+        data_context,
         name=op.name,
         target_max_block_size=None,
         compute_strategy=TaskPoolStrategy(op._concurrency),

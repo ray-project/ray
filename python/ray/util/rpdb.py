@@ -43,7 +43,9 @@ class _LF2CRLF_FileWrapper(object):
         self.flush = fh.flush
         self.fileno = fh.fileno
         if hasattr(fh, "encoding"):
-            self._send = lambda data: connection.sendall(data.encode(fh.encoding))
+            self._send = lambda data: connection.sendall(
+                data.encode(fh.encoding, errors="replace")
+            )
         else:
             self._send = connection.sendall
 
@@ -117,7 +119,7 @@ class _RemotePdb(Pdb):
         self._listen_socket.listen(1)
         connection, address = self._listen_socket.accept()
         if not self._quiet:
-            _cry("RemotePdb accepted connection from %s." % repr(address))
+            _cry(f"RemotePdb accepted connection from {address}")
         self.handle = _LF2CRLF_FileWrapper(connection)
         Pdb.__init__(
             self,
@@ -342,16 +344,28 @@ def _post_mortem():
 
 
 def _connect_pdb_client(host, port):
+    if sys.platform == "win32":
+        import msvcrt
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((host, port))
 
     while True:
         # Get the list of sockets which are readable.
-        read_sockets, write_sockets, error_sockets = select.select(
-            [sys.stdin, s], [], []
-        )
+        if sys.platform == "win32":
+            ready_to_read = select.select([s], [], [], 1)[0]
+            if msvcrt.kbhit():
+                ready_to_read.append(sys.stdin)
+            if not ready_to_read and not sys.stdin.isatty():
+                # in tests, when using pexpect, the pipe makes
+                # the msvcrt.kbhit() trick fail. Assume we are waiting
+                # for stdin, since this will block waiting for input
+                ready_to_read.append(sys.stdin)
+        else:
+            ready_to_read, write_sockets, error_sockets = select.select(
+                [sys.stdin, s], [], []
+            )
 
-        for sock in read_sockets:
+        for sock in ready_to_read:
             if sock == s:
                 # Incoming message from remote debugger.
                 data = sock.recv(4096)

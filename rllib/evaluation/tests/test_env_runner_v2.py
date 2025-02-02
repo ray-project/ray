@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.connectors.connector import ActionConnector, ConnectorContext
 from ray.rllib.evaluation.metrics import RolloutMetrics
@@ -52,6 +52,10 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_sample_batch_rollout_single_agent_env(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment(DebugCounterEnv)
             .framework("torch")
             .training(
@@ -77,6 +81,10 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_sample_batch_rollout_multi_agent_env(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -144,6 +152,10 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .framework("torch")
             .environment("env_under_test")
             .env_runners(
@@ -205,6 +217,10 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -266,7 +282,7 @@ class TestEnvRunnerV2(unittest.TestCase):
                 assert ac_data.input_dict, "raw input dict should be available"
                 return ac_data
 
-        class AddActionConnectorCallbacks(DefaultCallbacks):
+        class AddActionConnectorCallbacks(RLlibCallback):
             def on_create_policy(self, *, policy_id, policy) -> None:
                 policy.action_connectors.append(
                     CheckInputDictActionConnector(ConnectorContext.from_policy(policy))
@@ -274,6 +290,10 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -298,6 +318,10 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_start_episode(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -352,6 +376,10 @@ class TestEnvRunnerV2(unittest.TestCase):
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -399,7 +427,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         self.assertTrue(len(list(outputs[0].agent_rewards.keys())) == 2)
 
     def test_env_error(self):
-        class CheckErrorCallbacks(DefaultCallbacks):
+        class CheckErrorCallbacks(RLlibCallback):
             def on_episode_end(
                 self, *, worker, base_env, policies, episode, env_index=None, **kwargs
             ) -> None:
@@ -409,6 +437,10 @@ class TestEnvRunnerV2(unittest.TestCase):
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(

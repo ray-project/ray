@@ -1,12 +1,16 @@
 import logging
 import posixpath
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from urllib.parse import urlparse
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.util import _is_local_scheme, call_with_retry
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _is_local_scheme,
+    call_with_retry,
+)
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
@@ -23,11 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-WRITE_FILE_MAX_ATTEMPTS = 10
-WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
-
-
-class _FileDatasink(Datasink):
+class _FileDatasink(Datasink[None]):
     def __init__(
         self,
         path: str,
@@ -62,8 +62,12 @@ class _FileDatasink(Datasink):
                 dataset_uuid=dataset_uuid, file_format=file_format
             )
 
+        self._data_context = DataContext.get_current()
         self.unresolved_path = path
         paths, self.filesystem = _resolve_paths_and_filesystem(path, filesystem)
+        self.filesystem = RetryingPyFileSystem.wrap(
+            self.filesystem, context=self._data_context
+        )
         assert len(paths) == 1, len(paths)
         self.path = paths[0]
 
@@ -79,6 +83,9 @@ class _FileDatasink(Datasink):
         return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
     def on_write_start(self) -> None:
+        self.has_created_dir = self._create_dir(self.path)
+
+    def _create_dir(self, dest) -> bool:
         """Create a directory to write files to.
 
         If ``try_create_dir`` is ``False``, this method is a no-op.
@@ -96,19 +103,19 @@ class _FileDatasink(Datasink):
         # a policy only allows users to write blobs prefixed with s3://bucket/foo
         # a call to create_dir for s3://bucket/foo/bar will fail even though it
         # should not.
-        parsed_uri = urlparse(self.path)
+        parsed_uri = urlparse(dest)
         is_s3_uri = parsed_uri.scheme == "s3"
-        skip_create_dir_for_s3 = (
-            is_s3_uri and not DataContext.get_current().s3_try_create_dir
-        )
+        skip_create_dir_for_s3 = is_s3_uri and not self._data_context.s3_try_create_dir
 
         if self.try_create_dir and not skip_create_dir_for_s3:
-            if self.filesystem.get_file_info(self.path).type is FileType.NotFound:
+            if self.filesystem.get_file_info(dest).type is FileType.NotFound:
                 # Arrow's S3FileSystem doesn't allow creating buckets by default, so we
                 # add a query arg enabling bucket creation if an S3 URI is provided.
-                tmp = _add_creatable_buckets_param_if_s3_uri(self.path)
+                tmp = _add_creatable_buckets_param_if_s3_uri(dest)
                 self.filesystem.create_dir(tmp, recursive=True)
-                self.has_created_dir = True
+                return True
+
+        return False
 
     def write(
         self,
@@ -130,13 +137,10 @@ class _FileDatasink(Datasink):
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         raise NotImplementedError
 
-    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
-        aggregated_results = super().on_write_complete(write_result_blocks)
-
+    def on_write_complete(self, write_result: WriteResult[None]):
         # If no rows were written, we can delete the directory.
-        if self.has_created_dir and aggregated_results.num_rows == 0:
+        if self.has_created_dir and write_result.num_rows == 0:
             self.filesystem.delete_dir(self.path)
-        return aggregated_results
 
     @property
     def supports_distributed_writes(self) -> bool:
@@ -188,18 +192,16 @@ class RowBasedFileDatasink(_FileDatasink):
                 row, ctx.task_idx, block_index, row_index
             )
             write_path = posixpath.join(self.path, filename)
+            logger.debug(f"Writing {write_path} file.")
 
             def write_row_to_path():
                 with self.open_output_stream(write_path) as file:
                     self.write_row_to_file(row, file)
 
-            logger.debug(f"Writing {write_path} file.")
             call_with_retry(
                 write_row_to_path,
                 description=f"write '{write_path}'",
-                match=DataContext.get_current().retried_io_errors,
-                max_attempts=WRITE_FILE_MAX_ATTEMPTS,
-                max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
+                match=self._data_context.retried_io_errors,
             )
 
 
@@ -223,11 +225,11 @@ class BlockBasedFileDatasink(_FileDatasink):
     """  # noqa: E501
 
     def __init__(
-        self, path, *, num_rows_per_file: Optional[int] = None, **file_datasink_kwargs
+        self, path, *, min_rows_per_file: Optional[int] = None, **file_datasink_kwargs
     ):
         super().__init__(path, **file_datasink_kwargs)
 
-        self._num_rows_per_file = num_rows_per_file
+        self._min_rows_per_file = min_rows_per_file
 
     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
         """Write a block of data to a file.
@@ -252,11 +254,9 @@ class BlockBasedFileDatasink(_FileDatasink):
         call_with_retry(
             write_block_to_path,
             description=f"write '{write_path}'",
-            match=DataContext.get_current().retried_io_errors,
-            max_attempts=WRITE_FILE_MAX_ATTEMPTS,
-            max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
+            match=self._data_context.retried_io_errors,
         )
 
     @property
-    def num_rows_per_write(self) -> Optional[int]:
-        return self._num_rows_per_file
+    def min_rows_per_write(self) -> Optional[int]:
+        return self._min_rows_per_file

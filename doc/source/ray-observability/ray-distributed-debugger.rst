@@ -35,7 +35,44 @@ Create a new virtual environment and install dependencies.
 Start a Ray cluster
 ~~~~~~~~~~~~~~~~~~~
 
-Run `ray start --head` to start a Ray cluster.
+.. tab-set::
+
+  .. tab-item:: Local
+
+    Run `ray start --head` to start a local Ray cluster.
+
+  .. tab-item:: KubeRay
+
+    Follow the instructions in :doc:`the RayCluster quickstart <../cluster/kubernetes/getting-started/raycluster-quick-start>` to set up a cluster.
+    You need to connect VS Code to the cluster. For example, add the following to the `ray-head` container and make sure `sshd` is running in the `ray-head` container.
+
+    .. code-block:: yaml
+
+        ports:
+        - containerPort: 22
+          name: ssd
+
+
+
+    .. note::
+
+        How to run `sshd` in the `ray-head` container depends on your setup. For example you can use `supervisord`.
+        A simple way to run `sshd` interactively for testing is by logging into the head node pod and running:
+
+        .. code-block:: bash
+
+            sudo apt-get install openssh-server
+            sudo mkdir -p /run/sshd
+            sudo /usr/sbin/sshd -D
+
+    You can then connect to the cluster via SSH by running:
+
+    .. code-block:: bash
+
+        kubectl port-forward service/raycluster-sample-head-svc 2222:22
+
+    After checking that `ssh -p 2222 ray@localhost` works, set up VS Code as described in the
+    `VS Code SSH documentation <https://code.visualstudio.com/docs/remote/ssh>`_.
 
 
 Register the cluster
@@ -55,7 +92,7 @@ Create a file `job.py` with the following snippet. Add `breakpoint()` in the Ray
 .. literalinclude:: ./doc_code/ray-distributed-debugger.py
     :language: python
 
-Run your Ray app 
+Run your Ray app
 ~~~~~~~~~~~~~~~~
 
 Start running your Ray app.
@@ -98,7 +135,7 @@ Run a Ray task raised exception
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Run the same `job.py` file with an additional argument to raise an exception.
-    
+
 .. code-block:: bash
 
     python job.py raise-exception
@@ -112,7 +149,7 @@ When the app throws an exception:
 - The debugger freezes the task.
 - The terminal clearly indicates when the debugger pauses a task and waits for the debugger to attach.
 - The paused task is listed in the Ray Debugger extension.
-- Click the play icon next to the name of the paused task to attach the debugger and start debugging. 
+- Click the play icon next to the name of the paused task to attach the debugger and start debugging.
 
 .. image:: ./images/post-moretem.gif
     :align: center

@@ -1,18 +1,15 @@
 import gymnasium as gym
 import logging
 import numpy as np
-import random
+import uuid
+
 from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
 
-import ray
-from ray.actor import ActorHandle
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner import Learner
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec, MultiRLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
@@ -20,16 +17,17 @@ from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.spaces.space_utils import from_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-# This is the default schema used if no `input_read_schema` is set in
-# the config. If a user passes in a schema into `input_read_schema`
-# this user-defined schema has to comply with the keys of `SCHEMA`,
-# while values correspond to the columns in the user's dataset. Note
-# that only the user-defined values will be overridden while all
-# other values from SCHEMA remain as defined here.
+#: This is the default schema used if no `input_read_schema` is set in
+#: the config. If a user passes in a schema into `input_read_schema`
+#: this user-defined schema has to comply with the keys of `SCHEMA`,
+#: while values correspond to the columns in the user's dataset. Note
+#: that only the user-defined values will be overridden while all
+#: other values from SCHEMA remain as defined here.
 SCHEMA = {
     Columns.EPS_ID: Columns.EPS_ID,
     Columns.AGENT_ID: Columns.AGENT_ID,
@@ -51,7 +49,7 @@ SCHEMA = {
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class OfflinePreLearner:
     """Class that coordinates data transformation from dataset to learner.
 
@@ -72,9 +70,7 @@ class OfflinePreLearner:
     batches and make them 'Learner'-ready. When deriving from this class
     the `__call__` method and `_map_to_episodes` can be overridden to induce
     custom logic for the complete transformation pipeline (`__call__`) or
-    for converting to episodes only ('_map_to_episodes`). For an example
-    how this class can be used to also compute values and advantages see
-    `rllib.algorithm.marwil.marwil_prelearner.MAWRILOfflinePreLearner`.
+    for converting to episodes only ('_map_to_episodes`).
 
     Custom `OfflinePreLearner` classes can be passed into
     `AlgorithmConfig.offline`'s `prelearner_class`. The `OfflineData` class
@@ -84,47 +80,23 @@ class OfflinePreLearner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(
         self,
+        *,
         config: "AlgorithmConfig",
-        learner: Union[Learner, list[ActorHandle]],
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
-        locality_hints: Optional[list] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
+        **kwargs: Dict[str, Any],
     ):
 
-        self.config = config
-        self.input_read_episodes = self.config.input_read_episodes
-        self.input_read_sample_batches = self.config.input_read_sample_batches
-        # We need this learner to run the learner connector pipeline.
-        # If it is a `Learner` instance, the `Learner` is local.
-        if isinstance(learner, Learner):
-            self._learner = learner
-            self.learner_is_remote = False
-            self._module = self._learner._module
-        # Otherwise we have remote `Learner`s.
-        else:
-            # TODO (simon): Check with the data team how to get at
-            # initialization the data block location.
-            node_id = ray.get_runtime_context().get_node_id()
-            # Shuffle indices such that not each data block syncs weights
-            # with the same learner in case there are multiple learners
-            # on the same node like the `PreLearner`.
-            indices = list(range(len(locality_hints)))
-            random.shuffle(indices)
-            locality_hints = [locality_hints[i] for i in indices]
-            learner = [learner[i] for i in indices]
-            # Choose a learner from the same node.
-            for i, hint in enumerate(locality_hints):
-                if hint == node_id:
-                    self._learner = learner[i]
-            # If no learner has been chosen, there is none on the same node.
-            if not self._learner:
-                # Then choose a learner randomly.
-                self._learner = learner[random.randint(0, len(learner) - 1)]
-            self.learner_is_remote = True
-            # Build the module from spec. Note, this will be a MultiRLModule.
-            self._module = module_spec.build()
-            self._module.set_state(module_state)
+        self.config: AlgorithmConfig = config
+        self.input_read_episodes: bool = self.config.input_read_episodes
+        self.input_read_sample_batches: bool = self.config.input_read_sample_batches
+        # Build the module from spec.
+        self._module: MultiRLModule = module_spec.build()
+        self._module.set_state(module_state)
+        # Map the module to the device, if necessary.
+        # TODO (simon): Check here if we already have a list.
+        # self._set_device(device_strings)
 
         # Store the observation and action space if defined, otherwise we
         # set them to `None`. Note, if `None` the `convert_from_jsonable`
@@ -138,9 +110,9 @@ class OfflinePreLearner:
         )
         # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
-        self._is_multi_agent = config.is_multi_agent()
+        self._is_multi_agent: bool = config.is_multi_agent
         # Set the counter to zero.
-        self.iter_since_last_module_update = 0
+        self.iter_since_last_module_update: int = 0
         # self._future = None
 
         # Set up an episode buffer, if the module is stateful or we sample from
@@ -166,7 +138,7 @@ class OfflinePreLearner:
 
     @OverrideToImplementCustomLogic
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
-        """Prepares plain data batches for training with `Learner`s.
+        """Prepares plain data batches for training with `Learner`'s.
 
         Args:
             batch: A dictionary of numpy arrays containing either column data
@@ -183,7 +155,7 @@ class OfflinePreLearner:
             import msgpack_numpy as mnp
 
             # Read the episodes and decode them.
-            episodes = [
+            episodes: List[SingleAgentEpisode] = [
                 SingleAgentEpisode.from_state(
                     msgpack.unpackb(state, object_hook=mnp.decode)
                 )
@@ -193,22 +165,31 @@ class OfflinePreLearner:
             episodes = self._validate_episodes(episodes)
             # Add the episodes to the buffer.
             self.episode_buffer.add(episodes)
+            # TODO (simon): Refactor into a single code block for both cases.
             episodes = self.episode_buffer.sample(
                 num_items=self.config.train_batch_size_per_learner,
+                batch_length_T=self.config.model_config.get("max_seq_len", 0)
+                if self._module.is_stateful()
+                else None,
+                n_step=self.config.get("n_step", 1) or 1,
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
                 sample_episodes=True,
-                finalize=True,
+                to_numpy=True,
             )
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
-            episodes = OfflinePreLearner._map_sample_batch_to_episode(
+            episodes: List[
+                SingleAgentEpisode
+            ] = OfflinePreLearner._map_sample_batch_to_episode(
                 self._is_multi_agent,
                 batch,
-                finalize=True,
+                to_numpy=True,
                 schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
-            )["episodes"]
+            )[
+                "episodes"
+            ]
             # Ensure that all episodes are done and no duplicates are in the batch.
             episodes = self._validate_episodes(episodes)
             # Add the episodes to the buffer.
@@ -216,25 +197,29 @@ class OfflinePreLearner:
             # Sample steps from the buffer.
             episodes = self.episode_buffer.sample(
                 num_items=self.config.train_batch_size_per_learner,
+                batch_length_T=self.config.model_config.get("max_seq_len", 0)
+                if self._module.is_stateful()
+                else None,
+                n_step=self.config.get("n_step", 1) or 1,
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
                 sample_episodes=True,
-                finalize=True,
+                to_numpy=True,
             )
         # Otherwise we map the batch to episodes.
         else:
-            episodes = self._map_to_episodes(
+            episodes: List[SingleAgentEpisode] = self._map_to_episodes(
                 self._is_multi_agent,
                 batch,
                 schema=SCHEMA | self.config.input_read_schema,
-                finalize=True,
+                to_numpy=True,
                 input_compress_columns=self.config.input_compress_columns,
                 observation_space=self.observation_space,
                 action_space=self.action_space,
             )["episodes"]
 
         # TODO (simon): Make synching work. Right now this becomes blocking or never
-        # receives weights. Learners appear to be non accessable via other actors.
+        #  receives weights. Learners appear to be non accessi ble via other actors.
         # Increase the counter for updating the module.
         # self.iter_since_last_module_update += 1
 
@@ -266,6 +251,9 @@ class OfflinePreLearner:
             batch={},
             episodes=episodes,
             shared_data={},
+            # TODO (sven): Add MetricsLogger to non-Learner components that have a
+            #  LearnerConnector pipeline.
+            metrics=None,
         )
         # Convert to `MultiAgentBatch`.
         batch = MultiAgentBatch(
@@ -366,10 +354,11 @@ class OfflinePreLearner:
         is_multi_agent: bool,
         batch: Dict[str, Union[list, np.ndarray]],
         schema: Dict[str, str] = SCHEMA,
-        finalize: bool = False,
+        to_numpy: bool = False,
         input_compress_columns: Optional[List[str]] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
+        **kwargs: Dict[str, Any],
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 
@@ -408,7 +397,7 @@ class OfflinePreLearner:
 
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                NotImplementedError
+                pass
             else:
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
@@ -480,17 +469,19 @@ class OfflinePreLearner:
                     len_lookback_buffer=0,
                 )
 
-                if finalize:
-                    episode.finalize()
+                if to_numpy:
+                    episode.to_numpy()
                 episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
 
+    @OverrideToImplementCustomLogic
+    @staticmethod
     def _map_sample_batch_to_episode(
         is_multi_agent: bool,
         batch: Dict[str, Union[list, np.ndarray]],
         schema: Dict[str, str] = SCHEMA,
-        finalize: bool = False,
+        to_numpy: bool = False,
         input_compress_columns: Optional[List[str]] = None,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps an old stack `SampleBatch` to new stack episodes."""
@@ -523,23 +514,85 @@ class OfflinePreLearner:
 
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                NotImplementedError
+                pass
             else:
-                # Unpack observations, if needed.
-                obs = (
-                    unpack_if_needed(obs.tolist())
-                    if schema[Columns.OBS] in input_compress_columns
-                    else obs.tolist()
-                )
-                # Append the last `new_obs` to get the correct length of observations.
-                obs.append(
-                    unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i][-1])
-                    if schema[Columns.OBS] in input_compress_columns
-                    else batch[schema[Columns.NEXT_OBS]][i][-1]
-                )
+                # Unpack observations, if needed. Note, observations could
+                # be either compressed by their entirety (the complete batch
+                # column) or individually (each column entry).
+                if isinstance(obs, str):
+                    # Decompress the observations if we have a string, i.e.
+                    # observations are compressed in their entirety.
+                    obs = unpack_if_needed(obs)
+                    # Convert to a list of arrays. This is needed as input by
+                    # the `SingleAgentEpisode`.
+                    obs = [obs[i, ...] for i in range(obs.shape[0])]
+                # Otherwise observations are only compressed inside of the
+                # batch column (if at all).
+                elif isinstance(obs, np.ndarray):
+                    # Unpack observations, if they are compressed otherwise we
+                    # simply convert to a list, which is needed by the
+                    # `SingleAgentEpisode`.
+                    obs = (
+                        unpack_if_needed(obs.tolist())
+                        if schema[Columns.OBS] in input_compress_columns
+                        else obs.tolist()
+                    )
+                else:
+                    raise TypeError(
+                        f"Unknown observation type: {type(obs)}. When mapping "
+                        "from old recorded `SampleBatches` batched "
+                        "observations should be either of type `np.array` "
+                        "or - if the column is compressed - of `str` type."
+                    )
+
+                if schema[Columns.NEXT_OBS] in batch:
+                    # Append the last `new_obs` to get the correct length of
+                    # observations.
+                    obs.append(
+                        unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i][-1])
+                        if schema[Columns.OBS] in input_compress_columns
+                        else batch[schema[Columns.NEXT_OBS]][i][-1]
+                    )
+                else:
+                    # Otherwise we duplicate the last observation.
+                    obs.append(obs[-1])
+
+                # Check, if we have `done`, `truncated`, or `terminated`s in
+                # the batch.
+                if (
+                    schema[Columns.TRUNCATEDS] in batch
+                    and schema[Columns.TERMINATEDS] in batch
+                ):
+                    truncated = batch[schema[Columns.TRUNCATEDS]][i][-1]
+                    terminated = batch[schema[Columns.TERMINATEDS]][i][-1]
+                elif (
+                    schema[Columns.TRUNCATEDS] in batch
+                    and schema[Columns.TERMINATEDS] not in batch
+                ):
+                    truncated = batch[schema[Columns.TRUNCATEDS]][i][-1]
+                    terminated = False
+                elif (
+                    schema[Columns.TRUNCATEDS] not in batch
+                    and schema[Columns.TERMINATEDS] in batch
+                ):
+                    terminated = batch[schema[Columns.TERMINATEDS]][i][-1]
+                    truncated = False
+                elif "done" in batch:
+                    terminated = batch["done"][i][-1]
+                    truncated = False
+                # Otherwise, if no `terminated`, nor `truncated` nor `done`
+                # is given, we consider the episode as terminated.
+                else:
+                    terminated = True
+                    truncated = False
+
                 # Create a `SingleAgentEpisode`.
                 episode = SingleAgentEpisode(
-                    id_=str(batch[schema[Columns.EPS_ID]][i][0]),
+                    # If the recorded episode has an ID we use this ID,
+                    # otherwise we generate a new one.
+                    id_=str(batch[schema[Columns.EPS_ID]][i][0])
+                    if schema[Columns.EPS_ID] in batch
+                    else uuid.uuid4().hex,
                     agent_id=agent_id,
                     observations=obs,
                     infos=(
@@ -554,16 +607,8 @@ class OfflinePreLearner:
                         else batch[schema[Columns.ACTIONS]][i]
                     ),
                     rewards=batch[schema[Columns.REWARDS]][i],
-                    terminated=(
-                        any(batch[schema[Columns.TERMINATEDS]][i])
-                        if schema[Columns.TERMINATEDS] in batch
-                        else any(batch["dones"][i])
-                    ),
-                    truncated=(
-                        any(batch[schema[Columns.TRUNCATEDS]][i])
-                        if schema[Columns.TRUNCATEDS] in batch
-                        else False
-                    ),
+                    terminated=terminated,
+                    truncated=truncated,
                     # TODO (simon): Results in zero-length episodes in connector.
                     # t_started=batch[Columns.T if Columns.T in batch else
                     # "unroll_id"][i][0],
@@ -585,11 +630,11 @@ class OfflinePreLearner:
                     },
                     len_lookback_buffer=0,
                 )
-                # Finalize, if necessary.
+                # Numpy'ized, if necessary.
                 # TODO (simon, sven): Check, if we should convert all data to lists
                 # before. Right now only obs are lists.
-                if finalize:
-                    episode.finalize()
+                if to_numpy:
+                    episode.to_numpy()
                 episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}

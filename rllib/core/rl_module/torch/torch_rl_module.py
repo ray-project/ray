@@ -43,7 +43,7 @@ class TorchRLModule(nn.Module, RLModule):
     framework: str = "torch"
 
     # Stick with torch default.
-    STATE_FILE_NAME = "module_state.pt"
+    STATE_FILE_NAME = "module_state"
 
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
@@ -57,16 +57,18 @@ class TorchRLModule(nn.Module, RLModule):
                 parts = attr.split(".")
                 if not hasattr(self, parts[0]):
                     continue
-                target = getattr(self, parts[0])
+                target_name = parts[0]
+                target_obj = getattr(self, target_name)
                 # Traverse from the next part on (if nested).
                 for part in parts[1:]:
-                    if not hasattr(target, part):
-                        target = None
+                    if not hasattr(target_obj, part):
+                        target_obj = None
                         break
-                    target = getattr(target, part)
+                    target_name = part
+                    target_obj = getattr(target_obj, target_name)
                 # Delete, if target is valid.
-                if target is not None:
-                    del target
+                if target_obj is not None:
+                    delattr(self, target_name)
 
     def compile(self, compile_config: TorchCompileConfig):
         """Compile the forward methods of this module.
@@ -161,7 +163,6 @@ class TorchRLModule(nn.Module, RLModule):
     def get_train_action_dist_cls(self) -> Type[TorchDistribution]:
         return self.get_inference_action_dist_cls()
 
-    @override(nn.Module)
     def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE!
 
@@ -177,7 +178,11 @@ class TorchRLModule(nn.Module, RLModule):
         training sample collection (w/ exploration behavior).
         `_forward_train()` to define the forward pass prior to loss computation.
         """
-        return self.forward_train(batch, **kwargs)
+        # TODO (sven): Experimental to make ONNX exported models work.
+        if self.config.inference_only:
+            return self.forward_exploration(batch, **kwargs)
+        else:
+            return self.forward_train(batch, **kwargs)
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):

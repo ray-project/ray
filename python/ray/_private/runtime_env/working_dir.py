@@ -161,7 +161,11 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         logger: logging.Logger = default_logger,
     ) -> int:
         local_dir = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_aio_client, logger=logger
+            uri,
+            self._resources_dir,
+            self._gcs_aio_client,
+            logger=logger,
+            overwrite=True,
         )
         return get_directory_size_bytes(local_dir)
 

@@ -75,6 +75,10 @@ class TestExplorations(unittest.TestCase):
     def test_impala(self):
         config = (
             impala.IMPALAConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("CartPole-v1")
             .env_runners(num_env_runners=0)
             .resources(num_gpus=0)
@@ -87,7 +91,13 @@ class TestExplorations(unittest.TestCase):
 
     def test_ppo_discr(self):
         config = (
-            ppo.PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=0)
+            ppo.PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
+            .environment("CartPole-v1")
+            .env_runners(num_env_runners=0)
         )
         do_test_explorations(
             config,
@@ -97,7 +107,13 @@ class TestExplorations(unittest.TestCase):
 
     def test_ppo_cont(self):
         config = (
-            ppo.PPOConfig().environment("Pendulum-v1").env_runners(num_env_runners=0)
+            ppo.PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
+            .environment("Pendulum-v1")
+            .env_runners(num_env_runners=0)
         )
         do_test_explorations(
             config,

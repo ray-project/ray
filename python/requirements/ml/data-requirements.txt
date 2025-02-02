@@ -1,8 +1,8 @@
 # Used by CI for datasets and docs.
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
-dask[complete]==2022.10.1; python_version < '3.12'
-distributed==2022.10.1; python_version < '3.12'
+dask[complete]==2022.10.2; python_version < '3.12'
+distributed==2022.10.2; python_version < '3.12'
 dask[complete]==2024.6.0; python_version >= '3.12'
 distributed==2024.6.0; python_version >= '3.12'
 aioboto3==11.2.0

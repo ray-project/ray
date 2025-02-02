@@ -270,6 +270,10 @@ class FaultTolerantActorManager:
         self._restored_actors = set()
         self.add_actors(actors or [])
 
+        # For round-robin style async requests, keep track of which actor to send
+        # a new func next.
+        self._current_actor_id = self._next_id
+
         # Maps outstanding async requests to the IDs of the actor IDs that
         # are executing them.
         self._in_flight_req_to_actor_id: Dict[ray.ObjectRef, int] = {}
@@ -398,7 +402,7 @@ class FaultTolerantActorManager:
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
         *,
         healthy_only: bool = True,
-        remote_actor_ids: List[int] = None,
+        remote_actor_ids: Optional[List[int]] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
@@ -499,22 +503,29 @@ class FaultTolerantActorManager:
         #  For async fetch result, we can also specify a single, or list of tags. For
         #  example, ("eval", "sample") will fetch all the sample() calls on eval
         #  workers.
-        remote_actor_ids = remote_actor_ids or self.actor_ids()
+        if not remote_actor_ids:
+            remote_actor_ids = self.actor_ids()
+
+        # Perform round robin assignment of all provided calls for any number of our
+        # actors. Note that this way, some actors might receive more than 1 request in
+        # this call.
+        if isinstance(func, list) and len(remote_actor_ids) != len(func):
+            remote_actor_ids = [
+                (self._current_actor_id + i) % self.num_actors()
+                for i in range(len(func))
+            ]
+            # Update our round-robin pointer.
+            self._current_actor_id += len(func) % self.num_actors()
 
         if healthy_only:
             func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
                 func, remote_actor_ids
             )
 
-        if isinstance(func, list) and len(func) != len(remote_actor_ids):
-            raise ValueError(
-                f"The number of functions specified {len(func)} must match "
-                f"the number of remote actor indices {len(remote_actor_ids)}."
-            )
-
         num_calls_to_make: Dict[int, int] = defaultdict(lambda: 0)
         # Drop calls to actors that are too busy.
         if isinstance(func, list):
+            assert len(func) == len(remote_actor_ids)
             limited_func = []
             limited_remote_actor_ids = []
             for i, f in zip(remote_actor_ids, func):

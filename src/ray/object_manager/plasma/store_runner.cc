@@ -9,11 +9,12 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
+#include "ray/util/thread_utils.h"
 
 namespace plasma {
 namespace internal {
 void SetMallocGranularity(int value);
-}
+}  // namespace internal
 
 PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name,
                                      int64_t system_memory,

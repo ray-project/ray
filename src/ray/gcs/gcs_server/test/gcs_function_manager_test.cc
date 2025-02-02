@@ -27,10 +27,11 @@ class GcsFunctionManagerTest : public Test {
  public:
   void SetUp() override {
     kv = std::make_unique<MockInternalKVInterface>();
-    function_manager = std::make_unique<GcsFunctionManager>(*kv);
+    function_manager = std::make_unique<GcsFunctionManager>(*kv, io_context);
   }
   std::unique_ptr<GcsFunctionManager> function_manager;
   std::unique_ptr<MockInternalKVInterface> kv;
+  instrumented_io_context io_context;
 };
 
 TEST_F(GcsFunctionManagerTest, TestFunctionManagerGC) {

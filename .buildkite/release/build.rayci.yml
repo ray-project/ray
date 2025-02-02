@@ -5,8 +5,8 @@ steps:
     key: anyscalebuild
     instance_type: release-medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- anyscale 
-        --python-version {{matrix.python}} --platform {{matrix.platform}} 
+      - bazel run //ci/ray_ci:build_in_docker -- anyscale
+        --python-version {{matrix.python}} --platform {{matrix.platform}}
         --image-type ray --upload
     depends_on:
       - manylinux
@@ -16,7 +16,7 @@ steps:
     matrix:
       setup:
         python:
-          # This list should be kept in sync with the list of supported Python in 
+          # This list should be kept in sync with the list of supported Python in
           # release test suite. We don't have release tests for Python 3.10 yet.
           - "3.9"
           - "3.11"
@@ -37,7 +37,7 @@ steps:
       - forge
       - ray-mlcudabase
     matrix:
-      # This list should be kept in sync with the list of supported Python in 
-      # release test suite. We don't have ray-ml release tests for Python 3.10 and 3.11 
+      # This list should be kept in sync with the list of supported Python in
+      # release test suite. We don't have ray-ml release tests for Python 3.10 and 3.11
       # yet.
       - "3.9"

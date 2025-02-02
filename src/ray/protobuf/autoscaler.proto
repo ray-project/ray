@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc.autoscaler;
 
@@ -78,9 +77,15 @@ message GangResourceRequest {
 // Cluster resource constraint represents minimal cluster size requirement,
 // this is issued through ray.autoscaler.sdk.request_resources.
 message ClusterResourceConstraint {
-  // If not emtpy, the cluster should have the capacity (total resource) to fit
-  // the min_bundles.
-  repeated ResourceRequestByCount min_bundles = 1;
+  // Commands the autoscaler to accommodate the specified requests.
+  //
+  // For more context, please check out py-doc for `ray.autoscaler.sdk.request_resources`
+  // method
+  //
+  // NOTE: This call is only a hint to the autoscaler. The actual resulting cluster
+  //       size may be slightly larger or smaller than expected depending on the
+  //       internal bin packing algorithm and max worker count restrictions.
+  repeated ResourceRequestByCount resource_requests = 1;
 }
 
 // Node status for a ray node.
@@ -312,11 +317,37 @@ message DrainNodeReply {
   string rejection_reason_message = 2;
 }
 
+message NodeGroupConfig {
+  map<string, uint64> resources = 1;
+  // The minium number of nodes to launch.
+  uint32 min_count = 2;
+  // The maximum number of nodes to launch.
+  // -1 means unlimited.
+  int32 max_count = 3;
+  string name = 4;
+}
+
+message ClusterConfig {
+  // Min resources for the entire cluster.
+  map<string, uint64> min_resources = 1;
+  // Max resources for the entire cluster.
+  map<string, uint64> max_resources = 2;
+  // Configs for the node groups including head and worker nodes.
+  repeated NodeGroupConfig node_group_configs = 3;
+}
+
+message ReportClusterConfigRequest {
+  ClusterConfig cluster_config = 1;
+}
+
+message ReportClusterConfigReply {}
+
 service AutoscalerStateService {
   rpc GetClusterResourceState(GetClusterResourceStateRequest)
       returns (GetClusterResourceStateReply);
   rpc ReportAutoscalingState(ReportAutoscalingStateRequest)
       returns (ReportAutoscalingStateReply);
+  rpc ReportClusterConfig(ReportClusterConfigRequest) returns (ReportClusterConfigReply);
   // Request additional cluster resources constraints. This is the RPC call made
   // when users call ray.autoscaler.sdk.request_resources.
   rpc RequestClusterResourceConstraint(RequestClusterResourceConstraintRequest)

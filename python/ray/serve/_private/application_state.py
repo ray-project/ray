@@ -601,20 +601,26 @@ class ApplicationState:
         # application status to set.
         deployment_statuses = self.get_deployments_statuses()
         lowest_rank_status = min(deployment_statuses, key=lambda info: info.rank)
-        if lowest_rank_status.status == DeploymentStatus.UNHEALTHY:
+        if lowest_rank_status.status == DeploymentStatus.DEPLOY_FAILED:
+            failed_deployments = [
+                s.name
+                for s in deployment_statuses
+                if s.status == DeploymentStatus.DEPLOY_FAILED
+            ]
+            return (
+                ApplicationStatus.DEPLOY_FAILED,
+                f"Failed to update the deployments {failed_deployments}.",
+            )
+        elif lowest_rank_status.status == DeploymentStatus.UNHEALTHY:
             unhealthy_deployment_names = [
                 s.name
                 for s in deployment_statuses
                 if s.status == DeploymentStatus.UNHEALTHY
             ]
-            status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
-            if self._status in [
-                ApplicationStatus.DEPLOYING,
-                ApplicationStatus.DEPLOY_FAILED,
-            ]:
-                return ApplicationStatus.DEPLOY_FAILED, status_msg
-            else:
-                return ApplicationStatus.UNHEALTHY, status_msg
+            return (
+                ApplicationStatus.UNHEALTHY,
+                f"The deployments {unhealthy_deployment_names} are UNHEALTHY.",
+            )
         elif lowest_rank_status.status == DeploymentStatus.UPDATING:
             return ApplicationStatus.DEPLOYING, ""
         elif (
@@ -1153,7 +1159,11 @@ def build_serve_application(
         )
 
         deploy_args_list = []
-        built_app: BuiltApplication = build_app(app, name=name)
+        built_app: BuiltApplication = build_app(
+            app,
+            name=name,
+            default_runtime_env=ray.get_runtime_context().runtime_env,
+        )
         for deployment in built_app.deployments:
             is_ingress = deployment.name == built_app.ingress_deployment_name
             deploy_args_list.append(

@@ -78,7 +78,7 @@ class TestModelBase(unittest.TestCase):
 
         # There should be only one break reason - `return_value` - since inputs and
         # outputs are not checked
-        self.assertEquals(len(break_reasons), 1)
+        self.assertEqual(len(break_reasons), 1)
 
     @unittest.skipIf(not _dynamo_is_available(), "torch._dynamo not available")
     def test_torch_compile_forwards(self):

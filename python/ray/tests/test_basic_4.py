@@ -192,16 +192,16 @@ def test_job_id_consistency(ray_start_regular):
     @ray.remote
     def verify_job_id(job_id, new_thread):
         def verify():
-            current_task_id = ray.runtime_context.get_runtime_context().task_id
-            assert job_id == current_task_id.job_id()
+            current_job_id = ray.runtime_context.get_runtime_context().get_job_id()
+            assert job_id == current_job_id
             obj1 = foo.remote()
-            assert job_id == obj1.job_id()
+            assert job_id == obj1.job_id().hex()
             obj2 = ray.put(1)
-            assert job_id == obj2.job_id()
+            assert job_id == obj2.job_id().hex()
             a = Foo.remote()
-            assert job_id == a._actor_id.job_id
+            assert job_id == a._actor_id.job_id.hex()
             obj3 = a.ping.remote()
-            assert job_id == obj3.job_id()
+            assert job_id == obj3.job_id().hex()
 
         if not new_thread:
             verify()
@@ -222,7 +222,7 @@ def test_job_id_consistency(ray_start_regular):
             if len(exc) > 0:
                 raise exc[0]
 
-    job_id = ray.runtime_context.get_runtime_context().job_id
+    job_id = ray.runtime_context.get_runtime_context().get_job_id()
     ray.get(verify_job_id.remote(job_id, False))
     ray.get(verify_job_id.remote(job_id, True))
 

@@ -1,6 +1,7 @@
 import colorama
 from dataclasses import dataclass
 import logging
+import logging.handlers
 import os
 import re
 import sys

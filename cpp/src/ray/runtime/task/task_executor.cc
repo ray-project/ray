@@ -325,7 +325,7 @@ void TaskExecutor::Invoke(
           TaskExecutionHandler(typed_descriptor->FunctionName(), args_buffer, nullptr);
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
       if (task_spec.IsActorCreationTask()) {
-        std::unique_ptr<ActorContext> actorContext(new ActorContext());
+        auto actorContext = std::make_unique<ActorContext>();
         actorContext->current_actor = data;
         absl::MutexLock lock(&actor_contexts_mutex);
         actor_contexts.emplace(task_spec.ActorCreationId(), std::move(actorContext));

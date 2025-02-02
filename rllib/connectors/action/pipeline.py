@@ -45,7 +45,7 @@ class ActionConnectorPipeline(ConnectorPipeline, ActionConnector):
     @staticmethod
     def from_state(ctx: ConnectorContext, params: Any):
         assert (
-            type(params) == list
+            type(params) is list
         ), "ActionConnectorPipeline takes a list of connector params."
         connectors = []
         for state in params:

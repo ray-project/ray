@@ -1244,13 +1244,15 @@ class ReporterAgent(
         while True:
             try:
                 # Fetch autoscaler debug status
-                autoscaler_status_json_bytes: Optional[
-                    bytes
-                ] = await self._gcs_aio_client.internal_kv_get(
-                    DEBUG_AUTOSCALING_STATUS.encode(),
-                    None,
-                    timeout=GCS_RPC_TIMEOUT_SECONDS,
-                )
+                autoscaler_status_json_bytes: Optional[bytes] = None
+                if self._is_head_node:
+                    autoscaler_status_json_bytes = (
+                        await self._gcs_aio_client.internal_kv_get(
+                            DEBUG_AUTOSCALING_STATUS.encode(),
+                            None,
+                            timeout=GCS_RPC_TIMEOUT_SECONDS,
+                        )
+                    )
 
                 # NOTE: Stats collection is executed inside the thread-pool
                 #       executor (TPE) to avoid blocking the Agent's event-loop

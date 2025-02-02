@@ -63,7 +63,7 @@ def test_object_reconstruction(ray_start_cluster):
         time.sleep(1)
         process.kill()
         process.wait()
-        assert not process.poll() is None
+        assert process.poll() is not None
 
         # Make sure that we can still get the objects after the
         # executing tasks died.

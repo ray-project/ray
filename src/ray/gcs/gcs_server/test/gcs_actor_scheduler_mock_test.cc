@@ -22,7 +22,9 @@
 #include "mock/ray/raylet_client/raylet_client.h"
 #include "mock/ray/pubsub/subscriber.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
+#include "ray/common/test_util.h"
 // clang-format on
+
 using namespace ::testing;
 
 namespace ray {
@@ -38,11 +40,11 @@ class GcsActorSchedulerMockTest : public Test {
   void SetUp() override {
     store_client = std::make_shared<MockStoreClient>();
     actor_table = std::make_unique<GcsActorTable>(store_client);
-    gcs_node_manager =
-        std::make_unique<GcsNodeManager>(nullptr, nullptr, nullptr, ClusterID::Nil());
+    gcs_node_manager = std::make_unique<GcsNodeManager>(
+        nullptr, nullptr, io_context, nullptr, ClusterID::Nil());
     raylet_client = std::make_shared<MockRayletClientInterface>();
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
-    client_pool = std::make_shared<rpc::NodeManagerClientPool>(
+    client_pool = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client; });
     local_node_id = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
@@ -52,28 +54,27 @@ class GcsActorSchedulerMockTest : public Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         /*is_local_node_with_raylet=*/false);
-    auto cluster_task_manager = std::make_shared<ClusterTaskManager>(
+    local_task_manager_ = std::make_unique<raylet::NoopLocalTaskManager>();
+    cluster_task_manager = std::make_unique<ClusterTaskManager>(
         local_node_id,
-        cluster_resource_scheduler,
+        *cluster_resource_scheduler,
         /*get_node_info=*/
         [this](const NodeID &node_id) {
           auto node = gcs_node_manager->GetAliveNode(node_id);
           return node.has_value() ? node.value().get() : nullptr;
         },
-        /*announce_infeasible_task=*/
-        nullptr,
-        /*local_task_manager=*/
-        std::make_shared<NoopLocalTaskManager>());
+        /*announce_infeasible_task=*/nullptr,
+        /*local_task_manager=*/*local_task_manager_);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
     actor_scheduler = std::make_unique<GcsActorScheduler>(
         io_context,
         *actor_table,
         *gcs_node_manager,
-        cluster_task_manager,
+        *cluster_task_manager,
         [this](auto a, auto b, auto c) { schedule_failure_handler(a); },
         [this](auto a, const rpc::PushTaskReply) { schedule_success_handler(a); },
-        client_pool,
+        *client_pool,
         [this](const rpc::Address &) { return core_worker_client; });
     auto node_info = std::make_shared<rpc::GcsNodeInfo>();
     node_info->set_state(rpc::GcsNodeInfo::ALIVE);
@@ -82,14 +83,17 @@ class GcsActorSchedulerMockTest : public Test {
     worker_id = WorkerID::FromRandom();
     gcs_node_manager->AddNode(node_info);
   }
+
   std::shared_ptr<MockRayletClientInterface> raylet_client;
   instrumented_io_context io_context;
   std::shared_ptr<MockStoreClient> store_client;
   std::unique_ptr<GcsActorTable> actor_table;
-  std::unique_ptr<GcsActorScheduler> actor_scheduler;
   std::unique_ptr<GcsNodeManager> gcs_node_manager;
+  std::unique_ptr<raylet::ILocalTaskManager> local_task_manager_;
+  std::unique_ptr<ClusterTaskManager> cluster_task_manager;
+  std::unique_ptr<GcsActorScheduler> actor_scheduler;
   std::shared_ptr<rpc::MockCoreWorkerClientInterface> core_worker_client;
-  std::shared_ptr<rpc::NodeManagerClientPool> client_pool;
+  std::unique_ptr<rpc::NodeManagerClientPool> client_pool;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;
   MockCallback schedule_failure_handler;
@@ -144,10 +148,12 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   EXPECT_CALL(*raylet_client, RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&request_worker_lease_cb));
 
-  std::function<void(bool)> async_put_with_index_cb;
+  // Postable is not default constructable, so we use a unique_ptr to hold one.
+  std::unique_ptr<Postable<void(bool)>> async_put_with_index_cb;
   // Leasing successfully
   EXPECT_CALL(*store_client, AsyncPut(_, _, _, _, _))
-      .WillOnce(DoAll(SaveArg<4>(&async_put_with_index_cb), Return(Status::OK())));
+      .WillOnce(
+          DoAll(SaveArgToUniquePtr<4>(&async_put_with_index_cb), Return(Status::OK())));
   actor_scheduler->ScheduleByRaylet(actor);
   rpc::RequestWorkerLeaseReply reply;
   reply.mutable_worker_address()->set_raylet_id(node_id.Binary());
@@ -158,7 +164,9 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   // Worker start to run task
   EXPECT_CALL(*core_worker_client, PushNormalTask(_, _))
       .WillOnce(testing::SaveArg<1>(&push_normal_task_cb));
-  async_put_with_index_cb(true);
+  std::move(*async_put_with_index_cb).Post("GcsActorSchedulerMockTest", true);
+  // actually run the io_context for async_put_with_index_cb.
+  io_context.poll();
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::DEAD);
   actor_scheduler->CancelOnWorker(node_id, worker_id);
   push_normal_task_cb(Status::OK(), rpc::PushTaskReply());

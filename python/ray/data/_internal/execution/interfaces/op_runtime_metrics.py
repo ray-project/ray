@@ -4,6 +4,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
+from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
 
@@ -267,30 +268,10 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Number of blocks in operator's internal input queue.",
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
     )
-    obj_store_mem_internal_inqueue: int = metric_field(
-        default=0,
-        description=(
-            "Byte size of input blocks in the operator's internal input queue."
-        ),
-        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
-    )
     obj_store_mem_internal_outqueue_blocks: int = metric_field(
         default=0,
         description="Number of blocks in the operator's internal output queue.",
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
-    )
-    obj_store_mem_internal_outqueue: int = metric_field(
-        default=0,
-        description=(
-            "Byte size of output blocks in the operator's internal output queue."
-        ),
-        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
-    )
-    obj_store_mem_pending_task_inputs: int = metric_field(
-        default=0,
-        description="Byte size of input blocks used by pending tasks.",
-        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
-        map_only=True,
     )
     obj_store_mem_freed: int = metric_field(
         default=0,
@@ -322,6 +303,10 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._extra_metrics: Dict[str, Any] = {}
         # Start time of current pause due to task submission backpressure
         self._task_submission_backpressure_start_time = -1
+
+        self._internal_inqueue = create_bundle_queue()
+        self._internal_outqueue = create_bundle_queue()
+        self._pending_task_inputs = create_bundle_queue()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -377,6 +362,30 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         else:
             return self.bytes_task_outputs_generated / self.num_task_outputs_generated
 
+    @metric_property(
+        description="Byte size of input blocks in the operator's internal input queue.",
+        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+    )
+    def obj_store_mem_internal_inqueue(self) -> int:
+        return self._internal_inqueue.estimate_size_bytes()
+
+    @metric_property(
+        description=(
+            "Byte size of output blocks in the operator's internal output queue."
+        ),
+        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+    )
+    def obj_store_mem_internal_outqueue(self) -> int:
+        return self._internal_outqueue.estimate_size_bytes()
+
+    @metric_property(
+        description="Byte size of input blocks used by pending tasks.",
+        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+        map_only=True,
+    )
+    def obj_store_mem_pending_task_inputs(self) -> int:
+        return self._pending_task_inputs.estimate_size_bytes()
+
     @property
     def obj_store_mem_pending_task_outputs(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in Ray generator buffers.
@@ -405,7 +414,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     @property
     def obj_store_mem_max_pending_output_per_task(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in a task's generator buffer."""
-        context = ray.data.DataContext.get_current()
+        context = self._op.data_context
         if context._max_num_blocks_in_streaming_gen_buffer is None:
             return None
 
@@ -454,13 +463,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def on_input_queued(self, input: RefBundle):
         """Callback when the operator queues an input."""
         self.obj_store_mem_internal_inqueue_blocks += len(input.blocks)
-        self.obj_store_mem_internal_inqueue += input.size_bytes()
+        self._internal_inqueue.add(input)
 
     def on_input_dequeued(self, input: RefBundle):
         """Callback when the operator dequeues an input."""
         self.obj_store_mem_internal_inqueue_blocks -= len(input.blocks)
         input_size = input.size_bytes()
-        self.obj_store_mem_internal_inqueue -= input_size
+        self._internal_inqueue.remove(input)
         assert self.obj_store_mem_internal_inqueue >= 0, (
             self._op,
             self.obj_store_mem_internal_inqueue,
@@ -470,13 +479,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def on_output_queued(self, output: RefBundle):
         """Callback when an output is queued by the operator."""
         self.obj_store_mem_internal_outqueue_blocks += len(output.blocks)
-        self.obj_store_mem_internal_outqueue += output.size_bytes()
+        self._internal_outqueue.add(output)
 
     def on_output_dequeued(self, output: RefBundle):
         """Callback when an output is dequeued by the operator."""
         self.obj_store_mem_internal_outqueue_blocks -= len(output.blocks)
         output_size = output.size_bytes()
-        self.obj_store_mem_internal_outqueue -= output_size
+        self._internal_outqueue.remove(output)
         assert self.obj_store_mem_internal_outqueue >= 0, (
             self._op,
             self.obj_store_mem_internal_outqueue,
@@ -504,7 +513,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.num_tasks_submitted += 1
         self.num_tasks_running += 1
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
-        self.obj_store_mem_pending_task_inputs += inputs.size_bytes()
+        self._pending_task_inputs.add(inputs)
         self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
@@ -544,14 +553,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         total_input_size = inputs.size_bytes()
         self.bytes_task_inputs_processed += total_input_size
         input_size = inputs.size_bytes()
-        self.obj_store_mem_pending_task_inputs -= input_size
+        self._pending_task_inputs.remove(inputs)
         assert self.obj_store_mem_pending_task_inputs >= 0, (
             self._op,
             self.obj_store_mem_pending_task_inputs,
             input_size,
         )
 
-        ctx = ray.data.context.DataContext.get_current()
+        ctx = self._op.data_context
         if ctx.enable_get_object_locations_for_metrics:
             locations = ray.experimental.get_object_locations(inputs.block_refs)
             for block, meta in inputs.blocks:

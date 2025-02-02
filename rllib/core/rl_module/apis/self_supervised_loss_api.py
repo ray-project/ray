@@ -2,12 +2,14 @@ import abc
 from typing import Any, Dict, TYPE_CHECKING
 
 from ray.rllib.utils.typing import ModuleID, TensorType
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.core.learner.learner import Learner
 
 
+@PublicAPI(stability="alpha")
 class SelfSupervisedLossAPI(abc.ABC):
     """An API to be implemented by RLModules that bring their own self-supervised loss.
 
