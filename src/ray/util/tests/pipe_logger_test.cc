@@ -46,14 +46,14 @@ TEST(PipeLoggerTest, RedirectionTest) {
 
   // Take the default option, which doesn't have rotation enabled.
   StreamRedirectionOption stream_redirection_opt{};
-  stream_redirection_opt.file_path = test_file_path.native();
+  stream_redirection_opt.file_path = test_file_path.string();
   auto stream_redirection_handle = CreateRedirectionFileHandle(stream_redirection_opt);
   stream_redirection_handle.CompleteWrite(kLogLine1.data(), kLogLine1.length());
   stream_redirection_handle.CompleteWrite(kLogLine2.data(), kLogLine2.length());
   stream_redirection_handle.Close();
 
   // Check log content after completion.
-  const auto actual_content = ReadEntireFile(test_file_path.native());
+  const auto actual_content = ReadEntireFile(test_file_path.string());
   RAY_ASSERT_OK(actual_content);
   const std::string expected_content = absl::StrFormat("%s%s", kLogLine1, kLogLine2);
   EXPECT_EQ(*actual_content, expected_content);
@@ -69,7 +69,7 @@ TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   };
 
   StreamRedirectionOption stream_redirection_opt{};
-  stream_redirection_opt.file_path = test_file_path.native();
+  stream_redirection_opt.file_path = test_file_path.string();
   stream_redirection_opt.tee_to_stdout = true;
 
   // Capture stdout via `dup`.
@@ -85,7 +85,7 @@ TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   EXPECT_EQ(stdout_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Check log content after completion.
-  const auto actual_content = ReadEntireFile(test_file_path.native());
+  const auto actual_content = ReadEntireFile(test_file_path.string());
   RAY_ASSERT_OK(actual_content);
   EXPECT_EQ(*actual_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 }
@@ -105,7 +105,7 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
   };
 
   StreamRedirectionOption stream_redirection_opt{};
-  stream_redirection_opt.file_path = test_file_path.native();
+  stream_redirection_opt.file_path = test_file_path.string();
   stream_redirection_opt.rotation_max_size = 5;
   stream_redirection_opt.rotation_max_file_count = 2;
   stream_redirection_opt.tee_to_stderr = true;
@@ -123,11 +123,11 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
   EXPECT_EQ(stderr_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Check log content after completion.
-  const auto actual_content1 = ReadEntireFile(log_file_path1.native());
+  const auto actual_content1 = ReadEntireFile(log_file_path1.string());
   RAY_ASSERT_OK(actual_content1);
   EXPECT_EQ(*actual_content1, kLogLine2);
 
-  const auto actual_content2 = ReadEntireFile(log_file_path2.native());
+  const auto actual_content2 = ReadEntireFile(log_file_path2.string());
   RAY_ASSERT_OK(actual_content2);
   EXPECT_EQ(*actual_content2, kLogLine1);
 }
@@ -142,7 +142,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -154,7 +154,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     EXPECT_EQ(stdout_content, kContent);
 
     // Pipe logger automatically adds a newliner at the end.
-    const auto actual_content = ReadEntireFile(test_file_path.native());
+    const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_ASSERT_OK(actual_content);
     EXPECT_EQ(*actual_content, "hello\n");
 
@@ -168,7 +168,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -179,7 +179,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const std::string stdout_content = testing::internal::GetCapturedStdout();
     EXPECT_EQ(stdout_content, kContent);
 
-    const auto actual_content = ReadEntireFile(test_file_path.native());
+    const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_ASSERT_OK(actual_content);
     EXPECT_EQ(*actual_content, "hello\n");
 
@@ -193,7 +193,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -205,7 +205,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     EXPECT_EQ(stdout_content, kContent);
 
     // Pipe logger automatically adds a newliner at the end.
-    const auto actual_content = ReadEntireFile(test_file_path.native());
+    const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_EXPECT_OK(actual_content);
     EXPECT_EQ(*actual_content, "hello\nworld\n");
 
@@ -219,7 +219,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -230,7 +230,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const std::string stdout_content = testing::internal::GetCapturedStdout();
     EXPECT_EQ(stdout_content, kContent);
 
-    const auto actual_content = ReadEntireFile(test_file_path.native());
+    const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_EXPECT_OK(actual_content);
     EXPECT_EQ(*actual_content, "hello\nworld\n");
 
@@ -244,7 +244,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -255,7 +255,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const std::string stdout_content = testing::internal::GetCapturedStdout();
     EXPECT_EQ(stdout_content, kContent);
 
-    const auto actual_content = ReadEntireFile(test_file_path.native());
+    const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_EXPECT_OK(actual_content);
     EXPECT_EQ(*actual_content, "helloworld\n\n\n");
 
@@ -269,7 +269,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -281,7 +281,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     EXPECT_EQ(stdout_content, kContent);
 
     // Pipe logger automatically adds a newliner at the end.
-    const auto actual_content = ReadEntireFile(test_file_path.native());
+    const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_EXPECT_OK(actual_content);
     EXPECT_EQ(*actual_content, "hello\n\n\nworld\n");
 
@@ -295,7 +295,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -307,7 +307,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     EXPECT_EQ(stdout_content, kContent);
 
     // Pipe logger automatically adds a newliner at the end.
-    const auto actual_content = ReadEntireFile(test_file_path.native());
+    const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_ASSERT_OK(actual_content);
     EXPECT_EQ(*actual_content, "hello\n\nworld\n\n");
 
