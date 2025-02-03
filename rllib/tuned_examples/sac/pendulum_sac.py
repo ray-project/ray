@@ -22,6 +22,7 @@ config = (
         actor_lr=2e-4 * (args.num_learners or 1) ** 0.5,
         critic_lr=8e-4 * (args.num_learners or 1) ** 0.5,
         alpha_lr=9e-4 * (args.num_learners or 1) ** 0.5,
+        # TODO (sven): Maybe go back to making this a dict of the sub-learning rates?
         lr=None,
         target_entropy="auto",
         n_step=(2, 5),

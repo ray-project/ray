@@ -44,7 +44,7 @@ void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
     RAY_LOG(WARNING)
         << "This worker is still managing " << object_id_refs_.size()
         << " objects, waiting for them to go out of scope before shutting down.";
-    shutdown_hook_ = shutdown;
+    shutdown_hook_ = std::move(shutdown);
   }
 }
 
@@ -59,6 +59,7 @@ void ReferenceCounter::ShutdownIfNeeded() {
 ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
   ReferenceTable refs;
+  refs.reserve(proto.size());
   for (const auto &ref : proto) {
     refs.emplace(ObjectID::FromBinary(ref.reference().object_id()),
                  Reference::FromProto(ref));
@@ -120,7 +121,7 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
 }
 
 void ReferenceCounter::AddObjectRefStats(
-    const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
+    const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> &pinned_objects,
     rpc::CoreWorkerStats *stats,
     const int64_t limit) const {
   absl::MutexLock lock(&mutex_);
@@ -284,7 +285,7 @@ void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_i
 bool ReferenceCounter::CheckGeneratorRefsLineageOutOfScope(
     const ObjectID &generator_id, int64_t num_objects_generated) {
   absl::MutexLock lock(&mutex_);
-  if (object_id_refs_.count(generator_id)) {
+  if (object_id_refs_.contains(generator_id)) {
     return false;
   }
 
@@ -293,7 +294,7 @@ bool ReferenceCounter::CheckGeneratorRefsLineageOutOfScope(
     // Add 2 because task returns start from index 1 and the
     // first return object is the generator ID.
     const auto return_id = ObjectID::FromIndex(task_id, i + 2);
-    if (object_id_refs_.count(return_id)) {
+    if (object_id_refs_.contains(return_id)) {
       return false;
     }
   }
@@ -443,7 +444,7 @@ void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
-    const std::vector<ObjectID> return_ids,
+    const std::vector<ObjectID> &return_ids,
     const std::vector<ObjectID> &argument_ids_to_add,
     const std::vector<ObjectID> &argument_ids_to_remove,
     std::vector<ObjectID> *deleted) {
@@ -489,7 +490,7 @@ void ReferenceCounter::UpdateResubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
-    const std::vector<ObjectID> return_ids,
+    const std::vector<ObjectID> &return_ids,
     const std::vector<ObjectID> &argument_ids,
     bool release_lineage,
     const rpc::Address &worker_addr,
@@ -543,7 +544,7 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
     RAY_LOG(DEBUG) << "Releasing lineage internal for argument " << argument_id;
     arg_it->second.lineage_ref_count--;
     if (arg_it->second.OutOfScope(lineage_pinning_enabled_)) {
-      DeleteObjectPrimaryCopy(arg_it);
+      OnObjectOutOfScopeOrFreed(arg_it);
     }
     if (arg_it->second.ShouldDelete(lineage_pinning_enabled_)) {
       RAY_CHECK(arg_it->second.on_ref_removed == nullptr);
@@ -606,7 +607,7 @@ bool ReferenceCounter::GetOwnerInternal(const ObjectID &object_id,
 }
 
 std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
-    const std::vector<ObjectID> object_ids) const {
+    const std::vector<ObjectID> &object_ids) const {
   absl::MutexLock lock(&mutex_);
   std::vector<rpc::Address> owner_addresses;
   for (const auto &object_id : object_ids) {
@@ -622,7 +623,7 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
              "at https://github.com/ray-project/ray/issues/";
       // TODO(swang): Java does not seem to keep the ref count properly, so the
       // entry may get deleted.
-      owner_addresses.push_back(rpc::Address());
+      owner_addresses.emplace_back();
     } else {
       owner_addresses.push_back(owner_addr);
     }
@@ -640,7 +641,7 @@ bool ReferenceCounter::TryMarkFreedObjectInUseAgain(const ObjectID &object_id) {
   if (object_id_refs_.count(object_id) == 0) {
     return false;
   }
-  return freed_objects_.erase(object_id);
+  return freed_objects_.erase(object_id) != 0u;
 }
 
 void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids) {
@@ -663,7 +664,7 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
     }
     // Free only the plasma value. We must keep the reference around so that we
     // have the ownership information.
-    DeleteObjectPrimaryCopy(it);
+    OnObjectOutOfScopeOrFreed(it);
   }
 }
 
@@ -700,9 +701,8 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
         DeleteReferenceInternal(inner_it, deleted);
       }
     }
-    // Perform the deletion.
-    DeleteObjectPrimaryCopy(it);
-    if (deleted) {
+    OnObjectOutOfScopeOrFreed(it);
+    if (deleted != nullptr) {
       deleted->push_back(id);
     }
 
@@ -764,20 +764,20 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
   return lineage_bytes_evicted;
 }
 
-void ReferenceCounter::DeleteObjectPrimaryCopy(ReferenceTable::iterator it) {
-  RAY_LOG(DEBUG) << "Calling on_object_primary_copy_delete for object " << it->first
-                 << " num callbacks: "
-                 << it->second.on_object_primary_copy_delete_callbacks.size();
-  for (const auto &callback : it->second.on_object_primary_copy_delete_callbacks) {
+void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
+  RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
+                 << it->first << " num callbacks: "
+                 << it->second.on_object_out_of_scope_or_freed_callbacks.size();
+  for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
     callback(it->first);
   }
-  it->second.on_object_primary_copy_delete_callbacks.clear();
+  it->second.on_object_out_of_scope_or_freed_callbacks.clear();
+  UnsetObjectPrimaryCopy(it);
+}
+
+void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
   it->second.pinned_at_raylet_id.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
-    // The spilled copy of the object should get deleted during the
-    // on_object_primary_copy_delete callback, so reset the spill location metadata here.
-    // NOTE(swang): Spilled copies in cloud storage are not GCed, so we do not
-    // reset the spilled metadata.
     it->second.spilled = false;
     it->second.spilled_url = "";
     it->second.spilled_node_id = NodeID::Nil();
@@ -795,7 +795,7 @@ bool ReferenceCounter::SetObjectRefDeletedCallback(
   return true;
 }
 
-bool ReferenceCounter::AddObjectPrimaryCopyDeleteCallback(
+bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -812,7 +812,7 @@ bool ReferenceCounter::AddObjectPrimaryCopyDeleteCallback(
     return false;
   }
 
-  it->second.on_object_primary_copy_delete_callbacks.emplace_back(callback);
+  it->second.on_object_out_of_scope_or_freed_callbacks.emplace_back(callback);
   return true;
 }
 
@@ -822,7 +822,7 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
     const auto &object_id = it->first;
     if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id ||
         it->second.spilled_node_id == raylet_id) {
-      DeleteObjectPrimaryCopy(it);
+      UnsetObjectPrimaryCopy(it);
       if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
         objects_to_recover_.push_back(object_id);
       }
@@ -862,7 +862,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
       if (check_node_alive_(raylet_id)) {
         it->second.pinned_at_raylet_id = raylet_id;
       } else {
-        DeleteObjectPrimaryCopy(it);
+        UnsetObjectPrimaryCopy(it);
         objects_to_recover_.push_back(object_id);
       }
     }
@@ -994,7 +994,7 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
   if (for_ref_removed || !ref.foreign_owner_already_monitoring) {
     auto [borrowed_ref_it, inserted] = borrowed_refs->try_emplace(object_id);
     if (inserted) {
-      ref.ToProto(&borrowed_ref_it->second, deduct_local_ref ? 1 : 0);
+      ref.ToProto(&borrowed_ref_it->second, deduct_local_ref);
       // Clear the local list of borrowers that we have accumulated. The receiver
       // of the returned borrowed_refs must merge this list into their own list
       // until all active borrowers are merged into the owner.
@@ -1398,7 +1398,7 @@ absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations
 }
 
 bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
-                                           const std::string spilled_url,
+                                           const std::string &spilled_url,
                                            const NodeID &spilled_node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -1419,7 +1419,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   bool spilled_location_alive =
       spilled_node_id.IsNil() || check_node_alive_(spilled_node_id);
   if (spilled_location_alive) {
-    if (spilled_url != "") {
+    if (!spilled_url.empty()) {
       it->second.spilled_url = spilled_url;
     }
     if (!spilled_node_id.IsNil()) {
@@ -1429,7 +1429,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   } else {
     RAY_LOG(DEBUG).WithField(spilled_node_id).WithField(object_id)
         << "Object spilled to dead node ";
-    DeleteObjectPrimaryCopy(it);
+    UnsetObjectPrimaryCopy(it);
     objects_to_recover_.push_back(object_id);
   }
   return true;

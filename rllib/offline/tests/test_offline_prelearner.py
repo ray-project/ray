@@ -1,12 +1,14 @@
 import functools
-import unittest
+import gymnasium as gym
 import ray
 import shutil
+import unittest
 
 from pathlib import Path
 
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
@@ -18,9 +20,17 @@ class TestOfflinePreLearner(unittest.TestCase):
         data_path = "tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
         self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
+        # Get the observation and action spaces.
+        env = gym.make("CartPole-v1")
+        self.observation_space = env.observation_space
+        self.action_space = env.action_space
+        # Set up the configuration.
         self.config = (
             BCConfig()
-            .environment("CartPole-v1")
+            .environment(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )
             .api_stack(
                 enable_env_runner_and_connector_v2=True,
                 enable_rl_module_and_learner=True,
@@ -63,10 +73,15 @@ class TestOfflinePreLearner(unittest.TestCase):
 
         # Build the algorithm to get the learner.
         algo = self.config.build()
-        # Build the `OfflinePreLearner` and add the learner.
+        # Get the module state from the `Learner`(s).
+        module_state = algo.offline_data.learner_handles[0].get_state(
+            component=COMPONENT_RL_MODULE,
+        )[COMPONENT_RL_MODULE]
+        # Set up an `OfflinePreLearner` instance.
         oplr = OfflinePreLearner(
-            self.config,
-            learner=algo.offline_data.learner_handles[0],
+            config=self.config,
+            module_spec=algo.offline_data.module_spec,
+            module_state=module_state,
         )
 
         # Ensure we have indeed a `PrioritizedEpisodeReplayBuffer` in the `PreLearner`
@@ -155,7 +170,6 @@ class TestOfflinePreLearner(unittest.TestCase):
         ).iter_batches(
             batch_size=10,
             prefetch_batches=1,
-            local_shuffle_buffer_size=100,
         )
 
         # Now sample a single batch.
@@ -182,10 +196,15 @@ class TestOfflinePreLearner(unittest.TestCase):
 
         # Build the algorithm to get the learner.
         algo = self.config.build()
-        # Build the `OfflinePreLearner` and add the learner.
+        # Get the module state from the `Learner`.
+        module_state = algo.offline_data.learner_handles[0].get_state(
+            component=COMPONENT_RL_MODULE,
+        )[COMPONENT_RL_MODULE]
+        # Set up an `OfflinePreLearner` instance.
         oplr = OfflinePreLearner(
-            self.config,
-            learner=algo.offline_data.learner_handles[0],
+            config=self.config,
+            module_spec=algo.offline_data.module_spec,
+            module_state=module_state,
         )
         # Now, pull a batch of defined size formt he dataset.
         batch = algo.offline_data.data.take_batch(
@@ -262,10 +281,15 @@ class TestOfflinePreLearner(unittest.TestCase):
         episode_ds = ray.data.read_parquet(data_path)
         # Sample a batch of episodes from the episode dataset.
         episode_batch = episode_ds.take_batch(256)
+        # Get the module state from the `Learner`.
+        module_state = algo.offline_data.learner_handles[0].get_state(
+            component=COMPONENT_RL_MODULE,
+        )[COMPONENT_RL_MODULE]
         # Set up an `OfflinePreLearner` instance.
         oplr = OfflinePreLearner(
             config=self.config,
-            learner=algo.offline_data.learner_handles[0],
+            module_spec=algo.offline_data.module_spec,
+            module_state=module_state,
             spaces=algo.offline_data.spaces[INPUT_ENV_SPACES],
         )
         # Sample a `MultiAgentBatch`.

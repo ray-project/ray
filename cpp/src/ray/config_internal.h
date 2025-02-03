@@ -39,6 +39,8 @@ class ConfigInternal {
 
   int bootstrap_port = 6379;
 
+  std::string redis_username = "default";
+
   std::string redis_password = "5241590000000000";
 
   int node_manager_port = 0;

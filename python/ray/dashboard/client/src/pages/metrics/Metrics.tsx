@@ -571,8 +571,8 @@ const MetricsSection = ({
   dashboardUid,
   dashboardDatasource,
 }: MetricsSectionProps) => {
-  const { grafanaHost, sessionName } = useContext(GlobalContext);
-
+  const { grafanaHost, sessionName, currentTimeZone } =
+    useContext(GlobalContext);
   return (
     <CollapsibleSection
       key={title}
@@ -593,7 +593,7 @@ const MetricsSection = ({
         {contents.map(({ title, pathParams }) => {
           const path =
             `/d-solo/${dashboardUid}?${pathParams}` +
-            `&${refreshParams}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
+            `&${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
           return (
             <Paper
               key={pathParams}

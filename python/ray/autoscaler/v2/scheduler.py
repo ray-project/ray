@@ -1194,9 +1194,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             return []
 
         constraint = constraints[0]
-        min_bundles = constraint.min_bundles
         # Flatten the requests for iterating through.
-        requests = ResourceRequestUtil.ungroup_by_count(min_bundles)
+        requests = ResourceRequestUtil.ungroup_by_count(constraint.resource_requests)
 
         # Pass the empty nodes to schedule.
         scheduled_nodes, infeasible = ResourceDemandScheduler._try_schedule(
@@ -1584,6 +1583,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                 continue
 
             idle_timeout_s = ctx.get_idle_timeout_s()
+            # Override the scheduler idle_timeout_s if set for this node_type.
+            node_type = node.node_type
+            if node_type in node_type_configs:
+                if node_type_configs[node_type].idle_timeout_s is not None:
+                    idle_timeout_s = node_type_configs[node_type].idle_timeout_s
             if idle_timeout_s is None:
                 # No idle timeout is set, skip the idle termination.
                 continue
@@ -1606,7 +1610,6 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             # Honor the min_worker_nodes setting for the node type.
             min_count = 0
-            node_type = node.node_type
             if node_type in node_type_configs:
                 min_count = node_type_configs[node_type].min_worker_nodes
             if (

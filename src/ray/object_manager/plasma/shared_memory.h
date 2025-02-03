@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <utility>
 
-#include "ray/object_manager/plasma/compat.h"
+#include "ray/util/compat.h"
 #include "ray/util/macros.h"
 
 namespace plasma {

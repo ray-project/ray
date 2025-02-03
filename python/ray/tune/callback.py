@@ -4,11 +4,11 @@ from abc import ABCMeta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+import ray.tune
 from ray.tune.utils.util import _atomic_save, _load_newest_checkpoint
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.train import Checkpoint
     from ray.tune.experiment import Trial
     from ray.tune.stopper import Stopper
 
@@ -280,7 +280,7 @@ class Callback(metaclass=_CallbackMeta):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: "Checkpoint",
+        checkpoint: "ray.tune.Checkpoint",
         **info,
     ):
         """Called after a trial saved a checkpoint with Tune.

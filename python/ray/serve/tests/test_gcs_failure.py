@@ -30,9 +30,14 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
     )
     serve.start()
     yield (address_info, _get_global_client())
-    ray.shutdown()
+
+    # When GCS is down, right now some core worker members are not cleared
+    # properly in ray.shutdown.
+    ray.worker._global_node.start_gcs_server()
+
     # Clear cache and global serve client
     serve.shutdown()
+    ray.shutdown()
 
 
 @pytest.mark.skipif(
@@ -127,6 +132,7 @@ def router_populated_with_replicas(
     else:
         replicas = get_replicas_func()
 
+    print(f"Replica set in router: {replicas}")
     assert len(replicas) >= threshold
 
     # Return early if we don't need to check cache
@@ -299,7 +305,4 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
 
 
 if __name__ == "__main__":
-    # When GCS is down, right now some core worker members are not cleared
-    # properly in ray.shutdown. Given that this is not hi-pri issue,
-    # using --forked for isolation.
-    sys.exit(pytest.main(["-v", "-s", "--forked", __file__]))
+    sys.exit(pytest.main(["-v", "-s", __file__]))

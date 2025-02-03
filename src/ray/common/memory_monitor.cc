@@ -34,7 +34,7 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
     : usage_threshold_(usage_threshold),
       min_memory_free_bytes_(min_memory_free_bytes),
       monitor_callback_(monitor_callback),
-      runner_(io_service) {
+      runner_(PeriodicalRunner::Create(io_service)) {
   RAY_CHECK(monitor_callback_ != nullptr);
   RAY_CHECK_GE(usage_threshold_, 0);
   RAY_CHECK_LE(usage_threshold_, 1);
@@ -48,7 +48,7 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
                   << computed_threshold_bytes_ << " bytes ("
                   << FormatFloat(computed_threshold_fraction_, 2)
                   << " system memory), total system memory bytes: " << total_memory_bytes;
-    runner_.RunFnPeriodically(
+    runner_->RunFnPeriodically(
         [this] {
           auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
           MemorySnapshot system_memory;

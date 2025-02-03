@@ -1,5 +1,7 @@
 import collections
 import heapq
+import logging
+import sys
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -17,13 +19,11 @@ from typing import (
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.data._internal.numpy_support import (
-    convert_udf_returns_to_numpy,
-    validate_numpy_batch,
-)
+from ray.air.util.tensor_extensions.utils import _is_ndarray_tensor
+from ray.data._internal.numpy_support import convert_to_numpy, validate_numpy_batch
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions
+from ray.data._internal.util import find_partitions, keys_equal
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -43,6 +43,10 @@ if TYPE_CHECKING:
     from ray.data.aggregate import AggregateFn
 
 T = TypeVar("T")
+# Max number of samples used to estimate the Pandas block size.
+_PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 50
+
+logger = logging.getLogger(__name__)
 
 _pandas = None
 
@@ -114,14 +118,20 @@ class PandasBlockBuilder(TableBlockBuilder):
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
-        for key, value in columns.items():
-            if key == TENSOR_COLUMN_NAME or isinstance(
-                next(iter(value), None), np.ndarray
-            ):
+
+        pd_columns: Dict[str, Any] = {}
+
+        for col_name, col_vals in columns.items():
+            np_col_vals = convert_to_numpy(col_vals)
+
+            if col_name == TENSOR_COLUMN_NAME or _is_ndarray_tensor(np_col_vals):
                 from ray.data.extensions.tensor_extension import TensorArray
 
-                columns[key] = TensorArray(value)
-        return pandas.DataFrame(columns)
+                pd_columns[col_name] = TensorArray(np_col_vals)
+            else:
+                pd_columns[col_name] = np_col_vals
+
+        return pandas.DataFrame(pd_columns)
 
     @staticmethod
     def _concat_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
@@ -211,6 +221,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             )
         return self._table[columns]
 
+    def rename_columns(self, columns_rename: Dict[str, str]) -> "pandas.DataFrame":
+        return self._table.rename(columns=columns_rename, inplace=False, copy=False)
+
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
         table = self._table.sample(frac=1, random_state=random_seed)
         table.reset_index(drop=True, inplace=True)
@@ -283,10 +296,6 @@ class PandasBlockAccessor(TableBlockAccessor):
     ) -> "pandas.DataFrame":
         validate_numpy_batch(batch)
 
-        batch = {
-            column_name: convert_udf_returns_to_numpy(column)
-            for column_name, column in batch.items()
-        }
         block = PandasBlockBuilder._table_from_pydict(batch)
         return block
 
@@ -294,7 +303,98 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        return int(self._table.memory_usage(index=True, deep=True).sum())
+        from pandas.api.types import is_object_dtype
+
+        from ray.air.util.tensor_extensions.pandas import TensorArray
+        from ray.data.extensions import TensorArrayElement, TensorDtype
+
+        pd = lazy_import_pandas()
+
+        def get_deep_size(obj):
+            """Calculates the memory size of objects,
+            including nested objects using an iterative approach."""
+            seen = set()
+            total_size = 0
+            objects = collections.deque([obj])
+            while objects:
+                current = objects.pop()
+
+                # Skip interning-eligible immutable objects
+                if isinstance(current, (str, bytes, int, float)):
+                    size = sys.getsizeof(current)
+                    total_size += size
+                    continue
+
+                # Check if the object has been seen before
+                # i.e. a = np.ndarray([1,2,3]), b = [a,a]
+                # The patten above will have only one memory copy
+                if id(current) in seen:
+                    continue
+                seen.add(id(current))
+
+                try:
+                    size = sys.getsizeof(current)
+                except TypeError:
+                    size = 0
+                total_size += size
+
+                # Handle specific cases
+                if isinstance(current, np.ndarray):
+                    total_size += current.nbytes - size  # Avoid double counting
+                elif isinstance(current, pd.DataFrame):
+                    total_size += (
+                        current.memory_usage(index=True, deep=True).sum() - size
+                    )
+                elif isinstance(current, (list, tuple, set)):
+                    objects.extend(current)
+                elif isinstance(current, dict):
+                    objects.extend(current.keys())
+                    objects.extend(current.values())
+                elif isinstance(current, TensorArrayElement):
+                    objects.extend(current.to_numpy())
+            return total_size
+
+        # Get initial memory usage including deep introspection
+        memory_usage = self._table.memory_usage(index=True, deep=True)
+
+        # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
+        object_need_check = (TensorDtype,)
+        max_sample_count = _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT
+
+        # Handle object columns separately
+        for column in self._table.columns:
+            # Check pandas object dtype and the extension dtype
+            if is_object_dtype(self._table[column].dtype) or isinstance(
+                self._table[column].dtype, object_need_check
+            ):
+                total_size = len(self._table[column])
+
+                # Determine the sample size based on max_sample_count
+                sample_size = min(total_size, max_sample_count)
+                # Following codes can also handel case that sample_size == total_size
+                sampled_data = self._table[column].sample(n=sample_size).values
+
+                try:
+                    if isinstance(sampled_data, TensorArray) and np.issubdtype(
+                        sampled_data[0].numpy_dtype, np.number
+                    ):
+                        column_memory_sample = sampled_data.nbytes
+                    else:
+                        vectorized_size_calc = np.vectorize(lambda x: get_deep_size(x))
+                        column_memory_sample = np.sum(
+                            vectorized_size_calc(sampled_data)
+                        )
+                    # Scale back to the full column size if we sampled
+                    column_memory = column_memory_sample * (total_size / sample_size)
+                    memory_usage[column] = int(column_memory)
+                except Exception as e:
+                    # Handle or log the exception as needed
+                    logger.warning(f"Error calculating size for column '{column}': {e}")
+
+        # Sum up total memory usage
+        total_memory_usage = memory_usage.sum()
+
+        return int(total_memory_usage)
 
     def _zip(self, acc: BlockAccessor) -> "pandas.DataFrame":
         r = self.to_pandas().copy(deep=False)
@@ -415,6 +515,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         return find_partitions(table, boundaries, sort_key)
 
+    # TODO (srinathk) Needs to handle None types correctly.
     def combine(
         self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]
     ) -> "pandas.DataFrame":
@@ -452,7 +553,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     if next_row is None:
                         next_row = next(iter)
                     next_keys = next_row[keys]
-                    while np.all(next_row[keys] == next_keys):
+                    while keys_equal(next_row[keys], next_keys):
                         end += 1
                         try:
                             next_row = next(iter)
@@ -570,7 +671,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 def gen():
                     nonlocal iter
                     nonlocal next_row
-                    while key_fn(next_row) == next_keys:
+                    while keys_equal(key_fn(next_row), next_keys):
                         yield next_row
                         try:
                             next_row = next(iter)

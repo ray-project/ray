@@ -21,7 +21,7 @@ from ray.serve.multiplex import _ModelMultiplexWrapper
 def _get_replica_scheduler(handle: DeploymentHandle) -> ReplicaScheduler:
     # TODO(edoakes): we shouldn't be reaching into private fields, but better
     # to isolate it to one place (this function).
-    return handle._get_or_create_router()._asyncio_router._replica_scheduler
+    return handle._router._asyncio_router._replica_scheduler
 
 
 @pytest.fixture()

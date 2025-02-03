@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/ray/util/thread_checker.h"
+#include "ray/util/thread_checker.h"
 
 namespace ray {
 
-bool ThreadChecker::IsOnSameThread() {
+bool ThreadChecker::IsOnSameThread() const {
   const auto cur_id = std::this_thread::get_id();
   std::thread::id uninitialized_id;
   return thread_id_.compare_exchange_strong(uninitialized_id, cur_id) ||

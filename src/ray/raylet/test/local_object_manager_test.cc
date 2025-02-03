@@ -19,13 +19,13 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_client/accessor.h"
+#include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/test/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
-#include "src/ray/object_manager/ownership_based_object_directory.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -1358,7 +1358,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
 
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
@@ -1564,7 +1564,7 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
   // Spill all objects.
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
@@ -1646,7 +1646,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete1) {
   // Spill all objects.
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
@@ -1719,7 +1719,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
   // Spill all objects.
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
