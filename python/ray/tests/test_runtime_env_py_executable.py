@@ -21,7 +21,9 @@ def tmp_working_dir():
 
 
 def test_simple_py_executable(shutdown_only):
-    runtime_env = {"py_executable": "env RAY_TEST_PY_EXECUTABLE_ENV_EXAMPLE=1 " + sys.executable}
+    runtime_env = {
+        "py_executable": "env RAY_TEST_PY_EXECUTABLE_ENV_EXAMPLE=1 " + sys.executable
+    }
     ray.init(runtime_env=runtime_env)
 
     @ray.remote
