@@ -74,6 +74,8 @@ class VLLMDeployment:
                 self.engine,
                 model_config,
                 [BaseModelPath(name=self.engine_args.model, model_path="./")],
+                lora_modules=self.lora_modules,
+                prompt_adapters=self.prompt_adapters,
             )
             self.openai_serving_chat = OpenAIServingChat(
                 self.engine,
