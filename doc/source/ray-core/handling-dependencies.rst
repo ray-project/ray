@@ -351,7 +351,7 @@ And then a `test.py` like this:
     "Ray RLlib",
     "Ray Tune",
   ]
-  results = [req.remote(entity) for entity in entities]
+  results = [message.remote(entity) for entity in entities]
   for result in results:
       print(ray.get(result))
 
