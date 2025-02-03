@@ -45,7 +45,7 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
             assert len(dump_data["nodes"]) == 1
             break
 
-        except (AssertionError, requests.exceptions.ConnectionError) as e:
+        except (AssertionError, requests.exceptions.ConnectionError):
             logger.exception("Retry")
         finally:
             if time.time() > start_time + timeout_seconds:
