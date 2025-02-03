@@ -6,7 +6,6 @@ from fastapi import FastAPI
 from starlette.requests import Request
 from starlette.responses import StreamingResponse, JSONResponse
 
-import ray
 from ray import serve
 
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -55,7 +54,6 @@ class VLLMDeployment:
         self.prompt_adapters = prompt_adapters
         self.request_logger = request_logger
         self.chat_template = chat_template
-        print(f"{ray.util.get_current_placement_group()=}")
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
 
     @app.post("/v1/chat/completions")
