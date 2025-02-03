@@ -733,7 +733,7 @@ class IMPALA(Algorithm):
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
                 # TODO (sven): Rename this metric into a more fitting name: ex.
-                #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`
+                #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`.
                 self.metrics.log_value(
                     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
                     1,
