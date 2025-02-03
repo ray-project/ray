@@ -33,7 +33,7 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
         metrics-logger
     rllib-advanced-api
         algorithm (general description of how algos work)
-        rllib-rlmodule
+        rl-modules
         rllib-offline
         single-agent-episode
         multi-agent-episode
@@ -386,7 +386,7 @@ production training-workflows.
 For example, you may code your own `environments <rllib-env.html#configuring-environments>`__
 in python using the `Farama Foundation's gymnasium <https://farama.org>`__ or DeepMind's OpenSpiel,
 provide custom `PyTorch models <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`_,
-write your own `optimizer setups and loss definitions <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__,
+write your own `optimizer setups and loss definitions <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__,
 or define custom `exploratory behavior <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py>`_.
 
 .. figure:: images/rllib-new-api-stack-simple.svg

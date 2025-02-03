@@ -459,10 +459,13 @@ def _run(
     validate_route_prefix(route_prefix)
 
     if _local_testing_mode:
+        if not isinstance(logging_config, LoggingConfig):
+            logging_config = LoggingConfig(**(logging_config or {}))
+
         configure_component_logger(
             component_name="local_test",
             component_id="-",
-            logging_config=logging_config or LoggingConfig(),
+            logging_config=logging_config,
             stream_handler_only=True,
         )
         built_app = build_app(

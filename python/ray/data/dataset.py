@@ -1283,8 +1283,7 @@ class Dataset:
             # TODO: (srinathk) bind the expression to the actual schema.
             # If fn is a string, convert it to a pyarrow.dataset.Expression
             # Initialize ExpressionEvaluator with valid columns, if available
-            evaluator = ExpressionEvaluator()
-            resolved_expr = evaluator.get_filters(expression=expr)
+            resolved_expr = ExpressionEvaluator.get_filters(expression=expr)
 
             compute = TaskPoolStrategy(size=concurrency)
         else:
