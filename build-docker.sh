@@ -8,6 +8,7 @@ BASE_IMAGE="ubuntu:22.04"
 WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
 CPP_WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray_cpp-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
 PYTHON_VERSION="3.9"
+USE_LOCAL_SOURCE=""
 
 BUILD_ARGS=()
 
@@ -33,21 +34,20 @@ while [[ $# -gt 0 ]]; do
             BUILD_ARGS+=("-q")
         ;;
         --python-version)
-            # Python version to install. e.g. 3.9
-            # Changing python versions may require a different wheel.
-            # If not provided defaults to 3.9
             shift
             PYTHON_VERSION="$1"
         ;;
+        --local-source)
+            USE_LOCAL_SOURCE="true"
+        ;;
         *)
-            echo "Usage: build-docker.sh [ --gpu ] [ --base-image ] [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --python-version ]"
+            echo "Usage: build-docker.sh [ --gpu ] [ --base-image BASE_IMAGE ] [ --no-cache-build ] [ --shas-only ] [ --python-version PYTHON_VERSION ] [ --local-source ]"
             exit 1
     esac
     shift
 done
 
 export DOCKER_BUILDKIT=1
-
 
 # Build base-deps image
 if [[ "$OUTPUT_SHA" != "YES" ]]; then
@@ -76,8 +76,23 @@ fi
 
 RAY_BUILD_DIR="$(mktemp -d)"
 mkdir -p "$RAY_BUILD_DIR/.whl"
-wget --quiet "$WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
+
+if [[ -n "$USE_LOCAL_SOURCE" ]]; then
+    # Use local source to build the Python wheel
+    echo "=== Using local source to build the Python wheel ===" >/dev/stderr
+    pushd python
+    ./build-wheel-manylinux2014.sh
+    cp dist/*.whl "$RAY_BUILD_DIR/.whl/"
+    popd
+else
+    # Use remote wheel for Python
+    wget --quiet "$WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
+fi
+
+# Always download CPP wheel from remote
 wget --quiet "$CPP_WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
+
+# Copy necessary files to the build directory
 cp python/requirements_compiled.txt "$RAY_BUILD_DIR"
 cp docker/ray/Dockerfile "$RAY_BUILD_DIR"
 
@@ -97,4 +112,5 @@ else
     "${BUILD_CMD[@]}"
 fi
 
-rm -rf "$WHEEL_DIR"
+# Clean up
+rm -rf "$RAY_BUILD_DIR"

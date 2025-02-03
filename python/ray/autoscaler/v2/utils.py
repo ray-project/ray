@@ -818,6 +818,7 @@ def is_autoscaler_v2(
     if cached_is_autoscaler_v2 is not None and not fetch_from_server:
         return cached_is_autoscaler_v2
 
+    return False
     if gcs_client is None:
         gcs_client = internal_kv_get_gcs_client()
 
