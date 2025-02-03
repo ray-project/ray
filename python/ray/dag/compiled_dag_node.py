@@ -677,12 +677,13 @@ class ExecutableTask:
             # [TODO:P1]
             # Never wait for GPU output. Might need to wait for exception.
             # output_val = self.fetch_intermediate_future(wait_gpu_future=False)
-            if (
-                self.requires_nccl_read or self.requires_nccl_collective
-            ) and overlap_gpu_communication:
-                output_val = self.fetch_intermediate_future(wait_gpu_future=False)
-            else:
-                output_val = self.fetch_intermediate_future(wait_gpu_future=True)
+            with self.stream:
+                if (
+                    self.requires_nccl_read or self.requires_nccl_collective
+                ) and overlap_gpu_communication:
+                    output_val = self.fetch_intermediate_future(wait_gpu_future=False)
+                else:
+                    output_val = self.fetch_intermediate_future(wait_gpu_future=True)
             try:
                 self.output_writer.write(output_val)
             except RayChannelError:
