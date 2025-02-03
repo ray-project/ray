@@ -27,4 +27,4 @@ index 258b73f..91398cf 100644
 -        name = "net_zlib_zlib",
 +        # Named "com_github_madler_zlib" to match gRPC's import of zlib.
 +        name = "com_github_madler_zlib",
--- 
+--

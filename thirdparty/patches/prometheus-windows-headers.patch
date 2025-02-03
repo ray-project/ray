@@ -5,4 +5,4 @@ diff --git core/src/histogram.cc core/src/histogram.cc
  #include <numeric>
 +#include <stdexcept>
 +#include <limits>
--- 
+--

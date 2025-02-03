@@ -7,4 +7,4 @@ diff --git boost/exception/info.hpp boost/exception/info.hpp
 +                    error_info_base &target = *p; (void)target;  // Avoid -Wpotentially-evaluated-expression
 +                    BOOST_ASSERT( *BOOST_EXCEPTION_DYNAMIC_TYPEID(target).type_==*ti.type_ );
  #endif
--- 
+--
