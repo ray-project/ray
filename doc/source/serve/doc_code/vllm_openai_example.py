@@ -1,3 +1,4 @@
+# __serve_example_begin__
 from typing import Dict, Optional, List
 import logging
 
