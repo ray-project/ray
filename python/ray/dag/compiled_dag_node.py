@@ -630,17 +630,18 @@ class ExecutableTask:
         #             output_val = _wrap_exception(exc)
         #     return output_val
 
-        nccl_input_values = None
+        input_values = []
+        input_exc = None
         if self.requires_nccl_read:
-            nccl_input_values = [P2POp.RECV]
-            input_values = []
-            input_exc = None
+            input_values.append(P2POp.RECV)
         else:
+            if self.requires_nccl_write:
+                input_values.append(P2POp.SEND)
+
             try:
                 input_data = self.input_reader.read()
             except RayChannelError:
                 return True
-
             with self.stream:
                 try:
                     _process_return_vals(input_data, return_single_output=False)
@@ -651,12 +652,9 @@ class ExecutableTask:
                             if isinstance(val, RayTaskError):
                                 raise val.as_instanceof_cause()
                         input_data_ready.append(val)
-                    input_values = []
                     for task_input in self.task_inputs:
                         input_values.append(task_input.resolve(input_data_ready))
-                    input_exc = None
                 except Exception as exc:
-                    input_values = None
                     input_exc = exc
                     # [TODO:P1] overlap_gpu_communication should only be used
                     # in two places:
@@ -665,23 +663,13 @@ class ExecutableTask:
                     #   to produce a GPUFuture or a ResolvedFuture
                     self.wrap_and_set_intermediate_future(exc, wrap_in_gpu_future=False)
 
-            if self.requires_nccl_write:
-                nccl_input_values = [P2POp.SEND]
-                if input_values is not None:
-                    assert len(input_values) == 1
-                    tensor = input_values[0]
-                    input_values = [tensor]
-                else:
+                if input_exc is not None and self.requires_nccl_write:
                     exc = self.fetch_intermediate_future(wait_gpu_future=True)
-                    input_values = [exc]
+                    input_values.append(exc)
                     input_exc = None
+                    assert len(input_values) == 2
 
         if input_exc is None:
-            # [TODO:P0] Simplify this.
-            assert input_values is not None
-            if nccl_input_values is not None:
-                input_values = nccl_input_values + input_values
-
             if self.nccl_op is not None:
                 method = self.nccl_op.execute
             else:
