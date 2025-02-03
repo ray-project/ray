@@ -129,6 +129,9 @@ class ConvergenceTest(unittest.TestCase):
         assert len(analysis.trials) < 100
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-1)
 
+    @pytest.mark.skipif(
+        sys.version_info <= (3, 9), reason="Vizier doesn't support py39"
+    )
     def testConvergenceVizier(self):
         from ray.tune.search.vizier import VizierSearch
 

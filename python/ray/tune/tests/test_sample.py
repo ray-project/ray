@@ -1358,6 +1358,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    @pytest.mark.skipif(
+        sys.version_info <= (3, 9), reason="Vizier doesn't support py39"
+    )
     def testConvertVizier(self):
         from vizier import pyvizier as vz
 

@@ -25,7 +25,6 @@ from ray.tune.search.hebo import HEBOSearch
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search.nevergrad import NevergradSearch
 from ray.tune.search.optuna import OptunaSearch
-from ray.tune.search.vizier import VizierSearch
 from ray.tune.search.zoopt import ZOOptSearch
 
 
@@ -230,7 +229,12 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 
 class VizierWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    @pytest.mark.skipif(
+        sys.version_info <= (3, 9), reason="Vizier doesn't support py39"
+    )
     def set_basic_conf(self):
+        from ray.tune.search.vizier import VizierSearch
+
         space = {
             "x": tune.uniform("x", 0, 10),
             "y": tune.uniform("y", -10, 10),
