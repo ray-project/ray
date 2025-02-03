@@ -60,6 +60,11 @@ void StartStreamDump(
 
     // Exit at pipe read EOF.
     while (std::getline(*pipe_instream, newline)) {
+      // Backfill newliner for current segment.
+      if (!pipe_instream->eof()) {
+        newline += '\n';
+      }
+
       absl::MutexLock lock(&stream_dumper->mu);
       stream_dumper->content.emplace_back(std::move(newline));
     }
@@ -173,7 +178,10 @@ std::shared_ptr<spdlog::logger> CreateLogger(
       std::make_move_iterator(sinks.begin()),
       std::make_move_iterator(sinks.end()));
   logger->set_level(spdlog::level::info);
-  logger->set_pattern("%v");  // Only message string is logged.
+  // Only message is logged without extra newliner.
+  auto formatter = std::make_unique<spdlog::pattern_formatter>(
+      "%v", spdlog::pattern_time_type::local, std::string(""));
+  logger->set_formatter(std::move(formatter));
   return logger;
 }
 
