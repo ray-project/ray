@@ -5,7 +5,10 @@ from ray.train.v2._internal.execution.callback import (
     ReportCallback,
     WorkerGroupCallback,
 )
-from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
+from ray.train.v2._internal.execution.worker_group import (
+    WorkerGroup,
+    WorkerGroupPollStatus,
+)
 
 if TYPE_CHECKING:
     from ray.train._internal.session import _TrainingResult
@@ -33,7 +36,7 @@ class ReportCallbackHandler(WorkerGroupCallback):
     # --------------------------
 
     def after_worker_group_poll_status(
-        self, worker_group_status: WorkerGroupStatus
+        self, worker_group_status: WorkerGroupPollStatus
     ) -> None:
         """Handle training results as they roll in from worker status polls.
 

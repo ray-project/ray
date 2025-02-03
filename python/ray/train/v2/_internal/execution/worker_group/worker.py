@@ -10,7 +10,6 @@ from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
 from ray.data.iterator import DataIterator
 from ray.train import Checkpoint
-from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.callback import (
     TrainContextCallback,
     WorkerCallback,
@@ -25,17 +24,11 @@ from ray.train.v2._internal.execution.context import (
     set_train_context,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.execution.worker_group.poll import WorkerStatus
 from ray.train.v2._internal.logging.logging import configure_worker_logger
 from ray.train.v2._internal.logging.patch_print import patch_print_function
 
 T = TypeVar("T")
-
-
-@dataclass
-class WorkerStatus:
-    running: bool
-    error: Optional[Exception] = None
-    training_result: Optional[_TrainingResult] = None
 
 
 @dataclass(frozen=True)

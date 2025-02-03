@@ -53,7 +53,10 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingPolicy,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
-from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
+from ray.train.v2._internal.execution.worker_group import (
+    WorkerGroup,
+    WorkerGroupPollStatus,
+)
 from ray.train.v2._internal.logging.logging import configure_controller_logger
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.result import Result
@@ -180,7 +183,9 @@ class TrainController:
             )
 
     def _execute_failure_decision(
-        self, failure_decision: FailureDecision, worker_group_status: WorkerGroupStatus
+        self,
+        failure_decision: FailureDecision,
+        worker_group_status: WorkerGroupPollStatus,
     ) -> TrainControllerState:
         """Executes failure handling decisions (ex: restart, terminate)."""
         assert worker_group_status.errors
@@ -247,7 +252,7 @@ class TrainController:
         else:
             raise ValueError(f"Unexpected failure decision: {failure_decision}")
 
-    def _poll_workers(self) -> WorkerGroupStatus:
+    def _poll_workers(self) -> WorkerGroupPollStatus:
         # Ensure that the time between polls is at least HEALTH_CHECK_INTERVAL_S.
         time_since_last_poll = time_monotonic() - self._latest_poll_time
         if time_since_last_poll < self._health_check_interval_s:

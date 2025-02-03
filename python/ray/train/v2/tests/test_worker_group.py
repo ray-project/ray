@@ -103,7 +103,7 @@ def test_poll_status_running():
     status = wg.poll_status()
     wg.shutdown()
 
-    assert status.num_workers == 4
+    assert len(status.worker_statuses) == 4
     assert not status.finished
     assert not status.errors
 
@@ -120,7 +120,7 @@ def test_poll_status_finished():
     status = wg.poll_status()
     wg.shutdown()
 
-    assert status.num_workers == 4
+    assert len(status.worker_statuses) == 4
     assert status.finished
     assert not status.errors
 
@@ -147,7 +147,7 @@ def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
     status = wg.poll_status()
     wg.shutdown()
 
-    assert status.num_workers == 4
+    assert len(status.worker_statuses) == 4
     assert status.finished
     if poll_failure:
         assert len(status.errors) == 4
@@ -388,7 +388,7 @@ def test_worker_group_callback():
             self.shutdown_hook_called = True
 
         def after_worker_group_poll_status(self, worker_group_status):
-            assert worker_group_status.num_workers == 4
+            assert len(worker_group_status.worker_statuses) == 4
             self.poll_status_hook_called = True
 
     hooks = AssertCallback()

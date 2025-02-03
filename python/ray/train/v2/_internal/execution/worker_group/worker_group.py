@@ -2,12 +2,12 @@ import collections
 import logging
 import os
 import traceback
-import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import env_float
+from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
@@ -38,6 +38,14 @@ from ray.train.v2._internal.execution.context import (
     StorageContext,
     TrainRunContext,
 )
+from ray.train.v2._internal.execution.worker_group.poll import (
+    PollTask,
+    WorkerGroupPollStatus,
+)
+from ray.train.v2._internal.execution.worker_group.state import (
+    WorkerGroupState,
+    WorkerGroupStateBuilder,
+)
 from ray.train.v2._internal.execution.worker_group.worker import (
     RayTrainWorker,
     Worker,
@@ -65,7 +73,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-@dataclass
+@dataclass(frozen=True)
 class WorkerGroupContext:
     """Context for a worker group.
 
@@ -74,81 +82,10 @@ class WorkerGroupContext:
     Attributes:
         num_workers: The number of workers in the worker group.
         resources_per_worker: The resources per worker.
-        session_id: The session id.
     """
 
     num_workers: int
     resources_per_worker: Dict[str, float]
-    session_id: str
-
-
-@dataclass
-class WorkerGroupState:
-    """Ongoing state of an active worker group.
-
-    Attributes:
-        context: The context of the worker group.
-        start_time: The time when the worker group was started.
-        workers: The workers in the worker group.
-        placement_group: The placement group for the worker group.
-        sync_actor: The synchronization actor for the worker group.
-    """
-
-    context: WorkerGroupContext
-
-    start_time: float
-    # List of workers in this worker group.
-    # These should always be in sorted order by world rank.
-    workers: List[Worker]
-    placement_group: PlacementGroup
-    sync_actor: SynchronizationActor
-
-
-@dataclass
-class WorkerGroupPollStatus:
-    # _state: Optional[WorkerGroupState]
-    worker_statuses: Dict[int, WorkerStatus]
-
-    @property
-    def errors(self) -> Dict[int, Exception]:
-        return {
-            world_rank: status.error
-            for world_rank, status in self.worker_statuses.items()
-            if status.error is not None
-        }
-
-    @property
-    def finished(self) -> bool:
-        return self.worker_statuses and all(
-            not status.running for status in self.worker_statuses.values()
-        )
-
-    # @property
-    # def num_workers(self) -> int:
-    #     if not self._state:
-    #         return 0
-    #     return len(self._state.workers)
-
-    # @property
-    # def latest_start_time(self) -> float:
-    #     # TODO: This will return -inf whenever the WorkerGroup shuts down/restarts.
-    #     # Should this return the previous start time?
-    #     if not self._state:
-    #         return float("-inf")
-    #     return self._state.start_time
-
-
-@dataclass(frozen=True)
-class PollTask:
-    """Represents a poll task for a worker.
-
-    Attributes:
-        start_time: The time when the poll task was started.
-        task: The ObjectRef representing the poll task.
-    """
-
-    start_time: float
-    task: ObjectRef
 
 
 class WorkerGroup:
@@ -180,6 +117,7 @@ class WorkerGroup:
 
         self._worker_group_context: Optional[WorkerGroupContext] = None
         self._worker_group_state: Optional[WorkerGroupState] = None
+        self._worker_group_state_builder: Optional[WorkerGroupStateBuilder] = None
 
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
@@ -205,6 +143,10 @@ class WorkerGroup:
             DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
         )
 
+    ################################################################################
+    # Start Worker Group
+    ################################################################################
+
     def start(
         self,
         train_fn: Callable[[], None],
@@ -229,14 +171,12 @@ class WorkerGroup:
             raise ValueError("Workers already started.")
 
         worker_group_context = WorkerGroupContext(
-            session_id=uuid.uuid4().hex,
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
         )
         self._worker_group_context = worker_group_context
 
-        for callback in self._callbacks:
-            callback.before_worker_group_start(self)
+        self._worker_group_state_builder = WorkerGroupStateBuilder()
 
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
         # The current execution order is as follows:`on_worker_group_start` callbacks
@@ -267,6 +207,9 @@ class WorkerGroup:
                     num_workers=num_workers
                 ) from timeout_exc
 
+            # TODO: Figure out ordering between these different calls/callbacks.
+            self._worker_group_state_builder.with_placement_group(pg)
+
             # Initialize the synchronization actor on the driver node
             sync_actor = SynchronizationActor.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(
@@ -277,17 +220,10 @@ class WorkerGroup:
                 timeout_s=self._report_barrier_timeout_s,
                 warn_interval_s=self._report_barrier_warn_interval_s,
             )
+            self._worker_group_state_builder.with_sync_actor(sync_actor)
 
             workers = self._create_workers(num_workers, pg, resources_per_worker)
-
-            # TODO: Figure out ordering between these different calls/callbacks.
-            self._worker_group_state = WorkerGroupState(
-                context=worker_group_context,
-                workers=workers,
-                placement_group=pg,
-                sync_actor=sync_actor,
-                start_time=time_monotonic(),
-            )
+            self._worker_group_state_builder.with_workers(workers)
 
             # All the ray.get calls in this try block can possibly error if the
             # worker actors die during initialization.
@@ -307,7 +243,9 @@ class WorkerGroup:
                         ), f"Callback {callable} returned {arg} which is already set."
                         train_context_args[arg] = arg_values
 
-                self._init_train_context_on_workers(workers, train_context_args)
+                self._init_train_context_on_workers(
+                    workers, sync_actor, train_context_args
+                )
 
                 for callback in self._callbacks:
                     callback.after_worker_group_start(self)
@@ -320,11 +258,16 @@ class WorkerGroup:
 
                 for callback in self._callbacks:
                     callback.after_worker_group_training_start(self)
+
             except RayActorError as actor_error:
                 self.shutdown()
 
                 error_msg = "At least one of the worker actors failed to initialize."
                 raise WorkerGroupStartupFailedError(error_msg) from actor_error
+
+            self._worker_group_state_builder.with_start_time(time_monotonic())
+            self._worker_group_state = self._worker_group_state_builder.build()
+            self._worker_group_state_builder = None
 
     def _create_workers(
         self,
@@ -370,13 +313,14 @@ class WorkerGroup:
     def _init_train_context_on_workers(
         self,
         workers: List[Worker],
+        sync_actor: ActorHandle,
         train_context_args: Dict[str, List[Any]],
     ) -> None:
         context_init_tasks = [
             worker.actor.init_train_context.remote(
                 train_run_context=self._train_run_context,
                 distributed_context=worker.distributed_context,
-                synchronization_actor=self._worker_group_state.sync_actor,
+                synchronization_actor=sync_actor,
                 storage_context=self._storage_context,
                 worker_callbacks=self._worker_callbacks_to_propagate,
                 **{
@@ -387,100 +331,9 @@ class WorkerGroup:
         ]
         ray_get_safe(context_init_tasks)
 
-
-    @staticmethod
-    def _assign_worker_ranks(workers: List[Worker]) -> List[Worker]:
-        """Assign world ranks to workers by increasing node id and GPU id.
-
-        Initializes the `DistributedContext` for each worker.
-
-        Returns:
-            workers: Workers sorted by increasing world rank,
-                with the `DistributedContext` set.
-        """
-        workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers)
-
-        node_ip_to_workers = collections.defaultdict(list)
-        for worker in workers:
-            node_ip_to_workers[worker.metadata.node_ip].append(worker)
-        node_ips = list(node_ip_to_workers.keys())
-
-        for world_rank, worker in enumerate(workers):
-            distributed_context = DistributedContext(
-                local_rank=node_ip_to_workers[worker.metadata.node_ip].index(worker),
-                local_world_size=len(node_ip_to_workers[worker.metadata.node_ip]),
-                world_rank=world_rank,
-                world_size=len(workers),
-                node_rank=node_ips.index(worker.metadata.node_ip),
-            )
-            worker.distributed_context = distributed_context
-
-        return workers
-    
-    @staticmethod
-    def _sort_workers_by_node_id_and_gpu_id(
-        workers: List[Worker], _first_id: Optional[str] = None
-    ) -> List[Worker]:
-        """Reorder the workers by their node id and the lowest GPU id.
-
-        Example:
-            Given workers with the following attributes:
-                worker_0: id=1, gpu_ids=[1]
-                worker_1: id=0, gpu_ids=[0]
-                worker_2: id=1, gpu_ids=[0]
-                worker_3: id=0, gpu_ids=[1]
-
-            The function will perform the following steps:
-                1. Group by node IP:
-                    id=0: worker_1, worker_3
-                    id=1: worker_0, worker_2
-
-                2. Sort each group by GPU ID:
-                    id=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
-                    id=1: worker_2 (gpu_id=0), worker_0 (gpu_id=1)
-
-            Resulting in the order: [worker_1, worker_3, worker_2, worker_0]
-
-        Args:
-            _first_id: The first node id to group by.
-        """
-        node_id_to_workers = collections.defaultdict(list)
-
-        if _first_id is not None:
-            node_id_to_workers[_first_id] = []
-
-        for worker in workers:
-            node_id_to_workers[worker.metadata.node_id].append(worker)
-
-        # Sort workers on the same node by the lowest GPU id
-        # More details: https://github.com/ray-project/ray/issues/40803
-        def get_lowest_gpu_id(worker) -> int:
-            gpu_ids = worker.metadata.accelerator_ids.get("GPU", [])
-            # If there are no GPU IDs, return 0 as a default
-            if not gpu_ids:
-                return 0
-
-            # Attempt to convert GPU IDs to integers and find the minimum ID.
-            # Fallback to return the minimum string-based ID
-            try:
-                return min(int(gpu_id) for gpu_id in gpu_ids)
-            except ValueError:
-                return min(gpu_ids)
-
-        for node_id in node_id_to_workers:
-            node_id_to_workers[node_id].sort(key=get_lowest_gpu_id)
-
-        sorted_workers = []
-        for workers in node_id_to_workers.values():
-            sorted_workers.extend(workers)
-        return sorted_workers
-
-    def has_started(self) -> bool:
-        return self._worker_group_state is not None
-
-    def _assert_workers_started(self):
-        if not self.has_started():
-            raise ValueError("Workers not started.")
+    #####################################################################################
+    # Shutdown Worker Group
+    #####################################################################################
 
     def shutdown(self, patience_s: float = 5.0):
         """Shutdown all the workers in this worker group.
@@ -495,6 +348,8 @@ class WorkerGroup:
         with invoke_context_managers(
             [callback.on_worker_group_shutdown for callback in self._callbacks]
         ):
+            if self._worker_group_state_builder:
+                self._worker_group_state_builder.shutdown(patience_s)
 
             if self._worker_group_state:
                 # TODO: These callbacks currently assume the WorkerGroup is alive.
@@ -502,48 +357,21 @@ class WorkerGroup:
                 for callback in self._callbacks:
                     callback.before_worker_group_shutdown(self)
 
-                WorkerGroup._shutdown_worker_group_state(self._worker_group_state, patience_s)
+                self._worker_group_state.shutdown(patience_s)
 
             self._clear_state()
 
             logger.debug("Worker group shutdown successful.")
 
-    @staticmethod
-    def _shutdown_worker_group_state(
-        worker_group_state: WorkerGroupState, patience_s: float
-    ):
-
-        workers = worker_group_state.workers
-        # Run the worker shutdown logic on each of the workers. This should
-        # be a non-blocking call to realize forceful shutdown after patience_s.
-        _ = [w.actor.shutdown.remote() for w in workers]
-
-        logger.debug(f"Shutting down {len(workers)} workers.")
-        if patience_s <= 0:
-            for worker in workers:
-                ray.kill(worker.actor)
-        else:
-            done_refs = [w.actor.__ray_terminate__.remote() for w in workers]
-            # Wait for actors to die gracefully.
-            _, not_done = ray.wait(
-                done_refs, num_returns=len(done_refs), timeout=patience_s
-            )
-            if not_done:
-                logger.debug("Graceful termination failed. Falling back to force kill.")
-                # If all actors are not able to die gracefully, then kill them.
-                for worker in workers:
-                    ray.kill(worker.actor)
-
-        remove_placement_group(worker_group_state.placement_group)
-
-        ray.kill(worker_group_state.sync_actor)
-
     def _clear_state(self):
         self._worker_group_context = None
+        self._worker_group_state_builder = None
         self._worker_group_state = None
         self._world_rank_to_ongoing_poll = {}
 
-
+    #####################################################################################
+    # Polling Worker Group
+    #####################################################################################
 
     def poll_status(self, timeout: Optional[float] = None) -> WorkerGroupPollStatus:
         """Poll the status of all workers in the worker group.
@@ -553,7 +381,6 @@ class WorkerGroup:
         """
         if not self.has_started():
             return WorkerGroupPollStatus(
-                _state=self._worker_group_state,
                 worker_statuses={},
             )
 
@@ -567,8 +394,6 @@ class WorkerGroup:
             callback.after_worker_group_poll_status(worker_group_poll_status)
 
         return worker_group_poll_status
-
-
 
     def _poll_workers_and_collect_errors(
         self, timeout: Optional[float]
@@ -662,7 +487,6 @@ class WorkerGroup:
         ]
         return results
 
-
     def _get_poll_tasks(self) -> List[ObjectRef]:
         """Get the poll tasks for each worker.
 
@@ -682,6 +506,10 @@ class WorkerGroup:
                 poll_tasks.append(worker.actor.poll_status.remote())
         return poll_tasks
 
+    #####################################################################################
+    # Execution Methods
+    #####################################################################################
+
     def execute_async(self, fn: Callable, *fn_args, **fn_kwargs) -> List[ObjectRef]:
         """Execute ``func`` on each worker and return the futures.
 
@@ -691,7 +519,7 @@ class WorkerGroup:
                 as ``self.workers``.
 
         """
-        self._assert_workers_started()
+        self._assert_worker_group_started()
         workers = self.get_workers()
 
         return [
@@ -709,8 +537,6 @@ class WorkerGroup:
                 worker. The order is the same as ``self.workers``.
 
         """
-        self._assert_workers_started()
-
         return ray_get_safe(self.execute_async(fn, *fn_args, **fn_kwargs))
 
     def execute_single_async(
@@ -722,7 +548,7 @@ class WorkerGroup:
             (ObjectRef) An ObjectRef representing the output of func.
 
         """
-        self._assert_workers_started()
+        self._assert_worker_group_started()
         workers = self.get_workers()
 
         if rank >= len(workers):
@@ -745,14 +571,14 @@ class WorkerGroup:
             (T) The output of func.
 
         """
-        self._assert_workers_started()
-
         return ray.get(self.execute_single_async(rank, fn, *fn_args, **fn_kwargs))
 
-    # def get_worker_group_session_id(self) -> Optional[str]:
-    #     if not self._worker_group_context:
-    #         return None
-    #     return self._worker_group_context.session_id
+    #####################################################################################
+    # Utility Methods
+    #####################################################################################
+
+    def has_started(self) -> bool:
+        return self._worker_group_state is not None
 
     def get_workers(self) -> List[Worker]:
         if not self._worker_group_state:
@@ -764,6 +590,101 @@ class WorkerGroup:
 
     def get_worker_group_state(self) -> Optional[WorkerGroupState]:
         return self._worker_group_state
-    
+
+    def _assert_worker_group_started(self):
+        if not self.has_started():
+            raise ValueError("Worker group not started.")
+
     def __len__(self) -> int:
         return len(self.get_workers())
+
+    #########################################################################################
+    # Static Utility Methods
+    #########################################################################################
+
+    @staticmethod
+    def _assign_worker_ranks(workers: List[Worker]) -> List[Worker]:
+        """Assign world ranks to workers by increasing node id and GPU id.
+
+        Initializes the `DistributedContext` for each worker.
+
+        Returns:
+            workers: Workers sorted by increasing world rank,
+                with the `DistributedContext` set.
+        """
+        workers = WorkerGroup._sort_workers_by_node_id_and_gpu_id(workers)
+
+        node_ip_to_workers = collections.defaultdict(list)
+        for worker in workers:
+            node_ip_to_workers[worker.metadata.node_ip].append(worker)
+        node_ips = list(node_ip_to_workers.keys())
+
+        for world_rank, worker in enumerate(workers):
+            distributed_context = DistributedContext(
+                local_rank=node_ip_to_workers[worker.metadata.node_ip].index(worker),
+                local_world_size=len(node_ip_to_workers[worker.metadata.node_ip]),
+                world_rank=world_rank,
+                world_size=len(workers),
+                node_rank=node_ips.index(worker.metadata.node_ip),
+            )
+            worker.distributed_context = distributed_context
+
+        return workers
+
+    @staticmethod
+    def _sort_workers_by_node_id_and_gpu_id(
+        workers: List[Worker], _first_id: Optional[str] = None
+    ) -> List[Worker]:
+        """Reorder the workers by their node id and the lowest GPU id.
+
+        Example:
+            Given workers with the following attributes:
+                worker_0: id=1, gpu_ids=[1]
+                worker_1: id=0, gpu_ids=[0]
+                worker_2: id=1, gpu_ids=[0]
+                worker_3: id=0, gpu_ids=[1]
+
+            The function will perform the following steps:
+                1. Group by node IP:
+                    id=0: worker_1, worker_3
+                    id=1: worker_0, worker_2
+
+                2. Sort each group by GPU ID:
+                    id=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
+                    id=1: worker_2 (gpu_id=0), worker_0 (gpu_id=1)
+
+            Resulting in the order: [worker_1, worker_3, worker_2, worker_0]
+
+        Args:
+            _first_id: The first node id to group by.
+        """
+        node_id_to_workers = collections.defaultdict(list)
+
+        if _first_id is not None:
+            node_id_to_workers[_first_id] = []
+
+        for worker in workers:
+            node_id_to_workers[worker.metadata.node_id].append(worker)
+
+        # Sort workers on the same node by the lowest GPU id
+        # More details: https://github.com/ray-project/ray/issues/40803
+        def get_lowest_gpu_id(worker) -> int:
+            gpu_ids = worker.metadata.accelerator_ids.get("GPU", [])
+            # If there are no GPU IDs, return 0 as a default
+            if not gpu_ids:
+                return 0
+
+            # Attempt to convert GPU IDs to integers and find the minimum ID.
+            # Fallback to return the minimum string-based ID
+            try:
+                return min(int(gpu_id) for gpu_id in gpu_ids)
+            except ValueError:
+                return min(gpu_ids)
+
+        for node_id in node_id_to_workers:
+            node_id_to_workers[node_id].sort(key=get_lowest_gpu_id)
+
+        sorted_workers = []
+        for workers in node_id_to_workers.values():
+            sorted_workers.extend(workers)
+        return sorted_workers

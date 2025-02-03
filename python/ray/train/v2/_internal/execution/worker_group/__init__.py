@@ -1,11 +1,15 @@
-from .worker import ActorMetadata, RayTrainWorker, Worker, WorkerStatus
-from .worker_group import WorkerGroup, WorkerGroupStatus
+from .poll import WorkerStatus, WorkerGroupPollStatus
+from .state import WorkerGroupState, WorkerGroupStateBuilder
+from .worker import ActorMetadata, RayTrainWorker, Worker
+from .worker_group import WorkerGroup
 
 __all__ = [
-    "WorkerGroup",
-    "WorkerGroupStatus",
-    "Worker",
-    "WorkerStatus",
     "ActorMetadata",
     "RayTrainWorker",
+    "Worker",
+    "WorkerGroup",
+    "WorkerGroupPollStatus",
+    "WorkerGroupState",
+    "WorkerGroupStateBuilder",
+    "WorkerStatus",
 ]
