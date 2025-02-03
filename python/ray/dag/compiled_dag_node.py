@@ -491,6 +491,7 @@ class ExecutableTask:
         self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         self._collective_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
+        self._stream : Union["cp.cuda.Stream", nullcontext] = nullcontext()
         if not overlap_gpu_communication:
             return
 
@@ -520,6 +521,13 @@ class ExecutableTask:
 
             assert isinstance(self.nccl_op, _CollectiveOperation)
             self._collective_stream = self.nccl_op.get_nccl_group().collective_stream
+
+        if self.requires_nccl_read:
+            self._stream = self._recv_stream
+        elif self.requires_nccl_write:
+            self._stream = self._send_stream
+        elif self.requires_nccl_collective:
+            self._stream = self._collective_stream
 
     def wrap_and_set_intermediate_future(
         self, val: Any, wrap_in_gpu_future: bool
@@ -631,16 +639,6 @@ class ExecutableTask:
                     input_values = tuple(nccl_input_values) + input_values
                 return method(*input_values, **resolved_kwargs)
 
-        # [TODO:P1] Move to `self._stream`.
-        if self.requires_nccl_read:
-            stream = self._recv_stream
-        elif self.requires_nccl_write:
-            stream = self._send_stream
-        elif self.requires_nccl_collective:
-            stream = self._collective_stream
-        else:
-            stream = nullcontext()
-
         nccl_input_values = None
         if self.requires_nccl_read:
             nccl_input_values = [P2POp.RECV]
@@ -652,7 +650,7 @@ class ExecutableTask:
             except RayChannelError:
                 return True
 
-            with stream:
+            with self._stream:
                 try:
                     _process_return_vals(input_data, return_single_output=False)
                     input_data_ready = []
@@ -692,7 +690,7 @@ class ExecutableTask:
         else:
             method = getattr(class_handle, self.method_name)
 
-        with stream:
+        with self._stream:
             try:
                 output_val = exec_method(
                     method,
