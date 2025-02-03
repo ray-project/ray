@@ -202,11 +202,11 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
       std::make_shared<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
           std::move(fd_sink));
 
+  // In this case, we don't write to the file via logger, so no need to set formatter.
+  // spglog is used here merely to reuse the same [RedirectionFileHandle] interface.
   auto logger_sink = std::make_shared<non_owned_fd_sink_st>(handle);
   auto logger = std::make_shared<spdlog::logger>(
       /*name=*/absl::StrFormat("pipe-logger-%s", file_path), std::move(logger_sink));
-  logger->set_level(spdlog::level::info);
-  logger->set_pattern("%v");  // Only message string is logged.
 
   // Lifecycle for the file handle is bound at [ostream] thus [close_fn].
   auto close_fn = [ostream = std::move(ostream)]() { ostream->close(); };
