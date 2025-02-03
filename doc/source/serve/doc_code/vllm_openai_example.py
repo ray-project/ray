@@ -79,8 +79,6 @@ class VLLMDeployment:
                 model_config,
                 models,
                 self.response_role,
-                # lora_modules=self.lora_modules,
-                # prompt_adapters=self.prompt_adapters,
                 request_logger=self.request_logger,
                 chat_template=self.chat_template,
                 chat_template_content_format="auto",
