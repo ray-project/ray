@@ -162,6 +162,9 @@ class _StatsActor:
         # Dataset metadata to be queried directly by DashboardHead api.
         self.datasets: Dict[str, Any] = {}
 
+        # cache of calls to ray.nodes() to prevent unnecessary network calls
+        self._ray_nodes_cache: Dict[str, str] = {}
+
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
         # a dataset's metrics to 0 after each finishes execution.
@@ -385,7 +388,16 @@ class _StatsActor:
 
         if per_node_metrics is not None:
             for node_id, node_metrics in per_node_metrics.items():
-                tags = self._create_tags(dataset_tag=dataset_tag, node_tag=node_id)
+                # translate node_id into node_name (the node ip), cache node info
+                if (
+                    self._ray_nodes_cache is None
+                    or node_id not in self._ray_nodes_cache
+                ):
+                    self._rebuild_ray_nodes_cache()
+
+                node_name = self._ray_nodes_cache.get()
+
+                tags = self._create_tags(dataset_tag=dataset_tag, node_tag=node_name)
                 for metric_name, metric_value in node_metrics.items():
                     prom_metric = self.per_node_metrics[metric_name]
                     prom_metric.set(metric_value, tags)
@@ -393,6 +405,11 @@ class _StatsActor:
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
         self.update_dataset(dataset_tag, state)
+
+    def _rebuild_ray_nodes_cache(self) -> None:
+        current_nodes = ray.nodes()
+        for node in current_nodes:
+            node["NodeID"] = node["NodeName"]
 
     def update_iteration_metrics(
         self,
