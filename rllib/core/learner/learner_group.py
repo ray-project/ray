@@ -385,7 +385,7 @@ class LearnerGroup(Checkpointable):
                     **_kwargs,
                 )
             if _return_state and result:
-                result["_rl_module_state_after_update"] = _learner.get_state(
+                result["_rl_module_state_after_update"] = ray.put(_learner.get_state(
                     # Only return the state of those RLModules that actually returned
                     # results and thus got probably updated.
                     components=[
@@ -394,7 +394,7 @@ class LearnerGroup(Checkpointable):
                         if mid != ALL_MODULES
                     ],
                     inference_only=True,
-                )
+                )[COMPONENT_RL_MODULE])
 
             return result
 

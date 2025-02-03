@@ -866,8 +866,10 @@ class IMPALA(Algorithm):
         # `batch_refs` is a list of tuple(aggregator_actor_id, ObjRef[MABatch]).
 
         # Each ObjRef[MABatch] was returned by one AggregatorActor from a single
-        # `get_batch()` call and the underlying MABatch is already located on a
-        # particular GPU (matching one particular Learner).
+        # `get_batch()` call.
+        # TODO (sven): Add this comment, once valid:
+        #  .. and the underlying MABatch is already located on a particular GPU
+        #  (matching one particular Learner).
         for agg_actor_id, ma_batch_ref in batch_refs:
             learner_actor_id = self._aggregator_actor_to_learner[agg_actor_id]
             self._ma_batches_being_built[learner_actor_id].append(ma_batch_ref)
