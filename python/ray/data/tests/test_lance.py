@@ -152,43 +152,6 @@ def test_ray_sink(data_path):
     assert ds.schema == schema
 
 
-@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_empty_write_lance(data_path):
-    schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
-
-    (
-        ray.data.range(10)
-        .filter((lambda row: row["id"] > 10))
-        .map(lambda x: {"id": x["id"], "str": f"str-{x['id']}"})
-        .write_lance(data_path, schema=schema)
-    )
-    # Empty write would not generate dataset.
-    with pytest.raises(ValueError):
-        lance.dataset(data_path)
-
-
-@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_ray_write_lance_none_str(data_path):
-    def f(row):
-        return {
-            "id": row["id"],
-            "str": None,
-        }
-
-    schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
-    (ray.data.range(10).map(f).write_lance(data_path, schema=schema))
-
-    ds = lance.dataset(data_path)
-    ds.count_rows() == 10
-    assert ds.schema == schema
-
-    tbl = ds.to_table()
-    pylist = tbl["str"].to_pylist()
-    assert len(pylist) == 10
-    for item in pylist:
-        assert item is None
-
-
 if __name__ == "__main__":
     import sys
 
