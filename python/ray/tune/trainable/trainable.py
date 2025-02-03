@@ -43,7 +43,6 @@ from ray.tune.utils.util import Tee
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.tune import Checkpoint
     from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
@@ -502,10 +501,16 @@ class Trainable:
             # Update the checkpoint result to include auto-filled metrics.
             checkpoint_result.metrics.update(self._last_result)
 
+        print(f"checkpoint_result: {checkpoint_result}")
+        print(
+            f"type(checkpoint_result.checkpoint): {type(checkpoint_result.checkpoint)}"
+        )
         return checkpoint_result
 
     @DeveloperAPI
-    def restore(self, checkpoint_path: Union[str, "Checkpoint", _TrainingResult]):
+    def restore(
+        self, checkpoint_path: Union[str, "ray.tune.Checkpoint", _TrainingResult]
+    ):
         """Restores training state from a given model checkpoint.
 
         These checkpoints are returned from calls to save().
@@ -517,19 +522,12 @@ class Trainable:
         `checkpoint_path` should match with the return from ``save()``.
 
         Args:
-            checkpoint_path: Path to restore checkpoint from. If this
-                path does not exist on the local node, it will be fetched
-                from external (cloud) storage if available, or restored
-                from a remote node.
-            checkpoint_node_ip: If given, try to restore
-                checkpoint from this node if it doesn't exist locally or
-                on cloud storage.
-            fallback_to_latest: If True, will try to recover the
-                latest available checkpoint if the given ``checkpoint_path``
-                could not be found.
-
+            checkpoint_path: training result that was returned by a
+                previous call to `save()`.
         """
-        # TODO(justinvyu): Clean up this interface
+        # TODO(justinvyu): This also supports restoring from a Checkpoint object
+        # or a path, which are legacy APIs that RLlib depends on.
+        # RLlib should remove this dependency since `restore` is a DeveloperAPI.
         if isinstance(checkpoint_path, str):
             checkpoint_path = ray.tune.Checkpoint.from_directory(checkpoint_path)
         if isinstance(checkpoint_path, ray.tune.Checkpoint):
