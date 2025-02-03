@@ -124,6 +124,33 @@ bool ClusterTaskManager::CancelTasks(
   return tasks_cancelled;
 }
 
+bool ClusterTaskManager::CancelTasksWithResourceShapes(
+    const std::vector<ResourceSet> target_resource_shapes,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
+  auto predicate = [target_resource_shapes,
+                    this](const std::shared_ptr<internal::Work> &work) {
+    return this->IsWorkWithResourceShape(work, target_resource_shapes);
+  };
+
+  return CancelTasks(predicate, failure_type, scheduling_failure_message);
+}
+
+bool ClusterTaskManager::IsWorkWithResourceShape(
+    const std::shared_ptr<internal::Work> &work,
+    const std::vector<ResourceSet> &target_resource_shapes) {
+  SchedulingClass scheduling_class =
+      work->task.GetTaskSpecification().GetSchedulingClass();
+  ResourceSet resource_set =
+      TaskSpecification::GetSchedulingClassDescriptor(scheduling_class).resource_set;
+  for (const auto &target_resource_shape : target_resource_shapes) {
+    if (resource_set == target_resource_shape) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool ClusterTaskManager::CancelAllTaskOwnedBy(
     const WorkerID &worker_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,

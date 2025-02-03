@@ -93,6 +93,18 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") override;
 
+  /// Cancel all tasks that requires certain resource shape.
+  ///
+  /// \param target_resource_shapes: The resource shapes to cancel.
+  /// \param failure_type: The failure type of the cancellation.
+  /// \param scheduling_failure_message: A failure message for the cancellation.
+  ///
+  /// \return True if any task was successfully cancelled.
+  bool CancelTasksWithResourceShapes(
+      const std::vector<ResourceSet> target_resource_shapes,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message = "") override;
+
   /// Attempt to cancel all queued tasks that match the predicate.
   ///
   /// \param predicate: A function that returns true if a task needs to be cancelled.
@@ -158,6 +170,18 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// TODO(sang): Update the internal states value dynamically instead of iterating the
   /// data structure.
   void RecomputeDebugStats() const;
+
+  /// Whether the givne Work matches the provided resource shape. The function checks
+  /// the scheduling class of the work and compares it with each of the target resource
+  /// shapes. If any of the resource shapes matches the resources of the scheduling
+  /// class, the function returns true.
+  ///
+  /// \param work: The work to check.
+  /// \param target_resource_shapes: The list of resource shapes to check against.
+  ///
+  /// \return True if the work matches any of the target resource shapes.
+  bool IsWorkWithResourceShape(const std::shared_ptr<internal::Work> &work,
+                               const std::vector<ResourceSet> &target_resource_shapes);
 
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.

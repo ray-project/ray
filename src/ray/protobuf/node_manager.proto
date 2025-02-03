@@ -306,6 +306,24 @@ message GetResourceLoadReply {
   ResourcesData resources = 1;
 }
 
+message CancelTasksWithResourceShapesRequest {
+  message ResourceShape {
+    // A map from resource name to the quantity of that resource. This map represents
+    // the resource request shape of a task.
+    map<string, double> resource_shape = 1;
+  }
+  // The resource shapes of the tasks to cancel.
+  repeated ResourceShape resource_shapes = 1;
+  // The associated scheduling failure type to associate with the cancellation with.
+  RequestWorkerLeaseReply.SchedulingFailureType failure_type = 2;
+  // The failure message to associate with the cancelation with.
+  string failure_message = 3;
+}
+
+message CancelTasksWithResourceShapesReply {
+  // Empty
+}
+
 message NotifyGCSRestartRequest {}
 
 message NotifyGCSRestartReply {}
@@ -387,6 +405,9 @@ service NodeManagerService {
   rpc NotifyGCSRestart(NotifyGCSRestartRequest) returns (NotifyGCSRestartReply);
   // Get the resource load of the raylet.
   rpc GetResourceLoad(GetResourceLoadRequest) returns (GetResourceLoadReply);
+  // Cancel tasks that require certain resource shapes.
+  rpc CancelTasksWithResourceShapes(CancelTasksWithResourceShapesRequest)
+      returns (CancelTasksWithResourceShapesReply);
   // Request a worker from the raylet.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Request to prestart workers.
