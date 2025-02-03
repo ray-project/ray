@@ -389,10 +389,7 @@ class _StatsActor:
         if per_node_metrics is not None:
             for node_id, node_metrics in per_node_metrics.items():
                 # translate node_id into node_name (the node ip), cache node info
-                if (
-                    self._ray_nodes_cache is None
-                    or node_id not in self._ray_nodes_cache
-                ):
+                if node_id not in self._ray_nodes_cache:
                     self._rebuild_ray_nodes_cache()
 
                 node_name = self._ray_nodes_cache.get(node_id, "UNKNOWN")
@@ -409,7 +406,10 @@ class _StatsActor:
     def _rebuild_ray_nodes_cache(self) -> None:
         current_nodes = ray.nodes()
         for node in current_nodes:
-            node["NodeID"] = node["NodeName"]
+            node_id = node.get("NodeID", None)
+            node_name = node.get("NodeName", None)
+            if node_id is not None and node_name is not None:
+                self._ray_nodes_cache[node_id] = node_name
 
     def update_iteration_metrics(
         self,
