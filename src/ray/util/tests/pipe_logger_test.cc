@@ -142,7 +142,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -168,7 +168,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -193,7 +193,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -219,7 +219,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -244,7 +244,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -269,7 +269,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
@@ -295,7 +295,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
     StreamRedirectionOption logging_option{};
-    logging_option.file_path = test_file_path;
+    logging_option.file_path = test_file_path.string();
     logging_option.tee_to_stdout = true;
 
     testing::internal::CaptureStdout();
