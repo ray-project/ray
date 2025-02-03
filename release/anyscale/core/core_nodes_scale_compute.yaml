@@ -17,12 +17,16 @@ worker_node_types:
     - name: worker_m5n
       instance_type: m5n.large
       min_workers: 0
-      max_workers: 1500
+      max_workers: 2000
       use_spot: false
     - name: worker_m7
       instance_type: m7i.large
       min_workers: 0
-      max_workers: 1500
+      max_workers: 2000
+      use_spot: false
+
+flags:
+  allow-cross-zone-autoscaling: true
 
 advanced_configurations_json:
     BlockDeviceMappings:
