@@ -1129,7 +1129,7 @@ class CompiledDAG:
                 if isinstance(dag_node, CollectiveOutputNode):
                     self._track_communicator_usage(
                         dag_node,
-                        dag_node._collective_op.actor_handles,
+                        set(dag_node._collective_op.actor_handles),
                         collective_op=True,
                     )
                     assert not self._overlap_gpu_communication, (
@@ -1304,8 +1304,12 @@ class CompiledDAG:
         This method also performs validation checks on the passed-in communicator.
 
         Args:
-            dag_node: The DAG node that uses the communicator.
-            actors: The set of actors that use the communicator.
+            dag_node: The DAG node that uses the communicator, this is the node
+                that has the `with_tensor_transport()` type hint for p2p communication,
+                or a `CollectiveOutputNode` for collective operations.
+            actors: The full or partial set of actors that use the communicator.
+                This method should be called one or multiple times so that all actors
+                of the communicator are tracked.
             collective_op: Whether the communicator is used for a collective operation.
         """
         if None in actors:
@@ -1314,9 +1318,9 @@ class CompiledDAG:
             type_hint = dag_node._collective_op.type_hint
         else:
             type_hint = dag_node.type_hint
-        custom_communicator = type_hint.get_custom_communicator()
+        communicator = type_hint.get_custom_communicator()
 
-        if custom_communicator is None:
+        if communicator is None:
             if (
                 self._default_communicator is None
                 and not self._create_default_communicator
@@ -1335,8 +1339,6 @@ class CompiledDAG:
                     "_default_communicator when calling experimental_compile()."
                 )
             communicator = self._default_communicator
-        else:
-            communicator = custom_communicator
 
         if communicator is None:
             if collective_op:
