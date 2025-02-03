@@ -395,7 +395,7 @@ class _StatsActor:
                 ):
                     self._rebuild_ray_nodes_cache()
 
-                node_name = self._ray_nodes_cache.get()
+                node_name = self._ray_nodes_cache.get(node_id, "UNKNOWN")
 
                 tags = self._create_tags(dataset_tag=dataset_tag, node_tag=node_name)
                 for metric_name, metric_value in node_metrics.items():
