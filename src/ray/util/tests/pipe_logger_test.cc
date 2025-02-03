@@ -156,7 +156,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     // Pipe logger automatically adds a newliner at the end.
     const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_ASSERT_OK(actual_content);
-    EXPECT_EQ(*actual_content, "hello\n");
+    EXPECT_EQ(*actual_content, kContent);
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
   }
@@ -181,7 +181,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
 
     const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_ASSERT_OK(actual_content);
-    EXPECT_EQ(*actual_content, "hello\n");
+    EXPECT_EQ(*actual_content, kContent);
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
   }
@@ -207,7 +207,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     // Pipe logger automatically adds a newliner at the end.
     const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_EXPECT_OK(actual_content);
-    EXPECT_EQ(*actual_content, "hello\nworld\n");
+    EXPECT_EQ(*actual_content, kContent);
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
   }
@@ -232,7 +232,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
 
     const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_EXPECT_OK(actual_content);
-    EXPECT_EQ(*actual_content, "hello\nworld\n");
+    EXPECT_EQ(*actual_content, kContent);
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
   }
@@ -257,7 +257,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
 
     const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_EXPECT_OK(actual_content);
-    EXPECT_EQ(*actual_content, "helloworld\n\n\n");
+    EXPECT_EQ(*actual_content, kContent);
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
   }
@@ -283,7 +283,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     // Pipe logger automatically adds a newliner at the end.
     const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_EXPECT_OK(actual_content);
-    EXPECT_EQ(*actual_content, "hello\n\n\nworld\n");
+    EXPECT_EQ(*actual_content, kContent);
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
   }
@@ -309,7 +309,7 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     // Pipe logger automatically adds a newliner at the end.
     const auto actual_content = ReadEntireFile(test_file_path.string());
     RAY_ASSERT_OK(actual_content);
-    EXPECT_EQ(*actual_content, "hello\n\nworld\n\n");
+    EXPECT_EQ(*actual_content, kContent);
 
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
   }

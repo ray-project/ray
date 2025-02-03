@@ -255,6 +255,7 @@ ray_cc_library(
     srcs = ["pipe_logger.cc"],
     deps = [
         ":compat",
+        ":spdlog_fd_sink",
         ":stream_redirection_options",
         ":thread_utils",
         ":util",
