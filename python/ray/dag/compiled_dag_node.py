@@ -608,24 +608,27 @@ class ExecutableTask:
         #     if self.output_writer is not None:
         #         self.output_writer.write(output_val)
 
-        # [TODO:P1] Pass the stream to use at ExecutableTask constructor
-        # instead of each task needing access to all streams.
-        # [TODO:P1] Task lambda should take in a Tuple[TaskArgs, Optional[Exception]].
+        # Task lambda should take in a Tuple[TaskArgs, Optional[Exception]].
         # Task can decide whether to re-raise the Exception or do something with it.
-        def exec_method(
-            method,
-            input_exc: Optional[Exception],
-            nccl_input_values: List[Any],
-            *input_values,
-            **resolved_kwargs,
-        ):
-            if input_exc is not None:
-                return
-            else:
-                assert input_values is not None
-                if nccl_input_values is not None:
-                    input_values = tuple(nccl_input_values) + input_values
-                return method(*input_values, **resolved_kwargs)
+        # def exec_method(
+        #     method,
+        #     nccl_input_values: List[Any],
+        #     *input_values,
+        #     **resolved_kwargs,
+        # ) -> Any:
+        #     assert input_values is not None
+        #     if nccl_input_values is not None:
+        #         input_values = tuple(nccl_input_values) + input_values
+        #     return method(*input_values, **resolved_kwargs)
+
+        #     try:
+        #         output_val = method(*input_values, **resolved_kwargs)
+        #     except Exception as exc:
+        #         if isinstance(exc, RayChannelError) or self.nccl_op is not None:
+        #             raise exc
+        #         else:
+        #             output_val = _wrap_exception(exc)
+        #     return output_val
 
         nccl_input_values = None
         if self.requires_nccl_read:
@@ -673,34 +676,34 @@ class ExecutableTask:
                     input_values = [exc]
                     input_exc = None
 
-        if self.nccl_op is not None:
-            method = self.nccl_op.execute
-        else:
-            method = getattr(class_handle, self.method_name)
+        if input_exc is None:
+            # [TODO:P0] Simplify this.
+            assert input_values is not None
+            if nccl_input_values is not None:
+                input_values = nccl_input_values + input_values
 
-        with self.stream:
-            try:
-                output_val = exec_method(
-                    method,
-                    input_exc,
-                    nccl_input_values,
-                    *input_values,
-                    **self.resolved_kwargs,
-                )
-            except RayChannelError:
-                return True
-            except Exception as exc:
-                if self.nccl_op is not None:
-                    raise exc
-                else:
-                    output_val = _wrap_exception(exc)
+            if self.nccl_op is not None:
+                method = self.nccl_op.execute
+            else:
+                method = getattr(class_handle, self.method_name)
 
-            # [TODO:P1] Change to below.
-            # if self.output_writer is not None:
-            if input_exc is None and not self.requires_nccl_write:
-                self.wrap_and_set_intermediate_future(
-                    output_val, wrap_in_gpu_future=overlap_gpu_communication
-                )
+            with self.stream:
+                try:
+                    output_val = method(*input_values, **self.resolved_kwargs)
+                except RayChannelError:
+                    return True
+                except Exception as exc:
+                    if self.nccl_op is not None:
+                        raise exc
+                    else:
+                        output_val = _wrap_exception(exc)
+
+                # [TODO:P1] Change to below.
+                # if self.output_writer is not None:
+                if not self.requires_nccl_write:
+                    self.wrap_and_set_intermediate_future(
+                        output_val, wrap_in_gpu_future=overlap_gpu_communication
+                    )
 
         # [TODO:P1] Change to below.
         # if self.output_writer is not None:
