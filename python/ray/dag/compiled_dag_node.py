@@ -486,7 +486,6 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
-        # [TODO:P1] Take one stream as ExecutableTask argument.
         self.stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         # Set up the execution strema when overlap_gpu_communication is configured.
         if not overlap_gpu_communication:
@@ -610,25 +609,6 @@ class ExecutableTask:
 
         # Task lambda should take in a Tuple[TaskArgs, Optional[Exception]].
         # Task can decide whether to re-raise the Exception or do something with it.
-        # def exec_method(
-        #     method,
-        #     nccl_input_values: List[Any],
-        #     *input_values,
-        #     **resolved_kwargs,
-        # ) -> Any:
-        #     assert input_values is not None
-        #     if nccl_input_values is not None:
-        #         input_values = tuple(nccl_input_values) + input_values
-        #     return method(*input_values, **resolved_kwargs)
-
-        #     try:
-        #         output_val = method(*input_values, **resolved_kwargs)
-        #     except Exception as exc:
-        #         if isinstance(exc, RayChannelError) or self.nccl_op is not None:
-        #             raise exc
-        #         else:
-        #             output_val = _wrap_exception(exc)
-        #     return output_val
 
         input_values = []
         input_exc = None
@@ -664,9 +644,9 @@ class ExecutableTask:
                     self.wrap_and_set_intermediate_future(exc, wrap_in_gpu_future=False)
 
                 if input_exc is not None and self.requires_nccl_write:
+                    input_exc = None
                     exc = self.fetch_intermediate_future(wait_gpu_future=True)
                     input_values.append(exc)
-                    input_exc = None
                     assert len(input_values) == 2
 
         if input_exc is None:
@@ -686,15 +666,13 @@ class ExecutableTask:
                     else:
                         output_val = _wrap_exception(exc)
 
-                # [TODO:P1] Change to below.
-                # if self.output_writer is not None:
+                # [TODO:P1] Change to use `self.output_writer`.
                 if not self.requires_nccl_write:
                     self.wrap_and_set_intermediate_future(
                         output_val, wrap_in_gpu_future=overlap_gpu_communication
                     )
 
-        # [TODO:P1] Change to below.
-        # if self.output_writer is not None:
+        # [TODO:P1] Change to use `self.output_writer`.
         if not self.requires_nccl_write:
             # [TODO:P1]
             # Never wait for GPU output. Might need to wait for exception.
