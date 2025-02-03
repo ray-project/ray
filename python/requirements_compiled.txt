@@ -646,7 +646,7 @@ google-resumable-media==2.6.0
     # via
     #   google-cloud-bigquery
     #   google-cloud-storage
-google-vizier==0.1.23 ; python_version >= "3.10"
+google-vizier==0.1.24 ; python_version >= "3.10"
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
 googleapis-common-protos==1.61.0
     # via
