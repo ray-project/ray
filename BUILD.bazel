@@ -486,6 +486,8 @@ ray_cc_binary(
     deps = [
         ":raylet_lib",
         "//src/ray/util",
+        "//src/ray/util:stream_redirection_options",
+        "//src/ray/util:stream_redirection_utils",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
@@ -553,6 +555,8 @@ ray_cc_binary(
     deps = [
         ":gcs_server_lib",
         ":stats_lib",
+        "//src/ray/util:stream_redirection_options",
+        "//src/ray/util:stream_redirection_utils",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
