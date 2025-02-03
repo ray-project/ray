@@ -3,14 +3,13 @@
 import os
 from pathlib import Path
 import pytest
-import subprocess
 import sys
 import tempfile
 
 import ray
 
 
-PYPROJECT_TOML = f"""
+PYPROJECT_TOML = """
 [project]
 name = "test"
 version = "0.1"
@@ -19,6 +18,7 @@ dependencies = [
 ]
 requires-python = ">=3.9"
 """
+
 
 @pytest.fixture(scope="function")
 def tmp_working_dir():
@@ -42,8 +42,9 @@ def test_uv_run_simple(shutdown_only):
     @ray.remote
     def emojize():
         import emoji
+
         return emoji.emojize("Ray rocks :thumbs_up:")
-    
+
     assert ray.get(emojize.remote()) == "Ray rocks 👍"
 
 
@@ -62,3 +63,10 @@ def test_uv_run_pyproject(shutdown_only, tmp_working_dir):
         return emoji.emojize("Ray rocks :thumbs_up:")
     
     assert ray.get(emojize.remote()) == "Ray rocks 👍"
+
+
+if __name__ == "__main__":
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
