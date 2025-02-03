@@ -79,10 +79,9 @@ namespace ray {
 // Write the whole content into file descriptor, if any error happens, or actual written
 // content is less than expected, IO error status will be returned.
 Status CompleteWrite(MEMFD_TYPE_NON_UNIQUE fd, const char *data, size_t len);
-// Flush the given file descriptor, if any error happens, error message is logged and
-// process exits directly.
-// Reference to fsyncgate: https://wiki.postgresql.org/wiki/Fsync_Errors
-void Flush(MEMFD_TYPE_NON_UNIQUE fd);
+// Flush the given file descriptor, if EIO happens, error message is logged and process
+// exits directly. Reference to fsyncgate: https://wiki.postgresql.org/wiki/Fsync_Errors
+Status Flush(MEMFD_TYPE_NON_UNIQUE fd);
 // Close the given file descriptor, if any error happens, IO error status will be
 // returned.
 Status Close(MEMFD_TYPE_NON_UNIQUE fd);

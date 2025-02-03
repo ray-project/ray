@@ -38,8 +38,13 @@ Status CompleteWrite(MEMFD_TYPE_NON_UNIQUE fd, const char *data, size_t len) {
   }
   return Status::OK();
 }
-void Flush(MEMFD_TYPE_NON_UNIQUE fd) {
-  RAY_CHECK_EQ(fdatasync(fd), 0) << "Fails to flush file because " << strerror(errno);
+Status Flush(MEMFD_TYPE_NON_UNIQUE fd) {
+  const int ret = fdatasync(fd);
+  RAY_CHECK(ret != -1 || errno != EIO) << "Fails to flush to file " << strerror(errno);
+  if (ret == -1) {
+    return Status::IOError("") << "Fails to flush file because " << strerror(errno);
+  }
+  return Status::OK();
 }
 Status Close(MEMFD_TYPE_NON_UNIQUE fd) {
   const int ret = close(fd);
@@ -62,8 +67,11 @@ Status CompleteWrite(MEMFD_TYPE_NON_UNIQUE fd, const char *data, size_t len) {
   }
   return Status::OK();
 }
-void Flush(MEMFD_TYPE_NON_UNIQUE fd) {
-  RAY_CHECK(FlushFileBuffers(fd)) << "Fails to flush file";
+Status Flush(MEMFD_TYPE_NON_UNIQUE fd) {
+  if (!FlushFileBuffers(fd)) {
+    return Status::IOError("") << "Fails to flush file";
+  }
+  return Status::OK();
 }
 Status Close(MEMFD_TYPE_NON_UNIQUE fd) {
   if (!CloseHandle(fd)) {

@@ -48,7 +48,7 @@ TEST(CompatTest, WriteTest) {
   ASSERT_GT(fd, 0);
 
   RAY_CHECK_OK(CompleteWrite(fd, kContent.data(), kContent.length()));
-  Flush(fd);
+  RAY_CHECK_OK(Flush(fd));
   RAY_CHECK_OK(Close(fd));
 
   RAY_ASSIGN_OR_CHECK(const auto content, ReadEntireFile(file_path_str));
@@ -72,7 +72,7 @@ TEST(CompatTest, WriteTest) {
   };
 
   RAY_CHECK_OK(CompleteWrite(handle, kContent.data(), kContent.length()));
-  Flush(handle);
+  RAY_CHECK_OK(Flush(handle));
   RAY_CHECK_OK(Close(handle));
 
   RAY_ASSIGN_OR_CHECK(const auto content, ReadEntireFile(test_file_path));
