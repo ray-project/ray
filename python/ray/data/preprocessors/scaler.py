@@ -433,7 +433,7 @@ class RobustScaler(Preprocessor):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
             f"quantile_range={self.quantile_range!r}), "
-            f"output_columns={self.output_columns!r}"
+            f"output_columns={self.output_columns!r})"
         )
 
 
@@ -447,5 +447,8 @@ def _derive_and_validate_output_columns(
     """
 
     if output_columns and len(columns) != len(output_columns):
-        raise ValueError("The length of columns and output_columns must match.")
+        raise ValueError(
+            "Invalid output_columns: Got len(columns) != len(output_columns)."
+            "The length of columns and output_columns must match."
+        )
     return output_columns or columns
