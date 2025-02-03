@@ -811,6 +811,138 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_invalid_custom_comm(ray_start_regular):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+    runtime_env = {
+        "env_vars": {
+            "MASTER_ADDR": socket.gethostbyname(socket.gethostname()),
+            "MASTER_PORT": "8888",
+        }
+    }
+    actor_cls = TorchTensorWorker.options(
+        num_cpus=0, num_gpus=1, runtime_env=runtime_env
+    )
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    # Simulates that the distributed environment (e.g., torch.distributed)
+    # have already been set up
+    refs = [
+        sender.init_distributed.remote(2, 0),
+        receiver.init_distributed.remote(2, 1),
+    ]
+    ray.wait(refs)
+
+    class InitedNcclGroup(Communicator):
+        """
+        A custom NCCL group based on existing torch.distributed setup.
+        """
+
+        import cupy as cp
+
+        def __init__(self, world_size, actor_handles):
+            self._world_size = world_size
+            self._actor_handles = actor_handles
+            self._rank = None
+
+        def initialize(self, rank: int) -> None:
+            expected_rank = self.get_rank(ray.get_runtime_context().current_actor)
+            assert (
+                rank == expected_rank
+            ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
+            self._rank = rank
+            self._device = torch_utils.get_devices()[0]
+
+        def get_rank(self, actor: ray.actor.ActorHandle) -> int:
+            actor_ids = [a._ray_actor_id for a in self._actor_handles]
+            try:
+                rank = actor_ids.index(actor._ray_actor_id)
+            except ValueError:
+                raise ValueError("Actor is not in the NCCL group.")
+            return rank
+
+        def get_world_size(self) -> int:
+            return self._world_size
+
+        def get_self_rank(self) -> Optional[int]:
+            return self._rank
+
+        def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+            return self._actor_handles
+
+        def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+            torch.distributed.send(value, peer_rank)
+
+        def recv(
+            self,
+            shape: Tuple[int],
+            dtype: "torch.dtype",
+            peer_rank: int,
+            allocator: Optional[TorchTensorAllocator] = None,
+        ) -> "torch.Tensor":
+            tensor = torch.empty(torch.Size(shape), dtype=dtype, device=self._device)
+            torch.distributed.recv(tensor, peer_rank)
+            return tensor
+
+        def allreduce(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp,
+        ) -> None:
+            raise NotImplementedError
+
+        @property
+        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            import cupy as cp
+
+            return cp.cuda.get_current_stream()
+
+        @property
+        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            import cupy as cp
+
+            return cp.cuda.get_current_stream()
+
+        def destroy(self) -> None:
+            pass
+
+        def get_transport_name(self) -> str:
+            return "nccl"
+
+    comm2 = InitedNcclGroup(2, [sender, receiver])
+    comm1 = InitedNcclGroup(1, [sender])
+
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
+        dag = dag.with_tensor_transport(transport="auto")
+        dag = receiver.recv.bind(dag)
+
+    with pytest.raises(
+        ValueError,
+        match="The passed-in communicator must include all of the actors used in the P2P operation.",
+    ):
+        dag.experimental_compile(_default_communicator=comm1)
+
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
+        dag = dag.with_tensor_transport(transport=comm1)
+        dag = receiver.recv.bind(dag)
+
+    with pytest.raises(
+        ValueError,
+        match="The passed-in communicator must include all of the actors used in the P2P operation.",
+    ):
+        dag.experimental_compile(_default_communicator=comm2)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_static_shape(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
