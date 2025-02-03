@@ -1,4 +1,3 @@
-# __serve_example_begin__
 from typing import Dict, Optional, List
 import logging
 
@@ -6,6 +5,7 @@ from fastapi import FastAPI
 from starlette.requests import Request
 from starlette.responses import StreamingResponse, JSONResponse
 
+import ray
 from ray import serve
 
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -17,7 +17,8 @@ from vllm.entrypoints.openai.protocol import (
     ErrorResponse,
 )
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
-from vllm.entrypoints.openai.serving_engine import LoRAModulePath, PromptAdapterPath, BaseModelPath
+from vllm.entrypoints.openai.serving_models import BaseModelPath, LoRAModulePath, PromptAdapterPath, OpenAIServingModels
+
 from vllm.utils import FlexibleArgumentParser
 from vllm.entrypoints.logger import RequestLogger
 
@@ -53,6 +54,7 @@ class VLLMDeployment:
         self.prompt_adapters = prompt_adapters
         self.request_logger = request_logger
         self.chat_template = chat_template
+        print(f"{ray.util.get_current_placement_group()=}")
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
 
     @app.post("/v1/chat/completions")
@@ -67,20 +69,21 @@ class VLLMDeployment:
         if not self.openai_serving_chat:
             model_config = await self.engine.get_model_config()
             # Determine the name of the served model for the OpenAI client.
-            if self.engine_args.served_model_name is not None:
-                served_model_names = self.engine_args.served_model_name
-            else:
-                served_model_names = [BaseModelPath(name=self.engine_args.model, model_path="./")]
+            models = OpenAIServingModels(
+                self.engine,
+                model_config,
+                [BaseModelPath(name=self.engine_args.model, model_path="./")],
+            )
             self.openai_serving_chat = OpenAIServingChat(
                 self.engine,
                 model_config,
-                served_model_names,
+                models,
                 self.response_role,
-                lora_modules=self.lora_modules,
-                prompt_adapters=self.prompt_adapters,
+                # lora_modules=self.lora_modules,
+                # prompt_adapters=self.prompt_adapters,
                 request_logger=self.request_logger,
                 chat_template=self.chat_template,
-                chat_template_content_format="auto"
+                chat_template_content_format="auto",
             )
         logger.info(f"Request: {request}")
         generator = await self.openai_serving_chat.create_chat_completion(
@@ -151,44 +154,3 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
         cli_args.get("request_logger"),
         parsed_args.chat_template,
     )
-
-
-# __serve_example_end__
-
-if __name__ == "__main__":
-    serve.run(
-        build_app(
-            {
-                "model": "NousResearch/Meta-Llama-3-8B-Instruct",
-                "tensor-parallel-size": "1",
-            }
-        )
-    )
-    # __query_example_begin__
-    from openai import OpenAI
-
-    # Note: Ray Serve doesn't support all OpenAI client arguments and may ignore some.
-    client = OpenAI(
-        # Replace the URL if deploying your app remotely
-        # (e.g., on Anyscale or KubeRay).
-        base_url="http://localhost:8000/v1",
-        api_key="NOT A REAL KEY",
-    )
-    chat_completion = client.chat.completions.create(
-        model="NousResearch/Meta-Llama-3-8B-Instruct",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {
-                "role": "user",
-                "content": "What are some highly rated restaurants in San Francisco?'",
-            },
-        ],
-        temperature=0.01,
-        stream=True,
-        max_tokens=100,
-    )
-
-    for chat in chat_completion:
-        if chat.choices[0].delta.content is not None:
-            print(chat.choices[0].delta.content, end="")
-    # __query_example_end__
