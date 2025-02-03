@@ -658,14 +658,17 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-@pytest.mark.parametrize("transport", ["auto", "nccl"])
-def test_torch_tensor_default_comm(ray_start_regular, transport):
+@pytest.mark.parametrize(
+    "transports",
+    [["auto", "nccl"], ["custom", "nccl"], ["auto", "nccl"], ["custom", "custom"]],
+)
+def test_torch_tensor_default_comm(ray_start_regular, transports):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
     assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 2
+    ), "This test requires at least 3 GPUs"
     runtime_env = {
         "env_vars": {
             "MASTER_ADDR": socket.gethostbyname(socket.gethostname()),
@@ -676,14 +679,16 @@ def test_torch_tensor_default_comm(ray_start_regular, transport):
         num_cpus=0, num_gpus=1, runtime_env=runtime_env
     )
 
-    sender = actor_cls.remote()
-    receiver = actor_cls.remote()
+    worker0 = actor_cls.remote()
+    worker1 = actor_cls.remote()
+    worker2 = actor_cls.remote()
 
     # Simulates that the distributed environment (e.g., torch.distributed)
     # have already been set up
     refs = [
-        sender.init_distributed.remote(2, 0),
-        receiver.init_distributed.remote(2, 1),
+        worker0.init_distributed.remote(3, 0),
+        worker1.init_distributed.remote(3, 1),
+        worker2.init_distributed.remote(3, 2),
     ]
     ray.wait(refs)
 
@@ -764,14 +769,22 @@ def test_torch_tensor_default_comm(ray_start_regular, transport):
         def get_transport_name(self) -> str:
             return "nccl"
 
-    nccl_group = InitedNcclGroup(2, [sender, receiver])
+    default_comm = InitedNcclGroup(3, [worker0, worker1, worker2])
+    custom_comm = InitedNcclGroup(3, [worker0, worker1, worker2])
+    custom_comm_count = 0
+    for i in range(2):
+        if transports[i] == "custom":
+            transports[i] = custom_comm
+            custom_comm_count += 1
 
     with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_tensor_transport(transport=transport)
-        dag = receiver.recv.bind(dag)
+        dag = worker0.send.bind(inp.shape, inp.dtype, inp.value)
+        dag = dag.with_tensor_transport(transport=transports[0])
+        dag = worker1.recv_tensor.bind(dag)
+        dag = dag.with_tensor_transport(transport=transports[1])
+        dag = worker2.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile(_default_communicator=nccl_group)
+    compiled_dag = dag.experimental_compile(_default_communicator=default_comm)
     for i in range(3):
         i += 1
         shape = (i * 10,)
@@ -785,10 +798,16 @@ def test_torch_tensor_default_comm(ray_start_regular, transport):
         result = ray.get(ref)
         assert result == (i, shape, dtype)
 
-    with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_tensor_transport(transport="auto")
-        dag = receiver.recv.bind(dag)
+    # No communicators are created, the default communicator is used
+    assert len(compiled_dag._actors_to_created_communicator_id) == 0
+    assert compiled_dag._default_communicator == default_comm
+    if custom_comm_count == 0:
+        assert len(compiled_dag._communicator_to_type_hints) == 1
+    elif custom_comm_count == 1:
+        assert len(compiled_dag._communicator_to_type_hints) == 2
+    else:
+        assert custom_comm_count == 2
+        assert len(compiled_dag._communicator_to_type_hints) == 1
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
