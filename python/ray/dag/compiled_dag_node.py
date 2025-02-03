@@ -448,8 +448,6 @@ class ExecutableTask:
         # and the result of a compute operation will be used by a write operation.
         self._intermediate_future: Optional[DAGOperationFuture] = None
 
-        self.actor_id = task.dag_node._get_actor_handle()._ray_actor_id
-
     @property
     def requires_nccl_read(self) -> bool:
         return self.nccl_op_type == P2POp.RECV
@@ -480,28 +478,26 @@ class ExecutableTask:
             overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution to improve performance
         """
+        from ray.dag.collective_node import _CollectiveOperation
+
         for typ_hint in self.input_type_hints:
             typ_hint.register_custom_serializer()
         self.output_type_hint.register_custom_serializer()
         self.input_reader.start()
         self.output_writer.start()
 
-        # [TODO:P1] Move to constructor and just take one stream as ExecutableTask
-        # argument.
-        self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
-        self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
-        self._collective_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
-        self._stream : Union["cp.cuda.Stream", nullcontext] = nullcontext()
+        # [TODO:P1] Take one stream as ExecutableTask argument.
+        self.stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
+        # Set up the execution strema when overlap_gpu_communication is configured.
         if not overlap_gpu_communication:
             return
 
-        # Set up send_stream and recv_stream when overlap_gpu_communication
-        # is configured
         if self.output_type_hint.requires_nccl():
             nccl_group_id = _get_nccl_group_id(self.output_type_hint)
             nccl_group = ChannelContext.get_current().nccl_groups.get(nccl_group_id)
             assert nccl_group is not None
-            self._send_stream = nccl_group.send_stream
+            self.stream = nccl_group.send_stream
+
         if self.input_type_hints:
             for type_hint in self.input_type_hints:
                 if type_hint.requires_nccl():
@@ -510,24 +506,16 @@ class ExecutableTask:
                         nccl_group_id
                     )
                     assert nccl_group is not None
-                    if not isinstance(self._recv_stream, nullcontext):
-                        assert self._recv_stream == nccl_group.recv_stream, (
+                    if not isinstance(self.stream, nullcontext):
+                        assert self.stream == nccl_group.recv_stream, (
                             "Currently all torch tensor input channels of a "
                             "Compiled Graph task should use the same recv cuda stream."
                         )
-                    self._recv_stream = nccl_group.recv_stream
+                    self.stream = nccl_group.recv_stream
+
         if self.requires_nccl_collective:
-            from ray.dag.collective_node import _CollectiveOperation
-
             assert isinstance(self.nccl_op, _CollectiveOperation)
-            self._collective_stream = self.nccl_op.get_nccl_group().collective_stream
-
-        if self.requires_nccl_read:
-            self._stream = self._recv_stream
-        elif self.requires_nccl_write:
-            self._stream = self._send_stream
-        elif self.requires_nccl_collective:
-            self._stream = self._collective_stream
+            self.stream = self.nccl_op.get_nccl_group().collective_stream
 
     def wrap_and_set_intermediate_future(
         self, val: Any, wrap_in_gpu_future: bool
@@ -650,7 +638,7 @@ class ExecutableTask:
             except RayChannelError:
                 return True
 
-            with self._stream:
+            with self.stream:
                 try:
                     _process_return_vals(input_data, return_single_output=False)
                     input_data_ready = []
@@ -690,7 +678,7 @@ class ExecutableTask:
         else:
             method = getattr(class_handle, self.method_name)
 
-        with self._stream:
+        with self.stream:
             try:
                 output_val = exec_method(
                     method,
