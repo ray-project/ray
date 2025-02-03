@@ -89,7 +89,7 @@ inline MEMFD_TYPE_NON_UNIQUE GetStderrHandle() { return STDERR_FILENO; }
 inline int GetStdoutFd() { return _fileno(stdout); }
 inline int GetStderrFd() { return _fileno(stderr); }
 inline MEMFD_TYPE_NON_UNIQUE GetStdoutHandle() { return GetStdHandle(STD_OUTPUT_HANDLE); }
-inline MEMFD_TYPE_NON_UNIQUE GetStderrHandle() { return _GetStdHandle(STD_ERROR_HANDLE); }
+inline MEMFD_TYPE_NON_UNIQUE GetStderrHandle() { return GetStdHandle(STD_ERROR_HANDLE); }
 #endif
 
 // Write the whole content into file descriptor, if any error happens, or actual written
