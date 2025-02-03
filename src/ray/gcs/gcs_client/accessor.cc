@@ -1494,6 +1494,26 @@ Status AutoscalerStateAccessor::GetClusterStatus(int64_t timeout_ms,
   return Status::OK();
 }
 
+Status AutoscalerStateAccessor::AsyncGetClusterStatus(
+    int64_t timeout_ms,
+    const OptionalItemCallback<rpc::autoscaler::GetClusterStatusReply> &callback) {
+  rpc::autoscaler::GetClusterStatusRequest request;
+  rpc::autoscaler::GetClusterStatusRequest reply;
+
+  client_impl_->GetGcsRpcClient().GetClusterStatus(
+      request,
+      [callback](const Status &status, rpc::autoscaler::GetClusterStatusReply &&reply) {
+        if (!status.ok()) {
+          callback(status, std::nullopt);
+          return;
+        }
+        callback(Status::OK(), std::move(reply));
+      },
+      timeout_ms);
+
+  return Status::OK();
+}
+
 Status AutoscalerStateAccessor::ReportAutoscalingState(
     int64_t timeout_ms, const std::string &serialized_state) {
   rpc::autoscaler::ReportAutoscalingStateRequest request;

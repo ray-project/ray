@@ -35,7 +35,7 @@ For example, you can deploy a previously trained :py:class:`~ray.rllib.core.rl_m
 any of the other RLlib components, into production.
 
 .. figure:: images/checkpointing/from_checkpoint.svg
-    :width: 500
+    :width: 750
     :align: left
 
     **Creating a new instance directly from a checkpoint**: Use the ``classmethod``

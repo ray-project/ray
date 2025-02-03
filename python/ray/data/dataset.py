@@ -82,7 +82,12 @@ from ray.data._internal.planner.plan_write_op import gen_datasink_write_result
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
-from ray.data._internal.util import AllToAllAPI, ConsumptionAPI, get_compute_strategy
+from ray.data._internal.util import (
+    AllToAllAPI,
+    ConsumptionAPI,
+    _validate_rows_per_file_args,
+    get_compute_strategy,
+)
 from ray.data.aggregate import AggregateFn
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -1278,8 +1283,7 @@ class Dataset:
             # TODO: (srinathk) bind the expression to the actual schema.
             # If fn is a string, convert it to a pyarrow.dataset.Expression
             # Initialize ExpressionEvaluator with valid columns, if available
-            evaluator = ExpressionEvaluator()
-            resolved_expr = evaluator.get_filters(expression=expr)
+            resolved_expr = ExpressionEvaluator.get_filters(expression=expr)
 
             compute = TaskPoolStrategy(size=concurrency)
         else:
@@ -2984,9 +2988,10 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-        num_rows_per_file: Optional[int] = None,
+        min_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
+        num_rows_per_file: Optional[int] = None,
         **arrow_parquet_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
@@ -3042,17 +3047,18 @@ class Dataset:
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            num_rows_per_file: [Experimental] The target number of rows to write to each
-                file. If ``None``, Ray Data writes a system-chosen number of rows to
-                each file. The specified value is a hint, not a strict limit. Ray Data
-                might write more or fewer rows to each file. In specific, if the number
-                of rows per block is larger than the specified value, Ray Data writes
-                the number of rows per block to each file.
+            min_rows_per_file: [Experimental] The target minimum number of rows to write
+                to each file. If ``None``, Ray Data writes a system-chosen number of
+                rows to each file. If the number of rows per block is larger than the
+                specified value, Ray Data writes the number of rows per block to each file.
+                The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
+            num_rows_per_file: [Deprecated] Use min_rows_per_file instead.
             arrow_parquet_args: Options to pass to
                 `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python\
                     /generated/pyarrow.parquet.write_table.html\
@@ -3062,18 +3068,22 @@ class Dataset:
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731
 
-        if partition_cols and num_rows_per_file:
+        if partition_cols and (num_rows_per_file or min_rows_per_file):
             raise ValueError(
-                "Cannot pass num_rows_per_file when partition_cols "
+                "Cannot pass num_rows_per_file or min_rows_per_file when partition_cols "
                 "argument is specified"
             )
+
+        effective_min_rows = _validate_rows_per_file_args(
+            num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
+        )
 
         datasink = ParquetDatasink(
             path,
             partition_cols=partition_cols,
             arrow_parquet_args_fn=arrow_parquet_args_fn,
             arrow_parquet_args=arrow_parquet_args,
-            num_rows_per_file=num_rows_per_file,
+            min_rows_per_file=effective_min_rows,  # Pass through to datasink
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3097,9 +3107,10 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         pandas_json_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-        num_rows_per_file: Optional[int] = None,
+        min_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
+        num_rows_per_file: Optional[int] = None,
         **pandas_json_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to JSON and JSONL files.
@@ -3162,17 +3173,18 @@ class Dataset:
                 instead of ``pandas_json_args`` if any of your write arguments
                 can't be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            num_rows_per_file: [Experimental] The target number of rows to write to each
-                file. If ``None``, Ray Data writes a system-chosen number of rows to
-                each file. The specified value is a hint, not a strict limit. Ray Data
-                might write more or fewer rows to each file. In specific, if the number
-                of rows per block is larger than the specified value, Ray Data writes
-                the number of rows per block to each file.
+            min_rows_per_file: [Experimental] The target minimum number of rows to write
+                to each file. If ``None``, Ray Data writes a system-chosen number of
+                rows to each file. If the number of rows per block is larger than the
+                specified value, Ray Data writes the number of rows per block to each file.
+                The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
+            num_rows_per_file: Deprecated. Use ``min_rows_per_file`` instead.
             pandas_json_args: These args are passed to
                 `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
                     api/pandas.DataFrame.to_json.html>`_,
@@ -3183,11 +3195,15 @@ class Dataset:
         if pandas_json_args_fn is None:
             pandas_json_args_fn = lambda: {}  # noqa: E731
 
+        effective_min_rows = _validate_rows_per_file_args(
+            num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
+        )
+
         datasink = JSONDatasink(
             path,
             pandas_json_args_fn=pandas_json_args_fn,
             pandas_json_args=pandas_json_args,
-            num_rows_per_file=num_rows_per_file,
+            min_rows_per_file=effective_min_rows,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3283,9 +3299,10 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         arrow_csv_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-        num_rows_per_file: Optional[int] = None,
+        min_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
+        num_rows_per_file: Optional[int] = None,
         **arrow_csv_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to CSV files.
@@ -3348,17 +3365,18 @@ class Dataset:
                 Use this argument instead of ``arrow_csv_args`` if any of your write
                 arguments cannot be pickled, or if you'd like to lazily resolve the
                 write arguments for each dataset block.
-            num_rows_per_file: [Experimental] The target number of rows to write to each
-                file. If ``None``, Ray Data writes a system-chosen number of rows to
-                each file. The specified value is a hint, not a strict limit. Ray Data
-                might write more or fewer rows to each file. In specific, if the number
-                of rows per block is larger than the specified value, Ray Data writes
-                the number of rows per block to each file.
+            min_rows_per_file: [Experimental] The target minimum number of rows to write
+                to each file. If ``None``, Ray Data writes a system-chosen number of
+                rows to each file. If the number of rows per block is larger than the
+                specified value, Ray Data writes the number of rows per block to each file.
+                The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
+            num_rows_per_file: [Deprecated] Use min_rows_per_file instead.
             arrow_csv_args: Options to pass to `pyarrow.write.write_csv <https://\
                 arrow.apache.org/docs/python/generated/pyarrow.csv.write_csv.html\
                     #pyarrow.csv.write_csv>`_
@@ -3367,11 +3385,15 @@ class Dataset:
         if arrow_csv_args_fn is None:
             arrow_csv_args_fn = lambda: {}  # noqa: E731
 
+        effective_min_rows = _validate_rows_per_file_args(
+            num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
+        )
+
         datasink = CSVDatasink(
             path,
             arrow_csv_args_fn=arrow_csv_args_fn,
             arrow_csv_args=arrow_csv_args,
-            num_rows_per_file=num_rows_per_file,
+            min_rows_per_file=effective_min_rows,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3395,9 +3417,10 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        num_rows_per_file: Optional[int] = None,
+        min_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
+        num_rows_per_file: Optional[int] = None,
     ) -> None:
         """Write the :class:`~ray.data.Dataset` to TFRecord files.
 
@@ -3453,23 +3476,27 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: [Experimental] The target number of rows to write to each
-                file. If ``None``, Ray Data writes a system-chosen number of rows to
-                each file. The specified value is a hint, not a strict limit. Ray Data
-                might write more or fewer rows to each file. In specific, if the number
-                of rows per block is larger than the specified value, Ray Data writes
-                the number of rows per block to each file.
+            min_rows_per_file: [Experimental] The target minimum number of rows to write
+                to each file. If ``None``, Ray Data writes a system-chosen number of
+                rows to each file. If the number of rows per block is larger than the
+                specified value, Ray Data writes the number of rows per block to each file.
+                The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
-
+            num_rows_per_file: [Deprecated] Use min_rows_per_file instead.
         """
+        effective_min_rows = _validate_rows_per_file_args(
+            num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
+        )
+
         datasink = TFRecordDatasink(
             path=path,
             tf_schema=tf_schema,
-            num_rows_per_file=num_rows_per_file,
+            min_rows_per_file=effective_min_rows,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3492,10 +3519,11 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        num_rows_per_file: Optional[int] = None,
+        min_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         encoder: Optional[Union[bool, str, callable, list]] = True,
         concurrency: Optional[int] = None,
+        num_rows_per_file: Optional[int] = None,
     ) -> None:
         """Writes the dataset to `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
 
@@ -3540,23 +3568,27 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: [Experimental] The target number of rows to write to each
-                file. If ``None``, Ray Data writes a system-chosen number of rows to
-                each file. The specified value is a hint, not a strict limit. Ray Data
-                might write more or fewer rows to each file. In specific, if the number
-                of rows per block is larger than the specified value, Ray Data writes
-                the number of rows per block to each file.
+            min_rows_per_file: [Experimental] The target minimum number of rows to write
+                to each file. If ``None``, Ray Data writes a system-chosen number of
+                rows to each file. If the number of rows per block is larger than the
+                specified value, Ray Data writes the number of rows per block to each file.
+                The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
-
+            num_rows_per_file: [Deprecated] Use min_rows_per_file instead.
         """
+        effective_min_rows = _validate_rows_per_file_args(
+            num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
+        )
+
         datasink = WebDatasetDatasink(
             path,
             encoder=encoder,
-            num_rows_per_file=num_rows_per_file,
+            min_rows_per_file=effective_min_rows,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -3580,9 +3612,10 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        num_rows_per_file: Optional[int] = None,
+        min_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
+        num_rows_per_file: Optional[int] = None,
     ) -> None:
         """Writes a column of the :class:`~ray.data.Dataset` to .npy files.
 
@@ -3630,23 +3663,27 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: [Experimental] The target number of rows to write to each
-                file. If ``None``, Ray Data writes a system-chosen number of rows to
-                each file. The specified value is a hint, not a strict limit. Ray Data
-                might write more or fewer rows to each file. In specific, if the number
-                of rows per block is larger than the specified value, Ray Data writes
-                the number of rows per block to each file.
+            min_rows_per_file: [Experimental] The target minimum number of rows to write
+                to each file. If ``None``, Ray Data writes a system-chosen number of
+                rows to each file. If the number of rows per block is larger than the
+                specified value, Ray Data writes the number of rows per block to each file.
+                The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
+            num_rows_per_file: [Deprecated] Use min_rows_per_file instead.
         """
+        effective_min_rows = _validate_rows_per_file_args(
+            num_rows_per_file=num_rows_per_file, min_rows_per_file=min_rows_per_file
+        )
 
         datasink = NumpyDatasink(
             path,
             column,
-            num_rows_per_file=num_rows_per_file,
+            min_rows_per_file=effective_min_rows,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
