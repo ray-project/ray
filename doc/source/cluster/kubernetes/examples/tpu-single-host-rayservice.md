@@ -1,4 +1,4 @@
-(kuberay-tpu-multi-host-vllm)=
+(kuberay-tpu-single-host-vllm)=
 
 # Serve a LLM on GKE with Single-Host TPUs
 
