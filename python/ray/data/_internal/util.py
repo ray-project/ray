@@ -910,6 +910,27 @@ class _InterruptibleQueue(Queue):
                 pass
 
 
+class _WorkerIterator(Iterator):
+    """NOTE: This wrapper class is used to communicate worker-id to the
+    handler method"""
+
+    def __init__(self, source_iter: Iterator[T], *, worker_id: int):
+        super().__init__()
+
+        self._source_iter = source_iter
+        self._worker_id = worker_id
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._source_iter)
+
+    @property
+    def worker_id(self) -> int:
+        return self._worker_id
+
+
 def make_async_gen(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],
@@ -1012,8 +1033,9 @@ def make_async_gen(
             #
             # NOTE: `queue.get` is blocking!
             input_queue_iter = iter(input_queue.get, SENTINEL)
+            iterator = _WorkerIterator(input_queue_iter, worker_id=worker_id)
 
-            mapped_iter = fn(input_queue_iter)
+            mapped_iter = fn(iterator)
             for result in mapped_iter:
                 # Enqueue result of the transformation
                 output_queue.put(result)
@@ -1087,10 +1109,6 @@ def make_async_gen(
                 else:
                     non_empty_queues.append(output_queue)
                     yield item
-
-            assert (
-                non_empty_queues + empty_queues == remaining_output_queues
-            ), "Exhausted non-trailing queue!"
 
             remaining_output_queues = non_empty_queues
 
