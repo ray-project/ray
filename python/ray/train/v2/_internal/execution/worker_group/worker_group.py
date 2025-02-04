@@ -185,6 +185,7 @@ class WorkerGroup:
             raise e
 
         assert self.has_started(), "Worker group failed to start."
+        # TODO: Should this return the WorkerGroupState?
 
     def _start(
         self,
@@ -259,7 +260,7 @@ class WorkerGroup:
             try:
                 train_context_args = {"checkpoint": [checkpoint] * len(workers)}
                 for callable in self._callbacks:
-                    args = callable.before_init_train_context(self)
+                    args = callable.before_init_train_context(workers)
                     for arg, arg_values in args.items():
                         assert len(arg_values) == num_workers, (
                             f"Callback {callable} returned {arg} with "
@@ -593,6 +594,7 @@ class WorkerGroup:
         return self._worker_group_state is not None
 
     def get_workers(self) -> List[Worker]:
+        # TODO: Access workers through WorkerGroupState instead?
         if not self._worker_group_state:
             return []
         return self._worker_group_state.workers
@@ -601,6 +603,7 @@ class WorkerGroup:
         return self._worker_group_context
 
     def get_worker_group_state(self) -> Optional[WorkerGroupState]:
+        # TODO: Is this needed?
         return self._worker_group_state
 
     def _assert_worker_group_started(self):
@@ -608,6 +611,7 @@ class WorkerGroup:
             raise ValueError("Worker group not started.")
 
     def __len__(self) -> int:
+        # TODO: Should this be implemented in WorkerGroupState only?
         return len(self.get_workers())
 
     #########################################################################################

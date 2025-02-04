@@ -75,7 +75,9 @@ def test_dataset_setup_callback(ray_start_4_cpus):
         data_config=data_config,
         scaling_config=scaling_config,
     )
-    dataset_shards = callback.before_init_train_context(worker_group)["dataset_shards"]
+    dataset_shards = callback.before_init_train_context(worker_group.get_workers())[
+        "dataset_shards"
+    ]
     assert len(dataset_shards) == NUM_WORKERS
 
     processed_train_ds = dataset_shards[0]["train"]

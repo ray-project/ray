@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from ray.train.v2._internal.execution.failure_handling import FailureDecision
     from ray.train.v2._internal.execution.scaling_policy import ScalingDecision
     from ray.train.v2._internal.execution.worker_group import (
+        Worker,
         WorkerGroup,
         WorkerGroupPollStatus,
     )
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 @DeveloperAPI
 class WorkerGroupCallback(RayTrainCallback):
     def before_init_train_context(
-        self, worker_group: "WorkerGroup"
+        self, workers: List["Worker"]
     ) -> Dict[str, List[Any]]:
         """Called before initializing the TrainContext for the worker_group.
 
