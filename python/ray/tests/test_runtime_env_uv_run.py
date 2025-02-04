@@ -79,7 +79,7 @@ def test_uv_run_pyproject(shutdown_only, with_uv, tmp_working_dir):
         runtime_env={
             "working_dir": tmp_dir,
             # We want to run in the system environment so the current installation of Ray can be found here
-            "py_executable": f"env PYTHONPATH={':'.join(sys.path)} {uv} run --python-preference=only-system"
+            "py_executable": f"env PYTHONPATH={':'.join(sys.path)} {uv} run --python-preference=only-system",
         }
     )
 
@@ -116,7 +116,9 @@ def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir):
     with open(Path(tmp_dir) / "emoji_copy" / "emoji" / "core.py") as f:
         content = f.read()
 
-    content = content.replace("return pattern.sub(replace, string)", 'return "The package was edited"')
+    content = content.replace(
+        "return pattern.sub(replace, string)", 'return "The package was edited"'
+    )
 
     with open(Path(tmp_dir) / "emoji_copy" / "emoji" / "core.py", "w") as f:
         f.write(content)
@@ -125,7 +127,7 @@ def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir):
         runtime_env={
             "working_dir": tmp_dir,
             # We want to run in the system environment so the current installation of Ray can be found here
-            "py_executable": f"env PYTHONPATH={':'.join(sys.path)} {uv} run --python-preference=only-system"
+            "py_executable": f"env PYTHONPATH={':'.join(sys.path)} {uv} run --python-preference=only-system",
         }
     )
 

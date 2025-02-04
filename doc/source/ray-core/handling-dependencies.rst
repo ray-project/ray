@@ -302,6 +302,8 @@ For details, head to the :ref:`API Reference <runtime-environments-api-ref>`.
 
   ``conda`` environments must have the same Python version as the Ray cluster.  Do not list ``ray`` in the ``conda`` dependencies, as it will be automatically installed.
 
+.. _use-uv-for-package-management:
+
 Using ``uv`` for package management
 """""""""""""""""""""""""""""""""""
 
@@ -448,7 +450,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
 - ``py_executable`` (str): Specifies the executable used for running the Ray workers. It can include arguments as well. The executable can be
   located in the `working_dir`. This runtime environment is useful to run workers in a custom debugger or profiler as well as to run workers
-  in an environment set up by a package manager like `UV`.
+  in an environment set up by a package manager like `UV` (see :ref:`here <use-uv-for-package-management>`).
 
   Note: ``py_executable`` is new functionality and currently experimental. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
 
