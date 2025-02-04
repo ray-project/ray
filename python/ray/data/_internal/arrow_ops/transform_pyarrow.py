@@ -562,7 +562,7 @@ def to_numpy(
         )
 
 
-def try_combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
+def try_combine_chunked_columns(table: "pyarrow.Table") -> "pyarrow.Table":
     """This method attempts to coalesce table by combining any of its
     columns exceeding threshold of `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`
     chunks in its `ChunkedArray`.

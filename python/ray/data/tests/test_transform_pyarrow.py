@@ -15,7 +15,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     concat,
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     unify_schemas,
-    try_combine_chunks,
+    try_combine_chunked_columns,
 )
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
@@ -40,7 +40,7 @@ def test_try_defragment_table():
 
     assert len(t["id"].chunks) == 10
 
-    dt = try_combine_chunks(t)
+    dt = try_combine_chunked_columns(t)
 
     assert len(dt["id"].chunks) == 1
     assert dt == t
