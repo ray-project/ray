@@ -797,6 +797,13 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         ) -> None:
             raise NotImplementedError
 
+        def allgather(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+        ) -> None:
+            raise NotImplementedError
+
         @property
         def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
             import cupy as cp
