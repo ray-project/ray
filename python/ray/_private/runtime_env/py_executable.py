@@ -11,7 +11,7 @@ default_logger = logging.getLogger(__name__)
 class PyExecutablePlugin(RuntimeEnvPlugin):
     """This plugin allows running Ray workers with a custom Python executable.
 
-    It can be used with
+    You can use it with
     `ray.init(runtime_env={"py_executable": "<command> <args>"})`. If you specify
     a `working_dir` in the runtime environment, the executable will have access
     to the working directory (e.g. to a requirements.txt for a package manager,
