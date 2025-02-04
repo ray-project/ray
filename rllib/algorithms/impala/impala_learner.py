@@ -109,7 +109,8 @@ class IMPALALearner(Learner):
         _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
 
         if isinstance(batch, ray.ObjectRef):
-            batch = ray.get(batch)
+            with self.metrics.log_time((ALL_MODULES, "_learner_actor_main_thread_ray_get_timer")):
+                batch = ray.get(batch)
 
         self.before_gradient_based_update(timesteps=timesteps or {})
 
