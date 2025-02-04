@@ -21,7 +21,7 @@
 #if defined(__APPLE__) || defined(__linux__)
 #include <unistd.h>
 #if defined(HAVE_FDATASYNC) && !HAVE_DECL_FDATASYNC
-extern int  fdatasync(int fildes);
+extern int fdatasync(int fildes);
 #endif
 #elif defined(_WIN32)
 #include <windows.h>
