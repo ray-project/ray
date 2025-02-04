@@ -61,9 +61,7 @@ class TrainLoopRunner:
                 self.load_checkpoint(temp_checkpoint_dir)
 
         # Performance metrics
-        self._timers = collections.defaultdict(lambda: Timer())
-        self._train_throughput = Timer()
-        self._validation_throughput = Timer()
+        self._metrics = collections.defaultdict(lambda: Timer())
 
     def run(self):
         starting_epoch = self._train_epoch_idx
@@ -78,7 +76,7 @@ class TrainLoopRunner:
                 pprint.pprint(self.get_metrics())
 
     def train_epoch(self):
-        with self._timers["train/epoch"].timer():
+        with self._metrics["train/epoch"].timer():
             self._train_epoch()
 
     def _train_epoch(self):
@@ -89,7 +87,7 @@ class TrainLoopRunner:
 
         # NOTE: Time the first batch separately since it includes the dataset
         # pipeline warmup time.
-        with self._timers["train/iter_first_batch"].timer():
+        with self._metrics["train/iter_first_batch"].timer():
             batch = self.get_next_batch(self.train_dataloader)
 
         # TODO: Handle the case where we restored to a middle of the epoch.
@@ -97,21 +95,12 @@ class TrainLoopRunner:
         while batch:
             input_batch, labels = batch
 
-            with self._timers["train/step"].timer():
+            with self._metrics["train/step"].timer():
                 if not self.benchmark_config.skip_train_step:
                     self.train_step(input_batch, labels)
 
-            # Compute global training throughput
-            step_elapsed = time.perf_counter() - step_start_s
-            batch_size = len(labels)
-            local_throughput = batch_size / step_elapsed
-            # TODO: This calculation assumes that all workers have the same throughput.
-            global_throughput = (
-                local_throughput * ray.train.get_context().get_world_size()
-            )
-            self._train_throughput.add(global_throughput)
-
             self._train_batch_idx += 1
+            self._metrics["train/rows_processed"].add(len(labels))
 
             if (
                 self.benchmark_config.validate_every_n_steps > 0
@@ -128,8 +117,7 @@ class TrainLoopRunner:
             ):
                 pprint.pprint(self.get_metrics())
 
-            step_start_s = time.perf_counter()
-            with self._timers["train/iter_batch"].timer():
+            with self._metrics["train/iter_batch"].timer():
                 batch = self.get_next_batch(self.train_dataloader)
 
         self._train_epoch_idx += 1
@@ -150,14 +138,14 @@ class TrainLoopRunner:
         self.optimizer.zero_grad()
 
     def validate_and_checkpoint(self):
-        with self._timers["validation/epoch"].timer():
+        with self._metrics["validation/epoch"].timer():
             validation_metrics = self.validate()
 
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            with self._timers["checkpoint/save"].timer():
+            with self._metrics["checkpoint/save"].timer():
                 self.save_checkpoint(temp_checkpoint_dir)
 
-            with self._timers["checkpoint/report"].timer():
+            with self._metrics["checkpoint/report"].timer():
                 self.report_checkpoint(
                     metrics=validation_metrics,
                     checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
@@ -171,31 +159,25 @@ class TrainLoopRunner:
 
         self.model.eval()
 
-        validation_epoch_start = time.perf_counter()
-
         total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
         num_rows = 0
 
-        with self._timers["validation/iter_first_batch"].timer():
+        with self._metrics["validation/iter_first_batch"].timer():
             batch = self.get_next_batch(self.val_dataloader)
 
         while batch:
             input_batch, labels = batch
 
-            with self._timers["validation/step"].timer():
+            with self._metrics["validation/step"].timer():
                 with torch.no_grad():
                     out = self.model(input_batch)
                     loss = self.loss_fn(out, labels)
                     total_loss += loss
                     num_rows += len(labels)
+                    self._metrics["validation/rows_processed"].add(len(labels))
 
-            with self._timers["validation/iter_batch"].timer():
+            with self._metrics["validation/iter_batch"].timer():
                 batch = self.get_next_batch(self.val_dataloader)
-
-        validation_epoch_s = time.perf_counter() - validation_epoch_start
-        local_throughput = num_rows / validation_epoch_s
-        global_throughput = local_throughput * ray.train.get_context().get_world_size()
-        self._validation_throughput.add(global_throughput)
 
         return {"validation/loss": total_loss.item() / num_rows}
 
@@ -229,19 +211,43 @@ class TrainLoopRunner:
         metrics = {}
 
         # Timers
-        for key, timer in self._timers.items():
+        for key, metric in self._metrics.items():
             metrics.update(
                 {
-                    f"{key}-avg": timer.avg(),
-                    f"{key}-min": timer.min(),
-                    f"{key}-max": timer.max(),
-                    f"{key}-total": timer.get(),
+                    f"{key}-avg": metric.avg(),
+                    f"{key}-min": metric.min(),
+                    f"{key}-max": metric.max(),
+                    f"{key}-total": metric.get(),
                 }
             )
 
         # Throughput
-        metrics["train/global_throughput"] = self._train_throughput.avg()
-        metrics["validation/global_throughput"] = self._validation_throughput.avg()
+        num_workers = ray.train.get_context().get_world_size()
+        train_time = (
+            self._metrics["train/step"].get()
+            + self._metrics["train/iter_first_batch"].get()
+            + self._metrics["train/iter_batch"].get()
+        )
+        if train_time > 0:
+            metrics["train/local_throughput"] = (
+                self._metrics["train/rows_processed"].get() / train_time
+            )
+            metrics["train/global_throughput"] = (
+                metrics["train/local_throughput"] * num_workers
+            )
+
+        validation_time = (
+            self._metrics["validation/step"].get()
+            + self._metrics["validation/iter_first_batch"].get()
+            + self._metrics["validation/iter_batch"].get()
+        )
+        if validation_time > 0:
+            metrics["validation/local_throughput"] = (
+                self._metrics["validation/rows_processed"].get() / validation_time
+            )
+            metrics["validation/global_throughput"] = (
+                metrics["validation/local_throughput"] * num_workers
+            )
 
         # Dataloader metrics (ex: Ray Data stats)
         metrics.update(self.factory.get_dataloader_metrics())
