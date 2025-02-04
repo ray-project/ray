@@ -9,6 +9,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from packaging.version import parse as parse_version
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
