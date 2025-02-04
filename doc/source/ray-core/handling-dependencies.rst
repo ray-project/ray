@@ -364,7 +364,7 @@ recommended to freeze the package versions by running `uv lock`.
 
 This workflow also supports editable packages, for example, you can use
 `uv add --editable ./path/to/package` where `./path/to/package`
-must be inside your `working_dir` so it is available to all
+must be inside your `working_dir` so it's available to all
 workers.
 
 Instead of the `pyproject.toml` file, you can also use a `requirements.txt`
