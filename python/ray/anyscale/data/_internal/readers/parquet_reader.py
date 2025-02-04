@@ -8,10 +8,11 @@ import pyarrow as pa
 import pyarrow.dataset
 from pyarrow.parquet import ParquetFile
 
-from .file_reader import FileReader
 from ray.data._internal.datasource.parquet_datasource import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+    ParquetDatasource,
     check_for_legacy_tensor_type,
+    emit_file_extensions_future_warning,
     get_parquet_dataset,
 )
 from ray.data._internal.util import (
@@ -23,7 +24,10 @@ from ray.data._internal.util import (
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.data.datasource import Partitioning, PathPartitionParser
+from ray.data.datasource.path_util import _has_file_extension
 from ray.util.debug import log_once
+
+from .file_reader import FileReader
 
 # The number of rows to read per batch. This is the default we use in OSS.
 DEFAULT_BATCH_SIZE = 10_000
@@ -108,6 +112,15 @@ class ParquetReader(FileReader):
                 f"All column rename keys must be a subset of the columns list. "
                 f"Invalid keys: {set(columns_rename.keys()) - set(columns)}"
             )
+
+        for path in paths:
+            if not _has_file_extension(
+                path, ParquetDatasource._FUTURE_FILE_EXTENSIONS
+            ) and log_once("read_parquet_file_extensions_future_warning"):
+                emit_file_extensions_future_warning(
+                    ParquetDatasource._FUTURE_FILE_EXTENSIONS
+                )
+                break
 
         fragments = self._create_fragments(paths, filesystem=filesystem)
 

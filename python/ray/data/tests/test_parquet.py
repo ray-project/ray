@@ -1457,6 +1457,15 @@ def test_read_null_data_in_first_file(tmp_path, ray_start_regular_shared):
     ]
 
 
+@pytest.mark.skip("RayTurbo checks paths in remote tasks, so we can't easily test this")
+def test_read_invalid_file_extensions_emits_warning(tmp_path, ray_start_regular_shared):
+    table = pa.Table.from_pydict({})
+    pq.write_table(table, tmp_path / "no_extension")
+
+    with pytest.warns(FutureWarning, match="file_extensions"):
+        ray.data.read_parquet(tmp_path)
+
+
 if __name__ == "__main__":
     import sys
 
