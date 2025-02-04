@@ -1088,10 +1088,6 @@ def make_async_gen(
                     non_empty_queues.append(output_queue)
                     yield item
 
-            assert (
-                non_empty_queues + empty_queues == remaining_output_queues
-            ), "Exhausted non-trailing queue!"
-
             remaining_output_queues = non_empty_queues
 
     finally:
