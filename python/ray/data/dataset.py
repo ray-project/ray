@@ -1327,7 +1327,7 @@ class Dataset:
     ) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of
         :ref:`blocks <dataset_concept>`. When `max_num_rows_per_block` is set, it
-        overrides `num_blocks` and repartition :class:`Dataset` to honor at most
+        overrides `num_blocks` and repartitions :class:`Dataset` to honor at most
         maximum rows per :ref:`blocks <dataset_concept>`.
 
         This method can be useful to tune the performance of your pipeline. To learn
