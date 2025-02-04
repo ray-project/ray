@@ -13,8 +13,9 @@ from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     concat,
-    unify_schemas,
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    unify_schemas,
+    try_combine_chunks,
 )
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
@@ -26,6 +27,23 @@ from ray.data.extensions import (
     ArrowVariableShapedTensorType,
     _object_extension_type_allowed,
 )
+
+
+def test_try_defragment_table():
+    chunks = np.array_split(np.arange(1000), 10)
+
+    t = pa.Table.from_pydict(
+        {
+            "id": pa.chunked_array([pa.array(c) for c in chunks]),
+        }
+    )
+
+    assert len(t["id"].chunks) == 10
+
+    dt = try_combine_chunks(t)
+
+    assert len(dt["id"].chunks) == 1
+    assert dt == t
 
 
 def test_arrow_concat_empty():
