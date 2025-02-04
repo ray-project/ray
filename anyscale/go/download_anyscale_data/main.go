@@ -90,9 +90,11 @@ func presignObjectURL(
 		return "", fmt.Errorf("request failed: %s: %s", resp.Status, body)
 	}
 
+	// Be consistent with
+	// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/aws/signer/v4#PresignedHTTPRequest
 	var response struct {
-		URL    string `json:"url"`
-		Method string `json:"method"`
+		URL    string
+		Method string
 	}
 
 	body, err := io.ReadAll(resp.Body)

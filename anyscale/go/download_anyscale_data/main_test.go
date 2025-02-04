@@ -62,8 +62,8 @@ func (s *fakeService) handleDataplane(
 		}
 
 		respBody, err := json.Marshal(map[string]string{
-			"url":    fmt.Sprintf("http://%s/data", s.addr),
-			"method": "GET",
+			"URL":    fmt.Sprintf("http://%s/data", s.addr),
+			"Method": "GET",
 		})
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
