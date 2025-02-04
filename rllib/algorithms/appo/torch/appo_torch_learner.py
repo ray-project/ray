@@ -197,19 +197,19 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         )
 
         # Log important loss stats.
-        self.metrics.log_dict(
-            {
-                POLICY_LOSS_KEY: mean_pi_loss,
-                VF_LOSS_KEY: mean_vf_loss,
-                ENTROPY_KEY: -mean_entropy_loss,
-                LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-                LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
-                    self.curr_kl_coeffs_per_module[module_id]
-                ),
-            },
-            key=module_id,
-            window=1,  # <- single items (should not be mean/ema-reduced over time).
-        )
+        #self.metrics.log_dict(
+        #    {
+        #        POLICY_LOSS_KEY: mean_pi_loss,
+        #        VF_LOSS_KEY: mean_vf_loss,
+        #        ENTROPY_KEY: -mean_entropy_loss,
+        #        LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+        #        LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
+        #            self.curr_kl_coeffs_per_module[module_id]
+        #        ),
+        #    },
+        #    key=module_id,
+        #    window=1,  # <- single items (should not be mean/ema-reduced over time).
+        #)
         # Return the total loss.
         return total_loss
 
@@ -217,6 +217,7 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
     def _update_module_kl_coeff(self, module_id: ModuleID, config: APPOConfig) -> None:
         # Update the current KL value based on the recently measured value.
         # Increase.
+        return
         kl = convert_to_numpy(self.metrics.peek((module_id, LEARNER_RESULTS_KL_KEY)))
         kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
 
