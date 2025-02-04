@@ -34,10 +34,12 @@ def plan_all_to_all_op(
     input_physical_dag = physical_children[0]
 
     target_max_block_size = None
+
     if isinstance(op, RandomizeBlocks):
         fn = generate_randomize_blocks_fn(op)
         # Randomize block order does not actually compute anything, so we
         # want to inherit the upstream op's target max block size.
+
     elif isinstance(op, RandomShuffle):
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None
@@ -50,6 +52,7 @@ def plan_all_to_all_op(
             debug_limit_shuffle_execution_to_num_blocks,
         )
         target_max_block_size = data_context.target_shuffle_max_block_size
+
     elif isinstance(op, Repartition):
         debug_limit_shuffle_execution_to_num_blocks = None
         if op._shuffle:
@@ -63,6 +66,7 @@ def plan_all_to_all_op(
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
+
     elif isinstance(op, Sort):
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None
@@ -74,6 +78,7 @@ def plan_all_to_all_op(
             debug_limit_shuffle_execution_to_num_blocks,
         )
         target_max_block_size = data_context.target_shuffle_max_block_size
+
     elif isinstance(op, Aggregate):
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None
