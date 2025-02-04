@@ -18,7 +18,7 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTask
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.aggregate import AggregateFn
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 
 
 def generate_aggregate_fn(
@@ -31,6 +31,11 @@ def generate_aggregate_fn(
     """Generate function to aggregate blocks by the specified key column or key
     function.
     """
+    assert data_context.shuffle_strategy in [
+        ShuffleStrategy.SORT_SHUFFLE_PULL_BASED,
+        ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED,
+    ]
+
     if len(aggs) == 0:
         raise ValueError("Aggregate requires at least one aggregation")
 
@@ -73,10 +78,15 @@ def generate_aggregate_fn(
             aggs=aggs,
             batch_format=batch_format,
         )
-        if DataContext.get_current().use_push_based_shuffle:
+
+        if data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
             scheduler = PushBasedShuffleTaskScheduler(agg_spec)
-        else:
+        elif data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PULL_BASED:
             scheduler = PullBasedShuffleTaskScheduler(agg_spec)
+        else:
+            raise ValueError(
+                f"Invalid shuffle strategy '{data_context.shuffle_strategy}'"
+            )
 
         return scheduler.execute(
             refs,
