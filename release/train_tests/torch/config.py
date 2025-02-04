@@ -14,7 +14,6 @@ class BenchmarkConfig(pydantic.BaseModel):
 
     # Model
     task: str = "image_classification"
-    model_name: str = "resnet50"
 
     # Data
     dataloader_type: DataloaderType = DataloaderType.RAY_DATA
