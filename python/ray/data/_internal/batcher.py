@@ -247,8 +247,9 @@ class ShufflingBatcher(BatcherInterface):
                 f"{memory_string(self._total_object_store_nbytes)} object "
                 "store memory, but the shuffle buffer is estimated to use "
                 f"{memory_string(self._estimated_min_nbytes_in_buffers)}. If you don't "
-                "decrease the shuffle buffer size from "
-                f"{self._min_rows_to_yield_batch} rows, you might encounter spilling."
+                f"decrease the shuffle buffer size from "
+                f"{self._min_rows_to_yield_batch} rows, "
+                "you might encounter spilling."
             )
 
         block_accessor = BlockAccessor.for_block(block)
