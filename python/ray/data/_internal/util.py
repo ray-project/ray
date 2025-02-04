@@ -1500,3 +1500,16 @@ def keys_equal(keys1, keys2):
         if not ((is_nan(k1) and is_nan(k2)) or k1 == k2):
             return False
     return True
+
+
+def get_total_obj_store_mem_on_node() -> int:
+    """Return the total object store memory on the current node.
+
+    This function incurs an RPC. Use it cautiously.
+    """
+    node_id = ray.get_runtime_context().get_node_id()
+    total_resources_per_node = ray._private.state.total_resources_per_node()
+    assert (
+        node_id in total_resources_per_node
+    ), f"Expected node '{node_id}' to be in resources: {total_resources_per_node}"
+    return total_resources_per_node[node_id]["object_store_memory"]
