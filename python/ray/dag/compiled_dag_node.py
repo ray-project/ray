@@ -20,6 +20,7 @@ import time
 import uuid
 import traceback
 
+import ray
 import ray.exceptions
 from ray.dag.constants import (
     RAY_ADAG_VISUALIZE_SCHEDULE,
@@ -31,7 +32,6 @@ from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, Resolved
 from ray.dag.nccl_operation import _NcclOperation
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
-import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.experimental.compiled_dag_ref import (
     CompiledDAGRef,
@@ -378,10 +378,9 @@ class ExecutableTask:
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
-        # The NCCL operation type.
-        self.nccl_op_type: Optional[_NcclOpType] = task.dag_node.nccl_op_type
-        # The NCCL operation of the task. It can be a NCCL read, write, or
+        # The NCCL operation (type) of the task. It can be a NCCL read, write, or
         # collective operation.
+        self.nccl_op_type: Optional[_NcclOpType] = task.dag_node.nccl_op_type
         self.nccl_op: Optional[_NcclOperation] = task.dag_node.nccl_op
         if self.nccl_op is not None:
             self.nccl_op.task_idxs.append(task.idx)
@@ -432,14 +431,14 @@ class ExecutableTask:
 
         # The NCCL channel for the NCCL P2P operation.
         if self.requires_nccl_read:
+            assert isinstance(self.nccl_op, _P2POperation)
             assert len(self.input_channels) == 1
             nccl_ch = self.input_channels[0]
-            assert isinstance(self.nccl_op, _P2POperation)
             self.nccl_op.recv_ch = nccl_ch
         elif self.requires_nccl_write:
+            assert isinstance(self.nccl_op, _P2POperation)
             assert len(self.output_channels) == 1
             nccl_ch = self.output_channels[0]
-            assert isinstance(self.nccl_op, _P2POperation)
             self.nccl_op.send_ch = nccl_ch
 
         # The intermediate future for a read or compute operation,
@@ -486,8 +485,8 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
-        self.stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         # Set up the execution strema when overlap_gpu_communication is configured.
+        self.stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         if not overlap_gpu_communication:
             return
 
@@ -540,9 +539,9 @@ class ExecutableTask:
             future = ResolvedFuture(val)
         self._intermediate_future = future
 
-    def fetch_intermediate_future(self, wait_gpu_future: bool) -> Any:
+    def fetch_intermediate_future(self, wait_future: bool) -> Any:
         """
-        Fetch the intermediate future. If `wait_gpu_future` is True, the future
+        Fetch the intermediate future. If `wait_future` is True, the future
         is waited and the result is returned. Otherwise, the future is returned
         without waiting.
 
@@ -552,11 +551,14 @@ class ExecutableTask:
             CUDA stream, and the CPU is not blocked.
 
         Args:
-            wait_gpu_future: Whether to wait for the GPU future.
+            wait_future: Whether to wait for the GPU future.
+
+        Returns:
+            The result of the intermediate future.
         """
         future = self._intermediate_future
         self._intermediate_future = None
-        if wait_gpu_future:
+        if wait_future:
             return future.wait()
         else:
             return future
@@ -578,8 +580,7 @@ class ExecutableTask:
         Returns:
             True if the next operation should not be executed; otherwise, False.
         """
-        # [TODO:P0] Basic structure for creator of ExecutableTask
-        # Specialize args for NCCL operations:
+        # [TODO:P1] Basic structure for creator of ExecutableTask.
         # # NCCL write args:
         # args = [P2POp.SEND, NCCLChannelWrapper(self.nccl_ch), upstream_task_output_channel]
 
@@ -591,7 +592,7 @@ class ExecutableTask:
 
         # t = ExecutableTask(task, args, stream: Optional[Stream])
 
-        # [TODO:P0] This function should have structure like this:
+        # [TODO:P1] This function should have structure like this:
         # with self._stream:
         #     try:
         #         # Get args.
@@ -607,16 +608,23 @@ class ExecutableTask:
         #     if self.output_writer is not None:
         #         self.output_writer.write(output_val)
 
-        # Task lambda should take in a Tuple[TaskArgs, Optional[Exception]].
+        # [TODO:P1] Task lambda should take in a Tuple[TaskArgs, Optional[Exception]].
         # Task can decide whether to re-raise the Exception or do something with it.
 
+        # [TODO:P1] overlap_gpu_communication should only be used in two places:
+        # - deciding how many streams to create
+        # - in wrap_and_set_intermediate_future: when deciding whether
+        #   to produce a GPUFuture or a ResolvedFuture
+
+        # Read and resolve input values from input channels. If an exception occurs,
+        # wrap and save the exception.
         input_values = []
         input_exc = None
         if self.requires_nccl_read:
-            input_values.append(P2POp.RECV)
+            input_values = [P2POp.RECV]
         else:
             if self.requires_nccl_write:
-                input_values.append(P2POp.SEND)
+                input_values = [P2POp.SEND]
 
             try:
                 input_data = self.input_reader.read()
@@ -636,19 +644,15 @@ class ExecutableTask:
                         input_values.append(task_input.resolve(input_data_ready))
                 except Exception as exc:
                     input_exc = exc
-                    # [TODO:P1] overlap_gpu_communication should only be used
-                    # in two places:
-                    # - deciding how many streams to create
-                    # - in wrap_and_set_intermediate_future: when deciding whether
-                    #   to produce a GPUFuture or a ResolvedFuture
                     self.wrap_and_set_intermediate_future(exc, wrap_in_gpu_future=False)
 
                 if input_exc is not None and self.requires_nccl_write:
+                    input_values = [P2POp.SEND, input_exc]
                     input_exc = None
-                    exc = self.fetch_intermediate_future(wait_gpu_future=True)
-                    input_values.append(exc)
-                    assert len(input_values) == 2
+                    self.fetch_intermediate_future(wait_future=True)
 
+        # Execute the task if there is no exception from reading input values. If an
+        # exception occurs, wrap and save the exception.
         if input_exc is None:
             if self.nccl_op is not None:
                 method = self.nccl_op.execute
@@ -672,18 +676,19 @@ class ExecutableTask:
                         output_val, wrap_in_gpu_future=overlap_gpu_communication
                     )
 
+        # Write the output value to the output channel. It is either the result of an
+        # execution or an exception.
         # [TODO:P1] Change to use `self.output_writer`.
         if not self.requires_nccl_write:
-            # [TODO:P1]
-            # Never wait for GPU output. Might need to wait for exception.
+            # [TODO:P1] Never wait for GPU output. Might need to wait for exception.
             # output_val = self.fetch_intermediate_future(wait_gpu_future=False)
             with self.stream:
                 if (
                     self.requires_nccl_read or self.requires_nccl_collective
                 ) and overlap_gpu_communication:
-                    output_val = self.fetch_intermediate_future(wait_gpu_future=False)
+                    output_val = self.fetch_intermediate_future(wait_future=False)
                 else:
-                    output_val = self.fetch_intermediate_future(wait_gpu_future=True)
+                    output_val = self.fetch_intermediate_future(wait_future=True)
             try:
                 self.output_writer.write(output_val)
             except RayChannelError:
@@ -2512,6 +2517,13 @@ def build_compiled_dag_from_ray_dag(
         overlap_gpu_communication,
     )
 
+    # [TODO:P1] Do not change the DAG in place.
+    # Options:
+    # 1. Create the NCCL nodes on the fly, while user is defining the DAG. Potential
+    #    complexity: may not know if you're using NCCL yet?
+    # 2. Create the NCCL nodes while converting from the user's DAG to CompiledDAG.
+    # 3. Create a second CompiledDAG from the original CompiledDAG, with the NCCL nodes.
+    # [TODO:P2]: Also open a PR to make with_tensor_transport return a copy.
     root = dag._find_root()
     topo_queue = root.get_topo_queue()
     node_to_p2p_send_node: Dict[DAGNode, _P2PSendNode] = dict()
