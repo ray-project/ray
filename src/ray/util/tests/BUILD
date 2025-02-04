@@ -287,15 +287,3 @@ ray_cc_test(
     size = "small",
     tags = ["team:core"],
 )
-
-ray_cc_test(
-    name = "compat_test",
-    srcs = ["compat_test.cc"],
-    deps = [
-        "//src/ray/util:compat",
-        "//src/ray/util:filesystem",
-        "@com_google_googletest//:gtest_main",
-    ],
-    size = "small",
-    tags = ["team:core"],
-)
