@@ -77,10 +77,10 @@ class _NullSentinel:
         return isinstance(other, _NullSentinel)
 
     def __gt__(self, other):
-        return True
+        return not self.__le__(other)
 
     def __ge__(self, other):
-        return True
+        return not self.__lt__(other)
 
     def __hash__(self):
         return id(self)
