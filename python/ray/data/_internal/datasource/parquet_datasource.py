@@ -164,16 +164,15 @@ class ParquetDatasource(Datasource):
     _FUTURE_FILE_EXTENSIONS = [
         "parquet",
         # Snappy compression
-        "parquet.snappy",
         "snappy.parquet",
         # Gzip compression
-        "parquet.gz",
+        "gz.parquet",
         # Brotili compression
-        "parquet.br",
+        "br.parquet",
         # Lz4 compression
-        "parquet.lz4",
+        "lz4.parquet",
         # Zstd compression
-        "parquet.zst",
+        "zst.parquet",
     ]
 
     def __init__(
