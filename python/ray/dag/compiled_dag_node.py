@@ -1348,7 +1348,7 @@ class CompiledDAG:
                 self._pending_p2p_communicator_actors.update(actors)
         else:
             if collective_op:
-                if communicator.get_actor_handles() != actors:
+                if set(communicator.get_actor_handles()) != actors:
                     raise ValueError(
                         "The passed-in communicator must have the same set "
                         "of actors as the collective operation. "
@@ -1356,7 +1356,7 @@ class CompiledDAG:
                         f"while the collective operation has actors {actors}."
                     )
             else:
-                if not actors.issubset(communicator.get_actor_handles()):
+                if not actors.issubset(set(communicator.get_actor_handles())):
                     raise ValueError(
                         "The passed-in communicator must include all of the actors "
                         "used in the P2P operation. "
