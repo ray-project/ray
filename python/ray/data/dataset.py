@@ -1320,18 +1320,15 @@ class Dataset:
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
         self,
-        num_blocks: Optional[int] = None,
+        num_blocks: int,
         max_num_rows_per_block: Optional[int] = None,
         *,
         shuffle: bool = False,
     ) -> "Dataset":
-        """Repartitions the :class:`Dataset`.
-
-        When `num_blocks` is set, repartition :class:`Dataset` into exactly this number
-        of :ref:`blocks <dataset_concept>`.
-
-        When `max_num_rows_per_block` is set, repartition :class:`Dataset` to honor at
-        most maximum rows per :ref:`blocks <dataset_concept>`.
+        """Repartition the :class:`Dataset` into exactly this number of
+        :ref:`blocks <dataset_concept>`. When `max_num_rows_per_block` is set, it
+        overrides `num_blocks` and repartition :class:`Dataset` to honor at most
+        maximum rows per :ref:`blocks <dataset_concept>`.
 
         This method can be useful to tune the performance of your pipeline. To learn
         more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
@@ -1374,32 +1371,22 @@ class Dataset:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
 
-        if num_blocks is not None and max_num_rows_per_block is not None:
-            raise ValueError(
-                "Only one of `num_blocks` or `max_num_rows_per_block` can be set."
-            )
-
         if max_num_rows_per_block is not None and shuffle:
             raise ValueError(
                 "`shuffle` must be False when `max_num_rows_per_block` is set."
             )
 
-        if num_blocks is None and max_num_rows_per_block is None:
-            raise ValueError(
-                "Either `num_blocks` or `max_num_rows_per_block` must be set."
-            )
-
         plan = self._plan.copy()
-        if num_blocks is not None:
+        if max_num_rows_per_block is not None:
+            op = StreamingRepartition(
+                self._logical_plan.dag,
+                max_num_rows_per_block=max_num_rows_per_block,
+            )
+        else:
             op = Repartition(
                 self._logical_plan.dag,
                 num_outputs=num_blocks,
                 shuffle=shuffle,
-            )
-        else:
-            op = StreamingRepartition(
-                self._logical_plan.dag,
-                max_num_rows_per_block=max_num_rows_per_block,
             )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
