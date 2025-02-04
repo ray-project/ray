@@ -33,7 +33,7 @@ Create a Standard cluster with the Ray operator enabled:
 ```sh
 gcloud container clusters create $CLUSTER_NAME \
     --release-channel=rapid \
-    --location=${COMPUTE_ZONE} \
+    --location=$COMPUTE_ZONE \
     --workload-pool=$PROJECT_ID.svc.id.goog \
     --machine-type="n1-standard-4" \
     --addons=RayOperator,GcsFuseCsiDriver
@@ -327,7 +327,7 @@ kubectl get rayservices vllm-tpu
 
 Retrieve the name of the RayCluster head service:
 ```sh
-SERVICE_NAME=$(kubectl --namespace=${NAMESPACE} get rayservices/vllm-tpu \
+SERVICE_NAME=$(kubectl --namespace=$NAMESPACE get rayservices/vllm-tpu \
     --template={{.status.activeServiceStatus.rayClusterStatus.head.serviceName}})
 ```
 
