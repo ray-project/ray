@@ -233,10 +233,10 @@ class ShufflingBatcher(BatcherInterface):
         Args:
             block: Block to add to the shuffle buffer.
         """
-        # Because Arrow tables are memory mapped, blocks in the local shuffle buffer
-        # resides in object store memory and not local heap memory. So, if you specify a
-        # large buffer size and there isn't enough object store memory on the node, you
-        # encounter spilling.
+        # Because Arrow tables are memory mapped, blocks in the builder reside in object
+        # store memory and not local heap memory. So, if you specify a large buffer size
+        # and there isn't enough object store memory on the node, you encounter
+        # spilling.
         if (
             self._estimated_min_nbytes_in_buffers is not None
             and self._estimated_min_nbytes_in_buffers > self._total_object_store_nbytes
@@ -247,8 +247,8 @@ class ShufflingBatcher(BatcherInterface):
                 f"{memory_string(self._total_object_store_nbytes)} object "
                 "store memory, but the shuffle buffer is estimated to use "
                 f"{memory_string(self._estimated_min_nbytes_in_buffers)}. If you don't "
-                f"decrease the shuffle buffer size from {self._buffer_min_size} rows, "
-                "you might encounter spilling."
+                "decrease the shuffle buffer size from "
+                f"{self._min_rows_to_yield_batch} rows, you might encounter spilling."
             )
 
         block_accessor = BlockAccessor.for_block(block)
