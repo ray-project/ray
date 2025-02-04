@@ -672,8 +672,10 @@ class IMPALA(Algorithm):
             self.metrics.log_value(
                 (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_aggregated_lifetime"),
                 self.config.train_batch_size_per_learner
+                * (self.config.num_learners or 1)
                 * len(data_packages_for_learner_group),
                 reduce="sum",
+                with_throughput=True,
             )
 
         else:
@@ -733,7 +735,7 @@ class IMPALA(Algorithm):
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
                 # TODO (sven): Rename this metric into a more fitting name: ex.
-                #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`
+                #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`.
                 self.metrics.log_value(
                     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
                     1,
@@ -866,8 +868,10 @@ class IMPALA(Algorithm):
         # `batch_refs` is a list of tuple(aggregator_actor_id, ObjRef[MABatch]).
 
         # Each ObjRef[MABatch] was returned by one AggregatorActor from a single
-        # `get_batch()` call and the underlying MABatch is already located on a
-        # particular GPU (matching one particular Learner).
+        # `get_batch()` call.
+        # TODO (sven): Add this comment, once valid:
+        #  .. and the underlying MABatch is already located on a particular GPU
+        #  (matching one particular Learner).
         for agg_actor_id, ma_batch_ref in batch_refs:
             learner_actor_id = self._aggregator_actor_to_learner[agg_actor_id]
             self._ma_batches_being_built[learner_actor_id].append(ma_batch_ref)
