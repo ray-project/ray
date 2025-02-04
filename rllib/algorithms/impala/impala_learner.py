@@ -112,7 +112,6 @@ class IMPALALearner(Learner):
             #with self.metrics.log_time((ALL_MODULES, "_learner_actor_main_thread_ray_get_timer")):
             batch = ray.get(batch)
             #with self.metrics.log_time((ALL_MODULES, "_learner_actor_main_thread_torch_barrier_timer")):
-            torch.distributed.barrier()
 
         self.before_gradient_based_update(timesteps=timesteps or {})
 
@@ -246,9 +245,11 @@ class _LearnerThread(threading.Thread):
             batch=ma_batch_on_gpu,
             timesteps=_CURRENT_GLOBAL_TIMESTEPS,
         )
+        #torch.distributed.barrier()
 
     @staticmethod
     def enqueue(learner_queue: deque, batch, metrics):
+        assert False
         # Right-append to learner queue (a deque). If full, drops the leftmost
         # (oldest) item in the deque.
         # Note that we consume from the left (oldest first), which is why the queue size
