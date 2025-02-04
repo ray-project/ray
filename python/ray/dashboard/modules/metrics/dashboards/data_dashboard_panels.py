@@ -344,6 +344,22 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    Panel(
+        id=43,
+        title="Blocks from Finished Tasks / Second (by Node)",
+        description=(
+            "Number of output blocks from finished tasks per second, grouped by node."
+        ),
+        unit="Bps",
+        targets=[
+            Target(
+                expr="sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node)",
+                legend="Bytes Taken / Second: {{dataset}}, {{node}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
     # Ray Data Metrics (Tasks)
     Panel(
         id=29,

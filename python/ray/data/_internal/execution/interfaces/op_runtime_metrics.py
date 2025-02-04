@@ -115,6 +115,7 @@ class NodeMetrics:
     obj_store_mem_freed: int = field(default=0)
     obj_store_mem_spilled: int = field(default=0)
     bytes_outputs_of_finished_tasks: int = field(default=0)
+    blocks_outputs_of_finished_tasks: int = field(default=0)
 
 
 class OpRuntimesMetricsMeta(type):
@@ -581,6 +582,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
                 node_metrics = node_metrics = self._per_node_metrics[node_id]
                 node_metrics.bytes_outputs_of_finished_tasks += meta.size_bytes
+                node_metrics.blocks_outputs_of_finished_tasks += 1
 
     def on_task_finished(self, task_index: int, exception: Optional[Exception]):
         """Callback when a task is finished."""

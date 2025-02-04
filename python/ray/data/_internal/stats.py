@@ -630,6 +630,9 @@ class _StatsManager:
                 agg_node_metrics[
                     "bytes_outputs_of_finished_tasks"
                 ] += node_metrics.bytes_outputs_of_finished_tasks
+                agg_node_metrics[
+                    "blocks_outputs_of_finished_tasks"
+                ] += node_metrics.blocks_outputs_of_finished_tasks
         return aggregated_by_node
 
     def update_execution_metrics(
