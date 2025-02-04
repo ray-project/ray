@@ -476,6 +476,10 @@ class BlockAccessor:
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
+    def sort(self, sort_key: "SortKey") -> "Block":
+        """Returns new block sorted according to provided `sort_key`"""
+        raise NotImplementedError
+
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:
