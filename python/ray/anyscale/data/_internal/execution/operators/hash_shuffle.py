@@ -27,7 +27,7 @@ from ray.actor import ActorHandle
 from ray.data import DataContext, ExecutionOptions, ExecutionResources
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
-    create_empty_table,
+    _create_empty_table,
     hash_partition,
 )
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
@@ -225,7 +225,7 @@ def _shuffle_block(
             if not send_empty_blocks:
                 continue
 
-            partition_shard = create_empty_table(block.schema)
+            partition_shard = _create_empty_table(block.schema)
 
         # Capture partition shard metadata
         #
@@ -821,24 +821,28 @@ class HashShufflingOperatorBase(PhysicalOperator):
         raise NotImplementedError()
 
 
-class ShuffleOperator(HashShufflingOperatorBase):
+class HashShuffleOperator(HashShufflingOperatorBase):
     def __init__(
         self,
-        input_ops: List[PhysicalOperator],
+        input_op: PhysicalOperator,
         data_context: DataContext,
         *,
-        key_columns: List[Tuple[str]],
+        key_columns: Tuple[str],
         num_partitions: int,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             name=f"Shuffle(key_columns={key_columns}, num_partitions={num_partitions})",
-            input_ops=input_ops,
+            input_ops=[input_op],
             data_context=data_context,
-            key_columns=key_columns,
+            key_columns=[key_columns],
             num_partitions=num_partitions,
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
-            partition_aggregation_factory=Concat.__init__,
+            partition_aggregation_factory=(
+                lambda aggregator_id, target_partition_ids: Concat(
+                    aggregator_id, target_partition_ids
+                )
+            ),
         )
 
     def _get_default_aggregator_num_cpus(self):

@@ -17,6 +17,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     hash_partition,
     try_combine_chunked_columns,
     unify_schemas,
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
@@ -784,6 +785,65 @@ def test_unify_schemas():
             ("col_fixed_tensor", ArrowVariableShapedTensorType(pa.int32(), 3)),
             ("col_var_tensor", ArrowVariableShapedTensorType(pa.int16(), 5)),
         ]
+    )
+
+
+@pytest.mark.skipif(
+    parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    reason="Requires Arrow version of at least 14.0.0",
+)
+def test_unify_schemas_type_promotion():
+    s_non_null = pa.schema(
+        [
+            pa.field("A", pa.int32()),
+        ]
+    )
+
+    s_nullable = pa.schema(
+        [
+            pa.field("A", pa.int32(), nullable=True),
+        ]
+    )
+
+    # No type promotion
+    assert (
+        unify_schemas(
+            [s_non_null, s_nullable],
+            promote_types=False,
+        )
+        == s_nullable
+    )
+
+    s1 = pa.schema(
+        [
+            pa.field("A", pa.int64()),
+        ]
+    )
+
+    s2 = pa.schema(
+        [
+            pa.field("A", pa.float64()),
+        ]
+    )
+
+    # No type promotion
+    with pytest.raises(pa.lib.ArrowTypeError) as exc_info:
+        unify_schemas(
+            [s1, s2],
+            promote_types=False,
+        )
+
+    assert "Unable to merge: Field A has incompatible types: int64 vs double" == str(
+        exc_info.value
+    )
+
+    # Type promoted
+    assert (
+        unify_schemas(
+            [s1, s2],
+            promote_types=True,
+        )
+        == s2
     )
 
 

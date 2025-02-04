@@ -372,7 +372,7 @@ class DataContext:
     # These CPU budgets are derived such that Ray Data pipeline could run on a
     # single node (using the default settings).
     default_join_operator_actor_num_cpus_per_partition: float = 0.125
-    default_shuffle_operator_actor_num_cpus_per_partition: float = 0.125
+    default_shuffle_operator_actor_num_cpus_per_partition: float = 0.05
     default_aggregate_operator_actor_num_cpus_per_partition: float = 0.025
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY

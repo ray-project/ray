@@ -61,8 +61,7 @@ class ReducingShuffleAggregation(StatefulShuffleAggregation):
             # TODO make aggregation async
             aggregated_block = self._aggregate(should_finalize=False)
             # Reset partially aggregated blocks
-            self._aggregated_blocks = []
-            self._aggregated_blocks.append(aggregated_block)
+            self._aggregated_blocks = [aggregated_block]
 
     def finalize(self, partition_id: int) -> Block:
         if len(self._aggregated_blocks) == 0:
@@ -106,7 +105,7 @@ class HashAggregateOperator(HashShufflingOperatorBase):
     ):
         super().__init__(
             name=(
-                f"Aggregate("
+                f"HashAggregate("
                 f"num_partitions={num_partitions}, "
                 f"key_columns={key_columns}, "
                 f"fn=[{','.join([f.name for f in aggregation_fns])}]"
@@ -188,6 +187,11 @@ def _create_aggregating_transformer(
         from ray.data._internal.planner.exchange.aggregate_task_spec import (
             SortAggregateTaskSpec,
         )
+
+        # TODO unify blocks schemas, to avoid validating every block
+        # Validate block's schema compatible with aggregations
+        for agg_fn in aggregation_fns:
+            agg_fn._validate(BlockAccessor.for_block(block).schema())
 
         # Project block to only carry columns used in aggregation
         pruned_block = SortAggregateTaskSpec._prune_unused_columns(
