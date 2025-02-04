@@ -5,7 +5,7 @@ from ray._private.ray_logging import default_impl
 from ray._private.ray_logging.constants import LOGRECORD_STANDARD_ATTRS
 from ray._private.ray_logging.formatters import TextFormatter
 from ray._private.ray_logging.filters import CoreContextFilter
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import PublicAPI
 
 from dataclasses import dataclass, field
 
@@ -17,15 +17,9 @@ class LoggingConfigurator(ABC):
     def get_supported_encodings(self) -> Set[str]:
         raise NotImplementedError
 
-    @Deprecated
-    def configure_logging(self, encoding: str, log_level: str):
-        raise NotImplementedError
-
-    # Should be marked as @abstractmethod, but we can't do that because of backwards
-    # compatibility.
-    # Also, assuming the function will only be called inside LoggingConfig._apply()
+    @abstractmethod
     def configure(self, logging_config: "LoggingConfig"):
-        self.configure_logging(logging_config.encoding, logging_config.log_level)
+        raise NotImplementedError
 
 
 class DefaultLoggingConfigurator(LoggingConfigurator):
@@ -36,10 +30,6 @@ class DefaultLoggingConfigurator(LoggingConfigurator):
 
     def get_supported_encodings(self) -> Set[str]:
         return self._encoding_to_formatter.keys()
-
-    @Deprecated
-    def configure_logging(self, encoding: str, log_level: str):
-        self.configure(self)
 
     def configure(self, logging_config: "LoggingConfig"):
         formatter = self._encoding_to_formatter[logging_config.encoding]
@@ -140,9 +130,9 @@ LoggingConfig.__doc__ = f"""
             {list(_logging_configurator.get_supported_encodings())}
         log_level: Log level for the logs. Defaults to 'INFO'. You can set
             it to 'DEBUG' to receive more detailed debug logs.
-        additional_log_standard_attrs: List of additional standard python logger attributes to 
-            include in the log. Defaults to an empty list. The list of already 
-            included standard attributes are: "asctime", "levelname", "message", 
+        additional_log_standard_attrs: List of additional standard python logger attributes to
+            include in the log. Defaults to an empty list. The list of already
+            included standard attributes are: "asctime", "levelname", "message",
             "filename", "lineno", "exc_text". The list of valid attributes are specified
             here: http://docs.python.org/library/logging.html#logrecord-attributes
     """  # noqa: E501

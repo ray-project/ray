@@ -324,6 +324,9 @@ class TestRayDockerContainer(RayCITestBase):
         container = RayDockerContainer(v, "cu12.4.1-cudnn", "ray")
         assert container.get_platform_tag() == "-cu124"
 
+        container = RayDockerContainer(v, "cu12.5.1-cudnn", "ray")
+        assert container.get_platform_tag() == "-cu125"
+
     def test_should_upload(self) -> None:
         v = DEFAULT_PYTHON_VERSION
         test_cases = [

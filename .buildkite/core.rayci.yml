@@ -130,6 +130,8 @@ steps:
     tags:
       - python
       - workflow
+      - oss
+      - skip-on-premerge
     instance_type: medium
     parallelism: 2
     commands:

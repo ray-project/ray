@@ -528,7 +528,7 @@ class TorchMultiDistribution(Distribution):
         self,
         child_distribution_struct: Union[Tuple, List, Dict],
     ):
-        """Initializes a TorchMultiActionDistribution object.
+        """Initializes a TorchMultiDistribution object.
 
         Args:
             child_distribution_struct: A complex struct that contains the child
@@ -652,7 +652,7 @@ class TorchMultiDistribution(Distribution):
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            A TorchMultiActionDistribution object.
+            A TorchMultiDistribution object.
         """
         logit_lens = tree.flatten(input_lens)
         child_distribution_cls_list = tree.flatten(child_distribution_cls_struct)
