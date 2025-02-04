@@ -266,7 +266,7 @@ class TableBlockAccessor(BlockAccessor):
     def normalize_block_types(
         cls,
         blocks: List[Block],
-        normalize_type: Optional[str] = None,
+        normalize_type: Optional[BlockType] = None,
     ) -> List[Block]:
         """Normalize input blocks to the specified `normalize_type`. If the blocks
         are already all of the same type, returns the original blocks.
