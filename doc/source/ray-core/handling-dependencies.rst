@@ -362,7 +362,7 @@ And then a `test.py` like the following:
 and run the driver script with `uv run test.py`. For reproducibility it's
 recommended to freeze the package versions by running `uv lock`.
 
-This workflow also supports editable packages, you can e.g. use
+This workflow also supports editable packages, for example, you can use
 `uv add --editable ./path/to/package` where `./path/to/package`
 must be inside your `working_dir` so it is available to all
 workers.
