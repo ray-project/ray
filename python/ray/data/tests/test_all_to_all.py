@@ -14,6 +14,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 )
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Quantile, Std, Sum
 from ray.data.context import DataContext
+from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
@@ -111,6 +112,7 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
         (128, 4),
         (128, 5),
         (128, 7),
+        (128, 8),
         (128, 128),
     ],
 )
