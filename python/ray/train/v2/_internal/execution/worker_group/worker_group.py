@@ -167,6 +167,27 @@ class WorkerGroup:
             WorkerGroupStartupFailedError: If the worker group fails to start
                 due to actors dying/failing during initialization.
         """
+        try:
+            self._start(
+                train_fn,
+                num_workers,
+                resources_per_worker,
+                placement_strategy,
+                checkpoint,
+            )
+        except Exception as e:
+            self._cleanup_partial_start_state()
+            raise e
+
+    def _start(
+        self,
+        train_fn: Callable[[], None],
+        num_workers: int,
+        resources_per_worker: dict,
+        placement_strategy: str = "PACK",
+        checkpoint: Optional[Checkpoint] = None,
+    ):
+
         if self._worker_group_state:
             raise ValueError("Workers already started.")
 
@@ -260,13 +281,19 @@ class WorkerGroup:
                     callback.after_worker_group_training_start(self)
 
             except RayActorError as actor_error:
-                self.shutdown()
-
                 error_msg = "At least one of the worker actors failed to initialize."
                 raise WorkerGroupStartupFailedError(error_msg) from actor_error
 
             self._worker_group_state_builder.with_start_time(time_monotonic())
             self._worker_group_state = self._worker_group_state_builder.build()
+            self._worker_group_state_builder = None
+
+    def _cleanup_partial_start_state(self):
+        if self._worker_group_context:
+            self._worker_group_context = None
+
+        if self._worker_group_state_builder:
+            self._worker_group_state_builder.shutdown()
             self._worker_group_state_builder = None
 
     def _create_workers(
@@ -335,29 +362,18 @@ class WorkerGroup:
     # Shutdown Worker Group
     #####################################################################################
 
-    def shutdown(self, patience_s: float = 5.0):
-        """Shutdown all the workers in this worker group.
-
-        Args:
-            patience_s: Attempt a graceful shutdown
-                of the workers for this many seconds. Fallback to force kill
-                if graceful shutdown is not complete after this time. If
-                this is less than or equal to 0, immediately force kill all
-                workers.
-        """
+    def shutdown(self):
+        """Shutdown all the workers in this worker group."""
         with invoke_context_managers(
             [callback.on_worker_group_shutdown for callback in self._callbacks]
         ):
-            if self._worker_group_state_builder:
-                self._worker_group_state_builder.shutdown(patience_s)
-
             if self._worker_group_state:
                 # TODO: These callbacks currently assume the WorkerGroup is alive.
                 # This is inconsistent with `on_worker_group_shutdown`.
                 for callback in self._callbacks:
                     callback.before_worker_group_shutdown(self)
 
-                self._worker_group_state.shutdown(patience_s)
+                self._worker_group_state.shutdown()
 
             self._clear_state()
 
@@ -365,7 +381,6 @@ class WorkerGroup:
 
     def _clear_state(self):
         self._worker_group_context = None
-        self._worker_group_state_builder = None
         self._worker_group_state = None
         self._world_rank_to_ongoing_poll = {}
 

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class _WorkerGroupShutdownMixin:
     """Mixin class for worker group shutdown logic."""
 
-    def _shutdown_workers(self, workers: List[Worker], patience_s: float):
+    def _shutdown_workers(self, workers: List[Worker], patience_s: float = 5):
         # Run the worker shutdown logic on each of the workers. This should
         # be a non-blocking call to realize forceful shutdown after patience_s.
         _ = [w.actor.shutdown.remote() for w in workers]
@@ -59,8 +59,10 @@ class WorkerGroupState(_WorkerGroupShutdownMixin):
     workers: List[Worker]
     sync_actor: ActorHandle
 
-    def shutdown(self, patience_s: float):
-        self._shutdown_workers(self.workers, patience_s)
+    def shutdown(self):
+        self._shutdown_workers(
+            self.workers,
+        )
         self._shutdown_placement_group(self.placement_group)
         self._shutdown_sync_actor(self.sync_actor)
 
@@ -126,9 +128,9 @@ class WorkerGroupStateBuilder(_WorkerGroupShutdownMixin):
             sync_actor=self.sync_actor,
         )
 
-    def shutdown(self, patience_s: float):
+    def shutdown(self):
         if self.workers:
-            self._shutdown_workers(self.workers, patience_s)
+            self._shutdown_workers(self.workers)
         if self.placement_group:
             self._shutdown_placement_group(self.placement_group)
         if self.sync_actor:
