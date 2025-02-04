@@ -32,7 +32,7 @@ from ray.train.v2._internal.util import date_str
 
 from config import BenchmarkConfig
 from factory import BenchmarkFactory
-from image_classification_factory import ImageClassificationFactory
+from image_classification.factory import ImageClassificationFactory
 
 
 class TrainLoopRunner:
