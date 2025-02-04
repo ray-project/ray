@@ -30,8 +30,6 @@ logger = logging.getLogger(__name__)
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
 
-_PER_NODE_SUFFIX = "_per_node"
-
 
 StatsDict = Dict[str, List[BlockStats]]
 
@@ -295,7 +293,7 @@ class _StatsActor:
     def _create_prometheus_metrics_for_per_node_metrics(self) -> Dict[str, Gauge]:
         metrics = {}
         for field in fields(NodeMetrics):
-            metric_name = f"data_{field.name}{_PER_NODE_SUFFIX}"
+            metric_name = f"data_{field.name}_per_node"
             metrics[field.name] = Gauge(
                 metric_name,
                 description="",
@@ -386,7 +384,10 @@ class _StatsActor:
             for field_name, prom_metric in self.execution_metrics_misc.items():
                 prom_metric.set(stats.get(field_name, 0), tags)
 
-        if per_node_metrics is not None:
+        if (
+            DataContext.get_current().enable_per_node_metrics
+            and per_node_metrics is not None
+        ):
             for node_id, node_metrics in per_node_metrics.items():
                 # translate node_id into node_name (the node ip), cache node info
                 if node_id not in self._ray_nodes_cache:
@@ -599,9 +600,13 @@ class _StatsManager:
 
     # Execution methods
 
-    def _generate_per_node_metrics(
+    def _aggregate_per_node_metrics(
         self, op_metrics: List[OpRuntimeMetrics]
-    ) -> Mapping[str, Mapping[str, Union[int, float]]]:
+    ) -> Optional[Mapping[str, Mapping[str, Union[int, float]]]]:
+        # Do not attempt to aggregate per node metrics if they are disabled.
+        if not DataContext.get_current().enable_per_node_metrics:
+            return None
+
         aggregated_by_node = defaultdict(lambda: defaultdict(int))
         for metrics in op_metrics:
             for node_id, node_metrics in metrics._per_node_metrics.items():
@@ -636,7 +641,7 @@ class _StatsManager:
         force_update: bool = False,
     ):
         op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
-        per_node_metrics = self._generate_per_node_metrics(op_metrics)
+        per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
         args = (dataset_tag, op_metrics_dicts, operator_tags, state, per_node_metrics)
         if force_update:
             self._stats_actor().update_execution_metrics.remote(*args)
