@@ -395,6 +395,8 @@ defusedxml==0.7.1
     #   semgrep
 delta-sharing==1.0.5
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
+deltalake==0.18.2
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 dill==0.3.7
     # via
     #   datasets
@@ -1532,6 +1534,7 @@ pyarrow==14.0.2
     #   -r /ray/ci/../python/requirements.txt
     #   datasets
     #   delta-sharing
+    #   deltalake
     #   feather-format
     #   hudi
     #   mlflow
@@ -1541,6 +1544,7 @@ pyarrow==14.0.2
 pyarrow-hotfix==0.6
     # via
     #   datasets
+    #   deltalake
     #   hudi
 pyasn1==0.5.1
     # via
