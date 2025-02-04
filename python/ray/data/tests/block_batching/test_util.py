@@ -160,9 +160,13 @@ def test_make_async_gen_varying_seq_lengths(buffer_size: int):
     seq = list(iterator)
 
     assert [
-               'worker_0:0',
-               'worker_1:0',
-               'worker_2:0', 'worker_1:1', 'worker_2:1', 'worker_2:2'] == seq
+        "worker_0:0",
+        "worker_1:0",
+        "worker_2:0",
+        "worker_1:1",
+        "worker_2:1",
+        "worker_2:2",
+    ] == seq
 
 
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
