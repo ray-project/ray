@@ -9,11 +9,10 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.aggregate import Count, Max, Mean, Min, Quantile, Std, Sum
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Quantile, Std, Sum
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
@@ -306,7 +305,7 @@ def test_agg_inputs(ray_start_regular_shared, keys):
 
 
 def test_agg_errors(ray_start_regular_shared):
-    from ray.data._internal.aggregate import Max
+    from ray.data.aggregate import Max
 
     ds = ray.data.range(100)
     ds.aggregate(Max("id"))  # OK

@@ -33,7 +33,6 @@ from ray.air.util.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum, Unique
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
@@ -88,7 +87,7 @@ from ray.data._internal.util import (
     _validate_rows_per_file_args,
     get_compute_strategy,
 )
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
 from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
@@ -3957,7 +3956,6 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-
             datasink.on_write_start()
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
@@ -5554,7 +5552,6 @@ class Schema:
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
-
                 if self._context.use_arrow_tensor_v2:
                     pa_tensor_type_class = ArrowTensorTypeV2
                 else:
