@@ -672,8 +672,10 @@ class IMPALA(Algorithm):
             self.metrics.log_value(
                 (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_aggregated_lifetime"),
                 self.config.train_batch_size_per_learner
+                * (self.config.num_learners or 1)
                 * len(data_packages_for_learner_group),
                 reduce="sum",
+                with_throughput=True,
             )
 
         else:
