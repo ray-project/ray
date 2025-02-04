@@ -49,7 +49,7 @@ def load_checkpoint(ckpt_filter: BatchBasedCheckpointFilter) -> Block:
     start_t = time.time()
     checkpoint = ckpt_filter.load_checkpoint()
     num_rows = BlockAccessor.for_block(checkpoint).num_rows()
-    logger.debug(
+    logger.info(
         "Checkpoint loaded in %.2f seconds with %d rows.",
         time.time() - start_t,
         num_rows,

@@ -2,15 +2,18 @@ import argparse
 import logging
 import os
 import time
+from typing import Optional
 import numpy
+from ray.data.datasource import WriteResult
 from benchmark import Benchmark, BenchmarkMetric
 import ray
+from ray.exceptions import UserCodeException
 from ray.data import DataContext
 from ray.anyscale.data.checkpoint import CheckpointBackend, CheckpointConfig
 
-logger = logging.Logger(__name__)
+from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 
-OUTPUT_FILE_SIZE_BYTES = 1024**3
+logger = logging.Logger(__name__)
 
 
 def _parse_checkpoint_config(args: argparse.Namespace) -> CheckpointConfig:
@@ -36,8 +39,7 @@ def _parse_checkpoint_config(args: argparse.Namespace) -> CheckpointConfig:
     )
 
 
-def run_checkpoints_benchmark(
-    benchmark: Benchmark,
+def run_dataset(
     checkpoint_config: CheckpointConfig,
     num_rows: int,
     size_bytes_per_row: int,
@@ -46,8 +48,9 @@ def run_checkpoints_benchmark(
     inference_batch_size: int,
     inference_concurrency: int,
     data_output_path: str,
-    benchmark_name: str = "",
-):
+    fraction_checkpointed: Optional[float],
+    num_output_files: int,
+) -> int:
     ctx = DataContext.get_current()
     ctx.checkpoint_config = checkpoint_config
 
@@ -69,6 +72,11 @@ def run_checkpoints_benchmark(
         INFER_RESULT_DIMENSION = 128
 
         def __call__(self, batch):
+            if (
+                fraction_checkpointed
+                and batch["id"][0] > num_rows * fraction_checkpointed
+            ):
+                raise RuntimeError("Inference failed")
             time.sleep(inference_sleep_s)
             batch["inference"] = numpy.random.random(
                 (len(batch["data"]), self.INFER_RESULT_DIMENSION)
@@ -82,20 +90,80 @@ def run_checkpoints_benchmark(
         num_gpus=1,
     )
 
-    def run_ds():
-        start_time = time.time()
+    # Patch `on_write_complete` to get the WriteResult.
+    # TODO(hchen): make `write_parquet` expose the WriteResult directly.
+    num_rows_written = None
+    original_on_write_complete = ParquetDatasink.on_write_complete
+
+    def patched_on_write_complete(self, write_result: WriteResult[None]):
+        nonlocal num_rows_written
+        num_rows_written = write_result.num_rows
+        return original_on_write_complete(self, write_result)
+
+    ParquetDatasink.on_write_complete = patched_on_write_complete
+
+    try:
         ds.write_parquet(
             data_output_path,
-            num_rows_per_file=OUTPUT_FILE_SIZE_BYTES // size_bytes_per_row,
+            min_rows_per_file=num_rows // num_output_files,
+        )
+        return num_rows_written
+    finally:
+        ParquetDatasink.on_write_complete = original_on_write_complete
+
+
+def run_checkpoints_benchmark(
+    benchmark: Benchmark,
+    checkpoint_config: CheckpointConfig,
+    num_rows: int,
+    size_bytes_per_row: int,
+    transform_sleep_s: float,
+    inference_sleep_s: float,
+    inference_batch_size: int,
+    inference_concurrency: int,
+    data_output_path: str,
+    fraction_checkpointed: Optional[float],
+    num_output_files: int,
+    benchmark_name: str = "",
+):
+    def run():
+        if fraction_checkpointed is not None:
+            try:
+                run_dataset(
+                    checkpoint_config,
+                    num_rows,
+                    size_bytes_per_row,
+                    transform_sleep_s,
+                    inference_sleep_s,
+                    inference_batch_size,
+                    inference_concurrency,
+                    data_output_path,
+                    fraction_checkpointed,
+                    num_output_files,
+                )
+            except UserCodeException:
+                pass
+
+        start_time = time.time()
+        num_rows_written = run_dataset(
+            checkpoint_config,
+            num_rows,
+            size_bytes_per_row,
+            transform_sleep_s,
+            inference_sleep_s,
+            inference_batch_size,
+            inference_concurrency,
+            data_output_path,
+            None,
+            num_output_files,
         )
         runtime = time.time() - start_time
-        return {BenchmarkMetric.RUNTIME: runtime}
+        return {
+            BenchmarkMetric.RUNTIME: runtime,
+            BenchmarkMetric.THROUGHPUT: num_rows_written // runtime,
+        }
 
-    name = "checkpoint-benchmark"
-    if benchmark_name:
-        name += f"-{benchmark_name}"
-    name += f"-{checkpoint_config.backend}"
-    benchmark.run_fn(name, run_ds)
+    benchmark.run_fn(benchmark_name, run)
 
 
 def clean_up_output_files(
@@ -136,6 +204,13 @@ if __name__ == "__main__":
     parser.add_argument("--inference_batch_size", type=int)
     parser.add_argument("--inference_sleep_s", type=float)
     parser.add_argument("--transform_sleep_s", type=float, default=0.001)
+    parser.add_argument(
+        "--fraction_checkpointed",
+        type=float,
+        default=None,
+        help="Fraction of data that has already been checkpointed.",
+    )
+    parser.add_argument("--num_output_files", type=int, default=50)
     args = parser.parse_args()
 
     checkpoint_config = _parse_checkpoint_config(args)
@@ -151,6 +226,8 @@ if __name__ == "__main__":
             args.inference_batch_size,
             args.inference_concurrency,
             args.data_output_path,
+            args.fraction_checkpointed,
+            args.num_output_files,
         )
         benchmark.write_result()
     finally:
