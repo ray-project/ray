@@ -34,10 +34,10 @@ from typing import (
 import tree  # pip install dm_tree
 
 import ray
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
@@ -192,27 +192,32 @@ except ImportError:
     class AlgorithmBase:
         @staticmethod
         def _get_learner_bundles(
-            cf: AlgorithmConfig,
+            config: AlgorithmConfig,
         ) -> List[Dict[str, Union[float, int]]]:
             """Selects the right resource bundles for learner workers based off of cf.
 
             Args:
-                cf: The AlgorithmConfig instance to extract bundle-information from.
+                config: The AlgorithmConfig instance to extract bundle-information from.
 
             Returns:
                 A list of resource bundles for the learner workers.
             """
-            assert cf.num_learners > 0
+            _num = config.num_learners
+            assert _num > 0
 
-            _num = cf.num_learners
+            num_cpus_per_learner = (
+                config.num_cpus_per_learner
+                if config.num_cpus_per_learner != "auto"
+                else 1
+                if config.num_gpus_per_learner == 0
+                else 0
+            )
+
             all_learners = [
                 {
                     "CPU": _num
-                    * (
-                        (cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0)
-                        + cf.num_aggregator_actors_per_learner
-                    ),
-                    "GPU": _num * max(0, cf.num_gpus_per_learner),
+                    * (num_cpus_per_learner + config.num_aggregator_actors_per_learner),
+                    "GPU": _num * config.num_gpus_per_learner,
                 }
             ]
 
@@ -513,6 +518,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
             logdir_prefix = f"{type(self).__name__}_{env_descr_for_dir}_{timestr}"
+
             if not os.path.exists(DEFAULT_STORAGE_PATH):
                 # Possible race condition if dir is created several times on
                 # rollout workers
@@ -802,7 +808,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
-                    rl_module_state=rl_module_state,
+                    rl_module_state=rl_module_state[COMPONENT_RL_MODULE],
                 )
             elif self.eval_env_runner_group:
                 self.eval_env_runner.set_state(rl_module_state)
@@ -811,7 +817,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
-                    rl_module_state=rl_module_state,
+                    rl_module_state=rl_module_state[COMPONENT_RL_MODULE],
                 )
             # TODO (simon): Update modules in DataWorkers.
 
@@ -831,13 +837,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     # Provide the actor handles for the learners for module
                     # updating during preprocessing.
                     self.offline_data.learner_handles = self.learner_group._workers
-                    # Provide the module_spec. Note, in the remote case this is needed
-                    # because the learner module cannot be copied, but must be built.
-                    self.offline_data.module_spec = module_spec
                 # Otherwise we can simply pass in the local learner.
                 else:
                     self.offline_data.learner_handles = [self.learner_group._learner]
-
+                # TODO (simon, sven): Replace these set-some-object's-attributes-
+                # directly? We should find some solution for this in the future, an API,
+                # or setting these in the OfflineData constructor?
+                # Provide the module_spec. Note, in the remote case this is needed
+                # because the learner module cannot be copied, but must be built.
+                self.offline_data.module_spec = module_spec
                 # Provide the `OfflineData` instance with space information. It might
                 # need it for reading recorded experiences.
                 self.offline_data.spaces = spaces
@@ -853,7 +861,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
             agg_cls = ray.remote(
                 num_cpus=1,
-                num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
+                # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
+                # num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
                 max_restarts=-1,
             )(AggregatorActor)
             self._aggregator_actor_manager = FaultTolerantActorManager(
@@ -886,10 +895,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
             self._aggregator_actor_to_learner = {}
             for agg_idx, aggregator_location in aggregator_locations:
+                aggregator_location = aggregator_location.get()
                 for learner_idx, learner_location in learner_locations:
-                    if learner_location.get() == aggregator_location.get():
-                        # Round-robin, in case all Learners are on same device (e.g. for
-                        # CPU learners).
+                    # TODO (sven): Activate full comparison (including device) when Ray
+                    #  has figured out GPU pre-loading.
+                    if learner_location.get()[0] == aggregator_location[0]:
+                        # Round-robin, in case all Learners are on same device/node.
                         learner_locations = learner_locations[1:] + [
                             learner_locations[0]
                         ]
@@ -2731,10 +2742,17 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if cf.enable_rl_module_and_learner:
             # Training is done on local Learner.
             if cf.num_learners == 0:
+                num_cpus_per_learner = (
+                    cf.num_cpus_per_learner
+                    if cf.num_cpus_per_learner != "auto"
+                    else 1
+                    if cf.num_gpus_per_learner == 0
+                    else 0
+                )
                 driver = {
                     # Sampling and training is not done concurrently when local is
                     # used, so pick the max.
-                    "CPU": max(cf.num_cpus_per_learner, cf.num_cpus_for_main_process),
+                    "CPU": (max(num_cpus_per_learner, cf.num_cpus_for_main_process)),
                     "GPU": cf.num_gpus_per_learner,
                 }
             # Training is done on n remote Learners.
@@ -2793,8 +2811,14 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # resources for remote learner workers
         learner_bundles = []
-        if cf.enable_rl_module_and_learner and cf.num_learners > 0:
-            learner_bundles = cls._get_learner_bundles(cf)
+        if cf.enable_rl_module_and_learner:
+            if cf.num_learners > 0:
+                learner_bundles = cls._get_learner_bundles(cf)
+            # Aggregation actors (for the local learner).
+            else:
+                learner_bundles = [
+                    {"CPU": 1} for _ in range(cf.num_aggregator_actors_per_learner)
+                ]
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 

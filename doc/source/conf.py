@@ -304,7 +304,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Influence the future of Ray with our <a target="_blank" href="https://www.surveymonkey.com/r/RayPulse2025?utm_source=ray_docs&utm_medium=website&utm_campaign=banner">Ray Community Pulse survey</a>. Complete it by Monday, January 27th, 2025 to get exclusive swag for eligible participants.""",
+    "announcement": False,
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },

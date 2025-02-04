@@ -8,7 +8,6 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.aggregate import Count
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -64,6 +63,7 @@ from ray.data._internal.logical.util import (
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.planner.planner import Planner
 from ray.data._internal.stats import DatasetStats
+from ray.data.aggregate import Count
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
@@ -130,7 +130,7 @@ def test_read_operator_emits_warning_for_large_read_tasks():
             large_object = np.zeros((128, 1024, 1024), dtype=np.uint8)  # 128 MiB
 
             def read_fn():
-                large_object
+                _ = large_object
                 yield pd.DataFrame({"column": [0]})
 
             return [ReadTask(read_fn, BlockMetadata(1, None, None, None, None))]
@@ -331,7 +331,7 @@ def test_filter_operator(ray_start_regular_shared):
 def test_filter_e2e(ray_start_regular_shared):
     ds = ray.data.range(5)
     ds = ds.filter(fn=lambda x: x["id"] % 2 == 0)
-    assert extract_values("id", ds.take_all()) == [0, 2, 4], ds
+    assert sorted(extract_values("id", ds.take_all())) == [0, 2, 4], ds
     _check_usage_record(["ReadRange", "Filter"])
 
 

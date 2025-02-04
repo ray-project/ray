@@ -86,7 +86,6 @@ class ControllerCallback(RayTrainCallback):
     def before_controller_execute_scaling_decision(
         self,
         scaling_decision: "ScalingDecision",
-        worker_group_status: "WorkerGroupStatus",
     ):
         """Called before the controller executes a scaling decision."""
         pass

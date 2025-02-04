@@ -26,6 +26,7 @@
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
+#include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
