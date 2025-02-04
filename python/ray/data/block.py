@@ -499,7 +499,10 @@ class BlockAccessor:
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block], sort_key: "SortKey", aggs: Tuple["AggregateFn"]
+        blocks: List[Block],
+        sort_key: "SortKey",
+        aggs: Tuple["AggregateFn"],
+        finalize: bool = True,
     ) -> Tuple[Block, BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
