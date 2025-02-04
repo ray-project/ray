@@ -205,6 +205,7 @@ class TrainLoopRunner:
             )
 
         # Throughput
+        # TODO: Ray Data can provide these throughput metrics automatically.
         num_workers = ray.train.get_context().get_world_size()
         train_time = (
             self._metrics["train/step"].get()
@@ -309,4 +310,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # Workers need to access the working directory module.
+    ray.init(runtime_env={"working_dir": os.path.dirname(__file__)})
     main()
