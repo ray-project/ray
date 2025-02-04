@@ -14,6 +14,7 @@ import pickle
 
 from ray.data._internal.util import _check_import
 from ray.data.datasource.datasink import Datasink
+from ray.data.block import BlockAccessor
 import pyarrow as pa
 
 
@@ -58,9 +59,6 @@ def _write_fragment(
         first = next(stream)
         if isinstance(first, pd.DataFrame):
             schema = pa.Schema.from_pandas(first).remove_metadata()
-        elif isinstance(first, Dict):
-            tbl = pa.Table.from_pydict(first)
-            schema = tbl.schema.remove_metadata()
         else:
             schema = first.schema
         if len(schema.names) == 0:
@@ -71,7 +69,7 @@ def _write_fragment(
 
     def record_batch_converter():
         for block in stream:
-            tbl = _pd_to_arrow(block, schema)
+            tbl = BlockAccessor.for_block(block).to_arrow()
             yield from tbl.to_batches()
 
     max_bytes_per_file = (
@@ -138,19 +136,6 @@ class _BaseLanceDatasink(Datasink):
         if not write_results:
             warnings.warn(
                 "write_results is empty.",
-                DeprecationWarning,
-            )
-            return
-        if (
-            not isinstance(write_results, list)
-            or not isinstance(write_results[0], list)
-        ) and not hasattr(write_results, "write_returns"):
-            warnings.warn(
-                "write_results type is wrong. please check version, "
-                "upgrade or downgrade your ray version. ray versions >= 2.38 "
-                "and < 2.41 are unable to write Lance datasets, check ray PR "
-                "https://github.com/ray-project/ray/pull/49251 in your "
-                "ray version. ",
                 DeprecationWarning,
             )
             return
