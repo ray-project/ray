@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, List, Union, Dict
+from typing import TYPE_CHECKING, Dict, List, Union, Dict
 
 import numpy as np
 from packaging.version import parse as parse_version
@@ -18,6 +18,14 @@ except ImportError:
 
 
 MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
+
+
+# pyarrow.Table.slice is slow when the table has many chunks
+# so we combine chunks into a single one to make slice faster
+# with the cost of an extra copy.
+# See https://github.com/ray-project/ray/issues/31108 for more details.
+# TODO(jjyao): remove this once https://github.com/apache/arrow/issues/35126 is resolved
+MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = 10
 
 
 logger = logging.getLogger(__name__)
@@ -552,6 +560,33 @@ def to_numpy(
         raise ValueError(
             f"Either of `Array` or `ChunkedArray` was expected, got {type(array)}"
         )
+
+
+def try_combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
+    """This method attempts to coalesce table by combining any of its
+    columns exceeding threshold of `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`
+    chunks in its `ChunkedArray`.
+
+    This is necessary to improve performance for some operations (like `take`, etc)
+    when dealing with `ChunkedArrays` w/ large number of chunks
+
+    For more details check out https://github.com/apache/arrow/issues/35126
+    """
+
+    if table.num_columns == 0:
+        return table
+
+    new_column_values_arrays = []
+
+    for col in table.columns:
+        if col.num_chunks >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS:
+            new_col = combine_chunked_array(col)
+        else:
+            new_col = col
+
+        new_column_values_arrays.append(new_col)
+
+    return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
 
 
 def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
