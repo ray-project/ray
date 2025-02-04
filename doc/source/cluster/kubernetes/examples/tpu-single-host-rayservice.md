@@ -2,7 +2,7 @@
 
 # Serve a LLM on GKE with Single-Host TPUs
 
-This guide showcases how to serve an LLM and run inference with vLLM and single-host TPUs. A single-host TPU slice is a node pool that contains 1 TPU VM. Single-host TPUs enable users to run highly intensive workloads such as inference and training with large-scale AI models that don't fit on one VM host. For more information about TPUs, see [Use TPUs with KubeRay](kuberay-tpu). This example showcases serving and inference with Llama-3.1-70B using either a 2x4 Trillium (v6e) TPU, or 8 TPU chips total.
+This guide showcases how to serve an LLM and run inference with vLLM and single-host TPUs. A single-host TPU slice is a node pool that contains 1 TPU VM. Single-host TPUs enable users to run highly intensive workloads such as inference and training with large-scale AI models that don't fit on one VM host. For more information about TPUs, see [Use TPUs with KubeRay](kuberay-tpu). This example showcases serving and inference with Llama-3.1-70B on a 2x4 Trillium (v6e) TPU node, or 8 TPU chips total.
 
 ## Step 1: Create a Kubernetes Cluster with TPUs and the Ray Operator Enabled
 
@@ -40,16 +40,6 @@ gcloud container clusters create $CLUSTER_NAME \
 ```
 
 Create a single-host TPU slice node pool:
-- For TPU v5e:
-```sh
-gcloud container node-pools create v5e-8 \
-    --location=$COMPUTE_ZONE \
-    --cluster=$CLUSTER_NAME \
-    --machine-type=ct5lp-hightpu-8t \
-    --num-nodes=1
-```
-
-- For TPU v6e:
 ```sh
 gcloud container node-pools create v6e-8 \
     --location=$COMPUTE_ZONE \
@@ -159,7 +149,24 @@ kubectl create secret generic hf-secret \
 
 ## Step 5: Install the RayService CR
 
-To deploy our Serve application, we'll create a RayService CR with the following:
+Clone the sample repository:
+```sh
+git clone https://github.com/GoogleCloudPlatform/kubernetes-engine-samples.git
+cd kubernetes-engine-samples
+```
+
+Navigate to the working directory:
+```sh
+cd ai-ml/gke-ray/rayserve/llm
+```
+
+Set the following environment vars for the model to serve:
+```sh
+export MODEL_ID="meta-llama/Llama-3.1-70B"
+export MAX_MODEL_LEN=8192
+```
+
+In the next step, we'll deploy a RayService CR with the following:
 ```sh
 apiVersion: ray.io/v1
 kind: RayService
@@ -306,9 +313,6 @@ The above example RayService manifest deploys on Trillium (v6e) TPUs.
 
 Create the RayService CR:
 ```sh
-# For v5e TPUs
-envsubst < tpu/ray-service.tpu-v5e-singlehost.yaml | kubectl apply -f -
-
 # For v6e TPUs
 envsubst < tpu/ray-service.tpu-v6e-singlehost.yaml | kubectl apply -f -
 ```
