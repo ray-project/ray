@@ -18,6 +18,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:function_traits",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -41,6 +42,7 @@ ray_cc_test(
     linkstatic = True,
     deps = [
         "//src/ray/util",
+        "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
