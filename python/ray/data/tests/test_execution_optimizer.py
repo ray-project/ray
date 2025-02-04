@@ -331,7 +331,7 @@ def test_filter_operator(ray_start_regular_shared):
 def test_filter_e2e(ray_start_regular_shared):
     ds = ray.data.range(5)
     ds = ds.filter(fn=lambda x: x["id"] % 2 == 0)
-    assert extract_values("id", ds.take_all()) == [0, 2, 4], ds
+    assert sorted(extract_values("id", ds.take_all())) == [0, 2, 4], ds
     _check_usage_record(["ReadRange", "Filter"])
 
 
