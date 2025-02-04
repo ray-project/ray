@@ -1033,9 +1033,9 @@ def make_async_gen(
             #
             # NOTE: `queue.get` is blocking!
             input_queue_iter = iter(input_queue.get, SENTINEL)
-            iterator = _WorkerIterator(input_queue_iter, worker_id=worker_id)
+            wrapped_iter = _WorkerIterator(input_queue_iter, worker_id=worker_id)
 
-            mapped_iter = fn(iterator)
+            mapped_iter = fn(wrapped_iter)
             for result in mapped_iter:
                 # Enqueue result of the transformation
                 output_queue.put(result)
