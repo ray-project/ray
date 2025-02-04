@@ -1,3 +1,4 @@
+import enum
 import logging
 import os
 import threading
@@ -20,6 +21,11 @@ logger = logging.getLogger(__name__)
 # The context singleton on this process.
 _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
+
+
+class ShuffleStrategy(str, enum.Enum):
+    SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
+    SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -54,6 +60,10 @@ DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
+)
+
+DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
+    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
 )
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
@@ -173,6 +183,25 @@ def _execution_options_factory() -> "ExecutionOptions":
     return ExecutionOptions()
 
 
+def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
+    if DEFAULT_USE_PUSH_BASED_SHUFFLE:
+        logger.warning(
+            "RAY_DATA_PUSH_BASED_SHUFFLE is deprecated, please use "
+            "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY to set shuffling strategy"
+        )
+
+        return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
+    else:
+        vs = [s for s in ShuffleStrategy]  # noqa: C416
+
+        assert DEFAULT_SHUFFLE_STRATEGY in vs, (
+            f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the [{','.join(vs)}] "
+            f"(got {DEFAULT_SHUFFLE_STRATEGY})"
+        )
+
+        return DEFAULT_SHUFFLE_STRATEGY
+
+
 @DeveloperAPI
 @dataclass
 class DataContext:
@@ -285,8 +314,19 @@ class DataContext:
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
+
+    ################################################################
+    # Sort-based shuffling configuration
+    ################################################################
+
     use_push_based_shuffle: bool = DEFAULT_USE_PUSH_BASED_SHUFFLE
+
+    _shuffle_strategy: ShuffleStrategy = _deduce_default_shuffle_algorithm()
+
     pipeline_push_based_shuffle_reduce_tasks: bool = True
+
+    ################################################################
+
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
         DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
@@ -386,6 +426,12 @@ class DataContext:
                 "`retried_io_errors` instead.",
                 DeprecationWarning,
             )
+        elif name == "use_push_based_shuffle":
+            warnings.warn(
+                "`use_push_based_shuffle` is deprecated, please configure "
+                "`shuffle_strategy` instead.",
+                DeprecationWarning,
+            )
 
         super().__setattr__(name, value)
 
@@ -435,6 +481,22 @@ class DataContext:
         """
         global _default_context
         _default_context = context
+
+    @property
+    def shuffle_strategy(self) -> ShuffleStrategy:
+        if self.use_push_based_shuffle:
+            logger.warning(
+                "`use_push_based_shuffle` is deprecated, please configure "
+                "`shuffle_strategy` instead.",
+            )
+
+            return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
+
+        return self._shuffle_strategy
+
+    @shuffle_strategy.setter
+    def shuffle_strategy(self, value: ShuffleStrategy) -> None:
+        self._shuffle_strategy = value
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.
