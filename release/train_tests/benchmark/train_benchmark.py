@@ -192,8 +192,6 @@ class TrainLoopRunner:
     def get_metrics(self) -> Dict[str, float]:
         # TODO: These metrics should be aggregated across training workers.
         metrics = {}
-
-        # Timers
         for key, metric in self._metrics.items():
             metrics.update(
                 {
