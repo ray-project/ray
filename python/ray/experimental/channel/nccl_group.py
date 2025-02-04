@@ -279,7 +279,6 @@ class _NcclGroup(GPUCommunicator):
         # need to synchronize here and check that the channel is still open to
         # ensure that the receive buffer is valid.
         # TODO(swang): Avoid CUDA synchronization.
-        # TODO(wxdeng): Use check_async_error.
         if not self._use_communication_streams:
             self._cuda_stream.synchronize()
         if self._closed:

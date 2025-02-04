@@ -17,12 +17,9 @@ def _process_return_vals(return_vals: List[Any], return_single_output: bool):
     if isinstance(return_vals, Exception):
         raise return_vals
 
-    for i, val in enumerate(return_vals):
+    for val in return_vals:
         if isinstance(val, RayTaskError):
             raise val.as_instanceof_cause()
-        # [CL] Comment.
-        # if isinstance(val, DAGOperationFuture):
-        #     return_vals[i] = val.wait()
 
     if return_single_output:
         assert len(return_vals) == 1

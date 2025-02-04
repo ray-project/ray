@@ -92,7 +92,7 @@ class _CollectiveOperation(_NcclOperation):
         return self._type_hint
 
     @property
-    def op_type(self) -> _CollectiveOp:
+    def nccl_op_type(self) -> _CollectiveOp:
         return self._op
 
     def init_nccl_group(
@@ -185,7 +185,7 @@ class CollectiveOutputNode(ClassMethodNode):
             COLLECTIVE_OPERATION_KEY, None
         )
         if self._collective_op is None:
-            raise ValueError("Expected a collective op")
+            raise ValueError("Expected a collective operation")
 
     def _copy_impl(
         self,
@@ -209,7 +209,7 @@ class CollectiveOutputNode(ClassMethodNode):
 
     @property
     def nccl_op_type(self) -> _CollectiveOp:
-        return self._collective_op.op_type
+        return self._collective_op.nccl_op_type
 
     @property
     def nccl_op(self) -> _CollectiveOperation:

@@ -29,7 +29,6 @@ class _P2POperation(_NcclOperation):
 
         Args:
             op: The type of the P2P operation.
-            ch: The channel of the P2P operation.
             data: The data of the P2P operation. If it is a NCCL send, this is the
                 data to send. If it is a NCCL recv, this is None.
 
