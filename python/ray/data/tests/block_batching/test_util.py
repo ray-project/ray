@@ -139,7 +139,7 @@ def test_make_async_gen_varying_seq_lengths(buffer_size: int):
     """Tests that iterators of varying lengths are handled appropriately"""
 
     def _gen(base_iterator):
-        worker_id = base_iterator._worker_id
+        worker_id = base_iterator.worker_id
 
         # Make workers produce sequences increasing the same order
         # as worker-ids (so that for left workers sequences run out first)
