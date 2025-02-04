@@ -159,7 +159,7 @@ class StatefulStageUDF:
         # for 2 batches (63 + 63 > 64) to continue proceeding. On the other hand,
         # if we stream outputs one-by-one, Ray Data can form a batch of 64 before
         # the second batch is done.
-        is_outputed = [False] * len(inputs)
+        is_outputed = set(range(len(inputs)))
         async for output in self.udf(inputs):
             if self.idx_in_batch_column not in output:
                 raise ValueError(
@@ -167,21 +167,20 @@ class StatefulStageUDF:
                     f"{self.idx_in_batch_column}."
                 )
             idx_in_batch = output.pop(self.idx_in_batch_column)
-            if is_outputed[idx_in_batch]:
+            if idx_in_batch not in is_outputed:
                 raise ValueError(
                     f"The row {idx_in_batch} is outputed twice. "
                     "This is likely due to the UDF is not one-to-one."
                 )
-            is_outputed[idx_in_batch] = True
+            is_outputed.remove(idx_in_batch)
 
             # Add stage outputs to the data column of the row.
             inputs[idx_in_batch].pop(self.idx_in_batch_column)
             inputs[idx_in_batch].update(output)
             yield {self.data_column: [inputs[idx_in_batch]]}
 
-        if not all(is_outputed):
-            missing_rows = [i for i, o in enumerate(is_outputed) if not o]
-            raise ValueError(f"The rows {missing_rows} are not outputed.")
+        if is_outputed:
+            raise ValueError(f"The rows {is_outputed} are not outputed.")
 
     def validate_inputs(self, inputs: List[Dict[str, Any]]):
         """Validate the inputs to make sure the required keys are present.
@@ -192,24 +191,26 @@ class StatefulStageUDF:
         Raises:
             ValueError: If the required keys are not found.
         """
-        input_keys = set(inputs[0].keys())
+        expected_input_keys = set(self.expected_input_keys)
 
-        if self.idx_in_batch_column in input_keys:
-            raise ValueError(
-                f"The input column {self.idx_in_batch_column} is reserved "
-                "for internal use."
-            )
+        for inp in inputs:
+            input_keys = set(inp.keys())
 
-        expected_input_keys = self.expected_input_keys
-        if not expected_input_keys:
-            return
+            if self.idx_in_batch_column in input_keys:
+                raise ValueError(
+                    f"The input column {self.idx_in_batch_column} is reserved "
+                    "for internal use."
+                )
 
-        missing_required = set(expected_input_keys) - input_keys
-        if missing_required:
-            raise ValueError(
-                f"Required input keys {missing_required} not found at the input of "
-                f"{self.__class__.__name__}. Input keys: {input_keys}"
-            )
+            if not expected_input_keys:
+                continue
+
+            missing_required = expected_input_keys - input_keys
+            if missing_required:
+                raise ValueError(
+                    f"Required input keys {missing_required} not found at the input of "
+                    f"{self.__class__.__name__}. Input keys: {input_keys}"
+                )
 
     @property
     def expected_input_keys(self) -> List[str]:

@@ -351,9 +351,8 @@ class PrepareImageUDF(StatefulStageUDF):
         for image_info_per_req in all_image_info:
             num_images_in_req = len(image_info_per_req)
             ret = {self.idx_in_batch_column: idx_in_batch}
-            if num_images_in_req == 0:
-                yield ret
-            else:
+            idx_in_batch += 1
+            if num_images_in_req > 0:
                 images = flat_all_images[
                     img_start_idx : img_start_idx + num_images_in_req
                 ]
@@ -363,9 +362,8 @@ class PrepareImageUDF(StatefulStageUDF):
                         "image_sizes": [(img.width, img.height) for img in images],
                     }
                 )
-                yield ret
                 img_start_idx += num_images_in_req
-                idx_in_batch += 1
+            yield ret
 
     @property
     def expected_input_keys(self) -> List[str]:

@@ -37,14 +37,14 @@ class ChatTemplateUDF(StatefulStageUDF):
         Yields:
             A generator of rows with the chat template applied.
         """
-        for row, prompt in zip(
-            batch,
-            self.tokenizer.apply_chat_template(
-                [row["messages"].tolist() for row in batch],
-                tokenize=False,
-                add_generation_prompt=True,
-            ),
-        ):
+        prompts = self.tokenizer.apply_chat_template(
+            [row["messages"].tolist() for row in batch],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        assert len(batch) == len(prompts)
+
+        for row, prompt in zip(batch, prompts):
             yield {
                 self.idx_in_batch_column: row[self.idx_in_batch_column],
                 "prompt": prompt,
