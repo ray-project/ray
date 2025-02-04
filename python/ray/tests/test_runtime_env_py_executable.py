@@ -9,7 +9,7 @@ import ray
 
 @pytest.fixture(scope="function")
 def tmp_working_dir():
-    """A test fixture which writes a test file."""
+    """A test fixture, which writes a test file."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         path = Path(tmp_dir)
 
