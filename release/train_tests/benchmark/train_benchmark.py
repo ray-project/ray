@@ -301,7 +301,7 @@ def main():
 
     print("-" * 80)
     print("Final metrics:")
-    print(pprint.pprint(metrics))
+    pprint.pprint(metrics)
     print("-" * 80)
 
     # Write metrics as a release test result.
