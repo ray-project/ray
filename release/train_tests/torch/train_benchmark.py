@@ -1,40 +1,25 @@
-# This release test should test distributed training with Torch.
-# It should allow configurable:
-# - # of workers
-# - parallelism strategy
-# - dataset and dataloader (Ray Data, native torch dataloader, webdataset, mock dataloader (for upper-bound) etc.)
-# - checkpointing frequency
-# - validation frequency
-# - fault tolerance
-
-# It should measure:
-# - training time
-# - training throughput
-# - dataloading throughput
-# - validation throughput
-# - fault tolerance recovery time if enabled
-# - checkpointing time
 import argparse
 import collections
 import os
 import pprint
 import tempfile
-import time
+import json
 from typing import Dict
 
-import torch
-
+from ray._private.test_utils import safe_write_to_results_json
 import ray.data
 from ray.data._internal.stats import Timer
 import ray.train
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.util import date_str
+import torch
 
 from config import BenchmarkConfig
 from factory import BenchmarkFactory
 from image_classification.factory import ImageClassificationFactory
 
 
+# TODO: Pull out common logic into a base class, and make this a TorchTrainLoopRunner.
 class TrainLoopRunner:
     def __init__(self, factory: BenchmarkFactory):
         self.factory = factory
@@ -82,8 +67,6 @@ class TrainLoopRunner:
     def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
             print(f"Training starting @ epoch={self._train_epoch_idx}")
-
-        step_start_s = time.perf_counter()
 
         # NOTE: Time the first batch separately since it includes the dataset
         # pipeline warmup time.
@@ -255,10 +238,17 @@ class TrainLoopRunner:
         return metrics
 
 
+METRICS_OUTPUT_PATH = "/mnt/cluster_storage/train_benchmark_metrics.json"
+
 def train_fn_per_worker(config):
     factory = config["factory"]
     runner = TrainLoopRunner(factory)
     runner.run()
+
+    metrics = runner.get_metrics()
+    if ray.train.get_context().get_world_rank() == 0:
+        with open(METRICS_OUTPUT_PATH, "w") as f:
+            json.dump(metrics, f)
 
 
 def parse_cli_args():
@@ -305,6 +295,17 @@ def main():
         datasets=factory.get_ray_datasets(),
     )
     trainer.fit()
+
+    with open(METRICS_OUTPUT_PATH, "r") as f:
+        metrics = json.load(f)
+
+    print("-" * 80)
+    print("Final metrics:")
+    print(pprint.pprint(metrics))
+    print("-" * 80)
+
+    # Write metrics as a release test result.
+    safe_write_to_results_json(metrics)
 
 
 if __name__ == "__main__":

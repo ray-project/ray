@@ -59,7 +59,6 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
         return batch["image"], batch["label"]
 
 
-
 class ImageClassificationFactory(BenchmarkFactory):
     def get_dataloader_factory(self) -> BaseDataLoaderFactory:
         if self.benchmark_config.dataloader_type == DataloaderType.MOCK:
