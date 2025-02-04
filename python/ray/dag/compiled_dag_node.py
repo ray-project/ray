@@ -513,7 +513,7 @@ class ExecutableTask:
 
         if self.requires_nccl_collective:
             assert isinstance(self.nccl_op, _CollectiveOperation)
-            self.stream = self.nccl_op.get_nccl_group().collective_stream
+            self.stream = self.nccl_op.get_nccl_group().coll_stream
 
     def wrap_and_set_intermediate_future(
         self, val: Any, wrap_in_gpu_future: bool
@@ -582,7 +582,11 @@ class ExecutableTask:
         """
         # [TODO:P1] Basic structure for creator of ExecutableTask.
         # # NCCL write args:
-        # args = [P2POp.SEND, NCCLChannelWrapper(self.nccl_ch), upstream_task_output_channel]
+        # args = [
+        #     P2POp.SEND,
+        #     NCCLChannelWrapper(self.nccl_ch),
+        #     upstream_task_output_channel,
+        # ]
 
         # # NCCL read args:
         # args = [P2POp.READ, NCCLChannelWrapper(self.nccl_ch)]

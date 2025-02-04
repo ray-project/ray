@@ -124,7 +124,7 @@ class GPUCommunicator(ABC):
 
     @property
     @abstractmethod
-    def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+    def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
         """
         Return the cuda stream used for collective operations.
         """

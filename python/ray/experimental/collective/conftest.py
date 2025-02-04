@@ -68,7 +68,7 @@ class AbstractNcclGroup(GPUCommunicator):
         return None
 
     @property
-    def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+    def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
         return None
 
     def destroy(self) -> None:

@@ -98,6 +98,7 @@ class _NcclGroup(GPUCommunicator):
         self._cuda_stream: Optional["cp.cuda.ExternalStream"] = None
         self._send_stream: Optional["cp.cuda.ExternalStream"] = None
         self._recv_stream: Optional["cp.cuda.ExternalStream"] = None
+        self._coll_stream: Optional["cp.cuda.ExternalStream"] = None
         if cuda_stream is not None:
             assert rank is not None, "NCCL actor has no rank assigned"
 
@@ -120,13 +121,13 @@ class _NcclGroup(GPUCommunicator):
                 self._recv_stream = cp.cuda.ExternalStream(
                     torch.cuda.Stream().cuda_stream, device_id=device.index
                 )
-                self._collective_stream = cp.cuda.ExternalStream(
+                self._coll_stream = cp.cuda.ExternalStream(
                     torch.cuda.Stream().cuda_stream, device_id=device.index
                 )
             else:
                 self._send_stream = self._cuda_stream
                 self._recv_stream = self._cuda_stream
-                self._collective_stream = self._cuda_stream
+                self._coll_stream = self._cuda_stream
 
         self._closed = False
 
@@ -272,7 +273,7 @@ class _NcclGroup(GPUCommunicator):
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
-            self._collective_stream.ptr,
+            self._coll_stream.ptr,
         )
 
         # Buffer values are undefined if NCCL ops are aborted. Therefore, we
@@ -281,6 +282,7 @@ class _NcclGroup(GPUCommunicator):
         # TODO(swang): Avoid CUDA synchronization.
         if not self._use_communication_streams:
             self._cuda_stream.synchronize()
+
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
 
@@ -293,8 +295,8 @@ class _NcclGroup(GPUCommunicator):
         return self._send_stream
 
     @property
-    def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-        return self._collective_stream
+    def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        return self._coll_stream
 
     def destroy(self) -> None:
         """

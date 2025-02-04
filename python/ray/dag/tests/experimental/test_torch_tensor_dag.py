@@ -542,8 +542,8 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             return self._inner.send_stream
 
         @property
-        def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-            return self._inner.collective_stream
+        def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.coll_stream
 
         def destroy(self) -> None:
             return self._inner.destroy()
@@ -652,7 +652,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
             return None
 
         @property
-        def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
             return None
 
         def destroy(self) -> None:
@@ -811,7 +811,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             return cp.cuda.get_current_stream()
 
         @property
-        def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
             import cupy as cp
 
             return cp.cuda.get_current_stream()
@@ -1275,8 +1275,8 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             return self._inner.send_stream
 
         @property
-        def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-            return self._inner.collective_stream
+        def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.coll_stream
 
         def destroy(self) -> None:
             return self._inner.destroy()
