@@ -54,30 +54,6 @@ def tmp_working_dir():
         yield tmp_dir
 
 
-@pytest.fixture(scope="function")
-def tmp_working_dir_editable():
-    """A test fixture which writes a pyproject.toml
-    with an editable package."""
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        path = Path(tmp_dir)
-
-        script_file = path / "pyproject.toml"
-        with script_file.open(mode="w") as f:
-            f.write(PYPROJECT_TOML)
-
-        subprocess.run(
-            ["git", "clone", "https://github.com/carpedm20/emoji/", "emoji_copy"],
-            cwd=path,
-        )
-
-        subprocess.run(
-            ["git", "reset", "--hard", "08c5cc4789d924ad4215e2fb2ee8f0b19a0d421f"],
-            cwd=path / "emoji_copy",
-        )
-
-        yield tmp_dir
-
-
 def test_uv_run_simple(shutdown_only, with_uv):
     uv = with_uv
 
@@ -116,9 +92,19 @@ def test_uv_run_pyproject(shutdown_only, with_uv, tmp_working_dir):
     assert ray.get(emojize.remote()) == "Ray rocks 👍"
 
 
-def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir_editable):
+def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir):
     uv = with_uv
-    tmp_dir = tmp_working_dir_editable
+    tmp_dir = tmp_working_dir
+
+    subprocess.run(
+        ["git", "clone", "https://github.com/carpedm20/emoji/", "emoji_copy"],
+        cwd=tmp_dir,
+    )
+
+    subprocess.run(
+        ["git", "reset", "--hard", "08c5cc4789d924ad4215e2fb2ee8f0b19a0d421f"],
+        cwd=Path(tmp_dir) / "emoji_copy",
+    )
 
     subprocess.run(
         [uv, "add", "--editable", "./emoji_copy"],
