@@ -87,7 +87,7 @@ docker build -f Dockerfile.tpu . -t vllm-tpu
 Set environment variables to be used for your Docker image:
 ```sh
 export TAG="latest"
-export PROJECT_ID=$(gcloud config get project)
+export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
 export VLLM_IMAGE=us-central1-docker.pkg.dev/$PROJECT_ID/vllm-tpu/vllm-tpu:$TAG
 ```
 
@@ -138,13 +138,13 @@ Set environment variable:
 ```sh
 export HF_TOKEN=HUGGING_FACE_TOKEN
 ```
-Replace the HUGGING_FACE_TOKEN with your Hugging Face access token.
+Replace HUGGING_FACE_TOKEN with your Hugging Face access token.
 
 Create a Kubernetes Secret with your Hugging Face credentials:
 ```sh
 kubectl create secret generic hf-secret \
-  --from-literal=hf_api_token=$HF_TOKEN \
-  --dry-run=client -o yaml | kubectl apply -f -
+    --from-literal=hf_api_token=$HF_TOKEN \
+    --dry-run=client -o yaml | kubectl --namespace $NAMESPACE apply -f -
 ```
 
 ## Step 5: Install the RayService CR
