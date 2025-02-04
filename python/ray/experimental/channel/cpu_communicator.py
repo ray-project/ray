@@ -8,6 +8,7 @@ from ray.experimental.channel.communicator import (
     Communicator,
     TorchTensorAllocator,
 )
+from ray.experimental.util.types import ReduceOp
 
 if TYPE_CHECKING:
     import torch
@@ -36,7 +37,7 @@ class CPUCommBarrier:
         # relevant data.
         self.num_actors_read = defaultdict(int)
 
-    async def wait_collective(self, op_id: int, data: "torch.Tensor", op: AllReduceOp):
+    async def wait_collective(self, op_id: int, data: "torch.Tensor", op: ReduceOp):
         """
         Wait at the communicator until all actors have sent `op_id` and `data`.
         Once data from all actors is received, execute the collective `op`
@@ -66,9 +67,7 @@ class CPUCommBarrier:
 
             return data
 
-    def _apply_op(
-        self, op: AllReduceOp, tensors: List["torch.Tensor"]
-    ) -> "torch.Tensor":
+    def _apply_op(self, op: ReduceOp, tensors: List["torch.Tensor"]) -> "torch.Tensor":
         """Apply the specified reduction operation across a list of tensors."""
 
         result = tensors[0].clone()

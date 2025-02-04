@@ -12,9 +12,6 @@ from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensor
 from ray.experimental.util.types import ReduceScatterOp
 from ray.util.collective.types import ReduceOp as RayReduceOp
 
-# TODO(wxdeng): Unify `ReduceOp` and `RayReduceOp`. Directly importing `RayReduceOp`
-# has dependency issues for some tests.
-
 logger = logging.getLogger(__name__)
 
 
@@ -53,7 +50,7 @@ class ReduceScatterWrapper:
         """
         if transport is None:
             transport = TorchTensorType.NCCL
-        collective_op = _CollectiveOperation(input_nodes, transport=transport, op=op)
+        collective_op = _CollectiveOperation(input_nodes, op=op, transport=transport)
         collective_output_nodes: List[CollectiveOutputNode] = []
 
         for input_node in input_nodes:

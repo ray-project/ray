@@ -39,8 +39,8 @@ class _CollectiveOperation:
     def __init__(
         self,
         input_nodes: List[DAGNode],
-        transport: Optional[Union[str, Communicator]] = None,
         op: Optional[_CollectiveOp] = None,
+        transport: Optional[Union[str, Communicator]] = None,
     ):
         if len(input_nodes) == 0:
             raise ValueError("Expected input nodes for a collective operation")
@@ -129,15 +129,8 @@ class _CollectiveOperation:
         if not isinstance(send_buf, torch.Tensor):
             raise ValueError("Expected a torch tensor")
         communicator = self.get_communicator()
-        if self._op is None:
-            world_size = len(self._actor_handles)
-            recv_buf = torch.empty(
-                (send_buf.shape[0] * world_size, *send_buf.shape[1:]),
-                dtype=send_buf.dtype,
-                device=send_buf.device,
-            )
-            communicator.allgather(send_buf, recv_buf)
-        elif isinstance(self._op, AllReduceOp):
+
+        if isinstance(self._op, AllReduceOp):
             recv_buf = torch.empty_like(send_buf)
             communicator.allreduce(send_buf, recv_buf, self._op)
         elif isinstance(self._op, ReduceScatterOp):
@@ -154,7 +147,14 @@ class _CollectiveOperation:
             )
             communicator.reducescatter(send_buf, recv_buf, self._op)
         else:
-            raise ValueError("Unsupported ReduceOp type")
+            # If no op is specified, the user is doing allgather
+            world_size = len(self._actor_handles)
+            recv_buf = torch.empty(
+                (send_buf.shape[0] * world_size, *send_buf.shape[1:]),
+                dtype=send_buf.dtype,
+                device=send_buf.device,
+            )
+            communicator.allgather(send_buf, recv_buf)
         return recv_buf
 
 
