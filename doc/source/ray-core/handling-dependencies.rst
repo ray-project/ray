@@ -313,7 +313,7 @@ This method offers several key advantages:
 First, it keeps dependencies synchronized between your driver and Ray workers.
 Additionally, it provides full support for `pyproject.toml` including editable
 packages. It also allows you to lock package versions using `uv lock`.
-For more details, you can refer to the `UV scripts documentation <https://docs.astral.sh/uv/guides/scripts/>`_.
+For more details, see the `UV scripts documentation <https://docs.astral.sh/uv/guides/scripts/>`_.
 
 Create a file `pyproject.toml` in your working directory like this:
 
