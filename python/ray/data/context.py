@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 import ray
 from ray._private.ray_constants import env_bool, env_integer
 from ray._private.worker import WORKER_MODE
+from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
@@ -23,6 +24,7 @@ _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
 
 
+@PublicAPI(stability="alpha")
 class ShuffleStrategy(str, enum.Enum):
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
