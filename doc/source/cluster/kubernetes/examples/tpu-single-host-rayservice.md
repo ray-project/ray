@@ -55,8 +55,8 @@ To allow kubectl to communicate with your cluster, run the following command:
 gcloud container clusters get-credentials $CLUSTER_NAME \
     --location=LOCATION
 ```
-In the above command, replace LOCATION with $COMPUTE_ZONE or $COMPUTE_REGION if you created an
-Autopilot or Standard GKE cluster respectively.
+In the above command, replace LOCATION with $COMPUTE_ZONE or $COMPUTE_REGION if you created a
+Standard or Autopilot GKE cluster respectively.
 
 ## Step 2: [Optional] Install the KubeRay operator
 
