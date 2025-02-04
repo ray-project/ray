@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING, List, Union, Dict
 
 import numpy as np
@@ -14,6 +15,12 @@ try:
     import pyarrow
 except ImportError:
     pyarrow = None
+
+
+MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
+
+
+logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
@@ -57,7 +64,7 @@ def take_table(
 
 
 def unify_schemas(
-    schemas: List["pyarrow.Schema"],
+    schemas: List["pyarrow.Schema"], *, promote_types: bool = False
 ) -> "pyarrow.Schema":
     """Version of `pyarrow.unify_schemas()` which also handles checks for
     variable-shaped tensors in the given schemas.
@@ -174,8 +181,24 @@ def unify_schemas(
             schemas_to_unify.append(schema)
     else:
         schemas_to_unify = schemas
-    # Let Arrow unify the schema of non-tensor extension type columns.
-    return pyarrow.unify_schemas(schemas_to_unify)
+
+    try:
+        if parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION:
+            return pyarrow.unify_schemas(schemas_to_unify)
+
+        # NOTE: By default type promotion (from "smaller" to "larger" types) is disabled,
+        #       allowing only promotion b/w nullable and non-nullable ones
+        arrow_promote_types_mode = "permissive" if promote_types else "default"
+
+        return pyarrow.unify_schemas(
+            schemas_to_unify, promote_options=arrow_promote_types_mode
+        )
+    except Exception as e:
+        schemas_str = "\n-----\n".join([str(s) for s in schemas_to_unify])
+
+        logger.error(f"Failed to unify schemas: {schemas_str}", exc_info=e)
+
+        raise
 
 
 def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":
@@ -487,6 +510,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
         table.validate()
     else:
         # No extension array columns, so use built-in pyarrow.concat_tables.
+
         if parse_version(_get_pyarrow_version()) >= parse_version("14.0.0"):
             # `promote` was superseded by `promote_options='default'` in Arrow 14. To
             # prevent `FutureWarning`s, we manually check the Arrow version and use the

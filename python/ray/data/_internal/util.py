@@ -718,7 +718,7 @@ def unify_block_metadata_schema(
             pa = None
         # If the result contains PyArrow schemas, unify them
         if pa is not None and all(isinstance(s, pa.Schema) for s in schemas_to_unify):
-            return unify_schemas(schemas_to_unify)
+            return unify_schemas(schemas_to_unify, promote_types=True)
         # Otherwise, if the resulting schemas are simple types (e.g. int),
         # return the first schema.
         return schemas_to_unify[0]
