@@ -6,7 +6,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.exceptions import RayChannelError
+from ray.exceptions import RayChannelError, RayTaskError
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.dag import InputNode
 import ray.experimental.collective as collective
@@ -218,8 +218,8 @@ def test_allreduce_wrong_shape(ray_start_cluster):
     ref = compiled_dag.execute(
         [((10 * (idx + 1),), dtype, idx + 1) for idx in range(num_workers)]
     )
-    # Execution hangs because of shape mismatch and a timeout error is raised.
-    with pytest.raises(RayChannelError):
+    # Execution throws an exception because of shape mismatch and a timeout error is raised.
+    with pytest.raises(RayTaskError):
         ray.get(ref)
 
     # The DAG will be torn down after any task throws an application-level
