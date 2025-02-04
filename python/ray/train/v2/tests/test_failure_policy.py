@@ -6,13 +6,13 @@ from ray.train.v2._internal.execution.failure_handling import (
     create_failure_policy,
 )
 from ray.train.v2._internal.execution.worker_group import (
-    WorkerGroupStatus,
+    WorkerGroupPollStatus,
     WorkerStatus,
 )
 
 
 def _worker_group_status_from_errors(errors):
-    return WorkerGroupStatus(
+    return WorkerGroupPollStatus(
         num_workers=len(errors),
         latest_start_time=0,
         worker_statuses={

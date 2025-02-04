@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from ray.train.v2._internal.execution.scaling_policy import ScalingDecision
     from ray.train.v2._internal.execution.worker_group import (
         WorkerGroup,
-        WorkerGroupStatus,
+        WorkerGroupPollStatus,
     )
 
 
@@ -51,7 +51,9 @@ class WorkerGroupCallback(RayTrainCallback):
         should catch and handle exceptions if attempting to execute tasks."""
         pass
 
-    def after_worker_group_poll_status(self, worker_group_status: "WorkerGroupStatus"):
+    def after_worker_group_poll_status(
+        self, worker_group_status: "WorkerGroupPollStatus"
+    ):
         pass
 
 
@@ -78,7 +80,7 @@ class ControllerCallback(RayTrainCallback):
     def before_controller_execute_failure_decision(
         self,
         failure_decision: "FailureDecision",
-        worker_group_status: "WorkerGroupStatus",
+        worker_group_status: "WorkerGroupPollStatus",
     ):
         """Called before the controller executes a failure decision."""
         pass
