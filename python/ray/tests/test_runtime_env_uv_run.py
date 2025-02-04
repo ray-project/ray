@@ -43,7 +43,7 @@ requires-python = ">=3.9"
 
 @pytest.fixture(scope="function")
 def tmp_working_dir():
-    """A test fixture which writes a pyproject.toml."""
+    """A test fixture, which writes a pyproject.toml."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         path = Path(tmp_dir)
 
