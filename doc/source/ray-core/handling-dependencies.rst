@@ -359,7 +359,7 @@ And then a `test.py` like the following:
       print(ray.get(result))
 
 
-and run the driver script with `uv run test.py`. For reproducibility it is
+and run the driver script with `uv run test.py`. For reproducibility it's
 recommended to freeze the package versions by running `uv lock`.
 
 This workflow also supports editable packages, you can e.g. use
