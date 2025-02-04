@@ -22,6 +22,7 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     env_integer,
 )
+from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
@@ -215,10 +216,12 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         present until agent.py starts, so we need to loop waiting for agent.py writes
         its port to internal kv.
         """
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}".encode()
+        key = (
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode()
+        )
         while True:
             try:
-                agent_port = await self.gcs_aio_client.internal_kv_get(
+                agent_addr = await self.gcs_aio_client.internal_kv_get(
                     key,
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
                     timeout=None,
@@ -227,8 +230,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 # node is still alive.
                 if DataSource.nodes.get(node_id, {}).get("state") != "ALIVE":
                     return
-                if agent_port:
-                    DataSource.agents[node_id] = json.loads(agent_port)
+                if agent_addr:
+                    DataSource.agents[node_id] = json.loads(agent_addr)
                     return
             except Exception:
                 logger.exception(f"Error getting agent port for node {node_id}.")
@@ -451,10 +454,41 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         for node_id, new_stat in new_node_stats.items():
             DataSource.node_stats[node_id] = new_stat
 
+    async def _update_node_physical_stats(self):
+        """
+        Update DataSource.node_physical_stats by subscribing to the GCS resource usage.
+        """
+        subscriber = GcsAioResourceUsageSubscriber(address=self.gcs_address)
+        await subscriber.subscribe()
+
+        loop = get_or_create_event_loop()
+
+        while True:
+            try:
+                # The key is b'RAY_REPORTER:{node id hex}',
+                # e.g. b'RAY_REPORTER:2b4fbd...'
+                key, data = await subscriber.poll()
+                if key is None:
+                    continue
+
+                # NOTE: Every iteration is executed inside the thread-pool executor
+                #       (TPE) to avoid blocking the Dashboard's event-loop
+                parsed_data = await loop.run_in_executor(
+                    self._executor, json.loads, data
+                )
+
+                node_id = key.split(":")[-1]
+                DataSource.node_physical_stats[node_id] = parsed_data
+            except Exception:
+                logger.exception(
+                    "Error receiving node physical stats from _update_node_physical_stats."
+                )
+
     async def run(self, server):
         await asyncio.gather(
             self._update_nodes(),
             self._update_node_stats(),
+            self._update_node_physical_stats(),
         )
 
     @staticmethod

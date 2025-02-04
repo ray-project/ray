@@ -81,7 +81,7 @@ Next, execute the DAG and measure the performance.
     Execution takes 86.72196418046951 us
 
 The performance of the same DAG improved by 10X. The explanation for this improvement is because the function ``echo`` is cheap and thus highly affected by
-the system overhead. Due to various bookeeping and distributed protocols, the classic Ray Core APIs usually have 1ms+ system overhead.
+the system overhead. Due to various bookkeeping and distributed protocols, the classic Ray Core APIs usually have 1ms+ system overhead.
 Because the DAG is known ahead of time, Compiled Graph can pre-allocate all necessary
 resources ahead of time and greatly reduce the system overhead.
 

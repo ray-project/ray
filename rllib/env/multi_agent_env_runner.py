@@ -383,7 +383,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # the user's connector pipeline performs (permanent) transforms
                 # on each observation (including this final one here). Without such
                 # a call and in case the structure of the observations change
-                # sufficiently, the following `finalize()` call on the episode will
+                # sufficiently, the following `to_numpy()` call on the episode will
                 # fail.
                 if self.module is not None:
                     self._env_to_module(
@@ -400,9 +400,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # the connector, if applicable).
                 self._make_on_episode_callback("on_episode_end")
 
-                # Finalize (numpy'ize) the episode.
-                self._episode.finalize(drop_zero_len_single_agent_episodes=True)
-                done_episodes_to_return.append(self._episode)
+                self._prune_zero_len_sa_episodes(self._episode)
+
+                # Numpy'ize the episode.
+                if self.config.episodes_to_numpy:
+                    done_episodes_to_return.append(self._episode.to_numpy())
+                # Leave episode as lists of individual (obs, action, etc..) items.
+                else:
+                    done_episodes_to_return.append(self._episode)
 
                 # Create a new episode instance.
                 self._episode = self._new_episode()
@@ -442,10 +447,15 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         if self._episode.env_t > 0:
             self._episode.validate()
             self._ongoing_episodes_for_metrics[self._episode.id_].append(self._episode)
-            # Return finalized (numpy'ized) Episodes.
-            ongoing_episodes_to_return.append(
-                self._episode.finalize(drop_zero_len_single_agent_episodes=True)
-            )
+
+            self._prune_zero_len_sa_episodes(self._episode)
+
+            # Numpy'ize the episode.
+            if self.config.episodes_to_numpy:
+                ongoing_episodes_to_return.append(self._episode.to_numpy())
+            # Leave episode as lists of individual (obs, action, etc..) items.
+            else:
+                ongoing_episodes_to_return.append(self._episode)
 
         # Continue collecting into the cut Episode chunk.
         self._episode = ongoing_episode_continuation
@@ -598,7 +608,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # the user's connector pipeline performs (permanent) transforms
                 # on each observation (including this final one here). Without such
                 # a call and in case the structure of the observations change
-                # sufficiently, the following `finalize()` call on the episode will
+                # sufficiently, the following `to_numpy()` call on the episode will
                 # fail.
                 if self.module is not None:
                     self._env_to_module(
@@ -615,10 +625,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # the connector, if applicable).
                 self._make_on_episode_callback("on_episode_end", _episode)
 
-                # Finish the episode.
-                done_episodes_to_return.append(
-                    _episode.finalize(drop_zero_len_single_agent_episodes=True)
-                )
+                self._prune_zero_len_sa_episodes(_episode)
+
+                # Numpy'ize the episode.
+                if self.config.episodes_to_numpy:
+                    done_episodes_to_return.append(_episode.to_numpy())
+                # Leave episode as lists of individual (obs, action, etc..) items.
+                else:
+                    done_episodes_to_return.append(_episode)
 
                 # Also early-out if we reach the number of episodes within this
                 # for-loop.
@@ -1060,6 +1074,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             reduce="max",
             window=self.config.metrics_num_episodes_for_smoothing,
         )
+
+    @staticmethod
+    def _prune_zero_len_sa_episodes(episode: MultiAgentEpisode):
+        for agent_id, agent_eps in episode.agent_episodes.copy().items():
+            if len(agent_eps) == 0:
+                del episode.agent_episodes[agent_id]
 
     @Deprecated(
         new="MultiAgentEnvRunner.get_state(components='rl_module')",

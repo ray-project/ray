@@ -17,6 +17,7 @@
 #include <csignal>
 
 #include "absl/strings/str_cat.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 
@@ -86,16 +87,22 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(
     RAY_CHECK_EQ(sem_wait(sem), 0);
   } else {
     bool got_sem = false;
+    const auto check_signal_interval = std::chrono::milliseconds(
+        RayConfig::instance().get_check_signal_interval_milliseconds());
+    auto last_signal_check_time = std::chrono::steady_clock::now();
     // try to acquire the semaphore at least once even if the timeout_point is passed
     do {
       // macOS does not support sem_timedwait, so we implement a unified,
       // spinning-based solution here
+      // TODO(dayshah): use new semaphore with c++20 upgrade for with universal try_until
       if (sem_trywait(sem) == 0) {
         got_sem = true;
         break;
       }
-      if (check_signals) {
+      if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
+                               check_signal_interval) {
         RAY_RETURN_NOT_OK(check_signals());
+        last_signal_check_time = std::chrono::steady_clock::now();
       }
     } while (std::chrono::steady_clock::now() < *timeout_point);
     if (!got_sem) {
@@ -185,9 +192,15 @@ Status PlasmaObjectHeader::ReadAcquire(
 
   // TODO(jhumphri): Wouldn't a futex be better here than polling?
   // Wait for the requested version (or a more recent one) to be sealed.
+
+  const auto check_signal_interval = std::chrono::milliseconds(
+      RayConfig::instance().get_check_signal_interval_milliseconds());
+  auto last_signal_check_time = std::chrono::steady_clock::now();
   while (version < version_to_read || !is_sealed) {
-    if (check_signals) {
+    if (check_signals && std::chrono::steady_clock::now() - last_signal_check_time >
+                             check_signal_interval) {
       RAY_RETURN_NOT_OK(check_signals());
+      last_signal_check_time = std::chrono::steady_clock::now();
     }
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
     sched_yield();

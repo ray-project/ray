@@ -310,16 +310,13 @@ html_theme_options = {
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "theme-switcher",
         "version-switcher",
         "navbar-icon-links",
         "navbar-anyscale",
     ],
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
-    "navbar_persistent": [
-        "search-button-field",
-        "theme-switcher",
-    ],
     "secondary_sidebar_items": [
         "page-toc",
         "edit-on-github",
@@ -332,7 +329,9 @@ html_theme_options = {
     "pygment_dark_style": "stata-dark",
     "switcher": {
         "json_url": "https://docs.ray.io/en/master/_static/versions.json",
-        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
+        "version_match": (
+            lambda v: v if v in ["master", "latest"] else f"releases/{v}"
+        )(os.getenv("READTHEDOCS_VERSION", "master")),
     },
 }
 
@@ -345,9 +344,11 @@ html_context = {
 
 html_sidebars = {
     "**": [
-        "main-sidebar-readthedocs"
-        if os.getenv("READTHEDOCS") == "True"
-        else "main-sidebar"
+        (
+            "main-sidebar-readthedocs"
+            if os.getenv("READTHEDOCS") == "True"
+            else "main-sidebar"
+        )
     ],
     "ray-overview/examples": [],
 }

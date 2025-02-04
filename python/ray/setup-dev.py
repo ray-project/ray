@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# flake8: noqa E402
+# ruff: noqa: E402
 """This script allows you to develop Ray Python code without needing to compile
 Ray.
 See https://docs.ray.io/en/master/development.html#building-ray-python-only"""

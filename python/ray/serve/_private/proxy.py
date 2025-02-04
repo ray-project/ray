@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import json
 import logging
 import os
@@ -32,14 +33,16 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
+    RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_PROXY_GC_THRESHOLD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import add_grpc_address, get_proxy_handle
-from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
+from ray.serve._private.grpc_util import DummyServicer, gRPCGenericServer
 from ray.serve._private.http_util import (
     MessageQueue,
     convert_object_to_asgi_messages,
@@ -453,7 +456,7 @@ class GenericProxy(ABC):
 
         latency_ms = (time.time() - start_time) * 1000.0
         if response_handler_info.should_record_access_log:
-            request_context = ray.serve.context._serve_request_context.get()
+            request_context = ray.serve.context._get_serve_request_context()
             logger.info(
                 access_log_msg(
                     method=proxy_request.method,
@@ -705,11 +708,8 @@ class gRPCProxy(GenericProxy):
         proxy_request: ProxyRequest,
         app_is_cross_language: bool = False,
     ) -> ResponseGenerator:
-        handle_arg = proxy_request.request_object()
         response_generator = ProxyResponseGenerator(
-            # NOTE(edoakes): it's important that the request is sent as raw bytes to
-            # skip the Ray cloudpickle serialization codepath for performance.
-            handle.remote(pickle.dumps(handle_arg)),
+            handle.remote(proxy_request.serialized_replica_arg()),
             timeout_s=self.request_timeout_s,
         )
 
@@ -953,12 +953,8 @@ class HTTPProxy(GenericProxy):
             # Response is returned as raw bytes, convert it to ASGI messages.
             result_callback = convert_object_to_asgi_messages
         else:
-            # NOTE(edoakes): it's important that the request is sent as raw bytes to
-            # skip the Ray cloudpickle serialization codepath for performance.
-            handle_arg_bytes = pickle.dumps(
-                proxy_request.request_object(
-                    proxy_actor_name=self.self_actor_name,
-                )
+            handle_arg_bytes = proxy_request.serialized_replica_arg(
+                proxy_actor_name=self.self_actor_name,
             )
             # Messages are returned as pickled dictionaries.
             result_callback = pickle.loads
@@ -1270,6 +1266,8 @@ class ProxyActor:
             self.run_grpc_server()
         )
 
+        _configure_gc_options()
+
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.proxy_router.update_routes(endpoints)
 
@@ -1407,7 +1405,7 @@ class ProxyActor:
         if not self.should_start_grpc_service():
             return self.grpc_setup_complete.set()
 
-        grpc_server = create_serve_grpc_server(
+        grpc_server = gRPCGenericServer(
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
 
@@ -1526,3 +1524,15 @@ def _determine_target_loop():
         return "asyncio"
     else:
         return "uvloop"
+
+
+def _configure_gc_options():
+    if not RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS:
+        return
+
+    # Collect any objects that exist already and exclude them from future GC.
+    gc.collect(2)
+    gc.freeze()
+
+    # Tune the GC threshold to run less frequently (default is 700).
+    gc.set_threshold(RAY_SERVE_PROXY_GC_THRESHOLD)

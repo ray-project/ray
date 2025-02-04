@@ -25,11 +25,11 @@ class TestHead(dashboard_utils.DashboardHeadModule):
 
     async def _update_notified_agents(self, change):
         if change.old:
-            ip, port = change.old
-            self._notified_agents.pop(ip)
+            node_id, _ = change.old
+            self._notified_agents.pop(node_id)
         if change.new:
-            ip, ports = change.new
-            self._notified_agents[ip] = ports
+            node_id, (node_ip, http_port, grpc_port) = change.new
+            self._notified_agents[node_id] = (node_ip, http_port, grpc_port)
 
     @staticmethod
     def is_minimal_module():

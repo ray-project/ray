@@ -208,19 +208,19 @@
       run:
         script: >
           python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet
+          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
           --iter-batches numpy
     - __suffix__: pandas
       run:
         script: >
           python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet
+          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
           --iter-batches pandas
     - __suffix__: pyarrow
       run:
         script: >
           python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet
+          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
           --iter-batches pyarrow
 
 - name: to_tf

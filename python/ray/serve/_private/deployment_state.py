@@ -2161,13 +2161,11 @@ class DeploymentState:
                 message = (
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' has {len(pending_allocation)} replicas that "
-                    f"have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled.\n"
+                    f"have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
                     "This may be due to waiting for the cluster to auto-scale or for a "
-                    "runtime environment to be installed.\n"
-                    "Resources required for each replica:\n"
-                    f"{required}\n"
-                    "Total resources available:\n"
-                    f"{available}\n"
+                    "runtime environment to be installed. "
+                    f"Resources required for each replica: {required}, "
+                    f"total resources available: {available}. "
                     "Use `ray status` for more details."
                 )
                 logger.warning(message)

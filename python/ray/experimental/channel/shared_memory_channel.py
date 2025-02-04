@@ -588,6 +588,7 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         available to write. If a buffer is not available within timeout, it raises
         RayChannelTimeoutError.
         """
+        self.ensure_registered_as_writer()
         # A single channel is not supposed to read and write at the same time.
         assert self._next_read_index == 0
         self._buffers[self._next_write_index].write(value, timeout)
@@ -602,6 +603,7 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         available to read. If a buffer is not available within timeout, it raises
         RayChannelTimeoutError.
         """
+        self.ensure_registered_as_reader()
         # A single channel is not supposed to read and write at the same time.
         assert self._next_write_index == 0
         output = self._buffers[self._next_read_index].read(timeout)

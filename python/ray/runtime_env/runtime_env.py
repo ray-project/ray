@@ -389,6 +389,12 @@ class RuntimeEnv(dict):
                     f"Specified fields: {invalid_keys}"
                 )
 
+            logger.warning(
+                "The `container` runtime environment field is DEPRECATED and will be "
+                "removed after July 31, 2025. Use `image_uri` instead. See "
+                "https://docs.ray.io/en/latest/serve/advanced-guides/multi-app-container.html."  # noqa
+            )
+
         if self.get("image_uri"):
             image_uri_plugin_cls = get_image_uri_plugin_cls()
             invalid_keys = (

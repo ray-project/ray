@@ -327,8 +327,8 @@ RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = int(
     os.environ.get("RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1)
 )
 
-# Serve's gRPC server options.
-SERVE_GRPC_OPTIONS = [
+# Default options passed when constructing gRPC servers.
+DEFAULT_GRPC_SERVER_OPTIONS = [
     ("grpc.max_send_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
 ]
@@ -370,4 +370,21 @@ RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
     "or keep the existing behavior by making them `async def`. Opt "
     "into the new behavior by setting "
     "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
+)
+
+# Feature flag to turn off GC optimizations in the proxy (in case there is a
+# memory leak or negative performance impact).
+RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = (
+    os.environ.get("RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS", "1") == "1"
+)
+
+# Used for gc.set_threshold() when proxy GC optimizations are enabled.
+RAY_SERVE_PROXY_GC_THRESHOLD = int(
+    os.environ.get("RAY_SERVE_PROXY_GC_THRESHOLD", "10000")
+)
+
+# Interval at which cached metrics will be exported using the Ray metric API.
+# Set to `0` to disable caching entirely.
+RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
+    os.environ.get("RAY_SERVE_METRICS_EXPORT_INTERVAL_MS", "100")
 )

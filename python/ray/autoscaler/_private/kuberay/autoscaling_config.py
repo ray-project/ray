@@ -12,7 +12,6 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
-    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.kuberay import node_provider, utils
 from ray.autoscaler._private.util import validate_config
@@ -50,10 +49,10 @@ class AutoscalingConfigProducer:
     """
 
     def __init__(self, ray_cluster_name, ray_cluster_namespace):
-        self._headers, self._verify = node_provider.load_k8s_secrets()
-        self._ray_cr_url = node_provider.url_from_resource(
-            namespace=ray_cluster_namespace, path=f"rayclusters/{ray_cluster_name}"
+        self.kubernetes_api_client = node_provider.KubernetesHttpApiClient(
+            namespace=ray_cluster_namespace
         )
+        self._ray_cr_path = f"rayclusters/{ray_cluster_name}"
 
     def __call__(self):
         ray_cr = self._fetch_ray_cr_from_k8s_with_retries()
@@ -68,7 +67,7 @@ class AutoscalingConfigProducer:
         """
         for i in range(1, MAX_RAYCLUSTER_FETCH_TRIES + 1):
             try:
-                return self._fetch_ray_cr_from_k8s()
+                return self.kubernetes_api_client.get(self._ray_cr_path)
             except requests.HTTPError as e:
                 if i < MAX_RAYCLUSTER_FETCH_TRIES:
                     logger.exception(
@@ -80,18 +79,6 @@ class AutoscalingConfigProducer:
 
         # This branch is inaccessible. Raise to satisfy mypy.
         raise AssertionError
-
-    def _fetch_ray_cr_from_k8s(self) -> Dict[str, Any]:
-        result = requests.get(
-            self._ray_cr_url,
-            headers=self._headers,
-            timeout=node_provider.KUBERAY_REQUEST_TIMEOUT_S,
-            verify=self._verify,
-        )
-        if not result.status_code == 200:
-            result.raise_for_status()
-        ray_cr = result.json()
-        return ray_cr
 
 
 def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, Any]:
@@ -160,15 +147,6 @@ def _generate_provider_config(ray_cluster_namespace: str) -> Dict[str, Any]:
         DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
         FOREGROUND_NODE_LAUNCH_KEY: True,
         WORKER_LIVENESS_CHECK_KEY: False,
-        # For the time being we are letting the autoscaler drain nodes,
-        # hence the following setting is set to True (the default value).
-        # This is because we are observing that with the flag set to false,
-        # The GCS may not be properly notified of node downscaling.
-        # TODO Solve this issue, flip the key back to false -- else we may have
-        # a race condition in which the autoscaler kills the Ray container
-        # Kubernetes recreates it,
-        # and then KubeRay deletes the pod, killing the container again.
-        WORKER_RPC_DRAIN_KEY: True,
     }
 
 
@@ -189,7 +167,7 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
 
 
 def _generate_available_node_types_from_ray_cr_spec(
-    ray_cr_spec: Dict[str, Any]
+    ray_cr_spec: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Formats autoscaler "available_node_types" field based on the Ray CR's group
     specs.

@@ -462,13 +462,10 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``{"stop-on-exit": "true", "t": "cuda,cublas,cudnn", "ftrace": ""}``
 
-- ``container`` (dict): Require a given (Docker) image, and the worker process will run in a container with this image.
-  The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.
-  The `run_options` list spec is `here <https://docs.docker.com/engine/reference/run/>`__.
+- ``image_uri`` (dict): Require a given Docker image. The worker process runs in a container with this image.
+  - Example: ``{"image_uri": "anyscale/ray:2.31.0-py39-cpu"}``
 
-  - Example: ``{"image": "anyscale/ray:2.31.0-py39-cpu", "worker_path": "/root/python/ray/workers/default_worker.py", "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}``
-
-  Note: ``container`` is experimental now. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
+  Note: ``image_uri`` is experimental. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
 
 - ``config`` (dict | :class:`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): config for runtime environment. Either a dict or a RuntimeEnvConfig.
   Fields:

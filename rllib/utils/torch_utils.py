@@ -142,6 +142,8 @@ def clip_gradients(
         ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
         gradients_list = list(gradients_dict.values())
         total_norm = compute_global_norm(gradients_list)
+        if len(gradients_list) == 0:
+            return total_norm
         # We do want the coefficient to be in between 0.0 and 1.0, therefore
         # if the global_norm is smaller than the clip value, we use the clip value
         # as normalization constant.

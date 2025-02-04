@@ -142,7 +142,11 @@ class LearnerGroup(Checkpointable):
                 if not self.config.num_gpus_per_learner
                 else 0
             )
-            num_gpus_per_learner = self.config.num_gpus_per_learner
+            num_gpus_per_learner = max(
+                0,
+                self.config.num_gpus_per_learner
+                - (0.01 * self.config.num_aggregator_actors_per_learner),
+            )
             resources_per_learner = {
                 "CPU": num_cpus_per_learner,
                 "GPU": num_gpus_per_learner,
@@ -410,6 +414,10 @@ class LearnerGroup(Checkpointable):
                     " local mode! Try setting `config.num_learners > 0`."
                 )
 
+            if isinstance(batch, list) and isinstance(batch[0], ray.ObjectRef):
+                assert len(batch) == 1
+                batch = ray.get(batch[0])
+
             results = [
                 _learner_update(
                     _learner=self._learner,
@@ -443,6 +451,18 @@ class LearnerGroup(Checkpointable):
                     # Note, `OfflineData` defines exactly as many iterators as there
                     # are learners.
                     for i, iterator in enumerate(batch)
+                ]
+            elif isinstance(batch, list) and isinstance(batch[0], ObjectRef):
+                assert len(batch) == len(self._workers)
+                partials = [
+                    partial(
+                        _learner_update,
+                        _batch_shard=batch_shard,
+                        _timesteps=timesteps,
+                        _return_state=(return_state and i == 0),
+                        **kwargs,
+                    )
+                    for i, batch_shard in enumerate(batch)
                 ]
             elif batch is not None:
                 partials = [
@@ -837,7 +857,7 @@ class LearnerGroup(Checkpointable):
         remote_actor_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
         **kwargs,
     ) -> RemoteCallResults:
         """Calls the given function on each Learner L with the args: (L, \*\*kwargs).
