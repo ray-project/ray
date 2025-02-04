@@ -2,7 +2,6 @@
 from __future__ import absolute_import, division, print_function
 
 import argparse
-import json
 import os
 import re
 import subprocess
@@ -49,14 +48,8 @@ if __name__ == "__main__":
     assert os.environ.get("BUILDKITE")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--output", type=str, help="json, rayci_tags or envvars", default="envvars"
-    )
     args = parser.parse_args()
 
-    RAY_CI_BRANCH_BUILD = int(
-        os.environ.get("BUILDKITE_PULL_REQUEST", "false") == "false"
-    )
     RAY_CI_ML_AFFECTED = 0
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_TRAIN_AFFECTED = 0
@@ -397,7 +390,6 @@ if __name__ == "__main__":
     # Log the modified environment variables visible in console.
     output_string = " ".join(
         [
-            "RAY_CI_BRANCH_BUILD={}".format(RAY_CI_BRANCH_BUILD),
             "RAY_CI_ML_AFFECTED={}".format(RAY_CI_ML_AFFECTED),
             "RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED),
             "RAY_CI_TRAIN_AFFECTED={}".format(RAY_CI_TRAIN_AFFECTED),
@@ -438,17 +430,12 @@ if __name__ == "__main__":
     # Used by buildkite log format
     pairs = [item.split("=") for item in output_string.split(" ")]
     affected_vars = [key for key, affected in pairs if affected == "1"]
-    if args.output.lower() == "json":
-        print(json.dumps(affected_vars))
-    elif args.output.lower() == "rayci_tags":
 
-        def f(s):
-            if s.startswith("RAY_CI_"):
-                s = s[7:]
-            if s.endswith("_AFFECTED"):
-                s = s[:-9]
-            return s.lower()
+    def to_tag(s):
+        if s.startswith("RAY_CI_"):
+            s = s[7:]
+        if s.endswith("_AFFECTED"):
+            s = s[:-9]
+        return s.lower()
 
-        print(" ".join(list(map(f, affected_vars))))
-    else:
-        print(output_string)
+    print(" ".join(list(map(to_tag, affected_vars))))
