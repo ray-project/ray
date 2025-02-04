@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Dict, List, Union, Dict
+from typing import TYPE_CHECKING, List, Union, Dict
 
 import numpy as np
 from packaging.version import parse as parse_version
