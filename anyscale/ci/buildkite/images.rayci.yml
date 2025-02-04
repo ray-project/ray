@@ -33,6 +33,7 @@ steps:
           - "12.1.1"
           - "12.3.2"
           - "12.4.1"
+          - "12.5.1"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -99,6 +100,7 @@ steps:
           - "cu12.1.1-cudnn8"
           - "cu12.3.2-cudnn9"
           - "cu12.4.1-cudnn"
+          - "cu12.5.1-cudnn"
 
   - label: ":tapioca: minimized runtime py{{matrix.py}} {{matrix.base}} image"
     key: runtime-min-image
@@ -128,6 +130,7 @@ steps:
           - "cu12.1.1"
           - "cu12.3.2"
           - "cu12.4.1"
+          - "cu12.5.1"
 
   - label: ":tapioca: runtime ml py{{matrix.py}} {{matrix.base}} image"
     key: runtime-ml-image
