@@ -2751,7 +2751,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 driver = {
                     # Sampling and training is not done concurrently when local is
                     # used, so pick the max.
-                    "CPU": max(num_cpus_per_learner, cf.num_cpus_for_main_process),
+                    "CPU": (max(num_cpus_per_learner, cf.num_cpus_for_main_process)),
                     "GPU": cf.num_gpus_per_learner,
                 }
             # Training is done on n remote Learners.
@@ -2810,8 +2810,14 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # resources for remote learner workers
         learner_bundles = []
-        if cf.enable_rl_module_and_learner and cf.num_learners > 0:
-            learner_bundles = cls._get_learner_bundles(cf)
+        if cf.enable_rl_module_and_learner:
+            if cf.num_learners > 0:
+                learner_bundles = cls._get_learner_bundles(cf)
+            # Aggregation actors (for the local learner).
+            else:
+                learner_bundles = [
+                    {"CPU": 1} for _ in range(cf.num_aggregator_actors_per_learner)
+                ]
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 
