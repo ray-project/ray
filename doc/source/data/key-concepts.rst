@@ -22,7 +22,7 @@ The Dataset API is lazy, meaning that operations aren't executed until you mater
 like :meth:`~ray.data.Dataset.show`. This allows Ray Data to optimize the execution plan
 and execute operations in parallel.
 
-Each *Dataset* is made up of *Blocks*. A *Block* is a contiguous subset of rows from a dataset,
+Each *Dataset* is made up of *blocks*. A *block* is a contiguous subset of rows from a dataset,
 which are distributed across the cluster and processed independently in parallel.
 
 The following figure visualizes a dataset with three blocks, each holding 1000 rows.
@@ -36,40 +36,52 @@ Pandas Dataframes or Arrow tables.
 ..
   https://docs.google.com/drawings/d/1kOYQqHdMrBp2XorDIn0u0G_MvFj-uSA4qm6xf9tsFLM/edit
 
-
-Plans and operators
+Operators and Plans
 -------------------
 
-When a user writes a program using the Dataset API, a *logical plan* is constructed underneath the hood.
+Ray Data uses a two-phase planning process to execute operations efficiently. When you write a program using the Dataset API, Ray Data first builds a *logical plan* - a high-level description of what operations to perform. When execution begins, it converts this into a *physical plan* that specifies exactly how to execute those operations.
 
-A *logical plan* represents a sequence of data transformations, each of which is represented by a *logical operator*. For example, a ``Map`` operator represents applying a function to each row of the dataset, and a ``Project`` operator represents selecting a subset of columns from the dataset.
-
-Here is an example of a Ray Data program and its corresponding logical plan:
-
-.. code-block:: python
-
-    dataset = ray.data.range(100)
-    dataset = dataset.map(lambda x: x + 1)
-    dataset = dataset.select_columns("id")
-
-You can inspect the logical plan by doing ``print(dataset)``:
-
-.. code-block::
-
-    Project
-    +- Map(<lambda>)
-       +- Dataset(schema={...})
-
-When a dataset's execution plan is executed, the logical plan is optimized and transformed into a *physical plan* that in turn is also optimized. A *physical plan* is a graph of *physical operators*, which contain actual implementation of the data transformation and may also handle orchestration and execution across different Ray actors/workers. Read more about Ray actors and workers in :ref:`Ray Core Concepts <core-key-concepts>`.
-
-Note that a dataset's execution plan is executed when a dataset is materialized or consumed.
-
-See the below diagram for the planning process:
+This diagram illustrates the complete planning process:
 
 .. image:: images/get_execution_plan.png
    :width: 600
    :align: center
 
+The building blocks of these plans are operators:
+
+* Logical plans consist of *logical operators* that describe *what* operation to perform (e.g., ``ReadOp`` specifies what data to read)
+* Physical plans consist of *physical operators* that describe *how* to execute the operation (e.g., ``TaskPoolMapOperator`` launches Ray tasks to actually read the data)
+
+Let's look at a simple example of how Ray Data builds a logical plan. As you chain operations together, Ray Data constructs the logical plan behind the scenes:
+
+.. code-block:: python
+
+    dataset = ray.data.range(100)
+    dataset = dataset.add_column("test", lambda x: x["id"] + 1)
+    dataset = dataset.select_columns("test")
+
+You can inspect the resulting logical plan by printing the dataset:
+
+.. code-block::
+
+    Project
+    +- MapBatches(add_column)
+       +- Dataset(schema={...})
+
+When execution begins, Ray Data will optimize the logical plan, then translate it into a physical plan - a series of operators that implement the actual data transformations. During this translation:
+
+1. A single logical operator may become multiple physical operators (e.g., ``ReadOp`` becomes both ``InputDataBuffer`` and ``TaskPoolMapOperator``)
+2. Both logical and physical plans go through optimization passes (e.g., ``OperatorFusionRule`` combines map operators to reduce serialization overhead)
+
+Physical operators work by:
+
+* Taking in a stream of block references
+* Performing their operation (either transforming data via Ray Tasks/Actors or manipulating references)
+* Outputting another stream of block references
+
+For more details on Ray Tasks and Actors, see :ref:`Ray Core Concepts <core-key-concepts>`.
+
+.. note:: A dataset's execution plan only runs when you materialize or consume the dataset through operations like :meth:`~ray.data.Dataset.show`.
 
 .. _streaming_execution_model:
 
