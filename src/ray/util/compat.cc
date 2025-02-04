@@ -39,7 +39,22 @@ Status CompleteWrite(MEMFD_TYPE_NON_UNIQUE fd, const char *data, size_t len) {
   return Status::OK();
 }
 Status Flush(MEMFD_TYPE_NON_UNIQUE fd) {
-  const int ret = fdatasync(fd);
+#if HAVE_FULLFSYNC
+  // On macOS and iOS, fsync() doesn't guarantee durability past power
+  // failures. fcntl(F_FULLFSYNC) is required for that purpose. Some
+  // filesystems don't support fcntl(F_FULLFSYNC), and require a fallback to
+  // fsync().
+  if (::fcntl(fd, F_FULLFSYNC) == 0) {
+    return Status::OK();
+  }
+#endif  // HAVE_FULLFSYNC
+
+#if HAVE_FDATASYNC
+  int ret = ::fdatasync(fd) == 0;
+#else
+  int ret = ::fsync(fd) == 0;
+#endif  // HAVE_FDATASYNC
+
   RAY_CHECK(ret != -1 || errno != EIO) << "Fails to flush to file " << strerror(errno);
   if (ret == -1) {
     return Status::IOError("") << "Fails to flush file because " << strerror(errno);
