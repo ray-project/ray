@@ -162,7 +162,27 @@ def test_sort_arrow(
         ctx.use_polars = original_use_polars
 
 
-@pytest.mark.parametrize("use_polars", [False, True])
+def test_sort(ray_start_regular, use_polars):
+    import random
+
+    import pyarrow as pa
+
+    N = 100
+    r = random.Random(0xDEED)
+
+    ints = [r.randint(0, 10) for _ in range(N)]
+    floats = [r.normalvariate(0, 5) for _ in range(N)]
+    t = pa.Table.from_pydict({"ints": ints, "floats": floats})
+
+    sorted_block = BlockAccessor.for_block(t).sort(SortKey(["ints", "floats"]))
+
+    sorted_tuples = list(zip(*sorted(zip(ints, floats))))
+
+    assert sorted_block == pa.Table.from_pydict(
+        {"ints": sorted_tuples[0], "floats": sorted_tuples[1]}
+    )
+
+
 def test_sort_arrow_with_empty_blocks(
     ray_start_regular, configure_shuffle_method, use_polars
 ):
