@@ -13,4 +13,3 @@ Stage 2 results:
 Stage 3 results:
 	Actor creation time: 0.09029483795166016
 	Total time: 3138.855129480362
-
