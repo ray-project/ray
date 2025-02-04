@@ -17,7 +17,7 @@ class PyExecutablePlugin(RuntimeEnvPlugin):
     to the working directory, for example, to a requirements.txt for a package manager,
     a script for a debugger, or the executable could be a shell script in the
     working directory. You can also use this plugin to run worker processes
-    in a custom profiler or to use a custom Python interpreter or `python` with
+    in a custom profiler or use a custom Python interpreter or `python` with
     custom arguments.
     """
 
