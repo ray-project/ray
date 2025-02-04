@@ -1,5 +1,4 @@
-# Script used for checking changes for incremental testing cases
-from __future__ import absolute_import, division, print_function
+#!/usr/bin/env python3
 
 import argparse
 import os
