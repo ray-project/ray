@@ -49,7 +49,9 @@ class GroupManager(object):
         self._name_group_map = {}
         self._group_name_map = {}
 
-    def create_collective_group(self, backend, world_size, rank, group_name):
+    def create_collective_group(
+        self, backend, world_size, rank, group_name, gloo_timeout
+    ):
         """The entry to create new collective groups in the manager.
 
         Put the registration and the group information into the manager
@@ -66,6 +68,7 @@ class GroupManager(object):
                 group_name,
                 store_type="ray_internal_kv",
                 device_type="tcp",
+                gloo_timeout=gloo_timeout,
             )
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
@@ -118,7 +121,11 @@ def is_group_initialized(group_name):
 
 
 def init_collective_group(
-    world_size: int, rank: int, backend=types.Backend.NCCL, group_name: str = "default"
+    world_size: int,
+    rank: int,
+    backend=types.Backend.NCCL,
+    group_name: str = "default",
+    gloo_timeout: int = 30000,
 ):
     """Initialize a collective group inside an actor process.
 
@@ -145,7 +152,9 @@ def init_collective_group(
     assert world_size > 0
     assert rank >= 0
     assert rank < world_size
-    _group_mgr.create_collective_group(backend, world_size, rank, group_name)
+    _group_mgr.create_collective_group(
+        backend, world_size, rank, group_name, gloo_timeout
+    )
 
 
 def create_collective_group(
@@ -154,6 +163,7 @@ def create_collective_group(
     ranks: List[int],
     backend=types.Backend.NCCL,
     group_name: str = "default",
+    gloo_timeout: int = 30000,
 ):
     """Declare a list of actors as a collective group.
 
@@ -209,7 +219,7 @@ def create_collective_group(
     actors_id = [a._ray_actor_id for a in actors]
     # TODO (Dacheng): how do we recycle this name actor?
     info = Info.options(name=name, lifetime="detached").remote()
-    ray.get([info.set_info.remote(actors_id, world_size, ranks, backend)])
+    ray.get([info.set_info.remote(actors_id, world_size, ranks, backend, gloo_timeout)])
 
 
 # TODO (we need a declarative destroy() API here.)
@@ -679,11 +689,15 @@ def _check_and_get_group(group_name):
             # get and create the group.
             name = "info_" + group_name
             mgr = ray.get_actor(name=name)
-            ids, world_size, rank, backend = ray.get(mgr.get_info.remote())
+            ids, world_size, rank, backend, gloo_timeout = ray.get(
+                mgr.get_info.remote()
+            )
             worker = ray._private.worker.global_worker
             id_ = worker.core_worker.get_actor_id()
             r = rank[ids.index(id_)]
-            _group_mgr.create_collective_group(backend, world_size, r, group_name)
+            _group_mgr.create_collective_group(
+                backend, world_size, r, group_name, gloo_timeout
+            )
         except ValueError as exc:
             # check if this group is initialized using options()
             if (
@@ -693,8 +707,9 @@ def _check_and_get_group(group_name):
                 rank = int(os.environ["collective_rank"])
                 world_size = int(os.environ["collective_world_size"])
                 backend = os.environ["collective_backend"]
+                gloo_timeout = os.getenv("collective_gloo_timeout", 30000)
                 _group_mgr.create_collective_group(
-                    backend, world_size, rank, group_name
+                    backend, world_size, rank, group_name, gloo_timeout
                 )
             else:
                 raise RuntimeError(
