@@ -6,16 +6,19 @@ import ray.train
 from ray.data import Dataset
 
 
-
 class BaseDataLoaderFactory(ABC):
     """Base class for creating and managing dataloaders."""
-    
+
     @abstractmethod
-    def get_train_dataloader(self, batch_size: int) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+    def get_train_dataloader(
+        self, batch_size: int
+    ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         pass
-        
+
     @abstractmethod
-    def get_val_dataloader(self, batch_size: int) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+    def get_val_dataloader(
+        self, batch_size: int
+    ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         pass
 
     def get_metrics(self) -> Dict[str, Any]:
@@ -34,7 +37,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
     @abstractmethod
     def get_ray_datasets(self) -> Dict[str, Dataset]:
         """Get the Ray datasets for training and validation.
-        
+
         Returns:
             Dict with "train" and "val" Dataset objects
         """
@@ -43,14 +46,16 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
     @abstractmethod
     def collate_fn(self) -> Dict[str, Dataset]:
         """Get the collate function for the dataloader.
-        
+
         Returns:
             A function that takes a batch and returns a tuple of tensors.
         """
         pass
 
     def get_train_dataloader(self, batch_size: int):
-        ds_iterator = self._ray_ds_iterators["train"] = ray.train.get_dataset_shard("train")
+        ds_iterator = self._ray_ds_iterators["train"] = ray.train.get_dataset_shard(
+            "train"
+        )
         return iter(
             ds_iterator.iter_torch_batches(
                 batch_size=batch_size,

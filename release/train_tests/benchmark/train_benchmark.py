@@ -239,6 +239,7 @@ class TrainLoopRunner:
 
 METRICS_OUTPUT_PATH = "/mnt/cluster_storage/train_benchmark_metrics.json"
 
+
 def train_fn_per_worker(config):
     factory = config["factory"]
     runner = TrainLoopRunner(factory)

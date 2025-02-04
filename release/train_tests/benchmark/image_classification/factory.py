@@ -1,4 +1,3 @@
-
 from typing import Dict
 
 import torch
@@ -10,7 +9,10 @@ import ray.data
 from config import DataloaderType
 from factory import BenchmarkFactory
 from dataloader_factory import RayDataLoaderFactory, BaseDataLoaderFactory
-from image_classification.imagenet import get_preprocess_map_fn, IMAGENET_PARQUET_SPLIT_S3_DIRS
+from image_classification.imagenet import (
+    get_preprocess_map_fn,
+    IMAGENET_PARQUET_SPLIT_S3_DIRS,
+)
 
 
 def mock_dataloader(num_batches: int = 64, batch_size: int = 32):
@@ -26,22 +28,20 @@ def mock_dataloader(num_batches: int = 64, batch_size: int = 32):
 class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):
     def get_train_dataloader(self, batch_size: int):
         return mock_dataloader(num_batches=1024, batch_size=batch_size)
-        
+
     def get_val_dataloader(self, batch_size: int):
         return mock_dataloader(num_batches=512, batch_size=batch_size)
 
 
 class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
-    def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:  
+    def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
         train_ds = ray.data.read_parquet(
-            IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], 
-            columns=["image", "label"]
+            IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
         ).map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
 
         val_ds = (
             ray.data.read_parquet(
-                IMAGENET_PARQUET_SPLIT_S3_DIRS["train"],
-                columns=["image", "label"]
+                IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
             )
             .limit(50000)
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
@@ -53,6 +53,7 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
         from ray.air._internal.torch_utils import (
             convert_ndarray_batch_to_torch_tensor_batch,
         )
+
         device = ray.train.torch.get_device()
         batch = convert_ndarray_batch_to_torch_tensor_batch(batch, device=device)
 
@@ -66,7 +67,9 @@ class ImageClassificationFactory(BenchmarkFactory):
         elif self.benchmark_config.dataloader_type == DataloaderType.RAY_DATA:
             return ImageClassificationRayDataLoaderFactory()
         else:
-            raise ValueError(f"Invalid dataloader type: {self.benchmark_config.dataloader_type}")
+            raise ValueError(
+                f"Invalid dataloader type: {self.benchmark_config.dataloader_type}"
+            )
 
     def get_model(self) -> torch.nn.Module:
         return torchvision.models.resnet50(weights=None)
