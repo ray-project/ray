@@ -31,6 +31,7 @@
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/util/container_util.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {

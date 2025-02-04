@@ -37,7 +37,6 @@ ray_cc_library(
     ],
 )
 
-# TODO(hjiang): filesystem and logging has interdependency, we should split them into three targets: filesystem, logging, ray_check_macros.
 ray_cc_library(
     name = "logging",
     hdrs = ["logging.h"],
@@ -193,22 +192,19 @@ ray_cc_library(
     ],
 )
 
-# A giant 'util' target is split since PR https://github.com/ray-project/ray/pull/49938, here we keep the 'util' target for API compatibility.
-#
-# TODO(hjiang): We include a bunch of misc util function/class inside of the class, should split into multiple files and build targets.
+# TODO(hjiang): Split URL related functions into a separate util target.
 ray_cc_library(
     name = "util",
     hdrs = ["util.h"],
     srcs = ["util.cc"],
     deps = [
-        ":cmd_line_utils",
-        ":container_util",
-        ":function_traits",
+        ":filesystem",
         ":logging",
         ":macros",
         ":process",
-        ":string_utils",
         "//:sha256",
+        "@boost//:asio",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

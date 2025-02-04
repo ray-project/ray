@@ -25,7 +25,6 @@
 #include "ray/raylet/scheduling/local_task_manager_interface.h"
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 #include "ray/raylet/scheduling/scheduler_stats.h"
-#include "ray/util/container_util.h"
 
 namespace ray {
 namespace raylet {
