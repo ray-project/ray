@@ -54,6 +54,7 @@ def tmp_working_dir():
         yield tmp_dir
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_simple(shutdown_only, with_uv):
     uv = with_uv
 
@@ -71,6 +72,7 @@ def test_uv_run_simple(shutdown_only, with_uv):
     assert ray.get(emojize.remote()) == "Ray rocks 👍"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_pyproject(shutdown_only, with_uv, tmp_working_dir):
     uv = with_uv
     tmp_dir = tmp_working_dir
@@ -92,6 +94,7 @@ def test_uv_run_pyproject(shutdown_only, with_uv, tmp_working_dir):
     assert ray.get(emojize.remote()) == "Ray rocks 👍"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir):
     uv = with_uv
     tmp_dir = tmp_working_dir
