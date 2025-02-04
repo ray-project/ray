@@ -74,15 +74,12 @@ ray_cc_library(
 
 ray_cc_library(
     name = "file_system_monitor",
-    srcs = [
-        "file_system_monitor.cc",
-    ],
-    hdrs = [
-        "file_system_monitor.h",
-    ],
+    srcs = ["file_system_monitor.cc"],
+    hdrs = ["file_system_monitor.h"],
     deps = [
         ":asio",
         "//src/ray/util",
+        "//src/ray/util:event",
         "@com_google_googletest//:gtest_prod",
     ],
 )
@@ -139,6 +136,7 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:random",
         "@com_github_google_flatbuffers//:flatbuffers",
         "@msgpack",
     ],
@@ -211,6 +209,7 @@ ray_cc_library(
         ":event_stats",
         ":ray_config",
         "//src/ray/util",
+        "//src/ray/util:array",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",

@@ -2409,7 +2409,6 @@ def test_driver_and_intraprocess_read(ray_start_cluster):
     assert ray.get(dag.execute(1)) == [1, 2]
 
 
-@pytest.mark.skip("Currently buffer size is set to 1 because of regression.")
 @pytest.mark.parametrize("temporary_change_timeout", [1], indirect=True)
 def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     ray.init()
@@ -2433,7 +2432,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     actor1 = Actor1.remote()
 
     # Since the timeout is 1 second, if buffering is not working,
-    # it will timeout (0.12s for each dag * MAX_INFLIGHT_EXECUTIONS).
+    # it will timeout (0.2s for each dag * MAX_INFLIGHT_EXECUTIONS).
     with InputNode() as input_node:
         dag = actor1.fwd.bind(input_node)
 
@@ -2447,7 +2446,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     for i, ref in enumerate(output_refs):
         assert ray.get(ref) == i
 
-    # Test there are more items than max bufcfered inputs.
+    # Test there are more items than max buffered inputs.
     output_refs = []
     for i in range(MAX_INFLIGHT_EXECUTIONS):
         output_refs.append(dag.execute(i))

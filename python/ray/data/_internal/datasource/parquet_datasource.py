@@ -1,4 +1,5 @@
 import logging
+import warnings
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -21,6 +22,7 @@ from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
+    RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
     call_with_retry,
@@ -46,6 +48,7 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _resolve_paths_and_filesystem,
 )
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     import pyarrow
@@ -158,6 +161,21 @@ class ParquetDatasource(Datasource):
     cost of some potential performance and/or compatibility penalties.
     """
 
+    _FUTURE_FILE_EXTENSIONS = [
+        "parquet",
+        # Snappy compression
+        "parquet.snappy",
+        "snappy.parquet",
+        # Gzip compression
+        "parquet.gz",
+        # Brotili compression
+        "parquet.br",
+        # Lz4 compression
+        "parquet.lz4",
+        # Zstd compression
+        "parquet.zst",
+    ]
+
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -196,6 +214,9 @@ class ParquetDatasource(Datasource):
             )
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        filesystem = RetryingPyFileSystem.wrap(
+            filesystem, context=DataContext.get_current()
+        )
 
         # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
         # files. To avoid this, we expand the input paths with the default metadata
@@ -321,6 +342,14 @@ class ParquetDatasource(Datasource):
         self._default_read_batch_size_rows = estimate_default_read_batch_size_rows(
             sample_infos
         )
+
+        if file_extensions is None:
+            for path in self._pq_paths:
+                if not _has_file_extension(
+                    path, self._FUTURE_FILE_EXTENSIONS
+                ) and log_once("read_parquet_file_extensions_future_warning"):
+                    emit_file_extensions_future_warning(self._FUTURE_FILE_EXTENSIONS)
+                    break
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -729,3 +758,13 @@ def _add_partition_fields_to_schema(
         schema = schema.append(pa.field(field_name, field_type))
 
     return schema
+
+
+def emit_file_extensions_future_warning(future_file_extensions: List[str]):
+    warnings.warn(
+        "The default `file_extensions` for `read_parquet` will change "
+        f"from `None` to {future_file_extensions} after Ray 2.43, and your dataset "
+        "contains files that don't match the new `file_extensions`. To maintain "
+        "backwards compatibility, set `file_extensions=None` explicitly.",
+        FutureWarning,
+    )
