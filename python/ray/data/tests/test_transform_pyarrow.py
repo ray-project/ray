@@ -11,7 +11,11 @@ from ray._private.utils import _get_pyarrow_version
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
-from ray.data._internal.arrow_ops.transform_pyarrow import concat, unify_schemas, MIN_PYARROW_VERSION_TYPE_PROMOTION
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    concat,
+    unify_schemas,
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
+)
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
     ArrowConversionError,
