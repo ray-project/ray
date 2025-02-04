@@ -338,7 +338,8 @@ And then a `test.py` like this:
 
   import ray
 
-  ray.init(runtime_env={"working_dir": ".", "py_executable": "uv run"})
+  # We add --isolated to avoid uv problems with concurrent environment setup
+  ray.init(runtime_env={"working_dir": ".", "py_executable": "uv run --isolated"})
 
   @ray.remote
   def message(entity):
