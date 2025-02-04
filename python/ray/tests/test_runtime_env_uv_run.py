@@ -25,7 +25,6 @@ def with_uv():
         with request.urlopen(request.Request(url), timeout=15.0) as response:
             with tarfile.open(fileobj=response, mode="r|*") as tar:
                 tar.extractall(tmp_dir)
-        # uv = Path(tmp_dir) / "uv-i686-unknown-linux-gnu" / "uv"
         uv = Path(tmp_dir) / name / "uv"
         uv.chmod(uv.stat().st_mode | stat.S_IEXEC)
         yield uv
@@ -76,21 +75,6 @@ def tmp_working_dir_editable():
             cwd=path / "emoji_copy",
         )
 
-        subprocess.run(
-            ["uv", "add", "--editable", "./emoji_copy"],
-            cwd=path,
-        )
-
-        # Now edit the package
-        content = ""
-        with open(Path(tmp_dir) / "emoji_copy" / "emoji" / "core.py") as f:
-            content = f.read()
-
-        content = content.replace("return pattern.sub(replace, string)", 'return "The package was edited"')
-
-        with open(Path(tmp_dir) / "emoji_copy" / "emoji" / "core.py", "w") as f:
-            f.write(content)
-
         yield tmp_dir
 
 
@@ -135,6 +119,21 @@ def test_uv_run_pyproject(shutdown_only, with_uv, tmp_working_dir):
 def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir_editable):
     uv = with_uv
     tmp_dir = tmp_working_dir_editable
+
+    subprocess.run(
+        [uv, "add", "--editable", "./emoji_copy"],
+        cwd=tmp_dir,
+    )
+
+    # Now edit the package
+    content = ""
+    with open(Path(tmp_dir) / "emoji_copy" / "emoji" / "core.py") as f:
+        content = f.read()
+
+    content = content.replace("return pattern.sub(replace, string)", 'return "The package was edited"')
+
+    with open(Path(tmp_dir) / "emoji_copy" / "emoji" / "core.py", "w") as f:
+        f.write(content)
 
     ray.init(
         runtime_env={
