@@ -53,21 +53,25 @@ DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  ray::StreamRedirectionOption stdout_redirection_options;
-  stdout_redirection_options.file_path = FLAGS_ray_log_filepath;
-  stdout_redirection_options.rotation_max_size =
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
-  stdout_redirection_options.rotation_max_file_count =
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-  ray::RedirectStdout(stdout_redirection_options);
+  if (!FLAGS_ray_log_filepath.empty()) {
+    ray::StreamRedirectionOption stdout_redirection_options;
+    stdout_redirection_options.file_path = FLAGS_ray_log_filepath;
+    stdout_redirection_options.rotation_max_size =
+        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+    stdout_redirection_options.rotation_max_file_count =
+        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+    ray::RedirectStdout(stdout_redirection_options);
+  }
 
-  ray::StreamRedirectionOption stderr_redirection_options;
-  stderr_redirection_options.file_path = FLAGS_ray_err_log_filepath;
-  stderr_redirection_options.rotation_max_size =
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
-  stderr_redirection_options.rotation_max_file_count =
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-  ray::RedirectStderr(stderr_redirection_options);
+  if (!FLAGS_ray_err_log_filepath.empty()) {
+    ray::StreamRedirectionOption stderr_redirection_options;
+    stderr_redirection_options.file_path = FLAGS_ray_err_log_filepath;
+    stderr_redirection_options.rotation_max_size =
+        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+    stderr_redirection_options.rotation_max_file_count =
+        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+    ray::RedirectStderr(stderr_redirection_options);
+  }
 
   // Backward compatibility notes:
   // By default, GCS server flushes all logging and stdout/stderr to a single file called
@@ -81,8 +85,8 @@ int main(int argc, char *argv[]) {
       ray::RayLog::ShutDownRayLog,
       argv[0],
       ray::RayLogLevel::INFO,
-      /*log_filepath=*/FLAGS_ray_log_filepath,
-      /*err_log_filepath=*/FLAGS_ray_err_log_filepath,
+      /*log_filepath=*/"",
+      /*err_log_filepath=*/"",
       /*log_rotation_max_size=*/std::numeric_limits<size_t>::max(),
       /*log_rotation_file_num=*/1);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
