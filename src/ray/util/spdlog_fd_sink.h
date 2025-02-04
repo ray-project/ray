@@ -19,12 +19,6 @@
 #include "ray/util/compat.h"
 #include "ray/util/util.h"
 
-#if defined(__APPLE__) || defined(__linux__)
-#include <unistd.h>
-#elif defined(_WIN32)
-#include <windows.h>
-#endif
-
 namespace ray {
 
 // A sink which logs to the file descriptor.
@@ -39,26 +33,9 @@ class non_owned_fd_sink final : public spdlog::sinks::base_sink<Mutex> {
   void sink_it_(const spdlog::details::log_msg &msg) override {
     spdlog::memory_buf_t formatted;
     spdlog::sinks::base_sink<Mutex>::formatter_->format(msg, formatted);
-
-#if defined(__APPLE__) || defined(__linux__)
-    RAY_CHECK_EQ(write(fd_, formatted.data(), formatted.size()),
-                 static_cast<ssize_t>(formatted.size()))
-        << "Fails to write because " << strerror(errno);
-#elif defined(_WIN32)
-    DWORD bytes_written;
-    BOOL success =
-        WriteFile(fd_, formatted.data(), (DWORD)formatted.size(), &bytes_written, NULL);
-    RAY_CHECK(success);
-    RAY_CHECK_EQ((DWORD)formatted.size(), bytes_written);
-#endif
+    RAY_CHECK_OK(CompleteWrite(fd_, formatted.data(), formatted.size()));
   }
-  void flush_() override {
-#if defined(__APPLE__) || defined(__linux__)
-    RAY_CHECK_EQ(fdatasync(fd_), 0) << "Fails to flush file because " << strerror(errno);
-#elif defined(_WIN32)
-    RAY_CHECK(FlushFileBuffers(fd_));
-#endif
-  }
+  void flush_() override { RAY_CHECK_OK(Flush(fd_)); }
 
  private:
   MEMFD_TYPE_NON_UNIQUE fd_;
