@@ -2,7 +2,7 @@
 
 # Serve a LLM on GKE with Single-Host TPUs
 
-This guide showcases how to serve an LLM and run inference with vLLM and single-host TPUs. A single-host TPU slice is a node pool that contains 1 TPU VM. Single-host TPUs enable users to run highly intensive workloads such as inference and training with large-scale AI models that don't fit on one VM host. For more information about TPUs, see [Use TPUs with KubeRay](kuberay-tpu). This example showcases serving and inference with Llama-3.1-70B on a 2x4 Trillium (v6e) TPU node, or 8 TPU chips total.
+This guide showcases how to serve LLMs using Tensor Processing Units (TPUs) with the [vLLM](https://docs.vllm.ai/en/latest/) serving framework. A single-host TPU slice is a node pool that contains one or more independent TPU VMs. This tutorial uses one TPU Trillium node, which is Google's sixth generation TPU. For more information about TPUs, see [Use TPUs with KubeRay](kuberay-tpu). This example showcases serving and inference with Llama-3.1-70B on a 2x4 Trillium (v6e) TPU node, or with 8 TPU chips total.
 
 ## Step 1: Create a Kubernetes Cluster with TPUs and the Ray Operator Enabled
 
