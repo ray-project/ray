@@ -2751,9 +2751,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 driver = {
                     # Sampling and training is not done concurrently when local is
                     # used, so pick the max.
-                    "CPU": (
-                        max(num_cpus_per_learner, cf.num_cpus_for_main_process)
-                    ),
+                    "CPU": (max(num_cpus_per_learner, cf.num_cpus_for_main_process)),
                     "GPU": cf.num_gpus_per_learner,
                 }
             # Training is done on n remote Learners.
