@@ -23,24 +23,6 @@ if TYPE_CHECKING:
     from lance.fragment import FragmentMetadata
 
 
-def _pd_to_arrow(
-    df: Union["pa.Table", "pd.DataFrame", Dict], schema: Optional[pa.Schema]
-) -> "pa.Table":
-    """Convert a pandas DataFrame to pyarrow Table."""
-    import pandas as pd
-
-    if isinstance(df, dict):
-        return pa.Table.from_pydict(df, schema=schema)
-    elif isinstance(df, pd.DataFrame):
-        tbl = pa.Table.from_pandas(df, schema=schema)
-        tbl = tbl.replace_schema_metadata()
-        return tbl
-    elif isinstance(df, pa.Table):
-        if schema is not None:
-            return df.cast(schema)
-    return df
-
-
 def _write_fragment(
     stream: Iterable[Union["pa.Table", "pd.DataFrame"]],
     uri: str,
@@ -108,7 +90,7 @@ class _BaseLanceDatasink(Datasink):
         self.schema = schema
         self.mode = mode
 
-        self.read_version: int | None = None
+        self.read_version: Optional[int] = None
         self.storage_options = storage_options
 
     @property
