@@ -338,7 +338,8 @@ And then a `test.py` like the following:
 
   import ray
 
-  # Add `--isolated` to avoid uv problems with concurrent environment setup.
+  # Add `--isolated` to avoid uv problems with concurrent environment setup
+  # (see https://github.com/astral-sh/uv/issues/11219).
   ray.init(runtime_env={"working_dir": ".", "py_executable": "uv run --isolated"})
 
   @ray.remote
