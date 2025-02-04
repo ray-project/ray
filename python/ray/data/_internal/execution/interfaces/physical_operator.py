@@ -336,6 +336,11 @@ class PhysicalOperator(Operator):
                 input. For most operators, this is always `0` since there is only
                 one upstream input operator.
         """
+        assert 0 <= input_index < len(self._input_dependencies), (
+            f"Input index out of bounds (total inputs {len(self._input_dependencies)}, "
+            f"index is {input_index})"
+        )
+
         self._metrics.on_input_received(refs)
         self._add_input_inner(refs, input_index)
 
