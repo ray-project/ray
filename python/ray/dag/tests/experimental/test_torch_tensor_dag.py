@@ -70,7 +70,8 @@ class TorchTensorWorker:
     def recv(self, tensor):
         # Check that tensor got loaded to the correct device.
         assert tensor.device == self.device
-        return (tensor[0].item(), tensor.shape, tensor.dtype)
+        # [TODO: andyub] change back to tensor[0] after debugging
+        return (tensor[-1].item(), tensor.shape, tensor.dtype)
 
     def recv_and_matmul(self, two_d_tensor):
         """
@@ -447,14 +448,17 @@ def test_torch_tensor_nccl_overlap_p2p_and_collective(
     dtype = torch.float16
     collective_shape = (100000000,)
     compute_shape = (100000,)
+    send_shape = (100000000,)
     with InputNode() as inp:
         collectives = [
             worker.send.bind(collective_shape, dtype, inp) for worker in workers
         ]
-        computes = [worker.send.bind(compute_shape, dtype, inp) for worker in workers]
-        recvs = [
-            worker.recv.bind(compute) for worker, compute in zip(workers, computes)
+        sends = [
+            worker.send.bind(send_shape, dtype, inp).with_tensor_transport("nccl")
+            for worker in workers
         ]
+        computes = [worker.send.bind(compute_shape, dtype, inp) for worker in workers]
+        recvs = [workers[1].recv.bind(sends[0]), workers[0].recv.bind(sends[1])]
         computes = [
             worker.heavy_compute.bind(compute)
             for worker, compute in zip(workers, computes)
@@ -482,7 +486,7 @@ def test_torch_tensor_nccl_overlap_p2p_and_collective(
             result
             == [(i * num_workers, collective_shape, dtype)] * num_workers
             + [(i + 1000, compute_shape, dtype)] * num_workers
-            + [(i, compute_shape, dtype)] * num_workers
+            + [(i, send_shape, dtype)] * num_workers
         )
     duration = time.monotonic() - start
     print(f"{overlap_gpu_communication=}, {duration=}")
